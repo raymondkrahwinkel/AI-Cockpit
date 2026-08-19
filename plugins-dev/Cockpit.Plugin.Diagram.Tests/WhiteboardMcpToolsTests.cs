@@ -27,7 +27,7 @@ public class WhiteboardMcpToolsTests
         // make `host.CurrentMcpCallerPaneId ?? session` pick "" over the caller-supplied session on every test.
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
-        return (new WhiteboardMcpTools(host, registry), registry, host, asked);
+        return (new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage())), registry, host, asked);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class WhiteboardMcpToolsTests
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add))
             .Returns(_ => new ConsentDecision(approve ? ConsentOutcome.Approved : ConsentOutcome.Denied));
-        var tools = new WhiteboardMcpTools(host, registry);
+        var tools = new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()));
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
         registry.Grant(Session, "board-1", WhiteboardCapability.Read);
 
@@ -293,7 +293,7 @@ public class WhiteboardMcpToolsTests
                 registry.Grant("someone-else", "board-1"); // slipped in while we asked
                 return new ConsentDecision(ConsentOutcome.Approved);
             });
-        var tools = new WhiteboardMcpTools(host, registry);
+        var tools = new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()));
 
         var json = JsonNode.Parse(await tools.ReadWhiteboard(Session, "Sprint planning"));
 
@@ -348,5 +348,35 @@ public class WhiteboardMcpToolsTests
         Assert.Single(asked);
         await host.DidNotReceive().ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(),
             Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>());
+    }
+
+    [Fact]
+    public async Task OpenWhiteboard_WithSkipWhiteboardConsent_OpensWithoutAsking()
+    {
+        // AC-948: the plugin's own opt-out, off by default — on, this surface's consent request never happens.
+        var registry = new WhiteboardAccessRegistry();
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
+        var settings = new DiagramSettings(new FakePluginStorage()) { SkipWhiteboardConsent = true };
+        var tools = new WhiteboardMcpTools(host, registry, settings);
+
+        var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        await host.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>());
+    }
+
+    [Fact]
+    public async Task OpenWhiteboard_WithSkipWhiteboardConsentOff_StillAsks()
+    {
+        // AC-948 DoD: a fresh install (flag off) keeps asking every time — nothing about today's behaviour changes.
+        var (tools, _, _, asked) = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Single(asked);
     }
 }

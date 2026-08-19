@@ -31,7 +31,7 @@ public class WireframeMcpToolsTests
         builtHost.CurrentMcpCallerPaneId.Returns((string?)null);
         builtHost.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
         host = builtHost;
-        return (new WireframeMcpTools(builtHost, registry), registry, asked);
+        return (new WireframeMcpTools(builtHost, registry, new DiagramSettings(new FakePluginStorage())), registry, asked);
     }
 
     private static (WireframeMcpTools tools, WireframeAccessRegistry registry, List<ConsentRequest> asked) _Open(ConsentOutcome outcome, string name = Name)
@@ -312,6 +312,36 @@ public class WireframeMcpToolsTests
         var surfaceId = json["id"]!.GetValue<string>();
         await host.Received(1).ShowDialogAsync("Nieuw scherm", Arg.Any<Func<Control>>(),
             $"wireframe.document.{surfaceId}", Arg.Any<double>(), Arg.Any<double>());
+    }
+
+    [Fact]
+    public async Task OpenWireframe_WithSkipWireframeConsent_OpensWithoutAsking()
+    {
+        // AC-948: the plugin's own opt-out, off by default — on, this surface's consent request never happens.
+        var registry = new WireframeAccessRegistry();
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
+        var settings = new DiagramSettings(new FakePluginStorage()) { SkipWireframeConsent = true };
+        var tools = new WireframeMcpTools(host, registry, settings);
+
+        var json = JsonNode.Parse(await tools.OpenWireframe(Session, "Nieuw scherm", WireframeScreens.Settings));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        await host.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>());
+    }
+
+    [Fact]
+    public async Task OpenWireframe_WithSkipWireframeConsentOff_StillAsks()
+    {
+        // AC-948 DoD: a fresh install (flag off) keeps asking every time — nothing about today's behaviour changes.
+        var (tools, _, asked) = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.OpenWireframe(Session, "Nieuw scherm", WireframeScreens.Settings));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Single(asked);
     }
 
     // ---- A document of several screens (AC-901) ----

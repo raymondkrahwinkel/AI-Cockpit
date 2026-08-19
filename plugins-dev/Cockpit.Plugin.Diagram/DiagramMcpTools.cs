@@ -12,7 +12,7 @@ namespace Cockpit.Plugin.Diagram;
 // The `cockpit-diagram` MCP tools (AC-810), gated per-capability like `cockpit-terminal` (AC-34) — read that class
 // first. Deviations: `read_diagram` returns the surface as it stands (a state, not a stream), `edit_diagram`'s
 // consent text comes from SourceChangeSummary (AC-489), and the per-object tools (AC-852) write straight through.
-internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry registry)
+internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry registry, DiagramSettings settings)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -54,16 +54,20 @@ internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry 
         var surfaceId = Guid.NewGuid().ToString("n");
         var caller = host.CurrentMcpCallerPaneId ?? session;
 
-        var decision = await host.RequestConsentAsync(new ConsentRequest(
-            "An agent wants to open a diagram to go through with you",
-            $"Open a diagram window \"{_SingleLine(title)}\" beside the cockpit, holding {source.Split('\n').Length} lines of Mermaid this agent wrote, and couple that agent to it. It cannot read the surface back or change it afterwards without asking you separately.",
-            new ConsentSource(surfaceId, null, ConsentSourceCatalog.DiagramMcp),
-            "diagram.open",
-            ConsentRisk.Dangerous)).ConfigureAwait(false);
-
-        if (!decision.IsApproved)
+        // AC-948: the operator's own opt-out, set on this plugin's settings page — off by default.
+        if (!settings.SkipDiagramConsent)
         {
-            return _Serialize(new { ok = false, error = "Opening that diagram was not approved by the operator — nothing was opened." });
+            var decision = await host.RequestConsentAsync(new ConsentRequest(
+                "An agent wants to open a diagram to go through with you",
+                $"Open a diagram window \"{_SingleLine(title)}\" beside the cockpit, holding {source.Split('\n').Length} lines of Mermaid this agent wrote, and couple that agent to it. It cannot read the surface back or change it afterwards without asking you separately.",
+                new ConsentSource(surfaceId, null, ConsentSourceCatalog.DiagramMcp),
+                "diagram.open",
+                ConsentRisk.Dangerous)).ConfigureAwait(false);
+
+            if (!decision.IsApproved)
+            {
+                return _Serialize(new { ok = false, error = "Opening that diagram was not approved by the operator — nothing was opened." });
+            }
         }
 
         Dispatcher.UIThread.Post(() =>
@@ -418,12 +422,17 @@ internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry 
         // there is no "held Edit, now wants Read" case, and a fresh zero-capability coupling asking for Read is a
         // first ask, not a widening of anything.
         var widening = needed == DiagramCapability.Edit && held is { CanRead: true };
-        var decision = await host.RequestConsentAsync(_PromptFor(surface, needed, widening, changeSummary)).ConfigureAwait(false);
-        if (!decision.IsApproved)
+
+        // AC-948: the operator's own opt-out — off by default.
+        if (!settings.SkipDiagramConsent)
         {
-            return needed == DiagramCapability.Read
-                ? "Reading that diagram was not approved by the operator."
-                : "Editing that diagram was not approved by the operator — you may still be able to read it.";
+            var decision = await host.RequestConsentAsync(_PromptFor(surface, needed, widening, changeSummary)).ConfigureAwait(false);
+            if (!decision.IsApproved)
+            {
+                return needed == DiagramCapability.Read
+                    ? "Reading that diagram was not approved by the operator."
+                    : "Editing that diagram was not approved by the operator — you may still be able to read it.";
+            }
         }
 
         try

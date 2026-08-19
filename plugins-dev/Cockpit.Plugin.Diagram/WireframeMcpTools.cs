@@ -16,7 +16,7 @@ namespace Cockpit.Plugin.Diagram;
 // The `cockpit-wireframe` MCP tools (AC-872), gated per-capability like `cockpit-diagram` (AC-810) — read that
 // class first. Deviations: the payload is the source text, a component is named by the stable id a read stamps on
 // it (AC-906), and there is no diff gate — the journal is the safety net.
-internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegistry registry)
+internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegistry registry, DiagramSettings settings)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -61,16 +61,20 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         var surfaceId = Guid.NewGuid().ToString("n");
         var caller = host.CurrentMcpCallerPaneId ?? session;
 
-        var decision = await host.RequestConsentAsync(new ConsentRequest(
-            "An agent wants to open a wireframe to go through with you",
-            $"Open a wireframe window \"{_SingleLine(title)}\" beside the cockpit, holding {source.Split('\n').Length} lines this agent wrote, and couple that agent to it. It cannot read the surface back or change it afterwards without asking you separately.",
-            new ConsentSource(surfaceId, null, ConsentSourceCatalog.WireframeMcp),
-            "wireframe.open",
-            ConsentRisk.Dangerous)).ConfigureAwait(false);
-
-        if (!decision.IsApproved)
+        // AC-948: the operator's own opt-out, set on this plugin's settings page — off by default.
+        if (!settings.SkipWireframeConsent)
         {
-            return _Serialize(new { ok = false, error = "Opening that wireframe was not approved by the operator — nothing was opened." });
+            var decision = await host.RequestConsentAsync(new ConsentRequest(
+                "An agent wants to open a wireframe to go through with you",
+                $"Open a wireframe window \"{_SingleLine(title)}\" beside the cockpit, holding {source.Split('\n').Length} lines this agent wrote, and couple that agent to it. It cannot read the surface back or change it afterwards without asking you separately.",
+                new ConsentSource(surfaceId, null, ConsentSourceCatalog.WireframeMcp),
+                "wireframe.open",
+                ConsentRisk.Dangerous)).ConfigureAwait(false);
+
+            if (!decision.IsApproved)
+            {
+                return _Serialize(new { ok = false, error = "Opening that wireframe was not approved by the operator — nothing was opened." });
+            }
         }
 
         Dispatcher.UIThread.Post(() =>
@@ -288,12 +292,17 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         // Widening applies only to the read-then-edit path: granting Edit always grants Read alongside it, so there
         // is no "held Edit, now wants Read" case.
         var widening = needed == WireframeCapability.Edit && held is { CanRead: true };
-        var decision = await host.RequestConsentAsync(_PromptFor(surface, needed, widening, ask)).ConfigureAwait(false);
-        if (!decision.IsApproved)
+
+        // AC-948: the operator's own opt-out — off by default.
+        if (!settings.SkipWireframeConsent)
         {
-            return needed == WireframeCapability.Read
-                ? "Reading that wireframe was not approved by the operator."
-                : "Editing that wireframe was not approved by the operator — you may still be able to read it.";
+            var decision = await host.RequestConsentAsync(_PromptFor(surface, needed, widening, ask)).ConfigureAwait(false);
+            if (!decision.IsApproved)
+            {
+                return needed == WireframeCapability.Read
+                    ? "Reading that wireframe was not approved by the operator."
+                    : "Editing that wireframe was not approved by the operator — you may still be able to read it.";
+            }
         }
 
         try

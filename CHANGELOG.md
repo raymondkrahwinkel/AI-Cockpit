@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Diagram, Whiteboard & Wireframe plugin's settings screen now has a checkbox per surface — "Skip
+  Diagram consent", "Skip Whiteboard consent", "Skip Wireframe consent" — that lets that surface's open/read/edit
+  tools run without an Approve/Deny prompt at all. All three are off by default, so a fresh install still asks
+  every time; the whiteboard's own "let the SDK watch along" button keeps asking regardless of the checkboxes.
 - added: the sidebar's plugin buttons now collapse behind a single "Plugins ›" flyout instead of stacking up as
   the plugin list grows — nothing is pinned top-level by default, so pin back whatever you use daily from a new
   switch next to its up/down arrows in the plugin manager. A small dot on the flyout button says something behind
