@@ -232,33 +232,9 @@ public class DiagramCollabWindowTests
         plugin.Dispose();
     });
 
-    [Fact]
-    public void WhenAnAgentAsksForADiagram_TheWindowOpensWithItsSource_CoupledToTheCaller() => HeadlessAvalonia.Run(() =>
-    {
-        // AC-835's core→plugin path: the MCP tools live in core and cannot open a plugin window, so the approved
-        // request travels over the registry. The caller here is the cockpit-assistant — no running session of its
-        // own, so the coupling has to come from the registry rather than from the window's session binding.
-        var (plugin, host) = _StartPlugin();
-
-        Assert.True(host.Registry.RequestOpen(
-            new DiagramOpenRequest("surface-1", "Wat ik bedacht", "flowchart LR\n    A-->B", "cockpit-assistant")));
-        Dispatcher.UIThread.RunJobs();
-
-        var opened = Assert.Single(host.Windows);
-        Assert.Equal("diagram.document.surface-1", opened.Key);
-        Assert.Equal("Wat ik bedacht", opened.Title);
-
-        var surface = Assert.Single(host.Registry.ListSurfaces("cockpit-assistant"));
-        Assert.NotNull(surface.Coupling);
-        Assert.False(surface.Coupling!.HasAnyCapability); // opening grants nothing: read/edit still ask (AC-810)
-        Assert.Equal("flowchart LR\n    A-->B", host.Registry.PeekText("surface-1"));
-
-        var window = _Show(opened.Content);
-        Assert.Contains("Agent connected", _CouplingText(opened.Content), StringComparison.Ordinal);
-
-        window.Close();
-        plugin.Dispose();
-    });
+    // AC-891: the AC-835 core→plugin registry hand-off this covered (open_diagram asking, the registry carrying the
+    // request over) is gone — DiagramMcpTools now opens the window directly, so that path is covered in
+    // Cockpit.Plugin.Diagram.Tests/DiagramMcpToolsTests.cs, inside the assembly that owns both the tool and the window.
 
     // AC-847: a non-operator, non-reverted HistoryChanged entry marks the object it named as the agent's cursor —
     // glowing while fresh, settling into a quieter outline once the 3s window passes. Real-time wait, same pattern

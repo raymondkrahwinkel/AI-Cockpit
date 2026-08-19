@@ -125,11 +125,6 @@ public sealed record DiagramEditSupport(DiagramEditDialect Dialect, string? Reas
 // "FK" or "UK", or null when the attribute carries no key marker.
 public sealed record DiagramErAttribute(string Type, string Name, string? Key);
 
-// An agent asking for a diagram it wrote to be put on screen so the operator can go through it (AC-835). The
-// registry is the only seam between core and the plugin, so the request travels over it: core mints the ids and
-// asks consent, the plugin opens the window. `SessionId` is the caller the surface couples to on arrival.
-public sealed record DiagramOpenRequest(string SurfaceId, string Name, string Text, string SessionId);
-
 // AC-853: one journaled per-object edit, operator or agent, with enough to compute its own inverse against the
 // surface as it stands *now*. `ObjectKey` is the node id, or "from->to" for a connection (the strip's jump-to convention).
 public sealed record DiagramHistoryEntry(string Id, string Origin, DiagramHandEditKind Kind, string ObjectKey, string Summary, DateTime When, bool Reverted);
@@ -314,18 +309,6 @@ public interface IDiagramAccessRegistry
     /// Breaks every coupling this agent session held (its session ended or crashed).
     /// </summary>
     void SessionEnded(string sessionId);
-
-    // ---- An agent asking for a window (AC-835) ----
-
-    /// <summary>
-    /// Raised when an agent asked for a diagram to be opened, after the operator approved it — whoever draws diagram windows listens here.
-    /// </summary>
-    event Action<DiagramOpenRequest>? OpenRequested;
-
-    /// <summary>
-    /// Announces <paramref name="request"/> and remembers its caller, so the surface is coupled to it the moment the window registers it. False when nothing is listening at all — there is no diagram surface in this cockpit to open one on.
-    /// </summary>
-    bool RequestOpen(DiagramOpenRequest request);
 
     // ---- The diff gate (AC-825): a proposal sits between "delivered" and "applied" ----
 

@@ -155,29 +155,19 @@ public class WireframeAccessRegistryTests
     }
 
     [Fact]
-    public void RequestOpen_CouplesTheAskingSession_WithNothingGranted_TheMomentTheWindowRegisters()
+    public void SurfaceOpened_ThenCouple_CouplesTheOpeningSession_WithNothingGranted()
     {
-        // AC-835: the window arrives because an agent asked for it, so it arrives coupled — but reading it back and
-        // editing it stay their own separate asks.
+        // AC-891: open_wireframe now opens the window directly, coupled to the caller — the window does
+        // SurfaceOpened then Couple itself (DiagramWorkspaceBody's own pattern), rather than the surface arriving
+        // pre-coupled through a registry hand-off (AC-835, removed).
         var registry = new WireframeAccessRegistry();
-        WireframeOpenRequest? seen = null;
-        registry.OpenRequested += request => seen = request;
 
-        Assert.True(registry.RequestOpen(new WireframeOpenRequest("wireframe-9", "Nieuw scherm", WireframeScreens.Settings, Session)));
         registry.SurfaceOpened("wireframe-9", "Nieuw scherm", WireframeScreens.Settings);
+        registry.Couple(Session, "wireframe-9");
 
-        Assert.NotNull(seen);
         var coupling = registry.CouplingOf(Session, "wireframe-9");
         Assert.NotNull(coupling);
         Assert.False(coupling.HasAnyCapability);
-    }
-
-    [Fact]
-    public void RequestOpen_WithNothingDrawingWireframeWindows_IsFalse()
-    {
-        var registry = new WireframeAccessRegistry();
-
-        Assert.False(registry.RequestOpen(new WireframeOpenRequest("wireframe-9", "Nieuw scherm", WireframeScreens.Settings, Session)));
     }
 
     [Fact]

@@ -29,11 +29,6 @@ public sealed record WireframeSurfaceView(string SurfaceId, string Name, Wirefra
 // `Coupling` is null when it just decoupled.
 public sealed record WireframeCouplingChange(string SurfaceId, WireframeCoupling? Coupling);
 
-// An agent asking for a wireframe it wrote to be put on screen so the operator can go through it (AC-835). The
-// registry is the only seam between core and the plugin, so the request travels over it: core mints the ids and
-// asks consent, the plugin opens the window. `SessionId` is the caller the surface couples to on arrival.
-public sealed record WireframeOpenRequest(string SurfaceId, string Name, string Text, string SessionId);
-
 // The changes a wireframe surface records in its journal (AC-853). `Replace` is what WriteCoupled writes — the
 // whole source at once — and is the one kind no WireframeComponentEdit produces.
 public enum WireframeEditKind
@@ -247,21 +242,6 @@ public interface IWireframeAccessRegistry
     /// Breaks every coupling this agent session held (its session ended or crashed).
     /// </summary>
     void SessionEnded(string sessionId);
-
-    // ---- An agent asking for a window (AC-835) ----
-
-    /// <summary>
-    /// Raised when an agent asked for a wireframe to be opened, after the operator approved it — whoever draws
-    /// wireframe windows listens here.
-    /// </summary>
-    event Action<WireframeOpenRequest>? OpenRequested;
-
-    /// <summary>
-    /// Announces <paramref name="request"/> and remembers its caller, so the surface is coupled to it the moment
-    /// the window registers it. False when nothing is listening at all — there is no wireframe surface in this
-    /// cockpit to open one on.
-    /// </summary>
-    bool RequestOpen(WireframeOpenRequest request);
 
     // ---- Undo (AC-853): the safety net that stands in for the diff gate ----
 

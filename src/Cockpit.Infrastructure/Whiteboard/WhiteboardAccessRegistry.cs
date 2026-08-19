@@ -24,15 +24,12 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
 
     public event Action<string, string>? ObjectErased;
 
-    public event Action<WhiteboardOpenRequest>? OpenRequested;
-
     public event Action<string>? HistoryChanged;
 
     public event Action<string>? PinsChanged;
 
     public void SurfaceOpened(string surfaceId, string name, byte[] initialSnapshotPng)
     {
-        WhiteboardCoupling? asked;
         lock (_lock)
         {
             if (_surfaces.TryGetValue(surfaceId, out var existing))
@@ -42,32 +39,7 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
             }
 
             _surfaces[surfaceId] = new Surface(name, initialSnapshotPng);
-
-            // AC-835: this board is here because an agent asked for it, so it arrives coupled to that agent — with
-            // nothing granted: reading it and drawing on it stay their own separate asks.
-            asked = _ledger.ConsumeAwaiting(surfaceId, session => new WhiteboardCoupling(session, CanRead: false));
         }
-
-        if (asked is not null)
-        {
-            CouplingChanged?.Invoke(new WhiteboardCouplingChange(surfaceId, asked));
-        }
-    }
-
-    public bool RequestOpen(WhiteboardOpenRequest request)
-    {
-        if (OpenRequested is not { } listeners)
-        {
-            return false;
-        }
-
-        lock (_lock)
-        {
-            _ledger.MarkAwaiting(request.SurfaceId, request.SessionId);
-        }
-
-        listeners(request);
-        return true;
     }
 
     public void SurfaceClosed(string surfaceId)

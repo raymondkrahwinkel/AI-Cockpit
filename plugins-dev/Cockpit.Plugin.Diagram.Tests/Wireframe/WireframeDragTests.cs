@@ -212,8 +212,6 @@ public class WireframeDragTests
 
         public event Action<string>? HistoryChanged { add { } remove { } }
 
-        public event Action<WireframeOpenRequest>? OpenRequested { add { } remove { } }
-
         public string? ApplyHandEdit(string surfaceId, WireframeComponentEdit edit)
         {
             Applied.Add(edit);
@@ -275,8 +273,6 @@ public class WireframeDragTests
         public WireframeEditResult EditCoupled(string sessionId, string surfaceId, WireframeComponentEdit edit) => throw new NotSupportedException();
 
         public void SessionEnded(string sessionId) => throw new NotSupportedException();
-
-        public bool RequestOpen(WireframeOpenRequest request) => throw new NotSupportedException();
 
         public string? Revert(string surfaceId, string entryId) => throw new NotSupportedException();
     }

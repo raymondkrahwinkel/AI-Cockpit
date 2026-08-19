@@ -6,7 +6,6 @@ namespace Cockpit.Infrastructure.Collab;
 internal sealed class CouplingLedger<TCoupling>(Func<TCoupling, string> sessionIdOf)
 {
     private readonly Dictionary<string, TCoupling> _couplings = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _awaitingCoupling = new(StringComparer.Ordinal);
 
     public bool TryGet(string surfaceId, out TCoupling coupling) => _couplings.TryGetValue(surfaceId, out coupling!);
 
@@ -42,22 +41,6 @@ internal sealed class CouplingLedger<TCoupling>(Func<TCoupling, string> sessionI
         _couplings[surfaceId] = coupling;
         return coupling;
     }
-
-    // SurfaceOpened's "this window is here because an agent asked for it" hand-off (AC-835): pops the awaiting
-    // entry and creates a zero-capability coupling for it, once, the first time the surface registers.
-    public TCoupling? ConsumeAwaiting(string surfaceId, Func<string, TCoupling> zeroCapability)
-    {
-        if (!_awaitingCoupling.Remove(surfaceId, out var session) || _couplings.ContainsKey(surfaceId))
-        {
-            return default;
-        }
-
-        var coupling = zeroCapability(session);
-        _couplings[surfaceId] = coupling;
-        return coupling;
-    }
-
-    public void MarkAwaiting(string surfaceId, string sessionId) => _awaitingCoupling[surfaceId] = sessionId;
 
     public bool Remove(string surfaceId) => _couplings.Remove(surfaceId);
 
