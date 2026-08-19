@@ -283,7 +283,14 @@ sealed class Program
             // wedges — the exit must never hang again (bug #32). It fires a hard exit after a short
             // deadline; the child claude processes are killed in DisposeCockpit first, so nothing is
             // orphaned.
-            StartExitWatchdog(TimeSpan.FromSeconds(4));
+            //
+            // AC-956: the watchdog's deadline and the teardown's own budget are derived from one another rather
+            // than written twice. They used to be 4 seconds and 10, which meant the watchdog always won and
+            // teardown was cut off at whatever it was doing at 4 — in practice its tail, where a session deletes
+            // the temp files it wrote. Five days of leftover mcp-configs (28 of them holding a bearer header)
+            // were the visible half of that. The exit stays as prompt as it was; what changed is that the
+            // teardown now gets a budget it can actually finish inside, and cannot silently outlive it.
+            StartExitWatchdog(TeardownBudget + TimeSpan.FromSeconds(1));
 
             // Kill the child claude processes (DisposeCockpit is internally bounded), then hard-exit.
             // We deliberately do NOT gracefully stop the MCP host: its Kestrel StopAsync was seen to
@@ -325,6 +332,11 @@ sealed class Program
         }, args);
     }
 
+    // What the session teardown gets on the way out, and the figure the exit watchdog is set from — one constant,
+    // so the two can never drift apart again (AC-956). Three seconds is what the watchdog used to allow in
+    // practice; naming it here is what makes that a decision rather than a coincidence.
+    private static readonly TimeSpan TeardownBudget = TimeSpan.FromSeconds(3);
+
     private static void DisposeCockpit()
     {
         if (Services.GetService<CockpitViewModel>() is not { } cockpit)
@@ -334,7 +346,23 @@ sealed class Program
 
         // A bounded wait so a wedged session teardown can't hang the exit; the child processes are
         // killed early in each session's DisposeAsync, so timing out here still leaves nothing behind.
-        cockpit.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(10));
+        //
+        // AC-958: it does not currently get that far. This runs in Main's finally, *after*
+        // StartWithClassicDesktopLifetime has returned, so Avalonia's dispatcher loop has already ended and
+        // nothing pumps it — and the teardown chain awaits without ConfigureAwait(false) throughout. Measured with
+        // the lifecycle lines below: it reaches the assistant's own DisposeAsync and stops there, every close, so
+        // the files each launch wrote outlive it. The sweep at plugin start is the backstop until that is fixed
+        // properly, which means tearing down while the dispatcher is still alive rather than after.
+        try
+        {
+            cockpit.DisposeAsync().AsTask().Wait(TeardownBudget);
+        }
+        catch (Exception exception)
+        {
+            // Written, not swallowed: a teardown that throws leaves exactly the same trace as one that wedged —
+            // nothing — and that is what made this take four rounds to find.
+            Cockpit.App.Logging.LifecycleLog.Write($"Cockpit teardown failed: {exception}");
+        }
     }
 
     private static void StartHostedServices(IReadOnlyList<IHostedService> hostedServices)

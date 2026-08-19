@@ -68,6 +68,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // clean up; the SDK driver owns its own process lifetime, so it owns this file's lifetime too).
     private string? _mcpConfigPath;
 
+    // The per-session --append-system-prompt-file this launch wrote, on the same terms as the mcp-config above: it
+    // carries the standing instruction the host composed (for the assistant, that is its memory and current state),
+    // and it is deleted on dispose because a prompt for a session that has ended is nobody's business either.
+    private string? _systemPromptPath;
+
     public ClaudeSdkSessionDriver(Func<IClaudeSdkSubprocess> subprocessFactory, ClaudeProviderConfig config, string executablePath)
     {
         _subprocessFactory = subprocessFactory;
@@ -163,9 +168,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         _mcpConfigPath = ClaudeMcpConfig.Write(mcpServers ?? [], writeEmptyExplicit: unattended);
 
         // A hidden per-session system prompt (AC-180) the host folded into the options map — an embedded run's brief
-        // (Autopilot's CEO). Applied at start through --append-system-prompt, so it needs no post-start turn.
-        var appendSystemPrompt = _ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, defaultValue: null);
-        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPrompt: appendSystemPrompt, mcpConfigPath: _mcpConfigPath, strictMcpConfig: unattended);
+        // (Autopilot's CEO), or the assistant's whole standing instruction. Applied at start through
+        // --append-system-prompt-file, so it needs no post-start turn and no room on the command line.
+        _systemPromptPath = ClaudePrivateTempFile.WriteSystemPrompt(
+            _ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, defaultValue: null));
+        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPromptPath: _systemPromptPath, mcpConfigPath: _mcpConfigPath, strictMcpConfig: unattended);
         var environment = _BuildEnvironment(userHome);
 
         // AC-13: hand the agent its own session id as COCKPIT_PANE_ID, so it can name its own session to the
@@ -661,6 +668,14 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         _events.TryComplete();
         await _lifetime.CancelAsync().ConfigureAwait(false);
 
+        // Before the subprocess teardown, not after it (AC-956). The CLI read both of these at startup and the
+        // process is on its way out, so nothing still needs them — while the shutdown path hands this whole
+        // teardown a bounded budget and hard-exits when it runs out. Deleting last meant deleting never, for any
+        // session whose teardown ran long: measured five days of leftover mcp-configs, 28 of them holding a bearer
+        // header. First is the one position that does not depend on how long the rest takes.
+        ClaudePrivateTempFile.Delete(_mcpConfigPath);
+        ClaudePrivateTempFile.Delete(_systemPromptPath);
+
         // Guarded so _lifetime.Dispose always runs even if the subprocess teardown throws something other than the
         // InvalidOperationException its own DisposeAsync catches (e.g. a Win32Exception out of Process.Kill) — otherwise
         // the CancellationTokenSource leaks and the pump tasks stay unobserved.
@@ -689,20 +704,6 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         finally
         {
             _lifetime.Dispose();
-
-            // Delete the --mcp-config we wrote (it can hold a bearer header) — best-effort, since a failure to unlink
-            // a temp file must never surface out of dispose.
-            if (_mcpConfigPath is not null)
-            {
-                try
-                {
-                    File.Delete(_mcpConfigPath);
-                }
-                catch (Exception)
-                {
-                    // A locked/already-gone temp file is not worth failing dispose over.
-                }
-            }
         }
     }
 }

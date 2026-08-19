@@ -11,7 +11,7 @@ public class ClaudeTtyProviderTests
     [Fact]
     public void BuildArguments_PermissionModeModelEffort_AreFlags()
     {
-        var arguments = ClaudeTtyProvider.BuildArguments("plan", "opus", "high", mcpConfigPath: null, appendSystemPrompt: null, resume: null, settingsJson: null);
+        var arguments = ClaudeTtyProvider.BuildArguments("plan", "opus", "high", mcpConfigPath: null, appendSystemPromptPath: null, resume: null, settingsJson: null);
 
         Assert.True(SequenceAssert.ContainsInOrder(arguments, "--permission-mode", "plan"));
         Assert.True(SequenceAssert.ContainsInOrder(arguments, "--model", "opus"));
@@ -40,11 +40,11 @@ public class ClaudeTtyProviderTests
     [Fact]
     public void BuildArguments_McpConfig_Delegation_Settings_AreWired()
     {
-        var arguments = ClaudeTtyProvider.BuildArguments(null, null, null, "/tmp/mcp.json", "delegate-prompt", null, "{\"statusLine\":{}}");
+        var arguments = ClaudeTtyProvider.BuildArguments(null, null, null, "/tmp/mcp.json", "/tmp/prompt.md", null, "{\"statusLine\":{}}");
 
         Assert.True(SequenceAssert.ContainsInOrder(arguments, "--settings", "{\"statusLine\":{}}"));
         Assert.True(SequenceAssert.ContainsInOrder(arguments, "--mcp-config", "/tmp/mcp.json"));
-        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--append-system-prompt", "delegate-prompt"));
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--append-system-prompt-file", "/tmp/prompt.md"));
     }
 
     // AC-378: the strict flag is a deliberate divergence on the headless/SDK route only (ClaudeSdkArguments) — the

@@ -116,19 +116,42 @@ public class ClaudeSdkArgumentsTests
     }
 
     [Fact]
-    public void BuildArguments_AppendsSystemPrompt_WhenGiven()
+    public void BuildArguments_AppendsSystemPromptByPath_WhenGiven()
     {
         // The host folds an embedded run's hidden brief (Autopilot's CEO, AC-180) into the options map; the driver
-        // resolves it and hands it here, so it must reach the CLI as --append-system-prompt without a visible turn.
-        var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: "You are the CEO.");
+        // resolves it, writes it, and hands the path here, so it must reach the CLI without a visible turn.
+        var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPromptPath: "/tmp/cockpit-claude-prompt/abc.md");
 
-        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--append-system-prompt", "You are the CEO."));
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--append-system-prompt-file", "/tmp/cockpit-claude-prompt/abc.md"));
     }
 
     [Fact]
     public void BuildArguments_OmitsAppendSystemPrompt_WhenNullOrBlank()
     {
-        Assert.DoesNotContain("--append-system-prompt", ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: null));
-        Assert.DoesNotContain("--append-system-prompt", ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: "   "));
+        Assert.DoesNotContain("--append-system-prompt-file", ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPromptPath: null));
+        Assert.DoesNotContain("--append-system-prompt-file", ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPromptPath: "   "));
+    }
+
+    // The defect this flag exists for (AC — assistant would not start on Windows): the appended system prompt is the
+    // one argument with no ceiling — a standing instruction plus the operator's own memory files — and every platform
+    // caps a command line (Windows 32.767 for the whole of it, Linux 131.072 for one argument). Measured on Windows
+    // against the real CLI: 32.400 characters spawned, 32.876 failed at CreateProcess with no process and no stderr.
+    // So the assertion that matters is not which flag is used but that the prompt's own size never reaches the
+    // command line at all.
+    [Fact]
+    public void BuildArguments_KeepsAHugeSystemPromptOffTheCommandLine()
+    {
+        var path = ClaudePrivateTempFile.WriteSystemPrompt(new string('x', 40_000))!;
+        try
+        {
+            var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPromptPath: path);
+
+            Assert.Equal(new string('x', 40_000), File.ReadAllText(path));
+            Assert.True(arguments.Sum(argument => argument.Length) < 4_000);
+        }
+        finally
+        {
+            ClaudePrivateTempFile.Delete(path);
+        }
     }
 }

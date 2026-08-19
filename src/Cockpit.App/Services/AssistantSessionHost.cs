@@ -444,6 +444,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 consentCardAsks: !settings.ConsentBypassAll),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
+        // A start that did not take leaves its only trace in Status: SessionViewModel.StartConfiguredAsync
+        // catches every launch exception and writes it there without logging it, so the host's restart loop is
+        // otherwise the whole of the evidence and the cause is gone by the time anyone reads the log.
+        if (!_IsAlive(session))
+        {
+            _logger.LogWarning("The assistant session was not running right after its start: {Status}", session.Status);
+        }
+
         // AC-638/AC-596: say why in the transcript, since the hand-over note only reaches the system prompt.
         // `startFreshBecause` lets AC-684's failed-resume recovery use its own reason instead of this default.
         if (startFresh)

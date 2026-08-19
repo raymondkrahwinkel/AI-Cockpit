@@ -7885,6 +7885,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // whole process) alive after the window closes (bug #32).
     public async ValueTask DisposeAsync()
     {
+        // The shutdown gives this a bounded budget and then hard-exits (Program.DisposeCockpit), so where it got to
+        // is the one thing worth knowing when something it should have cleaned up is still there afterwards. Three
+        // lines, at the two ends and around the assistant, because a teardown that is cut off leaves no other trace.
+        Cockpit.App.Logging.LifecycleLog.Write(
+            $"Cockpit teardown starting: {Sessions.Count} pane session(s), assistant {(AssistantHost?.Session is null ? "absent" : "present")}.");
+
         // Stop the hourly update timer (AC-188) so it does not keep ticking against a disposed view model.
         _periodicUpdateTimer?.Stop();
 
@@ -7919,8 +7925,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await session.DisposeAsync();
         }
 
+        Cockpit.App.Logging.LifecycleLog.Write("Pane and embedded sessions torn down; the assistant is next.");
+
+        // The assistant is deliberately in neither collection (see `CreateAssistantSession`, and the remark at
+        // `StartSessionAsync` that spells out why), which means the two loops above walk straight past it — so it
+        // was the one session in the app whose driver never ran its teardown at shutdown. That teardown is what
+        // deletes the files the launch wrote: its --mcp-config, which can hold a bearer header, and its appended
+        // system prompt, which holds the assistant's whole memory. And the assistant is the session that starts
+        // most often, so it left the most behind: 30 mcp-configs going back five days when this was measured
+        // (AC-956). Named here rather than folded into a collection, because keeping it out of both is a decision
+        // this class makes on purpose and undoing it would cost more than this line.
+        if (AssistantHost?.Session is { } assistant)
+        {
+            await assistant.DisposeAsync();
+            Cockpit.App.Logging.LifecycleLog.Write("Assistant session torn down.");
+        }
+
         _embeddedSessions.Clear();
         Sessions.Clear();
         _lastStatus.Clear();
+
+        Cockpit.App.Logging.LifecycleLog.Write("Cockpit teardown complete.");
     }
 }
