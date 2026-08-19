@@ -75,7 +75,7 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
                 config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("written-by-the-profile-store", new ClaudeConfig("/home/someone/.claude")))],
                 CancellationToken.None),
             boundsWriter.UpdateAsync(
-                config => config.WindowBounds = new WindowBoundsEntry { Width = 1280, Height = 820 },
+                config => config.WindowBounds = new Dictionary<string, WindowBoundsEntry> { ["main"] = new() { Width = 1280, Height = 820 } },
                 CancellationToken.None));
 
         var written = await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);

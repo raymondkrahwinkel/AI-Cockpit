@@ -155,6 +155,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the assistant's pop-out chat window now reopens at the position and size you last left it, instead of
+  jumping back to the middle of the screen every time — closing and reopening it, or restarting the cockpit,
+  both remember where it was. A saved spot that no longer lands on a connected screen falls back to the default
+  centered size instead of opening somewhere unreachable.
 - fixed: the main window no longer restores to a saved position that is barely reachable — a rectangle that
   only grazed a connected screen's edge, or that landed with its titlebar under a desktop panel/dock, used to
   count as "on a screen" and reopen there anyway. It now requires a meaningful, actually-grabbable overlap

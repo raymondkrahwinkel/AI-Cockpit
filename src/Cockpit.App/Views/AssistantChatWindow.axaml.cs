@@ -14,6 +14,8 @@ using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Layout;
+using Cockpit.Core.Layout;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Views;
@@ -40,6 +42,17 @@ public partial class AssistantChatWindow : Window
     // other. See SessionView's own fields — same pause, same AC-883 reasoning, one window further out.
     private bool _windowMinimised;
     private bool _renderClockPaused;
+
+    // AC-866: this window's own key in the (now keyed, AC-866) window-bounds store — kept apart from the main
+    // window's "main" so the two never collide.
+    private const string BoundsKey = "assistant";
+
+    private readonly IWindowBoundsStore? _windowBoundsStore;
+
+    // The last normal (non-maximized) position/size — mirrors MainWindow's own fields, same reason: Avalonia
+    // reports the maximized size while maximized, so this is what a maximized window saves as "restore to".
+    private PixelPoint _normalPosition;
+    private Size _normalSize;
 
     // Set by a test before this is shown; otherwise resolved from the container on open, and only on macOS — see
     // SessionView._ResolveDiagnostics for why Windows and X11 must not even subscribe.
@@ -140,9 +153,38 @@ public partial class AssistantChatWindow : Window
     }
 
     public AssistantChatWindow()
+        : this(Program.Services?.GetService<IWindowBoundsStore>())
     {
+    }
+
+    // Test seam: lets a test control what the bounds-restore below reads, same shape as MainWindow's own.
+    internal AssistantChatWindow(IWindowBoundsStore? windowBoundsStore)
+    {
+        _windowBoundsStore = windowBoundsStore;
         InitializeComponent();
         WindowResizeGrip.Apply(this);
+
+        _normalPosition = Position;
+        _normalSize = new Size(Width, Height);
+
+        // AC-866: restore before Show() (AC-801's X11-WM race) and force Manual, since CenterOwner has no owner
+        // to anchor to here (shown ownerless — AssistantIndicatorCoordinator._OpenChatAsync). Position restore
+        // assumes XWayland/X11 (Avalonia 12.1); a native Wayland backend would silently stop restoring it.
+        var saved = _windowBoundsStore?.LoadAsync(BoundsKey).GetAwaiter().GetResult();
+        if (saved is { HasUsableSize: true } && RestoredWindowBounds.IsOnAScreen(saved, Screens.All.Select(s => s.WorkingArea)))
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Position = new PixelPoint(saved.X, saved.Y);
+            Width = saved.Width;
+            Height = saved.Height;
+            _normalPosition = Position;
+            _normalSize = new Size(saved.Width, saved.Height);
+
+            if (saved.IsMaximized)
+            {
+                WindowState = WindowState.Maximized;
+            }
+        }
 
         // Enter sends; Shift+Enter inserts a newline — the same convention as the main session composer
         // (SessionView._OnInputKeyDown). Tunnel so this pre-empts the TextBox's own Enter handling.
@@ -155,11 +197,51 @@ public partial class AssistantChatWindow : Window
         Opened += _OnOpened;
     }
 
+    // AC-866: mirrors MainWindow's own OnResized — tracked separately from WindowState so a maximized window
+    // still saves the bounds to restore to when un-maximized (Avalonia reports the maximized size while maximized).
+    protected override void OnResized(WindowResizedEventArgs e)
+    {
+        base.OnResized(e);
+        if (WindowState == WindowState.Normal)
+        {
+            _normalPosition = Position;
+            _normalSize = new Size(Width, Height);
+        }
+    }
+
+    // AC-866: fire-and-forget, unlike MainWindow's deferred close — this window closing never ends the app (it is
+    // a peephole, see the class remarks), so there is nothing waiting on this write to finish.
+    private async Task _SaveBoundsAsync()
+    {
+        if (_windowBoundsStore is null)
+        {
+            return;
+        }
+
+        var bounds = new WindowBounds(
+            _normalPosition.X,
+            _normalPosition.Y,
+            (int)_normalSize.Width,
+            (int)_normalSize.Height,
+            WindowState == WindowState.Maximized);
+
+        try
+        {
+            await _windowBoundsStore.SaveAsync(BoundsKey, bounds).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Best-effort: a failed save must not affect anything else — the window is already closing regardless.
+        }
+    }
+
     // Deliberately does not call anything on close beyond InitializeComponent's own teardown: closing this
     // window must never end the assistant's conversation (criterion 7). AssistantChatViewModel.Dispose only
     // detaches this peephole's own event subscription, never the session — see its own remarks.
     protected override void OnClosed(EventArgs e)
     {
+        _ = _SaveBoundsAsync();
+
         TranscriptScroll.ScrollChanged -= _OnTranscriptScrollChanged;
         TranscriptScroll.RemoveHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel);
         TranscriptScroll.RemoveHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed);

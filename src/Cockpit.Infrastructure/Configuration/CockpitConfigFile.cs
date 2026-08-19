@@ -153,8 +153,11 @@ internal sealed class CockpitConfigFile
     // Keyboard shortcuts for the app actions (new session, options, …); owned by the shortcut settings store.
     public ShortcutSettingsEntry? Shortcuts { get; set; }
 
-    // The main window's last position/size/maximized state; owned by the window-bounds store.
-    public WindowBoundsEntry? WindowBounds { get; set; }
+    // Each window's last position/size/maximized state, keyed by window ("main", "assistant" — AC-866); owned by
+    // the window-bounds store. A bare object here is the pre-AC-866 flat form for the main window alone —
+    // WindowBoundsSectionJsonConverter reads it as the "main" entry and always writes the keyed form.
+    [JsonConverter(typeof(WindowBoundsSectionJsonConverter))]
+    public Dictionary<string, WindowBoundsEntry>? WindowBounds { get; set; }
 
     // First-use STT calibration (AC-68 slice 3) keyed by machine name; owned by the transcription-calibration
     // store. Keyed per machine because a config can be synced or restored onto a different box, and a GPU
