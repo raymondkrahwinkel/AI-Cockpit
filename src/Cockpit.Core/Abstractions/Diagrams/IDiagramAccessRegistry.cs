@@ -1,5 +1,15 @@
 namespace Cockpit.Core.Abstractions.Diagrams;
 
+// What the render engine dropped on the floor (AC-808). Mermaider can leave a construct out of its SVG
+// without throwing, warning, or leaving a gap — the picture looks complete and says something other than
+// the source does, which is worse than a visible failure because a decision gets taken on it. Every finding
+// is a finished sentence, so both consumers of a render — the operator's surface and the agent's MCP reply
+// — say the same thing without each inventing its own phrasing.
+public sealed record DiagramFidelity(IReadOnlyList<string> Findings)
+{
+    public bool IsComplete => Findings.Count == 0;
+}
+
 // An open diagram surface the agent could ask to read or edit: its stable id and the name the operator sees.
 public sealed record DiagramSurface(string SurfaceId, string Name);
 
@@ -174,6 +184,13 @@ public interface IDiagramAccessRegistry
     /// The surface's current text regardless of coupling — what the operator already sees on their own screen. Host-trusted: used to build a truthful consent prompt and to compute a fidelity report, never handed to an agent without that agent separately holding <see cref="DiagramCapability.Read"/>. Null for an unknown surface.
     /// </summary>
     string? PeekText(string surfaceId);
+
+    /// <summary>
+    /// What the render engine would drop from <paramref name="source"/> (AC-808), or null when it cannot draw that
+    /// source at all — the one place either side asks that question, so the tools need no render engine of their
+    /// own. Takes the source rather than a surface id: <c>open_diagram</c> checks text that is not on any surface yet.
+    /// </summary>
+    DiagramFidelity? CheckFidelity(string source);
 
     // ---- Consumer side (the cockpit-diagram MCP tools) ----
 

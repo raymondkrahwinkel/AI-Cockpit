@@ -320,7 +320,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
                 return reason;
             }
 
-            if (!_Renders(result.Text!))
+            if (CheckFidelity(result.Text!) is null)
             {
                 return "This edit would leave invalid Mermaid, so nothing was changed.";
             }
@@ -401,7 +401,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
                 return reason;
             }
 
-            if (!_Renders(result.Text!))
+            if (CheckFidelity(result.Text!) is null)
             {
                 return "Reverting this would leave invalid Mermaid, so nothing was changed.";
             }
@@ -501,16 +501,18 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
     private static string[] _Lines(string source) => source.ReplaceLineEndings("\n").Split('\n');
 
-    private static bool _Renders(string source)
+    // Takes no lock: a pure function over its argument, and its per-object-edit call-site already runs under
+    // EditCoupled's own lock — a reentrant lock here would not deadlock, but would suggest a state dependency
+    // that does not exist.
+    public DiagramFidelity? CheckFidelity(string source)
     {
         try
         {
-            MermaidRenderPipeline.Render(source, MermaidTheme.Neutral);
-            return true;
+            return MermaidRenderPipeline.Render(source, MermaidTheme.Neutral).Fidelity;
         }
         catch (Exception)
         {
-            return false;
+            return null;
         }
     }
 

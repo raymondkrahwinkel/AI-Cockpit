@@ -88,6 +88,8 @@ public class ActivityStripTests
 
         public string? PeekText(string surfaceId) => null;
 
+        public DiagramFidelity? CheckFidelity(string source) => new([]);
+
         public IReadOnlyList<DiagramSurfaceView> ListSurfaces(string sessionId) => [];
 
         public DiagramSurface? Resolve(string surfaceRef) => null;

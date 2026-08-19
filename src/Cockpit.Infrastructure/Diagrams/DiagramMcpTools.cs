@@ -57,7 +57,7 @@ internal sealed class DiagramMcpTools
             return _Serialize(new { ok = false, error = "Give the Mermaid source of the diagram you want to go through — an empty diagram is nothing to discuss." });
         }
 
-        if (!_TryRender(source, out var fidelity))
+        if (_registry.CheckFidelity(source) is not { } fidelity)
         {
             return _Serialize(new { ok = false, error = "The render engine cannot draw that source, so nothing was opened — check the Mermaid syntax first." });
         }
@@ -115,7 +115,8 @@ internal sealed class DiagramMcpTools
         }
 
         var source = _registry.ReadCoupled(caller, surface.SurfaceId) ?? "";
-        var fidelity = _ComputeFidelity(source);
+        var fidelity = _registry.CheckFidelity(source)
+            ?? new DiagramFidelity(["Could not check this diagram against the render engine — the source may not be valid Mermaid syntax."]);
         return _Serialize(new
         {
             ok = true,
@@ -145,7 +146,8 @@ internal sealed class DiagramMcpTools
             return _Serialize(new { ok = false, error });
         }
 
-        var fidelity = _ComputeFidelity(source);
+        var fidelity = _registry.CheckFidelity(source)
+            ?? new DiagramFidelity(["Could not check this diagram against the render engine — the source may not be valid Mermaid syntax."]);
         if (!_registry.Propose(caller, surface.SurfaceId, source, changeSummary, fidelity.Findings))
         {
             return _Serialize(new { ok = false, error = "That diagram surface could not accept a proposal — it may have closed or been disconnected." });
@@ -380,12 +382,13 @@ internal sealed class DiagramMcpTools
                 return (null, "");
             }
 
-            if (!_TryRender(result.Text!, out fidelity))
+            if (_registry.CheckFidelity(result.Text!) is not { } checkedFidelity)
             {
                 refusal = "That change would not have left valid Mermaid behind, so nothing was changed.";
                 return (null, "");
             }
 
+            fidelity = checkedFidelity;
             summary = result.Summary;
             return (result.Text, result.Summary);
         });
@@ -489,29 +492,6 @@ internal sealed class DiagramMcpTools
             char.IsControl(character) || character == 0x2028 || character == 0x2029 || character == 0x0085
                 ? ' '
                 : character).ToArray());
-
-    // The render engine is fed agent-supplied text it may not be able to parse at all — that must not crash the
-    // MCP call, only be reported as an unverifiable fidelity rather than a false "complete".
-    private static DiagramFidelity _ComputeFidelity(string source) =>
-        _TryRender(source, out var fidelity)
-            ? fidelity
-            : new DiagramFidelity(["Could not check this diagram against the render engine — the source may not be valid Mermaid syntax."]);
-
-    // False when the engine could not render this source at all — a per-object edit that produced that is not
-    // written (AC-852: every call leaves valid Mermaid behind).
-    private static bool _TryRender(string source, out DiagramFidelity fidelity)
-    {
-        try
-        {
-            fidelity = MermaidRenderPipeline.Render(source, MermaidTheme.Neutral).Fidelity;
-            return true;
-        }
-        catch (Exception)
-        {
-            fidelity = new DiagramFidelity([]);
-            return false;
-        }
-    }
 
     private static string _Serialize(object value) => JsonSerializer.Serialize(value, SerializerOptions);
 }

@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Cockpit.Core.Abstractions.Diagrams;
 
 namespace Cockpit.Infrastructure.Diagrams;
 
