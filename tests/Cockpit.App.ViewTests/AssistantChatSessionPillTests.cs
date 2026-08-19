@@ -193,12 +193,10 @@ public sealed class AssistantChatSessionPillTests
         }
     });
 
-    /// <summary>AC-949: clicking a row in the Sessions flyout (opened via <c>SessionListButton</c>) does the same
-    /// thing as clicking a session badge — selects the session and closes the flyout — reusing
-    /// <c>_OnSessionSegmentPressed</c> because the flyout row shares the badge's <see cref="SessionPanelViewModel"/>
-    /// DataContext. Dispatched directly on the found row control rather than a window-coordinate hit test: the
-    /// flyout rows live in a popup layer, same reason <c>ClickingASessionSegment_SelectsThatSessionOnTheCockpit</c>
-    /// raises the event directly rather than through screen coordinates.</summary>
+    /// <summary>
+    /// AC-949: clicking a row in the Sessions flyout selects that session and closes the flyout, the same as
+    /// clicking a session badge does.
+    /// </summary>
     [Fact]
     public void ClickingAFlyoutRow_SelectsThatSessionAndClosesTheFlyout() => HeadlessAvalonia.Run(() =>
     {
