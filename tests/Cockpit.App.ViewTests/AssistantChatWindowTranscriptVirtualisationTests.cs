@@ -45,7 +45,7 @@ public class AssistantChatWindowTranscriptVirtualisationTests
 
         // The panel's own count of what it has built, rather than a sweep of the visual tree — same evidence
         // TranscriptVirtualisationTests uses for SessionView.
-        var built = window.TranscriptItems.GetRealizedContainers().Count();
+        var built = window.ChatView.TranscriptItems.GetRealizedContainers().Count();
 
         window.Close();
 

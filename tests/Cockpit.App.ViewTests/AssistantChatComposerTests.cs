@@ -227,17 +227,17 @@ public class AssistantChatComposerTests
         Dispatcher.UIThread.RunJobs();
         try
         {
-            Assert.False(window.ReplyChip.IsVisible);
+            Assert.False(window.ChatView.ReplyChip.IsVisible);
 
             session.SetReplyTargetCommand.Execute(target);
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(window.ReplyChip.IsVisible);
+            Assert.True(window.ChatView.ReplyChip.IsVisible);
 
-            window.ReplyChipCancelButton.Command!.Execute(null);
+            window.ChatView.ReplyChipCancelButton.Command!.Execute(null);
             Dispatcher.UIThread.RunJobs();
 
-            Assert.False(window.ReplyChip.IsVisible);
+            Assert.False(window.ChatView.ReplyChip.IsVisible);
             Assert.Null(session.PendingReplyTo);
         }
         finally
@@ -269,12 +269,12 @@ public class AssistantChatComposerTests
         Dispatcher.UIThread.RunJobs();
         try
         {
-            Assert.False(window.SendButton.IsEnabled);
+            Assert.False(window.ChatView.SendButton.IsEnabled);
 
             ((AssistantChatViewModel)window.DataContext!).InputText = "looks fine to me";
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(window.SendButton.IsEnabled);
+            Assert.True(window.ChatView.SendButton.IsEnabled);
         }
         finally
         {
@@ -300,12 +300,12 @@ public class AssistantChatComposerTests
         Dispatcher.UIThread.RunJobs();
         try
         {
-            Assert.False(window.SendButton.IsEnabled);
+            Assert.False(window.ChatView.SendButton.IsEnabled);
 
             session.PendingAttachments.Add(new ImageAttachmentViewModel(Png, a => session.PendingAttachments.Remove(a)));
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(window.SendButton.IsEnabled);
+            Assert.True(window.ChatView.SendButton.IsEnabled);
         }
         finally
         {

@@ -52,8 +52,8 @@ public sealed class AssistantChatWindowTallReplyFollowTests
 
                 await Task.Delay(400);
 
-                var scroll = window.TranscriptScroll;
-                var newest = window.TranscriptItems.ContainerFromIndex(window.TranscriptItems.ItemCount - 1);
+                var scroll = window.ChatView.TranscriptScroll;
+                var newest = window.ChatView.TranscriptItems.ContainerFromIndex(window.ChatView.TranscriptItems.ItemCount - 1);
                 Assert.NotNull(newest);
 
                 // Guards the premise as much as the fix: a row that fits the viewport proves nothing here.

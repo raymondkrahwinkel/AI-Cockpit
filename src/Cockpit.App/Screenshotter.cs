@@ -566,7 +566,9 @@ internal static class Screenshotter
 
     private static void _OpenAssistantChatMentionPicker(Window window)
     {
-        if (window is AssistantChatWindow { DataContext: ViewModels.AssistantChatViewModel viewModel })
+        // On the view, not the window: the chat surface is `AssistantChatView` since AC-952, and it is what a
+        // docked assistant (AC-953) will be found by — there is no AssistantChatWindow around it there.
+        if (window.FindDescendantOfType<AssistantChatView>() is { DataContext: ViewModels.AssistantChatViewModel viewModel })
         {
             viewModel.InputText = "@Session";
             viewModel.MentionPicker.OnTextChanged("@Session", "@Session".Length);

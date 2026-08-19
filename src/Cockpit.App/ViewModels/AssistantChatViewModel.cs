@@ -185,6 +185,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _alwaysOnTop = true;
 
+    // AC-952: which host the chat view is sitting in. False is the floating window, and it is all there is until
+    // AC-953 adds the dock rail — the header reads it to swap Close for Undock rather than carrying two copies
+    // of its whole button row.
+    [ObservableProperty]
+    private bool _isDocked;
+
     // Mirrors `AssistantSettings.PushToTalkKeyName` (AC-671), same read points as `AlwaysOnTop` above. Backs the
     // composer's placeholder instead of a hardcoded "F10" — see `_LoadSpeakRepliesAsync` for the empty-settings
     // fallback.
