@@ -1,16 +1,14 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Diagrams;
-using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Diagrams;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using NSubstitute;
 
-namespace Cockpit.Infrastructure.Tests.Diagrams;
+namespace Cockpit.Plugin.Diagram.Tests;
 
-/// <summary>
-/// AC-899: the agent's side of erDiagram editing — its own tools rather than the flowchart five, because an entity
-/// has no label and a relationship cannot do without two cardinalities and a verb. Same consent and hold gates.
-/// </summary>
+// AC-899: the agent's side of erDiagram editing — its own tools rather than the flowchart five, because an entity
+// has no label and a relationship cannot do without two cardinalities and a verb. Same consent and hold gates.
 public class DiagramErMcpToolsTests
 {
     private const string Session = "pane-agent";
@@ -28,11 +26,14 @@ public class DiagramErMcpToolsTests
     {
         var registry = new DiagramAccessRegistry();
         var asked = new List<ConsentRequest>();
-        var broker = Substitute.For<IConsentBroker>();
-        broker.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add), Arg.Any<CancellationToken>())
+        var host = Substitute.For<ICockpitHost>();
+        // NSubstitute defaults an unconfigured string-returning member to "", not null — leaving this unset would
+        // make `host.CurrentMcpCallerPaneId ?? session` pick "" over the caller-supplied session on every test.
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
+        host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add))
             .Returns(new ConsentDecision(ConsentOutcome.Approved));
         registry.SurfaceOpened("diagram-1", Diagram, source);
-        return (new DiagramMcpTools(registry, broker), registry, asked);
+        return (new DiagramMcpTools(host, registry), registry, asked);
     }
 
     private static JsonNode Reply(string json) => JsonNode.Parse(json)!;

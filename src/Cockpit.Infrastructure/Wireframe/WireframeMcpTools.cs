@@ -1,11 +1,11 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Wireframe;
 using Cockpit.Core.Wireframe.Model;
-using Cockpit.Infrastructure.Collab;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;

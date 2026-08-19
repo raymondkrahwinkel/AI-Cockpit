@@ -256,6 +256,13 @@ public interface IDiagramAccessRegistry
     string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit);
 
     /// <summary>
+    /// Computes what <paramref name="edit"/> would do to <paramref name="source"/>, without writing anything —
+    /// the per-object grammar's pure function (AC-889), exposed so an agent-coupled caller can run its own hold
+    /// check around the result before committing via <see cref="EditCoupled"/>.
+    /// </summary>
+    (string? Text, string Summary, string? Refusal) ComputeHandEdit(string source, DiagramHandEdit edit);
+
+    /// <summary>
     /// Which per-object grammar this surface's diagram type has, so its panel can offer that dialect's controls and
     /// disable them with a reason where there is none (AC-899). <see cref="DiagramEditDialect.Unsupported"/> for an unknown surface.
     /// </summary>

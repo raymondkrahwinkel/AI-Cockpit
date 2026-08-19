@@ -338,6 +338,15 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
         return null;
     }
 
+    // AC-889: the same pure function ApplyHandEdit applies, without the lock/write/journal — DiagramObjectEdit is
+    // internal to this assembly, so the plugin-hosted agent tools (which need to run their own hold check around
+    // the result before EditCoupled commits it) reach it through this seam instead.
+    public (string? Text, string Summary, string? Refusal) ComputeHandEdit(string source, DiagramHandEdit edit)
+    {
+        var result = DiagramObjectEdit.Apply(source, edit);
+        return (result.Text, result.Summary, result.Refusal);
+    }
+
     // AC-853: called under the same lock the edit just landed under, so before/after is exactly what that edit
     // changed — capturing it now beats re-deriving "what would undo this" from a full-text diff at revert time.
     // ponytail: unbounded for a surface's lifetime — trimmed like the strip's own row cap if that is ever felt.
