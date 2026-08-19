@@ -258,6 +258,16 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         {
             await _connection.SendRequestAsync("turn/interrupt", new { threadId, turnId }, cancellationToken).ConfigureAwait(false);
         }
+
+        // AC-943: the app-server blocks on its own `item/*/requestApproval` request, so an unanswered approval
+        // holds it open past the interrupt — decline whatever is still pending, same wire shape as `_RespondDecisionAsync`.
+        foreach (var itemId in _pendingApprovals.Keys.ToList())
+        {
+            if (_pendingApprovals.TryRemove(itemId, out var requestId))
+            {
+                await _connection.RespondAsync(requestId, new { decision = "decline" }, cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 
     public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)

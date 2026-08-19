@@ -248,8 +248,21 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         return [.. blocks];
     }
 
-    public Task InterruptAsync(CancellationToken cancellationToken = default) =>
-        _SendControlRequestAsync(new { subtype = "interrupt" }, cancellationToken);
+    public async Task InterruptAsync(CancellationToken cancellationToken = default)
+    {
+        await _SendControlRequestAsync(new { subtype = "interrupt" }, cancellationToken).ConfigureAwait(false);
+
+        // AC-943: the CLI may already have retracted these via `control_cancel_request` (see `_HandleLine`), in
+        // which case this snapshot is empty; denying whatever is left closes the gap for anything it did not.
+        foreach (var toolUseId in _pendingApprovals.Keys.ToList())
+        {
+            if (_pendingApprovals.TryRemove(toolUseId, out var pending))
+            {
+                var line = ClaudeControlProtocol.BuildDecisionResponse(pending.RequestId, allow: false, pending.InputJson, denyMessage: "Cancelled — the turn was interrupted.");
+                await _RequireSubprocess().WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
 
     // AC-664: the CLI summarises the conversation and carries on under the same session id. It rides the user-message
     // line because the control protocol has no compaction subtype (claude.exe 2.1.226) — the CLI parses `/compact`
@@ -414,6 +427,18 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                     // A refused parse is the CLI answering `subtype:"error"`, which still names the request:
                     // release the awaiter rather than let it wait out its timeout.
                     _CompleteControlResponse(responseId, null);
+                }
+                else if (string.Equals(type, ClaudeControlProtocol.ControlCancelType, StringComparison.Ordinal)
+                    && root.TryGetProperty("request_id", out var cancelledId) && cancelledId.ValueKind == JsonValueKind.String)
+                {
+                    // AC-943: the CLI retracted a `can_use_tool` request itself (interrupt, aborted turn, tool
+                    // timeout) — drop the matching pending entry so a later Allow/Deny click writes nothing.
+                    var cancelledRequestId = cancelledId.GetString();
+                    var stale = _pendingApprovals.FirstOrDefault(entry => entry.Value.RequestId == cancelledRequestId).Key;
+                    if (stale is not null)
+                    {
+                        _pendingApprovals.TryRemove(stale, out _);
+                    }
                 }
 
                 return;

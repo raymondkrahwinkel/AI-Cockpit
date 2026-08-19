@@ -137,6 +137,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: stopping a turn that was waiting on your Allow/Deny decision no longer leaves that row hanging. Interrupting
+  now closes it out as cancelled, so the pane stops reporting "waiting for permission" for a decision nothing is
+  listening for anymore — across every provider, with Claude and Codex additionally telling the agent itself that the
+  request was withdrawn.
 - fixed: starting a session with worktree isolation switched on, on a project whose folder turns out not to be a
   git repository (or has no folder set at all), no longer silently falls back to running unisolated. It now asks
   whether to run in that folder instead, the same as an isolation failure already did — closing the gap that let

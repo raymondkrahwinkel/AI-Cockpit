@@ -659,6 +659,79 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Equal("No conversation found with session ID: gone", Assert.Single(completed.Errors));
     }
 
+    // AC-943: interrupting a turn parked on a permission prompt must not leave it dangling — the driver denies it
+    // on the wire itself, in case the CLI never sends the `control_cancel_request` that would otherwise retract it.
+    [Fact]
+    public async Task InterruptAsync_WithAPendingApproval_SendsInterruptThenDeniesIt()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await fake.PushStdoutAsync("""
+        {"type":"control_request","request_id":"req-9","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"toolu_9"}}
+        """);
+        await _ReadEventAsync(driver, e => e is PluginPermissionRequested);
+        var writtenBeforeInterrupt = fake.WrittenLines.Count;
+
+        await driver.InterruptAsync();
+
+        var interruptLine = JsonDocument.Parse(fake.WrittenLines[writtenBeforeInterrupt]).RootElement;
+        Assert.Equal("interrupt", interruptLine.GetProperty("request").GetProperty("subtype").GetString());
+
+        var denyResponse = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("response");
+        Assert.Equal("req-9", denyResponse.GetProperty("request_id").GetString());
+        Assert.Equal("deny", denyResponse.GetProperty("response").GetProperty("behavior").GetString());
+
+        // Already answered on the wire — a later click must write nothing more.
+        var writtenAfterInterrupt = fake.WrittenLines.Count;
+        await driver.RespondToPermissionAsync("toolu_9", allow: true, CancellationToken.None);
+        Assert.Equal(writtenAfterInterrupt, fake.WrittenLines.Count);
+    }
+
+    [Fact]
+    public async Task InterruptAsync_WithNoPendingApproval_OnlySendsTheInterruptLine()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        var writtenBeforeInterrupt = fake.WrittenLines.Count;
+
+        await driver.InterruptAsync();
+
+        Assert.Equal(writtenBeforeInterrupt + 1, fake.WrittenLines.Count);
+        var interruptLine = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
+        Assert.Equal("interrupt", interruptLine.GetProperty("request").GetProperty("subtype").GetString());
+    }
+
+    // The CLI's own retraction signal (see `ClaudeControlProtocol`) — dropped silently before this fix, leaving the
+    // entry stale for the rest of the session.
+    [Fact]
+    public async Task ControlCancelRequest_RemovesThePendingApproval_SoALaterRespondWritesNothing()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await fake.PushStdoutAsync("""
+        {"type":"control_request","request_id":"req-13","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"toolu_13"}}
+        """);
+        await _ReadEventAsync(driver, e => e is PluginPermissionRequested);
+
+        await fake.PushStdoutAsync("""{"type":"control_cancel_request","request_id":"req-13"}""");
+
+        // Both lines run on the same sequential stdout pump — waiting for this unrelated event to surface proves
+        // the cancel ahead of it was already handled.
+        await fake.PushStdoutAsync("""
+        {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"."}}}
+        """);
+        await _ReadEventAsync(driver, e => e is PluginAssistantTextDelta);
+
+        var writtenBeforeRespond = fake.WrittenLines.Count;
+        await driver.RespondToPermissionAsync("toolu_13", allow: true, CancellationToken.None);
+        Assert.Equal(writtenBeforeRespond, fake.WrittenLines.Count);
+    }
+
     // The CLI's reply envelope, verbatim from a live 2.1.226 session.
     private static string _ControlSuccess(string requestId, string payloadJson) =>
         $$$"""{"type":"control_response","response":{"subtype":"success","request_id":"{{{requestId}}}","response":{{{payloadJson.Trim()}}}}}""";

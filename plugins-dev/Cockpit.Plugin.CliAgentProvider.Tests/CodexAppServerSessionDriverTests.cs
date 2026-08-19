@@ -254,6 +254,58 @@ public class CodexAppServerSessionDriverTests
         Assert.Equal("acceptForSession", document.RootElement.GetProperty("result").GetProperty("decision").GetString());
     }
 
+    // AC-943: the app-server blocks on its own `item/*/requestApproval` request, so an interrupt must decline
+    // whatever is still open or the server stays parked past the turn the operator just stopped.
+    [Fact]
+    public async Task InterruptAsync_WithAPendingApproval_SendsTurnInterrupt_ThenDeclinesIt()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("run ls");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
+        await fake.PushStdoutAsync("""{"id":55,"method":"item/commandExecution/requestApproval","params":{"itemId":"cmd-1","command":"ls -la","threadId":"thread-1","turnId":"turn-1"}}""");
+        await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+
+        var interruptTask = driver.InterruptAsync();
+        await _RespondAsync(fake, "turn/interrupt", "{}");
+        await interruptTask;
+
+        var answer = await _WaitForWrittenLineAsync(fake, "\"id\":55");
+        using var document = JsonDocument.Parse(answer);
+        Assert.Equal("decline", document.RootElement.GetProperty("result").GetProperty("decision").GetString());
+
+        // Already declined on the wire — a later click must write nothing more.
+        var writtenAfterInterrupt = fake.WrittenLines.Count;
+        await driver.RespondToPermissionAsync("cmd-1", allow: true);
+        Assert.Equal(writtenAfterInterrupt, fake.WrittenLines.Count);
+    }
+
+    [Fact]
+    public async Task InterruptAsync_WithNoPendingApproval_OnlySendsTurnInterrupt()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("run ls");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
+        // Both lines run on the same sequential stdout pump — waiting for this delta proves turn/started ahead of
+        // it was already handled, so _currentTurnId is set before InterruptAsync reads it.
+        await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"delta":".","itemId":"i1","threadId":"thread-1","turnId":"turn-1"}}""");
+        await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
+        var writtenBeforeInterrupt = fake.WrittenLines.Count;
+
+        var interruptTask = driver.InterruptAsync();
+        await _RespondAsync(fake, "turn/interrupt", "{}");
+        await interruptTask;
+
+        Assert.Equal(writtenBeforeInterrupt + 1, fake.WrittenLines.Count);
+    }
+
     [Fact]
     public async Task ProcessId_ReflectsTheSpawnedAppServerProcess()
     {
