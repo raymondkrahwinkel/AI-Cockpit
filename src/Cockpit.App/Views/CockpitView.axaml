@@ -1400,7 +1400,8 @@
                                      through a bindable view-model property, one fewer moving part. -->
                                 <controls:MiniatureHost
                                         TileSize="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureTileSize)}"
-                                        FocusSize="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureFocusSize)}">
+                                        FocusSize="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureFocusSize)}"
+                                        FocusChildBox="{Binding #PaneRoot.(controls:SessionTilePanel.MiniatureFocusChildBox)}">
                                 <DockPanel>
                                     <!-- Drag-reorder grip (#54 follow-up): a grab bar above each pane, shown only when
                                          the draggable multi-pane grid is on. Dragging it picks the pane up and drops it

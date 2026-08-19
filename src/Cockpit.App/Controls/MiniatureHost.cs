@@ -23,10 +23,17 @@ public sealed class MiniatureHost : Decorator
     public static readonly StyledProperty<Size> FocusSizeProperty =
         AvaloniaProperty.Register<MiniatureHost, Size>(nameof(FocusSize));
 
+    // AC-923: the exact box `SessionTilePanel` read back off the focus pane's own host after a real arrange —
+    // when set, this IS the child's box, no reconstruction. `available` is layout-rounded pixels by the time
+    // this host sees it, but `tile`/`focus` are not; subtracting one from the other (`Fit`'s fallback below)
+    // loses the rounding's origin-dependent remainder and can be off by a whole terminal cell.
+    public static readonly StyledProperty<Size> FocusChildBoxProperty =
+        AvaloniaProperty.Register<MiniatureHost, Size>(nameof(FocusChildBox));
+
     static MiniatureHost()
     {
-        AffectsMeasure<MiniatureHost>(TileSizeProperty, FocusSizeProperty);
-        AffectsArrange<MiniatureHost>(TileSizeProperty, FocusSizeProperty);
+        AffectsMeasure<MiniatureHost>(TileSizeProperty, FocusSizeProperty, FocusChildBoxProperty);
+        AffectsArrange<MiniatureHost>(TileSizeProperty, FocusSizeProperty, FocusChildBoxProperty);
     }
 
     public MiniatureHost()
@@ -46,10 +53,16 @@ public sealed class MiniatureHost : Decorator
         set => SetValue(FocusSizeProperty, value);
     }
 
+    public Size FocusChildBox
+    {
+        get => GetValue(FocusChildBoxProperty);
+        set => SetValue(FocusChildBoxProperty, value);
+    }
+
     // AC-670: `inset` is the chrome between the container and this host, the same markup in both states, so the
     // child's box is the focus container minus that same inset. Scale follows from the width, which is what
     // decides a terminal's column count; pure, so the pty's arithmetic is testable without a terminal.
-    internal static (Size ChildBox, double Scale) Fit(Size available, Size tile, Size focus)
+    internal static (Size ChildBox, double Scale) Fit(Size available, Size tile, Size focus, Size focusChildBox = default)
     {
         if (focus.Width <= 0 || focus.Height <= 0
             || !double.IsFinite(available.Width) || !double.IsFinite(available.Height)
@@ -58,10 +71,11 @@ public sealed class MiniatureHost : Decorator
             return (available, 1.0);
         }
 
-        var inset = new Size(
-            Math.Max(0, tile.Width - available.Width),
-            Math.Max(0, tile.Height - available.Height));
-        var childBox = new Size(focus.Width - inset.Width, focus.Height - inset.Height);
+        var childBox = focusChildBox is { Width: > 0, Height: > 0 }
+            ? focusChildBox
+            : new Size(
+                focus.Width - Math.Max(0, tile.Width - available.Width),
+                focus.Height - Math.Max(0, tile.Height - available.Height));
 
         if (childBox.Width <= 0 || childBox.Height <= 0)
         {
@@ -80,7 +94,7 @@ public sealed class MiniatureHost : Decorator
             return default;
         }
 
-        var (childBox, scale) = Fit(availableSize, TileSize, FocusSize);
+        var (childBox, scale) = Fit(availableSize, TileSize, FocusSize, FocusChildBox);
         child.Measure(childBox);
         return new Size(child.DesiredSize.Width * scale, child.DesiredSize.Height * scale);
     }
@@ -92,7 +106,7 @@ public sealed class MiniatureHost : Decorator
             return finalSize;
         }
 
-        var (childBox, scale) = Fit(finalSize, TileSize, FocusSize);
+        var (childBox, scale) = Fit(finalSize, TileSize, FocusSize, FocusChildBox);
         child.Arrange(new Rect(default, childBox));
 
         // Only on change: Arrange runs on every layout pass and a fresh transform each time would

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Shortcuts;
 
@@ -89,6 +90,14 @@ public sealed class SessionTilePanel : Panel
     public static readonly AttachedProperty<Size> MiniatureFocusSizeProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, Size>("MiniatureFocusSize", inherits: true);
 
+    // AC-923: the box the focus pane's own host actually got arranged into this pass — read back straight off
+    // its `Bounds` (real, post-chrome, post-layout-rounding) rather than reconstructed by subtracting a
+    // rail-rounded box from an unrounded one. That reconstruction loses the origin-dependent rounding
+    // `MiniatureHost.Fit` has no way to recover, off by up to a cell at some window sizes. Every rail tile
+    // shares the focus pane's chrome, so its real childbox is exactly right for all of them, not an estimate.
+    public static readonly AttachedProperty<Size> MiniatureFocusChildBoxProperty =
+        AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, Size>("MiniatureFocusChildBox", inherits: true);
+
     // AC-670: true for every control inside a rail tile, inherited for the same reason as the boxes above, and
     // read by `CockpitView.axaml` to strip a miniature down to the terminal.
     public static readonly AttachedProperty<bool> IsMiniatureProperty =
@@ -109,6 +118,10 @@ public sealed class SessionTilePanel : Panel
     public static Size GetMiniatureTileSize(Control element) => element.GetValue(MiniatureTileSizeProperty);
 
     public static Size GetMiniatureFocusSize(Control element) => element.GetValue(MiniatureFocusSizeProperty);
+
+    public static Size GetMiniatureFocusChildBox(Control element) => element.GetValue(MiniatureFocusChildBoxProperty);
+
+    public static void SetMiniatureFocusChildBox(Control element, Size value) => element.SetValue(MiniatureFocusChildBoxProperty, value);
 
     public static bool GetIsMiniature(Control element) => element.GetValue(IsMiniatureProperty);
 
@@ -419,6 +432,13 @@ public sealed class SessionTilePanel : Panel
             return finalSize;
         }
 
+        // AC-923: the focus pane's own host just arranged for real, one line up — its Bounds is the exact
+        // post-chrome box every rail tile's host will get once promoted, no reconstruction involved. Falls
+        // back to default (MiniatureHost.Fit's old subtract-and-hope path) only if the template ever changes
+        // shape and a tile ends up with no host to read.
+        var focusChildBox = layout.Focus.GetVisualDescendants().OfType<MiniatureHost>().FirstOrDefault()?.Bounds.Size
+            ?? default;
+
         // Width decides the columns (measured above), height decides how many rows show before the rest
         // scrolls (AC-441) — clamped here too, not just on the wheel, so a window resize or a session
         // closing can never leave the scroll stranded past the new bottom.
@@ -429,6 +449,7 @@ public sealed class SessionTilePanel : Panel
         for (var i = 0; i < layout.Rail.Count; i++)
         {
             var (x, y) = RailLayoutMath.TileOrigin(i, layout.Geometry, Gutter);
+            SetMiniatureFocusChildBox(layout.Rail[i], focusChildBox);
             layout.Rail[i].Arrange(new Rect(layout.RailSlot.Top + x, y - _railScrollOffset, tileSize.Width, tileSize.Height));
         }
 
@@ -473,7 +494,11 @@ public sealed class SessionTilePanel : Panel
     // Undoes a previous rail-mode box when a pane is no longer a tile (the grid, single-pane, the focus slot,
     // or a mode switch) — the attached properties default to empty themselves, but nothing else resets a value
     // this panel once pushed away from it. An empty focus box is what `MiniatureHost.Fit` reads as "not scaled".
-    private static void _LeaveTheRail(Control tile) => SetMiniatureBox(tile, default, default);
+    private static void _LeaveTheRail(Control tile)
+    {
+        SetMiniatureBox(tile, default, default);
+        SetMiniatureFocusChildBox(tile, default);
+    }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {

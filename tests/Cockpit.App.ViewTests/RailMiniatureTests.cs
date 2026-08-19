@@ -170,7 +170,7 @@ public class RailMiniatureTests
             asFocus = (terminal.Buffer.Cols, terminal.Buffer.Rows);
         });
 
-        Assert.True(asTile.Rows > 0, "the harness measured no grid, so it proves nothing");
+        Assert.NotEqual((80, 24), asTile);
         Assert.Equal(asTile, asFocus);
         Assert.Equal(0, resizes);
     }
