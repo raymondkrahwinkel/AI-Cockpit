@@ -52,7 +52,7 @@ public partial class MainWindow : Window
         // spot/size. Off-screen or degenerate saved bounds fall back to the XAML default.
         // AC-801: runs before the window is shown — setting Maximized after an X11 window is mapped races the WM.
         var saved = _windowBoundsStore?.LoadAsync().GetAwaiter().GetResult();
-        if (saved is { HasUsableSize: true } && _IsOnAScreen(saved))
+        if (saved is { HasUsableSize: true } && RestoredWindowBounds.IsOnAScreen(saved, Screens.All.Select(s => s.WorkingArea)))
         {
             Position = new PixelPoint(saved.X, saved.Y);
             Width = saved.Width;
@@ -189,24 +189,6 @@ public partial class MainWindow : Window
         // Awaited rather than blocked on (AC-779): WindowBoundsStore.SaveAsync is genuinely async I/O all the way
         // down (ConfigureAwait(false) throughout), so this never needs a Task.Run to avoid blocking the caller.
         return _windowBoundsStore.SaveAsync(bounds);
-    }
-
-    // True when the saved rectangle overlaps a currently-connected screen, so a window saved on a monitor that
-    // is now unplugged doesn't reopen off in invisible space.
-    private bool _IsOnAScreen(WindowBounds bounds)
-    {
-        foreach (var screen in Screens.All)
-        {
-            var area = screen.Bounds;
-            var intersectsX = bounds.X < area.X + area.Width && bounds.X + bounds.Width > area.X;
-            var intersectsY = bounds.Y < area.Y + area.Height && bounds.Y + bounds.Height > area.Y;
-            if (intersectsX && intersectsY)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static App? App => Avalonia.Application.Current as App;
