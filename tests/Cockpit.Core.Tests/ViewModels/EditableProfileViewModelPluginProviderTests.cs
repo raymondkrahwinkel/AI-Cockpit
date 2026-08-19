@@ -121,16 +121,9 @@ public class EditableProfileViewModelPluginProviderTests
     }
 
     /// <summary>
-    /// AC-944 regression: selecting a plugin provider on a brand-new profile (no saved
-    /// <see cref="PluginProviderConfig"/> to fall back on) crashed with "Plugin provider selected with neither
-    /// a config view nor an orphaned config to fall back to." <c>OnSelectedProviderChanged</c> called
-    /// <c>LoginCommand.NotifyCanExecuteChanged()</c> before rebuilding <see cref="EditableProfileViewModel.PluginConfigView"/>
-    /// for the newly picked provider; a real bound button re-queries <c>CanExecute</c> — which reads
-    /// <c>CanStartLogin</c> → <c>ToProfile()</c> — synchronously off that same event, mid-method, while
-    /// <c>PluginConfigView</c> still held the previous selection. Reproduced here by subscribing to
-    /// <c>CanExecuteChanged</c> the same way a bound button would, rather than reading <c>CanStartLogin</c>
-    /// only after <c>OnSelectedProviderChanged</c> has already finished (which the earlier plugin-picker test
-    /// above does, and so never observed the mid-method state).
+    /// AC-944 regression: a bound button re-queries <c>CanExecute</c> synchronously off <c>CanExecuteChanged</c>,
+    /// mid-method, before <see cref="EditableProfileViewModel.PluginConfigView"/> was rebuilt for the new provider.
+    /// Unlike the plugin-picker test above, this subscribes to that event to observe the mid-method state.
     /// </summary>
     [Fact]
     public void OnSelectedProviderChanged_OnANewProfile_DoesNotCrashWhenABoundButtonReQueriesCanExecuteMidMethod()

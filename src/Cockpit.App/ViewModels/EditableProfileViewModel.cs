@@ -421,11 +421,8 @@ public partial class EditableProfileViewModel : ViewModelBase
             BaseUrl = SessionProviderCatalog.DefaultBaseUrl(value.Value);
         }
 
-        // Rebuild the plugin config view for the newly chosen provider when adding a profile (the dropdown is
-        // disabled otherwise, so this never fires for an already-created profile) — starts empty (no existing
-        // config JSON yet) rather than carrying over the previous selection's view. Must run before the
-        // CanStartLogin notification below: that getter calls ToProfile(), which needs PluginConfigView already
-        // rebuilt for `value` — otherwise it still sees the previous selection's (possibly null) view.
+        // Rebuild the plugin config view for the newly chosen provider when adding a profile. Must run before
+        // the CanStartLogin notification below, or that getter's ToProfile() still sees the previous selection.
         if (CanChooseProvider)
         {
             PluginConfigView = value.Value == SessionProvider.Plugin && value.PluginProviderId is { } providerId
