@@ -15,7 +15,7 @@ internal static class TerminalSettle
 
     // The control's resize debounce is 50ms; a value that has held for less than this could still be the
     // pre-resize reading with the debounce timer just not fired yet, not a genuine settle.
-    private const int MinStableMs = 100;
+    private const int MinStableMs = 150;
 
     // Waits for a real sizing pass, not just "unchanged since the last poll": the buffer holds the unmeasured
     // default until the control's first layout-driven resize lands, so a poll that never sees the grid move
