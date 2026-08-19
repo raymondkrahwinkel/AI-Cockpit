@@ -7919,6 +7919,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await session.DisposeAsync();
         }
 
+        // The assistant is deliberately in neither collection (see `CreateAssistantSession`, and the remark at
+        // `StartSessionAsync` that spells out why), which means the two loops above walk straight past it — so it
+        // was the one session in the app whose driver never ran its teardown at shutdown. That teardown is what
+        // deletes the files the launch wrote: its --mcp-config, which can hold a bearer header, and its appended
+        // system prompt, which holds the assistant's whole memory. And the assistant is the session that starts
+        // most often, so it left the most behind: 30 mcp-configs going back five days when this was measured
+        // (AC-956). Named here rather than folded into a collection, because keeping it out of both is a decision
+        // this class makes on purpose and undoing it would cost more than this line.
+        if (AssistantHost?.Session is { } assistant)
+        {
+            await assistant.DisposeAsync();
+        }
+
         _embeddedSessions.Clear();
         Sessions.Clear();
         _lastStatus.Clear();

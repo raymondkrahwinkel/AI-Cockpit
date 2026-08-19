@@ -27,9 +27,11 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
-        // Sweep the statusline snapshots of sessions that were killed rather than closed (the plugin-side
-        // equivalent of the host's former startup housekeeping, now that the statusline lives here).
+        // Sweep what sessions that were killed rather than closed left behind (the plugin-side equivalent of the
+        // host's former startup housekeeping, now that these files live here): the statusline snapshots, and the
+        // mcp-configs and system-prompt files whose own teardown-time delete a hard exit can cut off (AC-956).
         ClaudeStatusLine.SweepStale();
+        ClaudePrivateTempFile.SweepStale();
 
         // The cockpit can install and manage the claude binary itself (AC-20). Registering the descriptor lets the
         // host resolve a managed copy; the providers below prefer it over PATH via host.ResolveManagedCliPath.

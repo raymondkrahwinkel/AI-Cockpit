@@ -41,7 +41,7 @@ internal static class ClaudeMcpConfig
         // in this file, and it used to land in a world-readable temp file at the umask's permissions, so any local
         // account could read a third-party token for the file's lifetime. `ClaudePrivateTempFile` owns that rule
         // for every file this plugin hands the CLI by path.
-        return ClaudePrivateTempFile.Write("cockpit-claude-mcp", ".json", root.ToJsonString());
+        return ClaudePrivateTempFile.Write(ClaudePrivateTempFile.McpDirectory, ".json", root.ToJsonString());
     }
 
     private static JsonObject? _ToEntry(PluginMcpServer server)

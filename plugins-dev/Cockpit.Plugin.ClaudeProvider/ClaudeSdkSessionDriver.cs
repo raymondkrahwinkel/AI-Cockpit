@@ -668,6 +668,14 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         _events.TryComplete();
         await _lifetime.CancelAsync().ConfigureAwait(false);
 
+        // Before the subprocess teardown, not after it (AC-956). The CLI read both of these at startup and the
+        // process is on its way out, so nothing still needs them — while the shutdown path hands this whole
+        // teardown a bounded budget and hard-exits when it runs out. Deleting last meant deleting never, for any
+        // session whose teardown ran long: measured five days of leftover mcp-configs, 28 of them holding a bearer
+        // header. First is the one position that does not depend on how long the rest takes.
+        ClaudePrivateTempFile.Delete(_mcpConfigPath);
+        ClaudePrivateTempFile.Delete(_systemPromptPath);
+
         // Guarded so _lifetime.Dispose always runs even if the subprocess teardown throws something other than the
         // InvalidOperationException its own DisposeAsync catches (e.g. a Win32Exception out of Process.Kill) — otherwise
         // the CancellationTokenSource leaks and the pump tasks stay unobserved.
@@ -696,12 +704,6 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         finally
         {
             _lifetime.Dispose();
-
-            // Delete what this launch wrote for the CLI: the --mcp-config (it can hold a bearer header) and the
-            // appended system prompt (it can hold the assistant's memory). Best-effort, since a failure to unlink a
-            // temp file must never surface out of dispose.
-            ClaudePrivateTempFile.Delete(_mcpConfigPath);
-            ClaudePrivateTempFile.Delete(_systemPromptPath);
         }
     }
 }

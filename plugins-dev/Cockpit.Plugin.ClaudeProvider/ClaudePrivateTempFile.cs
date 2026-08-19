@@ -10,6 +10,10 @@ namespace Cockpit.Plugin.ClaudeProvider;
 // a second place for the mode bits to be forgotten.
 internal static class ClaudePrivateTempFile
 {
+    public const string McpDirectory = "cockpit-claude-mcp";
+
+    public const string PromptDirectory = "cockpit-claude-prompt";
+
     // A system prompt on the command line is the one argument that grows without a ceiling — the standing
     // instruction plus the operator's own memory and current-state files — and both platforms refuse it well
     // before it stops being reasonable: Windows caps the whole command line at 32.767 characters
@@ -20,7 +24,7 @@ internal static class ClaudePrivateTempFile
     // the prompt weighs, which is why this is not conditional on the platform or on a length: one path, so the
     // path that carries an operator's own growing memory is also the one that is exercised every launch.
     public static string? WriteSystemPrompt(string? prompt) =>
-        string.IsNullOrWhiteSpace(prompt) ? null : Write("cockpit-claude-prompt", ".md", prompt);
+        string.IsNullOrWhiteSpace(prompt) ? null : Write(PromptDirectory, ".md", prompt);
 
     // The file (and its directory) are 0600/0700 on Unix, set at create time so the content never exists at the
     // umask's permissions; on Windows the per-user temp profile is the protection, exactly as the host's
@@ -66,6 +70,64 @@ internal static class ClaudePrivateTempFile
         catch (Exception)
         {
             // A locked/already-gone temp file is not worth failing a dispose over.
+        }
+    }
+
+    // The directories the two writers above use. Named here rather than at the call sites because the sweep below
+    // has to know all of them: a third file written past this list would be swept by nothing.
+    private static readonly string[] Directories = [McpDirectory, PromptDirectory];
+
+    // How long a file may sit here before the sweep treats it as left behind (AC-956). A session does not outlive
+    // the cockpit that started it, so anything from before yesterday belongs to a run that is over — and a
+    // generous window is what keeps this from ever racing a session that is still using its file.
+    private static readonly TimeSpan StaleAfter = TimeSpan.FromDays(1);
+
+    // Clears what sessions that were killed rather than closed left behind (AC-956) — the same job
+    // `ClaudeStatusLine.SweepStale` does for the statusline snapshots, called from the same place at plugin start.
+    //
+    // *Why a sweep is needed at all, when both routes already delete on teardown.* They do, and both deletes are
+    // the last thing their teardown does — after the subprocess is killed and its pumps are awaited. The app's
+    // shutdown gives that teardown a bounded budget and then hard-exits (`Program.DisposeCockpit`), so a teardown
+    // that runs long is cut off exactly at its tail. Measured 19-08: 30 mcp-configs going back five days, 28 of
+    // them holding a literal bearer header, plus a promptfile holding the assistant's whole memory. A deadline can
+    // be tuned; it cannot be relied on. This is the backstop that does not depend on one.
+    public static void SweepStale()
+    {
+        foreach (var directoryName in Directories)
+        {
+            SweepStale(Path.Combine(Path.GetTempPath(), directoryName), StaleAfter);
+        }
+    }
+
+    // The sweep itself, against a directory it is handed — so the rule can be asserted directly instead of against
+    // the machine's own temp, where a test would be deleting whatever a real cockpit left there.
+    internal static void SweepStale(string directory, TimeSpan staleAfter)
+    {
+        try
+        {
+            if (!Directory.Exists(directory))
+            {
+                return;
+            }
+
+            foreach (var file in Directory.EnumerateFiles(directory))
+            {
+                try
+                {
+                    if (DateTime.UtcNow - File.GetLastWriteTimeUtc(file) > staleAfter)
+                    {
+                        File.Delete(file);
+                    }
+                }
+                catch (Exception)
+                {
+                    // A file another cockpit is holding open is swept on a later start.
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Housekeeping never fails a launch.
         }
     }
 
