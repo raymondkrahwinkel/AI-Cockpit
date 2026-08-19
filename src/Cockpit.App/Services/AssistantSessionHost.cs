@@ -409,6 +409,12 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             await _ReplayTranscriptAsync(session, cancellationToken).ConfigureAwait(true);
         }
+        else
+        {
+            // AC-947: nothing will replay this file's rows into the new session, and the first row this launch
+            // saves overwrites it — archive it now, while it still holds the conversation before this restart.
+            await _transcript.ArchiveAsync(cancellationToken).ConfigureAwait(true);
+        }
 
         await session.StartConfiguredAsync(
             profile,

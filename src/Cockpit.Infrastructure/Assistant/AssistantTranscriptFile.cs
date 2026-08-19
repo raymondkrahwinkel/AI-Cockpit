@@ -11,6 +11,9 @@ namespace Cockpit.Infrastructure.Assistant;
 // leaves out. Overwritten whole on every change, same idiom as `AssistantMemoryFile.NoteCurrentStateAsync`.
 internal sealed class AssistantTranscriptFile : IAssistantTranscriptStore, ISingletonService
 {
+    // AC-947: enough to survive a crash-loop (each recovery route archives once) without the folder filling up.
+    private const int MaxArchives = 3;
+
     private readonly string _filePath;
     private readonly ILogger<AssistantTranscriptFile> _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -67,6 +70,44 @@ internal sealed class AssistantTranscriptFile : IAssistantTranscriptStore, ISing
             // A transcript that could not be saved must not fail the turn that changed it — losing the snapshot
             // is bad, blocking the conversation over it is worse (same contract as SessionStateStore.RecordAsync).
             _logger.LogWarning(ex, "Could not save the assistant transcript at {Path}.", _filePath);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    public async Task ArchiveAsync(CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!File.Exists(_filePath))
+            {
+                // A second archive-worthy start with no rows saved in between must not overwrite the real
+                // archive with an empty one.
+                return;
+            }
+
+            var directory = Path.GetDirectoryName(_filePath) ?? CockpitConfigPath.Root;
+            var stem = Path.GetFileNameWithoutExtension(_filePath);
+            var archivePath = Path.Combine(directory, $"{stem}.previous-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.json");
+
+            // A rename, not a copy-then-delete: the file keeps the owner-only mode `ReplaceAtomicallyPrivate` gave it.
+            File.Move(_filePath, archivePath, overwrite: true);
+
+            var stale = Directory.EnumerateFiles(directory, $"{stem}.previous-*.json")
+                .OrderByDescending(path => path, StringComparer.Ordinal)
+                .Skip(MaxArchives);
+            foreach (var path in stale)
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Same contract as SaveAsync: an archive that could not be made must not stop the session from starting.
+            _logger.LogWarning(ex, "Could not archive the assistant transcript at {Path}.", _filePath);
         }
         finally
         {

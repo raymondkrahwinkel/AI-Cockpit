@@ -73,6 +73,52 @@ public class AssistantTranscriptFileTests : IDisposable
         Assert.Empty(await store.LoadAsync());
     }
 
+    // ── Archiving (AC-947) ─────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Archiving_MovesTheCurrentFileToATimestampedPreviousGeneration()
+    {
+        var store = CreateStore();
+        await store.SaveAsync([new AssistantTranscriptSnapshotEntry("UserText", "before the crash", null, null, null, null, false, DateTimeOffset.Now)]);
+
+        await store.ArchiveAsync();
+
+        Assert.False(File.Exists(_filePath));
+        var archived = Assert.Single(Directory.GetFiles(_tempDir, "assistant-transcript.previous-*.json"));
+        var loaded = await new AssistantTranscriptFile(archived, NullLogger<AssistantTranscriptFile>.Instance).LoadAsync();
+        Assert.Equal("before the crash", Assert.Single(loaded).Text);
+    }
+
+    [Fact]
+    public async Task ArchivingWithNothingEverSaved_DoesNothing()
+    {
+        var store = CreateStore();
+
+        await store.ArchiveAsync();
+
+        Assert.Empty(Directory.GetFiles(_tempDir));
+    }
+
+    [Fact]
+    public async Task MoreThanThreeArchives_KeepsOnlyTheThreeNewest()
+    {
+        // Four pre-existing generations, named so a plain sort orders them oldest to newest — cheaper than
+        // driving the clock to produce five real archives one second apart.
+        foreach (var stamp in new[] { "20260101-000000", "20260102-000000", "20260103-000000", "20260104-000000" })
+        {
+            await File.WriteAllTextAsync(Path.Combine(_tempDir, $"assistant-transcript.previous-{stamp}.json"), "[]");
+        }
+        var store = CreateStore();
+        await store.SaveAsync([new AssistantTranscriptSnapshotEntry("UserText", "newest", null, null, null, null, false, DateTimeOffset.Now)]);
+
+        await store.ArchiveAsync();
+
+        var remaining = Directory.GetFiles(_tempDir, "assistant-transcript.previous-*.json");
+        Assert.Equal(3, remaining.Length);
+        Assert.DoesNotContain(remaining, path => path.Contains("20260101-000000", StringComparison.Ordinal));
+        Assert.DoesNotContain(remaining, path => path.Contains("20260102-000000", StringComparison.Ordinal));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDir))

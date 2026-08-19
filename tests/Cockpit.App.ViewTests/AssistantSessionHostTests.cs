@@ -933,6 +933,37 @@ public class AssistantSessionHostTests
         Assert.Same(first, host.Session);
     }
 
+    /// <summary>
+    /// Criterion 2 (AC-947): a launch that will not replay the saved rows into the new session — no resumable
+    /// conversation id — archives the file that held them first, before the first new row can overwrite it.
+    /// </summary>
+    [Fact]
+    public void StartingWithNoResumableConversation_ArchivesTheSavedTranscript()
+    {
+        var transcript = Substitute.For<IAssistantTranscriptStore>();
+
+        _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
+
+        transcript.Received(1).ArchiveAsync(Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The mirror of the test above: a launch that does replay the saved rows must not also archive them — the
+    /// happy path keeps growing the one live file, unchanged from before AC-947.
+    /// </summary>
+    [Fact]
+    public void ResumingByConversationId_DoesNotArchiveTheTranscript()
+    {
+        var sessionState = Substitute.For<ISessionStateStore>();
+        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+            [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
+        var transcript = Substitute.For<IAssistantTranscriptStore>();
+
+        _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
+
+        transcript.DidNotReceive().ArchiveAsync(Arg.Any<CancellationToken>());
+    }
+
     // A provider that vouches for compacting its own conversation — the one capability AC-664 turns on.
     private static SessionCapabilities _CompactingProvider() =>
         SessionCapabilities.ClaudeCli with { SupportsContextCompaction = true };
