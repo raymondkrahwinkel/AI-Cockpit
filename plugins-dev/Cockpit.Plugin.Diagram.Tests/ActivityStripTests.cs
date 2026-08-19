@@ -142,10 +142,6 @@ public class ActivityStripTests
 
         public bool DiscardProposal(string surfaceId) => false;
 
-        public event Action<DiagramOpenRequest>? OpenRequested { add { } remove { } }
-
-        public bool RequestOpen(DiagramOpenRequest request) => false;
-
         public IReadOnlyList<DiagramPin> Pins(string surfaceId) =>
             _pins.TryGetValue(surfaceId, out var list) ? list : [];
 
@@ -263,10 +259,6 @@ public class ActivityStripTests
         public void SessionEnded(string sessionId)
         {
         }
-
-        public event Action<WhiteboardOpenRequest>? OpenRequested { add { } remove { } }
-
-        public bool RequestOpen(WhiteboardOpenRequest request) => false;
 
         public IReadOnlyList<WhiteboardPin> Pins(string surfaceId) =>
             _pins.TryGetValue(surfaceId, out var list) ? list : [];

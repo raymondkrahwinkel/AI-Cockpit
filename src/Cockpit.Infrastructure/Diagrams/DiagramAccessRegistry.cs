@@ -24,15 +24,12 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
 
     public event Action<string, string>? ObjectEdited;
 
-    public event Action<DiagramOpenRequest>? OpenRequested;
-
     public event Action<string>? HistoryChanged;
 
     public event Action<string>? PinsChanged;
 
     public void SurfaceOpened(string surfaceId, string name, string initialText)
     {
-        DiagramCoupling? asked;
         lock (_lock)
         {
             if (_surfaces.TryGetValue(surfaceId, out var existing))
@@ -42,32 +39,7 @@ internal sealed class DiagramAccessRegistry : IDiagramAccessRegistry, ISingleton
             }
 
             _surfaces[surfaceId] = new Surface(name, initialText);
-
-            // AC-835: this window is here because an agent asked for it, so it arrives coupled to that agent —
-            // zero capabilities, like every other coupling: read and edit stay their own separate asks.
-            asked = _ledger.ConsumeAwaiting(surfaceId, session => new DiagramCoupling(session, CanRead: false, CanEdit: false));
         }
-
-        if (asked is not null)
-        {
-            CouplingChanged?.Invoke(new DiagramCouplingChange(surfaceId, asked));
-        }
-    }
-
-    public bool RequestOpen(DiagramOpenRequest request)
-    {
-        if (OpenRequested is not { } listeners)
-        {
-            return false;
-        }
-
-        lock (_lock)
-        {
-            _ledger.MarkAwaiting(request.SurfaceId, request.SessionId);
-        }
-
-        listeners(request);
-        return true;
     }
 
     public void SurfaceClosed(string surfaceId)

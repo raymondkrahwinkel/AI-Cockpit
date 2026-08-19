@@ -22,10 +22,6 @@ public sealed record WhiteboardCoupling(string SessionId, bool CanRead, bool Can
 // board's own coordinates. Shape names are PlacedShapeKind's, matched case-insensitively by the whiteboard plugin.
 public sealed record WhiteboardPlacement(string Shape, string? Text, double X, double Y, double Width, double Height);
 
-// An agent asking for a board to be put on screen so it can work on it with the operator (AC-835). A board has no
-// text to hand over — the agent draws on it afterwards, through its own ask — so this carries only the name.
-public sealed record WhiteboardOpenRequest(string SurfaceId, string Name, string SessionId);
-
 // A surface as `list_whiteboards` reports it to one agent session — the surface plus what that session already
 // holds on it, or null when there is no coupling at all yet.
 public sealed record WhiteboardSurfaceView(string SurfaceId, string Name, WhiteboardCoupling? Coupling);
@@ -160,18 +156,6 @@ public interface IWhiteboardAccessRegistry
     /// Breaks every coupling this agent session held (its session ended or crashed).
     /// </summary>
     void SessionEnded(string sessionId);
-
-    // ---- An agent asking for a window (AC-835) ----
-
-    /// <summary>
-    /// Raised when an agent asked for a whiteboard to be opened, after the operator approved it — whoever draws whiteboard windows listens here.
-    /// </summary>
-    event Action<WhiteboardOpenRequest>? OpenRequested;
-
-    /// <summary>
-    /// Announces <paramref name="request"/> and remembers its caller, so the surface is coupled to it the moment the window registers it. False when nothing is listening at all — there is no whiteboard surface in this cockpit to open one on.
-    /// </summary>
-    bool RequestOpen(WhiteboardOpenRequest request);
 
     // ---- Undo (AC-853) ----
 

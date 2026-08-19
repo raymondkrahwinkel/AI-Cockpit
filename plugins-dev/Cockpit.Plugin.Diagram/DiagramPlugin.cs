@@ -1,11 +1,9 @@
-using Avalonia.Threading;
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Plugin.Diagram.Whiteboard;
-using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugin.Diagram.Wireframe;
 using Cockpit.Plugins.Abstractions;
 
@@ -49,78 +47,26 @@ public sealed class DiagramPlugin : ICockpitPlugin
         host.AddToolbarAction(new ToolbarAction("Wireframes", MaterialIconKind.FormatListBulleted,
             () => host.ShowDialogAsync("Wireframes", () => new WireframeListDialogBody(host), WireframeListDialogKey, width: 520, height: 600)));
 
-        _ListenForAgentOpenRequests(host);
-
         // AC-889/AC-890: mounted here rather than the host, so an install without this plugin does not offer
         // cockpit-diagram/-whiteboard/-wireframe at all. No isEnabled (AC-830 dropped the master switch) and no
         // isInternal — these are tickable servers for the operator, unlike Autopilot's own endpoints.
-        if (_diagrams is not null)
-        {
-            _ = host.AddMcpEndpoint("cockpit-diagram", new DiagramMcpTools(host, _diagrams));
-        }
-
-        if (_whiteboards is not null)
-        {
-            _ = host.AddMcpEndpoint("cockpit-whiteboard", new WhiteboardMcpTools(host, _whiteboards));
-        }
-
-        if (_wireframes is not null)
-        {
-            _ = host.AddMcpEndpoint("cockpit-wireframe", new WireframeMcpTools(host, _wireframes));
-        }
-    }
-
-    // AC-835: the MCP tools live in core and cannot open a plugin window, so the access registry — already the only
-    // seam between the two — carries the request over. The operator has approved it by the time it arrives here.
-    private void _ListenForAgentOpenRequests(ICockpitHost host)
-    {
         if (host.Services.GetService(typeof(IDiagramAccessRegistry)) is IDiagramAccessRegistry diagrams)
         {
-            _diagrams = diagrams;
-            _onDiagramOpen = request => Dispatcher.UIThread.Post(() =>
-                _ = DiagramWindow.OpenAsync(host, new DiagramDocument(request.SurfaceId, request.Name, request.Text), request.SessionId));
-            diagrams.OpenRequested += _onDiagramOpen;
+            _ = host.AddMcpEndpoint("cockpit-diagram", new DiagramMcpTools(host, diagrams));
         }
 
         if (host.Services.GetService(typeof(IWhiteboardAccessRegistry)) is IWhiteboardAccessRegistry whiteboards)
         {
-            _whiteboards = whiteboards;
-            _onWhiteboardOpen = request => Dispatcher.UIThread.Post(() =>
-                _ = WhiteboardWindow.OpenAsync(host, new WhiteboardDocument(request.SurfaceId, request.Name), request.SessionId));
-            whiteboards.OpenRequested += _onWhiteboardOpen;
+            _ = host.AddMcpEndpoint("cockpit-whiteboard", new WhiteboardMcpTools(host, whiteboards));
         }
 
         if (host.Services.GetService(typeof(IWireframeAccessRegistry)) is IWireframeAccessRegistry wireframes)
         {
-            _wireframes = wireframes;
-            _onWireframeOpen = request => Dispatcher.UIThread.Post(() =>
-                _ = WireframeWindow.OpenAsync(host, new WireframeDocument(request.SurfaceId, request.Name, request.Text), request.SessionId));
-            wireframes.OpenRequested += _onWireframeOpen;
+            _ = host.AddMcpEndpoint("cockpit-wireframe", new WireframeMcpTools(host, wireframes));
         }
     }
 
-    private IDiagramAccessRegistry? _diagrams;
-    private IWhiteboardAccessRegistry? _whiteboards;
-    private IWireframeAccessRegistry? _wireframes;
-    private Action<DiagramOpenRequest>? _onDiagramOpen;
-    private Action<WhiteboardOpenRequest>? _onWhiteboardOpen;
-    private Action<WireframeOpenRequest>? _onWireframeOpen;
-
     public void Dispose()
     {
-        if (_onDiagramOpen is not null && _diagrams is not null)
-        {
-            _diagrams.OpenRequested -= _onDiagramOpen;
-        }
-
-        if (_onWhiteboardOpen is not null && _whiteboards is not null)
-        {
-            _whiteboards.OpenRequested -= _onWhiteboardOpen;
-        }
-
-        if (_onWireframeOpen is not null && _wireframes is not null)
-        {
-            _wireframes.OpenRequested -= _onWireframeOpen;
-        }
     }
 }

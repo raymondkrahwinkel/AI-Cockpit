@@ -1,11 +1,13 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Avalonia.Threading;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Wireframe;
 using Cockpit.Core.Wireframe.Model;
+using Cockpit.Plugin.Diagram.Wireframe;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -71,10 +73,8 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
             return _Serialize(new { ok = false, error = "Opening that wireframe was not approved by the operator — nothing was opened." });
         }
 
-        if (!registry.RequestOpen(new WireframeOpenRequest(surfaceId, title, source, caller)))
-        {
-            return _Serialize(new { ok = false, error = "Nothing in this cockpit draws wireframe windows right now — the diagram plugin may not be running." });
-        }
+        Dispatcher.UIThread.Post(() =>
+            _ = WireframeWindow.OpenAsync(host, new WireframeDocument(surfaceId, title, source), caller));
 
         return _Serialize(new { ok = true, id = surfaceId, name = title, opened = true });
     }

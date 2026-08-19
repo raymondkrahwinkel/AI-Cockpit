@@ -1,4 +1,6 @@
 using System.Text.Json.Nodes;
+using Avalonia.Controls;
+using Avalonia.Threading;
 using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Wireframe;
 using Cockpit.Plugins.Abstractions;
@@ -10,20 +12,26 @@ namespace Cockpit.Plugin.Diagram.Tests;
 // The cockpit-wireframe tools (AC-872): reading a surface is gated behind its own Approve/Deny, editing behind a
 // separate one, coupling is one agent per surface, and every read and write hands back the components with the ids
 // the next call names them by (AC-906).
+[Collection("avalonia")]
 public class WireframeMcpToolsTests
 {
     private const string Session = "pane-agent";
     private const string SurfaceId = "wireframe-1";
     private const string Name = "Instellingen";
 
-    private static (WireframeMcpTools tools, WireframeAccessRegistry registry, List<ConsentRequest> asked) _Build(ConsentOutcome outcome)
+    private static (WireframeMcpTools tools, WireframeAccessRegistry registry, List<ConsentRequest> asked) _Build(ConsentOutcome outcome) =>
+        _BuildWithHost(outcome, out _);
+
+    // Only the open_wireframe tests need the host itself, to verify it was asked to draw the window directly (AC-891).
+    private static (WireframeMcpTools tools, WireframeAccessRegistry registry, List<ConsentRequest> asked) _BuildWithHost(ConsentOutcome outcome, out ICockpitHost host)
     {
         var registry = new WireframeAccessRegistry();
         var asked = new List<ConsentRequest>();
-        var host = Substitute.For<ICockpitHost>();
-        host.CurrentMcpCallerPaneId.Returns((string?)null);
-        host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
-        return (new WireframeMcpTools(host, registry), registry, asked);
+        var builtHost = Substitute.For<ICockpitHost>();
+        builtHost.CurrentMcpCallerPaneId.Returns((string?)null);
+        builtHost.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
+        host = builtHost;
+        return (new WireframeMcpTools(builtHost, registry), registry, asked);
     }
 
     private static (WireframeMcpTools tools, WireframeAccessRegistry registry, List<ConsentRequest> asked) _Open(ConsentOutcome outcome, string name = Name)
@@ -288,15 +296,22 @@ public class WireframeMcpToolsTests
         Assert.Empty(asked);
     }
 
+    // ---- open_wireframe (AC-835, direct path since AC-891): the agent asks for a window of its own ----
+
     [Fact]
-    public async Task OpenWireframe_Approved_ButNothingDrawsWireframeWindows_SaysSo()
+    public async Task OpenWireframe_WhenApproved_AsksTheOperator_ThenOpensTheWindowDirectly()
     {
-        var (tools, _, _) = _Build(ConsentOutcome.Approved);
+        var (tools, _, asked) = _BuildWithHost(ConsentOutcome.Approved, out var host);
 
         var json = JsonNode.Parse(await tools.OpenWireframe(Session, "Nieuw scherm", WireframeScreens.Settings));
+        Dispatcher.UIThread.RunJobs();
 
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("draws wireframe windows", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Single(asked);
+
+        var surfaceId = json["id"]!.GetValue<string>();
+        await host.Received(1).ShowDialogAsync("Nieuw scherm", Arg.Any<Func<Control>>(),
+            $"wireframe.document.{surfaceId}", Arg.Any<double>(), Arg.Any<double>());
     }
 
     // ---- A document of several screens (AC-901) ----

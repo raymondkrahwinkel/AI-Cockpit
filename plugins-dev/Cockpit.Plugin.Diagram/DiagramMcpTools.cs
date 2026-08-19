@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Avalonia.Threading;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Consent;
@@ -65,10 +66,8 @@ internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry 
             return _Serialize(new { ok = false, error = "Opening that diagram was not approved by the operator — nothing was opened." });
         }
 
-        if (!registry.RequestOpen(new DiagramOpenRequest(surfaceId, title, source, caller)))
-        {
-            return _Serialize(new { ok = false, error = "Nothing in this cockpit draws diagram windows right now — the diagram plugin may not be running." });
-        }
+        Dispatcher.UIThread.Post(() =>
+            _ = DiagramWindow.OpenAsync(host, new DiagramDocument(surfaceId, title, source), caller));
 
         return _Serialize(new
         {

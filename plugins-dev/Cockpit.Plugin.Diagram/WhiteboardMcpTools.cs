@@ -1,8 +1,11 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Avalonia.Threading;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Consent;
+using Cockpit.Plugin.Diagram.Whiteboard;
+using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -59,10 +62,8 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
             return _Serialize(new { ok = false, error = "Opening that whiteboard was not approved by the operator — nothing was opened." });
         }
 
-        if (!registry.RequestOpen(new WhiteboardOpenRequest(surfaceId, title, caller)))
-        {
-            return _Serialize(new { ok = false, error = "Nothing in this cockpit draws whiteboard windows right now — the diagram plugin may not be running." });
-        }
+        Dispatcher.UIThread.Post(() =>
+            _ = WhiteboardWindow.OpenAsync(host, new WhiteboardDocument(surfaceId, title), caller));
 
         return _Serialize(new { ok = true, id = surfaceId, name = title, opened = true });
     }

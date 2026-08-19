@@ -1,4 +1,6 @@
 using System.Text.Json.Nodes;
+using Avalonia.Controls;
+using Avalonia.Threading;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Infrastructure.Diagrams;
 using Cockpit.Plugins.Abstractions;
@@ -10,6 +12,7 @@ namespace Cockpit.Plugin.Diagram.Tests;
 // The cockpit-diagram tools (AC-810): reading a surface is gated behind its own Approve/Deny, editing behind a
 // separate one, coupling is one-agent-per-surface, coupling on its own grants nothing, and a read always returns
 // the surface exactly as it stands (never just what changed since the coupling — AC-810's deviation from AC-34).
+[Collection("avalonia")]
 public class DiagramMcpToolsTests
 {
     private const string Session = "pane-agent";
@@ -453,16 +456,15 @@ public class DiagramMcpToolsTests
         Assert.Empty(json["fidelity"]!["findings"]!.AsArray());
     }
 
-    // ---- open_diagram (AC-835): the agent asks for a window of its own ----
+    // ---- open_diagram (AC-835, direct path since AC-891): the agent asks for a window of its own ----
 
     [Fact]
-    public async Task OpenDiagram_WhenApproved_AsksTheOperator_ThenRequestsTheWindow_AndCouplesTheCallerOnArrival()
+    public async Task OpenDiagram_WhenApproved_AsksTheOperator_ThenOpensTheWindowDirectly()
     {
-        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
-        var requests = new List<DiagramOpenRequest>();
-        registry.OpenRequested += requests.Add;
+        var (tools, _, host, asked) = _Build(ConsentOutcome.Approved);
 
         var json = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", Source));
+        Dispatcher.UIThread.RunJobs();
 
         Assert.True(json!["ok"]!.GetValue<bool>());
         Assert.Single(asked);
@@ -470,49 +472,24 @@ public class DiagramMcpToolsTests
         Assert.Equal(ConsentRisk.Dangerous, asked[0].Risk);
         Assert.Contains("Onboarding flow", asked[0].Action);
 
-        var request = Assert.Single(requests);
-        Assert.Equal(Source, request.Text);
-        Assert.Equal(Session, request.SessionId);
-        Assert.Equal(json["id"]!.GetValue<string>(), request.SurfaceId);
-
-        // The window registers the surface it was asked for: it arrives coupled to the caller, granting nothing.
-        registry.SurfaceOpened(request.SurfaceId, request.Name, request.Text);
-        var coupling = registry.CouplingOf(Session, request.SurfaceId);
-        Assert.NotNull(coupling);
-        Assert.False(coupling!.HasAnyCapability);
+        var surfaceId = json["id"]!.GetValue<string>();
+        await host.Received(1).ShowDialogAsync("Onboarding flow", Arg.Any<Func<Control>>(),
+            $"diagram.document.{surfaceId}", Arg.Any<double>(), Arg.Any<double>());
     }
 
     [Fact]
     public async Task OpenDiagram_WhenDenied_OpensNothing_AndSaysSo()
     {
-        var (tools, registry, _, asked) = _Build(ConsentOutcome.Denied);
-        var requests = new List<DiagramOpenRequest>();
-        registry.OpenRequested += requests.Add;
+        var (tools, _, host, asked) = _Build(ConsentOutcome.Denied);
 
         var json = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", Source));
+        Dispatcher.UIThread.RunJobs();
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("not approved", json["error"]!.GetValue<string>());
         Assert.Single(asked);
-        Assert.Empty(requests);
-        Assert.Empty(registry.ListSurfaces(Session));
-    }
-
-    [Fact]
-    public async Task OpenDiagram_CouplesTheVerifiedPane_NotTheAgentSuppliedSessionId()
-    {
-        var (tools, registry, host, _) = _Build(ConsentOutcome.Approved);
-        var requests = new List<DiagramOpenRequest>();
-        registry.OpenRequested += requests.Add;
-        host.CurrentMcpCallerPaneId.Returns("cockpit-assistant"); // the assistant is a caller like any other (AC-835)
-
-        await tools.OpenDiagram("some-other-pane", "Onboarding flow", Source);
-
-        var request = Assert.Single(requests);
-        Assert.Equal("cockpit-assistant", request.SessionId);
-        registry.SurfaceOpened(request.SurfaceId, request.Name, request.Text);
-        Assert.NotNull(registry.CouplingOf("cockpit-assistant", request.SurfaceId));
-        Assert.Null(registry.CouplingOf("some-other-pane", request.SurfaceId));
+        await host.DidNotReceive().ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(),
+            Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>());
     }
 
     [Fact]
@@ -524,16 +501,5 @@ public class DiagramMcpToolsTests
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Empty(asked);
-    }
-
-    [Fact]
-    public async Task OpenDiagram_WithNothingListening_SaysSo_RatherThanClaimingAWindowOpened()
-    {
-        var (tools, _, _, _) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", Source));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("diagram plugin", json["error"]!.GetValue<string>());
     }
 }
