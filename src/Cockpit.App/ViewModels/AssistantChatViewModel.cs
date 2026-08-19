@@ -156,7 +156,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // touched.
     private bool _loadingSpeakReplies;
 
+    // Fix found while verifying AC-935: without this, CanSend never re-evaluated and the Send button
+    // stayed at whatever it read on the first render (grey) — unnoticed because Enter bypasses it and
+    // checks CanExecute directly. See `_OnPendingAttachmentsChanged` for CanSend's other dependency.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSend))]
     private string _inputText = string.Empty;
 
     // Mirrors AssistantSettings.SpeakReplies's own default (true) until the real value loads, so the header does
@@ -551,22 +555,31 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     //
     // Watching the collection rather than polling `HasTranscript`: the collection is the thing that changes,
     // and it already announces itself.
+    // Also moves the `PendingAttachments` watch (bug fix, found verifying AC-935): `CanSend` reads
+    // `Session.HasPendingAttachments`, and without this an image-only message never re-enabled Send either.
     private void _WatchTranscript(SessionViewModel? previous, SessionViewModel? next)
     {
         if (previous is not null)
         {
             previous.Transcript.CollectionChanged -= _OnTranscriptChanged;
+            previous.PendingAttachments.CollectionChanged -= _OnPendingAttachmentsChanged;
         }
 
         if (next is not null)
         {
             next.Transcript.CollectionChanged += _OnTranscriptChanged;
+            next.PendingAttachments.CollectionChanged += _OnPendingAttachmentsChanged;
         }
     }
 
     // Only HasMessages: the rows themselves are bound straight to the collection and need no help from here.
     private void _OnTranscriptChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
         OnPropertyChanged(nameof(HasMessages));
+
+    // CanSend's other dependency (see `_inputText`'s own fix note) — an attachment added or removed on the
+    // composer must re-enable/disable Send the same way typed text does.
+    private void _OnPendingAttachmentsChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        OnPropertyChanged(nameof(CanSend));
 
     // Detaches from the host and from the transcript it was watching — nothing more. Deliberately does not touch
     // `Session` in any way: this runs when the window closes, and closing this window must never end

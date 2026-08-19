@@ -19,6 +19,12 @@ public partial class TranscriptRowView : UserControl
     public static readonly StyledProperty<bool> CompactProperty =
         AvaloniaProperty.Register<TranscriptRowView, bool>(nameof(Compact));
 
+    // AC-935: reply is Assistant-chat-only for now — SessionView never sets this, so its panes render no reply
+    // affordance at all. Default false rather than gating on the host type, so turning it on for sessions later
+    // is one attribute here instead of a code change.
+    public static readonly StyledProperty<bool> ReplyEnabledProperty =
+        AvaloniaProperty.Register<TranscriptRowView, bool>(nameof(ReplyEnabled));
+
     public SessionViewModel? Session
     {
         get => GetValue(SessionProperty);
@@ -29,6 +35,12 @@ public partial class TranscriptRowView : UserControl
     {
         get => GetValue(CompactProperty);
         set => SetValue(CompactProperty, value);
+    }
+
+    public bool ReplyEnabled
+    {
+        get => GetValue(ReplyEnabledProperty);
+        set => SetValue(ReplyEnabledProperty, value);
     }
 
     public TranscriptRowView()
@@ -65,6 +77,26 @@ public partial class TranscriptRowView : UserControl
             && TopLevel.GetTopLevel(this) is Window owner)
         {
             ImagePreviewWindow.Show(images, 0, owner);
+        }
+    }
+
+    // AC-935: the citation above a reply — jumps back to the message it answered.
+    private void _OnJumpToReplyTargetClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: TranscriptEntryViewModel { ReplyTo: { } target } }
+            && TopLevel.GetTopLevel(this) is AssistantChatWindow window)
+        {
+            window.ScrollToMessage(target);
+        }
+    }
+
+    // AC-935: the "answered" marker on a replied-to row — jumps forward to its most recent reply.
+    private void _OnJumpToLatestReplyClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: TranscriptEntryViewModel { LatestReply: { } reply } }
+            && TopLevel.GetTopLevel(this) is AssistantChatWindow window)
+        {
+            window.ScrollToMessage(reply);
         }
     }
 }

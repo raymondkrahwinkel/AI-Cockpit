@@ -1610,6 +1610,92 @@ public class SessionViewModelTests
         Assert.Equal("This session's process has stopped, so the message was not sent.", message);
     }
 
+    // AC-935: the wire text is the only thing that changes with a reply — the transcript row stays plain, and
+    // an ordinary message (no target) costs no extra tokens.
+    [Fact]
+    public void BuildOutgoingText_WithNoReplyTarget_IsUnchanged() =>
+        Assert.Equal("looks fine to me", SessionViewModel.BuildOutgoingText("looks fine to me", replyTo: null));
+
+    [Fact]
+    public void BuildOutgoingText_WithAReplyTarget_PrefixesWithACitationOfTheTarget()
+    {
+        var target = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "please check the build output");
+
+        var outgoing = SessionViewModel.BuildOutgoingText("looks fine to me", target);
+
+        Assert.Equal("[reply to \"please check the build output\"]: looks fine to me", outgoing);
+    }
+
+    // AC-935: sending a reply prefixes only the wire text — the echoed row stays plain, the target it answered
+    // is marked answered, and the composer's own pending target clears once it has been used.
+    [Fact]
+    public async Task SendingAReply_PrefixesTheWireTextOnly_AndMarksTheTargetAnswered()
+    {
+        var (vm, session) = await StartedVm();
+        var target = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "please check the build output");
+        vm.PendingReplyTo = target;
+        vm.InputText = "looks fine to me";
+
+        await vm.SendCommand.ExecuteAsync(null);
+
+        await session.Received(1).SendUserMessageAsync(
+            "[reply to \"please check the build output\"]: looks fine to me",
+            Arg.Any<IReadOnlyList<ImageAttachment>>(),
+            Arg.Any<CancellationToken>());
+
+        var echo = Assert.Single(vm.Transcript, t => t.Kind == TranscriptEntryKind.UserText);
+        Assert.Equal("looks fine to me", echo.Text);
+        Assert.Same(target, echo.ReplyTo);
+        Assert.Same(echo, target.LatestReply);
+        Assert.True(target.HasReplies);
+        Assert.Null(vm.PendingReplyTo);
+        await vm.DisposeAsync();
+    }
+
+    // AC-935 criterion 7: a reply typed while a turn is in flight goes onto the queue like any other message —
+    // its target must ride along, or it is lost the moment the composer's own pending target is cleared.
+    [Fact]
+    public async Task SendingAReplyWhileATurnIsInFlight_QueuesItWithItsTarget()
+    {
+        var (vm, _) = await StartedVm();
+        vm.InputText = "first";
+        await vm.SendCommand.ExecuteAsync(null); // turn now in flight
+
+        var target = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "question");
+        vm.PendingReplyTo = target;
+        vm.InputText = "answer";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        var queued = Assert.Single(vm.QueuedMessages);
+        Assert.Same(target, queued.ReplyTo);
+        Assert.Null(vm.PendingReplyTo);
+        await vm.DisposeAsync();
+    }
+
+    // AC-935 §6.2: combine mode merges several queued messages into one turn — a single prefix over the whole
+    // blob would misattribute every message but the first, so each sub-message gets its own.
+    [Fact]
+    public async Task TurnCompleted_WithCombineOn_GivesEachQueuedReplyItsOwnPrefix()
+    {
+        var (vm, session) = await StartedVm();
+        vm.CombineQueuedMessages = true;
+        vm.InputText = "first";
+        await vm.SendCommand.ExecuteAsync(null); // dispatched immediately, turn now in flight
+
+        var targetA = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "question A");
+        var targetB = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "question B");
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("answer A", [], targetA, m => vm.QueuedMessages.Remove(m)));
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("answer B", [], targetB, m => vm.QueuedMessages.Remove(m)));
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        await session.Received(1).SendUserMessageAsync(
+            "[reply to \"question A\"]: answer A\n\n[reply to \"question B\"]: answer B",
+            Arg.Any<IReadOnlyList<ImageAttachment>>(),
+            Arg.Any<CancellationToken>());
+        await vm.DisposeAsync();
+    }
+
     [Fact]
     public void ErrorRow_RendersItsOwnCardInsteadOfThePlainPath()
     {
@@ -1780,8 +1866,8 @@ public class SessionViewModelTests
         // Queue two messages carrying images — one with text, one image-only — directly on the send queue.
         var imageA = ImageAttachment.FromBytes([1], "image/png");
         var imageB = ImageAttachment.FromBytes([2], "image/png");
-        vm.QueuedMessages.Add(new QueuedMessageViewModel("look at these", [imageA], m => vm.QueuedMessages.Remove(m)));
-        vm.QueuedMessages.Add(new QueuedMessageViewModel("", [imageB], m => vm.QueuedMessages.Remove(m)));
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("look at these", [imageA], replyTo: null, m => vm.QueuedMessages.Remove(m)));
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("", [imageB], replyTo: null, m => vm.QueuedMessages.Remove(m)));
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
@@ -1804,8 +1890,8 @@ public class SessionViewModelTests
 
         var imageA = ImageAttachment.FromBytes([1], "image/png");
         var imageB = ImageAttachment.FromBytes([2], "image/png");
-        vm.QueuedMessages.Add(new QueuedMessageViewModel("", [imageA], m => vm.QueuedMessages.Remove(m)));
-        vm.QueuedMessages.Add(new QueuedMessageViewModel("   ", [imageB], m => vm.QueuedMessages.Remove(m)));
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("", [imageA], replyTo: null, m => vm.QueuedMessages.Remove(m)));
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("   ", [imageB], replyTo: null, m => vm.QueuedMessages.Remove(m)));
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
@@ -1830,7 +1916,7 @@ public class SessionViewModelTests
         await vm.SendCommand.ExecuteAsync(null); // dispatched immediately, turn now in flight
 
         var image = ImageAttachment.FromBytes([1, 2, 3], "image/png");
-        vm.QueuedMessages.Add(new QueuedMessageViewModel("look at this", [image], m => vm.QueuedMessages.Remove(m)));
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("look at this", [image], replyTo: null, m => vm.QueuedMessages.Remove(m)));
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 

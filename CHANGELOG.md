@@ -49,6 +49,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   one focuses that agent session and brings the main window to the front if it was minimized or behind others,
   instead of you having to find it yourself. The "⋯" list and its flyout, and the tooltip on each badge, work as
   before.
+- added: a message in the assistant chat window can now be replied to — hovering a message shows a reply button,
+  and the message you are replying to stays visible above the composer until you send or cancel it. Once sent,
+  both the reply and the message it answered keep a small marker pointing at the other one, so you can jump
+  between them even after the conversation has moved on, and the assistant is told explicitly which message you
+  replied to instead of having to guess from what happens to sit nearby.
 - added: a profile on the OpenRouter provider can now fetch its model list instead of you typing a vendor/model id
   from memory — a Fetch button next to the Model field asks the base URL you filled in which models it serves, the
   same behaviour the Gemini/OpenAI provider already has. When that endpoint serves no model list, or rejects the

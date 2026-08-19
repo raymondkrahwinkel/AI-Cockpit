@@ -160,6 +160,43 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public string? ToolUseId { get; init; }
 
+    // --- Reply relation (AC-935) --------------------------------------------------------------------------------
+    // No message id: the transcript is in-memory for the app's own run (no restart-persistence, grooming §1), so
+    // an object reference to the target row is a stable enough key.
+
+    // The row this reply answers, set once at construction — null for an ordinary (non-reply) message.
+    public TranscriptEntryViewModel? ReplyTo { get; init; }
+
+    public bool HasReplyTo => ReplyTo is not null;
+
+    // A one-line citation of the target's own text (SessionViewModel builds the wire-format prefix from the
+    // same helper), shown above this reply so both the operator and, via the wire text, the model can tell
+    // which message it answers.
+    public string ReplyExcerpt => ReplyTo is null ? string.Empty : BuildReplyExcerpt(ReplyTo.TextWithImageSuffix);
+
+    // The most recent reply that targeted this row, so its "answered" marker can jump straight to it. Not a
+    // list: nothing here needs more than "was this answered, and where is the latest answer".
+    [ObservableProperty]
+    private TranscriptEntryViewModel? _latestReply;
+
+    public bool HasReplies => LatestReply is not null;
+
+    partial void OnLatestReplyChanged(TranscriptEntryViewModel? value) => OnPropertyChanged(nameof(HasReplies));
+
+    // Collapsed to one line and capped so a long status report does not double a reply's token cost for no
+    // identification benefit; quotes are swapped so they never close the wire format's own quoting
+    // (`[reply to "<excerpt>"]: <input>`).
+    public static string BuildReplyExcerpt(string text)
+    {
+        var oneLine = string.Join(' ', text.Split(ReplyExcerptSplitChars, StringSplitOptions.RemoveEmptyEntries))
+            .Replace('"', '\'');
+        return oneLine.Length > ReplyExcerptMaxLength ? oneLine[..ReplyExcerptMaxLength] + "…" : oneLine;
+    }
+
+    private const int ReplyExcerptMaxLength = 200;
+
+    private static readonly char[] ReplyExcerptSplitChars = [' ', '\t', '\r', '\n'];
+
     // --- Pasted images (AC-778) --------------------------------------------------------------------------------
     // Images attached to this row's own message, held in memory for the life of the running session so the
     // "[+N image]" fragment can reopen them. Null on rows without images, and on a row built without wiring
