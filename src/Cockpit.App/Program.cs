@@ -346,7 +346,23 @@ sealed class Program
 
         // A bounded wait so a wedged session teardown can't hang the exit; the child processes are
         // killed early in each session's DisposeAsync, so timing out here still leaves nothing behind.
-        cockpit.DisposeAsync().AsTask().Wait(TeardownBudget);
+        //
+        // AC-958: it does not currently get that far. This runs in Main's finally, *after*
+        // StartWithClassicDesktopLifetime has returned, so Avalonia's dispatcher loop has already ended and
+        // nothing pumps it — and the teardown chain awaits without ConfigureAwait(false) throughout. Measured with
+        // the lifecycle lines below: it reaches the assistant's own DisposeAsync and stops there, every close, so
+        // the files each launch wrote outlive it. The sweep at plugin start is the backstop until that is fixed
+        // properly, which means tearing down while the dispatcher is still alive rather than after.
+        try
+        {
+            cockpit.DisposeAsync().AsTask().Wait(TeardownBudget);
+        }
+        catch (Exception exception)
+        {
+            // Written, not swallowed: a teardown that throws leaves exactly the same trace as one that wedged —
+            // nothing — and that is what made this take four rounds to find.
+            Cockpit.App.Logging.LifecycleLog.Write($"Cockpit teardown failed: {exception}");
+        }
     }
 
     private static void StartHostedServices(IReadOnlyList<IHostedService> hostedServices)

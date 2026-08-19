@@ -196,8 +196,6 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         try
         {
-            await _assistant.EnsureStartedAsync().ConfigureAwait(true);
-
             if (_chatWindow is null)
             {
                 _chatViewModel = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog, Indicator, cockpit: _cockpit);
@@ -223,6 +221,17 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             }
 
             WindowActivation.BringToFront(_chatWindow);
+
+            // The window first, the session after — AC-959. Starting it is not a fast local call: it resolves the
+            // MCP catalog, stands up loopback endpoints, renews OAuth sign-ins *over the network*, spawns the CLI
+            // and replays the transcript. Measured on one open: 3,4 seconds from the start of that to the spawned
+            // process, with a Depot sign-in that failed quickly — a slow one costs more. Awaiting it before the
+            // window meant several seconds of nothing at all between the click and anything appearing.
+            //
+            // The window copes with a session that is not up: it binds to the host and shows "the session has not
+            // started yet" until one arrives, which is exactly what an operator wants to see while it starts. The
+            // await stays, so a failure still reaches the catch below rather than becoming an unobserved task.
+            await _assistant.EnsureStartedAsync().ConfigureAwait(true);
         }
         catch (Exception exception)
         {
