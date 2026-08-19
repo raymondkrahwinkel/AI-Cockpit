@@ -177,6 +177,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   a collapsed "Pasted text" placeholder that is never actually submitted. The text and the Enter that followed it
   could reach the terminal close enough together to be read as one paste instead of a typed prompt with a send; the
   Enter now always lands on its own.
+- fixed: on Windows, dragging the main window or the assistant chat window to a screen edge now snaps/docks it
+  again, matching the built-in behaviour every other borderless app on Windows has. Linux and macOS are unchanged.
 - fixed: stopping a turn that was waiting on your Allow/Deny decision no longer leaves that row hanging. Interrupting
   now closes it out as cancelled, so the pane stops reporting "waiting for permission" for a decision nothing is
   listening for anymore — across every provider, with Claude and Codex additionally telling the agent itself that the

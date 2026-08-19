@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -13,7 +14,7 @@ namespace Cockpit.App.Controls;
 
 // Applies the cockpit's custom window chrome to any `Window`: a hairline title bar of our own, and
 // `WindowResizeGrip` for the decorations and the resize edges/corners underneath it (AC-678 dropped the OS
-// ones because `BorderOnly`'s resize border was a visible margin; macOS keeps them, see AC-755).
+// ones because `BorderOnly`'s resize border was a visible margin; macOS/Windows keep them, see AC-755/AC-934).
 internal static class CockpitWindowChrome
 {
     // The mockup's two title bars (cockpit-projects-flow-2026-07-21.html: .titlebar and .titlebar.dlg).
@@ -162,6 +163,17 @@ internal static class CockpitWindowChrome
             BorderThickness = new Thickness(0, 0, 0, 1),
             Child = bar,
         };
+
+        if (OperatingSystem.IsWindows())
+        {
+            // AC-934: marks the bar as the native caption so dragging it triggers Aero Snap; the buttons inside
+            // opt back out to User, or Windows would swallow their clicks as a caption drag instead of a click.
+            WindowDecorationProperties.SetElementRole(wrapper, WindowDecorationsElementRole.TitleBar);
+            foreach (var button in captionButtons.Children.OfType<Button>())
+            {
+                WindowDecorationProperties.SetElementRole(button, WindowDecorationsElementRole.User);
+            }
+        }
 
         // Drag the window by the title bar; a double-click maximizes/restores it (where that is allowed),
         // and a press on a caption button is left to the button.

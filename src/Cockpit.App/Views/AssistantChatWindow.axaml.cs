@@ -3,6 +3,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
@@ -163,6 +164,17 @@ public partial class AssistantChatWindow : Window
         _windowBoundsStore = windowBoundsStore;
         InitializeComponent();
         WindowResizeGrip.Apply(this);
+
+        if (OperatingSystem.IsWindows())
+        {
+            // AC-934: marks the header as the native caption so dragging it triggers Aero Snap; the buttons
+            // inside opt back out to User, or Windows would swallow their clicks as a caption drag instead.
+            WindowDecorationProperties.SetElementRole(HeaderBar, WindowDecorationsElementRole.TitleBar);
+            WindowDecorationProperties.SetElementRole(ListeningModeToggle, WindowDecorationsElementRole.User);
+            WindowDecorationProperties.SetElementRole(ReadAloudToggle, WindowDecorationsElementRole.User);
+            WindowDecorationProperties.SetElementRole(HistoryButton, WindowDecorationsElementRole.User);
+            WindowDecorationProperties.SetElementRole(CloseButton, WindowDecorationsElementRole.User);
+        }
 
         _normalPosition = Position;
         _normalSize = new Size(Width, Height);
