@@ -1523,6 +1523,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             await _runtime.InterruptAsync();
             Status = "Interrupted.";
+
+            // AC-943: a turn parked on a permission prompt is answered on the wire by the driver where it can be
+            // (Claude, Codex); this sweep is the driver-agnostic half, clearing the row for every driver alike.
+            foreach (var pending in Transcript.Where(entry => entry.IsPendingPermission).ToList())
+            {
+                pending.PermissionDecision = "Cancelled — interrupted";
+                pending.IsPendingPermission = false;
+            }
         }
         catch (Exception ex)
         {
