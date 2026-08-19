@@ -38,6 +38,9 @@ public partial class App : Application
     private UnlockWindow? _screenLockWindow;
     private DispatcherTimer? _pluginUpdateTimer;
 
+    // The teardown this app is already running, so a second shutdown request rides along with the first (AC-958).
+    private Task? _teardown;
+
     // True once a real quit was requested (tray "Quit"), so `MainWindow` lets the close
     // through instead of hiding to tray (#33). Distinguishes a genuine quit from a close-to-tray.
     public bool IsQuitting { get; private set; }
@@ -59,8 +62,18 @@ public partial class App : Application
             // The desktop's own route into a shutdown — an OS log-off or restart ending the session — as something
             // distinct from the tray's Quit. Both used to end the process through the same silent teardown, so an
             // operator finding the cockpit gone had no way to tell "Windows ended my session" from anything else.
-            desktop.ShutdownRequested += (_, _) =>
+            desktop.ShutdownRequested += (_, shutdown) =>
+            {
                 LifecycleLog.Write($"The desktop lifetime requested shutdown (quit already requested: {IsQuitting}).");
+
+                // AC-958: hold this shutdown, tear the sessions down while the dispatcher is still pumping, and only
+                // then shut down for real — once the main loop has ended nothing runs the teardown's continuations.
+                if (_teardown is null)
+                {
+                    shutdown.Cancel = true;
+                    _ = TearDownThenShutdownAsync();
+                }
+            };
 
             // Encrypted credentials: the key comes from a password, so the cockpit cannot be built yet — the view
             // model, the plugins and the MCP servers all read settings, and reading them without the key would
@@ -629,8 +642,25 @@ public partial class App : Application
     public void RequestQuit()
     {
         LifecycleLog.Write("Quit requested from inside the app (tray Quit or a restart handoff).");
+        _ = TearDownThenShutdownAsync();
+    }
+
+    // Tears the cockpit down and only then shuts the lifetime down. Every quit route goes through here rather than
+    // hanging off ShutdownRequested alone: the lifetime's `Shutdown()` is a *forced* shutdown that never raises that
+    // event, so the tray's Quit and the restart handoff would walk straight past it.
+    internal Task TearDownThenShutdownAsync() => _teardown ??= _TearDownThenShutdownAsync();
+
+    private async Task _TearDownThenShutdownAsync()
+    {
+        // Set before the first await so MainWindow's close still sees it: this is a real quit, not a close-to-tray,
+        // and nobody is left to answer the "stop every session?" prompt.
         IsQuitting = true;
-        _desktop?.Shutdown();
+
+        await Program.TearDownCockpitAsync();
+
+        // Posted, not called: with nothing to tear down this runs inside the ShutdownRequested handler that just
+        // cancelled, and re-entering the lifetime's shutdown from there is asking for it.
+        Dispatcher.UIThread.Post(() => _desktop?.Shutdown());
     }
 
     // A tray icon is always present while the app runs so the operator can immediately see whether the

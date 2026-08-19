@@ -337,33 +337,57 @@ sealed class Program
     // practice; naming it here is what makes that a decision rather than a coincidence.
     private static readonly TimeSpan TeardownBudget = TimeSpan.FromSeconds(3);
 
-    private static void DisposeCockpit()
+    // Set by whichever route enters the teardown first, so the fallback below cannot run it a second time.
+    private static int _teardownEntered;
+
+    // AC-958: the teardown only *finishes* while Avalonia's dispatcher is still pumping. Every await in the chain
+    // (CockpitViewModel.DisposeAsync → SessionViewModel → SessionRuntime) posts its continuation to the UI thread, so
+    // run from Main's finally — after StartWithClassicDesktopLifetime returned and the loop ended — it stopped at the
+    // first one, silently, and the temp files each session wrote (mcp-config with a bearer header, the system prompt
+    // with the assistant's memory) outlived the process. App holds the shutdown open and calls this instead.
+    internal static async Task TearDownCockpitAsync()
     {
+        if (Interlocked.Exchange(ref _teardownEntered, 1) == 1)
+        {
+            return;
+        }
+
+        // Started here and not only in Main's finally: while the shutdown is held open for this, nothing else bounds
+        // the process, and a wedged teardown must never hold the exit up (bug #32).
+        StartExitWatchdog(TeardownBudget + TimeSpan.FromSeconds(1));
+
         if (Services.GetService<CockpitViewModel>() is not { } cockpit)
         {
             return;
         }
 
-        // A bounded wait so a wedged session teardown can't hang the exit; the child processes are
-        // killed early in each session's DisposeAsync, so timing out here still leaves nothing behind.
-        //
-        // AC-958: it does not currently get that far. This runs in Main's finally, *after*
-        // StartWithClassicDesktopLifetime has returned, so Avalonia's dispatcher loop has already ended and
-        // nothing pumps it — and the teardown chain awaits without ConfigureAwait(false) throughout. Measured with
-        // the lifecycle lines below: it reaches the assistant's own DisposeAsync and stops there, every close, so
-        // the files each launch wrote outlive it. The sweep at plugin start is the backstop until that is fixed
-        // properly, which means tearing down while the dispatcher is still alive rather than after.
+        await AwaitTeardownAsync(cockpit.DisposeAsync().AsTask(), TeardownBudget);
+    }
+
+    // The bounded, logged half — its own method so a test can drive it with a teardown that never finishes and one
+    // that throws. Both used to leave the same trace as one that succeeded: nothing.
+    internal static async Task AwaitTeardownAsync(Task teardown, TimeSpan budget)
+    {
         try
         {
-            cockpit.DisposeAsync().AsTask().Wait(TeardownBudget);
+            if (await Task.WhenAny(teardown, Task.Delay(budget)) == teardown)
+            {
+                await teardown;
+
+                return;
+            }
+
+            Cockpit.App.Logging.LifecycleLog.Write($"Cockpit teardown did not finish within {budget}; exiting without it.");
         }
         catch (Exception exception)
         {
-            // Written, not swallowed: a teardown that throws leaves exactly the same trace as one that wedged —
-            // nothing — and that is what made this take four rounds to find.
             Cockpit.App.Logging.LifecycleLog.Write($"Cockpit teardown failed: {exception}");
         }
     }
+
+    // The fallback for an exit that never reached TearDownCockpitAsync while the dispatcher was alive — a no-op once
+    // it has, and bounded when it has not, because here the loop has already ended and the chain will wedge again.
+    private static void DisposeCockpit() => TearDownCockpitAsync().Wait(TeardownBudget);
 
     private static void StartHostedServices(IReadOnlyList<IHostedService> hostedServices)
     {
