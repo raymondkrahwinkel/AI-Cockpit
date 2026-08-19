@@ -28,16 +28,17 @@ internal sealed class GitHubGhClient
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<string> Repositories)> RepositoryCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<string> Labels)> LabelsCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<(IReadOnlyList<GitHubIssue> Issues, bool WasTruncated)> SearchOpenIssuesAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken, string? extraTerms = null)
+    public async Task<(IReadOnlyList<GitHubIssue> Issues, bool WasTruncated)> SearchOpenIssuesAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken, string? extraTerms = null, IReadOnlyList<string>? repositories = null)
     {
         var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
         // The assigned-to-me filter changes the server-side query, so it must key the cache separately —
         // otherwise toggling it would return the other set's cached results.
         var terms = extraTerms?.Trim() ?? string.Empty;
 
-        // The extra terms change the server-side query, so they key the cache: two searches that ask different
-        // questions must not answer each other's.
-        var cacheKey = (assignedToMe ? normalizedOwner + "|@me" : normalizedOwner) + "|" + terms;
+        // The repos and the extra terms both change the server-side query, so both key the cache: two searches
+        // that ask different questions must not answer each other's.
+        var repoKey = repositories is { Count: > 0 } ? string.Join(",", repositories) : string.Empty;
+        var cacheKey = (assignedToMe ? normalizedOwner + "|@me" : normalizedOwner) + "|" + terms + "|" + repoKey;
 
         if (!forceRefresh)
         {
@@ -51,7 +52,7 @@ internal sealed class GitHubGhClient
         }
 
         var archived = await _GetArchivedReposAsync(normalizedOwner, forceRefresh, cancellationToken);
-        var issues = _ParseIssues(await _RunGhAsync(SearchArguments(normalizedOwner, assignedToMe, extraTerms), cancellationToken));
+        var issues = _ParseIssues(await _RunGhAsync(SearchArguments(normalizedOwner, assignedToMe, extraTerms, repositories), cancellationToken));
         var (result, wasTruncated) = ApplyArchivedFilter(issues, archived);
 
         lock (CacheGate)
@@ -78,9 +79,13 @@ internal sealed class GitHubGhClient
     }
 
     // The `gh search issues` argument list — pulled out of `SearchOpenIssuesAsync` so the query
-    // this plugin builds (owner scope, open state, page size, assignee, and any extra GitHub search qualifiers) is
-    // asserted without shelling out.
-    internal static string[] SearchArguments(string owner, bool assignedToMe, string? extraTerms)
+    // this plugin builds (owner scope, open state, page size, assignee, repo scope, and any extra GitHub search
+    // qualifiers) is asserted without shelling out.
+    //
+    // `repositories` becomes its own `--repo`/`-R` flag per entry — never a `repo:` search term (AC-940): `gh
+    // search issues` ANDs multiple `repo:` qualifiers together, so scoping to two repositories that way returns
+    // zero issues instead of the union. `--repo` is the one form gh itself ORs.
+    internal static string[] SearchArguments(string owner, bool assignedToMe, string? extraTerms, IReadOnlyList<string>? repositories = null)
     {
         var args = new List<string>
         {
@@ -92,6 +97,12 @@ internal sealed class GitHubGhClient
             // gh resolves @me to the authenticated user, so this stays login-free like the rest of the plugin.
             args.Add("--assignee");
             args.Add("@me");
+        }
+
+        foreach (var repository in repositories ?? [])
+        {
+            args.Add("--repo");
+            args.Add(repository);
         }
 
         // What the operator asked to narrow it by — GitHub's own search syntax, handed straight to gh: "-label:blocked",
@@ -110,9 +121,6 @@ internal sealed class GitHubGhClient
     // rather than splitting into "label:X" plus a stray free-text word — no shell is involved (the argument list
     // bypasses one), so this is GitHub's own query quoting, not OS escaping.
     internal static string LabelSearchTerm(string label) => $"label:\"{label}\"";
-
-    // GitHub's own search syntax for narrowing to one repository — no quoting needed, `owner/repo` has no spaces.
-    internal static string RepoSearchTerm(string repository) => $"repo:{repository}";
 
     // The union of labels across every one of the owner's repositories (AC-519) — deliberately not the labels seen
     // in the loaded issues, which is the same gap the YouTrack status filter had: a label that exists on a repo but

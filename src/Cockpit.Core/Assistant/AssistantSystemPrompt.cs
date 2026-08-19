@@ -236,9 +236,10 @@ public static class AssistantSystemPrompt
         "Say which repo you mean as `workingDirectory` on `start_agent` rather than taking the default (the " +
         "project's first declared repository) — a session isolates whichever folder it is actually pointed at, " +
         "and the other declared repositories are separate checkouts, not necessarily next to it.\n" +
-        "- Issue-tracker repo, when a project has more than one GitHub repo linked (AC-932): a project can pin " +
-        "one as its `github.repository` field, which lands in every session on it as the `GH_REPO` environment " +
-        "variable. Once pinned, that repo is where issues go — do not pass your own `--repo` to `gh issue " +
+        "- Issue-tracker repo, when a project has more than one GitHub repo linked (AC-932/AC-940): its " +
+        "`github.repository` field can name several, and the first of that list is the pinned one, which lands " +
+        "in every session on it as the `GH_REPO` environment variable. Once pinned, that repo is where issues " +
+        "go — do not pass your own `--repo` to `gh issue " +
         "create` based on where the bug content-wise belongs, and do not override the pin, unless the operator " +
         "names a different repo explicitly. No pin set: choosing by content, as before, is still right.\n" +
         "- The project, when the work belongs to one (AC-773): name its `projectId` on `start_agent` and its " +

@@ -13,15 +13,24 @@ internal static class GitHubRepositoryField
 
     // AC-317, in the one place that reads it: the repository the operator linked this project to (AC-548 —
     // the issues dialog already asked; the session picker never did, so it showed every repository instead of
-    // only this one). Null when there is no session, no project, or no link.
+    // only this one). A link may itself name several repositories (AC-940) — this hands back only the first, the
+    // pinned issue-tracker repo (also what `GH_REPO` becomes); use `ResolvePreferredRepositoriesAsync` for the
+    // rest. Null when there is no session, no project, or no link.
     public static Task<string?> ResolvePreferredRepositoryAsync(ICockpitHost host, string? paneId, CancellationToken cancellationToken) =>
         host.GetProjectFieldValueAsync(Key, paneId, cancellationToken);
+
+    // Every repository this project is linked to (AC-940) — the plural of `ResolvePreferredRepositoryAsync`, for
+    // the session issue picker to scope to all of them instead of only the pinned first one. Empty under the same
+    // conditions the singular answers null for.
+    public static Task<IReadOnlyList<string>> ResolvePreferredRepositoriesAsync(ICockpitHost host, string? paneId, CancellationToken cancellationToken) =>
+        host.GetProjectFieldValuesAsync(Key, paneId, cancellationToken);
 
     public static ProjectFieldRegistration Registration(GitHubIssuesSettings settings, GitHubGhClient client) =>
         new(Key, "GitHub repository", cancellationToken => _LoadOptionsAsync(settings, client, cancellationToken))
         {
-            Hint = "Which repository this project lives in. The issues dialog then opens on it instead of on every repository you have.",
+            Hint = "Which repository(s) this project lives in — add a row per repository. The first one is where issues and gh commands without --repo land; the issues dialog then opens on it instead of on every repository you have.",
             Placeholder = "owner/repo",
+            AllowsMultiple = true,
         };
 
     // The owner's repositories, from `gh repo list`. Empty without the CLI mode on: the single-repository mode

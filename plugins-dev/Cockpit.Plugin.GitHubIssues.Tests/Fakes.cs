@@ -97,6 +97,18 @@ internal sealed class FakeCockpitHost : ICockpitHost
         return Task.FromResult(ProjectFieldValues.TryGetValue(key, out var value) ? value : null);
     }
 
+    // AC-940: `ProjectFieldValues` stores the raw comma-separated value exactly as the real host's project store
+    // would — split here the same simple way the host's own `ProjectLinkValues.Split` does, so a test that sets
+    // "a/b, c/d" sees both repositories back.
+    public Task<IReadOnlyList<string>> GetProjectFieldValuesAsync(string key, string? paneId = null, CancellationToken cancellationToken = default)
+    {
+        ProjectFieldPanesAsked.Add(paneId);
+        return Task.FromResult<IReadOnlyList<string>>(
+            ProjectFieldValues.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+                ? [.. value.Split(',').Select(item => item.Trim()).Where(item => item.Length > 0)]
+                : []);
+    }
+
     public void AddSettings(Func<Control> createView) => throw new NotSupportedException();
 
     public void AddSideMenuButton(string title, Action onInvoke) => throw new NotSupportedException();

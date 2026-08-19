@@ -75,11 +75,31 @@ public class GitHubGhClientTests
     }
 
     [Fact]
-    public void RepoSearchTerm_ScopesToOneOwnerSlashRepo()
+    public void SearchArguments_WithOneRepository_AddsARepoFlag()
     {
-        // AC-548: this is what the session picker hands SearchOpenIssuesAsync's extraTerms when the session's
-        // project is linked to a repository — the same qualifier shape as LabelSearchTerm above.
-        Assert.Equal("repo:octocat/hello-world", GitHubGhClient.RepoSearchTerm("octocat/hello-world"));
+        var arguments = GitHubGhClient.SearchArguments("octocat", assignedToMe: false, extraTerms: null, repositories: ["octocat/hello-world"]);
+
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--repo", "octocat/hello-world"));
+    }
+
+    [Fact]
+    public void SearchArguments_WithSeveralRepositories_AddsARepoFlagPerRepository_NotARepoSearchTerm()
+    {
+        // AC-940: `gh search issues` ANDs multiple `repo:` search terms — the fix is a `--repo` flag per repository
+        // instead, which gh itself ORs. A `repo:` term anywhere here would be the exact bug this guards against.
+        var arguments = GitHubGhClient.SearchArguments("octocat", assignedToMe: false, extraTerms: null, repositories: ["octocat/a", "octocat/b"]);
+
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--repo", "octocat/a"));
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--repo", "octocat/b"));
+        Assert.DoesNotContain(arguments, argument => argument.StartsWith("repo:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SearchArguments_WithoutRepositories_CarriesNoRepoFlag()
+    {
+        var arguments = GitHubGhClient.SearchArguments("octocat", assignedToMe: false, extraTerms: null);
+
+        Assert.DoesNotContain("--repo", arguments);
     }
 
     [Fact]

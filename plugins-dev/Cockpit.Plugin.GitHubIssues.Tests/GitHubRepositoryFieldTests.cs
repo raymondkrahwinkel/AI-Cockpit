@@ -29,6 +29,16 @@ public class GitHubRepositoryFieldTests
     }
 
     [Fact]
+    public void Registration_AllowsMultipleRepositories()
+    {
+        // AC-940: a project can link more than one GitHub repository; the row-per-identifier editor UI (AC-884's
+        // host layer) comes for free once this is set.
+        var registration = GitHubRepositoryField.Registration(Settings(useGitHubCli: true), new GitHubGhClient());
+
+        Assert.True(registration.AllowsMultiple);
+    }
+
+    [Fact]
     public async Task LoadOptions_WithTheCliModeOff_OffersNothingWithoutRunningGh()
     {
         // A real GitHubGhClient: if this ever shells out, the test either hangs on a login prompt or fails on a
@@ -62,5 +72,27 @@ public class GitHubRepositoryFieldTests
         var repository = await GitHubRepositoryField.ResolvePreferredRepositoryAsync(host, "pane-1", CancellationToken.None);
 
         Assert.Null(repository);
+    }
+
+    // AC-940: the plural sibling, for the session issue picker to scope to every linked repository.
+    [Fact]
+    public async Task ResolvePreferredRepositories_TheSessionsOwnLinkedRepositories_AreReturnedInOrder()
+    {
+        var host = new FakeCockpitHost();
+        host.ProjectFieldValues[GitHubRepositoryField.Key] = "octocat/waymark-api, octocat/waymark-android";
+
+        var repositories = await GitHubRepositoryField.ResolvePreferredRepositoriesAsync(host, "pane-1", CancellationToken.None);
+
+        Assert.Equal(["octocat/waymark-api", "octocat/waymark-android"], repositories);
+    }
+
+    [Fact]
+    public async Task ResolvePreferredRepositories_NoLink_IsEmpty()
+    {
+        var host = new FakeCockpitHost();
+
+        var repositories = await GitHubRepositoryField.ResolvePreferredRepositoriesAsync(host, "pane-1", CancellationToken.None);
+
+        Assert.Empty(repositories);
     }
 }

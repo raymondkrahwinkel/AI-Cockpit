@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a project can now link more than one GitHub repository for issue tracking — add a row per repository in
+  the project editor's GitHub repository field. The first one is the pin: it decides which repository new `gh`
+  commands land in and which one the issues dialog opens on, and the session issue picker now shows the open
+  issues from every linked repository instead of only the first.
 - added: a project can now declare more than one repository — a web repo and an android repo, say, kept as one
   project even though they are separate git checkouts. The project editor's "Other repositories" section lets you
   add, label and remove them below the existing folder; a session starting on such a project picks which one to
