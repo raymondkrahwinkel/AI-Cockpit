@@ -18,6 +18,11 @@ public partial class MainWindow : Window
     private PixelPoint _normalPosition;
     private Size _normalSize;
 
+    // AC-868: true once _normalPosition/_normalSize reflect a position the window actually held while Normal.
+    // A maximized restore sets Position pre-Show purely to dodge the AC-801 X11 race — that guess is never a
+    // real OS position, so it must not be trusted until OnResized observes a genuine Normal state.
+    private bool _hasNormalBounds;
+
     // AC-779: OnClosing defers the real close until the bounds save completes (see below) rather than blocking
     // the UI thread on it; these track that in-flight save so a second close request while it is still running
     // doesn't start a duplicate one.
@@ -62,7 +67,13 @@ public partial class MainWindow : Window
 
             if (saved.IsMaximized)
             {
+                // The position above was only ever assigned pre-Show, never actually held by a Normal window —
+                // don't trust it as a restore-to target until OnResized observes a real Normal state.
                 WindowState = WindowState.Maximized;
+            }
+            else
+            {
+                _hasNormalBounds = true;
             }
         }
     }
@@ -169,6 +180,7 @@ public partial class MainWindow : Window
         {
             _normalPosition = Position;
             _normalSize = new Size(Width, Height);
+            _hasNormalBounds = true;
         }
     }
 
@@ -179,9 +191,14 @@ public partial class MainWindow : Window
             return Task.CompletedTask;
         }
 
+        // AC-868: never having observed a real Normal position (a session that started and stayed maximized
+        // throughout) means _normalPosition is still the pre-Show guess — save a centered position instead of
+        // that guess, matching the XAML window's own CenterScreen startup default.
+        var position = _hasNormalBounds ? _normalPosition : _CenteredDefaultPosition();
+
         var bounds = new WindowBounds(
-            _normalPosition.X,
-            _normalPosition.Y,
+            position.X,
+            position.Y,
             (int)_normalSize.Width,
             (int)_normalSize.Height,
             WindowState == WindowState.Maximized);
@@ -189,6 +206,21 @@ public partial class MainWindow : Window
         // Awaited rather than blocked on (AC-779): WindowBoundsStore.SaveAsync is genuinely async I/O all the way
         // down (ConfigureAwait(false) throughout), so this never needs a Task.Run to avoid blocking the caller.
         return _windowBoundsStore.SaveAsync(BoundsKey, bounds);
+    }
+
+    // Centers _normalSize on the primary screen's working area; falls back to the current (untrusted) position
+    // if no screen is reported, which is no worse than what was saved before this fix.
+    private PixelPoint _CenteredDefaultPosition()
+    {
+        var workingArea = Screens.Primary?.WorkingArea;
+        if (workingArea is not { } area)
+        {
+            return _normalPosition;
+        }
+
+        return new PixelPoint(
+            area.X + (int)((area.Width - _normalSize.Width) / 2),
+            area.Y + (int)((area.Height - _normalSize.Height) / 2));
     }
 
     // The window-bounds store's key for this window (AC-866 — the assistant pop-out saves under its own "assistant").
