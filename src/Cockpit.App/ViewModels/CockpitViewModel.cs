@@ -894,6 +894,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // our own, the same reasoning `WorkspacesViewModel.AvailableWidgets` follows.
     public IReadOnlyList<DockPanelRegistration> DockPanels => _dockPanelRegistry?.Panels ?? [];
 
+    // Whether the rail has anything to offer at all. With no panel registered there is nothing to click, and a
+    // 40px strip of empty chrome against the right edge is worse than no rail — so the whole column stands down
+    // (AC-953: the Assistant's tab is withdrawn while it is undocked, which is exactly when that happens).
+    public bool HasDockPanels => DockPanels.Count > 0;
+
+    // AC-951: the rail reads the registry directly, so it needs telling when that changes — a panel can arrive
+    // (or, since AC-953, be withdrawn) long after this view model is built.
+    private void _WireDockPanelChanges()
+    {
+        if (_dockPanelRegistry is not { } registry)
+        {
+            return;
+        }
+
+        registry.Changed += (_, _) =>
+        {
+            OnPropertyChanged(nameof(DockPanels));
+            OnPropertyChanged(nameof(HasDockPanels));
+        };
+    }
+
     [ObservableProperty]
     private string _layoutSettingsStatus = string.Empty;
 
@@ -2463,6 +2484,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // same reason the shortcut rows above are seeded by hand here. A caller passes one when the scene needs a
         // panel that actually opens (AC-953's docked assistant).
         _dockPanelRegistry = dockPanelRegistry ?? new DockPanelRegistry();
+        _WireDockPanelChanges();
 
         // First: selecting a session below raises pane-visibility, which asks which workspace is active.
         Workspaces = new WorkspacesViewModel();
@@ -2673,10 +2695,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // late-arriving plugin to wait for. Subscribed anyway, for the same reason those two are: a second
         // panel (AC-950 [c]'s Assistant) could still register after this view model is built.
         _dockPanelRegistry = dockPanelRegistry;
-        if (dockPanelRegistry is not null)
-        {
-            dockPanelRegistry.Changed += (_, _) => OnPropertyChanged(nameof(DockPanels));
-        }
+        _WireDockPanelChanges();
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.

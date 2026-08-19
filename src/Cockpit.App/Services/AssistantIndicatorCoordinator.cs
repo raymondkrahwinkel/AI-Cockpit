@@ -104,15 +104,19 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         Indicator.Clicked += (_, _) => _ = _OpenChatAsync();
         Indicator.ListeningModeSelected += (_, mode) => _ = _ApplyListeningModeAsync(mode);
 
-        // AC-953: the assistant becomes a real dock panel, replacing AC-951's placeholder. Registered here rather
-        // than at startup because the factory needs the view model this class holds — and a fresh view per host
-        // on that same view model is the whole of route R2: nothing is reparented, so each view instance gets
-        // exactly one attach and one detach.
-        _dockPanels?.Register(new DockPanelRegistration(
-            DockPanelId,
-            "Assistant",
-            MaterialIconKind.Creation,
-            _CreateDockedChatView));
+        // AC-953: the assistant becomes a real dock panel, replacing AC-951's placeholder. Its registration follows
+        // the dock stand rather than standing permanently — undocked, the assistant is a window, and a rail tab for
+        // it would be a second one waiting to be opened. Driven off the property rather than only from the swap,
+        // because the stand also arrives from the layout restore, well after this runs.
+        _cockpit.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CockpitViewModel.AssistantDocked))
+            {
+                _ApplyDockRegistration();
+            }
+        };
+
+        _ApplyDockRegistration();
 
         // The chip owns the one-time cost explanation (criterion 18); this only tells it whether the operator has
         // already been given it, and writes back once they have — so it stays given across restarts rather than
@@ -264,6 +268,35 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         return chat;
     }
 
+    // Whether the rail offers an Assistant tab at all: only while the assistant actually stands there.
+    private void _ApplyDockRegistration()
+    {
+        if (_dockPanels is not { } panels)
+        {
+            return;
+        }
+
+        if (_cockpit.AssistantDocked)
+        {
+            panels.Register(new DockPanelRegistration(
+                DockPanelId,
+                "Assistant",
+                MaterialIconKind.Creation,
+                _CreateDockedChatView));
+
+            return;
+        }
+
+        panels.Unregister(DockPanelId);
+
+        // A tab that is gone cannot leave its panel open behind it — that would hold the rail expanded onto a
+        // registration the rail can no longer resolve, which draws as an empty rail beside the floating window.
+        if (_cockpit.OpenDockPanelId == DockPanelId)
+        {
+            _cockpit.OpenDockPanelId = null;
+        }
+    }
+
     // The rail is the only caller of this factory, so being built by it *is* being docked. Two routes reach it
     // without going through `_ShowInAsync` — clicking the rail tab, and the restore that reopens the last open
     // panel at startup — so the same handover has to happen here, or those two leave the window standing beside
@@ -277,13 +310,6 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         var chat = _EnsureChatViewModel();
         chat.IsDocked = true;
         _chatWindow?.Close();
-
-        // Recorded so a dock done this way survives a restart like any other. `OpenDockPanelId` is already this
-        // panel — that is why we are being built — so this only writes the flag.
-        if (!_cockpit.AssistantDocked)
-        {
-            _ = _cockpit.SetAssistantDockedAsync(true, DockPanelId);
-        }
 
         return new AssistantChatView { DataContext = chat };
     }

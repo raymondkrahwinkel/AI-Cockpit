@@ -53,6 +53,7 @@ public partial class AssistantChatWindow : Window
             WindowDecorationProperties.SetElementRole(ChatView.ListeningModeToggle, WindowDecorationsElementRole.User);
             WindowDecorationProperties.SetElementRole(ChatView.ReadAloudToggle, WindowDecorationsElementRole.User);
             WindowDecorationProperties.SetElementRole(ChatView.HistoryButton, WindowDecorationsElementRole.User);
+            WindowDecorationProperties.SetElementRole(ChatView.DockToggleButton, WindowDecorationsElementRole.User);
             WindowDecorationProperties.SetElementRole(ChatView.CloseButton, WindowDecorationsElementRole.User);
         }
 

@@ -21,6 +21,10 @@ public interface IDockPanelRegistry
     /// <returns>False when another registration already claims this id — first one wins.</returns>
     bool Register(DockPanelRegistration panel);
 
+    /// <summary>Withdraws a panel the rail can no longer show — an undocked Assistant lives in its own window, and a tab for it there would open a second one.</summary>
+    /// <returns>False when no panel of that id was registered.</returns>
+    bool Unregister(string id);
+
     /// <summary>Every panel registered so far, in registration order — what the rail's tab strip lists.</summary>
     IReadOnlyList<DockPanelRegistration> Panels { get; }
 
@@ -43,6 +47,17 @@ internal sealed class DockPanelRegistry : IDockPanelRegistry, ISingletonService
         }
 
         _panels.Add(panel);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    public bool Unregister(string id)
+    {
+        if (_panels.RemoveAll(panel => panel.Id == id) == 0)
+        {
+            return false;
+        }
+
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
