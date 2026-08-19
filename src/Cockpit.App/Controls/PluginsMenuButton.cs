@@ -47,10 +47,25 @@ internal sealed class PluginsMenuButton : Button
         content.Children.Add(new TextBlock { Text = "Plugins ›", VerticalAlignment = VerticalAlignment.Center });
         Content = content;
 
-        var flyoutPanel = new StackPanel { Spacing = 4 };
-        foreach (var control in collapsedControls)
+        // AC-937 (herzien): a flush list with hairline separators, matching the sidebar's own look — not the
+        // "Subtle" chromeless class's default 2px padding, which would collapse each row to a sliver.
+        var hairline = ThemeBrush.Resolve("CockpitHairlineBrush", "#2a2f39");
+        var flyoutPanel = new StackPanel { Spacing = 0 };
+        for (var i = 0; i < collapsedControls.Count; i++)
         {
-            flyoutPanel.Children.Add(control);
+            if (i > 0)
+            {
+                flyoutPanel.Children.Add(new Border { Height = 1, Background = hairline });
+            }
+
+            if (collapsedControls[i] is Button button)
+            {
+                button.Classes.Add("Subtle");
+                button.Padding = new Thickness(8, 8);
+                button.CornerRadius = new CornerRadius(0);
+            }
+
+            flyoutPanel.Children.Add(collapsedControls[i]);
         }
 
         Flyout = new Flyout { Placement = PlacementMode.Right, Content = flyoutPanel };

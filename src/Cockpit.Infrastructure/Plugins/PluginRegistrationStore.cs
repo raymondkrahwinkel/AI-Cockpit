@@ -32,7 +32,7 @@ internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingl
         {
             foreach (var (folderId, entry) in plugins)
             {
-                result[folderId] = entry.ToDomain(folderId);
+                result[folderId] = entry.ToDomain();
             }
         }
 

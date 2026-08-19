@@ -31,11 +31,7 @@ internal sealed class PluginRegistrationEntry
         PinnedToSidebar = registration.PinnedToSidebar,
     };
 
-    // AC-937 (Raymond, voorstel B): Autopilot and Open PRs start pinned top-level in the sidebar; every other
-    // plugin starts collapsed into "Plugins ›" until the operator pins it. Applies only while `PinnedToSidebar`
-    // is null on disk — a preference the operator later set, even back to false, stays as they left it.
-    private static readonly HashSet<string> DefaultPinnedFolderIds = new(StringComparer.Ordinal) { "autopilot", "github-pull-requests" };
-
-    public PluginRegistration ToDomain(string folderId) =>
-        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? DefaultPinnedFolderIds.Contains(folderId));
+    // AC-937 (Raymond, voorstel A): every plugin starts collapsed into "Plugins ›" until the operator pins it.
+    public PluginRegistration ToDomain() =>
+        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false);
 }

@@ -102,19 +102,19 @@ public class PluginRegistrationStoreTests : IDisposable
         Assert.Contains("k", data.Keys);
     }
 
-    // AC-937 (Raymond, voorstel B): Autopilot and Open PRs start pinned top-level in the sidebar, everything else
-    // starts collapsed — until the operator explicitly says otherwise via SaveMenuPreferenceAsync's pin overload.
+    // AC-937 (Raymond, voorstel A): every plugin starts collapsed until the operator pins it explicitly via
+    // SaveMenuPreferenceAsync's pin overload.
     [Theory]
-    [InlineData("autopilot", true)]
-    [InlineData("github-pull-requests", true)]
-    [InlineData("youtrack", false)]
-    public async Task SaveAsync_ThenLoadAllAsync_AppliesTheOneTimePinDefault_UntilTheOperatorSetsOne(string folderId, bool expectedDefaultPin)
+    [InlineData("autopilot")]
+    [InlineData("github-pull-requests")]
+    [InlineData("youtrack")]
+    public async Task SaveAsync_ThenLoadAllAsync_DefaultsToNotPinned(string folderId)
     {
         var store = new PluginRegistrationStore(_configFilePath);
 
         await store.SaveAsync(folderId, new PluginRegistration(Enabled: true, PinnedSha256: "abc123"));
 
-        Assert.Equal(expectedDefaultPin, (await store.LoadAllAsync())[folderId].PinnedToSidebar);
+        Assert.False((await store.LoadAllAsync())[folderId].PinnedToSidebar);
     }
 
     [Fact]
@@ -123,9 +123,9 @@ public class PluginRegistrationStoreTests : IDisposable
         var store = new PluginRegistrationStore(_configFilePath);
         await store.SaveAsync("autopilot", new PluginRegistration(Enabled: true, PinnedSha256: "abc123"));
 
-        await store.SaveMenuPreferenceAsync("autopilot", menuOrder: 0, hiddenInMenu: false, pinnedToSidebar: false);
+        await store.SaveMenuPreferenceAsync("autopilot", menuOrder: 0, hiddenInMenu: false, pinnedToSidebar: true);
 
-        Assert.False((await store.LoadAllAsync())["autopilot"].PinnedToSidebar);
+        Assert.True((await store.LoadAllAsync())["autopilot"].PinnedToSidebar);
     }
 
     public void Dispose()
