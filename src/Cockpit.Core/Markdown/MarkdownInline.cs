@@ -23,4 +23,6 @@ public sealed record MarkdownInline(
     public bool IsItalic => OuterItalic || Kind == MarkdownInlineKind.Italic;
 
     public static MarkdownInline PlainText(string text) => new(MarkdownInlineKind.Text, text);
+
+    public static MarkdownInline LineBreak() => new(MarkdownInlineKind.LineBreak, string.Empty);
 }

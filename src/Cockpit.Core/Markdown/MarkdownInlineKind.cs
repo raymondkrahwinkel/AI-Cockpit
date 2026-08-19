@@ -8,4 +8,7 @@ public enum MarkdownInlineKind
     Italic,
     Code,
     Link,
+
+    // A preserved single newline (opt-in — see `MarkdownParser.Parse`'s `preserveLineBreaks` parameter).
+    LineBreak,
 }

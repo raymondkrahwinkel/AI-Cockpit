@@ -71,7 +71,11 @@
                             <TextBlock Grid.Column="1" Text="You" HorizontalAlignment="Right" FontSize="10.5"
                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
                         </Grid>
+                        <!-- AC-936: PreserveLineBreaks so a Shift+Enter'd chat message keeps its lines apart
+                             instead of collapsing to CommonMark's single-space join — the only call site
+                             that turns this on (assistant markdown and file previews keep the default). -->
                         <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
+                                             PreserveLineBreaks="True"
                                              BasePath="{Binding $parent[controls:TranscriptRowView].Session.WorkingDirectory}"/>
                         <!-- AC-778: the "[+N image]" fragment as its own clickable element (not text baked into
                              the markdown string above) — opens a mini-gallery with the bytes this row still

@@ -9,7 +9,9 @@ namespace Cockpit.Core.Markdown;
 // block list the cockpit renders into themed controls, so the look and clickable links are fully ours.
 public static partial class MarkdownParser
 {
-    public static IReadOnlyList<MarkdownBlock> Parse(string markdown)
+    // AC-936: opt-in — off keeps CommonMark's default (a single newline joins its paragraph's lines with a
+    // space); only the chat bubble turns it on, so a Shift+Enter there stays a visible line break instead.
+    public static IReadOnlyList<MarkdownBlock> Parse(string markdown, bool preserveLineBreaks = false)
     {
         var lines = (markdown ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var blocks = new List<MarkdownBlock>();
@@ -56,7 +58,7 @@ public static partial class MarkdownParser
                 continue;
             }
 
-            i = _ParseParagraph(lines, i, blocks);
+            i = _ParseParagraph(lines, i, blocks, preserveLineBreaks);
         }
 
         return blocks;
@@ -157,7 +159,7 @@ public static partial class MarkdownParser
         return i;
     }
 
-    private static int _ParseParagraph(string[] lines, int start, List<MarkdownBlock> blocks)
+    private static int _ParseParagraph(string[] lines, int start, List<MarkdownBlock> blocks, bool preserveLineBreaks)
     {
         var text = new List<string>();
         var i = start;
@@ -172,10 +174,13 @@ public static partial class MarkdownParser
             i++;
         }
 
+        // Joined with '\n' rather than ' ' when preserving breaks: `ParseInlines` turns that character into a
+        // `LineBreak` run instead of collapsing it, so each Shift+Enter'd line stays its own line on screen.
+        var joined = string.Join(preserveLineBreaks ? '\n' : ' ', text);
         blocks.Add(new MarkdownBlock
         {
             Kind = MarkdownBlockKind.Paragraph,
-            Inlines = ParseInlines(string.Join(' ', text)),
+            Inlines = ParseInlines(joined, preserveLineBreaks),
         });
 
         return i;
@@ -184,12 +189,12 @@ public static partial class MarkdownParser
     // Splits a run of text into inline runs: `code`, [text](url), **bold**, *italic*/_italic_, and bare
     // http(s) URLs. Emphasis nests — the runs inside it keep their own kind and carry the surrounding
     // bold/italic as a flag, so the list stays flat (see `MarkdownInline` on why that matters).
-    public static IReadOnlyList<MarkdownInline> ParseInlines(string text)
-        => _ParseInlines(text ?? string.Empty, autolink: true);
+    public static IReadOnlyList<MarkdownInline> ParseInlines(string text, bool preserveLineBreaks = false)
+        => _ParseInlines(text ?? string.Empty, autolink: true, preserveLineBreaks);
 
     // autolink is off while parsing the label of a [text](url) link: its text is already inside a link, and
     // picking a URL out of it a second time would lay one clickable range over another.
-    private static List<MarkdownInline> _ParseInlines(string text, bool autolink)
+    private static List<MarkdownInline> _ParseInlines(string text, bool autolink, bool preserveLineBreaks = false)
     {
         var runs = new List<MarkdownInline>();
         var buffer = new StringBuilder();
@@ -207,6 +212,14 @@ public static partial class MarkdownParser
         while (i < text.Length)
         {
             var c = text[i];
+
+            if (preserveLineBreaks && c == '\n')
+            {
+                Flush();
+                runs.Add(MarkdownInline.LineBreak());
+                i++;
+                continue;
+            }
 
             // Ahead of the markers below only because a scheme can start nowhere they can. A URL inside a code
             // span or a link is never reached: those branches consume their whole span in one step.
@@ -239,7 +252,7 @@ public static partial class MarkdownParser
                     {
                         Flush();
                         var url = text[(close + 2)..urlEnd];
-                        foreach (var inner in _ParseInlines(text[(i + 1)..close], autolink: false))
+                        foreach (var inner in _ParseInlines(text[(i + 1)..close], autolink: false, preserveLineBreaks))
                         {
                             runs.Add(inner with
                             {
@@ -261,7 +274,7 @@ public static partial class MarkdownParser
                 if (end > i)
                 {
                     Flush();
-                    runs.AddRange(_Emphasise(_ParseInlines(text[(i + 2)..end], autolink), MarkdownInlineKind.Bold));
+                    runs.AddRange(_Emphasise(_ParseInlines(text[(i + 2)..end], autolink, preserveLineBreaks), MarkdownInlineKind.Bold));
                     i = end + 2;
                     continue;
                 }
@@ -272,7 +285,7 @@ public static partial class MarkdownParser
                 if (end > i)
                 {
                     Flush();
-                    runs.AddRange(_Emphasise(_ParseInlines(text[(i + 1)..end], autolink), MarkdownInlineKind.Italic));
+                    runs.AddRange(_Emphasise(_ParseInlines(text[(i + 1)..end], autolink, preserveLineBreaks), MarkdownInlineKind.Italic));
                     i = end + 1;
                     continue;
                 }

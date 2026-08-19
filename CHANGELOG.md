@@ -145,6 +145,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a chat message typed with Shift+Enter across several lines no longer arrives in the transcript as one
+  run-on line — each line now shows on its own line, the way it was typed. Real markdown documents (assistant
+  replies, file previews) are unaffected: a line-wrapped paragraph there still reads as one paragraph, as before.
 - fixed: stopping a turn that was waiting on your Allow/Deny decision no longer leaves that row hanging. Interrupting
   now closes it out as cancelled, so the pane stops reporting "waiting for permission" for a decision nothing is
   listening for anymore — across every provider, with Claude and Codex additionally telling the agent itself that the

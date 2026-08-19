@@ -27,6 +27,24 @@ public class MarkdownParserTests
         Assert.Equal("first line second line", block.Inlines.Single().Text);
     }
 
+    /// <summary>
+    /// AC-936: the opt-in chat mode keeps each Shift+Enter'd line separate instead of joining them.
+    /// </summary>
+    [Fact]
+    public void Paragraph_PreserveLineBreaks_KeepsEachShiftEnterLineSeparate()
+    {
+        var block = MarkdownParser.Parse("plan 1: ok\nplan 2: fine\nplan 3: great", preserveLineBreaks: true).Single();
+
+        Assert.Equal(MarkdownBlockKind.Paragraph, block.Kind);
+        Assert.Collection(
+            block.Inlines,
+            r => Assert.Equal("plan 1: ok", r.Text),
+            r => Assert.Equal(MarkdownInlineKind.LineBreak, r.Kind),
+            r => Assert.Equal("plan 2: fine", r.Text),
+            r => Assert.Equal(MarkdownInlineKind.LineBreak, r.Kind),
+            r => Assert.Equal("plan 3: great", r.Text));
+    }
+
     [Fact]
     public void FencedCode_CapturesLanguageAndBodyVerbatim()
     {
@@ -168,7 +186,9 @@ public class MarkdownParserTests
             blocks.SelectMany(_AllInlines).Where(r => r.Kind == MarkdownInlineKind.Link).Select(r => r.Url!).ToArray());
     }
 
-    /// <summary>The reported shape: <c>**[#365](url)**</c> showed its own syntax on screen, bold and all.</summary>
+    /// <summary>
+    /// The reported shape: <c>**[#365](url)**</c> showed its own syntax on screen, bold and all.
+    /// </summary>
     [Fact]
     public void LinkInsideBold_IsOneBoldLinkAndNotLiteralSyntax()
     {
@@ -288,7 +308,9 @@ public class MarkdownParserTests
         }
     }
 
-    /// <summary>Mirrors how <c>MarkdownView</c> turns inline runs into text plus clickable ranges.</summary>
+    /// <summary>
+    /// Mirrors how <c>MarkdownView</c> turns inline runs into text plus clickable ranges.
+    /// </summary>
     private static (string Text, IReadOnlyList<(int Start, int Length, string Url)> Links) _Compose(string markdown)
     {
         var text = new System.Text.StringBuilder();
