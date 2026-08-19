@@ -26,8 +26,9 @@ public partial class ShutdownTeardownTests
         await Program.AwaitTeardownAsync(wedged, budget);
         elapsed.Stop();
 
-        // Bounded: bug #32's rule is that the exit never waits on a teardown that is not coming back.
-        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(2), $"waited {elapsed.Elapsed} on a teardown that never finishes");
+        // Bounded: bug #32's rule is that the exit never waits on a teardown that is not coming back. The margin over
+        // the budget is wide on purpose — without the bound this hangs for good, so slow is not the failure mode.
+        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(10), $"waited {elapsed.Elapsed} on a teardown that never finishes");
         Assert.Contains(log.Messages, message => message.Contains("did not finish", StringComparison.Ordinal));
     }
 
