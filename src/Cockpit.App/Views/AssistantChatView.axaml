@@ -41,7 +41,7 @@
             <Border x:Name="HeaderBar" DockPanel.Dock="Top" Background="{StaticResource CockpitChromeBgBrush}"
                     BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
                     Padding="12,9">
-                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
                     <Border Grid.Column="0" Classes="avatarBadge" Width="28" Height="28" CornerRadius="9" Margin="0,0,8,0">
                         <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
                                                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -170,9 +170,20 @@
                          that it belongs. It belongs beside the setting that needs it: the permission mode in
                          Options → Voice → Assistant Profile, where the sentence "this applies at the next start"
                          and the start that answers it are one thing instead of two windows apart. -->
-                    <!-- AC-952: hidden while docked, where Undock takes its place (AC-953) — one flag on the view
-                         model instead of a second copy of this whole button row per host. -->
-                    <Button x:Name="CloseButton" Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center"
+                    <!-- AC-953: the one button that differs per host — Dock into the right-hand rail, or Undock
+                         back out to this floating window. One flag on the view model instead of a second copy of
+                         this whole button row per host; the coordinator does the swap (it is what knows which
+                         hosts there are), this only asks for it. -->
+                    <Button x:Name="DockToggleButton" Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
+                            Command="{Binding ToggleDockCommand}"
+                            ToolTip.Tip="{Binding IsDocked, Converter={x:Static conv:DockToggleConverter.Tip}}">
+                        <materialIcons:MaterialIcon Kind="{Binding IsDocked, Converter={x:Static conv:DockToggleConverter.Icon}}"
+                                                    Width="14" Height="14"/>
+                    </Button>
+
+                    <!-- AC-952: hidden while docked, where Undock takes its place (AC-953) — the docked host's
+                         TopLevel is MainWindow, so there is no window of its own here to close. -->
+                    <Button x:Name="CloseButton" Grid.Column="6" Classes="Subtle Compact" VerticalAlignment="Center"
                             IsVisible="{Binding !IsDocked}"
                             Click="_OnCloseClick" ToolTip.Tip="Close (the conversation keeps running)">
                         <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>

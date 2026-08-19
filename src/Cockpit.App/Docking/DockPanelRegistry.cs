@@ -15,7 +15,7 @@ namespace Cockpit.App.Docking;
 // `CreateView`: Builds the panel's content, on the UI thread, once per time it is opened.
 public sealed record DockPanelRegistration(string Id, string Title, MaterialIconKind IconKind, Func<Control> CreateView);
 
-/// <summary>Holds the panels the dock rail offers. Empty is never the normal case — see <see cref="DockPanelRegistry"/>'s seeded placeholder.</summary>
+/// <summary>Holds the panels the dock rail offers — the Assistant since AC-953, registered by <c>AssistantIndicatorCoordinator</c>.</summary>
 public interface IDockPanelRegistry
 {
     /// <returns>False when another registration already claims this id — first one wins.</returns>
@@ -34,18 +34,6 @@ internal sealed class DockPanelRegistry : IDockPanelRegistry, ISingletonService
     public event EventHandler? Changed;
 
     public IReadOnlyList<DockPanelRegistration> Panels => [.. _panels];
-
-    public DockPanelRegistry()
-    {
-        // AC-951: the rail ships before the Assistant is dockable (AC-950 [c]), so it needs one panel to open
-        // and test against. Replace with the real Assistant registration once [c] lands; this stays only if
-        // a second dock panel never shows up to justify keeping it.
-        Register(new DockPanelRegistration(
-            "placeholder",
-            "Panel",
-            MaterialIconKind.ViewDashboardOutline,
-            () => new TextBlock { Text = "Nothing docked here yet.", Margin = new Avalonia.Thickness(12) }));
-    }
 
     public bool Register(DockPanelRegistration panel)
     {

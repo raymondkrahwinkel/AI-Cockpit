@@ -224,6 +224,14 @@ public partial class CockpitView : UserControl
                 _RebuildDockPanelContent();
             }
         }
+        else if (e.PropertyName == nameof(CockpitViewModel.DockPanels) && DockPanelContent?.Content is null)
+        {
+            // AC-953: the Assistant registers itself when its coordinator starts, which is after this view has
+            // attached and can be after the restored `OpenDockPanelId` has been read back. Without this, a
+            // restart with the panel open would restore the id, find no panel of that id yet, and leave the
+            // rail expanded onto nothing.
+            _RebuildDockPanelContent();
+        }
         else if (e.PropertyName == nameof(CockpitViewModel.SelectedSession))
         {
             // Any selection change — the sidebar-switch shortcut, a sidebar click, or a pane click — moves

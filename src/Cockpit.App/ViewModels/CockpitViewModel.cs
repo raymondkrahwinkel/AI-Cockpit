@@ -4323,6 +4323,39 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AssistantDocked = settings.AssistantDocked;
     }
 
+    // Every layout save writes the whole record, because the store holds one section rather than per-field keys —
+    // so a save that built its own literal could silently drop a field it did not know about. Written once here
+    // for that reason: this is the list a new layout setting has to be added to, and the only one.
+    private LayoutSettings _CurrentLayoutSettings() => new()
+    {
+        SingleSessionLayout = GlobalSingleSessionLayout,
+        StackSessionsVertically = GlobalStackSessionsVertically,
+        FocusRailLayout = GlobalFocusRailLayout,
+        MinimizeToTrayOnClose = MinimizeToTrayOnClose,
+        SidebarWidth = SidebarWidth,
+        SidebarCollapsed = SidebarCollapsed,
+        FocusRailWeight = GlobalFocusRailWeight,
+        DockRailWidth = DockRailWidth,
+        OpenDockPanelId = OpenDockPanelId,
+        AssistantDocked = AssistantDocked,
+    };
+
+    // AC-953: docking or undocking the assistant moves both settings at once — which host it stands in, and
+    // which rail panel is open to show it — so they go out in one write rather than two that would each
+    // read-modify-write the same section. Called by `AssistantIndicatorCoordinator`, which owns the swap itself.
+    public async Task SetAssistantDockedAsync(bool docked, string? openDockPanelId)
+    {
+        AssistantDocked = docked;
+        OpenDockPanelId = openDockPanelId;
+
+        if (_layoutSettingsStore is null)
+        {
+            return;
+        }
+
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
+    }
+
     // Persists the layout settings edited in the Options flyout to `cockpit.json`.
     [RelayCommand]
     private async Task SaveLayoutSettingsAsync()
@@ -4332,19 +4365,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings
-        {
-            SingleSessionLayout = GlobalSingleSessionLayout,
-            StackSessionsVertically = GlobalStackSessionsVertically,
-            FocusRailLayout = GlobalFocusRailLayout,
-            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
-            SidebarWidth = SidebarWidth,
-            SidebarCollapsed = SidebarCollapsed,
-            FocusRailWeight = GlobalFocusRailWeight,
-            DockRailWidth = DockRailWidth,
-            OpenDockPanelId = OpenDockPanelId,
-            AssistantDocked = AssistantDocked,
-        });
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
         LayoutSettingsStatus = "Saved";
     }
 
@@ -4362,19 +4383,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings
-        {
-            SingleSessionLayout = GlobalSingleSessionLayout,
-            StackSessionsVertically = GlobalStackSessionsVertically,
-            FocusRailLayout = GlobalFocusRailLayout,
-            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
-            SidebarWidth = SidebarWidth,
-            SidebarCollapsed = SidebarCollapsed,
-            FocusRailWeight = GlobalFocusRailWeight,
-            DockRailWidth = DockRailWidth,
-            OpenDockPanelId = OpenDockPanelId,
-            AssistantDocked = AssistantDocked,
-        });
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
     }
 
     // Collapses or expands the left sidebar and persists it immediately — a direct-manipulation setting like
@@ -4389,19 +4398,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings
-        {
-            SingleSessionLayout = GlobalSingleSessionLayout,
-            StackSessionsVertically = GlobalStackSessionsVertically,
-            FocusRailLayout = GlobalFocusRailLayout,
-            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
-            SidebarWidth = SidebarWidth,
-            SidebarCollapsed = SidebarCollapsed,
-            FocusRailWeight = GlobalFocusRailWeight,
-            DockRailWidth = DockRailWidth,
-            OpenDockPanelId = OpenDockPanelId,
-            AssistantDocked = AssistantDocked,
-        });
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
     }
 
     // Persists the dock rail's width alone (AC-951), the sidebar's `SetSidebarWidthAsync` mirrored: called from
@@ -4415,19 +4412,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings
-        {
-            SingleSessionLayout = GlobalSingleSessionLayout,
-            StackSessionsVertically = GlobalStackSessionsVertically,
-            FocusRailLayout = GlobalFocusRailLayout,
-            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
-            SidebarWidth = SidebarWidth,
-            SidebarCollapsed = SidebarCollapsed,
-            FocusRailWeight = GlobalFocusRailWeight,
-            DockRailWidth = DockRailWidth,
-            OpenDockPanelId = OpenDockPanelId,
-            AssistantDocked = AssistantDocked,
-        });
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
     }
 
     // Opens the tapped rail panel, or closes the rail if that panel is already the open one — the toggle the
@@ -4443,19 +4428,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings
-        {
-            SingleSessionLayout = GlobalSingleSessionLayout,
-            StackSessionsVertically = GlobalStackSessionsVertically,
-            FocusRailLayout = GlobalFocusRailLayout,
-            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
-            SidebarWidth = SidebarWidth,
-            SidebarCollapsed = SidebarCollapsed,
-            FocusRailWeight = GlobalFocusRailWeight,
-            DockRailWidth = DockRailWidth,
-            OpenDockPanelId = OpenDockPanelId,
-            AssistantDocked = AssistantDocked,
-        });
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
     }
 
     private async Task LoadWorktreeSettingsAsync()
