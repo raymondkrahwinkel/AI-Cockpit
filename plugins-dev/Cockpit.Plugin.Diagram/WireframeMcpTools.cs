@@ -6,39 +6,27 @@ using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Wireframe;
 using Cockpit.Core.Wireframe.Model;
-using Cockpit.Infrastructure.Consent;
-using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 
-namespace Cockpit.Infrastructure.Wireframe;
+namespace Cockpit.Plugin.Diagram;
 
 // The `cockpit-wireframe` MCP tools (AC-872), gated per-capability like `cockpit-diagram` (AC-810) — read that
 // class first. Deviations: the payload is the source text, a component is named by the stable id a read stamps on
 // it (AC-906), and there is no diff gate — the journal is the safety net.
-internal sealed class WireframeMcpTools
+internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegistry registry)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
     private const string NoSuchSurface = "No such wireframe surface — call list_wireframes for the open surfaces and their ids.";
-
-    private readonly IWireframeAccessRegistry _registry;
-    private readonly IConsentBroker? _consent;
-
-    // The consent broker is optional so the tool's own tests construct it without a host; the container injects the
-    // shared singleton, so a real access is gated behind an operator Approve/Deny that fails closed when nobody can ask.
-    public WireframeMcpTools(IWireframeAccessRegistry registry, IConsentBroker? consent = null)
-    {
-        _registry = registry;
-        _consent = consent;
-    }
 
     [McpServerTool(Name = "list_wireframes")]
     [Description("Lists the wireframe surfaces the operator has open that you could ask to use: each with a stable id, the name the operator sees, and whether you already hold read/edit on it. Reading or editing a surface needs the operator to approve it first (see read_wireframe / edit_wireframe); this list only names the surfaces so you can reference one. A surface can be coupled to you with neither capability yet — that is a real, valid state, not an error.")]
     public string ListWireframes(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session)
     {
-        var caller = McpRequestContext.CurrentPaneId ?? session;
-        var wireframes = _registry.ListSurfaces(caller)
+        var caller = host.CurrentMcpCallerPaneId ?? session;
+        var wireframes = registry.ListSurfaces(caller)
             .Select(surface => new
             {
                 id = surface.SurfaceId,
@@ -69,13 +57,9 @@ internal sealed class WireframeMcpTools
 
         var title = string.IsNullOrWhiteSpace(name) ? "Wireframe" : name.Trim();
         var surfaceId = Guid.NewGuid().ToString("n");
-        var caller = McpRequestContext.CurrentPaneId ?? session;
-        if (_consent is null)
-        {
-            return _Serialize(new { ok = false, error = "Opening a wireframe needs the operator's approval, which is not available here." });
-        }
+        var caller = host.CurrentMcpCallerPaneId ?? session;
 
-        var decision = await _consent.RequestConsentAsync(new ConsentRequest(
+        var decision = await host.RequestConsentAsync(new ConsentRequest(
             "An agent wants to open a wireframe to go through with you",
             $"Open a wireframe window \"{_SingleLine(title)}\" beside the cockpit, holding {source.Split('\n').Length} lines this agent wrote, and couple that agent to it. It cannot read the surface back or change it afterwards without asking you separately.",
             new ConsentSource(surfaceId, null, ConsentSourceCatalog.WireframeMcp),
@@ -87,7 +71,7 @@ internal sealed class WireframeMcpTools
             return _Serialize(new { ok = false, error = "Opening that wireframe was not approved by the operator — nothing was opened." });
         }
 
-        if (!_registry.RequestOpen(new WireframeOpenRequest(surfaceId, title, source, caller)))
+        if (!registry.RequestOpen(new WireframeOpenRequest(surfaceId, title, source, caller)))
         {
             return _Serialize(new { ok = false, error = "Nothing in this cockpit draws wireframe windows right now — the diagram plugin may not be running." });
         }
@@ -101,19 +85,19 @@ internal sealed class WireframeMcpTools
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to read, by its id or name from list_wireframes.")] string wireframe)
     {
-        if (_registry.Resolve(wireframe) is not { } surface)
+        if (registry.Resolve(wireframe) is not { } surface)
         {
             return _Serialize(new { ok = false, error = NoSuchSurface });
         }
 
-        var caller = McpRequestContext.CurrentPaneId ?? session;
+        var caller = host.CurrentMcpCallerPaneId ?? session;
         if (await _EnsureCapabilityAsync(caller, surface, WireframeCapability.Read).ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
         }
 
-        var source = _registry.ReadCoupled(caller, surface.SurfaceId) ?? "";
-        _registry.MarkRead(caller, surface.SurfaceId);
+        var source = registry.ReadCoupled(caller, surface.SurfaceId) ?? "";
+        registry.MarkRead(caller, surface.SurfaceId);
         var parsed = WireframeParser.Parse(source);
         return _Serialize(new
         {
@@ -134,7 +118,7 @@ internal sealed class WireframeMcpTools
         [Description("The wireframe to edit, by its id or name from list_wireframes.")] string wireframe,
         [Description("The full replacement source for this wireframe, starting with a screen line.")] string source)
     {
-        if (_registry.Resolve(wireframe) is not { } surface)
+        if (registry.Resolve(wireframe) is not { } surface)
         {
             return _Serialize(new { ok = false, error = NoSuchSurface });
         }
@@ -145,14 +129,14 @@ internal sealed class WireframeMcpTools
             return _Serialize(new { ok = false, error = "That source is not one the wireframe format can read, so nothing was changed.", problems = _Problems(parsed) });
         }
 
-        var caller = McpRequestContext.CurrentPaneId ?? session;
-        var changeSummary = SourceChangeSummary.Describe(_registry.PeekText(surface.SurfaceId) ?? "", source);
+        var caller = host.CurrentMcpCallerPaneId ?? session;
+        var changeSummary = SourceChangeSummary.Describe(registry.PeekText(surface.SurfaceId) ?? "", source);
         if (await _EnsureCapabilityAsync(caller, surface, WireframeCapability.Edit, changeSummary).ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
         }
 
-        var result = _registry.WriteCoupled(caller, surface.SurfaceId, source);
+        var result = registry.WriteCoupled(caller, surface.SurfaceId, source);
         return _Reply(surface, result, extra: changeSummary);
     }
 
@@ -249,18 +233,18 @@ internal sealed class WireframeMcpTools
     // gate all see one source and nothing is written unless all three pass.
     private async Task<string> _ApplyAsync(string session, string wireframe, WireframeComponentEdit edit, string ask)
     {
-        if (_registry.Resolve(wireframe) is not { } surface)
+        if (registry.Resolve(wireframe) is not { } surface)
         {
             return _Serialize(new { ok = false, error = NoSuchSurface });
         }
 
-        var caller = McpRequestContext.CurrentPaneId ?? session;
+        var caller = host.CurrentMcpCallerPaneId ?? session;
         if (await _EnsureCapabilityAsync(caller, surface, WireframeCapability.Edit, ask).ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
         }
 
-        return _Reply(surface, _registry.EditCoupled(caller, surface.SurfaceId, edit));
+        return _Reply(surface, registry.EditCoupled(caller, surface.SurfaceId, edit));
     }
 
     // Every write answers the same way: what changed, plus the components as they now stand — the ids are the same
@@ -272,7 +256,7 @@ internal sealed class WireframeMcpTools
             return _Serialize(new { ok = false, error = refusal });
         }
 
-        var parsed = WireframeParser.Parse(_registry.PeekText(surface.SurfaceId) ?? "");
+        var parsed = WireframeParser.Parse(registry.PeekText(surface.SurfaceId) ?? "");
         return _Serialize(new
         {
             ok = true,
@@ -290,26 +274,21 @@ internal sealed class WireframeMcpTools
     // happen and is only meaningful (and only supplied) for an Edit ask.
     private async Task<string?> _EnsureCapabilityAsync(string caller, WireframeSurface surface, WireframeCapability needed, string? ask = null)
     {
-        var held = _registry.CouplingOf(caller, surface.SurfaceId);
+        var held = registry.CouplingOf(caller, surface.SurfaceId);
         if (needed == WireframeCapability.Read ? held is { CanRead: true } : held is { CanEdit: true })
         {
             return null;
         }
 
-        if (held is null && _registry.IsCoupledByAnother(caller, surface.SurfaceId))
+        if (held is null && registry.IsCoupledByAnother(caller, surface.SurfaceId))
         {
             return $"Wireframe \"{surface.Name}\" is already being used by another agent — only one agent at a time can use a surface.";
-        }
-
-        if (_consent is null)
-        {
-            return "Using a wireframe surface needs the operator's approval, which is not available here.";
         }
 
         // Widening applies only to the read-then-edit path: granting Edit always grants Read alongside it, so there
         // is no "held Edit, now wants Read" case.
         var widening = needed == WireframeCapability.Edit && held is { CanRead: true };
-        var decision = await _consent.RequestConsentAsync(_PromptFor(surface, needed, widening, ask)).ConfigureAwait(false);
+        var decision = await host.RequestConsentAsync(_PromptFor(surface, needed, widening, ask)).ConfigureAwait(false);
         if (!decision.IsApproved)
         {
             return needed == WireframeCapability.Read
@@ -319,8 +298,8 @@ internal sealed class WireframeMcpTools
 
         try
         {
-            _registry.Couple(caller, surface.SurfaceId);
-            _registry.Grant(caller, surface.SurfaceId, needed);
+            registry.Couple(caller, surface.SurfaceId);
+            registry.Grant(caller, surface.SurfaceId, needed);
         }
         catch (InvalidOperationException)
         {

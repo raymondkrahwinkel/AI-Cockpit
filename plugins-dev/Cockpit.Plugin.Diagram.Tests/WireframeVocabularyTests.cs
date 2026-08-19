@@ -2,9 +2,8 @@ using System.ComponentModel;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Cockpit.Core.Wireframe.Model;
-using Cockpit.Infrastructure.Wireframe;
 
-namespace Cockpit.Infrastructure.Tests.Wireframe;
+namespace Cockpit.Plugin.Diagram.Tests;
 
 // AC-903: the enum is the vocabulary, and the two places that repeat it for a reader — the format doc an operator
 // reads and the tool description an agent reads — have to say the same thing or one of them is lying.

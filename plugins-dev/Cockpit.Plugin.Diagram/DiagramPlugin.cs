@@ -51,12 +51,22 @@ public sealed class DiagramPlugin : ICockpitPlugin
 
         _ListenForAgentOpenRequests(host);
 
-        // AC-889: mounted here rather than the host, so an install without this plugin does not offer
-        // cockpit-diagram at all. No isEnabled (AC-830 dropped the master switch) and no isInternal — this is a
-        // tickable server for the operator, unlike Autopilot's own endpoints.
+        // AC-889/AC-890: mounted here rather than the host, so an install without this plugin does not offer
+        // cockpit-diagram/-whiteboard/-wireframe at all. No isEnabled (AC-830 dropped the master switch) and no
+        // isInternal — these are tickable servers for the operator, unlike Autopilot's own endpoints.
         if (_diagrams is not null)
         {
             _ = host.AddMcpEndpoint("cockpit-diagram", new DiagramMcpTools(host, _diagrams));
+        }
+
+        if (_whiteboards is not null)
+        {
+            _ = host.AddMcpEndpoint("cockpit-whiteboard", new WhiteboardMcpTools(host, _whiteboards));
+        }
+
+        if (_wireframes is not null)
+        {
+            _ = host.AddMcpEndpoint("cockpit-wireframe", new WireframeMcpTools(host, _wireframes));
         }
     }
 

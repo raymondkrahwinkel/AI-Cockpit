@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Plugins;
-using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Whiteboard;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -18,8 +17,11 @@ namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// AC-829: opens the real whiteboard plugin's panel (AC-822) through the actual PluginActivator/PluginLoadContext,
-/// then reads it back through the real WhiteboardMcpTools (AC-823) over the same registry instance — the
-/// producer/consumer gap the ticket closes, neither side stubbed out.
+/// then reads it back through the real WhiteboardMcpTools (AC-823, moved into the plugin by AC-890) over the same
+/// registry instance — the producer/consumer gap the ticket closes, neither side stubbed out. AC-890's deviation:
+/// WhiteboardMcpTools is internal to the plugin assembly now, which this project only references as a build
+/// dependency (ReferenceOutputAssembly=false, same as DiagramPluginLoadTests), so the instance DiagramPlugin.Initialize
+/// actually wires up is captured off RecordingHost.AddMcpEndpoint and driven through reflection.
 /// </summary>
 [Collection("avalonia")]
 public class WhiteboardAccessIntegrationTests
@@ -27,7 +29,7 @@ public class WhiteboardAccessIntegrationTests
     [Fact]
     public async Task OpeningThePanel_RegistersARealSnapshot_ThatReadWhiteboardReturnsUnchanged() => await HeadlessAvalonia.RunAsync(async () =>
     {
-        var (plugin, registry, surfaceId) = await _OpenBoardAsync();
+        var (plugin, registry, tools, surfaceId) = await _OpenBoardAsync();
 
         // The panel signed up with a real rendered snapshot, not a hand-fed byte array — PeekSnapshot is the
         // operator-trusted read the consent prompt and ReadWhiteboard both build from.
@@ -35,8 +37,7 @@ public class WhiteboardAccessIntegrationTests
         Assert.NotNull(peeked);
         Assert.NotEmpty(peeked!);
 
-        var tools = new WhiteboardMcpTools(registry, new AlwaysApprove());
-        var json = JsonNode.Parse(await tools.ReadWhiteboard("agent-pane", surfaceId));
+        var json = JsonNode.Parse(await _CallAsync(tools, "ReadWhiteboard", "agent-pane", surfaceId));
 
         Assert.True(json!["ok"]!.GetValue<bool>());
         Assert.Equal(Convert.ToBase64String(peeked!), json["imageBase64"]!.GetValue<string>());
@@ -49,23 +50,22 @@ public class WhiteboardAccessIntegrationTests
     {
         // AC-854 end to end: the write path is only real if what the agent places actually lands on the operator's
         // board and comes back in the snapshot it reads.
-        var (plugin, registry, surfaceId) = await _OpenBoardAsync();
-        var tools = new WhiteboardMcpTools(registry, new AlwaysApprove());
+        var (plugin, registry, tools, surfaceId) = await _OpenBoardAsync();
         var empty = registry.PeekSnapshot(surfaceId)!;
 
-        var placed = JsonNode.Parse(await tools.PlaceOnWhiteboard("agent-pane", surfaceId, "stickynote", "Van de agent", x: 100, y: 100));
+        var placed = JsonNode.Parse(await _CallAsync(tools, "PlaceOnWhiteboard", "agent-pane", surfaceId, "stickynote", "Van de agent", 100d, 100d, 0d, 0d));
         Assert.True(placed!["ok"]!.GetValue<bool>());
         Dispatcher.UIThread.RunJobs();
 
         var withNote = registry.PeekSnapshot(surfaceId)!;
         Assert.NotEqual(empty, withNote);
 
-        var strange = JsonNode.Parse(await tools.EraseWhiteboardObject("agent-pane", surfaceId, Guid.NewGuid().ToString()));
+        var strange = JsonNode.Parse(await _CallAsync(tools, "EraseWhiteboardObject", "agent-pane", surfaceId, Guid.NewGuid().ToString()));
         Assert.False(strange!["ok"]!.GetValue<bool>());
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(withNote, registry.PeekSnapshot(surfaceId));
 
-        var erased = JsonNode.Parse(await tools.EraseWhiteboardObject("agent-pane", surfaceId, placed["objectId"]!.GetValue<string>()));
+        var erased = JsonNode.Parse(await _CallAsync(tools, "EraseWhiteboardObject", "agent-pane", surfaceId, placed["objectId"]!.GetValue<string>()));
         Assert.True(erased!["ok"]!.GetValue<bool>());
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(empty, registry.PeekSnapshot(surfaceId));
@@ -73,7 +73,13 @@ public class WhiteboardAccessIntegrationTests
         plugin.Dispose();
     });
 
-    private static async Task<(ICockpitPlugin Plugin, WhiteboardAccessRegistry Registry, string SurfaceId)> _OpenBoardAsync()
+    // WhiteboardMcpTools is internal to the plugin assembly (AC-890); this project only build-references that
+    // assembly (see the class comment), so its methods are reached the way the real MCP host reaches them too —
+    // dynamically, by name — rather than through a compile-time type this project cannot see.
+    private static Task<string> _CallAsync(object tools, string method, params object?[] args) =>
+        (Task<string>)tools.GetType().GetMethod(method)!.Invoke(tools, args)!;
+
+    private static async Task<(ICockpitPlugin Plugin, WhiteboardAccessRegistry Registry, object Tools, string SurfaceId)> _OpenBoardAsync()
     {
         var folder = _LocatePluginOutput();
         Assert.NotNull(folder);
@@ -113,7 +119,8 @@ public class WhiteboardAccessIntegrationTests
         var dialogKey = Assert.Single(host.DialogKeys, key => key.StartsWith("whiteboard.document.", StringComparison.Ordinal));
         Assert.IsAssignableFrom<Control>(host.LastDialogContent);
 
-        return (plugin, registry, dialogKey["whiteboard.document.".Length..]);
+        Assert.True(host.McpTools.TryGetValue("cockpit-whiteboard", out var tools));
+        return (plugin, registry, tools!, dialogKey["whiteboard.document.".Length..]);
     }
 
     // Walks up from the test output to the repo root and finds the plugin's build output (either config).
@@ -137,20 +144,6 @@ public class WhiteboardAccessIntegrationTests
         return null;
     }
 
-    private sealed class AlwaysApprove : IConsentBroker
-    {
-        public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ConsentDecision(ConsentOutcome.Approved));
-
-        public event EventHandler<ConsentPrompt>? PromptOpened { add { } remove { } }
-
-        public event EventHandler<Guid>? PromptClosed { add { } remove { } }
-
-        public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)
-        {
-        }
-    }
-
     private sealed class RecordingHost(IWhiteboardAccessRegistry registry) : ICockpitHost
     {
         public List<ToolbarAction> ToolbarActions { get; } = [];
@@ -158,6 +151,10 @@ public class WhiteboardAccessIntegrationTests
         public List<string> DialogKeys { get; } = [];
 
         public Control? LastDialogContent { get; private set; }
+
+        // AC-890: what DiagramPlugin.Initialize actually mounted, keyed by server name — the real WhiteboardMcpTools
+        // instance, wired to this host and to the registry above, captured the same way the real MCP host would see it.
+        public Dictionary<string, object> McpTools { get; } = [];
 
         public IServiceProvider Services { get; } = new ServiceCollection()
             .AddSingleton(registry)
@@ -168,6 +165,15 @@ public class WhiteboardAccessIntegrationTests
         public IPluginStorage Storage { get; } = new MemoryStorage();
 
         public ICockpitSessionObserver Sessions { get; } = new FakeSessions();
+
+        public Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled, bool isInternal)
+        {
+            McpTools[serverName] = tools;
+            return Task.CompletedTask;
+        }
+
+        public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) =>
+            Task.FromResult(new ConsentDecision(ConsentOutcome.Approved));
 
         public void AddSettings(Func<Control> createView)
         {

@@ -1,33 +1,32 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Whiteboard;
-using Cockpit.Infrastructure.Consent;
-using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Whiteboard;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using NSubstitute;
 
-namespace Cockpit.Infrastructure.Tests.Whiteboard;
+namespace Cockpit.Plugin.Diagram.Tests;
 
-/// <summary>
-/// The cockpit-whiteboard tools (AC-823): reading a surface is gated behind its own Approve/Deny, coupling is
-/// one-agent-per-surface, coupling on its own grants nothing, and the read consent text names a screenshot (not a
-/// diagram source, AC-810's text). Since AC-854 there is a second capability: placing an object is asked separately
-/// — a session that already reads a board is asked again, in its own words — and it only ever adds. Mirrors
-/// DiagramMcpToolsTests (AC-810).
-/// </summary>
+// The cockpit-whiteboard tools (AC-823): reading a surface is gated behind its own Approve/Deny, coupling is
+// one-agent-per-surface, coupling on its own grants nothing, and the read consent text names a screenshot (not a
+// diagram source, AC-810's text). Since AC-854 there is a second capability: placing an object is asked separately
+// — a session that already reads a board is asked again, in its own words — and it only ever adds. Mirrors
+// DiagramMcpToolsTests (AC-810).
 public class WhiteboardMcpToolsTests
 {
     private const string Session = "pane-agent";
     private static readonly byte[] Png = [1, 2, 3, 4];
 
-    private static (WhiteboardMcpTools tools, WhiteboardAccessRegistry registry, IConsentBroker broker, List<ConsentRequest> asked) _Build(ConsentOutcome outcome)
+    private static (WhiteboardMcpTools tools, WhiteboardAccessRegistry registry, ICockpitHost host, List<ConsentRequest> asked) _Build(ConsentOutcome outcome)
     {
         var registry = new WhiteboardAccessRegistry();
         var asked = new List<ConsentRequest>();
-        var broker = Substitute.For<IConsentBroker>();
-        broker.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add), Arg.Any<CancellationToken>())
-            .Returns(new ConsentDecision(outcome));
-        return (new WhiteboardMcpTools(registry, broker), registry, broker, asked);
+        var host = Substitute.For<ICockpitHost>();
+        // NSubstitute defaults an unconfigured string-returning member to "", not null — leaving this unset would
+        // make `host.CurrentMcpCallerPaneId ?? session` pick "" over the caller-supplied session on every test.
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
+        host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
+        return (new WhiteboardMcpTools(host, registry), registry, host, asked);
     }
 
     [Fact]
@@ -67,10 +66,11 @@ public class WhiteboardMcpToolsTests
         var registry = new WhiteboardAccessRegistry();
         var asked = new List<ConsentRequest>();
         var approve = false;
-        var broker = Substitute.For<IConsentBroker>();
-        broker.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add), Arg.Any<CancellationToken>())
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
+        host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add))
             .Returns(_ => new ConsentDecision(approve ? ConsentOutcome.Approved : ConsentOutcome.Denied));
-        var tools = new WhiteboardMcpTools(registry, broker);
+        var tools = new WhiteboardMcpTools(host, registry);
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
         registry.Grant(Session, "board-1", WhiteboardCapability.Read);
 
@@ -148,22 +148,15 @@ public class WhiteboardMcpToolsTests
     [Fact]
     public async Task PlaceOnWhiteboard_KeysOnTheVerifiedPane_NotTheAgentSuppliedSessionId()
     {
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        var (tools, registry, host, _) = _Build(ConsentOutcome.Approved);
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
         registry.Grant("victim-pane", "board-1", WhiteboardCapability.Write);
 
-        McpRequestContext.Set("attacker-pane");
-        try
-        {
-            var json = JsonNode.Parse(await tools.PlaceOnWhiteboard("victim-pane", "board-1", "rectangle", "boo"));
+        host.CurrentMcpCallerPaneId.Returns("attacker-pane");
+        var json = JsonNode.Parse(await tools.PlaceOnWhiteboard("victim-pane", "board-1", "rectangle", "boo"));
 
-            Assert.False(json!["ok"]!.GetValue<bool>());
-            Assert.Contains("another agent", json["error"]!.GetValue<string>());
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("another agent", json["error"]!.GetValue<string>());
     }
 
     [Fact]
@@ -215,23 +208,16 @@ public class WhiteboardMcpToolsTests
     public async Task ReadWhiteboard_KeysOnTheVerifiedPane_NotTheAgentSuppliedSessionId()
     {
         // Hardening (AC-89 pattern), same as DiagramMcpTools/TerminalMcpTools.
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        var (tools, registry, host, _) = _Build(ConsentOutcome.Approved);
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
         registry.Grant("victim-pane", "board-1");
 
-        McpRequestContext.Set("attacker-pane");
-        try
-        {
-            var json = JsonNode.Parse(await tools.ReadWhiteboard("victim-pane", "Sprint planning"));
+        host.CurrentMcpCallerPaneId.Returns("attacker-pane");
+        var json = JsonNode.Parse(await tools.ReadWhiteboard("victim-pane", "Sprint planning"));
 
-            Assert.False(json!["ok"]!.GetValue<bool>());
-            Assert.Contains("another agent", json["error"]!.GetValue<string>());
-            Assert.Null(json["imageBase64"]);
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("another agent", json["error"]!.GetValue<string>());
+        Assert.Null(json["imageBase64"]);
     }
 
     [Fact]
@@ -274,19 +260,6 @@ public class WhiteboardMcpToolsTests
     }
 
     [Fact]
-    public async Task ReadWhiteboard_WithNoConsentBroker_FailsClosed()
-    {
-        var registry = new WhiteboardAccessRegistry();
-        registry.SurfaceOpened("board-1", "Sprint planning", Png);
-        var tools = new WhiteboardMcpTools(registry, consent: null);
-
-        var json = JsonNode.Parse(await tools.ReadWhiteboard(Session, "Sprint planning"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Null(registry.CouplingOf(Session, "board-1"));
-    }
-
-    [Fact]
     public void ListWhiteboards_ReturnsOpenSurfaces_WithTheReadFlag()
     {
         var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
@@ -311,14 +284,15 @@ public class WhiteboardMcpToolsTests
     {
         var registry = new WhiteboardAccessRegistry();
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
-        var broker = Substitute.For<IConsentBroker>();
-        broker.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
+        host.RequestConsentAsync(Arg.Any<ConsentRequest>())
             .Returns(_ =>
             {
                 registry.Grant("someone-else", "board-1"); // slipped in while we asked
                 return new ConsentDecision(ConsentOutcome.Approved);
             });
-        var tools = new WhiteboardMcpTools(registry, broker);
+        var tools = new WhiteboardMcpTools(host, registry);
 
         var json = JsonNode.Parse(await tools.ReadWhiteboard(Session, "Sprint planning"));
 
@@ -383,19 +357,12 @@ public class WhiteboardMcpToolsTests
     [Fact]
     public async Task OpenWhiteboard_CouplesTheVerifiedPane_NotTheAgentSuppliedSessionId()
     {
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        var (tools, registry, host, _) = _Build(ConsentOutcome.Approved);
         var requests = new List<WhiteboardOpenRequest>();
         registry.OpenRequested += requests.Add;
 
-        McpRequestContext.Set("cockpit-assistant");
-        try
-        {
-            await tools.OpenWhiteboard("some-other-pane", "Sprint planning");
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
+        host.CurrentMcpCallerPaneId.Returns("cockpit-assistant"); // the assistant is a caller like any other (AC-835)
+        await tools.OpenWhiteboard("some-other-pane", "Sprint planning");
 
         var request = Assert.Single(requests);
         Assert.Equal("cockpit-assistant", request.SessionId);
@@ -415,15 +382,4 @@ public class WhiteboardMcpToolsTests
         Assert.Contains("diagram plugin", json["error"]!.GetValue<string>());
     }
 
-    [Fact]
-    public async Task OpenWhiteboard_WithNoConsentBroker_FailsClosed()
-    {
-        var registry = new WhiteboardAccessRegistry();
-        registry.OpenRequested += _ => Assert.Fail("Nothing may be opened without an operator to ask.");
-        var tools = new WhiteboardMcpTools(registry, consent: null);
-
-        var json = JsonNode.Parse(await tools.OpenWhiteboard(Session, "Sprint planning"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-    }
 }

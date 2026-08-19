@@ -50,16 +50,6 @@ public static class DependencyInjection
             typeof(Terminal.TerminalMcpTools),
             () => provider.GetRequiredService<Terminal.TerminalAccessState>().Enabled));
 
-        // cockpit-whiteboard (AC-823): lets an agent read a screenshot of a whiteboard surface the operator has
-        // open and, since AC-854 lifted AC-820's "never writes to the canvas" boundary, put objects on it one at a
-        // time — read and write each behind their own Approve/Deny, as cockpit-diagram above does.
-        services.AddSingleton(new CockpitMcpEndpoint("cockpit-whiteboard", typeof(Whiteboard.WhiteboardMcpTools)));
-
-        // cockpit-wireframe (AC-872): the third collab surface — an agent writes a screen sketch in the wireframe
-        // text format and edits it component by component, read and edit each behind their own Approve/Deny. Its
-        // own server rather than tools on cockpit-diagram: add_node and add_component are two vocabularies (AC-864).
-        services.AddSingleton(new CockpitMcpEndpoint("cockpit-wireframe", typeof(Wireframe.WireframeMcpTools)));
-
         // cockpit-agents (AC-391, AC-392): the agent-to-agent communication line — list_agents to see who else is on
         // your desk, notify/read_inbox to send them a message and collect your own. AlwaysMounted, like
         // cockpit-session and unlike cockpit-verify/cockpit-worktrees, because this one is now a delivery route
