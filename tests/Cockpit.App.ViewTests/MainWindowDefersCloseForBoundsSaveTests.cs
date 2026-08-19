@@ -20,9 +20,9 @@ public class MainWindowDefersCloseForBoundsSaveTests
         HeadlessAvalonia.RunAsync(async () =>
         {
             var store = Substitute.For<IWindowBoundsStore>();
-            store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<WindowBounds?>(null));
+            store.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<WindowBounds?>(null));
             var saveGate = new TaskCompletionSource();
-            store.SaveAsync(Arg.Any<WindowBounds>(), Arg.Any<CancellationToken>()).Returns(saveGate.Task);
+            store.SaveAsync(Arg.Any<string>(), Arg.Any<WindowBounds>(), Arg.Any<CancellationToken>()).Returns(saveGate.Task);
 
             var window = new MainWindow();
             typeof(MainWindow).GetField("_windowBoundsStore", BindingFlags.NonPublic | BindingFlags.Instance)!
@@ -45,7 +45,7 @@ public class MainWindowDefersCloseForBoundsSaveTests
             await Dispatcher.UIThread.InvokeAsync(() => { });
 
             Assert.True(closed);
-            _ = store.Received(1).SaveAsync(Arg.Any<WindowBounds>(), Arg.Any<CancellationToken>());
+            _ = store.Received(1).SaveAsync(Arg.Any<string>(), Arg.Any<WindowBounds>(), Arg.Any<CancellationToken>());
         });
 
     [Fact]
@@ -53,8 +53,8 @@ public class MainWindowDefersCloseForBoundsSaveTests
         HeadlessAvalonia.RunAsync(async () =>
         {
             var store = Substitute.For<IWindowBoundsStore>();
-            store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<WindowBounds?>(null));
-            store.SaveAsync(Arg.Any<WindowBounds>(), Arg.Any<CancellationToken>())
+            store.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<WindowBounds?>(null));
+            store.SaveAsync(Arg.Any<string>(), Arg.Any<WindowBounds>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromException(new IOException("disk is unhappy")));
 
             var window = new MainWindow();

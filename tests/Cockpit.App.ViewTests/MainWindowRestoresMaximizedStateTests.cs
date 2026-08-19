@@ -17,7 +17,7 @@ public class MainWindowRestoresMaximizedStateTests
     public void ASavedMaximizedState_IsAppliedBeforeTheWindowIsShown() => HeadlessAvalonia.Run(() =>
     {
         var store = Substitute.For<IWindowBoundsStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>())
+        store.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<WindowBounds?>(new WindowBounds(50, 50, 800, 600, IsMaximized: true)));
 
         // No Show() call: the point of the fix is that the WM never sees this window mapped in any state but
@@ -31,7 +31,7 @@ public class MainWindowRestoresMaximizedStateTests
     public void ASavedNormalState_RestoresPositionAndSizeBeforeTheWindowIsShown() => HeadlessAvalonia.Run(() =>
     {
         var store = Substitute.For<IWindowBoundsStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>())
+        store.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<WindowBounds?>(new WindowBounds(50, 50, 800, 600, IsMaximized: false)));
 
         var window = new MainWindow(store);

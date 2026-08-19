@@ -51,7 +51,7 @@ public partial class MainWindow : Window
         // Restore the last-used bounds so the app reopens where it was, instead of the OS-chosen random
         // spot/size. Off-screen or degenerate saved bounds fall back to the XAML default.
         // AC-801: runs before the window is shown — setting Maximized after an X11 window is mapped races the WM.
-        var saved = _windowBoundsStore?.LoadAsync().GetAwaiter().GetResult();
+        var saved = _windowBoundsStore?.LoadAsync(BoundsKey).GetAwaiter().GetResult();
         if (saved is { HasUsableSize: true } && RestoredWindowBounds.IsOnAScreen(saved, Screens.All.Select(s => s.WorkingArea)))
         {
             Position = new PixelPoint(saved.X, saved.Y);
@@ -188,8 +188,11 @@ public partial class MainWindow : Window
 
         // Awaited rather than blocked on (AC-779): WindowBoundsStore.SaveAsync is genuinely async I/O all the way
         // down (ConfigureAwait(false) throughout), so this never needs a Task.Run to avoid blocking the caller.
-        return _windowBoundsStore.SaveAsync(bounds);
+        return _windowBoundsStore.SaveAsync(BoundsKey, bounds);
     }
+
+    // The window-bounds store's key for this window (AC-866 — the assistant pop-out saves under its own "assistant").
+    private const string BoundsKey = "main";
 
     private static App? App => Avalonia.Application.Current as App;
 }
