@@ -271,6 +271,16 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         var chat = _EnsureChatViewModel();
         chat.IsDocked = true;
+
+        // Clicking the rail tab is a way to dock that never goes through the header button, and it is the only one
+        // visible before the chat has ever been opened. Record the stand so it survives a restart like any other
+        // dock does — `OpenDockPanelId` is already this panel (that is why we are being built), so this only
+        // writes the flag.
+        if (!_cockpit.AssistantDocked)
+        {
+            _ = _cockpit.SetAssistantDockedAsync(true, DockPanelId);
+        }
+
         return new AssistantChatView { DataContext = chat };
     }
 
