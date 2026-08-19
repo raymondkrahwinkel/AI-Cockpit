@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.TestSupport;
 using Path = System.IO.Path;
 
@@ -11,7 +12,7 @@ namespace Cockpit.Plugin.GitStatus.Tests;
 
 // The session-header indicator — the one part of AC-522 Raymond called out as the real risk, since removing
 // the plugin's dialog must leave this unchanged: colour, branch, the hover tooltip's uncommitted/unpushed
-// counts, click-to-inject, and refresh after a git command. Runs against a real repository in a temp directory,
+// counts, what the click does (AC-961: open the review panel), and refresh after a git command. Runs against a real repository in a temp directory,
 // same reasoning as `GitWorkflowStepsTests` — a faked git status would not prove what git itself
 // reports.
 [Collection("avalonia")]
@@ -100,35 +101,38 @@ public class GitStatusHeaderControlTests : IDisposable
         harness.Close();
     }
 
+    // AC-961: the click opens the review panel for the badge's own pane — never for whichever session happens to be
+    // selected, and never by pasting anything into a prompt.
     [Fact]
-    public void Click_WithAnActiveSession_InjectsTheStatusSummaryIntoIt()
+    public void Click_AsksTheReviewPluginToOpenThisSession()
     {
-        var harness = Harness.Attach(_repo, showBranchName: true);
+        var harness = Harness.Attach(_repo, showBranchName: true, reviewInstalled: true);
         harness.WaitUntilLoaded();
-        harness.SetHasActiveSession(true);
 
         harness.Click();
 
-        var injected = harness.InjectedText;
-        Assert.NotNull(injected);
-        Assert.Contains("main", injected, StringComparison.Ordinal);
-        Assert.Contains("clean working tree", injected, StringComparison.Ordinal);
+        var intent = Assert.Single(harness.SentIntents);
+        Assert.Equal("session-review", intent.TargetPluginId);
+        Assert.Equal("open", intent.Action);
+        Assert.Equal("pane-1", intent.Data["paneId"]);
+        Assert.Equal(_repo, intent.Data["workingDirectory"]);
+        Assert.Null(harness.InjectedText);
         Assert.Null(harness.ClipboardText);
+        Assert.Contains("Click to review", harness.Tooltip(), StringComparison.Ordinal);
 
         harness.Close();
     }
 
     [Fact]
-    public void Click_WithNoActiveSession_CopiesTheSummaryToTheClipboardInstead()
+    public void Click_WithoutTheReviewPlugin_DoesNothingAndPromisesNothing()
     {
-        var harness = Harness.Attach(_repo, showBranchName: true);
+        var harness = Harness.Attach(_repo, showBranchName: true, reviewInstalled: false);
         harness.WaitUntilLoaded();
-        harness.SetHasActiveSession(false);
 
         harness.Click();
 
-        Assert.NotNull(harness.ClipboardText);
-        Assert.Null(harness.InjectedText);
+        Assert.Empty(harness.SentIntents);
+        Assert.DoesNotContain("Click", harness.Tooltip(), StringComparison.Ordinal);
 
         harness.Close();
     }
@@ -163,24 +167,31 @@ public class GitStatusHeaderControlTests : IDisposable
     // time behind a real `DispatcherTimer`), which one call spanning the whole wait would block.
     private sealed class Harness
     {
-        private Harness(Window window, GitStatusHeaderControl control, FakeSessionContext session, FakeCockpitActions actions)
+        private Harness(Window window, GitStatusHeaderControl control, FakeSessionContext session, FakeCockpitActions actions, FakeCockpitHost host)
         {
             _window = window;
             _control = control;
             _session = session;
             _actions = actions;
+            _host = host;
         }
 
         private readonly Window _window;
         private readonly GitStatusHeaderControl _control;
         private readonly FakeSessionContext _session;
         private readonly FakeCockpitActions _actions;
+        private readonly FakeCockpitHost _host;
 
-        public static Harness Attach(string workingDirectory, bool showBranchName) => HeadlessAvalonia.Run(() =>
+        public static Harness Attach(string workingDirectory, bool showBranchName, bool reviewInstalled = true) => HeadlessAvalonia.Run(() =>
         {
             var settings = new GitStatusSettings(new InMemoryPluginStorage()) { ShowBranchName = showBranchName };
             var actions = new FakeCockpitActions();
             var host = new FakeCockpitHost(actions);
+            if (reviewInstalled)
+            {
+                host.HandledIntents.Add("session-review/open");
+            }
+
             var session = new FakeSessionContext(workingDirectory);
             var control = new GitStatusHeaderControl(host, session, settings);
 
@@ -188,8 +199,10 @@ public class GitStatusHeaderControlTests : IDisposable
             window.Show();
             window.UpdateLayout();
 
-            return new Harness(window, control, session, actions);
+            return new Harness(window, control, session, actions, host);
         });
+
+        public IReadOnlyList<PluginIntent> SentIntents => _host.SentIntents;
 
         public bool IsVisible => HeadlessAvalonia.Run(() => _control.IsVisible);
 
@@ -204,8 +217,6 @@ public class GitStatusHeaderControlTests : IDisposable
         public string? ClipboardText => _actions.ClipboardText;
 
         public string Tooltip() => HeadlessAvalonia.Run(() => ToolTip.GetTip(_Field<Button>("_row")) as string ?? string.Empty);
-
-        public void SetHasActiveSession(bool value) => _actions.HasActiveSession = value;
 
         public void Click() => HeadlessAvalonia.Run(() => _Field<Button>("_row").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)));
 

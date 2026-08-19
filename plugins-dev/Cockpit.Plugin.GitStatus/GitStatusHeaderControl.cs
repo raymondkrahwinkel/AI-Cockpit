@@ -14,9 +14,14 @@ namespace Cockpit.Plugin.GitStatus;
 // the sidebar because it describes one session, and the sidebar describes the cockpit — a section following
 // "whichever session is selected" says nothing about the other three panes on screen.
 // Refreshes when the session's working directory becomes known and when the session runs a git command; click
-// to drop the status summary into that session.
+// to open that session's review panel (AC-961).
 internal sealed class GitStatusHeaderControl : UserControl
 {
+    // Who answers the click (AC-961). Asked per click and per render rather than once at construction: plugins
+    // register their intent handlers during their own Initialize, so a target loading after us has none yet.
+    private const string ReviewPluginId = "session-review";
+    private const string ReviewAction = "open";
+
     // A git command may print progress over several lines; coalesce the burst and let the working tree settle
     // before re-reading.
     private static readonly TimeSpan SignalDebounce = TimeSpan.FromSeconds(2);
@@ -72,7 +77,7 @@ internal sealed class GitStatusHeaderControl : UserControl
                 Children = { _dot, _label },
             },
         };
-        _row.Click += async (_, _) => await _InjectAsync();
+        _row.Click += async (_, _) => await _OpenReviewAsync();
 
         Content = _row;
         IsVisible = false;
@@ -91,6 +96,8 @@ internal sealed class GitStatusHeaderControl : UserControl
             _ = _ProbeBranchAsync();
         };
     }
+
+    private bool _CanReview => _host.CanSendIntent(ReviewPluginId, ReviewAction);
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -309,7 +316,9 @@ internal sealed class GitStatusHeaderControl : UserControl
         // The dot is always the at-a-glance status; the branch name is optional (AC-36). Hidden, it lives on in the
         // tooltip below, so no information is lost — only header width.
         _label.IsVisible = _settings.ShowBranchName;
-        ToolTip.SetTip(_row, $"{status.Name} · {status.Branch}\n{GitStatusSummary.Describe(status)}\n\nClick to add this summary to the session's prompt.");
+        // Only promise the click when the review panel is actually installed to answer it.
+        var click = _CanReview ? "\n\nClick to review this session's uncommitted changes." : string.Empty;
+        ToolTip.SetTip(_row, $"{status.Name} · {status.Branch}\n{GitStatusSummary.Describe(status)}{click}");
     }
 
     private void _Render(string error)
@@ -318,22 +327,20 @@ internal sealed class GitStatusHeaderControl : UserControl
         ToolTip.SetTip(_row, $"Could not read git status: {error}");
     }
 
-    private async Task _InjectAsync()
+    // AC-961: the badge opens the session review panel for its own session — the diff is what an operator wants
+    // from a branch badge. Through an intent rather than a reference, since the panel is another plugin's.
+    private async Task _OpenReviewAsync()
     {
-        if (_current is not { Error: null } status)
+        if (_current is not { Error: null } || !_CanReview)
         {
             return;
         }
 
-        var summary = $"Current git status of {status.Name} ({status.Path}) on '{status.Branch}': {GitStatusSummary.Describe(status)}";
-        if (_host.Actions.HasActiveSession)
+        await _host.SendIntent(ReviewPluginId, ReviewAction, new Dictionary<string, string>
         {
-            await _host.Actions.InjectIntoActiveSessionAsync(summary);
-        }
-        else
-        {
-            await _host.Actions.SetClipboardTextAsync(summary);
-        }
+            ["paneId"] = _session.PaneId,
+            ["workingDirectory"] = _session.WorkingDirectory ?? string.Empty,
+        });
     }
 
     private static IBrush? _Brush(string key) =>

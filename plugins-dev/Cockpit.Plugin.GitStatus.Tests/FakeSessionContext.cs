@@ -4,8 +4,10 @@ namespace Cockpit.Plugin.GitStatus.Tests;
 
 // An `IPluginSessionContext` whose working directory a test sets at construction and can change or
 // send output through by hand — enough to drive `GitStatusHeaderControl` without a real session.
-internal sealed class FakeSessionContext(string? workingDirectory) : IPluginSessionContext
+internal sealed class FakeSessionContext(string? workingDirectory, string paneId = "pane-1") : IPluginSessionContext
 {
+    public string PaneId { get; } = paneId;
+
     public string? WorkingDirectory { get; private set; } = workingDirectory;
 
     public event EventHandler? WorkingDirectoryChanged;

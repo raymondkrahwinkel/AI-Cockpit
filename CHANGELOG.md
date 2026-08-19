@@ -153,6 +153,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: clicking the git badge in a session's header (the dot and branch name) now opens that session's Session
+  review panel — its uncommitted changes as a file tree and a diff — instead of pasting a one-line status summary
+  into the prompt. The summary is still on the badge's tooltip, and the review panel opens for the session whose
+  badge you clicked rather than for whichever session happens to be selected. Without the Session Review plugin
+  installed the badge is a plain indicator again, and says so by not offering the click.
 - changed: the sidebar's "Menu" and "Help" buttons now open the same flush, right-hand pop-out as "Plugins ›"
   instead of their own separate dropdown — same items, same actions, just matching the rest of the sidebar's look.
   The hairline that used to sit above "Plugins ›" is gone too.
