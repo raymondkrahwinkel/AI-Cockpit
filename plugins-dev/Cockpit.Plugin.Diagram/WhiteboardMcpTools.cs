@@ -14,7 +14,7 @@ namespace Cockpit.Plugin.Diagram;
 // The `cockpit-whiteboard` MCP tools (AC-823), gated per-capability like `cockpit-diagram` (AC-810) — read that
 // class first. Deviations: the read payload is a base64 PNG snapshot, so the consent text names a screenshot; and
 // the write path (AC-854, reversing AC-820) only adds — no replace-the-board tool, no reach into operator work.
-internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessRegistry registry)
+internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessRegistry registry, DiagramSettings settings)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -50,16 +50,20 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
         var surfaceId = Guid.NewGuid().ToString("n");
         var caller = host.CurrentMcpCallerPaneId ?? session;
 
-        var decision = await host.RequestConsentAsync(new ConsentRequest(
-            "An agent wants to open a whiteboard to work on with you",
-            $"Open an empty whiteboard window \"{_SingleLine(title)}\" beside the cockpit and couple this agent to it. It cannot see the board or draw on it without asking you separately.",
-            new ConsentSource(surfaceId, null, ConsentSourceCatalog.WhiteboardMcp),
-            "whiteboard.open",
-            ConsentRisk.Dangerous)).ConfigureAwait(false);
-
-        if (!decision.IsApproved)
+        // AC-948: the operator's own opt-out, set on this plugin's settings page — off by default.
+        if (!settings.SkipWhiteboardConsent)
         {
-            return _Serialize(new { ok = false, error = "Opening that whiteboard was not approved by the operator — nothing was opened." });
+            var decision = await host.RequestConsentAsync(new ConsentRequest(
+                "An agent wants to open a whiteboard to work on with you",
+                $"Open an empty whiteboard window \"{_SingleLine(title)}\" beside the cockpit and couple this agent to it. It cannot see the board or draw on it without asking you separately.",
+                new ConsentSource(surfaceId, null, ConsentSourceCatalog.WhiteboardMcp),
+                "whiteboard.open",
+                ConsentRisk.Dangerous)).ConfigureAwait(false);
+
+            if (!decision.IsApproved)
+            {
+                return _Serialize(new { ok = false, error = "Opening that whiteboard was not approved by the operator — nothing was opened." });
+            }
         }
 
         Dispatcher.UIThread.Post(() =>
@@ -193,12 +197,17 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
         // A session that already holds Read gets the widening prompt: the operator approved reading under AC-820's
         // promise that an agent never writes to the canvas, so drawing is a new question, not an extension of that one.
         var widening = needed == WhiteboardCapability.Write && held is { CanRead: true };
-        var decision = await host.RequestConsentAsync(_PromptFor(surface, needed, widening, ask)).ConfigureAwait(false);
-        if (!decision.IsApproved)
+
+        // AC-948: the operator's own opt-out — off by default.
+        if (!settings.SkipWhiteboardConsent)
         {
-            return needed == WhiteboardCapability.Read
-                ? "Reading that whiteboard was not approved by the operator."
-                : "Putting something on that whiteboard was not approved by the operator — you may still be able to read it.";
+            var decision = await host.RequestConsentAsync(_PromptFor(surface, needed, widening, ask)).ConfigureAwait(false);
+            if (!decision.IsApproved)
+            {
+                return needed == WhiteboardCapability.Read
+                    ? "Reading that whiteboard was not approved by the operator."
+                    : "Putting something on that whiteboard was not approved by the operator — you may still be able to read it.";
+            }
         }
 
         try

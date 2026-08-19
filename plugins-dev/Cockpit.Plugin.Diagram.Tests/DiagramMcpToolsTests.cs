@@ -27,7 +27,7 @@ public class DiagramMcpToolsTests
         // make `host.CurrentMcpCallerPaneId ?? session` pick "" over the caller-supplied session on every test.
         host.CurrentMcpCallerPaneId.Returns((string?)null);
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
-        return (new DiagramMcpTools(host, registry), registry, host, asked);
+        return (new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage())), registry, host, asked);
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public class DiagramMcpToolsTests
         var outcomes = new Queue<ConsentOutcome>([ConsentOutcome.Approved, ConsentOutcome.Denied]);
         host.RequestConsentAsync(Arg.Any<ConsentRequest>())
             .Returns(_ => new ConsentDecision(outcomes.Dequeue()));
-        var tools = new DiagramMcpTools(host, registry);
+        var tools = new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()));
         registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
         await tools.ReadDiagram(Session, "Onboarding flow");
 
@@ -414,7 +414,7 @@ public class DiagramMcpToolsTests
                 registry.Grant("someone-else", "diagram-1", DiagramCapability.Read); // slipped in while we asked
                 return new ConsentDecision(ConsentOutcome.Approved);
             });
-        var tools = new DiagramMcpTools(host, registry);
+        var tools = new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()));
 
         var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
 
@@ -501,5 +501,35 @@ public class DiagramMcpToolsTests
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Empty(asked);
+    }
+
+    [Fact]
+    public async Task OpenDiagram_WithSkipDiagramConsent_OpensWithoutAsking()
+    {
+        // AC-948: the plugin's own opt-out, off by default — on, this surface's consent request never happens.
+        var registry = new DiagramAccessRegistry();
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
+        var settings = new DiagramSettings(new FakePluginStorage()) { SkipDiagramConsent = true };
+        var tools = new DiagramMcpTools(host, registry, settings);
+
+        var json = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", Source));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        await host.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>());
+    }
+
+    [Fact]
+    public async Task OpenDiagram_WithSkipDiagramConsentOff_StillAsks()
+    {
+        // AC-948 DoD: a fresh install (flag off) keeps asking every time — nothing about today's behaviour changes.
+        var (tools, _, _, asked) = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", Source));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Single(asked);
     }
 }

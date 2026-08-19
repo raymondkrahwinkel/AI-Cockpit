@@ -33,7 +33,7 @@ public class DiagramErMcpToolsTests
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add))
             .Returns(new ConsentDecision(ConsentOutcome.Approved));
         registry.SurfaceOpened("diagram-1", Diagram, source);
-        return (new DiagramMcpTools(host, registry), registry, asked);
+        return (new DiagramMcpTools(host, registry, new DiagramSettings(new FakePluginStorage())), registry, asked);
     }
 
     private static JsonNode Reply(string json) => JsonNode.Parse(json)!;

@@ -47,22 +47,25 @@ public sealed class DiagramPlugin : ICockpitPlugin
         host.AddToolbarAction(new ToolbarAction("Wireframes", MaterialIconKind.FormatListBulleted,
             () => host.ShowDialogAsync("Wireframes", () => new WireframeListDialogBody(host), WireframeListDialogKey, width: 520, height: 600)));
 
+        var settings = new DiagramSettings(host.Storage);
+        host.AddSettings(() => new DiagramSettingsControl(settings));
+
         // AC-889/AC-890: mounted here rather than the host, so an install without this plugin does not offer
         // cockpit-diagram/-whiteboard/-wireframe at all. No isEnabled (AC-830 dropped the master switch) and no
         // isInternal — these are tickable servers for the operator, unlike Autopilot's own endpoints.
         if (host.Services.GetService(typeof(IDiagramAccessRegistry)) is IDiagramAccessRegistry diagrams)
         {
-            _ = host.AddMcpEndpoint("cockpit-diagram", new DiagramMcpTools(host, diagrams));
+            _ = host.AddMcpEndpoint("cockpit-diagram", new DiagramMcpTools(host, diagrams, settings));
         }
 
         if (host.Services.GetService(typeof(IWhiteboardAccessRegistry)) is IWhiteboardAccessRegistry whiteboards)
         {
-            _ = host.AddMcpEndpoint("cockpit-whiteboard", new WhiteboardMcpTools(host, whiteboards));
+            _ = host.AddMcpEndpoint("cockpit-whiteboard", new WhiteboardMcpTools(host, whiteboards, settings));
         }
 
         if (host.Services.GetService(typeof(IWireframeAccessRegistry)) is IWireframeAccessRegistry wireframes)
         {
-            _ = host.AddMcpEndpoint("cockpit-wireframe", new WireframeMcpTools(host, wireframes));
+            _ = host.AddMcpEndpoint("cockpit-wireframe", new WireframeMcpTools(host, wireframes, settings));
         }
     }
 
