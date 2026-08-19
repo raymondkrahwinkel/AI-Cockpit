@@ -25,11 +25,9 @@ public static class ConsentSourceCatalog
     // The wireframe MCP server (AC-872): reading or editing a wireframe surface the operator has open.
     public const string WireframeMcp = "Wireframe MCP";
 
-    // The whiteboard's own "Laat sdk meekijken" button (AC-842): the operator inviting the coupled session's agent
-    // to read the board, kept apart from WhiteboardMcp so the audit trail can tell the operator's own invite from
-    // the agent asking for itself. Not in `HostSources` and never will be (AC-888): the button calls
-    // `RequestConsentAsync` directly from the UI, outside any MCP request, so `McpRequestContext.CurrentPaneId`
-    // is null and the bypass never even gets asked — a switch for this row could not do anything.
+    // The whiteboard's own "Laat sdk meekijken" button (AC-842), kept apart from WhiteboardMcp so the audit trail
+    // can tell the operator's own invite from the agent asking for itself. Never in `HostSources` (AC-888): it
+    // calls `RequestConsentAsync` outside any MCP request, so the bypass never even gets asked.
     public const string WhiteboardInvite = "Whiteboard invite";
 
     // The verify MCP server.
@@ -84,20 +82,9 @@ public static class ConsentSourceCatalog
         AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, AssistantProjectCreate, Debug,
     ];
 
-    // The bypass key for one source: the host-stamped `pluginId` and the caller's own `label` under a `plugin:`
-    // prefix, or the bare `label` — a constant above — for a host-internal caller that has no plugin id.
-    // The prefix keeps a plugin's whole key space separate from the host's and from every other plugin's
-    // (AC-888): `pluginId` is stamped from the plugin's folder name (`PluginDiscovery.FolderId`), which cannot
-    // contain a `/` on any supported filesystem, so the first `/` after `plugin:` is always the id/label
-    // boundary — a plugin's own choice of `label` can only add rows inside its own space, never reach into the
-    // host's or another plugin's. One definition, used by both the broker (which builds the key a request is
-    // matched on) and the Options list (which builds the key a row is stored under), so the two cannot drift.
-    //
-    // A `cockpit.json` written before the label joined the key (or, further back, before the prefix existed)
-    // holds a shorter key. Those no longer match any request, so the effect on an existing install is that a
-    // plugin's bypass reads as off until the operator ticks it again — never as on for something it was not set
-    // for. The stale keys stay visible: Options lists anything already switched on, so an orphaned row can still
-    // be switched off rather than sitting there unreachable.
+    // The bypass key: the host-stamped `pluginId` and the caller's own `label` under a `plugin:` prefix, or the
+    // bare `label` for a host-internal caller. `pluginId` is a folder name (AC-888) and so can never contain a
+    // `/`, which is what keeps a plugin's own choice of `label` from ever reaching another key space.
     public static string KeyFor(string? pluginId, string label) =>
         pluginId is null ? label : $"plugin:{pluginId}/{label}";
 }
