@@ -61,6 +61,18 @@ public sealed class MarkdownView : ContentControl
         set => SetValue(BasePathProperty, value);
     }
 
+    public static readonly StyledProperty<bool> PreserveLineBreaksProperty =
+        AvaloniaProperty.Register<MarkdownView, bool>(nameof(PreserveLineBreaks));
+
+    // Off by default (CommonMark: a single newline joins its paragraph's lines with a space) so file
+    // previews and assistant markdown are unaffected. The chat bubble (`TranscriptRowView`) turns this on:
+    // a Shift+Enter there is meant to stay a visible line break, not collapse into the words around it (AC-936).
+    public bool PreserveLineBreaks
+    {
+        get => GetValue(PreserveLineBreaksProperty);
+        set => SetValue(PreserveLineBreaksProperty, value);
+    }
+
     // A streaming reply re-sets Markdown on every delta, and each set rebuilt the whole block tree: at the end of
     // a long answer that is hundreds of controls reparsed and reconstructed, tens of times a second, for text that
     // grew by a few characters. The cost climbs with the reply, so it accelerates rather than settles — the UI
@@ -91,7 +103,9 @@ public sealed class MarkdownView : ContentControl
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property != MarkdownProperty && change.Property != BasePathProperty)
+        if (change.Property != MarkdownProperty
+            && change.Property != BasePathProperty
+            && change.Property != PreserveLineBreaksProperty)
         {
             return;
         }
@@ -125,7 +139,7 @@ public sealed class MarkdownView : ContentControl
 
     private void _Render(string markdown)
     {
-        var parsed = MarkdownParser.Parse(markdown);
+        var parsed = MarkdownParser.Parse(markdown, PreserveLineBreaks);
 
         // Kept blocks keep the brushes they were built with, so a theme swap has to discard all of them —
         // otherwise the untouched part of a message stays in the previous palette while the rest moves.
@@ -673,6 +687,12 @@ public sealed class MarkdownView : ContentControl
 
         foreach (var inline in inlines)
         {
+            if (inline.Kind == MarkdownInlineKind.LineBreak)
+            {
+                block.Inlines?.Add(new LineBreak());
+                continue;
+            }
+
             var run = new Run(inline.Text);
 
             // Asked of the run rather than switched on its kind: emphasis around a link or a code span rides
