@@ -2455,8 +2455,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Parameterless constructor kept for the Avalonia previewer/Screenshotter design-time context —
     // seeds three sample sessions across different providers and statuses so the render shows the
     // overview + grid without a real DI-backed session behind each one.
-    public CockpitViewModel()
+    // The registry is a parameter here only because a scene showing an open dock panel needs one to open (AC-953's
+    // docked assistant) — every other design-time render passes nothing and gets the empty rail.
+    public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null)
     {
+        // AC-951: without a registry the dock rail's tab strip renders empty in the previewer/screenshotter — the
+        // same reason the shortcut rows above are seeded by hand here. A caller passes one when the scene needs a
+        // panel that actually opens (AC-953's docked assistant).
+        _dockPanelRegistry = dockPanelRegistry ?? new DockPanelRegistry();
+
         // First: selecting a session below raises pane-visibility, which asks which workspace is active.
         Workspaces = new WorkspacesViewModel();
         _WireWorkspaceVisibility();
@@ -2485,9 +2492,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // No advisor in the design-time/previewer graph: the Transcribe page then offers Auto + CPU only.
         _InitVoiceTranscriptionOptions();
 
-        // AC-951: without a registry the dock rail's tab strip renders empty in the previewer/screenshotter —
-        // the same reason the shortcut rows above are seeded by hand here.
-        _dockPanelRegistry = new DockPanelRegistry();
     }
 
     // The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.
