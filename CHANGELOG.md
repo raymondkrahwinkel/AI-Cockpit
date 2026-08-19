@@ -174,6 +174,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: promoting a session out of the rail into focus could occasionally reflow its terminal history with an
+  unwanted resize, caused by a sub-pixel rounding mismatch between the rail tile's and the focus pane's layout —
+  the tile now reuses the focus pane's own, already-laid-out box instead of reconstructing an approximation of it,
+  so the grid a session had in the rail is exactly the grid it keeps once promoted.
 - fixed: the assistant's pop-out chat window now reopens at the position and size you last left it, instead of
   jumping back to the middle of the screen every time — closing and reopening it, or restarting the cockpit,
   both remember where it was. A saved spot that no longer lands on a connected screen falls back to the default
