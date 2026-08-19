@@ -90,11 +90,8 @@ public sealed class SessionTilePanel : Panel
     public static readonly AttachedProperty<Size> MiniatureFocusSizeProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, Size>("MiniatureFocusSize", inherits: true);
 
-    // AC-923: the box the focus pane's own host actually got arranged into this pass — read back straight off
-    // its `Bounds` (real, post-chrome, post-layout-rounding) rather than reconstructed by subtracting a
-    // rail-rounded box from an unrounded one. That reconstruction loses the origin-dependent rounding
-    // `MiniatureHost.Fit` has no way to recover, off by up to a cell at some window sizes. Every rail tile
-    // shares the focus pane's chrome, so its real childbox is exactly right for all of them, not an estimate.
+    // AC-923: the box the focus pane's own host actually got arranged into this pass, read back straight off
+    // its `Bounds` rather than reconstructed — see `MiniatureHost.Fit`'s fallback and the PR description.
     public static readonly AttachedProperty<Size> MiniatureFocusChildBoxProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, Size>("MiniatureFocusChildBox", inherits: true);
 
@@ -432,10 +429,8 @@ public sealed class SessionTilePanel : Panel
             return finalSize;
         }
 
-        // AC-923: the focus pane's own host just arranged for real, one line up — its Bounds is the exact
-        // post-chrome box every rail tile's host will get once promoted, no reconstruction involved. Falls
-        // back to default (MiniatureHost.Fit's old subtract-and-hope path) only if the template ever changes
-        // shape and a tile ends up with no host to read.
+        // AC-923: the focus pane's own host just arranged for real, one line up — every rail tile gets its
+        // exact box below instead of reconstructing an approximation of it (see PR description).
         var focusChildBox = layout.Focus.GetVisualDescendants().OfType<MiniatureHost>().FirstOrDefault()?.Bounds.Size
             ?? default;
 

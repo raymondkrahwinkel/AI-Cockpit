@@ -17,12 +17,9 @@ internal static class TerminalSettle
     // pre-resize reading with the debounce timer just not fired yet, not a genuine settle.
     private const int MinStableMs = 150;
 
-    // Waits for a real sizing pass, not just "unchanged since the last poll": the buffer holds the unmeasured
-    // default until the control's first layout-driven resize lands, so a poll that never sees the grid move
-    // off (80,24) has proven nothing — and a terminal being resized a second time starts this wait already
-    // showing its old, still-valid grid, so "unchanged since the last poll" alone would return before the
-    // debounced resize even fires. Polls until the grid has differed from the default at least once and has
-    // then held the same value for a full debounce window; a deadline with no measurement is a hard failure.
+    // Waits for a real sizing pass, not just "unchanged since the last poll" (see PR description for why that
+    // was wrong on both ends): the grid must differ from the unmeasured default at least once, then hold that
+    // value for a full debounce window. A deadline with no measurement is a hard failure, not a silent pass.
     public static async Task WaitAsync(TerminalControl terminal)
     {
         var deadline = Environment.TickCount64 + DeadlineMs;

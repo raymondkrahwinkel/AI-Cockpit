@@ -24,9 +24,7 @@ public sealed class MiniatureHost : Decorator
         AvaloniaProperty.Register<MiniatureHost, Size>(nameof(FocusSize));
 
     // AC-923: the exact box `SessionTilePanel` read back off the focus pane's own host after a real arrange —
-    // when set, this IS the child's box, no reconstruction. `available` is layout-rounded pixels by the time
-    // this host sees it, but `tile`/`focus` are not; subtracting one from the other (`Fit`'s fallback below)
-    // loses the rounding's origin-dependent remainder and can be off by a whole terminal cell.
+    // when set, this IS the child's box, no reconstruction (see `Fit`'s fallback below and the PR description).
     public static readonly StyledProperty<Size> FocusChildBoxProperty =
         AvaloniaProperty.Register<MiniatureHost, Size>(nameof(FocusChildBox));
 
