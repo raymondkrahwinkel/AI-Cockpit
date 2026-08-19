@@ -41,7 +41,7 @@
                  peephole, not one. Draggable by the bar, like every other chromeless window in this app
                  (Controls/CockpitWindowChrome does the same for dialogs; not reused here because it has no room
                  for a toggle button, only a title and caption buttons). -->
-            <Border DockPanel.Dock="Top" Background="{StaticResource CockpitChromeBgBrush}"
+            <Border x:Name="HeaderBar" DockPanel.Dock="Top" Background="{StaticResource CockpitChromeBgBrush}"
                     BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
                     Padding="12,9" PointerPressed="_OnHeaderPressed">
                 <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
@@ -71,7 +71,7 @@
                     <!-- AC-662/AC-694: the sidebar chip's listening mode (AssistantIndicator.axaml), driven through
                          `Indicator` so the one-time cost confirmation stays in step instead of being copied. An icon
                          button, not the chip's `CheckBox.Switch`: a track reads as a stray control in a strip of icons. -->
-                    <ToggleButton Grid.Column="2" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
+                    <ToggleButton x:Name="ListeningModeToggle" Grid.Column="2" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
                                   IsVisible="{Binding Indicator, Converter={x:Static ObjectConverters.IsNotNull}}"
                                   IsChecked="{Binding Indicator.IsListeningModeAlwaysOn, Mode=OneWay, FallbackValue=False}"
                                   Command="{Binding Indicator.ToggleListeningModeCommand}"
@@ -81,7 +81,7 @@
                     </ToggleButton>
 
                     <!-- AC-694 reverts AC-685's `Subtle` here; the style stays in Theme.axaml for the listen toggle. -->
-                    <ToggleButton Grid.Column="3" IsChecked="{Binding SpeakReplies}" Classes="Compact"
+                    <ToggleButton x:Name="ReadAloudToggle" Grid.Column="3" IsChecked="{Binding SpeakReplies}" Classes="Compact"
                                   VerticalAlignment="Center" Margin="0,0,4,0"
                                   ToolTip.Tip="{Binding SpeakReplies, Converter={x:Static conv:ReadAloudIconConverter.Tip}}">
                         <materialIcons:MaterialIcon Kind="{Binding SpeakReplies, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
@@ -173,7 +173,7 @@
                          that it belongs. It belongs beside the setting that needs it: the permission mode in
                          Options → Voice → Assistant Profile, where the sentence "this applies at the next start"
                          and the start that answers it are one thing instead of two windows apart. -->
-                    <Button Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center"
+                    <Button x:Name="CloseButton" Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center"
                             Click="_OnCloseClick" ToolTip.Tip="Close (the conversation keeps running)">
                         <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
                     </Button>

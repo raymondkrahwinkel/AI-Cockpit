@@ -55,8 +55,13 @@ public class WindowResizeGripTests
         Assert.Equal(WindowDecorations.BorderOnly, WindowResizeGrip.DecorationsFor(isMacOs: true));
 
     [Fact]
-    public void OnEveryOtherPlatform_TheWindowStillWearsNoOsDecorationAtAll() =>
-        Assert.Equal(WindowDecorations.None, WindowResizeGrip.DecorationsFor(isMacOs: false));
+    public void OnWindows_TheWindowKeepsThePlatformsOwnResizeBorderToo() =>
+        // AC-934: None strips WS_CAPTION/WS_THICKFRAME/WS_MAXIMIZEBOX, which Aero Snap needs — same trade as macOS.
+        Assert.Equal(WindowDecorations.BorderOnly, WindowResizeGrip.DecorationsFor(isMacOs: false, isWindows: true));
+
+    [Fact]
+    public void OnLinux_TheWindowStillWearsNoOsDecorationAtAll() =>
+        Assert.Equal(WindowDecorations.None, WindowResizeGrip.DecorationsFor(isMacOs: false, isWindows: false));
 
     [Fact]
     public void ANarrowerBand_ShrinksTheZoneWithIt()
