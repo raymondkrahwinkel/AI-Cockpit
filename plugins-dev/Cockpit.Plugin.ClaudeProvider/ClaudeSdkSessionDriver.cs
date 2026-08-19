@@ -282,6 +282,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             await _RequireSubprocess().WriteLineAsync(ClaudeControlProtocol.BuildRequest(requestId, request), cancellationToken).ConfigureAwait(false);
             await awaiter.Task.WaitAsync(_UsageRequestTimeout, _lifetime.Token).ConfigureAwait(false);
         }
+        catch (TimeoutException)
+        {
+            // The receipt is a courtesy, not a precondition: a CLI that never answers must not throw Stop out from
+            // under the caller, nor skip the deny sweep below and leave AC-943's approvals dangling again.
+        }
         finally
         {
             _pendingControlResponses.TryRemove(requestId, out _);

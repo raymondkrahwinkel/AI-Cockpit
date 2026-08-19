@@ -730,7 +730,10 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await _ReadEventAsync(driver, e => e is PluginPermissionRequested);
         var writtenBeforeInterrupt = fake.WrittenLines.Count;
 
-        await driver.InterruptAsync();
+        // AC-739 made the interrupt awaited, so the receipt has to come back before the deny sweep runs.
+        var interrupted = driver.InterruptAsync();
+        await fake.PushStdoutAsync(_ControlSuccess(await _AwaitControlRequestAsync(fake, "interrupt", writtenBeforeInterrupt), "{}"));
+        await interrupted;
 
         var interruptLine = JsonDocument.Parse(fake.WrittenLines[writtenBeforeInterrupt]).RootElement;
         Assert.Equal("interrupt", interruptLine.GetProperty("request").GetProperty("subtype").GetString());
@@ -753,7 +756,9 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
         var writtenBeforeInterrupt = fake.WrittenLines.Count;
 
-        await driver.InterruptAsync();
+        var interrupted = driver.InterruptAsync();
+        await fake.PushStdoutAsync(_ControlSuccess(await _AwaitControlRequestAsync(fake, "interrupt", writtenBeforeInterrupt), "{}"));
+        await interrupted;
 
         Assert.Equal(writtenBeforeInterrupt + 1, fake.WrittenLines.Count);
         var interruptLine = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
