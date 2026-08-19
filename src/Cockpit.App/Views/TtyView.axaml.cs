@@ -345,7 +345,10 @@ public partial class TtyView : UserControl
 
     // AC-752: claude's CLI treats any stdin chunk >=64 bytes as a paste, swallowing a `\r` inside it as a literal
     // newline instead of Enter. Route the text through bracketed paste (as `_OnPasteTextAsync` already does) and
-    // write a trailing CR raw right after, on the UI thread so the two land in order.
+    // write a trailing CR raw right after.
+    // AC-941: a call carrying both text and a trailing CR defers the CR by AC-64's 60ms beat — landing in the
+    // same pty read as the paste otherwise folds it into the pasted block instead of Enter, regardless of
+    // bracketed paste. A call that is only "\r" stays immediate.
     private void _WriteToPty(string text)
     {
         var pty = _pty;
@@ -361,12 +364,24 @@ public partial class TtyView : UserControl
         {
             if (typed.Length > 0)
             {
+                // AC-941 criterion 6: measures whether BracketedPaste is ever false on a live session (tab
+                // switches, backgrounding included), which the fix below does not assume either way.
+                _logger?.LogDebug("AC-941 measurement: BracketedPaste={BracketedPaste} at _WriteToPty paste", Terminal.BracketedPaste);
                 Terminal.Paste(typed);
             }
 
-            if (hasTrailingReturn)
+            if (!hasTrailingReturn)
+            {
+                return;
+            }
+
+            if (typed.Length == 0)
             {
                 _WriteToPty(pty, [(byte)'\r']);
+            }
+            else
+            {
+                DispatcherTimer.RunOnce(() => _WriteToPty(pty, [(byte)'\r']), TimeSpan.FromMilliseconds(60));
             }
         });
     }

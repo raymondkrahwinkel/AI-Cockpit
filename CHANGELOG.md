@@ -148,6 +148,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: a chat message typed with Shift+Enter across several lines no longer arrives in the transcript as one
   run-on line — each line now shows on its own line, the way it was typed. Real markdown documents (assistant
   replies, file previews) are unaffected: a line-wrapped paragraph there still reads as one paragraph, as before.
+- fixed: a longer message delivered into a running Claude terminal session from outside the pane — a
+  `cockpit-agents notify`, a scheduled resume, or a session restored after a restart — no longer sometimes lands as
+  a collapsed "Pasted text" placeholder that is never actually submitted. The text and the Enter that followed it
+  could reach the terminal close enough together to be read as one paste instead of a typed prompt with a send; the
+  Enter now always lands on its own.
 - fixed: stopping a turn that was waiting on your Allow/Deny decision no longer leaves that row hanging. Interrupting
   now closes it out as cancelled, so the pane stops reporting "waiting for permission" for a decision nothing is
   listening for anymore — across every provider, with Claude and Codex additionally telling the agent itself that the
