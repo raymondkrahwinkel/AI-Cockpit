@@ -76,7 +76,7 @@ public sealed class AssistantChatWindowReplyButtonTests
 
             // ScrollIntoView on a single-row scene is a no-op for scroll position, but stickToBottom coming off
             // and the jump-to-newest chevron reappearing is the observable side effect this click is meant to have.
-            Assert.True(window.ScrollToBottomButton.IsVisible);
+            Assert.True(window.ChatView.ScrollToBottomButton.IsVisible);
         }
         finally
         {

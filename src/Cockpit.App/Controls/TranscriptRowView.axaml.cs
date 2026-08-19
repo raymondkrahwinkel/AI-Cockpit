@@ -3,12 +3,13 @@ using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 
 namespace Cockpit.App.Controls;
 
-// AC-722: one transcript row, shared by SessionView and AssistantChatWindow — see the XAML header comment for why.
+// AC-722: one transcript row, shared by SessionView and AssistantChatView — see the XAML header comment for why.
 public partial class TranscriptRowView : UserControl
 {
     public static readonly StyledProperty<SessionViewModel?> SessionProperty =
@@ -84,9 +85,9 @@ public partial class TranscriptRowView : UserControl
     private void _OnJumpToReplyTargetClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: TranscriptEntryViewModel { ReplyTo: { } target } }
-            && TopLevel.GetTopLevel(this) is AssistantChatWindow window)
+            && this.FindAncestorOfType<AssistantChatView>() is { } chat)
         {
-            window.ScrollToMessage(target);
+            chat.ScrollToMessage(target);
         }
     }
 
@@ -94,9 +95,9 @@ public partial class TranscriptRowView : UserControl
     private void _OnJumpToLatestReplyClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: TranscriptEntryViewModel { LatestReply: { } reply } }
-            && TopLevel.GetTopLevel(this) is AssistantChatWindow window)
+            && this.FindAncestorOfType<AssistantChatView>() is { } chat)
         {
-            window.ScrollToMessage(reply);
+            chat.ScrollToMessage(reply);
         }
     }
 }

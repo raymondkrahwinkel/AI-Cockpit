@@ -53,7 +53,7 @@ public sealed class AssistantChatWindowStickToBottomTests
 
             try
             {
-                var scroll = window.TranscriptScroll;
+                var scroll = window.ChatView.TranscriptScroll;
                 var chevron = window.GetVisualDescendants().OfType<Button>()
                     .First(button => button.Name == "ScrollToBottomButton");
 
