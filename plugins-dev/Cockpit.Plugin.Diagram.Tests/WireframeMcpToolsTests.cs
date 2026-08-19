@@ -1,17 +1,15 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Consent;
-using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Wireframe;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using NSubstitute;
 
-namespace Cockpit.Infrastructure.Tests.Wireframe;
+namespace Cockpit.Plugin.Diagram.Tests;
 
-/// <summary>
-/// The cockpit-wireframe tools (AC-872): reading a surface is gated behind its own Approve/Deny, editing behind a
-/// separate one, coupling is one agent per surface, and every read and write hands back the components with the ids
-/// the next call names them by (AC-906).
-/// </summary>
+// The cockpit-wireframe tools (AC-872): reading a surface is gated behind its own Approve/Deny, editing behind a
+// separate one, coupling is one agent per surface, and every read and write hands back the components with the ids
+// the next call names them by (AC-906).
 public class WireframeMcpToolsTests
 {
     private const string Session = "pane-agent";
@@ -22,10 +20,10 @@ public class WireframeMcpToolsTests
     {
         var registry = new WireframeAccessRegistry();
         var asked = new List<ConsentRequest>();
-        var broker = Substitute.For<IConsentBroker>();
-        broker.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add), Arg.Any<CancellationToken>())
-            .Returns(new ConsentDecision(outcome));
-        return (new WireframeMcpTools(registry, broker), registry, asked);
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
+        host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
+        return (new WireframeMcpTools(host, registry), registry, asked);
     }
 
     private static (WireframeMcpTools tools, WireframeAccessRegistry registry, List<ConsentRequest> asked) _Open(ConsentOutcome outcome, string name = Name)
@@ -265,19 +263,6 @@ public class WireframeMcpToolsTests
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("already being used by another agent", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task WithoutAConsentBroker_EveryAccessFailsClosed()
-    {
-        var registry = new WireframeAccessRegistry();
-        registry.SurfaceOpened(SurfaceId, Name, WireframeScreens.Settings);
-        var tools = new WireframeMcpTools(registry);
-
-        var json = JsonNode.Parse(await tools.ReadWireframe(Session, Name));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Null(registry.CouplingOf(Session, SurfaceId));
     }
 
     [Fact]

@@ -3,16 +3,15 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Consent;
-using Cockpit.Infrastructure.Consent;
-using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 
-namespace Cockpit.Infrastructure.Whiteboard;
+namespace Cockpit.Plugin.Diagram;
 
 // The `cockpit-whiteboard` MCP tools (AC-823), gated per-capability like `cockpit-diagram` (AC-810) — read that
 // class first. Deviations: the read payload is a base64 PNG snapshot, so the consent text names a screenshot; and
 // the write path (AC-854, reversing AC-820) only adds — no replace-the-board tool, no reach into operator work.
-internal sealed class WhiteboardMcpTools
+internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessRegistry registry)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -21,24 +20,13 @@ internal sealed class WhiteboardMcpTools
     private static readonly string[] Shapes =
         ["rectangle", "roundedrectangle", "ellipse", "diamond", "arrow", "column", "callout", "text", "stickynote"];
 
-    private readonly IWhiteboardAccessRegistry _registry;
-    private readonly IConsentBroker? _consent;
-
-    // The consent broker is optional so the tool's own tests construct it without a host; the container injects the
-    // shared singleton, so a real access is gated behind an operator Approve/Deny that fails closed when nobody can ask.
-    public WhiteboardMcpTools(IWhiteboardAccessRegistry registry, IConsentBroker? consent = null)
-    {
-        _registry = registry;
-        _consent = consent;
-    }
-
     [McpServerTool(Name = "list_whiteboards")]
     [Description("Lists the whiteboard surfaces the operator has open that you could ask to use: each with a stable id, the name the operator sees, and whether you already hold read/place on it. Reading a surface and putting something on it each need the operator to approve them first, separately (see read_whiteboard / place_on_whiteboard); this list only names the surfaces so you can reference one.")]
     public string ListWhiteboards(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session)
     {
-        var caller = McpRequestContext.CurrentPaneId ?? session;
-        var whiteboards = _registry.ListSurfaces(caller)
+        var caller = host.CurrentMcpCallerPaneId ?? session;
+        var whiteboards = registry.ListSurfaces(caller)
             .Select(surface => new
             {
                 id = surface.SurfaceId,
@@ -57,13 +45,9 @@ internal sealed class WhiteboardMcpTools
     {
         var title = string.IsNullOrWhiteSpace(name) ? "Whiteboard" : name.Trim();
         var surfaceId = Guid.NewGuid().ToString("n");
-        var caller = McpRequestContext.CurrentPaneId ?? session;
-        if (_consent is null)
-        {
-            return _Serialize(new { ok = false, error = "Opening a whiteboard needs the operator's approval, which is not available here." });
-        }
+        var caller = host.CurrentMcpCallerPaneId ?? session;
 
-        var decision = await _consent.RequestConsentAsync(new ConsentRequest(
+        var decision = await host.RequestConsentAsync(new ConsentRequest(
             "An agent wants to open a whiteboard to work on with you",
             $"Open an empty whiteboard window \"{_SingleLine(title)}\" beside the cockpit and couple this agent to it. It cannot see the board or draw on it without asking you separately.",
             new ConsentSource(surfaceId, null, ConsentSourceCatalog.WhiteboardMcp),
@@ -75,7 +59,7 @@ internal sealed class WhiteboardMcpTools
             return _Serialize(new { ok = false, error = "Opening that whiteboard was not approved by the operator — nothing was opened." });
         }
 
-        if (!_registry.RequestOpen(new WhiteboardOpenRequest(surfaceId, title, caller)))
+        if (!registry.RequestOpen(new WhiteboardOpenRequest(surfaceId, title, caller)))
         {
             return _Serialize(new { ok = false, error = "Nothing in this cockpit draws whiteboard windows right now — the diagram plugin may not be running." });
         }
@@ -89,19 +73,19 @@ internal sealed class WhiteboardMcpTools
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The whiteboard to read, by its id or name from list_whiteboards.")] string whiteboard)
     {
-        if (_registry.Resolve(whiteboard) is not { } surface)
+        if (registry.Resolve(whiteboard) is not { } surface)
         {
             return _Serialize(new { ok = false, error = "No such whiteboard surface — call list_whiteboards for the open surfaces and their ids." });
         }
 
-        var caller = McpRequestContext.CurrentPaneId ?? session;
+        var caller = host.CurrentMcpCallerPaneId ?? session;
         if (await _EnsureCapabilityAsync(caller, surface, WhiteboardCapability.Read).ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
         }
 
-        var snapshotPng = _registry.ReadCoupled(caller, surface.SurfaceId) ?? [];
-        _registry.MarkRead(caller, surface.SurfaceId);
+        var snapshotPng = registry.ReadCoupled(caller, surface.SurfaceId) ?? [];
+        registry.MarkRead(caller, surface.SurfaceId);
         return _Serialize(new
         {
             ok = true,
@@ -124,7 +108,7 @@ internal sealed class WhiteboardMcpTools
         [Description("Width in board pixels; omit for a sensible default.")] double width = 0,
         [Description("Height in board pixels; omit for a sensible default.")] double height = 0)
     {
-        if (_registry.Resolve(whiteboard) is not { } surface)
+        if (registry.Resolve(whiteboard) is not { } surface)
         {
             return _Serialize(new { ok = false, error = "No such whiteboard surface — call list_whiteboards for the open surfaces and their ids." });
         }
@@ -135,7 +119,7 @@ internal sealed class WhiteboardMcpTools
             return _Serialize(new { ok = false, error = $"\"{shape}\" is not a shape this board has — use one of: {string.Join(", ", Shapes)}." });
         }
 
-        var caller = McpRequestContext.CurrentPaneId ?? session;
+        var caller = host.CurrentMcpCallerPaneId ?? session;
         var ask = string.IsNullOrWhiteSpace(label) ? $"a {kind}" : $"a {kind} reading \"{_SingleLine(label!)}\"";
         if (await _EnsureCapabilityAsync(caller, surface, WhiteboardCapability.Write, ask).ConfigureAwait(false) is { } error)
         {
@@ -151,7 +135,7 @@ internal sealed class WhiteboardMcpTools
             width > 0 ? width : sticky ? 140 : 120,
             height > 0 ? height : sticky ? 140 : 80);
 
-        if (_registry.PlaceCoupled(caller, surface.SurfaceId, placement) is not { } objectId)
+        if (registry.PlaceCoupled(caller, surface.SurfaceId, placement) is not { } objectId)
         {
             return _Serialize(new { ok = false, error = "That whiteboard could not be written to — it may have closed or been disconnected." });
         }
@@ -166,18 +150,18 @@ internal sealed class WhiteboardMcpTools
         [Description("The whiteboard, by its id or name from list_whiteboards.")] string whiteboard,
         [Description("The id place_on_whiteboard gave the object.")] string objectId)
     {
-        if (_registry.Resolve(whiteboard) is not { } surface)
+        if (registry.Resolve(whiteboard) is not { } surface)
         {
             return _Serialize(new { ok = false, error = "No such whiteboard surface — call list_whiteboards for the open surfaces and their ids." });
         }
 
-        var caller = McpRequestContext.CurrentPaneId ?? session;
+        var caller = host.CurrentMcpCallerPaneId ?? session;
         if (await _EnsureCapabilityAsync(caller, surface, WhiteboardCapability.Write, "take back an object it placed itself").ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
         }
 
-        if (!_registry.ErasePlaced(caller, surface.SurfaceId, objectId))
+        if (!registry.ErasePlaced(caller, surface.SurfaceId, objectId))
         {
             return _Serialize(new
             {
@@ -194,26 +178,21 @@ internal sealed class WhiteboardMcpTools
     // happen and is only meaningful (and only supplied) for a Write ask.
     private async Task<string?> _EnsureCapabilityAsync(string caller, WhiteboardSurface surface, WhiteboardCapability needed, string? ask = null)
     {
-        var held = _registry.CouplingOf(caller, surface.SurfaceId);
+        var held = registry.CouplingOf(caller, surface.SurfaceId);
         if (needed == WhiteboardCapability.Read ? held is { CanRead: true } : held is { CanWrite: true })
         {
             return null;
         }
 
-        if (held is null && _registry.IsCoupledByAnother(caller, surface.SurfaceId))
+        if (held is null && registry.IsCoupledByAnother(caller, surface.SurfaceId))
         {
             return $"Whiteboard \"{surface.Name}\" is already being used by another agent — only one agent at a time can use a surface.";
-        }
-
-        if (_consent is null)
-        {
-            return "Using a whiteboard surface needs the operator's approval, which is not available here.";
         }
 
         // A session that already holds Read gets the widening prompt: the operator approved reading under AC-820's
         // promise that an agent never writes to the canvas, so drawing is a new question, not an extension of that one.
         var widening = needed == WhiteboardCapability.Write && held is { CanRead: true };
-        var decision = await _consent.RequestConsentAsync(_PromptFor(surface, needed, widening, ask)).ConfigureAwait(false);
+        var decision = await host.RequestConsentAsync(_PromptFor(surface, needed, widening, ask)).ConfigureAwait(false);
         if (!decision.IsApproved)
         {
             return needed == WhiteboardCapability.Read
@@ -223,8 +202,8 @@ internal sealed class WhiteboardMcpTools
 
         try
         {
-            _registry.Couple(caller, surface.SurfaceId);
-            _registry.Grant(caller, surface.SurfaceId, needed);
+            registry.Couple(caller, surface.SurfaceId);
+            registry.Grant(caller, surface.SurfaceId, needed);
         }
         catch (InvalidOperationException)
         {

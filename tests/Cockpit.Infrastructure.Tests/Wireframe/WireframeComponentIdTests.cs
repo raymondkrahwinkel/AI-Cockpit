@@ -1,11 +1,7 @@
-using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Wireframe;
 using Cockpit.Core.Wireframe;
 using Cockpit.Core.Wireframe.Model;
-using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Wireframe;
-using Cockpit.Plugins.Abstractions.Consent;
-using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Wireframe;
 
@@ -55,15 +51,14 @@ public class WireframeComponentIdTests
     // ---- Criterion 2: a name that no longer exists is a refusal ----
 
     [Fact]
-    public async Task AnIdThatNamesNothingAnyMore_IsRefusedWithAReason_NotAppliedToWhateverTookItsPlace()
+    public void AnIdThatNamesNothingAnyMore_IsRefusedWithAReason_NotAppliedToWhateverTookItsPlace()
     {
-        var (tools, registry) = _Tools();
-        await tools.RemoveComponent(Session, Name, WireframeScreens.SaveButton);
+        var registry = _Coupled();
+        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.Remove(WireframeScreens.SaveButton));
 
-        var json = JsonNode.Parse(await tools.SetComponentText(Session, Name, WireframeScreens.SaveButton, "Bewaren"));
+        var result = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
 
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("no component with id \"save\"", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal("This wireframe has no component with id \"save\" — it may have been removed. Read it again for the ids as they now stand.", result.Refusal);
         Assert.Contains("button \"Annuleren\" #cancel", registry.PeekText(SurfaceId)!, StringComparison.Ordinal);
     }
 
@@ -156,16 +151,6 @@ public class WireframeComponentIdTests
         Assert.Null(result.Refusal);
         Assert.Equal("Bewaren", _Component(registry, save)?.Text);
         Assert.Contains("button \"Annuleren\"", registry.PeekText(SurfaceId)!, StringComparison.Ordinal);
-    }
-
-    private static (WireframeMcpTools Tools, WireframeAccessRegistry Registry) _Tools()
-    {
-        var registry = new WireframeAccessRegistry();
-        registry.SurfaceOpened(SurfaceId, Name, WireframeScreens.Settings);
-        var broker = Substitute.For<IConsentBroker>();
-        broker.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new ConsentDecision(ConsentOutcome.Approved));
-        return (new WireframeMcpTools(registry, broker), registry);
     }
 
     private static IEnumerable<WireframeNode> _Flatten(WireframeNode node) =>
