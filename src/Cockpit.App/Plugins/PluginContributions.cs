@@ -105,4 +105,14 @@ public interface IPluginContributionSink
 
     /// <summary>Applies the left-menu order/visibility the plugin manager just persisted for <paramref name="pluginId"/> (#72), so the sidebar re-renders without a restart.</summary>
     void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu);
+
+    /// <summary>
+    /// Same as <see cref="ApplyPluginMenuPreference(string, int, bool)"/>, also carrying whether the plugin is
+    /// pinned top-level in the sidebar rather than collapsed under "Plugins ›" (AC-937). A default overload —
+    /// forwards to the three-argument member, dropping the pin — so the many existing
+    /// <see cref="IPluginContributionSink"/> fakes across this repo's tests keep compiling untouched; only the
+    /// app's own sink acts on the pin.
+    /// </summary>
+    void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu, bool pinnedToSidebar) =>
+        ApplyPluginMenuPreference(pluginId, menuOrder, hiddenInMenu);
 }

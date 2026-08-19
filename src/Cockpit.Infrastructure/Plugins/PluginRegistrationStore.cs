@@ -32,7 +32,7 @@ internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingl
         {
             foreach (var (folderId, entry) in plugins)
             {
-                result[folderId] = entry.ToDomain();
+                result[folderId] = entry.ToDomain(folderId);
             }
         }
 
@@ -57,6 +57,18 @@ internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingl
             var entry = file.Plugins.TryGetValue(folderId, out var existing) ? existing : new PluginRegistrationEntry();
             entry.MenuOrder = menuOrder;
             entry.HiddenInMenu = hiddenInMenu;
+            file.Plugins[folderId] = entry;
+        }, cancellationToken);
+
+    public Task SaveMenuPreferenceAsync(string folderId, int menuOrder, bool hiddenInMenu, bool pinnedToSidebar, CancellationToken cancellationToken = default) =>
+        _configFile.UpdateAsync(file =>
+        {
+            // Mirror of the three-argument overload: this write owns the menu preference plus the pin (AC-937),
+            // and leaves the enable/consent state and the plugin's own data as they were.
+            var entry = file.Plugins.TryGetValue(folderId, out var existing) ? existing : new PluginRegistrationEntry();
+            entry.MenuOrder = menuOrder;
+            entry.HiddenInMenu = hiddenInMenu;
+            entry.PinnedToSidebar = pinnedToSidebar;
             file.Plugins[folderId] = entry;
         }, cancellationToken);
 

@@ -11,6 +11,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.Core.Shortcuts;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Projects;
@@ -336,10 +337,11 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        var entries = cockpit.VisibleMenuEntries;
+        var pinned = cockpit.PinnedMenuEntries;
+        var collapsed = cockpit.CollapsedMenuEntries;
 
         PluginSectionsHost.Children.Clear();
-        if (entries.Count == 0)
+        if (pinned.Count == 0 && collapsed.Count == 0)
         {
             PluginSectionsHost.IsVisible = false;
             return;
@@ -351,24 +353,42 @@ public partial class CockpitView : UserControl
             PluginSectionsHost.Children.Add(new Border { Height = 1, Background = brush, Margin = new Thickness(0, 4) });
         }
 
-        // Buttons and sections are drawn from the one ordered list, so a section the operator moved to the top is at
-        // the top — rather than below every plugin that happens to contribute a button.
-        foreach (var entry in entries)
+        // Pinned entries are drawn from the one ordered list, so a section the operator moved to the top is at the
+        // top — rather than below every plugin that happens to contribute a button.
+        foreach (var entry in pinned)
         {
-            var pluginId = entry.PluginId;
-            Action? onSettings = cockpit.HasPluginSettings(pluginId)
-                ? () => _ = cockpit.OpenPluginSettingsAsync(pluginId)
-                : null;
-
-            Control control = entry switch
-            {
-                { Button: { } launcher } => new PluginLauncherButton(launcher.Title, launcher.OnInvoke, onSettings, launcher.Badge),
-                { Section: { } section } => new PluginSectionControl(section.Title, section.CreateView(), onSettings),
-                _ => throw new InvalidOperationException($"'{pluginId}' contributed a menu entry that is neither a button nor a section."),
-            };
-
-            PluginSectionsHost.Children.Add(control);
+            PluginSectionsHost.Children.Add(_BuildMenuControl(cockpit, entry));
         }
+
+        // AC-937: everything not pinned collapses behind one "Plugins ›" launcher, drawn only when there is
+        // something to collapse — an empty flyout would be a door to nothing.
+        if (collapsed.Count > 0)
+        {
+            var collapsedControls = collapsed.Select(entry => _BuildMenuControl(cockpit, entry)).ToList();
+            var collapsedBadges = collapsed
+                .Select(entry => entry.Button?.Badge)
+                .Where(badge => badge is not null)
+                .Select(badge => badge!)
+                .ToList();
+            PluginSectionsHost.Children.Add(new PluginsMenuButton(collapsedControls, collapsedBadges));
+        }
+    }
+
+    // Shared by the pinned entries drawn directly and the collapsed ones drawn inside the "Plugins ›" flyout (AC-937)
+    // — the same PluginLauncherButton/PluginSectionControl instance either way.
+    private Control _BuildMenuControl(CockpitViewModel cockpit, PluginMenuEntry entry)
+    {
+        var pluginId = entry.PluginId;
+        Action? onSettings = cockpit.HasPluginSettings(pluginId)
+            ? () => _ = cockpit.OpenPluginSettingsAsync(pluginId)
+            : null;
+
+        return entry switch
+        {
+            { Button: { } launcher } => new PluginLauncherButton(launcher.Title, launcher.OnInvoke, onSettings, launcher.Badge),
+            { Section: { } section } => new PluginSectionControl(section.Title, section.CreateView(), onSettings),
+            _ => throw new InvalidOperationException($"'{pluginId}' contributed a menu entry that is neither a button nor a section."),
+        };
     }
 
     private void OnRootKeyDown(object? sender, KeyEventArgs e)

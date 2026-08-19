@@ -256,6 +256,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             .OrderBy(entry => _MenuOrderOf(entry.PluginId))
             .ToList();
 
+    // AC-937: the entries drawn directly in the sidebar — a pinned plugin, or any section (an inline accordion
+    // behind a flyout would be the wrong control, so a section never collapses regardless of its plugin's pin).
+    public IReadOnlyList<PluginMenuEntry> PinnedMenuEntries =>
+        VisibleMenuEntries.Where(entry => entry.Section is not null || _IsPinnedToSidebar(entry.PluginId)).ToList();
+
+    // AC-937: the entries collapsed behind "Plugins ›" — an unpinned button, and only a button; see PinnedMenuEntries.
+    public IReadOnlyList<PluginMenuEntry> CollapsedMenuEntries =>
+        VisibleMenuEntries.Where(entry => entry.Section is null && !_IsPinnedToSidebar(entry.PluginId)).ToList();
+
     // The toolbar buttons in the operator's chosen order/visibility (#72) — the same hide/order rules as the left
     // menu, so a plugin hidden there does not surface a toolbar button either. This is the one list the strip draws
     // from (AC-772): a cockpit-owned action is an entry here like any other, not a second registry beside it.
@@ -272,9 +281,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _pluginDiagnostics?.Record(pluginId, title, "toolbar-action", error);
 
     // Applies a menu preference the plugin manager just persisted, and tells the sidebar to rebuild (#72).
-    public void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu)
+    // Preserves whatever pin (AC-937) the plugin already had — this three-argument member is the #72 order/hide
+    // write, which says nothing about pinning.
+    public void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu) =>
+        ApplyPluginMenuPreference(pluginId, menuOrder, hiddenInMenu, _IsPinnedToSidebar(pluginId));
+
+    // AC-937: same, also setting whether the plugin is pinned top-level in the sidebar.
+    public void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu, bool pinnedToSidebar)
     {
-        _pluginMenuPreferences[pluginId] = new PluginMenuPreference(menuOrder, hiddenInMenu);
+        _pluginMenuPreferences[pluginId] = new PluginMenuPreference(menuOrder, hiddenInMenu, pinnedToSidebar);
         PluginMenuChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -284,7 +299,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _IsHiddenInMenu(string pluginId) =>
         _pluginMenuPreferences.TryGetValue(pluginId, out var preference) && preference.Hidden;
 
-    private sealed record PluginMenuPreference(int Order, bool Hidden);
+    private bool _IsPinnedToSidebar(string pluginId) =>
+        _pluginMenuPreferences.TryGetValue(pluginId, out var preference) && preference.Pinned;
+
+    private sealed record PluginMenuPreference(int Order, bool Hidden, bool Pinned);
 
     // Keyboard shortcuts contributed by plugins (#: shortcuts), dispatched alongside the built-in app-action shortcuts.
     public ObservableCollection<PluginShortcut> PluginShortcuts { get; } = [];
@@ -4213,7 +4231,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var registrations = await registrationStore.LoadAllAsync();
         foreach (var (folderId, registration) in registrations)
         {
-            _pluginMenuPreferences[folderId] = new PluginMenuPreference(registration.MenuOrder, registration.HiddenInMenu);
+            _pluginMenuPreferences[folderId] = new PluginMenuPreference(registration.MenuOrder, registration.HiddenInMenu, registration.PinnedToSidebar);
         }
 
         PluginMenuChanged?.Invoke(this, EventArgs.Empty);

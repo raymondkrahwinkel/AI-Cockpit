@@ -350,11 +350,13 @@ public partial class PluginManagerViewModel : ViewModelBase
             // moves it up there — a list ordered differently from the thing it reorders is a puzzle, not a tool.
             foreach (var plugin in discovered.OrderBy(plugin => registrations.TryGetValue(plugin.FolderId, out var registration) ? registration.MenuOrder : 0))
             {
+                registrations.TryGetValue(plugin.FolderId, out var menuRegistration);
                 Plugins.Add(new PluginRowViewModel(
                     plugin,
                     _settingsRegistry?.ContainsKey(plugin.FolderId) ?? false,
                     _diagnostics?.AllForFolder(plugin.FolderId),
-                    registrations.TryGetValue(plugin.FolderId, out var menuRegistration) && menuRegistration.HiddenInMenu));
+                    menuRegistration?.HiddenInMenu ?? false,
+                    menuRegistration?.PinnedToSidebar ?? false));
             }
 
             HasPlugins = Plugins.Count > 0;
@@ -512,6 +514,28 @@ public partial class PluginManagerViewModel : ViewModelBase
         StatusMessage = hidden
             ? $"'{row.DisplayName}' hidden from the left menu — it still runs, and its shortcut still works."
             : $"'{row.DisplayName}' shown in the left menu again.";
+    }
+
+    // Pins or unpins the plugin's contributions top-level in the sidebar, out of the collapsed "Plugins ›" menu
+    // (AC-937) — a separate axis from #72's order/hide, so neither is touched here.
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
+    private async Task TogglePluginPinnedAsync(PluginRowViewModel row)
+    {
+        if (_registrationStore is null)
+        {
+            return;
+        }
+
+        var pinned = !row.PinnedToSidebar;
+        var order = Math.Max(Plugins.IndexOf(row), 0);
+
+        await _registrationStore.SaveMenuPreferenceAsync(row.FolderId, order, row.HiddenInMenu, pinned);
+        _contributionSink?.ApplyPluginMenuPreference(row.FolderId, order, row.HiddenInMenu, pinned);
+        await LoadAsync();
+
+        StatusMessage = pinned
+            ? $"'{row.DisplayName}' pinned to the sidebar."
+            : $"'{row.DisplayName}' moved into 'Plugins ›'.";
     }
 
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]

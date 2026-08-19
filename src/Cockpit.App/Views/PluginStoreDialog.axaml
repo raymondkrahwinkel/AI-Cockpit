@@ -207,6 +207,11 @@
                                                         CommandParameter="{Binding}">
                                                     <materialIcons:MaterialIcon Kind="ArrowDown" Width="12" Height="12"/>
                                                 </Button>
+                                                <!-- AC-937: top-level in the sidebar, or collapsed into "Plugins ›" — the operator decides, not the plugin. -->
+                                                <Button Content="{Binding PinToggleLabel}" Classes="Compact Subtle"
+                                                        ToolTip.Tip="{Binding PinToggleTip}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.TogglePluginPinnedCommand}"
+                                                        CommandParameter="{Binding}"/>
                                                 <Button Content="{Binding MenuVisibilityLabel}" Classes="Compact Subtle"
                                                         ToolTip.Tip="{Binding MenuVisibilityTip}"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.TogglePluginMenuVisibilityCommand}"

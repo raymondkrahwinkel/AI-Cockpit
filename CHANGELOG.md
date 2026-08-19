@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the sidebar's plugin buttons now collapse behind a single "Plugins ›" flyout instead of stacking up as
+  the plugin list grows — only Autopilot and Open PRs show top-level by default, and a small dot on the flyout
+  button says something behind it changed without opening it. Any plugin can be pinned top-level (or unpinned)
+  from a new switch next to its up/down arrows in the plugin manager.
 - added: a project can now link more than one GitHub repository for issue tracking — add a row per repository in
   the project editor's GitHub repository field. The first one is the pin: it decides which repository new `gh`
   commands land in and which one the issues dialog opens on, and the session issue picker now shows the open
