@@ -1,0 +1,62 @@
+using Avalonia.Controls;
+using Material.Icons;
+using Cockpit.Core.Abstractions;
+
+namespace Cockpit.App.Docking;
+
+/// <summary>
+/// A panel the right-hand dock rail (AC-951) can show — the dock equivalent of a
+/// <see cref="Cockpit.Plugins.Abstractions.Widgets.WidgetRegistration"/>, but host-internal rather than
+/// plugin-facing: there is exactly one candidate content today (the Assistant, AC-950 [c]), so this stays a
+/// seam inside <c>Cockpit.App</c> instead of a surface on <c>ICockpitHost</c> that could never be withdrawn.
+/// </summary>
+/// <param name="Id">A stable id, persisted as `LayoutSettings.OpenDockPanelId` so the open panel survives a restart.</param>
+/// <param name="Title">Shown as the vertical tab label on the collapsed rail.</param>
+/// <param name="IconKind">Shown above the title on the rail tab.</param>
+/// <param name="CreateView">Builds the panel's content, on the UI thread, once per time it is opened.</param>
+public sealed record DockPanelRegistration(string Id, string Title, MaterialIconKind IconKind, Func<Control> CreateView);
+
+/// <summary>Holds the panels the dock rail offers. Empty is never the normal case — see <see cref="DockPanelRegistry"/>'s seeded placeholder.</summary>
+public interface IDockPanelRegistry
+{
+    /// <returns>False when another registration already claims this id — first one wins.</returns>
+    bool Register(DockPanelRegistration panel);
+
+    /// <summary>Every panel registered so far, in registration order — what the rail's tab strip lists.</summary>
+    IReadOnlyList<DockPanelRegistration> Panels { get; }
+
+    event EventHandler? Changed;
+}
+
+internal sealed class DockPanelRegistry : IDockPanelRegistry, ISingletonService
+{
+    private readonly List<DockPanelRegistration> _panels = [];
+
+    public event EventHandler? Changed;
+
+    public IReadOnlyList<DockPanelRegistration> Panels => [.. _panels];
+
+    public DockPanelRegistry()
+    {
+        // AC-951: the rail ships before the Assistant is dockable (AC-950 [c]), so it needs one panel to open
+        // and test against. Replace with the real Assistant registration once [c] lands; this stays only if
+        // a second dock panel never shows up to justify keeping it.
+        Register(new DockPanelRegistration(
+            "placeholder",
+            "Panel",
+            MaterialIconKind.ViewDashboardOutline,
+            () => new TextBlock { Text = "Nothing docked here yet.", Margin = new Avalonia.Thickness(12) }));
+    }
+
+    public bool Register(DockPanelRegistration panel)
+    {
+        if (_panels.Any(existing => existing.Id == panel.Id))
+        {
+            return false;
+        }
+
+        _panels.Add(panel);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+}

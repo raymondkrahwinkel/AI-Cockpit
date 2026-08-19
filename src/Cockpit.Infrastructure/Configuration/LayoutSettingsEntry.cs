@@ -19,6 +19,12 @@ internal sealed class LayoutSettingsEntry
 
     public double FocusRailWeight { get; set; } = LayoutSettings.DefaultFocusRailWeight;
 
+    public double DockRailWidth { get; set; } = LayoutSettings.DefaultDockRailWidth;
+
+    public string? OpenDockPanelId { get; set; }
+
+    public bool AssistantDocked { get; set; }
+
     public static LayoutSettingsEntry FromDomain(LayoutSettings settings) => new()
     {
         SingleSessionLayout = settings.SingleSessionLayout,
@@ -28,6 +34,9 @@ internal sealed class LayoutSettingsEntry
         SidebarWidth = settings.SidebarWidth,
         SidebarCollapsed = settings.SidebarCollapsed,
         FocusRailWeight = settings.FocusRailWeight,
+        DockRailWidth = settings.DockRailWidth,
+        OpenDockPanelId = settings.OpenDockPanelId,
+        AssistantDocked = settings.AssistantDocked,
     };
 
     public LayoutSettings ToDomain() => new()
@@ -39,5 +48,8 @@ internal sealed class LayoutSettingsEntry
         SidebarWidth = SidebarWidth,
         SidebarCollapsed = SidebarCollapsed,
         FocusRailWeight = FocusRailWeight,
+        DockRailWidth = DockRailWidth,
+        OpenDockPanelId = OpenDockPanelId,
+        AssistantDocked = AssistantDocked,
     };
 }
