@@ -7,7 +7,7 @@ namespace Cockpit.App.ViewModels;
 // One row in the plugin manager (#14): the display fields plus the action affordances derived from the
 // plugin's `PluginLoadDecision`. The manager owns the enable/disable/remove commands and
 // takes the row as their parameter, so the row itself stays a passive projection of a discovered plugin.
-public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSettings = false, IReadOnlyList<PluginFailure>? failures = null, bool hiddenInMenu = false)
+public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSettings = false, IReadOnlyList<PluginFailure>? failures = null, bool hiddenInMenu = false, bool pinnedToSidebar = false)
 {
     private readonly IReadOnlyList<PluginFailure> _failures = failures ?? [];
 
@@ -33,6 +33,16 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
     public string MenuVisibilityTip => hiddenInMenu
         ? "Show this plugin's buttons and sections in the left menu again."
         : "Keep this plugin's buttons and sections out of the left menu. The plugin keeps running: its shortcut and command-palette entry still work — that is the difference with disabling it.";
+
+    // Whether this plugin's contributions show top-level in the sidebar rather than collapsed under "Plugins ›" (AC-937).
+    public bool PinnedToSidebar => pinnedToSidebar;
+
+    // The pin toggle's label names the action, the same way MenuVisibilityLabel above does.
+    public string PinToggleLabel => pinnedToSidebar ? "Unpin from sidebar" : "Pin to sidebar";
+
+    public string PinToggleTip => pinnedToSidebar
+        ? "Move this plugin's buttons and sections into the collapsed \"Plugins ›\" menu."
+        : "Show this plugin's buttons and sections directly in the sidebar instead of collapsed under \"Plugins ›\".";
 
     // True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.
     public bool HasSettings => hasSettings;

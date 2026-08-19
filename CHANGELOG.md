@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the sidebar's plugin buttons now collapse behind a single "Plugins ›" flyout instead of stacking up as
+  the plugin list grows — nothing is pinned top-level by default, so pin back whatever you use daily from a new
+  switch next to its up/down arrows in the plugin manager. A small dot on the flyout button says something behind
+  it changed without opening it.
 - added: a project can now link more than one GitHub repository for issue tracking — add a row per repository in
   the project editor's GitHub repository field. The first one is the pin: it decides which repository new `gh`
   commands land in and which one the issues dialog opens on, and the session issue picker now shows the open
@@ -142,6 +146,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: closing the main window now asks for confirmation first if any session is running, instead of ending
   the app — and every session in it — on a single click. Cancelling leaves the window and all sessions open;
   confirming closes as before. A restart or an update-driven close still goes straight through without asking.
+
+### Changed
+
+- changed: the sidebar's "Menu" and "Help" buttons now open the same flush, right-hand pop-out as "Plugins ›"
+  instead of their own separate dropdown — same items, same actions, just matching the rest of the sidebar's look.
+  The hairline that used to sit above "Plugins ›" is gone too.
 
 ### Fixed
 
