@@ -1,10 +1,10 @@
 namespace Cockpit.Core.Abstractions.Diagrams;
 
-// What the render engine dropped on the floor (AC-808). Mermaider can leave a construct out of its SVG
-// without throwing, warning, or leaving a gap — the picture looks complete and says something other than
-// the source does, which is worse than a visible failure because a decision gets taken on it. Every finding
-// is a finished sentence, so both consumers of a render — the operator's surface and the agent's MCP reply
-// — say the same thing without each inventing its own phrasing.
+/// <summary>
+/// What the render engine silently dropped from the source (AC-808) — Mermaider can lose a construct without
+/// throwing, so a decision must never be taken on a picture that looks complete but is not. Each finding is a
+/// finished sentence, so the operator's surface and the agent's MCP reply show the same text.
+/// </summary>
 public sealed record DiagramFidelity(IReadOnlyList<string> Findings)
 {
     public bool IsComplete => Findings.Count == 0;
