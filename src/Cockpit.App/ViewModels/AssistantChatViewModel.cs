@@ -185,11 +185,24 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _alwaysOnTop = true;
 
-    // AC-952: which host the chat view is sitting in. False is the floating window, and it is all there is until
-    // AC-953 adds the dock rail — the header reads it to swap Close for Undock rather than carrying two copies
-    // of its whole button row.
+    // AC-952: which host the chat view is sitting in — the floating window, or AC-953's dock rail. The header
+    // reads it to swap Close for Undock rather than carrying two copies of its whole button row.
     [ObservableProperty]
     private bool _isDocked;
+
+    // AC-953: where the transcript was scrolled to, handed from the view that is leaving a host to the one built
+    // for the next. Null means "was at the tail", which needs no restoring — following it is what a fresh view
+    // does anyway. Everything else the operator had in flight (input text, attachments, the mention picker) is
+    // already on this view model, and the transcript comes from the session: the scroll offset is the only thing
+    // a fresh view per host would otherwise lose.
+    internal TranscriptScrollPosition? TranscriptAnchor { get; set; }
+
+    // Raised by the header's Dock/Undock button. The view model cannot do the swap itself — which hosts exist is
+    // `AssistantIndicatorCoordinator`'s business, and it is what builds this — so it only says that it was asked for.
+    public event EventHandler? DockToggleRequested;
+
+    [RelayCommand]
+    private void ToggleDock() => DockToggleRequested?.Invoke(this, EventArgs.Empty);
 
     // Mirrors `AssistantSettings.PushToTalkKeyName` (AC-671), same read points as `AlwaysOnTop` above. Backs the
     // composer's placeholder instead of a hardcoded "F10" — see `_LoadSpeakRepliesAsync` for the empty-settings

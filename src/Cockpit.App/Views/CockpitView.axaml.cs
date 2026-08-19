@@ -224,6 +224,15 @@ public partial class CockpitView : UserControl
                 _RebuildDockPanelContent();
             }
         }
+        else if (e.PropertyName == nameof(CockpitViewModel.DockPanels))
+        {
+            // AC-953: the Assistant registers itself when its coordinator starts — after this view has attached,
+            // and possibly after the restored `OpenDockPanelId` has been read back — and withdraws itself again
+            // whenever it is undocked. Both change what the rail can show, so the rail follows the registry
+            // rather than only the open-panel id.
+            _ApplyDockRailWidth();
+            _RebuildDockPanelContent();
+        }
         else if (e.PropertyName == nameof(CockpitViewModel.SelectedSession))
         {
             // Any selection change — the sidebar-switch shortcut, a sidebar click, or a pane click — moves
@@ -328,10 +337,13 @@ public partial class CockpitView : UserControl
             return;
         }
 
+        // AC-953: with nothing registered there is no rail at all — not a 40px strip of empty chrome — so the
+        // column gives its width back to the session content rather than merely hiding what stands in it.
         var collapsed = cockpit.OpenDockPanelId is null;
         var column = _DockRailColumn();
         column.MinWidth = collapsed ? 0 : LayoutSettings.MinDockRailWidth;
-        column.Width = new GridLength(collapsed ? CollapsedRailWidth : cockpit.DockRailWidth);
+        column.Width = new GridLength(
+            !cockpit.HasDockPanels ? 0 : collapsed ? CollapsedRailWidth : cockpit.DockRailWidth);
         RootGrid.ColumnDefinitions[3].Width = new GridLength(collapsed ? 0 : 4);
     }
 

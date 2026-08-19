@@ -1541,6 +1541,7 @@
              resource panel (declared after this Border, so drawn in front of it) still read on top rather than
              appearing to run underneath the rail — acceptance criterion 3 (AC-951). -->
         <Border Grid.Column="4"
+                IsVisible="{Binding HasDockPanels}"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1,0,0,0">
             <DockPanel>

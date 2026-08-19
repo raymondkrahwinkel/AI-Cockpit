@@ -6,22 +6,13 @@ namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// <see cref="DockPanelRegistry"/> (AC-951): first registration of an id wins, a later one with the same id is
-/// refused, and the seeded placeholder is there from construction so the rail has something to open and test
-/// against before AC-950 [c] registers the Assistant.
+/// refused. Empty until something registers: AC-951 seeded a placeholder to have a panel to open before the
+/// Assistant was dockable, and AC-953 replaced it with the real one (AssistantIndicatorCoordinator.Start).
 /// </summary>
 public class DockPanelRegistryTests
 {
     private static DockPanelRegistration _Panel(string id, string title = "T") =>
         new(id, title, MaterialIconKind.ViewDashboardOutline, () => new TextBlock());
-
-    [Fact]
-    public void Constructor_SeedsThePlaceholderPanel()
-    {
-        var registry = new DockPanelRegistry();
-
-        Assert.Single(registry.Panels);
-        Assert.Equal("placeholder", registry.Panels[0].Id);
-    }
 
     [Fact]
     public void Register_TheFirstOfAnId_Wins_AndALaterOneIsRefused()

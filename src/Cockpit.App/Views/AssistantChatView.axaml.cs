@@ -184,7 +184,20 @@ public partial class AssistantChatView : UserControl
         TranscriptScroll.AddHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
 
         Dispatcher.UIThread.Post(() => InputBox.Focus());
-        Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
+
+        // Posted, not run here: the transcript has not been arranged yet, so neither following the tail nor
+        // restoring AC-953's handed-over position has any row to measure against until it has.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_attachedViewModel?.TranscriptAnchor is { } anchor)
+            {
+                _RestoreScrollAnchor(anchor);
+            }
+            else if (_stickToBottom)
+            {
+                _FollowNewest();
+            }
+        });
 
         if (Diagnostics is null && OperatingSystem.IsMacOS())
         {
@@ -204,6 +217,9 @@ public partial class AssistantChatView : UserControl
     // host's call (AssistantChatWindow does it on close), never a consequence of leaving the visual tree.
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        // Before the handlers come off, while the rows are still arranged and measurable (AC-953).
+        _CaptureScrollAnchor();
+
         TranscriptScroll.ScrollChanged -= _OnTranscriptScrollChanged;
         TranscriptScroll.RemoveHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel);
         TranscriptScroll.RemoveHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed);
@@ -264,9 +280,12 @@ public partial class AssistantChatView : UserControl
         var paused = _hostMinimised || _renderClockPaused;
         TranscriptScroll.IsVisible = !paused;
 
-        if (!paused && _stickToBottom)
+        // Re-read the follow inside the post, not just before it: _FollowNewest has no opinion of its own, so a
+        // post queued while sticky still jumps to the tail when it runs after something has stopped the follow —
+        // which is what AC-953's scroll handover is, on the very same attach.
+        if (!paused)
         {
-            Dispatcher.UIThread.Post(_FollowNewest);
+            Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
         }
     }
 
@@ -334,6 +353,73 @@ public partial class AssistantChatView : UserControl
         _stickToBottom = false;
         TranscriptItems.ScrollIntoView(index);
         ScrollToBottomButton.IsVisible = true;
+    }
+
+    // AC-953: hands this view's scroll position to whatever view the next host builds. Null while following the
+    // tail — a fresh view follows it too, so there is nothing to carry — and null when nothing is realised to
+    // measure, which is what a view that was never arranged looks like.
+    private void _CaptureScrollAnchor()
+    {
+        if (_attachedViewModel is not { } vm)
+        {
+            return;
+        }
+
+        vm.TranscriptAnchor = _stickToBottom ? null : _TopVisibleRow();
+    }
+
+    // The first row whose bottom edge is still below the viewport's top — the one the operator is reading from.
+    // Only realised containers can be measured, and the topmost visible row is realised by definition.
+    private TranscriptScrollPosition? _TopVisibleRow()
+    {
+        for (var index = 0; index < TranscriptItems.ItemCount; index++)
+        {
+            if (TranscriptItems.ContainerFromIndex(index) is not { } row
+                || row.TranslatePoint(new Point(0, 0), TranscriptScroll) is not { } top)
+            {
+                continue;
+            }
+
+            if (top.Y + row.Bounds.Height > 0)
+            {
+                return new TranscriptScrollPosition(index, top.Y);
+            }
+        }
+
+        return null;
+    }
+
+    // The other half of AC-953's handover: bring the anchored row back and line its top up where it was.
+    // Two steps because ScrollIntoView only realises the row and brings it *into* view — from below it lands at
+    // the bottom of the viewport, not where it was — so the offset correction afterwards is what actually places
+    // it. Same measure-the-row-then-correct idiom as _FollowNewest, and `_following` for the same reason: the
+    // layout passes this drives are ours, not an operator scroll to draw conclusions from.
+    private void _RestoreScrollAnchor(TranscriptScrollPosition anchor)
+    {
+        if (anchor.Index < 0 || anchor.Index >= TranscriptItems.ItemCount)
+        {
+            return;
+        }
+
+        _stickToBottom = false;
+        _following = true;
+        try
+        {
+            TranscriptItems.ScrollIntoView(anchor.Index);
+
+            if (TranscriptItems.ContainerFromIndex(anchor.Index) is { } row
+                && row.TranslatePoint(new Point(0, 0), TranscriptScroll) is { } top)
+            {
+                TranscriptScroll.Offset = TranscriptScroll.Offset
+                    .WithY(Math.Max(0, TranscriptScroll.Offset.Y + top.Y - anchor.Offset));
+            }
+        }
+        finally
+        {
+            _following = false;
+        }
+
+        ScrollToBottomButton.IsVisible = !_NewestRowIsFullyVisible();
     }
 
     // The host can flip Session from null to a real one after EnsureOpenedAsync's lazy start completes
@@ -430,7 +516,17 @@ public partial class AssistantChatView : UserControl
         SessionListButton.Flyout?.Hide();
     }
 
-    private void _OnCloseClick(object? sender, RoutedEventArgs e) => (TopLevel.GetTopLevel(this) as Window)?.Close();
+    // Docked, the TopLevel is MainWindow — closing it would take the whole cockpit with it. The button is hidden
+    // there (Undock stands in its place), so this only ever guards a keyboard or automation route to it.
+    private void _OnCloseClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not AssistantChatViewModel { IsDocked: false })
+        {
+            return;
+        }
+
+        (TopLevel.GetTopLevel(this) as Window)?.Close();
+    }
 
     // Saves the conversation as a text file, so it can be handed to somebody who was not in the room.
     // A save dialog rather than a fixed folder: this exists to be shared, and where a file lands decides whether

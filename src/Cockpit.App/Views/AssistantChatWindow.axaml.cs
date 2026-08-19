@@ -53,6 +53,7 @@ public partial class AssistantChatWindow : Window
             WindowDecorationProperties.SetElementRole(ChatView.ListeningModeToggle, WindowDecorationsElementRole.User);
             WindowDecorationProperties.SetElementRole(ChatView.ReadAloudToggle, WindowDecorationsElementRole.User);
             WindowDecorationProperties.SetElementRole(ChatView.HistoryButton, WindowDecorationsElementRole.User);
+            WindowDecorationProperties.SetElementRole(ChatView.DockToggleButton, WindowDecorationsElementRole.User);
             WindowDecorationProperties.SetElementRole(ChatView.CloseButton, WindowDecorationsElementRole.User);
         }
 
@@ -135,7 +136,9 @@ public partial class AssistantChatWindow : Window
     {
         _ = _SaveBoundsAsync();
 
-        if (DataContext is AssistantChatViewModel vm)
+        // AC-953: docking closes this window too, but there the view model is being handed to the rail rather
+        // than let go — only a real close is the peephole ending.
+        if (DataContext is AssistantChatViewModel { IsDocked: false } vm)
         {
             vm.Dispose();
         }

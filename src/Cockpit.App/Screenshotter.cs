@@ -400,6 +400,10 @@ internal static class Screenshotter
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
         ["assistant-chat-always-on"] = (_, _) => _AssistantChat(withConversation: true, alwaysOn: true),
+        // AC-953: the same chat surface in its other host — docked into the right-hand rail, inside MainWindow,
+        // with Undock where the floating window has Close. The scene that shows what "docked is ordinary cockpit
+        // UI" actually looks like: in the column structure beside the session content, no chrome of its own.
+        ["assistant-docked"] = (_, _) => _AssistantDockedInTheRail(),
         // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
         ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
         // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
@@ -2039,9 +2043,17 @@ internal static class Screenshotter
     // 11's "an inklapbare tool-call" without a bespoke fixture.
     private static AssistantChatWindow _AssistantChat(bool withConversation, bool speakReplies = true, bool alwaysOn = false)
     {
+        var viewModel = _AssistantChatViewModel(
+            withConversation ? new ViewModels.SessionViewModel() : null, speakReplies, alwaysOn);
+        return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    private static ViewModels.AssistantChatViewModel _AssistantChatViewModel(
+        ViewModels.SessionViewModel? session, bool speakReplies = true, bool alwaysOn = false)
+    {
         var host = new _FakeAssistantSessionHost
         {
-            Session = withConversation ? new ViewModels.SessionViewModel() : null,
+            Session = session,
             Activity = Cockpit.Core.Assistant.AssistantActivity.Ready,
         };
 
@@ -2055,9 +2067,41 @@ internal static class Screenshotter
                 : Cockpit.Core.Assistant.AssistantListeningMode.Off,
         };
 
-        var viewModel = new ViewModels.AssistantChatViewModel(
+        return new ViewModels.AssistantChatViewModel(
             host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue(), indicator: indicator);
-        return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    // AC-953: the assistant docked into the rail, built the way production builds it — the real
+    // `DockPanelRegistry` with the real registration shape, and `AssistantDocked`/`OpenDockPanelId` set the way
+    // they come back off `LayoutSettings` after a restart. Nothing about the rail is staged by hand here, so
+    // what this renders is what the restore path renders.
+    private static Window _AssistantDockedInTheRail()
+    {
+        var conversation = new ViewModels.SessionViewModel { Title = "personal - webshop" };
+        conversation.Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.UserText, "which sessions are still running?"));
+        conversation.Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.AssistantText, "Two: **personal - webshop** is waiting on a permission, and the AC-953 desk is idle."));
+
+        var panels = new Docking.DockPanelRegistry();
+        panels.Register(new Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId,
+            "Assistant",
+            Material.Icons.MaterialIconKind.Creation,
+            () =>
+            {
+                var chat = _AssistantChatViewModel(conversation);
+                chat.IsDocked = true;
+                return new AssistantChatView { DataContext = chat };
+            }));
+
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
+        {
+            OpenDockPanelId = Services.AssistantIndicatorCoordinator.DockPanelId,
+            AssistantDocked = true,
+        };
+
+        return new MainWindow { DataContext = cockpit };
     }
 
     // AC-740 addendum: no session yet, so this also proves the profile-default fallback renders the picker —

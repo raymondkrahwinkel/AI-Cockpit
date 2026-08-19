@@ -1,12 +1,15 @@
 using System.ComponentModel;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using Cockpit.App.Docking;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
+using Material.Icons;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -34,11 +37,25 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private readonly CockpitViewModel _cockpit;
     private readonly ILogger<AssistantIndicatorCoordinator> _logger;
 
+    private readonly IDockPanelRegistry? _dockPanels;
+
+    // AC-953: the assistant's id in the dock rail, persisted as `LayoutSettings.OpenDockPanelId`.
+    public const string DockPanelId = "assistant";
+
     // The pop-out, kept between openings rather than rebuilt: closing it must not disturb the conversation behind it (criterion 7).
+    // Null while the assistant is docked — there is no window then, which is what "geen ownerless venster" means.
     private AssistantChatWindow? _chatWindow;
 
-    // The open pop-out's view model, so a settings change can reach it without touching the window off the UI thread. Null whenever `_chatWindow` is.
+    // The chat's view model — the standing holder across a host swap (AC-953), so docking and undocking keep the
+    // same conversation, input text and attachments. Also how a settings change reaches an open chat without
+    // touching the window off the UI thread.
     private AssistantChatViewModel? _chatViewModel;
+
+    // Test seam: whether a floating window is standing right now. Null the moment one closes (see `_ShowChatWindow`),
+    // so "two hosts at once" is exactly this being non-null while the rail also shows the chat — the state AC-953
+    // exists to make impossible, and the one the headless harness cannot ask the platform about (it runs without an
+    // application lifetime, so there is no window list to enumerate).
+    internal AssistantChatWindow? OpenChatWindow => _chatWindow;
 
     public AssistantIndicatorCoordinator(
         AssistantSessionHost assistant,
@@ -48,6 +65,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         IVoicePlaybackQueue playbackQueue,
         IAssistantSpawnAuditLog spawnAuditLog,
         CockpitViewModel cockpit,
+        IDockPanelRegistry? dockPanels = null,
         ILogger<AssistantIndicatorCoordinator>? logger = null)
     {
         _assistant = assistant;
@@ -57,6 +75,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _playbackQueue = playbackQueue;
         _spawnAuditLog = spawnAuditLog;
         _cockpit = cockpit;
+        _dockPanels = dockPanels;
         _logger = logger ?? NullLogger<AssistantIndicatorCoordinator>.Instance;
     }
 
@@ -84,6 +103,20 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
         Indicator.Clicked += (_, _) => _ = _OpenChatAsync();
         Indicator.ListeningModeSelected += (_, mode) => _ = _ApplyListeningModeAsync(mode);
+
+        // AC-953: the assistant becomes a real dock panel, replacing AC-951's placeholder. Its registration follows
+        // the dock stand rather than standing permanently — undocked, the assistant is a window, and a rail tab for
+        // it would be a second one waiting to be opened. Driven off the property rather than only from the swap,
+        // because the stand also arrives from the layout restore, well after this runs.
+        _cockpit.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CockpitViewModel.AssistantDocked))
+            {
+                _ApplyDockRegistration();
+            }
+        };
+
+        _ApplyDockRegistration();
 
         // The chip owns the one-time cost explanation (criterion 18); this only tells it whether the operator has
         // already been given it, and writes back once they have — so it stays given across restarts rather than
@@ -196,31 +229,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         try
         {
-            if (_chatWindow is null)
-            {
-                _chatViewModel = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog, Indicator, cockpit: _cockpit);
-                _chatWindow = new AssistantChatWindow { DataContext = _chatViewModel };
-
-                // Dropped on close so the next click builds a fresh window — but nothing about the session is touched
-                // here, which is the whole of criterion 7: the window is a peephole, not the owner.
-                _chatWindow.Closed += (_, _) => { _chatWindow = null; _chatViewModel = null; };
-
-                // Shown without an owner, and closed with the cockpit by hand instead. Ownerless is deliberate: an owned
-                // window minimises and restores with its owner, and this one has to stay reachable while the cockpit is
-                // in the background — that is the whole point of a global hotkey. But Avalonia's default shutdown is
-                // "when the last window closes", so an ownerless window that outlives the main one keeps the entire
-                // process alive: the cockpit vanished from the screen, the chat pop-out stayed sitting there, and the
-                // app went on running with its global hotkeys still registered — which is what then refused F10 to the
-                // next launch, since the key was still held by a process nobody could see.
-                if (Avalonia.Application.Current?.ApplicationLifetime
-                    is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-                {
-                    main.Closed += _OnMainWindowClosed;
-                    _chatWindow.Closed += (_, _) => main.Closed -= _OnMainWindowClosed;
-                }
-            }
-
-            WindowActivation.BringToFront(_chatWindow);
+            // AC-953: which host the chat opens in is the stand the operator last left it in, and it survives a
+            // restart because it is read back off `LayoutSettings`.
+            await _ShowInAsync(_cockpit.AssistantDocked).ConfigureAwait(true);
 
             // The window first, the session after — AC-959. Starting it is not a fast local call: it resolves the
             // MCP catalog, stands up loopback endpoints, renews OAuth sign-ins *over the network*, spawns the CLI
@@ -239,8 +250,160 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         }
     }
 
-    // The cockpit's own window closed, so the pop-out onto it goes too — see `_OpenChatAsync` for why by hand.
+    // The cockpit's own window closed, so the pop-out onto it goes too — see `_ShowChatWindow` for why by hand.
     private void _OnMainWindowClosed(object? sender, EventArgs e) => _chatWindow?.Close();
+
+    // The one chat view model, built on first need and kept afterwards: it is what carries the conversation, the
+    // typed-but-unsent text, the attachments and (AC-953) the scroll position across a host swap.
+    private AssistantChatViewModel _EnsureChatViewModel()
+    {
+        if (_chatViewModel is { } existing)
+        {
+            return existing;
+        }
+
+        var chat = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog, Indicator, cockpit: _cockpit);
+        chat.DockToggleRequested += (_, _) => _ = _ToggleDockAsync();
+        _chatViewModel = chat;
+        return chat;
+    }
+
+    // Whether the rail offers an Assistant tab at all: only while the assistant actually stands there.
+    private void _ApplyDockRegistration()
+    {
+        if (_dockPanels is not { } panels)
+        {
+            return;
+        }
+
+        if (_cockpit.AssistantDocked)
+        {
+            panels.Register(new DockPanelRegistration(
+                DockPanelId,
+                "Assistant",
+                MaterialIconKind.Creation,
+                _CreateDockedChatView));
+
+            return;
+        }
+
+        panels.Unregister(DockPanelId);
+
+        // A tab that is gone cannot leave its panel open behind it — that would hold the rail expanded onto a
+        // registration the rail can no longer resolve, which draws as an empty rail beside the floating window.
+        if (_cockpit.OpenDockPanelId == DockPanelId)
+        {
+            _cockpit.OpenDockPanelId = null;
+        }
+    }
+
+    // The rail is the only caller of this factory, so being built by it *is* being docked. Two routes reach it
+    // without going through `_ShowInAsync` — clicking the rail tab, and the restore that reopens the last open
+    // panel at startup — so the same handover has to happen here, or those two leave the window standing beside
+    // the docked view with the operator typing into whichever one they clicked last.
+    //
+    // This is also exactly the right moment for it: the factory runs after the rail has decided to show the chat
+    // and before the view it returns is attached, so the window's view detaches — handing over its scroll
+    // position — before this one reads it.
+    private Control _CreateDockedChatView()
+    {
+        var chat = _EnsureChatViewModel();
+        chat.IsDocked = true;
+        _chatWindow?.Close();
+
+        return new AssistantChatView { DataContext = chat };
+    }
+
+    private void _ShowChatWindow()
+    {
+        if (_chatWindow is null)
+        {
+            _chatWindow = new AssistantChatWindow { DataContext = _EnsureChatViewModel() };
+
+            // Dropped on close so the next click builds a fresh window — but nothing about the session is touched
+            // here, which is the whole of criterion 7: the window is a peephole, not the owner. The view model goes
+            // with it only when this was a real close: docking closes this window too, and there the rail takes it over.
+            _chatWindow.Closed += (_, _) =>
+            {
+                _chatWindow = null;
+                if (_chatViewModel is { IsDocked: false })
+                {
+                    _chatViewModel = null;
+                }
+            };
+
+            // Shown without an owner, and closed with the cockpit by hand instead. Ownerless is deliberate: an owned
+            // window minimises and restores with its owner, and this one has to stay reachable while the cockpit is
+            // in the background — that is the whole point of a global hotkey. But Avalonia's default shutdown is
+            // "when the last window closes", so an ownerless window that outlives the main one keeps the entire
+            // process alive: the cockpit vanished from the screen, the chat pop-out stayed sitting there, and the
+            // app went on running with its global hotkeys still registered — which is what then refused F10 to the
+            // next launch, since the key was still held by a process nobody could see.
+            // Docked, neither half applies: the view sits inside MainWindow, so it closes with it by itself.
+            if (Avalonia.Application.Current?.ApplicationLifetime
+                is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            {
+                main.Closed += _OnMainWindowClosed;
+                _chatWindow.Closed += (_, _) => main.Closed -= _OnMainWindowClosed;
+            }
+        }
+
+        WindowActivation.BringToFront(_chatWindow);
+    }
+
+    // Puts the chat in one host and takes it out of the other — the single place that decides where it stands, so
+    // there is no route that can leave two of them on screen at once. Every caller says which host it wants
+    // rather than what to change, which makes it idempotent: asking for the host it is already in does nothing.
+    //
+    // The order inside each branch is the whole of AC-953: the old host is torn down first and the new one built
+    // after, so the leaving view has written its scroll position onto the view model before the arriving view
+    // reads it. Build-then-tear-down would have the new view read a stale position and the old view overwrite it
+    // afterwards with nothing looking.
+    private async Task _ShowInAsync(bool docked)
+    {
+        if (_chatViewModel is { } chat)
+        {
+            chat.IsDocked = docked;
+        }
+
+        if (docked)
+        {
+            _chatWindow?.Close();
+
+            if (!_cockpit.AssistantDocked || _cockpit.OpenDockPanelId != DockPanelId)
+            {
+                await _cockpit.SetAssistantDockedAsync(true, DockPanelId).ConfigureAwait(true);
+            }
+
+            // Docked, "show the chat" also means putting the cockpit in front of whatever the operator was
+            // looking at — the floating window's own Show + BringToFront, on the window it lives in now.
+            if (Avalonia.Application.Current?.ApplicationLifetime
+                is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            {
+                WindowActivation.BringToFront(main);
+            }
+
+            return;
+        }
+
+        // Closing the panel is what detaches the docked view, and that is what hands its scroll position to the
+        // one the window is about to build.
+        if (_cockpit.AssistantDocked || _cockpit.OpenDockPanelId == DockPanelId)
+        {
+            await _cockpit.SetAssistantDockedAsync(false, null).ConfigureAwait(true);
+        }
+
+        _ShowChatWindow();
+    }
+
+    // The header's Dock/Undock button: the other host, whichever this is.
+    private async Task _ToggleDockAsync()
+    {
+        if (_chatViewModel is { } chat)
+        {
+            await _ShowInAsync(!chat.IsDocked).ConfigureAwait(true);
+        }
+    }
 
     // Switches the microphone between held-only and held-open — the only two modes the chip offers.
     // The wake-word mode is refused rather than absent from this check: the enum still carries it (the wake word

@@ -894,6 +894,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // our own, the same reasoning `WorkspacesViewModel.AvailableWidgets` follows.
     public IReadOnlyList<DockPanelRegistration> DockPanels => _dockPanelRegistry?.Panels ?? [];
 
+    // Whether the rail has anything to offer at all. With no panel registered there is nothing to click, and a
+    // 40px strip of empty chrome against the right edge is worse than no rail — so the whole column stands down
+    // (AC-953: the Assistant's tab is withdrawn while it is undocked, which is exactly when that happens).
+    public bool HasDockPanels => DockPanels.Count > 0;
+
+    // AC-951: the rail reads the registry directly, so it needs telling when that changes — a panel can arrive
+    // (or, since AC-953, be withdrawn) long after this view model is built.
+    private void _WireDockPanelChanges()
+    {
+        if (_dockPanelRegistry is not { } registry)
+        {
+            return;
+        }
+
+        registry.Changed += (_, _) =>
+        {
+            OnPropertyChanged(nameof(DockPanels));
+            OnPropertyChanged(nameof(HasDockPanels));
+        };
+    }
+
     [ObservableProperty]
     private string _layoutSettingsStatus = string.Empty;
 
@@ -2455,8 +2476,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Parameterless constructor kept for the Avalonia previewer/Screenshotter design-time context —
     // seeds three sample sessions across different providers and statuses so the render shows the
     // overview + grid without a real DI-backed session behind each one.
-    public CockpitViewModel()
+    // The registry is a parameter here only because a scene showing an open dock panel needs one to open (AC-953's
+    // docked assistant) — every other design-time render passes nothing and gets the empty rail.
+    public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null)
     {
+        // AC-951: without a registry the dock rail's tab strip renders empty in the previewer/screenshotter — the
+        // same reason the shortcut rows above are seeded by hand here. A caller passes one when the scene needs a
+        // panel that actually opens (AC-953's docked assistant).
+        _dockPanelRegistry = dockPanelRegistry ?? new DockPanelRegistry();
+        _WireDockPanelChanges();
+
         // First: selecting a session below raises pane-visibility, which asks which workspace is active.
         Workspaces = new WorkspacesViewModel();
         _WireWorkspaceVisibility();
@@ -2485,9 +2514,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // No advisor in the design-time/previewer graph: the Transcribe page then offers Auto + CPU only.
         _InitVoiceTranscriptionOptions();
 
-        // AC-951: without a registry the dock rail's tab strip renders empty in the previewer/screenshotter —
-        // the same reason the shortcut rows above are seeded by hand here.
-        _dockPanelRegistry = new DockPanelRegistry();
     }
 
     // The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.
@@ -2669,10 +2695,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // late-arriving plugin to wait for. Subscribed anyway, for the same reason those two are: a second
         // panel (AC-950 [c]'s Assistant) could still register after this view model is built.
         _dockPanelRegistry = dockPanelRegistry;
-        if (dockPanelRegistry is not null)
-        {
-            dockPanelRegistry.Changed += (_, _) => OnPropertyChanged(nameof(DockPanels));
-        }
+        _WireDockPanelChanges();
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
@@ -4323,6 +4346,39 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AssistantDocked = settings.AssistantDocked;
     }
 
+    // Every layout save writes the whole record, because the store holds one section rather than per-field keys —
+    // so a save that built its own literal could silently drop a field it did not know about. Written once here
+    // for that reason: this is the list a new layout setting has to be added to, and the only one.
+    private LayoutSettings _CurrentLayoutSettings() => new()
+    {
+        SingleSessionLayout = GlobalSingleSessionLayout,
+        StackSessionsVertically = GlobalStackSessionsVertically,
+        FocusRailLayout = GlobalFocusRailLayout,
+        MinimizeToTrayOnClose = MinimizeToTrayOnClose,
+        SidebarWidth = SidebarWidth,
+        SidebarCollapsed = SidebarCollapsed,
+        FocusRailWeight = GlobalFocusRailWeight,
+        DockRailWidth = DockRailWidth,
+        OpenDockPanelId = OpenDockPanelId,
+        AssistantDocked = AssistantDocked,
+    };
+
+    // AC-953: docking or undocking the assistant moves both settings at once — which host it stands in, and
+    // which rail panel is open to show it — so they go out in one write rather than two that would each
+    // read-modify-write the same section. Called by `AssistantIndicatorCoordinator`, which owns the swap itself.
+    public async Task SetAssistantDockedAsync(bool docked, string? openDockPanelId)
+    {
+        AssistantDocked = docked;
+        OpenDockPanelId = openDockPanelId;
+
+        if (_layoutSettingsStore is null)
+        {
+            return;
+        }
+
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
+    }
+
     // Persists the layout settings edited in the Options flyout to `cockpit.json`.
     [RelayCommand]
     private async Task SaveLayoutSettingsAsync()
@@ -4332,19 +4388,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings
-        {
-            SingleSessionLayout = GlobalSingleSessionLayout,
-            StackSessionsVertically = GlobalStackSessionsVertically,
-            FocusRailLayout = GlobalFocusRailLayout,
-            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
-            SidebarWidth = SidebarWidth,
-            SidebarCollapsed = SidebarCollapsed,
-            FocusRailWeight = GlobalFocusRailWeight,
-            DockRailWidth = DockRailWidth,
-            OpenDockPanelId = OpenDockPanelId,
-            AssistantDocked = AssistantDocked,
-        });
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
         LayoutSettingsStatus = "Saved";
     }
 
@@ -4362,19 +4406,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings
-        {
-            SingleSessionLayout = GlobalSingleSessionLayout,
-            StackSessionsVertically = GlobalStackSessionsVertically,
-            FocusRailLayout = GlobalFocusRailLayout,
-            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
-            SidebarWidth = SidebarWidth,
-            SidebarCollapsed = SidebarCollapsed,
-            FocusRailWeight = GlobalFocusRailWeight,
-            DockRailWidth = DockRailWidth,
-            OpenDockPanelId = OpenDockPanelId,
-            AssistantDocked = AssistantDocked,
-        });
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
     }
 
     // Collapses or expands the left sidebar and persists it immediately — a direct-manipulation setting like
@@ -4389,19 +4421,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings
-        {
-            SingleSessionLayout = GlobalSingleSessionLayout,
-            StackSessionsVertically = GlobalStackSessionsVertically,
-            FocusRailLayout = GlobalFocusRailLayout,
-            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
-            SidebarWidth = SidebarWidth,
-            SidebarCollapsed = SidebarCollapsed,
-            FocusRailWeight = GlobalFocusRailWeight,
-            DockRailWidth = DockRailWidth,
-            OpenDockPanelId = OpenDockPanelId,
-            AssistantDocked = AssistantDocked,
-        });
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
     }
 
     // Persists the dock rail's width alone (AC-951), the sidebar's `SetSidebarWidthAsync` mirrored: called from
@@ -4415,19 +4435,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings
-        {
-            SingleSessionLayout = GlobalSingleSessionLayout,
-            StackSessionsVertically = GlobalStackSessionsVertically,
-            FocusRailLayout = GlobalFocusRailLayout,
-            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
-            SidebarWidth = SidebarWidth,
-            SidebarCollapsed = SidebarCollapsed,
-            FocusRailWeight = GlobalFocusRailWeight,
-            DockRailWidth = DockRailWidth,
-            OpenDockPanelId = OpenDockPanelId,
-            AssistantDocked = AssistantDocked,
-        });
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
     }
 
     // Opens the tapped rail panel, or closes the rail if that panel is already the open one — the toggle the
@@ -4443,19 +4451,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings
-        {
-            SingleSessionLayout = GlobalSingleSessionLayout,
-            StackSessionsVertically = GlobalStackSessionsVertically,
-            FocusRailLayout = GlobalFocusRailLayout,
-            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
-            SidebarWidth = SidebarWidth,
-            SidebarCollapsed = SidebarCollapsed,
-            FocusRailWeight = GlobalFocusRailWeight,
-            DockRailWidth = DockRailWidth,
-            OpenDockPanelId = OpenDockPanelId,
-            AssistantDocked = AssistantDocked,
-        });
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
     }
 
     private async Task LoadWorktreeSettingsAsync()
