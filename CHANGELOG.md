@@ -139,6 +139,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   and "pick up EWB-123" both find the right project, the issues dialog and picker fetch every linked prefix's
   issues together instead of only the first, and two projects that would both claim the same prefix stay ambiguous
   rather than one winning by save order.
+- added: closing the main window now asks for confirmation first if any session is running, instead of ending
+  the app — and every session in it — on a single click. Cancelling leaves the window and all sessions open;
+  confirming closes as before. A restart or an update-driven close still goes straight through without asking.
 
 ### Fixed
 

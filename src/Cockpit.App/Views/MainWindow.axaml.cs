@@ -24,6 +24,11 @@ public partial class MainWindow : Window
     private bool _boundsSaved;
     private Task? _saveBoundsThenCloseTask;
 
+    // AC-946: set once the operator has confirmed the close-with-active-sessions dialog, so the replayed
+    // Close() calls below (bounds save, then real close) don't ask a second time.
+    private bool _closeConfirmed;
+    private Task? _confirmThenCloseTask;
+
     public MainWindow()
         : this(Program.Services?.GetService<IWindowBoundsStore>())
     {
@@ -92,6 +97,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        // AC-946: a real close is about to stop every running session — ask once, unless this close was
+        // requested from inside the app (tray Quit, a restart), which already set IsQuitting and has nobody
+        // left to answer a dialog.
+        if (App is { IsQuitting: false }
+            && !_closeConfirmed
+            && DataContext is CockpitViewModel { HasSessions: true } cockpit)
+        {
+            e.Cancel = true;
+            _confirmThenCloseTask ??= _ConfirmThenCloseAsync(cockpit);
+            return;
+        }
+
         // AC-779: the bounds save used to block this thread with GetAwaiter().GetResult(); a slow write (AV scan,
         // network profile) froze the close. Deferred one round trip instead — cancel this close, await the save,
         // then replay Close() so the real shutdown below runs once it's done.
@@ -107,6 +124,25 @@ public partial class MainWindow : Window
         // difference between something closing the window and the process being ended from outside.
         LifecycleLog.Write($"Main window closing for real (quit requested: {App?.IsQuitting}); the app will end with it.");
         base.OnClosing(e);
+    }
+
+    private async Task _ConfirmThenCloseAsync(CockpitViewModel cockpit)
+    {
+        var confirmed = await cockpit.ConfirmAsync(
+            "Close Cockpit?",
+            "This stops every running session. This cannot be undone.",
+            confirmLabel: "Close");
+
+        if (confirmed)
+        {
+            _closeConfirmed = true;
+            Close();
+        }
+        else
+        {
+            // Cancelled: let a later close attempt ask again instead of silently no-op'ing forever.
+            _confirmThenCloseTask = null;
+        }
     }
 
     private async Task _SaveBoundsThenCloseAsync()
