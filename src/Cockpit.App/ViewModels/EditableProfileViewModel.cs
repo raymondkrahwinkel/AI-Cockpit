@@ -414,6 +414,25 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     partial void OnSelectedProviderChanged(SessionProviderOption value)
     {
+        // Point the base URL at the newly chosen provider's default port when adding a profile — including
+        // switching Ollama↔LM Studio (11434↔1234) — unless the operator typed a custom URL we should keep.
+        if (CanChooseProvider && IsLocalProvider && (string.IsNullOrWhiteSpace(BaseUrl) || _IsAKnownDefaultUrl(BaseUrl)))
+        {
+            BaseUrl = SessionProviderCatalog.DefaultBaseUrl(value.Value);
+        }
+
+        // Rebuild the plugin config view for the newly chosen provider when adding a profile. Must run before
+        // the CanStartLogin notification below, or that getter's ToProfile() still sees the previous selection.
+        if (CanChooseProvider)
+        {
+            PluginConfigView = value.Value == SessionProvider.Plugin && value.PluginProviderId is { } providerId
+                ? _pluginProviderRegistry?.Resolve(providerId)?.CreateConfigView(null)
+                : null;
+
+            // A freshly added profile has no stored defaults yet — start each option on its own declared default.
+            _RefreshPluginOptionDefaults(storedDefaults: null);
+        }
+
         OnPropertyChanged(nameof(IsClaudeProvider));
         OnPropertyChanged(nameof(IsLocalProvider));
         OnPropertyChanged(nameof(IsLmStudioProvider));
@@ -426,26 +445,6 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsDefaultKindEffectivelySdk));
         OnPropertyChanged(nameof(CanStartLogin));
         LoginCommand.NotifyCanExecuteChanged();
-
-        // Point the base URL at the newly chosen provider's default port when adding a profile — including
-        // switching Ollama↔LM Studio (11434↔1234) — unless the operator typed a custom URL we should keep.
-        if (CanChooseProvider && IsLocalProvider && (string.IsNullOrWhiteSpace(BaseUrl) || _IsAKnownDefaultUrl(BaseUrl)))
-        {
-            BaseUrl = SessionProviderCatalog.DefaultBaseUrl(value.Value);
-        }
-
-        // Rebuild the plugin config view for the newly chosen provider when adding a profile (the dropdown is
-        // disabled otherwise, so this never fires for an already-created profile) — starts empty (no existing
-        // config JSON yet) rather than carrying over the previous selection's view.
-        if (CanChooseProvider)
-        {
-            PluginConfigView = value.Value == SessionProvider.Plugin && value.PluginProviderId is { } providerId
-                ? _pluginProviderRegistry?.Resolve(providerId)?.CreateConfigView(null)
-                : null;
-
-            // A freshly added profile has no stored defaults yet — start each option on its own declared default.
-            _RefreshPluginOptionDefaults(storedDefaults: null);
-        }
     }
 
     // Rebuilds `PluginOptionDefaults` from the selected plugin provider's declared launch options,

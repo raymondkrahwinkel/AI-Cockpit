@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -117,6 +118,39 @@ public class EditableProfileViewModelPluginProviderTests
 
         Assert.True(editable.IsPluginProvider);
         Assert.Equal(configView, editable.PluginConfigView);
+    }
+
+    /// <summary>
+    /// AC-944 regression: a bound button re-queries <c>CanExecute</c> synchronously off <c>CanExecuteChanged</c>,
+    /// mid-method, before <see cref="EditableProfileViewModel.PluginConfigView"/> was rebuilt for the new provider.
+    /// Unlike the plugin-picker test above, this subscribes to that event to observe the mid-method state.
+    /// </summary>
+    [Fact]
+    public void OnSelectedProviderChanged_OnANewProfile_DoesNotCrashWhenABoundButtonReQueriesCanExecuteMidMethod()
+    {
+        var registry = new PluginProviderRegistry();
+        var configView = new FakePluginProviderConfigView("""{"ApiKey":"secret"}""");
+        registry.Register(_Registration("openai-provider.openai", "OpenAI", configView));
+        var providers = SessionProviderCatalog.AllProviders(registry);
+        var loginStarter = Substitute.For<IProfileLoginStarter>();
+        loginStarter.CanStartLogin(Arg.Any<SessionProfile>()).Returns(true);
+        var editable = new EditableProfileViewModel(
+            new SessionProfile("new profile", new ClaudeConfig(string.Empty)),
+            isLoggedIn: false,
+            canChooseProvider: true,
+            providers: providers,
+            pluginProviderRegistry: registry,
+            loginStarter: loginStarter);
+        // Mimics what a Button bound to LoginCommand does on Avalonia/WPF: re-query CanExecute synchronously
+        // the moment CanExecuteChanged fires.
+        editable.LoginCommand.CanExecuteChanged += (_, _) => editable.LoginCommand.CanExecute(null);
+
+        editable.SelectedProvider = providers.Single(option => option.PluginProviderId == "openai-provider.openai");
+
+        Assert.True(editable.IsPluginProvider);
+        Assert.Equal(configView, editable.PluginConfigView);
+        var saved = editable.ToProfile();
+        Assert.IsType<PluginProviderConfig>(saved.ProviderConfig);
     }
 
     [Fact]
