@@ -9,9 +9,9 @@ namespace Cockpit.App.Services;
 // executable, same args, same working directory (`Environment.ProcessPath` /
 // `Environment.GetCommandLineArgs`), which on Windows keeps running once this process exits, no
 // job-object/parent-tracking involved — then reuses the app's existing clean-exit path (bug #32) via
-// `App.RequestQuit`: that sets `App.IsQuitting` and calls the desktop lifetime's
-// `Shutdown()`, which `Program.Main`'s `finally` picks up to dispose the running sessions and
-// hard-exit. Restarting therefore needs no teardown logic of its own.
+// `App.RequestQuit`: that sets `App.IsQuitting`, disposes the running sessions while the dispatcher is still
+// pumping (AC-958) and only then shuts the desktop lifetime down, which `Program.Main`'s `finally` follows with the
+// hard exit. Restarting therefore needs no teardown logic of its own.
 // Both steps are constructor-injected as plain delegates (see the internal test constructor) so a test can
 // substitute fakes for the real process spawn and the real app shutdown — neither should actually run in a
 // unit test.
