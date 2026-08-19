@@ -30,7 +30,7 @@ internal static class ClaudeSdkArguments
         string? model,
         string? resumeSessionId,
         bool continueMostRecent,
-        string? appendSystemPrompt = null,
+        string? appendSystemPromptPath = null,
         string? mcpConfigPath = null,
         bool strictMcpConfig = false)
     {
@@ -98,11 +98,16 @@ internal static class ClaudeSdkArguments
 
         // A system prompt appended for this one session (AC-180): the host folds an embedded run's hidden brief (the
         // CEO's "you are the CEO, this is how you plan") into the options map under its well-known key, which the driver
-        // resolves and hands here — the same --append-system-prompt channel the orchestrator nudge (#67) would ride.
-        if (!string.IsNullOrWhiteSpace(appendSystemPrompt))
+        // resolves and hands here — the same channel the orchestrator nudge (#67) would ride.
+        //
+        // By path, never by value. This is the one argument with no ceiling on it (the assistant's is the standing
+        // instruction plus the operator's own memory files), and a command line has one on every platform — see
+        // `ClaudePrivateTempFile.WriteSystemPrompt`, which owns that reasoning and writes the file the driver hands
+        // in here.
+        if (!string.IsNullOrWhiteSpace(appendSystemPromptPath))
         {
-            arguments.Add("--append-system-prompt");
-            arguments.Add(appendSystemPrompt);
+            arguments.Add("--append-system-prompt-file");
+            arguments.Add(appendSystemPromptPath);
         }
 
         return arguments;

@@ -45,19 +45,22 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         var mcpConfigPath = ClaudeMcpConfig.Write(context.McpServers);
         var (statusFile, statusLineSettings) = ClaudeStatusLine.Install(configJsonDirectory, environmentOverlay);
 
+        // The standing instructions the cockpit resolved for this session (a profile's identity, a project's
+        // behaviour) alongside the orchestrator nudge: both are things the model should start knowing, and the
+        // CLI takes one appended system prompt, so they travel as one value — into one file.
+        var systemPromptPath = ClaudePrivateTempFile.WriteSystemPrompt(
+            _AppendedInstructions(context.Options.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), context.DelegationSystemPrompt));
+
         var arguments = BuildArguments(
             context.Options.GetValueOrDefault(PermissionModeKey),
             context.Options.GetValueOrDefault(ModelKey),
             context.Options.GetValueOrDefault(EffortKey),
             mcpConfigPath,
-            // The standing instructions the cockpit resolved for this session (a profile's identity, a project's
-            // behaviour) alongside the orchestrator nudge: both are things the model should start knowing, and the
-            // CLI takes one --append-system-prompt, so they travel as one value.
-            _AppendedInstructions(context.Options.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), context.DelegationSystemPrompt),
+            systemPromptPath,
             context.Resume,
             statusLineSettings);
 
-        var sessionScopedFiles = new List<string>(2);
+        var sessionScopedFiles = new List<string>(3);
         if (mcpConfigPath is not null)
         {
             sessionScopedFiles.Add(mcpConfigPath);
@@ -66,6 +69,13 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         if (statusFile is not null)
         {
             sessionScopedFiles.Add(statusFile);
+        }
+
+        // The prompt holds whatever standing instruction the operator wrote; it goes when the session does, the
+        // same way the mcp-config does.
+        if (systemPromptPath is not null)
+        {
+            sessionScopedFiles.Add(systemPromptPath);
         }
 
         return new PluginTtyLaunchSpec(
@@ -175,7 +185,7 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         string? model,
         string? effort,
         string? mcpConfigPath,
-        string? appendSystemPrompt,
+        string? appendSystemPromptPath,
         PluginTtyResume? resume,
         string? settingsJson)
     {
@@ -235,10 +245,12 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
 
         // What the session starts knowing: the standing instructions a profile/project gave it (AC-142/AC-158) and
         // the orchestrator nudge (#67), whose tools are only reached for if the model knows when they are worth it.
-        if (!string.IsNullOrWhiteSpace(appendSystemPrompt))
+        // By path rather than by value, for the reason `ClaudePrivateTempFile.WriteSystemPrompt` spells out — a
+        // standing instruction is operator-written and grows, and a command line does not.
+        if (!string.IsNullOrWhiteSpace(appendSystemPromptPath))
         {
-            arguments.Add("--append-system-prompt");
-            arguments.Add(appendSystemPrompt);
+            arguments.Add("--append-system-prompt-file");
+            arguments.Add(appendSystemPromptPath);
         }
 
         return arguments;
