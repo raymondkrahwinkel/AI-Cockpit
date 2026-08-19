@@ -11,11 +11,9 @@ internal static class GitHubRepositoryField
     // What the link is stored under on the project. Never change it: already-linked projects are keyed by it.
     public const string Key = "github.repository";
 
-    // AC-317, in the one place that reads it: the repository the operator linked this project to (AC-548 —
-    // the issues dialog already asked; the session picker never did, so it showed every repository instead of
-    // only this one). A link may itself name several repositories (AC-940) — this hands back only the first, the
-    // pinned issue-tracker repo (also what `GH_REPO` becomes); use `ResolvePreferredRepositoriesAsync` for the
-    // rest. Null when there is no session, no project, or no link.
+    // AC-317: the repository the operator linked this project to. A link may name several (AC-940) — this hands
+    // back only the first, the pinned one (also what `GH_REPO` becomes); see `ResolvePreferredRepositoriesAsync`
+    // for the rest. Null when there is no session, no project, or no link.
     public static Task<string?> ResolvePreferredRepositoryAsync(ICockpitHost host, string? paneId, CancellationToken cancellationToken) =>
         host.GetProjectFieldValueAsync(Key, paneId, cancellationToken);
 

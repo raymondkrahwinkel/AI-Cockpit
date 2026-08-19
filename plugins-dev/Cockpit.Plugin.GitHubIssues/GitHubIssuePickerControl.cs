@@ -78,11 +78,8 @@ internal sealed class GitHubIssuePickerControl : UserControl
 
         try
         {
-            // AC-548/AC-940: the same resolution the issues dialog uses (GitHubRepositoryField.ResolvePreferredRepositoriesAsync)
-            // — every repository the session's own project is linked to, instead of this picker only ever
-            // searching every repository the owner has. Sent as `--repo` flags, not `repo:` search terms: `gh
-            // search issues` ANDs multiple `repo:` qualifiers, which would return zero issues for a project linked
-            // to more than one repository (see GitHubGhClient.SearchArguments).
+            // AC-548/AC-940: every repository the session's project is linked to, not only the owner's whole set.
+            // Sent as `--repo` flags (see GitHubGhClient.SearchArguments) — never a `repo:` term, which ANDs.
             var linkedRepositories = await GitHubRepositoryField.ResolvePreferredRepositoriesAsync(_host, _paneId, CancellationToken.None);
 
             // The truncation signal (AC-519) is a dialog-only concern so far — this picker has never warned about a
