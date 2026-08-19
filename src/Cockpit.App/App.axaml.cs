@@ -66,13 +66,10 @@ public partial class App : Application
             {
                 LifecycleLog.Write($"The desktop lifetime requested shutdown (quit already requested: {IsQuitting}).");
 
-                // AC-958: hold this shutdown, tear the sessions down while the dispatcher is still pumping, and only
-                // then shut down for real — once the main loop has ended nothing runs the teardown's continuations.
-                if (_teardown is null)
-                {
-                    shutdown.Cancel = true;
-                    _ = TearDownThenShutdownAsync();
-                }
+                // AC-958: hold every request — each carries its own args, so cancelling the first says nothing about
+                // a second one arriving mid-teardown — and shut down once the sessions are actually torn down.
+                shutdown.Cancel = true;
+                _ = TearDownThenShutdownAsync();
             };
 
             // Encrypted credentials: the key comes from a password, so the cockpit cannot be built yet — the view
@@ -645,20 +642,16 @@ public partial class App : Application
         _ = TearDownThenShutdownAsync();
     }
 
-    // Tears the cockpit down and only then shuts the lifetime down. Every quit route goes through here rather than
-    // hanging off ShutdownRequested alone: the lifetime's `Shutdown()` is a *forced* shutdown that never raises that
-    // event, so the tray's Quit and the restart handoff would walk straight past it.
-    internal Task TearDownThenShutdownAsync() => _teardown ??= _TearDownThenShutdownAsync();
-
-    private async Task _TearDownThenShutdownAsync()
+    // Every quit route goes through here, not just ShutdownRequested: the lifetime's `Shutdown()` is a *forced*
+    // shutdown that never raises that event, so the tray's Quit and the restart handoff would walk past it.
+    internal async Task TearDownThenShutdownAsync()
     {
-        // Set before the first await so MainWindow's close still sees it: this is a real quit, not a close-to-tray,
-        // and nobody is left to answer the "stop every session?" prompt.
+        // Before the first await, so MainWindow's close sees a real quit rather than a close-to-tray.
         IsQuitting = true;
 
-        await Program.TearDownCockpitAsync();
+        await (_teardown ??= Program.TearDownCockpitAsync());
 
-        // Posted, not called: with nothing to tear down this runs inside the ShutdownRequested handler that just
+        // Posted, not called: with nothing to tear down this returns inside the ShutdownRequested handler that just
         // cancelled, and re-entering the lifetime's shutdown from there is asking for it.
         Dispatcher.UIThread.Post(() => _desktop?.Shutdown());
     }

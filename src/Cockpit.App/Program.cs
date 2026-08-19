@@ -340,11 +340,8 @@ sealed class Program
     // Set by whichever route enters the teardown first, so the fallback below cannot run it a second time.
     private static int _teardownEntered;
 
-    // AC-958: the teardown only *finishes* while Avalonia's dispatcher is still pumping. Every await in the chain
-    // (CockpitViewModel.DisposeAsync → SessionViewModel → SessionRuntime) posts its continuation to the UI thread, so
-    // run from Main's finally — after StartWithClassicDesktopLifetime returned and the loop ended — it stopped at the
-    // first one, silently, and the temp files each session wrote (mcp-config with a bearer header, the system prompt
-    // with the assistant's memory) outlived the process. App holds the shutdown open and calls this instead.
+    // AC-958: every await in the teardown chain posts its continuation to the dispatcher, so this only finishes while
+    // the loop is still pumping — App holds the shutdown open and calls it there; from Main's finally it wedges.
     internal static async Task TearDownCockpitAsync()
     {
         if (Interlocked.Exchange(ref _teardownEntered, 1) == 1)
@@ -364,8 +361,7 @@ sealed class Program
         await AwaitTeardownAsync(cockpit.DisposeAsync().AsTask(), TeardownBudget);
     }
 
-    // The bounded, logged half — its own method so a test can drive it with a teardown that never finishes and one
-    // that throws. Both used to leave the same trace as one that succeeded: nothing.
+    // The bounded, logged half — its own method so a test can drive a teardown that wedges and one that throws.
     internal static async Task AwaitTeardownAsync(Task teardown, TimeSpan budget)
     {
         try
@@ -385,8 +381,8 @@ sealed class Program
         }
     }
 
-    // The fallback for an exit that never reached TearDownCockpitAsync while the dispatcher was alive — a no-op once
-    // it has, and bounded when it has not, because here the loop has already ended and the chain will wedge again.
+    // Fallback for an exit that never reached the teardown while the dispatcher was alive: a no-op once it has run,
+    // and bounded when it has not, because from here the chain wedges.
     private static void DisposeCockpit() => TearDownCockpitAsync().Wait(TeardownBudget);
 
     private static void StartHostedServices(IReadOnlyList<IHostedService> hostedServices)
