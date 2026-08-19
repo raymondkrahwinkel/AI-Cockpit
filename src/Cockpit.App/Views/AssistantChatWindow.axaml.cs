@@ -516,6 +516,19 @@ public partial class AssistantChatWindow : Window
             return;
         }
 
+        // AC-942: Esc interrupts the running turn, mirroring the Stop button — the mention-picker block above
+        // already claimed Esc while the picker is open, so this only fires once that picker is closed.
+        if (e.Key == Key.Escape)
+        {
+            if (DataContext is AssistantChatViewModel { Session.IsBusy: true } busyVm && busyVm.StopCommand.CanExecute(null))
+            {
+                busyVm.StopCommand.Execute(null);
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (e.Key != Key.Enter || e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
             return;

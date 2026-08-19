@@ -622,6 +622,14 @@
                                 IsEnabled="{Binding CanSend}"
                                 Classes="Accent composerAction" VerticalAlignment="Bottom" Margin="8,0,0,0"
                                 Content="Send"/>
+                        <!-- AC-942: same shape and placement as SessionView.axaml's Stop button, only visible while a
+                             turn is running. Also cuts read-aloud (AssistantChatViewModel.StopCommand). -->
+                        <Button x:Name="StopButton" DockPanel.Dock="Right" Command="{Binding StopCommand}"
+                                IsVisible="{Binding Session.IsBusy, FallbackValue=False}"
+                                Classes="Compact composerAction" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
+                                ToolTip.Tip="Stop the current turn (interrupt)">
+                            <materialIcons:MaterialIcon Kind="Stop" Width="14" Height="14"/>
+                        </Button>
                         <!-- Screenshot (AC-220, reaching this window in AC-630): the desktop's own region picker with
                              its marking tools, landing as an attachment on the composer rather than a message of its
                              own. ShowOnDisabled because the disabled state is the interesting one — the tooltip is
