@@ -31,6 +31,19 @@ public sealed record LayoutSettings
     // same as `SidebarWidth`.
     public double FocusRailWeight { get; init; } = DefaultFocusRailWeight;
 
+    // Width in pixels of the right dock rail's expanded panel (AC-951), dragged via the `GridSplitter`
+    // between it and the session content — the sidebar's mirror image. Clamped to
+    // `MinDockRailWidth`/`MaxDockRailWidth` on load and on save, same pattern as `SidebarWidth`.
+    public double DockRailWidth { get; init; } = DefaultDockRailWidth;
+
+    // Which dock panel is open, by its `DockPanelRegistration.Id` — null means the rail is collapsed to its
+    // 40px strip. Only one panel can be open at a time.
+    public string? OpenDockPanelId { get; init; }
+
+    // Whether the Assistant is docked into the rail instead of its own floating window (AC-950 [c]). A
+    // separate field from `OpenDockPanelId`: the assistant can be docked while the rail itself is collapsed.
+    public bool AssistantDocked { get; init; }
+
     public const double DefaultSidebarWidth = 180;
     public const double MinSidebarWidth = 180;
     public const double MaxSidebarWidth = 480;
@@ -38,4 +51,10 @@ public sealed record LayoutSettings
     public const double DefaultFocusRailWeight = 0.3;
     public const double MinFocusRailWeight = 0.15;
     public const double MaxFocusRailWeight = 1.2;
+
+    // 400 = the 40px tab strip plus the ~360px panel the mockup shows; Min keeps at least a usable ~240px
+    // of panel beside the tab strip.
+    public const double DefaultDockRailWidth = 400;
+    public const double MinDockRailWidth = 280;
+    public const double MaxDockRailWidth = 600;
 }

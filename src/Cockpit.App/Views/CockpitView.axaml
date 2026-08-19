@@ -8,6 +8,7 @@
              xmlns:projects="using:Cockpit.Core.Projects"
              xmlns:ws="using:Cockpit.Core.Workspaces"
              xmlns:widgets="using:Cockpit.Plugins.Abstractions.Widgets"
+             xmlns:docking="using:Cockpit.App.Docking"
              xmlns:sharedProjects="using:Cockpit.Plugins.Abstractions.Projects"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              xmlns:avconv="using:Avalonia.Data.Converters"
@@ -249,6 +250,13 @@
                                MaxWidth="{x:Static layout:LayoutSettings.MaxSidebarWidth}"/>
             <ColumnDefinition Width="4"/>
             <ColumnDefinition Width="*"/>
+            <!-- Dock rail (AC-951): the sidebar's mirror image on the right — same "code-behind applies the
+                 VM's double, GridSplitter reads it back" reasoning as column 0 above. Width starts at the
+                 collapsed rail's fixed 40px; MinWidth/MaxWidth only bind the drag once expanded. -->
+            <ColumnDefinition Width="4"/>
+            <ColumnDefinition Width="40"
+                               MinWidth="{x:Static layout:LayoutSettings.MinDockRailWidth}"
+                               MaxWidth="{x:Static layout:LayoutSettings.MaxDockRailWidth}"/>
         </Grid.ColumnDefinitions>
 
         <!-- Sidebar: always visible in both grid and zoom mode — the constant overview/status anchor. -->
@@ -1521,13 +1529,76 @@
             </StackPanel>
         </Grid>
 
+        <!-- Dock rail (AC-951): the sidebar's mirror image on the right. This GridSplitter (column 3) resizes
+             the rail column (4) while the star-sized content column (2) absorbs the difference — the same
+             relationship column 1's splitter has with columns 0 and 2. -->
+        <GridSplitter Grid.Column="3" Background="Transparent" ResizeDirection="Columns"
+                      IsVisible="{Binding OpenDockPanelId, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"
+                      DragCompleted="OnDockRailSplitterDragCompleted"/>
+
+        <!-- Stretches the full row like the sidebar (column 0) does — confirmed against the approved mockup's
+             render, where the rail's background runs uninterrupted down to the status bar. Toasts and the
+             resource panel (declared after this Border, so drawn in front of it) still read on top rather than
+             appearing to run underneath the rail — acceptance criterion 3 (AC-951). -->
+        <Border Grid.Column="4"
+                Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1,0,0,0">
+            <DockPanel>
+                <!-- Tab strip: one button per registered panel, icon over rotated title, anchored to the top of
+                     the rail. Stays on screen in both the collapsed and the expanded state, so switching panels
+                     or closing the open one is always a single click away. -->
+                <ItemsControl DockPanel.Dock="Right" Width="40" VerticalAlignment="Top" ItemsSource="{Binding DockPanels}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="docking:DockPanelRegistration">
+                            <Button Classes="Subtle" Width="40" Padding="0" HorizontalContentAlignment="Stretch"
+                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1"
+                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).ToggleDockPanelCommand}"
+                                    CommandParameter="{Binding Id}"
+                                    ToolTip.Tip="{Binding Title}">
+                                <Grid>
+                                    <!-- The open tab's highlight (AC-951 mockup): the same accent-tint + edge
+                                         language as Border.sessionItem.active, using the existing
+                                         CockpitCategoryTintBlueBrush rather than a second resource at the same
+                                         hex (see its definition in Theme.axaml for why that would fail the
+                                         palette-baseline test). -->
+                                    <Border Background="{StaticResource CockpitCategoryTintBlueBrush}"
+                                            BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="0,0,2,0">
+                                        <Border.IsVisible>
+                                            <MultiBinding Converter="{x:Static conv:DockPanelActiveConverter.Instance}">
+                                                <Binding Path="Id"/>
+                                                <Binding Path="$parent[ItemsControl].((vm:CockpitViewModel)DataContext).OpenDockPanelId"/>
+                                            </MultiBinding>
+                                        </Border.IsVisible>
+                                    </Border>
+                                    <StackPanel Spacing="6" HorizontalAlignment="Center" Margin="0,10">
+                                        <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16"/>
+                                        <LayoutTransformControl>
+                                            <LayoutTransformControl.LayoutTransform>
+                                                <RotateTransform Angle="-90"/>
+                                            </LayoutTransformControl.LayoutTransform>
+                                            <TextBlock Text="{Binding Title}" FontSize="10.5"/>
+                                        </LayoutTransformControl>
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- The open panel's content — rebuilt by the code-behind whenever OpenDockPanelId changes
+                     (DockPanelRegistration.CreateView is a plain Func<Control>, not a compiled binding). -->
+                <ContentControl x:Name="DockPanelContent"
+                                IsVisible="{Binding OpenDockPanelId, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
+            </DockPanel>
+        </Border>
+
         <!-- The toasts (#61), now a control of their own so a plugin's own window shows the same ones. -->
-        <controls:ToastOverlay Grid.Column="0" Grid.ColumnSpan="3"/>
+        <controls:ToastOverlay Grid.Column="0" Grid.ColumnSpan="5"/>
 
         <!-- The breakdown (#78), rising out of the status bar in the corner the figures are in. It sits in the content
              row, so it floats over the sessions rather than pushing the bar around, and it is anchored bottom-right so
              it lines up with the button that opens it. -->
-        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="5"
                 Classes="resourcePanel"
                 Classes.open="{Binding IsResourcePanelOpen}"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -1645,7 +1716,7 @@
 
         <!-- Status bar (#78): what AI-Cockpit is using right now. The total is AI-Cockpit's own process tree,
              so it already contains every session it spawned; the figures open the breakdown per session. -->
-        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
                 Padding="10,4">

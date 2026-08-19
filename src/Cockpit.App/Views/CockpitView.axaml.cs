@@ -37,6 +37,7 @@ public partial class CockpitView : UserControl
     private static readonly TimeSpan ClaimCollisionCheckInterval = TimeSpan.FromSeconds(5);
 
     // Width of the collapsed sidebar rail — just enough for the expand chevron and a compact New session.
+    // Reused for the dock rail's collapsed width too (AC-951): both are the same 40px tab strip.
     private const double CollapsedRailWidth = 40;
 
     private INotifyCollectionChanged? _observedSideSections;
@@ -77,6 +78,8 @@ public partial class CockpitView : UserControl
 
         _AttachPluginSections();
         _ApplySidebarWidth();
+        _ApplyDockRailWidth();
+        _RebuildDockPanelContent();
 
         if (DataContext is CockpitViewModel cockpit)
         {
@@ -213,6 +216,14 @@ public partial class CockpitView : UserControl
         {
             _ApplySidebarWidth();
         }
+        else if (e.PropertyName is nameof(CockpitViewModel.DockRailWidth) or nameof(CockpitViewModel.OpenDockPanelId))
+        {
+            _ApplyDockRailWidth();
+            if (e.PropertyName == nameof(CockpitViewModel.OpenDockPanelId))
+            {
+                _RebuildDockPanelContent();
+            }
+        }
         else if (e.PropertyName == nameof(CockpitViewModel.SelectedSession))
         {
             // Any selection change — the sidebar-switch shortcut, a sidebar click, or a pane click — moves
@@ -306,6 +317,50 @@ public partial class CockpitView : UserControl
     // x:Name on a ColumnDefinition doesn't generate a code-behind field (unlike a Control), so it's
     // reached through the named root Grid instead.
     private ColumnDefinition _SidebarColumn() => RootGrid.ColumnDefinitions[0];
+
+    // AC-951: the dock rail's mirror image of `_ApplySidebarWidth` above — same reasoning, same shape.
+    // Collapsed (no panel open): the rail column shrinks to the 40px tab strip and the splitter gives up its
+    // grip. Expanded: both are restored to the persisted `DockRailWidth`.
+    private void _ApplyDockRailWidth()
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var collapsed = cockpit.OpenDockPanelId is null;
+        var column = _DockRailColumn();
+        column.MinWidth = collapsed ? 0 : LayoutSettings.MinDockRailWidth;
+        column.Width = new GridLength(collapsed ? CollapsedRailWidth : cockpit.DockRailWidth);
+        RootGrid.ColumnDefinitions[3].Width = new GridLength(collapsed ? 0 : 4);
+    }
+
+    private async void OnDockRailSplitterDragCompleted(object? sender, VectorEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        await cockpit.SetDockRailWidthAsync(_DockRailColumn().Width.Value);
+    }
+
+    private ColumnDefinition _DockRailColumn() => RootGrid.ColumnDefinitions[4];
+
+    // Builds the open panel's content fresh each time it opens — `DockPanelRegistration.CreateView` is a plain
+    // factory, not a per-instance context to reattach, so there is nothing to preserve across a close/reopen
+    // (unlike the widget panes, which keep their own state in `IWidgetContext.Storage`).
+    private void _RebuildDockPanelContent()
+    {
+        if (DockPanelContent is null || DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        DockPanelContent.Content = cockpit.OpenDockPanelId is { } panelId
+            ? cockpit.DockPanels.FirstOrDefault(panel => panel.Id == panelId)?.CreateView()
+            : null;
+    }
 
     // Renders the plugin-contributed left-menu buttons and sections (#14) and keeps them in sync: plugins
     // register these during phase-2 init (before this view attaches), and any later addition rebuilds.

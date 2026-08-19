@@ -35,6 +35,7 @@ internal sealed class LayoutSettingsStore : ILayoutSettingsStore, ISingletonServ
         {
             SidebarWidth = Math.Clamp(settings.SidebarWidth, LayoutSettings.MinSidebarWidth, LayoutSettings.MaxSidebarWidth),
             FocusRailWeight = Math.Clamp(settings.FocusRailWeight, LayoutSettings.MinFocusRailWeight, LayoutSettings.MaxFocusRailWeight),
+            DockRailWidth = Math.Clamp(settings.DockRailWidth, LayoutSettings.MinDockRailWidth, LayoutSettings.MaxDockRailWidth),
         };
     }
 
@@ -44,6 +45,7 @@ internal sealed class LayoutSettingsStore : ILayoutSettingsStore, ISingletonServ
         {
             SidebarWidth = Math.Clamp(settings.SidebarWidth, LayoutSettings.MinSidebarWidth, LayoutSettings.MaxSidebarWidth),
             FocusRailWeight = Math.Clamp(settings.FocusRailWeight, LayoutSettings.MinFocusRailWeight, LayoutSettings.MaxFocusRailWeight),
+            DockRailWidth = Math.Clamp(settings.DockRailWidth, LayoutSettings.MinDockRailWidth, LayoutSettings.MaxDockRailWidth),
         };
 
         return _configFile.UpdateAsync(

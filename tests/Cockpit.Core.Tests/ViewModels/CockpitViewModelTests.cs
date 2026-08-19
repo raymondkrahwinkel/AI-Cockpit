@@ -910,6 +910,96 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public void Constructor_DefaultsDockRailWidthBeforeLayoutSettingsLoad()
+    {
+        var vm = NewVm();
+
+        Assert.Equal(LayoutSettings.DefaultDockRailWidth, vm.DockRailWidth);
+        Assert.Null(vm.OpenDockPanelId);
+    }
+
+    [Fact]
+    public async Task Constructor_LoadsDockRailSettingsFromLayoutSettingsStore()
+    {
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings { DockRailWidth = 440, OpenDockPanelId = "placeholder" });
+
+        var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
+        await Task.Delay(50);
+
+        Assert.Equal(440, vm.DockRailWidth);
+        Assert.Equal("placeholder", vm.OpenDockPanelId);
+    }
+
+    [Fact]
+    public async Task SetDockRailWidthAsync_PersistsTheWidthAndUpdatesTheProperty()
+    {
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
+
+        await vm.SetDockRailWidthAsync(450);
+
+        Assert.Equal(450, vm.DockRailWidth);
+        await layoutSettingsStore.Received(1).SaveAsync(
+            Arg.Is<LayoutSettings>(s => s.DockRailWidth == 450), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(50, LayoutSettings.MinDockRailWidth)]
+    [InlineData(2000, LayoutSettings.MaxDockRailWidth)]
+    public async Task SetDockRailWidthAsync_ClampsAnOutOfRangeWidth(double requested, double expected)
+    {
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
+
+        await vm.SetDockRailWidthAsync(requested);
+
+        Assert.Equal(expected, vm.DockRailWidth);
+    }
+
+    [Fact]
+    public async Task ToggleDockPanelCommand_OpensAClosedPanel()
+    {
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
+
+        await vm.ToggleDockPanelCommand.ExecuteAsync("placeholder");
+
+        Assert.Equal("placeholder", vm.OpenDockPanelId);
+        await layoutSettingsStore.Received(1).SaveAsync(
+            Arg.Is<LayoutSettings>(s => s.OpenDockPanelId == "placeholder"), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ToggleDockPanelCommand_ClosesTheSamePanelClickedAgain()
+    {
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
+        await vm.ToggleDockPanelCommand.ExecuteAsync("placeholder");
+
+        await vm.ToggleDockPanelCommand.ExecuteAsync("placeholder");
+
+        Assert.Null(vm.OpenDockPanelId);
+    }
+
+    [Fact]
+    public async Task ToggleDockPanelCommand_SwitchesStraightToADifferentPanel()
+    {
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
+        await vm.ToggleDockPanelCommand.ExecuteAsync("placeholder");
+
+        await vm.ToggleDockPanelCommand.ExecuteAsync("other");
+
+        Assert.Equal("other", vm.OpenDockPanelId);
+    }
+
+    [Fact]
     public async Task Constructor_LoadsTerminalSettingsFromStore()
     {
         var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();

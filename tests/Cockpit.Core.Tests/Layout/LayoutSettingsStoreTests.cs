@@ -33,6 +33,9 @@ public class LayoutSettingsStoreTests : IDisposable
         Assert.False(settings.SingleSessionLayout);
         Assert.Equal(LayoutSettings.DefaultSidebarWidth, settings.SidebarWidth);
         Assert.Equal(LayoutSettings.DefaultFocusRailWeight, settings.FocusRailWeight);
+        Assert.Equal(LayoutSettings.DefaultDockRailWidth, settings.DockRailWidth);
+        Assert.Null(settings.OpenDockPanelId);
+        Assert.False(settings.AssistantDocked);
     }
 
     [Fact]
@@ -40,7 +43,7 @@ public class LayoutSettingsStoreTests : IDisposable
     {
         var store = new LayoutSettingsStore(_configFilePath);
 
-        await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, StackSessionsVertically = true, FocusRailLayout = true, MinimizeToTrayOnClose = true, SidebarWidth = 260, FocusRailWeight = 0.5 });
+        await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, StackSessionsVertically = true, FocusRailLayout = true, MinimizeToTrayOnClose = true, SidebarWidth = 260, FocusRailWeight = 0.5, DockRailWidth = 420, OpenDockPanelId = "assistant", AssistantDocked = true });
         var loaded = await store.LoadAsync();
 
         Assert.True(loaded.SingleSessionLayout);
@@ -49,6 +52,20 @@ public class LayoutSettingsStoreTests : IDisposable
         Assert.True(loaded.MinimizeToTrayOnClose);
         Assert.Equal(260, loaded.SidebarWidth);
         Assert.Equal(0.5, loaded.FocusRailWeight);
+        Assert.Equal(420, loaded.DockRailWidth);
+        Assert.Equal("assistant", loaded.OpenDockPanelId);
+        Assert.True(loaded.AssistantDocked);
+    }
+
+    [Fact]
+    public async Task SaveAsync_ThenLoadAsync_RoundTripsANullOpenDockPanelId()
+    {
+        var store = new LayoutSettingsStore(_configFilePath);
+
+        await store.SaveAsync(new LayoutSettings { OpenDockPanelId = null });
+        var loaded = await store.LoadAsync();
+
+        Assert.Null(loaded.OpenDockPanelId);
     }
 
     [Theory]
@@ -75,6 +92,19 @@ public class LayoutSettingsStoreTests : IDisposable
         var loaded = await store.LoadAsync();
 
         Assert.Equal(expected, loaded.FocusRailWeight);
+    }
+
+    [Theory]
+    [InlineData(50, LayoutSettings.MinDockRailWidth)]
+    [InlineData(900, LayoutSettings.MaxDockRailWidth)]
+    public async Task SaveAsync_ClampsAnOutOfRangeDockRailWidth(double requested, double expected)
+    {
+        var store = new LayoutSettingsStore(_configFilePath);
+
+        await store.SaveAsync(new LayoutSettings { DockRailWidth = requested });
+        var loaded = await store.LoadAsync();
+
+        Assert.Equal(expected, loaded.DockRailWidth);
     }
 
     [Fact]
