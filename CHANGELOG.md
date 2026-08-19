@@ -152,6 +152,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - changed: the sidebar's "Menu" and "Help" buttons now open the same flush, right-hand pop-out as "Plugins ›"
   instead of their own separate dropdown — same items, same actions, just matching the rest of the sidebar's look.
   The hairline that used to sit above "Plugins ›" is gone too.
+- changed: a plugin's assistant consent bypass in Options is now keyed per surface it asks from, not per plugin —
+  a plugin with more than one thing it can ask about (an MCP tool and a settings gate, say) gets a separate switch
+  for each, so ticking one no longer silently opens the others too. Because the key changed shape, an existing
+  bypass you had switched on for such a plugin now reads as off until you tick it again; it is never read as on for
+  something you never switched on, and the old row stays visible (marked as a leftover) so you can still switch it
+  off if you had left it on.
 
 ### Fixed
 

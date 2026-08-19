@@ -26,8 +26,10 @@ public static class ConsentSourceCatalog
     public const string WireframeMcp = "Wireframe MCP";
 
     // The whiteboard's own "Laat sdk meekijken" button (AC-842): the operator inviting the coupled session's agent
-    // to read the board, kept apart from WhiteboardMcp so the audit trail (and its bypass switch) can tell the
-    // operator's own invite from the agent asking for itself.
+    // to read the board, kept apart from WhiteboardMcp so the audit trail can tell the operator's own invite from
+    // the agent asking for itself. Not in `HostSources` and never will be (AC-888): the button calls
+    // `RequestConsentAsync` directly from the UI, outside any MCP request, so `McpRequestContext.CurrentPaneId`
+    // is null and the bypass never even gets asked — a switch for this row could not do anything.
     public const string WhiteboardInvite = "Whiteboard invite";
 
     // The verify MCP server.
@@ -75,23 +77,27 @@ public static class ConsentSourceCatalog
     public const string AssistantProjectCreate = "Assistant project create";
 
     // Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.
+    // Plugin rows are absent on purpose, `WhiteboardInvite` included — see its own comment above.
     public static IReadOnlyList<string> HostSources { get; } =
     [
-        TerminalMcp, DiagramMcp, WhiteboardMcp, WireframeMcp, WhiteboardInvite, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
+        TerminalMcp, DiagramMcp, WhiteboardMcp, WireframeMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
         AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, AssistantProjectCreate, Debug,
     ];
 
-    // The bypass key for one source: the host-stamped `pluginId` under a `plugin:` prefix, or
-    // the `label` — a constant above — for a host-internal caller that has no plugin id.
-    // The prefix keeps the two halves in separate key spaces. Without it a plugin whose manifest id happens to be
-    // `"Terminal MCP"` shares a row, and a switch, with the host's own terminal gate: the operator switches one
-    // on and silently arms the other. One definition, used by both the broker (which builds the key a request is
+    // The bypass key for one source: the host-stamped `pluginId` and the caller's own `label` under a `plugin:`
+    // prefix, or the bare `label` — a constant above — for a host-internal caller that has no plugin id.
+    // The prefix keeps a plugin's whole key space separate from the host's and from every other plugin's
+    // (AC-888): `pluginId` is stamped from the plugin's folder name (`PluginDiscovery.FolderId`), which cannot
+    // contain a `/` on any supported filesystem, so the first `/` after `plugin:` is always the id/label
+    // boundary — a plugin's own choice of `label` can only add rows inside its own space, never reach into the
+    // host's or another plugin's. One definition, used by both the broker (which builds the key a request is
     // matched on) and the Options list (which builds the key a row is stored under), so the two cannot drift.
     //
-    // A `cockpit.json` written before the prefix existed holds bare plugin ids. Those no longer match any
-    // request, so the effect on an existing install is that a plugin's bypass reads as off until the operator ticks
-    // it again — never as on for something it was not set for. The stale keys stay visible: Options lists anything
-    // already switched on, so an orphaned row can still be switched off rather than sitting there unreachable.
+    // A `cockpit.json` written before the label joined the key (or, further back, before the prefix existed)
+    // holds a shorter key. Those no longer match any request, so the effect on an existing install is that a
+    // plugin's bypass reads as off until the operator ticks it again — never as on for something it was not set
+    // for. The stale keys stay visible: Options lists anything already switched on, so an orphaned row can still
+    // be switched off rather than sitting there unreachable.
     public static string KeyFor(string? pluginId, string label) =>
-        pluginId is null ? label : "plugin:" + pluginId;
+        pluginId is null ? label : $"plugin:{pluginId}/{label}";
 }

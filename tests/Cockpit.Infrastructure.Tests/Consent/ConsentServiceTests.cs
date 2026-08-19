@@ -386,13 +386,28 @@ public sealed class ConsentServiceTests
             await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous, paneId: "pane-the-agent-typed"));
             await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, pluginId: null!));
 
-            Assert.Equal(("cockpit-assistant", "plugin:workflows", true), policy.Asked[0]);
+            Assert.Equal(("cockpit-assistant", "plugin:workflows/Workflows", true), policy.Asked[0]);
             Assert.Equal(("cockpit-assistant", "Workflows", false), policy.Asked[1]);
         }
         finally
         {
             McpRequestContext.Set(null);
         }
+    }
+
+    [Fact]
+    public async Task RequestConsentAsync_WithoutAVerifiedMcpPane_NeverBypasses_RegardlessOfPolicy()
+    {
+        // AC-888: the whiteboard invite (and any other UI-initiated request) calls RequestConsentAsync directly,
+        // outside any MCP call, so McpRequestContext.CurrentPaneId is null. The policy must never even be asked —
+        // a switch for a source like this cannot do anything, on purpose.
+        var policy = new StubPolicy(answer: true);
+        var broker = new ConsentService(_audit, policy);
+        _RecordPrompts(broker);
+
+        await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk));
+
+        Assert.Empty(policy.Asked);
     }
 
     [Fact]
@@ -412,7 +427,7 @@ public sealed class ConsentServiceTests
             await broker.RequestConsentAsync(
                 new ConsentRequest("The terminal wants to run a command", "ls", new ConsentSource("pane-1", null, ConsentSourceCatalog.TerminalMcp), "terminal.run", ConsentRisk.LowRisk));
 
-            Assert.Equal("plugin:Terminal MCP", policy.Asked[0].SourceKey);
+            Assert.Equal("plugin:Terminal MCP/Workflows", policy.Asked[0].SourceKey);
             Assert.Equal(ConsentSourceCatalog.TerminalMcp, policy.Asked[1].SourceKey);
             Assert.NotEqual(policy.Asked[0].SourceKey, policy.Asked[1].SourceKey);
         }
