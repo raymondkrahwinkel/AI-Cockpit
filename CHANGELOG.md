@@ -155,6 +155,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the main window no longer restores to a saved position that is barely reachable — a rectangle that
+  only grazed a connected screen's edge, or that landed with its titlebar under a desktop panel/dock, used to
+  count as "on a screen" and reopen there anyway. It now requires a meaningful, actually-grabbable overlap
+  with the screen's usable area instead of a single pixel of its raw bounds.
 - fixed: a chat message typed with Shift+Enter across several lines no longer arrives in the transcript as one
   run-on line — each line now shows on its own line, the way it was typed. Real markdown documents (assistant
   replies, file previews) are unaffected: a line-wrapped paragraph there still reads as one paragraph, as before.
