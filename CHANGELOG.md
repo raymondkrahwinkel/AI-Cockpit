@@ -158,6 +158,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   bypass you had switched on for such a plugin now reads as off until you tick it again; it is never read as on for
   something you never switched on, and the old row stays visible (marked as a leftover) so you can still switch it
   off if you had left it on.
+- changed: the `cockpit-diagram` MCP tools now come from the Diagram, Whiteboard & Wireframe plugin instead of
+  being built into the app — same tools, same behavior, same consent prompts, but a session or agent selection
+  only offers `cockpit-diagram` when that plugin is installed and enabled.
 
 ### Fixed
 

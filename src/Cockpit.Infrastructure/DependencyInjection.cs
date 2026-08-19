@@ -50,10 +50,6 @@ public static class DependencyInjection
             typeof(Terminal.TerminalMcpTools),
             () => provider.GetRequiredService<Terminal.TerminalAccessState>().Enabled));
 
-        // cockpit-diagram (AC-810): lets an agent read and edit a diagram surface the operator has open, gated by a
-        // per-capability Approve/Deny (AC-830 removed the standing master switch this used to sit behind).
-        services.AddSingleton(new CockpitMcpEndpoint("cockpit-diagram", typeof(Diagrams.DiagramMcpTools)));
-
         // cockpit-whiteboard (AC-823): lets an agent read a screenshot of a whiteboard surface the operator has
         // open and, since AC-854 lifted AC-820's "never writes to the canvas" boundary, put objects on it one at a
         // time — read and write each behind their own Approve/Deny, as cockpit-diagram above does.

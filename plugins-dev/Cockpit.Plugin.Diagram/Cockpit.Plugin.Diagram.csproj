@@ -59,6 +59,12 @@
     </PackageReference>
     <!-- Mermaid-text -> SVG. Pure managed, no Avalonia or Skia dependency (AC-807) — ships in the zip. -->
     <PackageReference Include="Mermaider" Version="0.12.2" />
+    <!-- The [McpServerTool] attributes for the cockpit-diagram MCP (AC-889). Host-provided (the cockpit already
+         loads ModelContextProtocol), so compile-only — the plugin ships no copy and the attribute types keep one
+         identity. -->
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

@@ -1,31 +1,30 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Diagrams;
-using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Diagrams;
-using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using NSubstitute;
 
-namespace Cockpit.Infrastructure.Tests.Diagrams;
+namespace Cockpit.Plugin.Diagram.Tests;
 
-/// <summary>
-/// The cockpit-diagram tools (AC-810): reading a surface is gated behind its own Approve/Deny, editing behind a
-/// separate one, coupling is one-agent-per-surface, coupling on its own grants nothing, and a read always returns
-/// the surface exactly as it stands (never just what changed since the coupling — AC-810's deviation from AC-34).
-/// </summary>
+// The cockpit-diagram tools (AC-810): reading a surface is gated behind its own Approve/Deny, editing behind a
+// separate one, coupling is one-agent-per-surface, coupling on its own grants nothing, and a read always returns
+// the surface exactly as it stands (never just what changed since the coupling — AC-810's deviation from AC-34).
 public class DiagramMcpToolsTests
 {
     private const string Session = "pane-agent";
     private const string Source = "flowchart LR\nA-->B";
 
-    private static (DiagramMcpTools tools, DiagramAccessRegistry registry, IConsentBroker broker, List<ConsentRequest> asked) _Build(ConsentOutcome outcome)
+    private static (DiagramMcpTools tools, DiagramAccessRegistry registry, ICockpitHost host, List<ConsentRequest> asked) _Build(ConsentOutcome outcome)
     {
         var registry = new DiagramAccessRegistry();
         var asked = new List<ConsentRequest>();
-        var broker = Substitute.For<IConsentBroker>();
-        broker.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add), Arg.Any<CancellationToken>())
-            .Returns(new ConsentDecision(outcome));
-        return (new DiagramMcpTools(registry, broker), registry, broker, asked);
+        var host = Substitute.For<ICockpitHost>();
+        // NSubstitute defaults an unconfigured string-returning member to "", not null — leaving this unset would
+        // make `host.CurrentMcpCallerPaneId ?? session` pick "" over the caller-supplied session on every test.
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
+        host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
+        return (new DiagramMcpTools(host, registry), registry, host, asked);
     }
 
     [Fact]
@@ -82,23 +81,16 @@ public class DiagramMcpToolsTests
     public async Task ReadDiagram_KeysOnTheVerifiedPane_NotTheAgentSuppliedSessionId()
     {
         // Hardening (AC-89 pattern), same as TerminalMcpTools: coupling is keyed on the transport-verified pane.
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        var (tools, registry, host, _) = _Build(ConsentOutcome.Approved);
         registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
         registry.Grant("victim-pane", "diagram-1", DiagramCapability.Read);
+        host.CurrentMcpCallerPaneId.Returns("attacker-pane");
 
-        McpRequestContext.Set("attacker-pane");
-        try
-        {
-            var json = JsonNode.Parse(await tools.ReadDiagram("victim-pane", "Onboarding flow"));
+        var json = JsonNode.Parse(await tools.ReadDiagram("victim-pane", "Onboarding flow"));
 
-            Assert.False(json!["ok"]!.GetValue<bool>());
-            Assert.Contains("another agent", json["error"]!.GetValue<string>());
-            Assert.Null(json["source"]);
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("another agent", json["error"]!.GetValue<string>());
+        Assert.Null(json["source"]);
     }
 
     [Fact]
@@ -138,19 +130,6 @@ public class DiagramMcpToolsTests
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("another agent", json["error"]!.GetValue<string>());
         Assert.Empty(asked);
-    }
-
-    [Fact]
-    public async Task ReadDiagram_WithNoConsentBroker_FailsClosed()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
-        var tools = new DiagramMcpTools(registry, consent: null);
-
-        var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Null(registry.CouplingOf(Session, "diagram-1"));
     }
 
     [Fact]
@@ -195,11 +174,12 @@ public class DiagramMcpToolsTests
     public async Task EditDiagram_WhenWideningIsDenied_LeavesTheReadAccessItAlreadyHad()
     {
         var registry = new DiagramAccessRegistry();
-        var broker = Substitute.For<IConsentBroker>();
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
         var outcomes = new Queue<ConsentOutcome>([ConsentOutcome.Approved, ConsentOutcome.Denied]);
-        broker.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
+        host.RequestConsentAsync(Arg.Any<ConsentRequest>())
             .Returns(_ => new ConsentDecision(outcomes.Dequeue()));
-        var tools = new DiagramMcpTools(registry, broker);
+        var tools = new DiagramMcpTools(host, registry);
         registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
         await tools.ReadDiagram(Session, "Onboarding flow");
 
@@ -423,14 +403,15 @@ public class DiagramMcpToolsTests
     {
         var registry = new DiagramAccessRegistry();
         registry.SurfaceOpened("diagram-1", "Onboarding flow", Source);
-        var broker = Substitute.For<IConsentBroker>();
-        broker.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns((string?)null);
+        host.RequestConsentAsync(Arg.Any<ConsentRequest>())
             .Returns(_ =>
             {
                 registry.Grant("someone-else", "diagram-1", DiagramCapability.Read); // slipped in while we asked
                 return new ConsentDecision(ConsentOutcome.Approved);
             });
-        var tools = new DiagramMcpTools(registry, broker);
+        var tools = new DiagramMcpTools(host, registry);
 
         var json = JsonNode.Parse(await tools.ReadDiagram(Session, "Onboarding flow"));
 
@@ -520,19 +501,12 @@ public class DiagramMcpToolsTests
     [Fact]
     public async Task OpenDiagram_CouplesTheVerifiedPane_NotTheAgentSuppliedSessionId()
     {
-        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        var (tools, registry, host, _) = _Build(ConsentOutcome.Approved);
         var requests = new List<DiagramOpenRequest>();
         registry.OpenRequested += requests.Add;
+        host.CurrentMcpCallerPaneId.Returns("cockpit-assistant"); // the assistant is a caller like any other (AC-835)
 
-        McpRequestContext.Set("cockpit-assistant"); // the assistant is a caller like any other (AC-835)
-        try
-        {
-            await tools.OpenDiagram("some-other-pane", "Onboarding flow", Source);
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
+        await tools.OpenDiagram("some-other-pane", "Onboarding flow", Source);
 
         var request = Assert.Single(requests);
         Assert.Equal("cockpit-assistant", request.SessionId);
@@ -561,17 +535,5 @@ public class DiagramMcpToolsTests
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.Contains("diagram plugin", json["error"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task OpenDiagram_WithNoConsentBroker_FailsClosed()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.OpenRequested += _ => Assert.Fail("Nothing may be opened without an operator to ask.");
-        var tools = new DiagramMcpTools(registry, consent: null);
-
-        var json = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", Source));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
     }
 }

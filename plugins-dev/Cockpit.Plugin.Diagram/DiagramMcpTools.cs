@@ -3,38 +3,25 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Consent;
-using Cockpit.Infrastructure.Collab;
-using Cockpit.Infrastructure.Consent;
-using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 
-namespace Cockpit.Infrastructure.Diagrams;
+namespace Cockpit.Plugin.Diagram;
 
 // The `cockpit-diagram` MCP tools (AC-810), gated per-capability like `cockpit-terminal` (AC-34) — read that class
 // first. Deviations: `read_diagram` returns the surface as it stands (a state, not a stream), `edit_diagram`'s
 // consent text comes from SourceChangeSummary (AC-489), and the per-object tools (AC-852) write straight through.
-internal sealed class DiagramMcpTools
+internal sealed class DiagramMcpTools(ICockpitHost host, IDiagramAccessRegistry registry)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
-
-    private readonly IDiagramAccessRegistry _registry;
-    private readonly IConsentBroker? _consent;
-
-    // The consent broker is optional so the tool's own tests construct it without a host; the container injects the
-    // shared singleton, so a real access is gated behind an operator Approve/Deny that fails closed when nobody can ask.
-    public DiagramMcpTools(IDiagramAccessRegistry registry, IConsentBroker? consent = null)
-    {
-        _registry = registry;
-        _consent = consent;
-    }
 
     [McpServerTool(Name = "list_diagrams")]
     [Description("Lists the diagram surfaces the operator has open that you could ask to use: each with a stable id, the name the operator sees, and whether you already hold read/edit on it. Reading or editing a surface needs the operator to approve it first (see read_diagram / edit_diagram); this list only names the surfaces so you can reference one. A surface can be coupled to you with neither capability yet — that is a real, valid state, not an error.")]
     public string ListDiagrams(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session)
     {
-        var caller = McpRequestContext.CurrentPaneId ?? session;
-        var diagrams = _registry.ListSurfaces(caller)
+        var caller = host.CurrentMcpCallerPaneId ?? session;
+        var diagrams = registry.ListSurfaces(caller)
             .Select(surface => new
             {
                 id = surface.SurfaceId,
@@ -57,20 +44,16 @@ internal sealed class DiagramMcpTools
             return _Serialize(new { ok = false, error = "Give the Mermaid source of the diagram you want to go through — an empty diagram is nothing to discuss." });
         }
 
-        if (_registry.CheckFidelity(source) is not { } fidelity)
+        if (registry.CheckFidelity(source) is not { } fidelity)
         {
             return _Serialize(new { ok = false, error = "The render engine cannot draw that source, so nothing was opened — check the Mermaid syntax first." });
         }
 
         var title = string.IsNullOrWhiteSpace(name) ? "Diagram" : name.Trim();
         var surfaceId = Guid.NewGuid().ToString("n");
-        var caller = McpRequestContext.CurrentPaneId ?? session;
-        if (_consent is null)
-        {
-            return _Serialize(new { ok = false, error = "Opening a diagram needs the operator's approval, which is not available here." });
-        }
+        var caller = host.CurrentMcpCallerPaneId ?? session;
 
-        var decision = await _consent.RequestConsentAsync(new ConsentRequest(
+        var decision = await host.RequestConsentAsync(new ConsentRequest(
             "An agent wants to open a diagram to go through with you",
             $"Open a diagram window \"{_SingleLine(title)}\" beside the cockpit, holding {source.Split('\n').Length} lines of Mermaid this agent wrote, and couple that agent to it. It cannot read the surface back or change it afterwards without asking you separately.",
             new ConsentSource(surfaceId, null, ConsentSourceCatalog.DiagramMcp),
@@ -82,7 +65,7 @@ internal sealed class DiagramMcpTools
             return _Serialize(new { ok = false, error = "Opening that diagram was not approved by the operator — nothing was opened." });
         }
 
-        if (!_registry.RequestOpen(new DiagramOpenRequest(surfaceId, title, source, caller)))
+        if (!registry.RequestOpen(new DiagramOpenRequest(surfaceId, title, source, caller)))
         {
             return _Serialize(new { ok = false, error = "Nothing in this cockpit draws diagram windows right now — the diagram plugin may not be running." });
         }
@@ -103,19 +86,19 @@ internal sealed class DiagramMcpTools
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The diagram to read, by its id or name from list_diagrams.")] string diagram)
     {
-        if (_registry.Resolve(diagram) is not { } surface)
+        if (registry.Resolve(diagram) is not { } surface)
         {
             return _Serialize(new { ok = false, error = "No such diagram surface — call list_diagrams for the open surfaces and their ids." });
         }
 
-        var caller = McpRequestContext.CurrentPaneId ?? session;
+        var caller = host.CurrentMcpCallerPaneId ?? session;
         if (await _EnsureCapabilityAsync(caller, surface, DiagramCapability.Read).ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
         }
 
-        var source = _registry.ReadCoupled(caller, surface.SurfaceId) ?? "";
-        var fidelity = _registry.CheckFidelity(source)
+        var source = registry.ReadCoupled(caller, surface.SurfaceId) ?? "";
+        var fidelity = registry.CheckFidelity(source)
             ?? new DiagramFidelity(["Could not check this diagram against the render engine — the source may not be valid Mermaid syntax."]);
         return _Serialize(new
         {
@@ -134,21 +117,21 @@ internal sealed class DiagramMcpTools
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The full replacement Mermaid source for this diagram.")] string source)
     {
-        if (_registry.Resolve(diagram) is not { } surface)
+        if (registry.Resolve(diagram) is not { } surface)
         {
             return _Serialize(new { ok = false, error = "No such diagram surface — call list_diagrams for the open surfaces and their ids." });
         }
 
-        var caller = McpRequestContext.CurrentPaneId ?? session;
-        var changeSummary = SourceChangeSummary.Describe(_registry.PeekText(surface.SurfaceId) ?? "", source);
+        var caller = host.CurrentMcpCallerPaneId ?? session;
+        var changeSummary = SourceChangeSummary.Describe(registry.PeekText(surface.SurfaceId) ?? "", source);
         if (await _EnsureCapabilityAsync(caller, surface, DiagramCapability.Edit, changeSummary).ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
         }
 
-        var fidelity = _registry.CheckFidelity(source)
+        var fidelity = registry.CheckFidelity(source)
             ?? new DiagramFidelity(["Could not check this diagram against the render engine — the source may not be valid Mermaid syntax."]);
-        if (!_registry.Propose(caller, surface.SurfaceId, source, changeSummary, fidelity.Findings))
+        if (!registry.Propose(caller, surface.SurfaceId, source, changeSummary, fidelity.Findings))
         {
             return _Serialize(new { ok = false, error = "That diagram surface could not accept a proposal — it may have closed or been disconnected." });
         }
@@ -171,8 +154,8 @@ internal sealed class DiagramMcpTools
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The new node's id: one word of letters, digits or underscores.")] string id,
         [Description("The text drawn inside the node.")] string label) =>
-        _ApplyObjectEditAsync(session, diagram, $"add node \"{_SingleLine(label)}\"", DiagramHandEditKind.AddNode, id, [id],
-            source => DiagramObjectEdit.AddNode(source, id, label));
+        _ApplyObjectEditAsync(session, diagram, $"add node \"{_SingleLine(label)}\"", id, [id],
+            new DiagramHandEdit(DiagramHandEditKind.AddNode, id, Label: label));
 
     [McpServerTool(Name = "rename_node")]
     [Description("Changes one node's label and applies it straight away, leaving every other line of the diagram alone. The node's id stays as it is — that is what its connections are written in terms of, so renaming the label never rewrites them. Refused with a reason if there is no such node, or if the operator is editing that node right now.")]
@@ -181,8 +164,8 @@ internal sealed class DiagramMcpTools
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The id of the node to rename, as it appears in the source.")] string id,
         [Description("The new text to draw inside the node.")] string label) =>
-        _ApplyObjectEditAsync(session, diagram, $"rename node {_SingleLine(id)} to \"{_SingleLine(label)}\"", DiagramHandEditKind.RenameNode, id, [id],
-            source => DiagramObjectEdit.RenameNode(source, id, label));
+        _ApplyObjectEditAsync(session, diagram, $"rename node {_SingleLine(id)} to \"{_SingleLine(label)}\"", id, [id],
+            new DiagramHandEdit(DiagramHandEditKind.RenameNode, id, Label: label));
 
     [McpServerTool(Name = "remove_node")]
     [Description("Removes one node and the connections that ran to or from it — nothing else. A connection whose node is gone would draw that node again on the next render, which is why they go together; the reply says how many went with it. Refused with a reason if there is no such node, or if the operator is editing it right now.")]
@@ -190,8 +173,8 @@ internal sealed class DiagramMcpTools
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The id of the node to remove.")] string id) =>
-        _ApplyObjectEditAsync(session, diagram, $"remove node {_SingleLine(id)} and its connections", DiagramHandEditKind.RemoveNode, id, [id],
-            source => DiagramObjectEdit.RemoveNode(source, id));
+        _ApplyObjectEditAsync(session, diagram, $"remove node {_SingleLine(id)} and its connections", id, [id],
+            new DiagramHandEdit(DiagramHandEditKind.RemoveNode, id));
 
     [McpServerTool(Name = "connect_nodes")]
     [Description("Draws one connection from one node to another on a flowchart/graph surface and applies it straight away, leaving the rest of the diagram alone (an erDiagram uses relate_entities instead). An id that is not in the diagram yet becomes a node of its own, the way Mermaid reads it — use add_node first if you want it to carry a label. Refused with a reason if that connection is already there, or if the operator is editing either end (or the connection itself) right now.")]
@@ -201,8 +184,8 @@ internal sealed class DiagramMcpTools
         [Description("The id of the node the connection starts at.")] string from,
         [Description("The id of the node the connection ends at.")] string to,
         [Description("Optional text drawn on the connection.")] string? label = null) =>
-        _ApplyObjectEditAsync(session, diagram, $"connect {_SingleLine(from)} -> {_SingleLine(to)}", DiagramHandEditKind.Connect, $"{from}->{to}", [from, to, $"{from}->{to}"],
-            source => DiagramObjectEdit.Connect(source, from, to, label));
+        _ApplyObjectEditAsync(session, diagram, $"connect {_SingleLine(from)} -> {_SingleLine(to)}", $"{from}->{to}", [from, to, $"{from}->{to}"],
+            new DiagramHandEdit(DiagramHandEditKind.Connect, from, To: to, Label: label));
 
     [McpServerTool(Name = "disconnect_nodes")]
     [Description("Removes one connection between two nodes and applies it straight away. Both nodes stay; only the line between them goes. Refused with a reason if there is no such connection, or if the operator is editing either end (or the connection itself) right now.")]
@@ -211,8 +194,8 @@ internal sealed class DiagramMcpTools
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The id of the node the connection starts at.")] string from,
         [Description("The id of the node the connection ends at.")] string to) =>
-        _ApplyObjectEditAsync(session, diagram, $"disconnect {_SingleLine(from)} -> {_SingleLine(to)}", DiagramHandEditKind.Disconnect, $"{from}->{to}", [from, to, $"{from}->{to}"],
-            source => DiagramObjectEdit.Disconnect(source, from, to));
+        _ApplyObjectEditAsync(session, diagram, $"disconnect {_SingleLine(from)} -> {_SingleLine(to)}", $"{from}->{to}", [from, to, $"{from}->{to}"],
+            new DiagramHandEdit(DiagramHandEditKind.Disconnect, from, To: to));
 
     [McpServerTool(Name = "relabel_connection")]
     [Description("Changes, sets or clears the label drawn on one existing connection between two nodes on a flowchart/graph surface, applied straight away and leaving the rest of the diagram alone. Leave `label` out (or empty) to remove the label entirely. Refused with a reason if there is no such connection, or if the operator is editing either end (or the connection itself) right now.")]
@@ -222,8 +205,8 @@ internal sealed class DiagramMcpTools
         [Description("The id of the node the connection starts at.")] string from,
         [Description("The id of the node the connection ends at.")] string to,
         [Description("The new label text, or leave it out to remove the label.")] string? label = null) =>
-        _ApplyObjectEditAsync(session, diagram, $"relabel {_SingleLine(from)} -> {_SingleLine(to)}", DiagramHandEditKind.RelabelConnection, $"{from}->{to}", [from, to, $"{from}->{to}"],
-            source => DiagramObjectEdit.RelabelConnection(source, from, to, label));
+        _ApplyObjectEditAsync(session, diagram, $"relabel {_SingleLine(from)} -> {_SingleLine(to)}", $"{from}->{to}", [from, to, $"{from}->{to}"],
+            new DiagramHandEdit(DiagramHandEditKind.RelabelConnection, from, To: to, Label: label));
 
     [McpServerTool(Name = "set_node_shape")]
     [Description("Changes one node's shape on a flowchart/graph surface, applied straight away and leaving its label and every other line alone. Refused with a reason if there is no such node, the shape name is not recognized, or the operator is editing that node right now.")]
@@ -238,8 +221,8 @@ internal sealed class DiagramMcpTools
             return Task.FromResult(_Serialize(new { ok = false, error = "A shape must be one of: rectangle, rounded, diamond, stadium, subroutine." }));
         }
 
-        return _ApplyObjectEditAsync(session, diagram, $"change node {_SingleLine(id)} shape to {shape}", DiagramHandEditKind.SetNodeShape, id, [id],
-            source => DiagramObjectEdit.SetNodeShape(source, id, value));
+        return _ApplyObjectEditAsync(session, diagram, $"change node {_SingleLine(id)} shape to {shape}", id, [id],
+            new DiagramHandEdit(DiagramHandEditKind.SetNodeShape, id) { Shape = value });
     }
 
     [McpServerTool(Name = "add_entity")]
@@ -248,8 +231,8 @@ internal sealed class DiagramMcpTools
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The new entity's name: one word of letters, digits or underscores. It is also what is drawn in the box.")] string entity) =>
-        _ApplyObjectEditAsync(session, diagram, $"add entity {_SingleLine(entity)}", DiagramHandEditKind.AddEntity, entity, [entity],
-            source => DiagramObjectEdit.AddEntity(source, entity));
+        _ApplyObjectEditAsync(session, diagram, $"add entity {_SingleLine(entity)}", entity, [entity],
+            new DiagramHandEdit(DiagramHandEditKind.AddEntity, entity));
 
     [McpServerTool(Name = "rename_entity")]
     [Description("Renames one entity of an erDiagram. An entity's name is its identity — every relationship is written in terms of it — so unlike rename_node this does rewrite the relationship lines that name it, and nothing else. Refused with a reason if the diagram is not an erDiagram, if there is no such entity, if the new name is already taken, or if the operator is editing either name right now.")]
@@ -258,8 +241,8 @@ internal sealed class DiagramMcpTools
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The entity to rename, as it appears in the source.")] string entity,
         [Description("The new name: one word of letters, digits or underscores.")] string renamedTo) =>
-        _ApplyObjectEditAsync(session, diagram, $"rename entity {_SingleLine(entity)} to {_SingleLine(renamedTo)}", DiagramHandEditKind.RenameEntity, $"{entity}>{renamedTo}", [entity, renamedTo],
-            source => DiagramObjectEdit.RenameEntity(source, entity, renamedTo));
+        _ApplyObjectEditAsync(session, diagram, $"rename entity {_SingleLine(entity)} to {_SingleLine(renamedTo)}", $"{entity}>{renamedTo}", [entity, renamedTo],
+            new DiagramHandEdit(DiagramHandEditKind.RenameEntity, entity, Label: renamedTo));
 
     [McpServerTool(Name = "remove_entity")]
     [Description("Removes one entity of an erDiagram — its whole attribute block and the relationships that ran to or from it, nothing else. A relationship whose entity is gone would draw that entity again on the next render, which is why they go together; the reply says how many went with it. Refused with a reason if the diagram is not an erDiagram, if there is no such entity, or if the operator is editing it right now.")]
@@ -267,8 +250,8 @@ internal sealed class DiagramMcpTools
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The entity to remove.")] string entity) =>
-        _ApplyObjectEditAsync(session, diagram, $"remove entity {_SingleLine(entity)} and its relationships", DiagramHandEditKind.RemoveEntity, entity, [entity],
-            source => DiagramObjectEdit.RemoveEntity(source, entity));
+        _ApplyObjectEditAsync(session, diagram, $"remove entity {_SingleLine(entity)} and its relationships", entity, [entity],
+            new DiagramHandEdit(DiagramHandEditKind.RemoveEntity, entity));
 
     [McpServerTool(Name = "set_attribute")]
     [Description("Writes one attribute inside an erDiagram entity's block: adds it when it is not there yet, and rewrites it when it is, so you do not have to know which. Only that one line changes; a comment already on it is kept. An entity that so far only appeared in a relationship gets its block here. Refused with a reason if the diagram is not an erDiagram, if there is no such entity, or if the operator is editing it right now.")]
@@ -279,8 +262,8 @@ internal sealed class DiagramMcpTools
         [Description("The attribute's name: one word of letters, digits or underscores.")] string attribute,
         [Description("The attribute's type as it should be drawn, one word — \"string\", \"int\", \"varchar(50)\".")] string type,
         [Description("Optional key marker: PK, FK or UK. Leave it out for an attribute that is not a key.")] string? key = null) =>
-        _ApplyObjectEditAsync(session, diagram, $"set attribute {_SingleLine(entity)}.{_SingleLine(attribute)}", DiagramHandEditKind.SetAttribute, $"{entity}.{attribute}", [entity],
-            source => DiagramObjectEdit.SetAttribute(source, entity, attribute, type, key));
+        _ApplyObjectEditAsync(session, diagram, $"set attribute {_SingleLine(entity)}.{_SingleLine(attribute)}", $"{entity}.{attribute}", [entity],
+            new DiagramHandEdit(DiagramHandEditKind.SetAttribute, entity) { Attribute = attribute, AttributeType = type, AttributeKey = key });
 
     [McpServerTool(Name = "remove_attribute")]
     [Description("Removes one attribute from an erDiagram entity's block. The entity stays, with the rest of its attributes and all of its relationships; only that one line goes. Refused with a reason if the diagram is not an erDiagram, if the entity or the attribute is not there, or if the operator is editing the entity right now.")]
@@ -289,8 +272,8 @@ internal sealed class DiagramMcpTools
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The entity whose block the attribute sits in.")] string entity,
         [Description("The attribute to remove.")] string attribute) =>
-        _ApplyObjectEditAsync(session, diagram, $"remove attribute {_SingleLine(entity)}.{_SingleLine(attribute)}", DiagramHandEditKind.RemoveAttribute, $"{entity}.{attribute}", [entity],
-            source => DiagramObjectEdit.RemoveAttribute(source, entity, attribute));
+        _ApplyObjectEditAsync(session, diagram, $"remove attribute {_SingleLine(entity)}.{_SingleLine(attribute)}", $"{entity}.{attribute}", [entity],
+            new DiagramHandEdit(DiagramHandEditKind.RemoveAttribute, entity) { Attribute = attribute });
 
     [McpServerTool(Name = "relate_entities")]
     [Description("Draws one relationship between two entities of an erDiagram, or rewrites the one that is already there — this is the ER counterpart of connect_nodes, and it asks for what an ER relationship cannot do without: a cardinality on each end and a label. The label is the verb the line is read by (\"places\", \"belongs to\") and is not optional here. An existing relationship keeps its solid/dashed line style. Refused with a reason if the diagram is not an erDiagram, if a cardinality or the label is missing, or if the operator is editing either entity right now.")]
@@ -308,8 +291,8 @@ internal sealed class DiagramMcpTools
             return Task.FromResult(_Serialize(new { ok = false, error = "A cardinality must be one of: one, zero-or-one, one-or-more, zero-or-more." }));
         }
 
-        return _ApplyObjectEditAsync(session, diagram, $"relate {_SingleLine(from)} -> {_SingleLine(to)}", DiagramHandEditKind.Relate, $"{from}->{to}", [from, to, $"{from}->{to}"],
-            source => DiagramObjectEdit.Relate(source, from, to, tail, head, label));
+        return _ApplyObjectEditAsync(session, diagram, $"relate {_SingleLine(from)} -> {_SingleLine(to)}", $"{from}->{to}", [from, to, $"{from}->{to}"],
+            new DiagramHandEdit(DiagramHandEditKind.Relate, from, To: to, Label: label) { FromCardinality = tail, ToCardinality = head });
     }
 
     [McpServerTool(Name = "unrelate_entities")]
@@ -319,8 +302,8 @@ internal sealed class DiagramMcpTools
         [Description("The diagram to edit, by its id or name from list_diagrams.")] string diagram,
         [Description("The entity the relationship reads from.")] string from,
         [Description("The entity the relationship reads to.")] string to) =>
-        _ApplyObjectEditAsync(session, diagram, $"unrelate {_SingleLine(from)} -> {_SingleLine(to)}", DiagramHandEditKind.Unrelate, $"{from}->{to}", [from, to, $"{from}->{to}"],
-            source => DiagramObjectEdit.Unrelate(source, from, to));
+        _ApplyObjectEditAsync(session, diagram, $"unrelate {_SingleLine(from)} -> {_SingleLine(to)}", $"{from}->{to}", [from, to, $"{from}->{to}"],
+            new DiagramHandEdit(DiagramHandEditKind.Unrelate, from, To: to));
 
     private static DiagramErCardinality? _Cardinality(string value) => value.Trim().ToLowerInvariant() switch
     {
@@ -341,24 +324,23 @@ internal sealed class DiagramMcpTools
         _ => null,
     };
 
-    // The one path every per-object tool takes (AC-852). Same Edit consent as edit_diagram, then the edit runs
-    // inside the registry's lock: the hold check, the line surgery and the render all see one text, and nothing is
-    // written unless all three pass. `kind`/`objectKey` journal it for a later targeted undo (AC-853).
+    // The one path every per-object tool takes (AC-852), under the registry's lock: hold check, line surgery
+    // (`registry.ComputeHandEdit`, AC-889 — the per-object grammar is internal to Infrastructure) and render all
+    // see one text, nothing written unless all three pass. `objectKey` journals it for a later targeted undo (AC-853).
     private async Task<string> _ApplyObjectEditAsync(
         string session,
         string diagram,
         string ask,
-        DiagramHandEditKind kind,
         string objectKey,
         string[] objects,
-        Func<string, DiagramEdit> edit)
+        DiagramHandEdit handEdit)
     {
-        if (_registry.Resolve(diagram) is not { } surface)
+        if (registry.Resolve(diagram) is not { } surface)
         {
             return _Serialize(new { ok = false, error = "No such diagram surface — call list_diagrams for the open surfaces and their ids." });
         }
 
-        var caller = McpRequestContext.CurrentPaneId ?? session;
+        var caller = host.CurrentMcpCallerPaneId ?? session;
         if (await _EnsureCapabilityAsync(caller, surface, DiagramCapability.Edit, ask).ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
@@ -367,30 +349,30 @@ internal sealed class DiagramMcpTools
         string? refusal = null;
         var summary = "";
         var fidelity = new DiagramFidelity([]);
-        var applied = _registry.EditCoupled(caller, surface.SurfaceId, kind, objectKey, current =>
+        var applied = registry.EditCoupled(caller, surface.SurfaceId, handEdit.Kind, objectKey, current =>
         {
-            if (objects.FirstOrDefault(name => _registry.IsHeldByOperator(surface.SurfaceId, name)) is { } held)
+            if (objects.FirstOrDefault(name => registry.IsHeldByOperator(surface.SurfaceId, name)) is { } held)
             {
                 refusal = $"The operator is editing \"{held}\" right now, so nothing was changed. Try the same call again once they are done with it.";
                 return (null, "");
             }
 
-            var result = edit(current);
-            if (result.Refusal is { } reason)
+            var (text, editSummary, editRefusal) = registry.ComputeHandEdit(current, handEdit);
+            if (editRefusal is { } reason)
             {
                 refusal = reason;
                 return (null, "");
             }
 
-            if (_registry.CheckFidelity(result.Text!) is not { } checkedFidelity)
+            if (registry.CheckFidelity(text!) is not { } checkedFidelity)
             {
                 refusal = "That change would not have left valid Mermaid behind, so nothing was changed.";
                 return (null, "");
             }
 
             fidelity = checkedFidelity;
-            summary = result.Summary;
-            return (result.Text, result.Summary);
+            summary = editSummary;
+            return (text, editSummary);
         });
 
         if (!applied)
@@ -417,7 +399,7 @@ internal sealed class DiagramMcpTools
     // (and only supplied) for an Edit ask — Read has nothing of the caller's to describe.
     private async Task<string?> _EnsureCapabilityAsync(string caller, DiagramSurface surface, DiagramCapability needed, string? changeSummary = null)
     {
-        var held = _registry.CouplingOf(caller, surface.SurfaceId);
+        var held = registry.CouplingOf(caller, surface.SurfaceId);
         if (needed == DiagramCapability.Read && held is { CanRead: true })
         {
             return null;
@@ -428,21 +410,16 @@ internal sealed class DiagramMcpTools
             return null;
         }
 
-        if (held is null && _registry.IsCoupledByAnother(caller, surface.SurfaceId))
+        if (held is null && registry.IsCoupledByAnother(caller, surface.SurfaceId))
         {
             return $"Diagram \"{surface.Name}\" is already being used by another agent — only one agent at a time can use a surface.";
-        }
-
-        if (_consent is null)
-        {
-            return "Using a diagram surface needs the operator's approval, which is not available here.";
         }
 
         // Widening applies only to the read-then-edit path: granting Edit always grants Read alongside it, so
         // there is no "held Edit, now wants Read" case, and a fresh zero-capability coupling asking for Read is a
         // first ask, not a widening of anything.
         var widening = needed == DiagramCapability.Edit && held is { CanRead: true };
-        var decision = await _consent.RequestConsentAsync(_PromptFor(surface, needed, widening, changeSummary)).ConfigureAwait(false);
+        var decision = await host.RequestConsentAsync(_PromptFor(surface, needed, widening, changeSummary)).ConfigureAwait(false);
         if (!decision.IsApproved)
         {
             return needed == DiagramCapability.Read
@@ -452,8 +429,8 @@ internal sealed class DiagramMcpTools
 
         try
         {
-            _registry.Couple(caller, surface.SurfaceId);
-            _registry.Grant(caller, surface.SurfaceId, needed);
+            registry.Couple(caller, surface.SurfaceId);
+            registry.Grant(caller, surface.SurfaceId, needed);
         }
         catch (InvalidOperationException)
         {

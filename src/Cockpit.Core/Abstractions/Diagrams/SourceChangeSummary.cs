@@ -1,9 +1,9 @@
-namespace Cockpit.Infrastructure.Collab;
+namespace Cockpit.Core.Abstractions.Diagrams;
 
 // AC-810: what a whole-source edit's consent prompt says about the change, derived mechanically rather than from
 // agent prose. Counts the longest shared run of lines (an LCS), not a line-count delta that would call an in-place
 // rewrite "unchanged"; shared by every text-carrying collab surface (AC-872), so it names no format of its own.
-internal static class SourceChangeSummary
+public static class SourceChangeSummary
 {
     public static string Describe(string before, string after)
     {

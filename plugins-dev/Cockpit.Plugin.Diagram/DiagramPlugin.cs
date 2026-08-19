@@ -50,6 +50,14 @@ public sealed class DiagramPlugin : ICockpitPlugin
             () => host.ShowDialogAsync("Wireframes", () => new WireframeListDialogBody(host), WireframeListDialogKey, width: 520, height: 600)));
 
         _ListenForAgentOpenRequests(host);
+
+        // AC-889: mounted here rather than the host, so an install without this plugin does not offer
+        // cockpit-diagram at all. No isEnabled (AC-830 dropped the master switch) and no isInternal — this is a
+        // tickable server for the operator, unlike Autopilot's own endpoints.
+        if (_diagrams is not null)
+        {
+            _ = host.AddMcpEndpoint("cockpit-diagram", new DiagramMcpTools(host, _diagrams));
+        }
     }
 
     // AC-835: the MCP tools live in core and cannot open a plugin window, so the access registry — already the only
