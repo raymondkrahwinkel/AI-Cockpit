@@ -41,6 +41,19 @@ internal sealed class FakeCockpitHost(ICockpitActions actions) : ICockpitHost
 
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) => Task.CompletedTask;
 
+    // The intents the header badge sends (AC-961), and whether a handler is pretended to exist for them.
+    public List<PluginIntent> SentIntents { get; } = [];
+
+    public HashSet<string> HandledIntents { get; } = [];
+
+    public bool CanSendIntent(string targetPluginId, string action) => HandledIntents.Contains($"{targetPluginId}/{action}");
+
+    public Task<IReadOnlyDictionary<string, string>?> SendIntent(string targetPluginId, string action, IReadOnlyDictionary<string, string> data)
+    {
+        SentIntents.Add(new PluginIntent("git-status", targetPluginId, action, data));
+        return Task.FromResult<IReadOnlyDictionary<string, string>?>(new Dictionary<string, string>());
+    }
+
     private sealed class NoServices : IServiceProvider
     {
         public object? GetService(Type serviceType) => null;

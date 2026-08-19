@@ -1242,10 +1242,10 @@ they exercise the main contribution points:
   gets YouTrack tools without the user adding the server by hand.
 
 - **[Git status](../../plugins-dev/Cockpit.Plugin.GitStatus)** — the reference for a **session header item**:
-  a coloured dot and the branch of the repo *that session* works in, counts on hover, clicking drops the
-  summary into it. Re-reads itself when the session runs a git command (it substring-scans the session's own
-  `OutputProduced`, debounced so a command printing progress over several lines does not trigger five reads).
-  Also ships a dialog listing every configured repo. **Bundled with the app.**
+  a coloured dot and the branch of the repo *that session* works in, counts on hover, clicking asks the Session
+  Review plugin — over `host.SendIntent`, gated on `CanSendIntent` — to open that session's diff. Re-reads itself
+  when the session runs a git command (it substring-scans the session's own `OutputProduced`, debounced so a
+  command printing progress over several lines does not trigger five reads). **Bundled with the app.**
 - **[Claude Transcript Search](../../plugins-dev/Cockpit.Plugin.TranscriptSearch)** — the reference for a
   **conversation picker** and for `GetProfilesAsync`: it finds Claude's transcripts through the profiles the
   operator actually configured rather than guessing at the well-known directories, opens on your ten most
