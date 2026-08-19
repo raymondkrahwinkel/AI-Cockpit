@@ -137,8 +137,12 @@ public class RailMiniatureTests
     /// AC-442's invariant through the real view, where the two things an isolated host cannot see show up: the
     /// pane's chrome between container and host, and rail chrome that collapses or docks inside the scaled subtree.
     /// </summary>
-    [Fact]
-    public async Task ATtyPaneInTheRail_KeepsTheGridItHasInFocus()
+    // AC-923: checked at a second window size too, not just 1400x900 — the rounding mismatch this guards
+    // against depends on where a fractional pixel happens to land relative to a terminal cell boundary.
+    [Theory]
+    [InlineData(1400, 900)]
+    [InlineData(1800, 1000)]
+    public async Task ATtyPaneInTheRail_KeepsTheGridItHasInFocus(double windowWidth, double windowHeight)
     {
         (int Cols, int Rows) asTile = default, asFocus = default;
         var resizes = 0;
@@ -147,7 +151,7 @@ public class RailMiniatureTests
         {
             var cockpit = new CockpitViewModel { GlobalFocusRailLayout = true };
             var view = new CockpitView { DataContext = cockpit };
-            var window = new Window { Content = view, Width = 1400, Height = 900 };
+            var window = new Window { Content = view, Width = windowWidth, Height = windowHeight };
             window.Show();
             window.UpdateLayout();
 
