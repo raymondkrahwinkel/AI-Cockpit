@@ -350,50 +350,78 @@
                     <!-- Everything you configure or look up once, behind one menu: the sidebar is for sessions,
                          and six permanent text rows of setup drowned that out. Styled like the plugin rows above
                          it rather than as a faint chromeless link: it sits in the same column and does the same
-                         kind of thing, and a row that is styled differently reads as a different kind of control. -->
+                         kind of thing, and a row that is styled differently reads as a different kind of control.
+                         AC-937: right-hand flush-list Flyout, same shell as "Plugins ›", not a MenuFlyout card. -->
                     <Button Content="Menu" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                             ToolTip.Tip="Profiles, MCP servers, plugins, options and about">
                         <Button.Flyout>
-                            <MenuFlyout Placement="TopEdgeAlignedLeft">
-                                <MenuItem Header="Profiles" Command="{Binding ManageProfilesCommand}"
-                                          ToolTip.Tip="Add, edit or remove session profiles"/>
-                                <MenuItem Header="MCP servers" Command="{Binding OpenMcpServersCommand}"
-                                          ToolTip.Tip="Add, edit or remove shared MCP servers"/>
-                                <MenuItem Header="Verify runners" Command="{Binding OpenVerifyRunnersCommand}"
-                                          ToolTip.Tip="Register the per-project command the visual verify loop may run"/>
-                                <MenuItem Header="Command palette" Command="{Binding ShowCommandPaletteCommand}"
-                                          InputGesture="Ctrl+K"
-                                          ToolTip.Tip="Run any app or plugin command by name"/>
-                                <Separator/>
-                                <MenuItem Header="Options" Command="{Binding OptionsCommand}"
-                                          InputGesture="Ctrl+O"
-                                          ToolTip.Tip="Configure notifications, sessions, and voice"/>
-                                <MenuItem Header="About" Command="{Binding AboutCommand}"
-                                          ToolTip.Tip="App version and links"/>
-                            </MenuFlyout>
+                            <Flyout Placement="Right">
+                                <StackPanel Spacing="0" MinWidth="200">
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="Profiles"
+                                            Command="{Binding ManageProfilesCommand}"
+                                            ToolTip.Tip="Add, edit or remove session profiles"/>
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="MCP servers"
+                                            Command="{Binding OpenMcpServersCommand}"
+                                            ToolTip.Tip="Add, edit or remove shared MCP servers"/>
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="Verify runners"
+                                            Command="{Binding OpenVerifyRunnersCommand}"
+                                            ToolTip.Tip="Register the per-project command the visual verify loop may run"/>
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="Command palette"
+                                            Command="{Binding ShowCommandPaletteCommand}"
+                                            ToolTip.Tip="Run any app or plugin command by name — Ctrl+K"/>
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="Options"
+                                            Command="{Binding OptionsCommand}"
+                                            ToolTip.Tip="Configure notifications, sessions, and voice — Ctrl+O"/>
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="About"
+                                            Command="{Binding AboutCommand}"
+                                            ToolTip.Tip="App version and links"/>
+                                </StackPanel>
+                            </Flyout>
                         </Button.Flyout>
                     </Button>
 
                     <!-- AC-512: the guide's content lives on the website, not in the app (Raymond) — this is the
                          one findable door to it, plus the two things that need no browser at all: a glossary and
-                         re-running first-run setup. -->
+                         re-running first-run setup. AC-937: same flush-list Flyout shell as "Menu"/"Plugins ›". -->
                     <Button x:Name="HelpButton" Content="Help" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                             ToolTip.Tip="The online guide, a glossary of terms, and re-running first-run setup">
                         <Button.Flyout>
-                            <MenuFlyout Placement="TopEdgeAlignedLeft">
-                                <MenuItem Header="Guide" Command="{Binding OpenGuideCommand}"
-                                          ToolTip.Tip="Opens in your browser — the guide is online and needs a connection"/>
-                                <MenuItem Header="Glossary" Command="{Binding ShowGlossaryCommand}"
-                                          ToolTip.Tip="Session, project, profile, plugin, MCP server — explained here, no browser needed"/>
-                                <Separator/>
-                                <!-- AC-397: the only window on traffic the operator is not part of. Under Help
-                                     because it is something you go and look at, not something you act from. -->
-                                <MenuItem Header="Agent line" Command="{Binding ShowAgentLineCommand}"
-                                          ToolTip.Tip="What the agents on this desk have said to each other — messages, wakes, claims and refusals. Read-only."/>
-                                <Separator/>
-                                <MenuItem Header="Run setup again" Command="{Binding RunSetupAgainCommand}"
-                                          ToolTip.Tip="Reopens the first-run wizard"/>
-                            </MenuFlyout>
+                            <Flyout Placement="Right">
+                                <StackPanel Spacing="0" MinWidth="200">
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="Guide"
+                                            Command="{Binding OpenGuideCommand}"
+                                            ToolTip.Tip="Opens in your browser — the guide is online and needs a connection"/>
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="Glossary"
+                                            Command="{Binding ShowGlossaryCommand}"
+                                            ToolTip.Tip="Session, project, profile, plugin, MCP server — explained here, no browser needed"/>
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <!-- AC-397: the only window on traffic the operator is not part of. Under Help
+                                         because it is something you go and look at, not something you act from. -->
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="Agent line"
+                                            Command="{Binding ShowAgentLineCommand}"
+                                            ToolTip.Tip="What the agents on this desk have said to each other — messages, wakes, claims and refusals. Read-only."/>
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="Run setup again"
+                                            Command="{Binding RunSetupAgainCommand}"
+                                            ToolTip.Tip="Reopens the first-run wizard"/>
+                                </StackPanel>
+                            </Flyout>
                         </Button.Flyout>
                     </Button>
                 </StackPanel>

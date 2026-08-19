@@ -348,10 +348,6 @@ public partial class CockpitView : UserControl
         }
 
         PluginSectionsHost.IsVisible = true;
-        if (this.TryFindResource("CockpitHairlineBrush", out var hairline) && hairline is IBrush brush)
-        {
-            PluginSectionsHost.Children.Add(new Border { Height = 1, Background = brush, Margin = new Thickness(0, 4) });
-        }
 
         // Pinned entries are drawn from the one ordered list, so a section the operator moved to the top is at the
         // top — rather than below every plugin that happens to contribute a button.

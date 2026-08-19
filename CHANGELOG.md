@@ -147,6 +147,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the app — and every session in it — on a single click. Cancelling leaves the window and all sessions open;
   confirming closes as before. A restart or an update-driven close still goes straight through without asking.
 
+### Changed
+
+- changed: the sidebar's "Menu" and "Help" buttons now open the same flush, right-hand pop-out as "Plugins ›"
+  instead of their own separate dropdown — same items, same actions, just matching the rest of the sidebar's look.
+  The hairline that used to sit above "Plugins ›" is gone too.
+
 ### Fixed
 
 - fixed: stopping a turn that was waiting on your Allow/Deny decision no longer leaves that row hanging. Interrupting
