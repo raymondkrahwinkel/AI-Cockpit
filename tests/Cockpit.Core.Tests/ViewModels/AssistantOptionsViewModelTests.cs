@@ -120,7 +120,7 @@ public class AssistantOptionsViewModelTests
         // Under the prefix the broker also builds its key with, so a plugin id and a host label are never one row.
         var plugin = Assert.Single(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.KeyFor("cockpit-kubernetes", "Kubernetes"));
         Assert.Equal("Kubernetes", plugin.Label);
-        Assert.Equal("plugin:cockpit-kubernetes", plugin.KeyDetail);
+        Assert.Equal("plugin:cockpit-kubernetes/Kubernetes", plugin.KeyDetail);
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class AssistantOptionsViewModelTests
         await vm.RefreshAsync();
 
         Assert.Equal(2, vm.ConsentBypassSources.Count(row => row.Label == ConsentSourceCatalog.TerminalMcp));
-        Assert.Contains(vm.ConsentBypassSources, row => row.Key == "plugin:Terminal MCP");
+        Assert.Contains(vm.ConsentBypassSources, row => row.Key == "plugin:Terminal MCP/Terminal MCP");
         Assert.Contains(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.TerminalMcp);
     }
 

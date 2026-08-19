@@ -25,9 +25,9 @@ public static class ConsentSourceCatalog
     // The wireframe MCP server (AC-872): reading or editing a wireframe surface the operator has open.
     public const string WireframeMcp = "Wireframe MCP";
 
-    // The whiteboard's own "Laat sdk meekijken" button (AC-842): the operator inviting the coupled session's agent
-    // to read the board, kept apart from WhiteboardMcp so the audit trail (and its bypass switch) can tell the
-    // operator's own invite from the agent asking for itself.
+    // The whiteboard's own "Laat sdk meekijken" button (AC-842), kept apart from WhiteboardMcp so the audit trail
+    // can tell the operator's own invite from the agent asking for itself. Never in `HostSources` (AC-888): it
+    // calls `RequestConsentAsync` outside any MCP request, so the bypass never even gets asked.
     public const string WhiteboardInvite = "Whiteboard invite";
 
     // The verify MCP server.
@@ -75,23 +75,16 @@ public static class ConsentSourceCatalog
     public const string AssistantProjectCreate = "Assistant project create";
 
     // Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.
+    // Plugin rows are absent on purpose, `WhiteboardInvite` included — see its own comment above.
     public static IReadOnlyList<string> HostSources { get; } =
     [
-        TerminalMcp, DiagramMcp, WhiteboardMcp, WireframeMcp, WhiteboardInvite, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
+        TerminalMcp, DiagramMcp, WhiteboardMcp, WireframeMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
         AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, AssistantProjectCreate, Debug,
     ];
 
-    // The bypass key for one source: the host-stamped `pluginId` under a `plugin:` prefix, or
-    // the `label` — a constant above — for a host-internal caller that has no plugin id.
-    // The prefix keeps the two halves in separate key spaces. Without it a plugin whose manifest id happens to be
-    // `"Terminal MCP"` shares a row, and a switch, with the host's own terminal gate: the operator switches one
-    // on and silently arms the other. One definition, used by both the broker (which builds the key a request is
-    // matched on) and the Options list (which builds the key a row is stored under), so the two cannot drift.
-    //
-    // A `cockpit.json` written before the prefix existed holds bare plugin ids. Those no longer match any
-    // request, so the effect on an existing install is that a plugin's bypass reads as off until the operator ticks
-    // it again — never as on for something it was not set for. The stale keys stay visible: Options lists anything
-    // already switched on, so an orphaned row can still be switched off rather than sitting there unreachable.
+    // The bypass key: the host-stamped `pluginId` and the caller's own `label` under a `plugin:` prefix, or the
+    // bare `label` for a host-internal caller. `pluginId` is a folder name (AC-888) and so can never contain a
+    // `/`, which is what keeps a plugin's own choice of `label` from ever reaching another key space.
     public static string KeyFor(string? pluginId, string label) =>
-        pluginId is null ? label : "plugin:" + pluginId;
+        pluginId is null ? label : $"plugin:{pluginId}/{label}";
 }
