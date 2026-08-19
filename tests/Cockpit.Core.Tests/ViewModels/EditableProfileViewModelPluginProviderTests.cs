@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -117,6 +118,46 @@ public class EditableProfileViewModelPluginProviderTests
 
         Assert.True(editable.IsPluginProvider);
         Assert.Equal(configView, editable.PluginConfigView);
+    }
+
+    /// <summary>
+    /// AC-944 regression: selecting a plugin provider on a brand-new profile (no saved
+    /// <see cref="PluginProviderConfig"/> to fall back on) crashed with "Plugin provider selected with neither
+    /// a config view nor an orphaned config to fall back to." <c>OnSelectedProviderChanged</c> called
+    /// <c>LoginCommand.NotifyCanExecuteChanged()</c> before rebuilding <see cref="EditableProfileViewModel.PluginConfigView"/>
+    /// for the newly picked provider; a real bound button re-queries <c>CanExecute</c> — which reads
+    /// <c>CanStartLogin</c> → <c>ToProfile()</c> — synchronously off that same event, mid-method, while
+    /// <c>PluginConfigView</c> still held the previous selection. Reproduced here by subscribing to
+    /// <c>CanExecuteChanged</c> the same way a bound button would, rather than reading <c>CanStartLogin</c>
+    /// only after <c>OnSelectedProviderChanged</c> has already finished (which the earlier plugin-picker test
+    /// above does, and so never observed the mid-method state).
+    /// </summary>
+    [Fact]
+    public void OnSelectedProviderChanged_OnANewProfile_DoesNotCrashWhenABoundButtonReQueriesCanExecuteMidMethod()
+    {
+        var registry = new PluginProviderRegistry();
+        var configView = new FakePluginProviderConfigView("""{"ApiKey":"secret"}""");
+        registry.Register(_Registration("openai-provider.openai", "OpenAI", configView));
+        var providers = SessionProviderCatalog.AllProviders(registry);
+        var loginStarter = Substitute.For<IProfileLoginStarter>();
+        loginStarter.CanStartLogin(Arg.Any<SessionProfile>()).Returns(true);
+        var editable = new EditableProfileViewModel(
+            new SessionProfile("new profile", new ClaudeConfig(string.Empty)),
+            isLoggedIn: false,
+            canChooseProvider: true,
+            providers: providers,
+            pluginProviderRegistry: registry,
+            loginStarter: loginStarter);
+        // Mimics what a Button bound to LoginCommand does on Avalonia/WPF: re-query CanExecute synchronously
+        // the moment CanExecuteChanged fires.
+        editable.LoginCommand.CanExecuteChanged += (_, _) => editable.LoginCommand.CanExecute(null);
+
+        editable.SelectedProvider = providers.Single(option => option.PluginProviderId == "openai-provider.openai");
+
+        Assert.True(editable.IsPluginProvider);
+        Assert.Equal(configView, editable.PluginConfigView);
+        var saved = editable.ToProfile();
+        Assert.IsType<PluginProviderConfig>(saved.ProviderConfig);
     }
 
     [Fact]

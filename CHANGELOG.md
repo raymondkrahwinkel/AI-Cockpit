@@ -141,6 +141,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   your attention instead of reading as busy or, after a couple of minutes, as done — the sidebar badge, the
   notification and the assistant's own session list all pick it up the same way they already do for a pending
   permission.
+- fixed: adding a new profile and picking a provider plugin (OpenAI, say) no longer crashes the app. The login
+  button's enabled-state check ran a beat too early and read the profile before its provider settings had caught
+  up with your pick.
 - fixed: the diagram, whiteboard and wireframe windows now speak English throughout — button labels, tooltips,
   toasts, placeholders and error messages that had been left in Dutch are translated, and the error text that
   reaches an agent through the wireframe editing tools no longer switches language mid-conversation.
