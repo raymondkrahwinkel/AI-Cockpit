@@ -8,8 +8,8 @@ namespace Cockpit.Plugin.GitHubIssues;
 
 // Picks a GitHub issue for one session (#77). Opened from that session's own header, so the issue lands on the pane
 // you opened it from. A list of the open issues for the owner you configured, and a box to narrow it — the question
-// is "which of these am I working on here", and nothing else belongs on screen. Scoped to the repository the
-// session's project is linked to when one is (AC-548), the same as the full issues dialog.
+// is "which of these am I working on here", and nothing else belongs on screen. Scoped to the repositories the
+// session's project is linked to when it has any (AC-548/AC-940), the same as the full issues dialog.
 internal sealed class GitHubIssuePickerControl : UserControl
 {
     private readonly GitHubIssuesSettings _settings;
@@ -78,15 +78,9 @@ internal sealed class GitHubIssuePickerControl : UserControl
 
         try
         {
-            // AC-548: the same resolution the issues dialog uses (GitHubRepositoryField.ResolvePreferredRepositoryAsync)
-            // — the session's own linked repository wins, instead of this picker only ever searching every
-            // repository the owner has. Sent as a search qualifier alongside PickerTerms, the same way the dialog's
-            // label filter is (GitHubGhClient.LabelSearchTerm).
-            var linkedRepository = await GitHubRepositoryField.ResolvePreferredRepositoryAsync(_host, _paneId, CancellationToken.None);
-            var extraTerms = string.Join(
-                ' ',
-                new[] { linkedRepository is { Length: > 0 } repo ? GitHubGhClient.RepoSearchTerm(repo) : null, _settings.PickerTerms }
-                    .Where(term => !string.IsNullOrWhiteSpace(term)));
+            // AC-548/AC-940: every repository the session's project is linked to, not only the owner's whole set.
+            // Sent as `--repo` flags (see GitHubGhClient.SearchArguments) — never a `repo:` term, which ANDs.
+            var linkedRepositories = await GitHubRepositoryField.ResolvePreferredRepositoriesAsync(_host, _paneId, CancellationToken.None);
 
             // The truncation signal (AC-519) is a dialog-only concern so far — this picker has never warned about a
             // capped page and stays out of that scope here; only the loaded issues are kept.
@@ -95,7 +89,8 @@ internal sealed class GitHubIssuePickerControl : UserControl
                 _mine.IsChecked == true,
                 forceRefresh: false,
                 CancellationToken.None,
-                extraTerms.Length > 0 ? extraTerms : null);
+                string.IsNullOrWhiteSpace(_settings.PickerTerms) ? null : _settings.PickerTerms,
+                linkedRepositories.Count > 0 ? linkedRepositories : null);
 
             _status.Text = _all.Count == 0 ? "No open issues here." : string.Empty;
             _Render();
