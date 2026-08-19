@@ -8,10 +8,8 @@ using NSubstitute;
 namespace Cockpit.Plugin.Diagram.Tests;
 
 // The cockpit-whiteboard tools (AC-823): reading a surface is gated behind its own Approve/Deny, coupling is
-// one-agent-per-surface, coupling on its own grants nothing, and the read consent text names a screenshot (not a
-// diagram source, AC-810's text). Since AC-854 there is a second capability: placing an object is asked separately
-// — a session that already reads a board is asked again, in its own words — and it only ever adds. Mirrors
-// DiagramMcpToolsTests (AC-810).
+// one-agent-per-surface, and the read consent text names a screenshot (AC-810's text is a diagram source). Since
+// AC-854, placing an object is a second, separately-asked capability — it only ever adds.
 public class WhiteboardMcpToolsTests
 {
     private const string Session = "pane-agent";
