@@ -14,4 +14,11 @@ public interface IAssistantTranscriptStore
 
     /// <summary>Replaces the saved transcript with <paramref name="entries"/>. Never throws: a write that fails is logged, not surfaced to the caller that changed the transcript.</summary>
     Task SaveAsync(IReadOnlyList<AssistantTranscriptSnapshotEntry> entries, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves the current file aside as a numbered "previous" generation (AC-947), for a launch that is about to
+    /// start this file's rows over rather than replay them. A no-op when nothing was ever saved. Never throws: a
+    /// failed archive is logged, not surfaced to the caller starting the session.
+    /// </summary>
+    Task ArchiveAsync(CancellationToken cancellationToken = default);
 }
