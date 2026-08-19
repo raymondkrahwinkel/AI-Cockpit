@@ -10,11 +10,8 @@ using Exclr8.Terminal;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-752: <c>TtyView._WriteToPty(string)</c> now routes injected text through bracketed paste and writes a
-/// trailing CR raw, right after. AC-941: that CR now lands in a pty write of its own, deferred by the same 60ms
-/// beat AC-64 uses elsewhere - landing in the same pty read as the paste is what let claude's CLI swallow it as a
-/// literal newline inside the pasted block instead of Enter, regardless of bracketed paste. These pin the actual
-/// byte stream, and the write boundaries, that land in the pty's stdin.
+/// AC-752/AC-941: <c>TtyView._WriteToPty(string)</c> pastes text bracketed and writes the trailing CR as its own
+/// pty write, deferred by AC-64's 60ms beat when the call carries both. These pin that exact byte stream.
 /// </summary>
 [Collection("avalonia")]
 public class TtyInjectedTextPasteTests

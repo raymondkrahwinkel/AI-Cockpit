@@ -346,11 +346,9 @@ public partial class TtyView : UserControl
     // AC-752: claude's CLI treats any stdin chunk >=64 bytes as a paste, swallowing a `\r` inside it as a literal
     // newline instead of Enter. Route the text through bracketed paste (as `_OnPasteTextAsync` already does) and
     // write a trailing CR raw right after.
-    // AC-941: when the CR lands in the *same* pty read as the paste, the CLI folds it into the pasted block
-    // regardless of bracketed paste — measured down to a 0ms gap being enough to trigger it, 10ms enough to avoid
-    // it. So a call carrying both text and a trailing CR defers the CR by the same 60ms beat AC-64 already uses
-    // (TtyViewModel._DelayAutoSubmitOnUiThread) to keep it out of that read. A call that is only "\r" (a key
-    // press, or route 1's own already-delayed submit) stays immediate.
+    // AC-941: a call carrying both text and a trailing CR defers the CR by AC-64's 60ms beat — landing in the
+    // same pty read as the paste otherwise folds it into the pasted block instead of Enter, regardless of
+    // bracketed paste. A call that is only "\r" stays immediate.
     private void _WriteToPty(string text)
     {
         var pty = _pty;
