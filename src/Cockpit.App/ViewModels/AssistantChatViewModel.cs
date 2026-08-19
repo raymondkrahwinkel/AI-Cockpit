@@ -412,6 +412,20 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();
 
+    // AC-942: stops the current turn and, unlike SessionViewModel.StopAsync itself, also cuts a reply already
+    // being read aloud — kept here rather than on the shared VM so a plain session panel's Stop stays untouched.
+    [RelayCommand]
+    private async Task StopAsync()
+    {
+        if (Session is not { } session)
+        {
+            return;
+        }
+
+        _playbackQueue.StopAll();
+        await session.StopCommand.ExecuteAsync(null);
+    }
+
     // Arrow-Up recall (AC-630), bridged: `SessionViewModel.RecallLastQueuedMessage` puts the text back in the
     // session's own composer, which this window does not show — so it is moved into the box that is on screen.
     // False on an empty queue, so the key handler can let Arrow-Up do its normal thing.

@@ -1,7 +1,17 @@
+using System.Runtime.CompilerServices;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -73,7 +83,131 @@ public class AssistantChatComposerTests
         Assert.Empty(vm.InputText);
     });
 
-    private static IAssistantSessionHost _FakeHost(SessionViewModel session)
+    private static readonly SessionProfile Profile = new("default", new ClaudeConfig(@"C:\fake\.claude"));
+
+    /// <summary>AC-942 criterion 6: no session yet, no button.</summary>
+    [Fact]
+    public void StopButton_HiddenWithNoSession() => HeadlessAvalonia.Run(() =>
+    {
+        using var pane = _Pane(_FakeHost(session: null));
+
+        Assert.False(_StopButton(pane.Window).IsEffectivelyVisible);
+    });
+
+    /// <summary>AC-942 criterion 1/6: hidden while idle, shown while a turn is running.</summary>
+    [Fact]
+    public void StopButton_TracksSessionIsBusy() => HeadlessAvalonia.Run(() =>
+    {
+        var session = new SessionViewModel();
+        using var pane = _Pane(_FakeHost(session));
+        Assert.False(_StopButton(pane.Window).IsEffectivelyVisible);
+
+        session.IsBusy = true;
+        pane.Window.UpdateLayout();
+
+        Assert.True(_StopButton(pane.Window).IsEffectivelyVisible);
+    });
+
+    /// <summary>AC-942 criteria 2 and 4: clicking Stop interrupts the running turn and cuts read-aloud.</summary>
+    [Fact]
+    public async Task ClickingStop_InterruptsTheTurn_AndStopsReadAloud() => await HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (vm, _, driver, playback) = await _StartedVmAsync();
+
+        await vm.StopCommand.ExecuteAsync(null);
+
+        await driver.Received().InterruptAsync(Arg.Any<CancellationToken>());
+        playback.Received().StopAll();
+    });
+
+    /// <summary>AC-942 criterion 3: Esc interrupts the turn, same as clicking Stop.</summary>
+    [Fact]
+    public async Task Escape_WhileBusy_InterruptsTheTurn() => await HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (vm, session, driver, playback) = await _StartedVmAsync();
+        session.IsBusy = true;
+        var window = new AssistantChatWindow { Width = 420, Height = 560, DataContext = vm };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var box = _InputBox(window);
+
+        box.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+        Dispatcher.UIThread.RunJobs();
+
+        await driver.Received().InterruptAsync(Arg.Any<CancellationToken>());
+        playback.Received().StopAll();
+        window.Close();
+    });
+
+    /// <summary>AC-942 criterion 3: an open mention picker wins Esc over the interrupt.</summary>
+    [Fact]
+    public async Task Escape_WithMentionPickerOpen_ClosesThePicker_AndDoesNotInterrupt() => await HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (vm, session, driver, _) = await _StartedVmAsync();
+        session.IsBusy = true;
+        session.WorkingDirectory = "/repo";
+        var window = new AssistantChatWindow { Width = 420, Height = 560, DataContext = vm };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var box = _InputBox(window);
+        box.Text = "@";
+        box.CaretIndex = 1;
+        box.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = Key.None });
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(vm.MentionPicker.IsOpen);
+
+        box.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(vm.MentionPicker.IsOpen);
+        await driver.DidNotReceive().InterruptAsync(Arg.Any<CancellationToken>());
+        window.Close();
+    });
+
+    private sealed record Pane(AssistantChatWindow Window, AssistantChatViewModel ViewModel) : IDisposable
+    {
+        public void Dispose() => Window.Close();
+    }
+
+    private static Pane _Pane(IAssistantSessionHost host)
+    {
+        var vm = new AssistantChatViewModel(host, _FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
+        var window = new AssistantChatWindow { Width = 420, Height = 560, DataContext = vm };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        return new Pane(window, vm);
+    }
+
+    private static Button _StopButton(Window window) =>
+        window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StopButton");
+
+    private static TextBox _InputBox(Window window) =>
+        window.GetVisualDescendants().OfType<TextBox>().Single(b => b.Name == "InputBox");
+
+    private static async Task<(AssistantChatViewModel Vm, SessionViewModel Session, ISessionDriver Driver, IVoicePlaybackQueue Playback)> _StartedVmAsync()
+    {
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyEvents());
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var session = new SessionViewModel(new SessionManager(factory));
+        await session.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        var playback = Substitute.For<IVoicePlaybackQueue>();
+        var vm = new AssistantChatViewModel(_FakeHost(session), _FakeSettingsStore(), playback);
+        return (vm, session, driver, playback);
+    }
+
+    private static async IAsyncEnumerable<SessionEvent> _EmptyEvents(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(Timeout.Infinite, cancellationToken);
+        yield break;
+    }
+
+    private static IAssistantSessionHost _FakeHost(SessionViewModel? session)
     {
         var host = Substitute.For<IAssistantSessionHost>();
         host.Session.Returns(session);
