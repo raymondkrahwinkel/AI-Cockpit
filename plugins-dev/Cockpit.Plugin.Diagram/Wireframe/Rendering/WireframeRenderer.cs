@@ -50,7 +50,7 @@ internal static class WireframeRenderer
 
             // The board goes in first: the selection mark looks up the control a node was drawn as, and it is the
             // board that should carry it rather than the words above it.
-            var caption = _Text(screens[index].Text ?? "Scherm", TitleSize, Muted);
+            var caption = _Text(screens[index].Text ?? "Screen", TitleSize, Muted);
             WireframeSource.SetNode(caption, screens[index]);
             Canvas.SetLeft(caption, bounds.X);
             Canvas.SetTop(caption, bounds.Y - BoardCaption);
@@ -148,7 +148,7 @@ internal static class WireframeRenderer
             Spacing = Gap,
             Children =
             {
-                _Text(node.Text ?? "Scherm", TitleSize, Ink),
+                _Text(node.Text ?? "Screen", TitleSize, Ink),
                 new Border { Height = 1, Background = Outline },
             },
         };

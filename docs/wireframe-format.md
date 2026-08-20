@@ -175,23 +175,23 @@ screen still parses and still renders.
 ## Example
 
 ```
-screen "Instellingen"
+screen "Settings"
   row h:1
     column w:1
       nav
-        item "Algemeen" selected
+        item "General" selected
         item "Account"
     column w:3
-      group "Profiel"
-        input "Profielnaam" value:"Raymond"
-        input "E-mailadres"
-      group "Meldingen"
-        checkbox "Bureaubladmelding" checked
-        select "Waarschuwingsgeluid"
+      group "Profile"
+        input "Display name" value:"Raymond"
+        input "Email address"
+      group "Notifications"
+        checkbox "Desktop notification" checked
+        select "Alert sound"
       space
       row align:right
-        button "Annuleren"
-        button "Opslaan" primary #save-btn
+        button "Cancel"
+        button "Save" primary #save-btn
 ```
 
 And a screen that uses the rest of the vocabulary — a catalogue with a header, a filter sidebar, a card grid,

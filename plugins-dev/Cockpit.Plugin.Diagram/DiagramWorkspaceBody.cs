@@ -1295,7 +1295,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // its label sits together with cardinality, which only _AskRelationship's flyout asks for.
         var relabelableEdge = _selected is { Kind: DiagramObjectAt.Edge } && !er;
 
-        _addButton.Content = er ? "+ Entiteit" : "+ Node";
+        _addButton.Content = er ? "+ Entity" : "+ Node";
         _addButton.IsEnabled = editable;
         _connectButton.IsEnabled = editable;
         _renameButton.IsEnabled = editable && (_selected is { Kind: DiagramObjectAt.Node } || relabelableEdge);

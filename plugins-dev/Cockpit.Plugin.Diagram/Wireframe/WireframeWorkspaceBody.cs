@@ -365,7 +365,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         {
             list.Children.Add(new TextBlock
             {
-                Text = $"Regel {error.Line}: {error.Message}",
+                Text = $"Line {error.Line}: {error.Message}",
                 FontSize = WireframePalette.CaptionSize,
                 Foreground = WireframePalette.Muted,
                 TextWrapping = TextWrapping.Wrap,
