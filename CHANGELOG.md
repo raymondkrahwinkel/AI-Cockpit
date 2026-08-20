@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a wireframe now has a viewport — desktop, tablet or mobile — chosen from a toolbar button that shows the
+  current size. Switching it changes the sheet the screen is measured against (960×640, 768×1024 or 390×844) so a
+  layout that looked fine on desktop can be judged on a narrower one too; a wireframe that never sets one still
+  renders exactly as it always did. The change is one undoable step, and an agent can read and set it as well.
 - added: the Diagram, Whiteboard & Wireframe plugin's settings screen now has a checkbox per surface — "Skip
   Diagram consent", "Skip Whiteboard consent", "Skip Wireframe consent" — that lets that surface's open/read/edit
   tools run without an Approve/Deny prompt at all. All three are off by default, so a fresh install still asks

@@ -43,6 +43,23 @@ what the writer produces — but any consistent step works, so four spaces is fi
 has to line up exactly with a level that is still open; one that lines up with nothing is an error rather than a
 guess. Tabs are refused.
 
+## Viewport
+
+*AC-915.* A document may open with one `viewport` line, at the left margin, above the first `screen`:
+
+```
+viewport mobile
+
+screen "Search results"
+  …
+```
+
+Three names, no free-form size: `desktop` (960×640), `tablet` (768×1024), `mobile` (390×844). A document with no
+`viewport` line reads as `desktop` — every wireframe written before this line existed renders exactly as it always
+did. The viewport changes nothing about `w:`/`h:` — those stay flex weights, never pixels — it only changes the
+sheet size the layout is measured against, so the same weights can end up crowding a mobile sheet that had room to
+spare on a desktop one.
+
 ## Screens
 
 *AC-901.* A document holds **one or more** screens: every `screen` line at the left margin starts a new one, and

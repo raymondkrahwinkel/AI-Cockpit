@@ -74,6 +74,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly Button _moveButton;
     private readonly Button _addScreenButton;
     private readonly Button _overviewButton;
+    private readonly Button _viewportButton;
     private readonly TextBlock _handHint;
     private readonly StackPanel _propertiesContent;
     private double _zoom = 1.0;
@@ -83,6 +84,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private Point _panPointerStart;
     private Vector _panOffsetStart;
     private List<WireframeNode> _screens = [];
+    // AC-915: the document's own sheet size, read off the source on every render — `_viewport` above is already
+    // taken by the zoom/pan border, so this is named for what it holds instead.
+    private WireframeViewport _canvasViewport = WireframeViewport.Desktop;
     private int _zoomedIndex = -1;
     private string? _zoomedId;
     private string? _selectedId;
@@ -122,8 +126,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _draft = new Canvas { IsHitTestVisible = false };
         _surface = new Panel
         {
-            Width = WireframeRenderer.ScreenSize.Width,
-            Height = WireframeRenderer.ScreenSize.Height,
+            Width = _ScreenSize.Width,
+            Height = _ScreenSize.Height,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative),
@@ -134,7 +138,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _textButton, _deleteButton,
-            _upButton, _downButton, _moveButton, _addScreenButton, _overviewButton, _handHint) = _BuildToolbar();
+            _upButton, _downButton, _moveButton, _addScreenButton, _overviewButton, _viewportButton, _handHint) = _BuildToolbar();
         var journal = new WireframeActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, journal, onJumpToObject: null);
         _presence = new PresenceIndicators(_surfaceId, journal, journal);
@@ -249,13 +253,14 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _sourceBox.Text = source;
         var parsed = WireframeParser.Parse(source);
         _screens = parsed.Screens.ToList();
+        _canvasViewport = parsed.Viewport ?? WireframeViewport.Desktop;
         _ResolveZoomedScreen();
 
         Control content = _screens.Count == 0
             ? _BuildErrorPanel(parsed.Errors)
             : _ZoomedScreen is { } screen
                 ? WireframeRenderer.Render(screen)
-                : WireframeRenderer.Overview(_screens);
+                : WireframeRenderer.Overview(_screens, _ScreenSize);
 
         var canvas = _CanvasSize;
         _surface.Width = canvas.Width;
@@ -304,8 +309,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     private Size _CanvasSize =>
         _ZoomedScreen is null && _screens.Count > 0
-            ? WireframeRenderer.OverviewSize(_screens.Count)
-            : WireframeRenderer.ScreenSize;
+            ? WireframeRenderer.OverviewSize(_screens.Count, _ScreenSize)
+            : _ScreenSize;
+
+    // AC-915: the sheet size the document's own viewport line names, desktop when it declares none.
+    private Size _ScreenSize => WireframeRenderer.SizeOf(_canvasViewport);
 
     // Which screen is zoomed into survives a re-render by its id where it has one, and by its place in the document
     // where it has none — a wireframe nobody has named yet carries no ids at all (AC-906). A document with one
@@ -855,7 +863,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
                 }
 
                 var source = new Rect(origin, control.Bounds.Size);
-                var destination = WireframeRenderer.BoardBounds(_screens.IndexOf(target), _screens.Count);
+                var destination = WireframeRenderer.BoardBounds(_screens.IndexOf(target), _screens.Count, _ScreenSize);
                 _overlay.Children.Add(_Arrow(_EdgePoint(source, destination.Center), _EdgePoint(destination, source.Center)));
             }
         }
@@ -1203,6 +1211,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _moveButton.IsEnabled = editable && target is not null && !isScreen;
         _addScreenButton.IsEnabled = editable;
         _overviewButton.IsVisible = _screens.Count > 1 && _ZoomedScreen is not null;
+        _viewportButton.IsEnabled = editable;
+        _viewportButton.Content = $"Viewport: {_canvasViewport}";
 
         _handHint.Text = _HintFor(target);
         _RefreshPropertiesPanel(target, placement?.Parent.Kind);
@@ -1456,7 +1466,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     {
         if (_ZoomedScreen is null)
         {
-            if (_zoom <= _FitZoomFor(WireframeRenderer.ScreenSize)
+            if (_zoom <= _FitZoomFor(_ScreenSize)
                 || under is null
                 || WireframeHandEdit.ScreenOf(_screens, under) is not { } screen)
             {
@@ -1467,7 +1477,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             return true;
         }
 
-        if (_screens.Count < 2 || _zoom > _FitZoomFor(WireframeRenderer.OverviewSize(_screens.Count)))
+        if (_screens.Count < 2 || _zoom > _FitZoomFor(WireframeRenderer.OverviewSize(_screens.Count, _ScreenSize)))
         {
             return false;
         }
@@ -1521,7 +1531,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     }
 
     private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus, Button Add, Button Text,
-        Button Delete, Button Up, Button Down, Button Move, Button AddScreen, Button Overview, TextBlock Hint) _BuildToolbar()
+        Button Delete, Button Up, Button Down, Button Move, Button AddScreen, Button Overview, Button Viewport, TextBlock Hint) _BuildToolbar()
     {
         // AC-837: zoom in/out + Fit, with the current level always on screen.
         var zoomOut = new Button { Content = "−", Classes = { "Compact" }, MinWidth = 28 };
@@ -1577,6 +1587,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
         var overview = new Button { Content = "← Overview", Classes = { "Compact" }, IsVisible = false };
         ToolTip.SetTip(overview, "All screens side by side.");
         overview.Click += (_, _) => _ShowOverview();
+        // AC-915: the operator's way to switch between the three sheet sizes without typing the source — its own
+        // caption is the current viewport, so this doubles as the AC4 "what am I looking at" readout.
+        var viewport = new Button { Classes = { "Compact" } };
+        ToolTip.SetTip(viewport, "The sheet size everything is measured against — desktop, tablet or mobile.");
+        viewport.Click += (_, _) => _ShowViewportMenu(viewport);
         var hint = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -1589,14 +1604,35 @@ internal sealed class WireframeWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { overview, add, text, delete, up, down, move, addScreen, save, saveStatus, hint },
+            Children = { overview, add, text, delete, up, down, move, addScreen, viewport, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { handEditControls, zoomControls } };
         DockPanel.SetDock(handEditControls, Dock.Left);
         DockPanel.SetDock(zoomControls, Dock.Right);
         return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus,
-            add, text, delete, up, down, move, addScreen, overview, hint);
+            add, text, delete, up, down, move, addScreen, overview, viewport, hint);
+    }
+
+    // AC-915: three names, no free-form size — the same MenuFlyout shape as «Move to…». Landing on the viewport
+    // already chosen does nothing (AC-915's own no-op guard, mirroring what the editor would refuse anyway).
+    private void _ShowViewportMenu(Control anchor)
+    {
+        var flyout = new MenuFlyout();
+        foreach (var candidate in Enum.GetValues<WireframeViewport>())
+        {
+            var item = new MenuItem { Header = candidate.ToString() };
+            item.Click += (_, _) =>
+            {
+                if (candidate != _canvasViewport)
+                {
+                    _Apply(WireframeComponentEdit.SetViewport(candidate));
+                }
+            };
+            flyout.Items.Add(item);
+        }
+
+        flyout.ShowAt(anchor);
     }
 
     // Eén opslagweg (AC-839's precedent, one folder over): the source box always mirrors the surface's current

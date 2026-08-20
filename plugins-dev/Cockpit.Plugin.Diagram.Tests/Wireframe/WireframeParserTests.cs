@@ -374,4 +374,74 @@ public class WireframeParserTests
         Assert.Equal(2, error.Line);
         Assert.Contains("2 screens", error.Message, StringComparison.Ordinal);
     }
+
+    // ---- Viewport (AC-915) ----
+
+    [Fact]
+    public void ASourceWithoutAViewportLine_ReadsAsDesktop()
+    {
+        var result = WireframeParser.Parse("screen \"X\"");
+
+        Assert.Empty(result.Errors);
+        Assert.Null(result.Viewport);
+    }
+
+    [Theory]
+    [InlineData("desktop", WireframeViewport.Desktop)]
+    [InlineData("tablet", WireframeViewport.Tablet)]
+    [InlineData("mobile", WireframeViewport.Mobile)]
+    public void AViewportLine_AboveTheFirstScreen_ParsesAndRoundTrips(string name, WireframeViewport expected)
+    {
+        var source = $"viewport {name}\n\nscreen \"X\"";
+        var result = WireframeParser.Parse(source);
+
+        Assert.Empty(result.Errors);
+        Assert.Equal(expected, result.Viewport);
+    }
+
+    [Fact]
+    public void AnUnknownViewportName_IsRefusedOnItsOwnLine_ButTheScreenBelowStillRenders()
+    {
+        var result = WireframeParser.Parse("viewport phablet\n\nscreen \"X\"");
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(1, error.Line);
+        Assert.Contains("phablet", error.Message, StringComparison.Ordinal);
+        Assert.Contains("desktop, tablet or mobile", error.Message, StringComparison.Ordinal);
+        Assert.Null(result.Viewport);
+        Assert.Single(result.Screens);
+    }
+
+    [Fact]
+    public void ASecondViewportLine_IsRefused()
+    {
+        var result = WireframeParser.Parse("viewport mobile\nviewport tablet\n\nscreen \"X\"");
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(2, error.Line);
+        Assert.Contains("already declares", error.Message, StringComparison.Ordinal);
+        Assert.Equal(WireframeViewport.Mobile, result.Viewport);
+    }
+
+    [Fact]
+    public void AViewportLine_AfterTheFirstScreen_IsRefused()
+    {
+        var result = WireframeParser.Parse("screen \"X\"\nviewport mobile");
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(2, error.Line);
+        Assert.Contains("above the first screen", error.Message, StringComparison.Ordinal);
+        Assert.Null(result.Viewport);
+    }
+
+    [Fact]
+    public void AnIndentedViewportLine_IsRefused()
+    {
+        var result = WireframeParser.Parse("  viewport mobile\n\nscreen \"X\"");
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(1, error.Line);
+        Assert.Contains("left margin", error.Message, StringComparison.Ordinal);
+        Assert.Null(result.Viewport);
+    }
 }

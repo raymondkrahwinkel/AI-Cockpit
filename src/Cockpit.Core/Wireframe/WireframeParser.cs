@@ -13,6 +13,7 @@ public static class WireframeParser
         var open = new List<(int Indent, WireframeNode Node)>();
         var taken = new HashSet<string>(StringComparer.Ordinal);
         var screens = new List<WireframeNode>();
+        WireframeViewport? viewport = null;
 
         var lines = source.Split('\n');
         for (var index = 0; index < lines.Length; index++)
@@ -30,6 +31,39 @@ public static class WireframeParser
             if (content[0] == '\t')
             {
                 errors.Add(new WireframeParseError(lineNumber, "Indent with spaces, not tabs."));
+                continue;
+            }
+
+            // AC-915: recognised ahead of _ReadNode, and ahead of the hard-return below that stops the whole parse
+            // before the first screen — a viewport line lives in exactly that spot, so reading it late would make
+            // every document that declares one unreadable.
+            if (_TryReadViewportKeyword(content, out var afterKeyword))
+            {
+                if (indent > 0)
+                {
+                    errors.Add(new WireframeParseError(lineNumber, "A 'viewport' line stands at the left margin, like a screen."));
+                }
+                else if (screens.Count > 0)
+                {
+                    errors.Add(new WireframeParseError(lineNumber, "The viewport belongs at the top, above the first screen."));
+                }
+                else if (viewport is not null)
+                {
+                    errors.Add(new WireframeParseError(lineNumber, "This wireframe already declares a viewport."));
+                }
+                else
+                {
+                    var name = content[afterKeyword..].TrimStart(' ');
+                    if (!_ViewportNames.TryGetValue(name, out var parsedViewport))
+                    {
+                        errors.Add(new WireframeParseError(lineNumber, $"'{name}' is not a viewport — use desktop, tablet or mobile."));
+                    }
+                    else
+                    {
+                        viewport = parsedViewport;
+                    }
+                }
+
                 continue;
             }
 
@@ -78,7 +112,7 @@ public static class WireframeParser
                     errors.Add(new WireframeParseError(lineNumber, "A wireframe begins with a 'screen' line without indentation."));
                     if (screens.Count == 0)
                     {
-                        return new WireframeParseResult(screens, errors);
+                        return new WireframeParseResult(screens, errors, viewport);
                     }
 
                     continue;
@@ -107,7 +141,25 @@ public static class WireframeParser
             _ValidateGotoTargets(screen, screens, errors);
         }
 
-        return new WireframeParseResult(screens, errors);
+        return new WireframeParseResult(screens, errors, viewport);
+    }
+
+    private static readonly Dictionary<string, WireframeViewport> _ViewportNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["desktop"] = WireframeViewport.Desktop,
+        ["tablet"] = WireframeViewport.Tablet,
+        ["mobile"] = WireframeViewport.Mobile,
+    };
+
+    // AC-915: "viewport" as a whole word at the start of the line — not a node keyword, so this runs ahead of
+    // _ReadNode rather than through it. `after` is the position right past the keyword, for the caller to read the
+    // name from.
+    private static bool _TryReadViewportKeyword(string content, out int after)
+    {
+        var position = 0;
+        var word = _ReadWord(content, ref position);
+        after = position;
+        return string.Equals(word, "viewport", StringComparison.Ordinal) && (position == content.Length || content[position] == ' ');
     }
 
     private static void _ValidateGotoTargets(WireframeNode node, IReadOnlyList<WireframeNode> screens, List<WireframeParseError> errors)

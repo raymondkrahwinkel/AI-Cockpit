@@ -28,7 +28,7 @@ internal static class WireframeComponentEditor
     {
         var parsed = WireframeParser.Parse(source);
         var screens = parsed.Screens;
-        if (screens.Count == 0 && edit.Kind != WireframeEditKind.AddScreen)
+        if (screens.Count == 0 && edit.Kind is not (WireframeEditKind.AddScreen or WireframeEditKind.SetViewport))
         {
             return WireframeEdit.Refuse("This wireframe has no screen line to hang a component on — write the whole source with edit_wireframe first.");
         }
@@ -42,6 +42,7 @@ internal static class WireframeComponentEditor
             WireframeEditKind.Remove => _Remove(screens, lines, edit),
             WireframeEditKind.Move => _Move(screens, lines, edit),
             WireframeEditKind.ChangeType => _ChangeType(screens, lines, edit),
+            WireframeEditKind.SetViewport => _SetViewport(lines, edit),
             _ => _SetModifier(screens, lines, edit),
         };
 
@@ -144,6 +145,31 @@ internal static class WireframeComponentEditor
 
         var summary = $"added screen \"{edit.Text.Trim()}\"";
         return WireframeEdit.Change(string.Join("\n", lines), summary, new WireframePatch(at, _AnchorAbove(lines, at), [], block));
+    }
+
+    // AC-915: the document's own viewport line, always at the very top — replaced in place if one is already there,
+    // inserted with a blank line under it otherwise, the same shape _AddScreen writes a new screen block in.
+    private static WireframeEdit _SetViewport(List<string> lines, WireframeComponentEdit edit)
+    {
+        var line = $"viewport {edit.Type}";
+        var summary = $"set the viewport to {edit.Type}";
+
+        if (lines.Count > 0 && _IsViewportLine(lines[0]))
+        {
+            var before = lines[0];
+            lines[0] = line;
+            return WireframeEdit.Change(string.Join("\n", lines), summary, new WireframePatch(0, null, [before], [line]));
+        }
+
+        var block = new List<string> { line, "" };
+        lines.InsertRange(0, block);
+        return WireframeEdit.Change(string.Join("\n", lines), summary, new WireframePatch(0, null, [], block));
+    }
+
+    private static bool _IsViewportLine(string line)
+    {
+        var trimmed = line.TrimStart(' ');
+        return trimmed.StartsWith("viewport", StringComparison.Ordinal) && (trimmed.Length == 8 || trimmed[8] == ' ');
     }
 
     // Re-emits the one line through the writer with its text swapped, so the component keeps every modifier it had,

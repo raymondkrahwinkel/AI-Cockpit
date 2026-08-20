@@ -42,6 +42,7 @@ public enum WireframeEditKind
     SetModifier,
     ToggleModifier,
     ChangeType,
+    SetViewport,
 }
 
 // One per-component edit (AC-852's shape), addressed by the component's stable id (AC-906): the id is what an agent
@@ -91,6 +92,12 @@ public sealed record WireframeComponentEdit(
     // the editor when the new type cannot carry the children it already has.
     public static WireframeComponentEdit ChangeType(string component, string type) =>
         new(WireframeEditKind.ChangeType, component, Type: type);
+
+    // AC-915: the document's own viewport line, addressed with no component id — the same "no component" shape as
+    // AddScreen. `Type` carries the lowercase viewport keyword, reusing the field AddScreen and ChangeType already
+    // use for a keyword string rather than adding a WireframeViewport-typed field for one caller.
+    public static WireframeComponentEdit SetViewport(WireframeViewport viewport) =>
+        new(WireframeEditKind.SetViewport, Type: viewport.ToString().ToLowerInvariant());
 }
 
 // What an edit did: a one-line summary for the activity strip (AC-848), or the reason it was refused. `Summary` is

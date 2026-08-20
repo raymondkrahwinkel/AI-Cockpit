@@ -478,4 +478,41 @@ public class WireframeComponentEditorTests
         Assert.Null(result.Refusal);
         Assert.Contains("goto:\"Aanmelden\"", result.Text, StringComparison.Ordinal);
     }
+
+    // ---- Viewport (AC-915) ----
+
+    [Fact]
+    public void SetViewport_OnASourceWithoutOne_InsertsItAboveTheFirstScreen()
+    {
+        var result = WireframeComponentEditor.Apply(WireframeScreens.Settings, WireframeComponentEdit.SetViewport(WireframeViewport.Mobile));
+
+        Assert.Null(result.Refusal);
+        Assert.Equal("viewport mobile", WireframeScreens.LineOf(result.Text!, 1));
+        Assert.Equal("", WireframeScreens.LineOf(result.Text!, 2));
+        Assert.Equal("screen \"Instellingen\" #screen", WireframeScreens.LineOf(result.Text!, 3));
+        Assert.Equal("set the viewport to mobile", result.Summary);
+    }
+
+    [Fact]
+    public void SetViewport_OnASourceThatAlreadyDeclaresOne_ReplacesItInPlace()
+    {
+        var withDesktop = $"viewport desktop\n\n{WireframeScreens.Settings}";
+
+        var result = WireframeComponentEditor.Apply(withDesktop, WireframeComponentEdit.SetViewport(WireframeViewport.Tablet));
+
+        Assert.Null(result.Refusal);
+        Assert.Equal("viewport tablet", WireframeScreens.LineOf(result.Text!, 1));
+        Assert.Equal(WireframeScreens.LinesOf(withDesktop).Length, WireframeScreens.LinesOf(result.Text!).Length);
+    }
+
+    [Fact]
+    public void SetViewport_ToTheOneAlreadyInEffect_IsRefused_AsANoOpChange()
+    {
+        var withMobile = $"viewport mobile\n\n{WireframeScreens.Settings}";
+
+        var result = WireframeComponentEditor.Apply(withMobile, WireframeComponentEdit.SetViewport(WireframeViewport.Mobile));
+
+        Assert.Null(result.Text);
+        Assert.Contains("exactly as it is", result.Refusal);
+    }
 }
