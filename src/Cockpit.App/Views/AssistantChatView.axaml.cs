@@ -145,6 +145,9 @@ public partial class AssistantChatView : UserControl
     public AssistantChatView()
     {
         InitializeComponent();
+#if DEBUG
+        Cockpit.App.Diagnostics.LeakTracker.Register(this);
+#endif
 
         // Enter sends; Shift+Enter inserts a newline — the same convention as the main session composer
         // (SessionView._OnInputKeyDown). Tunnel so this pre-empts the TextBox's own Enter handling.
@@ -243,6 +246,9 @@ public partial class AssistantChatView : UserControl
         }
 
         base.OnDetachedFromVisualTree(e);
+
+        // AC-878: investigated as a SessionView-fix candidate, deliberately left without one — see
+        // AssistantChatLeakHuntTests for the evidence this view does not carry that leak.
     }
 
     // Pushed in by the host: AC-883's minimised-window pause, which only a window has. Guarded on the resolved
