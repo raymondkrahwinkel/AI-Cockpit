@@ -100,7 +100,29 @@ public static class WireframeParser
             open.Add((indent, node));
         }
 
+        // AC-902: `goto:` names a screen by title, and screens can be declared after the component that points at
+        // one — so this cannot run inside _Validate, which reads one line at a time. It also cannot reject the
+        // modifier there: _ReadNode drops the whole line for a null modifier, and the component itself must stay in
+        // the drawing even when its target does not resolve.
+        foreach (var screen in screens)
+        {
+            _ValidateGotoTargets(screen, screens, errors);
+        }
+
         return new WireframeParseResult(screens, errors);
+    }
+
+    private static void _ValidateGotoTargets(WireframeNode node, IReadOnlyList<WireframeNode> screens, List<WireframeParseError> errors)
+    {
+        if (node.ValueOf(WireframeModifierName.Goto) is { } title && WireframeGotoResolver.Resolve(screens, title).Error is { } error)
+        {
+            errors.Add(new WireframeParseError(node.Line, error));
+        }
+
+        foreach (var child in node.Children)
+        {
+            _ValidateGotoTargets(child, screens, errors);
+        }
     }
 
     private static WireframeNode? _ReadNode(string content, int lineNumber, List<WireframeParseError> errors)
@@ -230,7 +252,8 @@ public static class WireframeParser
         var takesValue = name is WireframeModifierName.W
             or WireframeModifierName.H
             or WireframeModifierName.Align
-            or WireframeModifierName.Value;
+            or WireframeModifierName.Value
+            or WireframeModifierName.Goto;
 
         if (takesValue && string.IsNullOrEmpty(value))
         {

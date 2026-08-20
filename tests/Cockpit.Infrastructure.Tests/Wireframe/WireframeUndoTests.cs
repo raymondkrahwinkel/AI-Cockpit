@@ -183,6 +183,22 @@ public class WireframeUndoTests
     }
 
     [Fact]
+    public void SetText_OnAScreenWithAFlowPointingAtIt_IsOneStep_AndUndoRestoresTitleAndReferences()
+    {
+        // AC-902 AC4: the rename and every goto: it carries along are one journaled edit, so reverting it puts the
+        // title and the reference back together rather than leaving one behind.
+        var registry = new WireframeAccessRegistry();
+        registry.SurfaceOpened(SurfaceId, "Aanmelden", WireframeScreens.TwoScreensWithFlow);
+        registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
+
+        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SignupScreen, "Account aanmaken"));
+
+        Assert.Equal(WireframeEditKind.SetText, Assert.Single(registry.History(SurfaceId)).Kind);
+        var reverted = _Revert(registry);
+        Assert.Equal(WireframeScreens.TwoScreensWithFlow, reverted);
+    }
+
+    [Fact]
     public void ReleaseComponent_LetsTheSameCallThrough()
     {
         var registry = _Coupled();

@@ -417,4 +417,65 @@ public class WireframeComponentEditorTests
         Assert.Null(result.Text);
         Assert.Contains("left margin", result.Refusal);
     }
+
+    // ---- Flows between screens (AC-902) ----
+
+    [Fact]
+    public void SetText_OnAScreen_CarriesEveryGotoThatPointedAtTheOldTitle_ToTheNewOne()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.TwoScreensWithFlow,
+            WireframeComponentEdit.SetText(WireframeScreens.SignupScreen, "Account aanmaken"));
+
+        Assert.Null(result.Refusal);
+        Assert.Contains("screen \"Account aanmaken\" #signup", result.Text, StringComparison.Ordinal);
+        Assert.Contains("goto:\"Account aanmaken\"", result.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("goto:\"Registreren\"", result.Text, StringComparison.Ordinal);
+        Assert.Contains("1 flow", result.Summary);
+    }
+
+    [Fact]
+    public void SetText_OnAScreenNoFlowPointsAt_MentionsNoFlows()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.TwoScreensWithFlow,
+            WireframeComponentEdit.SetText(WireframeScreens.LoginScreen, "Inloggen"));
+
+        Assert.Null(result.Refusal);
+        Assert.DoesNotContain("flow", result.Summary);
+    }
+
+    [Fact]
+    public void Remove_OfAScreenAGotoStillPointsAt_IsRefused_NamingTheScreenAndTheReferrer()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.TwoScreensWithFlow,
+            WireframeComponentEdit.Remove(WireframeScreens.SignupScreen));
+
+        Assert.Null(result.Text);
+        Assert.Contains("screen \"Registreren\"", result.Refusal);
+        Assert.Contains("button \"Aanmelden\"", result.Refusal);
+    }
+
+    [Fact]
+    public void Remove_OfAScreenNoGotoPointsAt_Succeeds()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.TwoScreensWithFlow,
+            WireframeComponentEdit.Remove(WireframeScreens.LoginScreen));
+
+        Assert.Null(result.Refusal);
+        Assert.DoesNotContain("Aanmelden", result.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetModifier_Goto_IsAlwaysQuoted_BecauseScreenTitlesCarrySpaces()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.TwoScreensWithFlow,
+            WireframeComponentEdit.SetModifier(WireframeScreens.SignupSubmit, WireframeModifierName.Goto, "Aanmelden", quoted: true));
+
+        Assert.Null(result.Refusal);
+        Assert.Contains("goto:\"Aanmelden\"", result.Text, StringComparison.Ordinal);
+    }
 }
