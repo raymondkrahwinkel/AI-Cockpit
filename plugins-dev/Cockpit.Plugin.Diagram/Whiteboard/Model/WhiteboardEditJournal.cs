@@ -40,7 +40,7 @@ internal sealed class WhiteboardEditJournal(string surfaceId)
 
         if (entry.Reverted)
         {
-            return "Deze handeling is al teruggedraaid.";
+            return "This handling has already been undone.";
         }
 
         if (entry.Undo() is { } refusal)

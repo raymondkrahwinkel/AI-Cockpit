@@ -68,6 +68,7 @@ internal sealed class PlacedObjectControl : Control, ICustomHitTest
             new Rect(Bounds.Size),
             Model.Text,
             _image,
+            Model.Color,
             WhiteboardObjectPainter.BadgeFor(Model),
             IsPointerOver || IsSelected);
     }

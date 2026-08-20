@@ -166,6 +166,10 @@ internal static class WhiteboardCatalog
         // W-6/AC-851: which pasted image (by id) this object is anchored to, or null when it stands free.
         public Guid? ParentImageId { get; set; }
 
+        // AC-916: null = the fixed default for this kind — omitted from an older board's JSON and read back as
+        // null by the deserializer, no migration needed.
+        public string? Color { get; set; }
+
         public static _ObjectDto From(WhiteboardObject obj) => obj switch
         {
             FreehandStroke stroke => new _ObjectDto
@@ -176,6 +180,7 @@ internal static class WhiteboardCatalog
                 Thickness = stroke.Thickness,
                 IsMarker = stroke.IsMarker,
                 ParentImageId = stroke.ParentImageId,
+                Color = stroke.Color,
             },
             PlacedObject placed => new _ObjectDto
             {
@@ -191,13 +196,14 @@ internal static class WhiteboardCatalog
                 IsPastedScreenshot = placed.IsPastedScreenshot,
                 PlacedByAgent = placed.PlacedByAgent,
                 ParentImageId = placed.ParentImageId,
+                Color = placed.Color,
             },
             _ => throw new NotSupportedException($"Unknown whiteboard object type {obj.GetType()}"),
         };
 
         public WhiteboardObject ToModel() => Kind switch
         {
-            WhiteboardObjectKind.Freehand => new FreehandStroke { Id = Id, Points = Points ?? [], Thickness = Thickness, IsMarker = IsMarker, ParentImageId = ParentImageId },
+            WhiteboardObjectKind.Freehand => new FreehandStroke { Id = Id, Points = Points ?? [], Thickness = Thickness, IsMarker = IsMarker, ParentImageId = ParentImageId, Color = Color },
             WhiteboardObjectKind.Placed => new PlacedObject
             {
                 Id = Id,
@@ -211,6 +217,7 @@ internal static class WhiteboardCatalog
                 IsPastedScreenshot = IsPastedScreenshot,
                 PlacedByAgent = PlacedByAgent,
                 ParentImageId = ParentImageId,
+                Color = Color,
             },
             _ => throw new NotSupportedException($"Unknown whiteboard object kind {Kind}"),
         };

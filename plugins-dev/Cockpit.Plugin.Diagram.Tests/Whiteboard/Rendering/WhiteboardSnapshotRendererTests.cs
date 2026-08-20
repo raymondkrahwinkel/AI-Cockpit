@@ -137,6 +137,54 @@ public class WhiteboardSnapshotRendererTests
         Assert.Null(WhiteboardObjectPainter.BadgeFor(operatorDocument.Objects.OfType<PlacedObject>().Single()));
     }
 
+    // AC-916 AC3: WhiteboardObject.Color has exactly one path to the pixels — this painter — so a coloured stroke
+    // shows up in the raster snapshot the agent reads, the same way it shows up live.
+    [Fact]
+    public void ColouredFreehandStroke_RendersInThatColour_NotTheDefault()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new FreehandStroke { Points = [new WhiteboardPoint(10, 50), new WhiteboardPoint(90, 50)], Color = "#DC2626" });
+
+        var pixel = _PixelAt(_Render(document, new PixelSize(160, 80)), 80, 40);
+
+        Assert.True(_CloseTo(pixel, Color.Parse("#DC2626")), $"expected the stroke's own colour, got {pixel}");
+    }
+
+    [Fact]
+    public void ColouredPlacedShape_RendersInThatColour_NotPlacedBlue()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 20, Y = 20, Width = 60, Height = 40, Color = "#16A34A" });
+
+        var pixel = _PixelAt(_Render(document, new PixelSize(140, 120)), 40, 60);
+
+        Assert.True(_CloseTo(pixel, Color.Parse("#16A34A")), $"expected the shape's own colour, got {pixel}");
+    }
+
+    // AC-916 AC1: a null Color is the fixed default — nothing changes for an object saved before this shipped.
+    [Fact]
+    public void UncolouredPlacedShape_StillRendersInPlacedBlue()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 20, Y = 20, Width = 60, Height = 40 });
+
+        var pixel = _PixelAt(_Render(document, new PixelSize(140, 120)), 40, 60);
+
+        Assert.True(_CloseTo(pixel, Color.Parse("#2563EB")), $"expected placed blue, got {pixel}");
+    }
+
+    // AC-916 AC6: a sticky note's colour is a fill, not a stroke — WhiteboardObject.Color never reaches it.
+    [Fact]
+    public void ColouredStickyNote_IgnoresTheColour_StillRendersStickyYellow()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.StickyNote, X = 10, Y = 10, Width = 60, Height = 60, Color = "#DC2626" });
+
+        var pixel = _PixelAt(_Render(document, new PixelSize(140, 140)), 70, 70);
+
+        Assert.True(_CloseTo(pixel, WhiteboardObjectPainter.StickyNoteColor), $"expected sticky-note yellow, got {pixel}");
+    }
+
     // AC-913: a document bigger than the requested pixel size is scaled down to fit, not cropped — a shape placed
     // well outside a small target still shows up in the render, just smaller.
     [Fact]
