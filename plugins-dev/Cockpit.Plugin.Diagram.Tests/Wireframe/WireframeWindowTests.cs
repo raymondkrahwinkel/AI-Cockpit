@@ -23,11 +23,19 @@ public class WireframeWindowTests
     }
 
     [Fact]
-    public void New_OpensWithASingleChildlessScreen()
+    public void New_WithNoSource_OpensWithASingleChildlessScreen()
     {
         var document = WireframeDocument.New("Mijn wireframe");
 
         Assert.Equal("Mijn wireframe", document.Title);
         Assert.Equal(WireframeDocument.Empty, document.Text);
+    }
+
+    [Fact]
+    public void New_WithASource_OpensWithThatSource()
+    {
+        var document = WireframeDocument.New("Mijn wireframe", "screen \"Login\"");
+
+        Assert.Equal("screen \"Login\"", document.Text);
     }
 }

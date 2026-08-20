@@ -114,6 +114,10 @@ public partial class ThemeHexColorGuardTests
         // The diagram plugin's sample render (AC-809): a fixed palette for Mermaider, not the cockpit's UI chrome.
         "plugins-dev/Cockpit.Plugin.Diagram/DiagramWorkspaceBody.cs",
 
+        // The seven Mermaid render colours above, pulled into their own file at AC-911 so DiagramWorkspaceBody's
+        // own render and the template previews share one copy — same reason, new file.
+        "plugins-dev/Cockpit.Plugin.Diagram/DiagramTheme.cs",
+
         // The whiteboard's own surface (AC-821/AC-822): white paper, a yellow pencil ink and a blue shape stroke,
         // same argument as the workflow canvas's kind stripes above — a whiteboard's content is deliberately not
         // theme-driven, the way a real sheet of paper stays white under any repaint of the app around it.

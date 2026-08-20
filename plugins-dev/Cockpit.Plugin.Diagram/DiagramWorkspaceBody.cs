@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Svg.Skia;
+using Avalonia.VisualTree;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Diagrams;
 using Cockpit.Plugin.Diagram.Collab;
@@ -15,7 +16,6 @@ using Cockpit.Plugins.Abstractions.Notifications;
 using Material.Icons;
 using Material.Icons.Avalonia;
 using Mermaider;
-using MermaidRenderOptions = Mermaider.Models.RenderOptions;
 
 namespace Cockpit.Plugin.Diagram;
 
@@ -339,12 +339,46 @@ internal sealed class DiagramWorkspaceBody : UserControl
         });
     }
 
-    // AC-840: the AC-809 sample as an explicit insert — replaces whatever is on the surface now, same as an
-    // agent's edit_diagram would, so it goes through UpdateText and reaches any coupled agent as well.
-    private void _InsertSample()
+    // AC-911: opens the same template list the quick-start dialog offers — one "give me an example" path, two
+    // entrances. Replaces whatever is on the surface, same as an agent's edit_diagram would, so it goes through
+    // UpdateText and reaches any coupled agent as well.
+    private async Task _InsertTemplateAsync()
     {
-        _RenderInto(DiagramDocument.Sample);
-        _registry?.UpdateText(_surfaceId, DiagramDocument.Sample);
+        SurfaceTemplate? picked = null;
+
+        await _host.ShowDialogAsync("Insert template", () =>
+        {
+            var (strip, getSelected) = SurfaceTemplateStrip.Build(DiagramTemplates.All, DiagramTemplates.Preview);
+
+            var insert = new Button { Content = "Insert", Classes = { "Accent" }, HorizontalAlignment = HorizontalAlignment.Right };
+            insert.Click += (sender, _) =>
+            {
+                picked = getSelected();
+                (sender as Control)?.FindAncestorOfType<Window>()?.Close();
+            };
+            var cancel = new Button { Content = "Cancel", Classes = { "Ghost" }, Margin = new Thickness(0, 0, 8, 0), HorizontalAlignment = HorizontalAlignment.Right };
+            cancel.Click += (sender, _) => (sender as Control)?.FindAncestorOfType<Window>()?.Close();
+
+            var footer = new Border
+            {
+                Padding = new Thickness(14, 11),
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                BorderBrush = SurfaceChrome.Brush("CockpitHairlineBrush"),
+                [DockPanel.DockProperty] = Dock.Bottom,
+                Child = new DockPanel { LastChildFill = false, Children = { insert, cancel } },
+            };
+            var body = new StackPanel { Margin = new Thickness(16, 14), Children = { new ScrollViewer { MaxHeight = 320, Content = strip } } };
+
+            return new DockPanel { LastChildFill = true, Children = { footer, body } };
+        }, "diagram.template", width: 460, height: 420);
+
+        if (picked is not { } template)
+        {
+            return;
+        }
+
+        _RenderInto(template.Source);
+        _registry?.UpdateText(_surfaceId, template.Source);
     }
 
     private void _RenderInto(string source)
@@ -352,11 +386,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // Straight from Mermaider, no CssFlattener step: measured (AC-809) that Svg.Controls.Skia.Avalonia's own
         // CSS engine already resolves the var()/color-mix() this emits, and that CssFlattener's output renders
         // worse, not better — a separately tracked regression (AC-819), not this ticket's concern.
-        var markup = MermaidRenderer.RenderSvg(source, new MermaidRenderOptions
-        {
-            Bg = "#1b1f27", Fg = "#e7e9ee", Line = "#3a4050", Accent = "#5b8def",
-            Muted = "#9aa2b1", Surface = "#232838", Border = "#3a4050", Font = "Inter", FontSize = "13px",
-        });
+        var markup = MermaidRenderer.RenderSvg(source, DiagramTheme.Options);
         _currentSvg = markup;
         _svg.SvgSource = SvgSource.LoadFromSvg(markup);
         _sourceBox.Text = source;
@@ -1507,11 +1537,11 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Children = { zoomOut, zoomLabel, zoomIn, fit, follow },
         };
 
-        // AC-840: empty is a starting point, not a dead end — the AC-809 sample is reachable as an explicit
-        // insert rather than a silent default. AC-841 adds the rest of the hand-editing beside it: what the operator
+        // AC-840: empty is a starting point, not a dead end — a template is reachable as an explicit insert
+        // rather than a silent default. AC-841 adds the rest of the hand-editing beside it: what the operator
         // clicked on the render decides what these act on.
-        var insertSample = new Button { Content = "Insert sample", Classes = { "Compact" } };
-        insertSample.Click += (_, _) => _InsertSample();
+        var insertTemplate = new Button { Content = "Insert template…", Classes = { "Compact" } };
+        insertTemplate.Click += (_, _) => _ = _InsertTemplateAsync();
         // Without a registry (an older host) there is nothing to write a hand-edit into, so the buttons say so by
         // being off rather than failing silently when pressed.
         var addNode = new Button { Content = "+ Node", Classes = { "Compact" }, IsEnabled = _registry is not null };
@@ -1558,7 +1588,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { insertSample, addNode, connect, rename, delete, attributes, shape, ask, save, saveStatus, hint },
+            Children = { insertTemplate, addNode, connect, rename, delete, attributes, shape, ask, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { export, handEditControls, zoomControls } };

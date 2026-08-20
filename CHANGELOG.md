@@ -180,6 +180,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: closing the main window now asks for confirmation first if any session is running, instead of ending
   the app — and every session in it — on a single click. Cancelling leaves the window and all sessions open;
   confirming closes as before. A restart or an update-driven close still goes straight through without asking.
+- added: "New diagram" and "New wireframe" now offer a template choice — each shown as a drawn preview of what it
+  contains, "Blank" first and preselected — instead of only a name field. The diagram choice is flowchart or
+  entities & relations (the two kinds you can still hand-edit afterwards); the wireframe choice adds six starting
+  screens (login, settings, list + detail, dashboard, form, landing page) to the existing blank screen. The
+  whiteboard is unchanged. On the diagram surface, "Insert sample" is now "Insert template…" and opens the same
+  list instead of always inserting one fixed sample diagram.
 
 ### Changed
 

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 
@@ -64,12 +65,12 @@ internal sealed class WireframeListDialogBody : UserControl
     // the single childless "screen" line (WireframeDocument.New), never a bare document with nothing to render.
     private async Task _QuickStartAsync()
     {
-        if (await WireframeQuickStartDialog.ShowAsync(_host, "New wireframe") is not { } quickStart)
+        if (await SurfaceQuickStartDialog.ShowAsync(_host, "New wireframe", "wireframe.quickstart", "New wireframe", linkSessionByDefault: false, WireframeTemplates.All, WireframeTemplates.Preview) is not { } quickStart)
         {
             return;
         }
 
-        await WireframeWindow.OpenAsync(_host, WireframeDocument.New(quickStart.Name), quickStart.SessionPaneId);
+        await WireframeWindow.OpenAsync(_host, WireframeDocument.New(quickStart.Name, quickStart.TemplateSource), quickStart.SessionPaneId);
     }
 
     private void _Render(IReadOnlyList<WireframeEntry> entries, int memoryRowCount)

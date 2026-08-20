@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -64,7 +65,9 @@ internal sealed class WhiteboardListDialogBody : UserControl
     // named for what the operator asked for, and only ever gets a file once it is first saved (AC-812's rule).
     private async Task _QuickStartAsync()
     {
-        if (await WhiteboardQuickStartDialog.ShowAsync(_host, "New whiteboard") is not { } quickStart)
+        // AC-911: no template list — the whiteboard keeps exactly what it had before the three quick-start
+        // dialogs were pulled into one shared class, including "link session" starting checked.
+        if (await SurfaceQuickStartDialog.ShowAsync(_host, "New whiteboard", "whiteboard.quickstart", "New whiteboard", linkSessionByDefault: true, []) is not { } quickStart)
         {
             return;
         }

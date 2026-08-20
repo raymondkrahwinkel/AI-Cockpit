@@ -7,20 +7,11 @@ namespace Cockpit.Plugin.Diagram;
 // "No file yet" and the first save turns into one.
 internal sealed record DiagramDocument(string Id, string Title, string MermaidText, string? FilePath = null)
 {
-    // A valid, node-less flowchart (AC-840): renders as a blank canvas, and is what "insert sample" and
-    // "add node" both build on top of.
+    // A valid, node-less flowchart (AC-840): renders as a blank canvas, and is what "add node" builds on top of.
     public const string Empty = "flowchart LR";
 
-    public const string Sample = """
-        flowchart LR
-            Zip[Plugin zip] -->|PluginLoadContext| Fallthrough{Falls through?}
-            Fallthrough -->|Avalonia, Skia| Host[Host's own copy]
-            Fallthrough -->|Mermaider| Own[Plugin's own copy]
-            Host --> Panel[This panel]
-            Own --> Panel
-        """;
-
-    // AC-840: a quick-started diagram opens empty, named for what the operator asked for — never the AC-809
-    // sample, which is now only reachable via the panel's explicit "Voorbeeld invoegen" action.
-    public static DiagramDocument New(string title) => new(Guid.NewGuid().ToString("n"), title, Empty);
+    // AC-911: opens with whatever template it was given — Empty by default, so existing call-sites (whiteboard→
+    // diagram, DiagramWindowTests) keep working unchanged. The AC-809 sample is gone; DiagramTemplates.Flowchart
+    // takes its role, reachable through the same template list as "Insert template…" on the panel.
+    public static DiagramDocument New(string title, string source = Empty) => new(Guid.NewGuid().ToString("n"), title, source);
 }
