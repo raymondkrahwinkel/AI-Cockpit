@@ -77,8 +77,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly Button _overviewButton;
     private readonly Button _viewportButton;
     private readonly Button _askButton;
+    private readonly ToggleButton _notesToggle;
     private readonly TextBlock _handHint;
     private readonly StackPanel _propertiesContent;
+    private readonly Border _notesPanel;
+    private readonly StackPanel _notesContent;
     private double _zoom = 1.0;
     private Vector _panOffset;
     private bool _isFitMode = true;
@@ -140,17 +143,24 @@ internal sealed class WireframeWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _textButton, _deleteButton,
-            _upButton, _downButton, _moveButton, _addScreenButton, _overviewButton, _viewportButton, _askButton, _handHint) = _BuildToolbar();
+            _upButton, _downButton, _moveButton, _addScreenButton, _overviewButton, _viewportButton, _askButton, _notesToggle, _handHint) = _BuildToolbar();
         var journal = new WireframeActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, journal, onJumpToObject: null);
         _askStrip = new AskStrip(_JumpToComponent);
         _presence = new PresenceIndicators(_surfaceId, journal, journal);
         var (propertiesPanel, propertiesContent) = _BuildPropertiesPanel();
         _propertiesContent = propertiesContent;
+        // AC-907: its own column above the properties panel, not on the canvas — the fit-zoom and the overlay's own
+        // sweep (AC-902) both work against a numbered list living there (see the grooming on this ticket).
+        var (notesPanel, notesContent) = _BuildNotesPanel();
+        _notesPanel = notesPanel;
+        _notesContent = notesContent;
+        var rightColumn = new DockPanel { Children = { _notesPanel, propertiesPanel } };
+        DockPanel.SetDock(_notesPanel, Dock.Top);
 
         Content = new DockPanel
         {
-            Children = { toolbar, _couplingBar, _presence, _sourceToggle, _sourceBox, _askStrip, _activityStrip, propertiesPanel, _viewport },
+            Children = { toolbar, _couplingBar, _presence, _sourceToggle, _sourceBox, _askStrip, _activityStrip, rightColumn, _viewport },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
@@ -159,7 +169,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
         DockPanel.SetDock(_askStrip, Dock.Bottom);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
-        DockPanel.SetDock(propertiesPanel, Dock.Right);
+        DockPanel.SetDock(rightColumn, Dock.Right);
 
         // AC-904 AC6: Escape gives up a drag where it stands, from wherever the focus happens to be inside this
         // window — tunnelled, so it is seen before the focused control gets its own say.
@@ -298,12 +308,17 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _presence.SetOperatorWriting(_selectedId is not null);
         _RefreshOverlay();
         _RefreshHandEditBar();
+        _RefreshNotesPanel();
     }
 
     // The selected component in the tree as it stands right now, or null when nothing is selected or what was
     // selected has been removed.
     private WireframeNode? _Selected =>
         _selectedId is { } id ? WireframeHandEdit.Find(_screens, id) : null;
+
+    // AC-907 criterion 8: the source and read_wireframe are unaffected by this — the switch is purely how much of
+    // it this window is currently showing.
+    private bool _NotesVisible => _notesToggle.IsChecked == true;
 
     // ---- The two views (AC-901): every screen side by side, or one of them filling the canvas ----
 
@@ -830,6 +845,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _presence.SetOperatorWriting(_selectedId is not null);
         _RefreshOverlay();
         _RefreshHandEditBar();
+        _RefreshNotesPanel();
     }
 
     // Posted rather than drawn straight away: the mark is placed from the selected control's own laid-out bounds, and
@@ -852,8 +868,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
             _overlay.Children.Remove(arrow);
         }
 
-        // AC-902: flows are drawn whether or not anything is selected — they are not a selection mark.
+        // AC-902/AC-907: flows and notes are drawn whether or not anything is selected — neither is a selection mark.
         _DrawFlows();
+        _DrawNoteMarkers();
 
         if (_Selected is not { } node || _ControlFor(node) is not { } control
             || control.TranslatePoint(default, _surface) is not { } origin)
@@ -893,30 +910,114 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     private void _DrawFlowMarkers(WireframeNode screen)
     {
+        var controls = _ControlMap();
         foreach (var node in _FlowSources(screen))
         {
             if (node.ValueOf(WireframeModifierName.Goto) is not { } title
                 || WireframeGotoResolver.Resolve(_screens, title).Screen is not { } target
-                || _ControlFor(node) is not { } control || control.TranslatePoint(default, _surface) is not { } origin)
+                || _RectOf(controls, node) is not { } bounds)
             {
                 continue;
             }
 
-            var marker = new Border
-            {
-                Width = 16,
-                Height = 16,
-                Background = _Brush("CockpitAccentBrush"),
-                CornerRadius = new CornerRadius(8),
-                Cursor = new Cursor(StandardCursorType.Hand),
-            };
-            ToolTip.SetTip(marker, $"Goes to «{target.Text}»");
-            marker.Tapped += (_, _) => _ZoomInto(target);
-            Canvas.SetLeft(marker, origin.X + control.Bounds.Width - 12);
-            Canvas.SetTop(marker, origin.Y - 4);
-            _overlay.Children.Add(marker);
+            _Marker(bounds, _MarkerSide.Right, _Brush("CockpitAccentBrush"), null, null, $"Goes to «{target.Text}»", () => _ZoomInto(target));
         }
     }
+
+    // AC-907: one component's requirements, drawn in both views (unlike the flow marker, which is a between-screens
+    // arrow in the overview) — left-top, so a component carrying both a goto and a note shows two markers, one at
+    // each corner, with no stacking logic between them.
+    private void _DrawNoteMarkers()
+    {
+        if (!_NotesVisible)
+        {
+            return;
+        }
+
+        var controls = _ControlMap();
+        foreach (var (_, notes) in _NoteGroups())
+        {
+            for (var index = 0; index < notes.Count; index++)
+            {
+                var node = notes[index];
+                if (_RectOf(controls, node) is not { } bounds)
+                {
+                    continue;
+                }
+
+                _Marker(bounds, _MarkerSide.Left, _Brush("CockpitSecondaryBgBrush"), _Brush("CockpitHairlineBrush"),
+                    _Numbered(index + 1), node.ValueOf(WireframeModifierName.Note) ?? "", () => _Select(node));
+            }
+        }
+    }
+
+    private enum _MarkerSide { Left, Right }
+
+    // AC-902's marker, pulled out into the one shared helper AC-907's grooming asked for: a small round tag pinned
+    // to a component's corner, clamped inside the canvas so a note on the screen line itself (origin (0,0)) does not
+    // fall half off the edge.
+    private void _Marker(Rect bounds, _MarkerSide side, IBrush? fill, IBrush? border, string? label, string tip, Action onTap)
+    {
+        var marker = new Border
+        {
+            Width = 16,
+            Height = 16,
+            Background = fill,
+            BorderBrush = border,
+            BorderThickness = border is null ? default : new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+
+        if (label is not null)
+        {
+            marker.Child = new TextBlock
+            {
+                Text = label,
+                FontSize = 9,
+                Foreground = _Brush("CockpitTextPrimaryBrush"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+        }
+
+        ToolTip.SetTip(marker, tip);
+        marker.Tapped += (_, _) => onTap();
+
+        var canvas = _CanvasSize;
+        var x = side == _MarkerSide.Right ? bounds.X + bounds.Width - 12 : bounds.X - 4;
+        Canvas.SetLeft(marker, Math.Clamp(x, 0, Math.Max(0, canvas.Width - marker.Width)));
+        Canvas.SetTop(marker, Math.Clamp(bounds.Y - 4, 0, Math.Max(0, canvas.Height - marker.Height)));
+        _overlay.Children.Add(marker);
+    }
+
+    // Which screens' notes to draw/list — the whole document in the overview, just the one screen zoomed in — each
+    // renumbered from ① so a note's marker always matches its position in the list beside it (criterion 7).
+    private List<(WireframeNode Screen, List<WireframeNode> Notes)> _NoteGroups()
+    {
+        IEnumerable<WireframeNode> screens = _ZoomedScreen is { } zoomed ? [zoomed] : _screens;
+        return screens
+            .Select(screen => (Screen: screen, Notes: _NotesOf(screen).ToList()))
+            .Where(group => group.Notes.Count > 0)
+            .ToList();
+    }
+
+    private static IEnumerable<WireframeNode> _NotesOf(WireframeNode node)
+    {
+        if (node.Has(WireframeModifierName.Note))
+        {
+            yield return node;
+        }
+
+        foreach (var found in node.Children.SelectMany(_NotesOf))
+        {
+            yield return found;
+        }
+    }
+
+    // ①…⑳, then a plain "(21)" — the format has no practical use for more notes on one screen than that.
+    private static string _Numbered(int number) =>
+        number is >= 1 and <= 20 ? char.ConvertFromUtf32(0x2460 + number - 1) : $"({number})";
 
     private void _DrawFlowArrows()
     {
@@ -998,10 +1099,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         return new Avalonia.Controls.Shapes.Path { Data = geometry, Stroke = brush, StrokeThickness = 2, Fill = brush, IsHitTestVisible = false };
     }
 
-    private Control? _ControlFor(WireframeNode node) => _render
-        .GetVisualDescendants()
-        .OfType<Control>()
-        .FirstOrDefault(control => ReferenceEquals(WireframeSource.GetNode(control), node));
+    // AC-907 val #2: this used to walk every visual descendant per call — quadratic across a whole selection change,
+    // since _DrawFlowMarkers/_DrawNoteMarkers call it once per node. _ControlMap() is the same lookup, cached.
+    private Control? _ControlFor(WireframeNode node) => _ControlMap().TryGetValue(node, out var control) ? control : null;
 
     // Changing the wording happens where the component is: a box over the component itself, Enter to keep it, Escape
     // to leave it as it was — the diagram's rename, one folder over.
@@ -1371,6 +1471,68 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // A fixed column rather than a flyout: it stays put across a run of selections instead of reopening every click,
     // which is calmer with the toolbar/coupling bar/presence/activity strip already docked around the same window.
+    // AC-907: the numbered notes, in a column of their own above the properties panel — never on the canvas (see the
+    // grooming on this ticket: fit-zoom and the overlay's own sweep both work against a list living there).
+    private static (Border Panel, StackPanel Content) _BuildNotesPanel()
+    {
+        var content = new StackPanel { Spacing = 6 };
+        var panel = new Border
+        {
+            Width = 240,
+            MaxHeight = 220,
+            Padding = new Thickness(12),
+            BorderThickness = new Thickness(1, 0, 0, 1),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            IsVisible = false,
+            Child = new ScrollViewer { Content = content },
+        };
+        return (panel, content);
+    }
+
+    // Rebuilt from the tree rather than the overlay's own drawing pass: unlike the markers, this needs no measured
+    // layout, so it can run the moment the source changes instead of waiting on the next Loaded dispatch.
+    private void _RefreshNotesPanel()
+    {
+        _notesContent.Children.Clear();
+        var groups = _NotesVisible ? _NoteGroups() : new List<(WireframeNode Screen, List<WireframeNode> Notes)>();
+        _notesPanel.IsVisible = groups.Count > 0;
+
+        foreach (var (screen, notes) in groups)
+        {
+            if (_ZoomedScreen is null)
+            {
+                _notesContent.Children.Add(new TextBlock
+                {
+                    Text = screen.Text,
+                    FontWeight = FontWeight.Bold,
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap,
+                });
+            }
+
+            for (var index = 0; index < notes.Count; index++)
+            {
+                var node = notes[index];
+                var selected = ReferenceEquals(node, _Selected);
+                var row = new Border
+                {
+                    Padding = new Thickness(4, 2),
+                    CornerRadius = new CornerRadius(3),
+                    Cursor = new Cursor(StandardCursorType.Hand),
+                    Background = selected ? _Brush("CockpitAccentSelectionBrush") : null,
+                    Child = new TextBlock
+                    {
+                        Text = $"{_Numbered(index + 1)} {node.ValueOf(WireframeModifierName.Note)}",
+                        FontSize = 12,
+                        TextWrapping = TextWrapping.Wrap,
+                    },
+                };
+                row.PointerPressed += (_, _) => _Select(node);
+                _notesContent.Children.Add(row);
+            }
+        }
+    }
+
     private static (Border Panel, StackPanel Content) _BuildPropertiesPanel()
     {
         var content = new StackPanel { Spacing = 10 };
@@ -1433,6 +1595,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
         if (WireframeModifierRules.Applies(node.Kind, parentKind, WireframeModifierName.Goto))
         {
             _propertiesContent.Children.Add(_BuildGotoPicker(node, id));
+        }
+
+        if (WireframeModifierRules.Applies(node.Kind, parentKind, WireframeModifierName.Note))
+        {
+            _propertiesContent.Children.Add(_BuildNoteField(node, id));
         }
     }
 
@@ -1563,6 +1730,40 @@ internal sealed class WireframeWorkspaceBody : UserControl
         };
     }
 
+    // AC-907 AC5: the operator's way to set/change/clear a note without typing the source — modelled on
+    // _BuildValueField. One line per component (AC-907's own limit), so no AcceptsReturn.
+    private StackPanel _BuildNoteField(WireframeNode node, string id)
+    {
+        var box = new TextBox
+        {
+            Text = node.ValueOf(WireframeModifierName.Note) ?? "",
+            TextWrapping = TextWrapping.Wrap,
+            AcceptsReturn = false,
+        };
+
+        void Commit()
+        {
+            var value = box.Text ?? "";
+            _Apply(WireframeComponentEdit.SetModifier(id, WireframeModifierName.Note, value.Length == 0 ? null : value, quoted: true));
+        }
+
+        box.LostFocus += (_, _) => Commit();
+        box.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                Commit();
+            }
+        };
+
+        return new StackPanel
+        {
+            Spacing = 2,
+            Children = { new TextBlock { Text = "Note", FontSize = 11 }, box },
+        };
+    }
+
     // A component named the way the operator reads it: "input «E-mailadres»", or the bare keyword when it carries no
     // text of its own.
     private static string _Describe(WireframeNode node) =>
@@ -1655,7 +1856,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
     }
 
     private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus, Button Add, Button Text,
-        Button Delete, Button Up, Button Down, Button Move, Button AddScreen, Button Overview, Button Viewport, Button Ask, TextBlock Hint) _BuildToolbar()
+        Button Delete, Button Up, Button Down, Button Move, Button AddScreen, Button Overview, Button Viewport, Button Ask,
+        ToggleButton Notes, TextBlock Hint) _BuildToolbar()
     {
         // AC-837: zoom in/out + Fit, with the current level always on screen.
         var zoomOut = new Button { Content = "−", Classes = { "Compact" }, MinWidth = 28 };
@@ -1720,6 +1922,15 @@ internal sealed class WireframeWorkspaceBody : UserControl
         // whole), sent to the coupled session the moment it is submitted — see _AddAsk.
         var ask = new Button { Content = "Ask the agent…", Classes = { "Compact" } };
         ask.Click += (_, _) => _AddAsk(ask);
+        // AC-907 criterion 8: one switch for both the markers and the list beside them — on by default, since a
+        // hidden note staying hidden is exactly the case AC-907 exists to rule out (see the grooming's §9.2).
+        var notes = new ToggleButton { Content = "Notes", Classes = { "Compact" }, IsChecked = true };
+        ToolTip.SetTip(notes, "Show or hide the numbered requirement notes.");
+        notes.IsCheckedChanged += (_, _) =>
+        {
+            _RefreshOverlay();
+            _RefreshNotesPanel();
+        };
         var hint = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -1732,14 +1943,14 @@ internal sealed class WireframeWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { overview, add, text, delete, up, down, move, addScreen, viewport, ask, save, saveStatus, hint },
+            Children = { overview, add, text, delete, up, down, move, addScreen, viewport, ask, notes, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { handEditControls, zoomControls } };
         DockPanel.SetDock(handEditControls, Dock.Left);
         DockPanel.SetDock(zoomControls, Dock.Right);
         return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus,
-            add, text, delete, up, down, move, addScreen, overview, viewport, ask, hint);
+            add, text, delete, up, down, move, addScreen, overview, viewport, ask, notes, hint);
     }
 
     // AC-915: three names, no free-form size — the same MenuFlyout shape as «Move to…». Landing on the viewport

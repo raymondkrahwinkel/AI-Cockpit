@@ -295,6 +295,62 @@ public class WireframeComponentEditorTests
         Assert.Contains("no component with id \"no-such-id\"", result.Refusal);
     }
 
+    // ---- Notes (AC-907) ----
+
+    [Fact]
+    public void SetModifier_Note_AddsTheModifierQuoted()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, "disabled until valid", quoted: true));
+
+        Assert.Null(result.Refusal);
+        Assert.Equal("        button \"Opslaan\" primary note:\"disabled until valid\" #save", WireframeScreens.LineOf(result.Text!, 13));
+    }
+
+    [Fact]
+    public void SetModifier_Note_UpdatesAnExistingNoteInPlace()
+    {
+        var once = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, "first version", quoted: true));
+
+        var twice = WireframeComponentEditor.Apply(
+            once.Text!,
+            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, "second version", quoted: true));
+
+        Assert.Null(twice.Refusal);
+        Assert.Equal("        button \"Opslaan\" primary note:\"second version\" #save", WireframeScreens.LineOf(twice.Text!, 13));
+    }
+
+    [Fact]
+    public void SetModifier_Note_WithAnEmptyValue_ClearsIt()
+    {
+        var withNote = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, "disabled until valid", quoted: true));
+
+        var cleared = WireframeComponentEditor.Apply(
+            withNote.Text!,
+            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, null));
+
+        Assert.Null(cleared.Refusal);
+        Assert.Equal("        button \"Opslaan\" primary #save", WireframeScreens.LineOf(cleared.Text!, 13));
+    }
+
+    [Fact]
+    public void Remove_TakesTheComponentsNoteWithIt_BecauseItStandsOnTheSameLine()
+    {
+        var withNote = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, "disabled until valid", quoted: true));
+
+        var removed = WireframeComponentEditor.Apply(withNote.Text!, WireframeComponentEdit.Remove(WireframeScreens.SaveButton));
+
+        Assert.Null(removed.Refusal);
+        Assert.DoesNotContain("disabled until valid", removed.Text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ChangeType_KeepsThePlaceTheIdTheTextAndTheModifiers()
     {

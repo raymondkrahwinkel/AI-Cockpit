@@ -375,6 +375,57 @@ public class WireframeParserTests
         Assert.Contains("2 screens", error.Message, StringComparison.Ordinal);
     }
 
+    // ---- Notes (AC-907) ----
+
+    [Fact]
+    public void Note_ParsesOnAnyComponent_IncludingTheScreenLine_AndRoundTrips()
+    {
+        const string source = """
+            screen "Aanmelden" note:"desktop only for now"
+              input "Wachtwoord" note:"minimaal 12 tekens"
+              button "Aanmelden" primary disabled note:"uit tot beide velden gevuld zijn"
+            """;
+
+        var result = WireframeParser.Parse(source);
+
+        Assert.Empty(result.Errors);
+        var screen = result.Screens.Single();
+        Assert.Equal("desktop only for now", screen.ValueOf(WireframeModifierName.Note));
+        Assert.Equal("minimaal 12 tekens", screen.Children[0].ValueOf(WireframeModifierName.Note));
+        Assert.Equal("uit tot beide velden gevuld zijn", screen.Children[1].ValueOf(WireframeModifierName.Note));
+        Assert.Equal(source, WireframeWriter.Write(result.Screens));
+    }
+
+    [Fact]
+    public void Note_WithoutAValue_IsAParseErrorNamingTheLine()
+    {
+        var result = WireframeParser.Parse("screen \"X\"\n  button \"Opslaan\" note");
+
+        Assert.Equal(2, Assert.Single(result.Errors).Line);
+    }
+
+    [Fact]
+    public void Note_WithoutAValue_TheHintFitsATextModifier_NotANumber()
+    {
+        var result = WireframeParser.Parse("screen \"X\"\n  button \"Opslaan\" note");
+
+        Assert.DoesNotContain("note:2", Assert.Single(result.Errors).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AQuoteInsideANote_SurvivesBothDirections()
+    {
+        const string source = """
+            screen "X"
+              button "Opslaan" note:"toon \"opgeslagen\" na klikken"
+            """;
+
+        var result = WireframeParser.Parse(source);
+
+        Assert.Empty(result.Errors);
+        Assert.Equal(source, WireframeWriter.Write(result.Screens));
+    }
+
     // ---- Viewport (AC-915) ----
 
     [Fact]

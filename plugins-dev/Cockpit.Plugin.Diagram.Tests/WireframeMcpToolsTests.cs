@@ -263,6 +263,52 @@ public class WireframeMcpToolsTests
     }
 
     [Fact]
+    public async Task SetComponentModifier_Note_IsQuotedUnconditionally_EvenWhenTheTextIsAllDigits()
+    {
+        // AC-907: same trap as goto — value:'s int.TryParse check exists to spare a bare number its quotes, but a
+        // note is a sentence, and one that happens to read "3" must not come out unquoted as `note:3`.
+        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.SaveButton, "note", "3"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("note:\"3\"", registry.PeekText(SurfaceId));
+    }
+
+    [Fact]
+    public async Task SetComponentModifier_Note_ClearRemovesIt()
+    {
+        var (tools, registry, _) = _Open(ConsentOutcome.Approved);
+        await tools.SetComponentModifier(Session, Name, WireframeScreens.SaveButton, "note", "disabled until valid");
+
+        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, WireframeScreens.SaveButton, "note", clear: true));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.DoesNotContain("note:", registry.PeekText(SurfaceId), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReadWireframe_ANoteField_IsTheTextVerbatim_AndNullWithoutOne()
+    {
+        const string source = """
+            screen "Aanmelden" #login
+              button "Verder" primary note:"disabled until both fields are filled in" #go
+              input "E-mailadres" #email
+            """;
+        var built = _Build(ConsentOutcome.Approved);
+        built.registry.SurfaceOpened(SurfaceId, Name, source);
+        var (tools, _, _) = built;
+
+        var json = JsonNode.Parse(await tools.ReadWireframe(Session, Name));
+
+        var components = json!["components"]!.AsArray();
+        var button = components.Single(component => component!["id"]!.GetValue<string>() == "go");
+        Assert.Equal("disabled until both fields are filled in", button!["note"]!.GetValue<string>());
+        var input = components.Single(component => component!["id"]!.GetValue<string>() == "email");
+        Assert.Null(input!["note"]);
+    }
+
+    [Fact]
     public async Task ChangeComponentType_KeepsThePlaceTheTextAndTheChildren()
     {
         var (tools, registry, asked) = _Open(ConsentOutcome.Approved);

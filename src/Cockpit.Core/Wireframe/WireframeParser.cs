@@ -303,11 +303,14 @@ public static class WireframeParser
             or WireframeModifierName.H
             or WireframeModifierName.Align
             or WireframeModifierName.Value
-            or WireframeModifierName.Goto;
+            or WireframeModifierName.Goto
+            or WireframeModifierName.Note;
 
         if (takesValue && string.IsNullOrEmpty(value))
         {
-            errors.Add(new WireframeParseError(lineNumber, $"'{written}' needs a value, like '{written}:2'."));
+            // AC-907: a numeric example is nonsense for a modifier whose value is a sentence.
+            var hint = name is WireframeModifierName.W or WireframeModifierName.H ? $"{written}:2" : $"{written}:\"…\"";
+            errors.Add(new WireframeParseError(lineNumber, $"'{written}' needs a value, like '{hint}'."));
             return null;
         }
 

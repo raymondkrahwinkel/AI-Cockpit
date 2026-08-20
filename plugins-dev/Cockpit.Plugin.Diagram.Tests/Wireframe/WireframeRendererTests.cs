@@ -258,6 +258,34 @@ public class WireframeRendererTests
         Assert.Contains(Colors.White, colours);
     }
 
+    // AC-907 criterion 2: a note is a requirement the renderer never reads, so it may not move a pixel.
+    [Fact]
+    public void ANote_DoesNotChangeAnyComponentsBounds()
+    {
+        const string withoutNote = """
+            screen "X"
+              group "G"
+                input "E-mail"
+                button "Opslaan" primary
+            """;
+        const string withNote = """
+            screen "X"
+              group "G"
+                input "E-mail"
+                button "Opslaan" primary note:"disabled until both fields are filled in"
+            """;
+
+        var bare = WireframeParser.Parse(withoutNote).Screens.Single();
+        var annotated = WireframeParser.Parse(withNote).Screens.Single();
+        var bareControl = _Arrange(bare);
+        var annotatedControl = _Arrange(annotated);
+
+        var bareBounds = _Nodes(bare).ToDictionary(node => node.Line, node => _ControlFor(bareControl, node).Bounds);
+        var annotatedBounds = _Nodes(annotated).ToDictionary(node => node.Line, node => _ControlFor(annotatedControl, node).Bounds);
+
+        Assert.Equal(bareBounds, annotatedBounds);
+    }
+
     [Fact]
     public void BoardBounds_LayTheScreensOutSideBySide_WithoutOverlapping()
     {
