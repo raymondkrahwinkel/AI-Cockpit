@@ -28,7 +28,12 @@ internal sealed class FreehandLayer : Control
     {
         foreach (var stroke in _document.Objects.OfType<FreehandStroke>())
         {
-            WhiteboardObjectPainter.PaintFreehand(context, stroke.Points, stroke.Thickness, stroke.IsMarker);
+            if (ErasingIds?.Contains(stroke.Id) == true)
+            {
+                continue;
+            }
+
+            WhiteboardObjectPainter.PaintFreehand(context, stroke.Points, stroke.Thickness, stroke.IsMarker, stroke.Color);
 
             if (stroke.Id == SelectedId)
             {
@@ -39,12 +44,16 @@ internal sealed class FreehandLayer : Control
 
         if (ActiveStroke is { } draft)
         {
-            WhiteboardObjectPainter.PaintFreehand(context, draft.Points, draft.Thickness, draft.IsMarker);
+            WhiteboardObjectPainter.PaintFreehand(context, draft.Points, draft.Thickness, draft.IsMarker, draft.Color);
         }
     }
 
-    // A stroke's points, thickness and marker flag, held by `ActiveStroke` while it is being drawn.
-    public readonly record struct DraftStroke(IReadOnlyList<WhiteboardPoint> Points, double Thickness, bool IsMarker);
+    // AC-916: strokes the gum has hit mid-sweep — hidden here rather than removed from _document, which only
+    // happens once on release (one journal line per sweep, not per object).
+    public HashSet<Guid>? ErasingIds { get; set; }
+
+    // A stroke's points, thickness, marker flag and colour, held by `ActiveStroke` while it is being drawn.
+    public readonly record struct DraftStroke(IReadOnlyList<WhiteboardPoint> Points, double Thickness, bool IsMarker, string? Color = null);
 
     private static Rect _Bounds(IReadOnlyList<WhiteboardPoint> points)
     {

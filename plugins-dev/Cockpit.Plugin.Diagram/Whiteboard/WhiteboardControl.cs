@@ -30,6 +30,7 @@ public sealed class WhiteboardControl : UserControl
     private readonly ToggleButton _selectButton;
     private readonly ToggleButton _pencilButton;
     private readonly ToggleButton _markerButton;
+    private readonly ToggleButton _eraserButton;
 
     public WhiteboardControl(WhiteboardDocument document)
     {
@@ -41,6 +42,10 @@ public sealed class WhiteboardControl : UserControl
 
         _pencilButton = _ToggleIconButton(MaterialIconKind.Pencil, "Pencil", Canvas.UsePencilTool);
         _markerButton = _ToggleIconButton(MaterialIconKind.Highlighter, "Marker", Canvas.UseMarkerTool);
+        _eraserButton = _ToggleIconButton(MaterialIconKind.Eraser, "Eraser — sweeps away whole strokes and shapes, never a pasted image", Canvas.UseEraserTool);
+
+        var colorButton = _IconButton(MaterialIconKind.Palette, "Colour", () => { });
+        colorButton.Flyout = _BuildColorFlyout();
 
         var shapeButton = _IconButton(MaterialIconKind.ShapeOutline, "Shape templates", () => { });
         shapeButton.Flyout = _BuildShapeFlyout();
@@ -74,7 +79,7 @@ public sealed class WhiteboardControl : UserControl
         {
             Orientation = Orientation.Horizontal,
             Spacing = 4,
-            Children = { _selectButton, _pencilButton, _markerButton, shapeButton, stickyButton, imageButton, pasteButton, zoomOut, zoomLabel, zoomIn, fitButton },
+            Children = { _selectButton, _pencilButton, _markerButton, _eraserButton, colorButton, shapeButton, stickyButton, imageButton, pasteButton, zoomOut, zoomLabel, zoomIn, fitButton },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
 
@@ -82,6 +87,33 @@ public sealed class WhiteboardControl : UserControl
     }
 
     public WhiteboardCanvasControl Canvas { get; }
+
+    // A swatch row, not a colour picker (AC4) — one flyout of buttons, the same shape _BuildShapeFlyout already
+    // uses for shape templates. Picking a swatch sets what gets drawn/placed next and recolours the selection, if any.
+    private Flyout _BuildColorFlyout()
+    {
+        var flyout = new Flyout();
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(4) };
+        foreach (var hex in WhiteboardObjectPainter.Palette)
+        {
+            var swatch = new Button
+            {
+                Width = 24,
+                Height = 24,
+                Background = new SolidColorBrush(Color.Parse(hex)),
+                CornerRadius = new CornerRadius(12),
+            };
+            swatch.Click += (_, _) =>
+            {
+                Canvas.SetColor(hex);
+                flyout.Hide();
+            };
+            row.Children.Add(swatch);
+        }
+
+        flyout.Content = row;
+        return flyout;
+    }
 
     private Flyout _BuildShapeFlyout()
     {
@@ -150,6 +182,7 @@ public sealed class WhiteboardControl : UserControl
         _selectButton.IsChecked = Canvas.Tool == WhiteboardTool.Select;
         _pencilButton.IsChecked = Canvas.Tool == WhiteboardTool.Pencil;
         _markerButton.IsChecked = Canvas.Tool == WhiteboardTool.Marker;
+        _eraserButton.IsChecked = Canvas.Tool == WhiteboardTool.Eraser;
     }
 
     // A miniature of the shape itself rather than a generic icon — the grid (#W2) is meant to be recognised, not read.

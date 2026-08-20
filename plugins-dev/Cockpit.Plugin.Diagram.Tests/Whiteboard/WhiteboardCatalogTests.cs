@@ -75,6 +75,41 @@ public sealed class WhiteboardCatalogTests : IDisposable
         Assert.Null(sticky.ParentImageId);
     }
 
+    // AC-916 AC2: a board saved by an older build has no "color" property at all — JsonOptions already skips
+    // unknown/missing members, so this is a fact worth locking down, not a migration to write.
+    [Fact]
+    public void Load_ofABoardSavedWithoutColor_LeavesColorNull()
+    {
+        var home = Path.Combine(_root, "home");
+        var directory = Path.Combine(home, "Whiteboards");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "oud-bord.json");
+        File.WriteAllText(path, """
+            {
+              "title": "Oud bord",
+              "objects": [
+                { "id": "11111111-1111-1111-1111-111111111111", "kind": "Placed", "shapeKind": "Rectangle", "x": 5, "y": 5, "width": 50, "height": 30 }
+              ]
+            }
+            """);
+
+        var reopened = WhiteboardCatalog.Load(path);
+
+        Assert.Null(Assert.Single(reopened.Objects).Color);
+    }
+
+    [Fact]
+    public void Create_then_Load_roundTrips_theColour()
+    {
+        var document = new WhiteboardDocument(title: "gekleurd-bord");
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 5, Y = 5, Width = 50, Height = 30, Color = "#DC2626" });
+
+        var path = WhiteboardCatalog.Create(Path.Combine(_root, "home"), document);
+        var reopened = WhiteboardCatalog.Load(path);
+
+        Assert.Equal("#DC2626", Assert.Single(reopened.Objects).Color);
+    }
+
     [Fact]
     public void List_reads_the_title_from_each_saved_board()
     {

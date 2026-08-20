@@ -571,6 +571,152 @@ public class WhiteboardCanvasControlTests
         window.Close();
     }
 
+    // AC-916 AC10: a sweep over a whole stroke erases it, and never partially — the ticket's own scope cut.
+    [Fact]
+    public void EraserTool_SweepingOverAStroke_RemovesTheWholeStroke()
+    {
+        var document = new WhiteboardDocument();
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UsePencilTool();
+        window.MouseDown(new Point(10, 10), MouseButton.Left);
+        window.MouseMove(new Point(90, 10));
+        window.MouseUp(new Point(90, 10), MouseButton.Left);
+        Assert.Single(document.Objects);
+
+        canvas.UseEraserTool();
+        window.MouseDown(new Point(50, 10), MouseButton.Left);
+        window.MouseUp(new Point(50, 10), MouseButton.Left);
+
+        Assert.Empty(document.Objects);
+
+        window.Close();
+    }
+
+    // AC-916 AC13: one sweep over several objects is one Ctrl+Z, not one per object.
+    [Fact]
+    public void EraserTool_OneSweepOverSeveralObjects_IsOneJournalLine_UndoneInOneCtrlZ()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 10, Y = 10, Width = 30, Height = 30 });
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 60, Y = 10, Width = 30, Height = 30 });
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseEraserTool();
+        window.MouseDown(new Point(20, 20), MouseButton.Left);
+        window.MouseMove(new Point(70, 20));
+        window.MouseUp(new Point(70, 20), MouseButton.Left);
+
+        Assert.Empty(document.Objects);
+
+        window.KeyPressQwerty(PhysicalKey.Z, RawInputModifiers.Control);
+
+        Assert.Equal(2, document.Objects.Count);
+
+        window.Close();
+    }
+
+    // AC-916 AC11: the gum never takes a pasted image — only selecting it and pressing Delete does, so the
+    // "detach or delete annotations" prompt keeps working.
+    [Fact]
+    public void EraserTool_SweepingOverAPastedImage_LeavesItInPlace()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 10, Y = 10, Width = 80, Height = 60 });
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseEraserTool();
+        window.MouseDown(new Point(30, 30), MouseButton.Left);
+        window.MouseUp(new Point(30, 30), MouseButton.Left);
+
+        Assert.Single(document.Objects);
+
+        window.Close();
+    }
+
+    // AC-916 AC12: moving the pointer with the gum tool active, but no button pressed, must change nothing.
+    [Fact]
+    public void EraserTool_MovingWithoutAButtonPressed_ErasesNothing()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 10, Y = 10, Width = 30, Height = 30 });
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseEraserTool();
+        window.MouseMove(new Point(20, 20));
+
+        Assert.Single(document.Objects);
+
+        window.Close();
+    }
+
+    // AC-916 AC15/AC-924: with the gum active, a right-click must not start a sweep — the shared guard in
+    // OnPointerPressed, not a second filter in the gum branch.
+    [Fact]
+    public void EraserTool_RightClick_DoesNotStartASweep()
+    {
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 10, Y = 10, Width = 30, Height = 30 });
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseEraserTool();
+        window.MouseDown(new Point(20, 20), MouseButton.Right);
+        window.MouseMove(new Point(20, 20));
+        window.MouseUp(new Point(20, 20), MouseButton.Right);
+
+        Assert.Single(document.Objects);
+
+        window.Close();
+    }
+
+    // AC-916 AC7/AC8: recolouring the selection is one journaled handling, and Ctrl+D carries the colour along.
+    [Fact]
+    public void SetColor_OnASelectedShape_RecoloursItAsOneUndoableHandling()
+    {
+        var document = new WhiteboardDocument();
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseShapeTool(PlacedShapeKind.Rectangle);
+        window.MouseDown(new Point(10, 10), MouseButton.Left);
+        window.MouseUp(new Point(10, 10), MouseButton.Left);
+        var placed = Assert.IsType<PlacedObject>(Assert.Single(document.Objects));
+        Assert.Null(placed.Color);
+
+        canvas.SetColor("#DC2626");
+        Assert.Equal("#DC2626", placed.Color);
+
+        window.KeyPressQwerty(PhysicalKey.Z, RawInputModifiers.Control);
+        Assert.Null(placed.Color);
+
+        window.Close();
+    }
+
+    [Fact]
+    public void DuplicateSelection_CarriesTheColourAlong()
+    {
+        var document = new WhiteboardDocument();
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseShapeTool(PlacedShapeKind.Rectangle);
+        window.MouseDown(new Point(10, 10), MouseButton.Left);
+        window.MouseUp(new Point(10, 10), MouseButton.Left);
+        canvas.SetColor("#16A34A");
+
+        window.KeyPressQwerty(PhysicalKey.D, RawInputModifiers.Control);
+
+        Assert.Equal(2, document.Objects.Count);
+        Assert.All(document.Objects, o => Assert.Equal("#16A34A", o.Color));
+
+        window.Close();
+    }
+
     private static Window _Show(Control content)
     {
         var window = new Window { Width = 300, Height = 300, Content = content };

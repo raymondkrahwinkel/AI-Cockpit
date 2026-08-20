@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the whiteboard now has a colour swatch and an eraser. Picking a swatch recolours the current selection, or
+  sets what the pencil, marker and next placed shape draw with; a sticky note and a pasted image are unaffected.
+  The eraser sweeps away whole strokes and placed shapes while a button is held — never part of a stroke and never
+  a pasted image, which still only goes through Select + Delete — and one sweep is one undoable step no matter how
+  many objects it touched. An agent's own placements stay in the agent's fixed blue; there is no colour parameter
+  on `place_on_whiteboard`.
 - added: a wireframe now has a viewport — desktop, tablet or mobile — chosen from a toolbar button that shows the
   current size. Switching it changes the sheet the screen is measured against (960×640, 768×1024 or 390×844) so a
   layout that looked fine on desktop can be judged on a narrower one too; a wireframe that never sets one still
@@ -183,6 +189,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a right-click on the whiteboard no longer starts drawing, erasing or dragging — the surface only ever
+  meant its middle button to be the exception to a left-click drag, but nothing was actually filtering the rest.
 - fixed: promoting a session out of the rail into focus could occasionally reflow its terminal history with an
   unwanted resize, caused by a sub-pixel rounding mismatch between the rail tile's and the focus pane's layout —
   the tile now reuses the focus pane's own, already-laid-out box instead of reconstructing an approximation of it,

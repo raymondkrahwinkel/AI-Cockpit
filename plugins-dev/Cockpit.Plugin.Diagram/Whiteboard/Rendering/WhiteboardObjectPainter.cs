@@ -5,9 +5,9 @@ using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
-// One fixed visual language, shared by the live canvas and the raster snapshot: freehand is always yellow, a
-// placed object (template or paste) is always this crisp blue. The distinction lives in WhiteboardObjectKind
-// already; this is only how that distinction is drawn.
+// One fixed visual language: freehand defaults to yellow, placed defaults to this blue; WhiteboardObject.Color can
+// override either (null = default). PlacedColor is reserved — WhiteboardMcpTools' consent prompts promise this
+// exact blue marks the agent's work, so it must stay out of the operator's palette and off place_on_whiteboard.
 
 // The compact icon a placed object shows for its badge: a one-letter glyph on the object, the full text in the
 // tooltip the control attaches (see PlacedObjectControl) — no text pill, so it never outgrows a small object.
@@ -19,6 +19,18 @@ internal static class WhiteboardObjectPainter
     public static readonly Color PlacedColor = Color.Parse("#2563EB");
     public static readonly Color MarkerColor = Color.Parse("#FF7A1A");
     public static readonly Color StickyNoteColor = Color.Parse("#FDE68A");
+
+    // AC-916: the operator's colour swatches — deliberately excludes PlacedColor (#2563EB), reserved for the
+    // agent (see the header comment above). Each reads as both a 2.5px pencil stroke and a 0.35-alpha marker stroke.
+    public static readonly IReadOnlyList<string> Palette =
+    [
+        "#DC2626", // red
+        "#EA580C", // orange
+        "#16A34A", // green
+        "#0D9488", // teal
+        "#7C3AED", // purple
+        "#DB2777", // pink
+    ];
 
     private static readonly IBrush FreehandBrush = new SolidColorBrush(FreehandColor);
     private static readonly IBrush PlacedBrush = new SolidColorBrush(PlacedColor);
@@ -42,14 +54,16 @@ internal static class WhiteboardObjectPainter
         _ => null,
     };
 
-    public static void PaintFreehand(DrawingContext context, IReadOnlyList<WhiteboardPoint> points, double thickness, bool isMarker = false)
+    public static void PaintFreehand(DrawingContext context, IReadOnlyList<WhiteboardPoint> points, double thickness, bool isMarker = false, string? color = null)
     {
         if (points.Count < 2)
         {
             return;
         }
 
-        var brush = isMarker ? MarkerBrush : FreehandBrush;
+        var brush = color is null
+            ? (isMarker ? MarkerBrush : FreehandBrush)
+            : new SolidColorBrush(_ResolveColor(color, FreehandColor), isMarker ? 0.35 : 1);
         var pen = new Pen(brush, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
         var geometry = new StreamGeometry();
         using (var ctx = geometry.Open())
@@ -66,32 +80,36 @@ internal static class WhiteboardObjectPainter
         context.DrawGeometry(null, pen, geometry);
     }
 
-    public static void PaintPlaced(DrawingContext context, PlacedShapeKind kind, Rect rect, string? text, Bitmap? image, PlacedBadge? badge = null, bool showBadge = false)
+    // AC-916: `color` only reaches the line-drawn kinds below — StickyNote keeps its fixed fill/border/text
+    // contrast and Image has no line to colour, so both ignore it regardless of what WhiteboardObject.Color holds.
+    public static void PaintPlaced(DrawingContext context, PlacedShapeKind kind, Rect rect, string? text, Bitmap? image, string? color = null, PlacedBadge? badge = null, bool showBadge = false)
     {
-        var textBrush = PlacedBrush;
+        var brush = color is null ? PlacedBrush : new SolidColorBrush(_ResolveColor(color, PlacedColor));
+        var pen = color is null ? PlacedPen : new Pen(brush, 2);
+        var textBrush = brush;
 
         switch (kind)
         {
             case PlacedShapeKind.Rectangle:
-                context.DrawRectangle(null, PlacedPen, rect);
+                context.DrawRectangle(null, pen, rect);
                 break;
             case PlacedShapeKind.RoundedRectangle:
-                context.DrawRectangle(null, PlacedPen, rect, 8, 8);
+                context.DrawRectangle(null, pen, rect, 8, 8);
                 break;
             case PlacedShapeKind.Ellipse:
-                context.DrawEllipse(null, PlacedPen, rect);
+                context.DrawEllipse(null, pen, rect);
                 break;
             case PlacedShapeKind.Diamond:
-                context.DrawGeometry(null, PlacedPen, _Diamond(rect));
+                context.DrawGeometry(null, pen, _Diamond(rect));
                 break;
             case PlacedShapeKind.Arrow:
-                _PaintArrow(context, rect);
+                _PaintArrow(context, rect, brush, pen);
                 break;
             case PlacedShapeKind.Column:
-                _PaintColumn(context, rect);
+                _PaintColumn(context, rect, pen);
                 break;
             case PlacedShapeKind.Callout:
-                _PaintCallout(context, rect);
+                _PaintCallout(context, rect, pen);
                 break;
             case PlacedShapeKind.StickyNote:
                 context.DrawRectangle(StickyNoteBrush, StickyNotePen, rect);
@@ -118,6 +136,9 @@ internal static class WhiteboardObjectPainter
             _PaintBadge(context, rect, b);
         }
     }
+
+    private static Color _ResolveColor(string? hex, Color fallback) =>
+        hex is { } h && Color.TryParse(h, out var parsed) ? parsed : fallback;
 
     private static void _PaintText(DrawingContext context, Rect rect, string text, IBrush brush)
     {
@@ -162,12 +183,12 @@ internal static class WhiteboardObjectPainter
         context.DrawText(formatted, origin + new Point((_BadgeDiameter - formatted.Width) / 2, (_BadgeDiameter - formatted.Height) / 2));
     }
 
-    private static void _PaintArrow(DrawingContext context, Rect rect)
+    private static void _PaintArrow(DrawingContext context, Rect rect, IBrush brush, IPen pen)
     {
         var y = rect.Center.Y;
         var headSize = Math.Min(14, (rect.Height / 2) + 4);
 
-        context.DrawLine(PlacedPen, new Point(rect.Left, y), new Point(rect.Right - headSize, y));
+        context.DrawLine(pen, new Point(rect.Left, y), new Point(rect.Right - headSize, y));
 
         var head = new StreamGeometry();
         using (var ctx = head.Open())
@@ -178,25 +199,25 @@ internal static class WhiteboardObjectPainter
             ctx.EndFigure(true);
         }
 
-        context.DrawGeometry(PlacedBrush, null, head);
+        context.DrawGeometry(brush, null, head);
     }
 
     // The classic flowchart "predefined process" symbol: a rectangle with two inner verticals near its edges.
-    private static void _PaintColumn(DrawingContext context, Rect rect)
+    private static void _PaintColumn(DrawingContext context, Rect rect, IPen pen)
     {
-        context.DrawRectangle(null, PlacedPen, rect);
+        context.DrawRectangle(null, pen, rect);
         var inset = Math.Min(10, rect.Width / 4);
-        context.DrawLine(PlacedPen, new Point(rect.Left + inset, rect.Top), new Point(rect.Left + inset, rect.Bottom));
-        context.DrawLine(PlacedPen, new Point(rect.Right - inset, rect.Top), new Point(rect.Right - inset, rect.Bottom));
+        context.DrawLine(pen, new Point(rect.Left + inset, rect.Top), new Point(rect.Left + inset, rect.Bottom));
+        context.DrawLine(pen, new Point(rect.Right - inset, rect.Top), new Point(rect.Right - inset, rect.Bottom));
     }
 
     // A rounded body plus a short open notch standing in for a speech-bubble tail — cheaper than one continuous
     // arced path and reads the same at whiteboard scale.
-    private static void _PaintCallout(DrawingContext context, Rect rect)
+    private static void _PaintCallout(DrawingContext context, Rect rect, IPen pen)
     {
         var bodyHeight = rect.Height - Math.Min(14, rect.Height / 4);
         var body = new Rect(rect.X, rect.Y, rect.Width, bodyHeight);
-        context.DrawRectangle(null, PlacedPen, body, 8, 8);
+        context.DrawRectangle(null, pen, body, 8, 8);
 
         var tail = new StreamGeometry();
         using (var ctx = tail.Open())
@@ -207,7 +228,7 @@ internal static class WhiteboardObjectPainter
             ctx.EndFigure(false);
         }
 
-        context.DrawGeometry(null, PlacedPen, tail);
+        context.DrawGeometry(null, pen, tail);
     }
 
     private static StreamGeometry _Diamond(Rect rect)

@@ -16,6 +16,7 @@ public enum WhiteboardTool
     Select,
     Pencil,
     Marker,
+    Eraser,
     PlaceShape,
 }
 
@@ -70,6 +71,13 @@ public sealed class WhiteboardCanvasControl : Border
 
     private Guid? _selectedId;
     private PlacedShapeKind _pendingShapeKind = PlacedShapeKind.Rectangle;
+
+    // AC-916: the swatch the toolbar last picked — null means "the fixed default for this kind" (WhiteboardObjectPainter).
+    // Applied to whatever is drawn/placed next, and to the current selection if there is one (recolouring, AC7).
+    private string? _pendingColor;
+
+    // AC-916: ids the gum has swept over this gesture, not yet removed from Document — one journal line on release.
+    private HashSet<Guid>? _erasing;
 
     // AC-917: a clipboard local to this board, not the system one — that one is already spoken for by the
     // image-from-system-clipboard paste below. Filled by Ctrl+C/Ctrl+X, read by Ctrl+V.
@@ -157,7 +165,8 @@ public sealed class WhiteboardCanvasControl : Border
 
     // A gesture that has not ended has nothing journaled yet, so Ctrl+Z would have to reach back past it (AC-912 §7).
     private bool _GestureInProgress =>
-        _activeStroke is not null || _shapeInProgress is not null || _draggingPlaced is not null || _resizing is not null || _activeEditor is not null;
+        _activeStroke is not null || _shapeInProgress is not null || _draggingPlaced is not null || _resizing is not null ||
+        _activeEditor is not null || _erasing is not null;
 
     // Raised whenever the document changed (a stroke drawn, an object moved/resized/deleted, a paste) — the cue to save.
     public event EventHandler? Changed;
@@ -188,10 +197,29 @@ public sealed class WhiteboardCanvasControl : Border
 
     public void UseMarkerTool() => _SetTool(WhiteboardTool.Marker);
 
+    public void UseEraserTool() => _SetTool(WhiteboardTool.Eraser);
+
     public void UseShapeTool(PlacedShapeKind kind)
     {
         _pendingShapeKind = kind;
         _SetTool(WhiteboardTool.PlaceShape);
+    }
+
+    // AC-916: the swatch to draw/place with next; null is the fixed default for whatever kind is drawn/placed.
+    public string? PendingColor => _pendingColor;
+
+    // Sets what gets drawn/placed next, and — if something is already selected — recolours it as one journaled
+    // handling (AC7), the same shape _ApplyText already uses for editing a shape's text.
+    public void SetColor(string color)
+    {
+        _pendingColor = color;
+
+        if (_selectedId is { } id && Document.Find(id) is { } selected && selected.Color != color)
+        {
+            var before = selected.Color;
+            Edits.Record(_Describe(selected, "recoloured"), id, () => _ApplyColor(id, before), () => _ApplyColor(id, color));
+            _ApplyColor(id, color);
+        }
     }
 
     public Task PasteScreenshotAsync() => _PasteAsync();
@@ -301,6 +329,13 @@ public sealed class WhiteboardCanvasControl : Border
             return;
         }
 
+        // AC-924/AC-916: a right (or other non-left) click must never start a draw/erase/select gesture — the
+        // guard every tool below shares, not a second filter in any one of them.
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
         var point = e.GetPosition(_surface);
 
         if (Tool is WhiteboardTool.Pencil or WhiteboardTool.Marker)
@@ -308,7 +343,16 @@ public sealed class WhiteboardCanvasControl : Border
             _activeStroke = [new WhiteboardPoint(point.X, point.Y)];
             _activeStrokeIsMarker = Tool == WhiteboardTool.Marker;
             _freehandLayer.ActiveStroke = new FreehandLayer.DraftStroke(
-                _activeStroke, _activeStrokeIsMarker ? MarkerThickness : PencilThickness, _activeStrokeIsMarker);
+                _activeStroke, _activeStrokeIsMarker ? MarkerThickness : PencilThickness, _activeStrokeIsMarker, _pendingColor);
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            return;
+        }
+
+        if (Tool == WhiteboardTool.Eraser)
+        {
+            _erasing = [];
+            _EraseAt(point);
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -320,7 +364,7 @@ public sealed class WhiteboardCanvasControl : Border
             // something, per "place, don't draw" (#W2), rather than silently doing nothing. Lives only on
             // the surface until release — Document.Add happens there, so read_whiteboard never sees a mid-drag sliver.
             _shapeStartPoint = point;
-            var placed = new PlacedObject { ShapeKind = _pendingShapeKind, X = point.X, Y = point.Y, Width = 1, Height = 1 };
+            var placed = new PlacedObject { ShapeKind = _pendingShapeKind, X = point.X, Y = point.Y, Width = 1, Height = 1, Color = _pendingColor };
             _shapeInProgress = _CreatePlacedControl(placed);
             e.Pointer.Capture(this);
             e.Handled = true;
@@ -371,6 +415,12 @@ public sealed class WhiteboardCanvasControl : Border
         {
             stroke.Add(new WhiteboardPoint(point.X, point.Y));
             _freehandLayer.InvalidateVisual();
+            return;
+        }
+
+        if (_erasing is not null)
+        {
+            _EraseAt(point);
             return;
         }
 
@@ -430,11 +480,20 @@ public sealed class WhiteboardCanvasControl : Border
         // so that re-entrant call sees it already gone and no-ops, instead of racing the logic below.
         var stroke = _activeStroke;
         var shape = _shapeInProgress;
+        var erasing = _erasing;
         _activeStroke = null;
         _freehandLayer.ActiveStroke = null;
         _shapeInProgress = null;
         _shapeStartPoint = null;
+        _erasing = null;
+        _freehandLayer.ErasingIds = null;
         e.Pointer.Capture(null);
+
+        if (erasing is not null)
+        {
+            _FinishErase(erasing);
+            return;
+        }
 
         if (stroke is not null)
         {
@@ -448,6 +507,7 @@ public sealed class WhiteboardCanvasControl : Border
                     IsMarker = isMarker,
                     Thickness = isMarker ? MarkerThickness : PencilThickness,
                     ParentImageId = WhiteboardBinding.FindParentImage(Document, centerX, centerY)?.Id,
+                    Color = _pendingColor,
                 };
                 Document.Add(drawn);
                 _JournalAdd(drawn, isMarker ? "drew a marker stroke" : "drew a pencil stroke");
@@ -542,6 +602,21 @@ public sealed class WhiteboardCanvasControl : Border
             _placedControls.Remove(shape.Model.Id);
             _shapeInProgress = null;
             _shapeStartPoint = null;
+        }
+
+        if (_erasing is { } erasing)
+        {
+            foreach (var id in erasing)
+            {
+                if (_placedControls.TryGetValue(id, out var control))
+                {
+                    control.Opacity = 1;
+                }
+            }
+
+            _erasing = null;
+            _freehandLayer.ErasingIds = null;
+            _freehandLayer.InvalidateVisual();
         }
     }
 
@@ -737,6 +812,7 @@ public sealed class WhiteboardCanvasControl : Border
             ImageData = p.ImageData,
             IsPastedScreenshot = p.IsPastedScreenshot,
             ParentImageId = p.ParentImageId,
+            Color = p.Color,
         },
         FreehandStroke f => new FreehandStroke
         {
@@ -745,6 +821,7 @@ public sealed class WhiteboardCanvasControl : Border
             Thickness = f.Thickness,
             IsMarker = f.IsMarker,
             ParentImageId = f.ParentImageId,
+            Color = f.Color,
         },
         _ => throw new NotSupportedException($"Unknown whiteboard object kind: {source.GetType()}"),
     };
@@ -1217,6 +1294,27 @@ public sealed class WhiteboardCanvasControl : Border
         return null;
     }
 
+    private string? _ApplyColor(Guid id, string? color)
+    {
+        if (Document.Find(id) is not { } obj)
+        {
+            return "This object is no longer on the board.";
+        }
+
+        obj.Color = color;
+        if (obj is PlacedObject && _placedControls.TryGetValue(id, out var control))
+        {
+            control.Refresh();
+        }
+        else
+        {
+            _freehandLayer.InvalidateVisual();
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return null;
+    }
+
     private static Rect _BoundsOf(PlacedObject placed) => new(placed.X, placed.Y, placed.Width, placed.Height);
 
     private IReadOnlyList<Guid> _CarriedChildren(PlacedObject placed) =>
@@ -1388,6 +1486,57 @@ public sealed class WhiteboardCanvasControl : Border
         }
 
         return null;
+    }
+
+    // AC-916: whatever the gum is over right now joins `_erasing` and disappears from view — Document itself is
+    // untouched until release, so nothing here mutates the collection the canvas is enumerating.
+    private void _EraseAt(Point point)
+    {
+        if (_erasing is not { } erasing)
+        {
+            return;
+        }
+
+        foreach (var placed in Document.Objects.OfType<PlacedObject>().Reverse())
+        {
+            if (placed.ShapeKind == PlacedShapeKind.Image || erasing.Contains(placed.Id))
+            {
+                continue;
+            }
+
+            if (_BoundsOf(placed).Contains(point))
+            {
+                erasing.Add(placed.Id);
+                if (_placedControls.TryGetValue(placed.Id, out var control))
+                {
+                    control.Opacity = 0;
+                }
+
+                return;
+            }
+        }
+
+        if (_FreehandAt(point) is { } stroke && erasing.Add(stroke.Id))
+        {
+            _freehandLayer.ErasingIds = erasing;
+            _freehandLayer.InvalidateVisual();
+        }
+    }
+
+    // One journal line for the whole sweep (AC13), the same group-Removal shape a "delete image and its
+    // annotations" already uses — Ctrl+Z puts every swept object back at its own index in Document.Objects.
+    private void _FinishErase(HashSet<Guid> erased)
+    {
+        _freehandLayer.InvalidateVisual();
+
+        var objects = erased.Select(id => Document.Find(id)).OfType<WhiteboardObject>().ToList();
+        if (objects.Count == 0)
+        {
+            return;
+        }
+
+        var summary = objects.Count == 1 ? "erased an object" : $"erased {objects.Count} objects";
+        _DeleteJournaled(objects[0].Id, objects.Skip(1).ToList(), unbound: [], summaryOverride: summary);
     }
 
     private FreehandStroke? _FreehandAt(Point point)
