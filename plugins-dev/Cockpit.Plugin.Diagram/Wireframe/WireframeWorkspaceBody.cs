@@ -63,6 +63,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly ToggleButton _sourceToggle;
     private readonly TextBox _sourceBox;
     private readonly ActivityStrip _activityStrip;
+    private readonly AskStrip _askStrip;
     private readonly PresenceIndicators _presence;
     private readonly Button _saveButton;
     private readonly TextBlock _saveStatus;
@@ -75,6 +76,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly Button _addScreenButton;
     private readonly Button _overviewButton;
     private readonly Button _viewportButton;
+    private readonly Button _askButton;
     private readonly TextBlock _handHint;
     private readonly StackPanel _propertiesContent;
     private double _zoom = 1.0;
@@ -138,22 +140,24 @@ internal sealed class WireframeWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _textButton, _deleteButton,
-            _upButton, _downButton, _moveButton, _addScreenButton, _overviewButton, _viewportButton, _handHint) = _BuildToolbar();
+            _upButton, _downButton, _moveButton, _addScreenButton, _overviewButton, _viewportButton, _askButton, _handHint) = _BuildToolbar();
         var journal = new WireframeActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, journal, onJumpToObject: null);
+        _askStrip = new AskStrip(_JumpToComponent);
         _presence = new PresenceIndicators(_surfaceId, journal, journal);
         var (propertiesPanel, propertiesContent) = _BuildPropertiesPanel();
         _propertiesContent = propertiesContent;
 
         Content = new DockPanel
         {
-            Children = { toolbar, _couplingBar, _presence, _sourceToggle, _sourceBox, _activityStrip, propertiesPanel, _viewport },
+            Children = { toolbar, _couplingBar, _presence, _sourceToggle, _sourceBox, _askStrip, _activityStrip, propertiesPanel, _viewport },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
         DockPanel.SetDock(_presence, Dock.Top);
         DockPanel.SetDock(_sourceToggle, Dock.Bottom);
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
+        DockPanel.SetDock(_askStrip, Dock.Bottom);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
         DockPanel.SetDock(propertiesPanel, Dock.Right);
 
@@ -1214,8 +1218,63 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _viewportButton.IsEnabled = editable;
         _viewportButton.Content = $"Viewport: {_canvasViewport}";
 
+        // AC-910: asking works on the selection or on the wireframe as a whole (criterion 7), so the only real gate
+        // is a live coupled session — same "explain at the point of use" rule as DiagramWorkspaceBody's ask button.
+        _askButton.IsEnabled = _sessionBinding.IsLive;
+        ToolTip.SetTip(
+            _askButton,
+            _sessionBinding.IsLive ? "Ask the agent about the selected component, or the whole wireframe."
+            : "Couple a conversation first (\"Couple…\" above) to be able to ask the agent.");
+
         _handHint.Text = _HintFor(target);
         _RefreshPropertiesPanel(target, placement?.Parent.Kind);
+    }
+
+    // AC-910: asks the coupled session about the selection (or, with nothing selected, the wireframe as a whole) —
+    // this surface's descriptor is the component's own stable #id plus which screen it is on, since AC-901 made
+    // "the button" ambiguous without one.
+    private void _AddAsk(Control anchor)
+    {
+        if (!_sessionBinding.IsLive)
+        {
+            return;
+        }
+
+        var target = _Selected;
+        var screen = target is not null ? WireframeHandEdit.ScreenOf(_screens, target) : null;
+        var context = new AskContext(
+            "wireframe",
+            _surfaceId,
+            _documentTitle,
+            _selectedId is { } id ? $"#{id}" : null,
+            screen is not null ? $"on screen \"{screen.Text}\"" : null);
+
+        AskFlyout.Show(anchor, "What should the agent do here?", question =>
+        {
+            _askStrip.Add(question, _selectedId);
+            _ = _sessionBinding.SendAsync(AskMessage.Compose(context, question));
+        });
+    }
+
+    // AC-910: an ask entry's row jumps to the screen a component lives on and to the component itself. Looked up
+    // twice — _ZoomInto redraws from source, which hands back a fresh tree (ids survive that, node instances don't).
+    private void _JumpToComponent(string componentId)
+    {
+        if (WireframeHandEdit.Find(_screens, componentId) is not { } node)
+        {
+            _host.ShowToast("That component is no longer on this wireframe.", PluginToastSeverity.Information);
+            return;
+        }
+
+        if (WireframeHandEdit.ScreenOf(_screens, node) is { } screen)
+        {
+            _ZoomInto(screen);
+        }
+
+        if (WireframeHandEdit.Find(_screens, componentId) is { } stillThere)
+        {
+            _Select(stillThere);
+        }
     }
 
     // English, as every user-facing string in the cockpit is (Raymond 2026-07-05). The four here were Dutch and are
@@ -1531,7 +1590,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     }
 
     private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus, Button Add, Button Text,
-        Button Delete, Button Up, Button Down, Button Move, Button AddScreen, Button Overview, Button Viewport, TextBlock Hint) _BuildToolbar()
+        Button Delete, Button Up, Button Down, Button Move, Button AddScreen, Button Overview, Button Viewport, Button Ask, TextBlock Hint) _BuildToolbar()
     {
         // AC-837: zoom in/out + Fit, with the current level always on screen.
         var zoomOut = new Button { Content = "−", Classes = { "Compact" }, MinWidth = 28 };
@@ -1592,6 +1651,10 @@ internal sealed class WireframeWorkspaceBody : UserControl
         var viewport = new Button { Classes = { "Compact" } };
         ToolTip.SetTip(viewport, "The sheet size everything is measured against — desktop, tablet or mobile.");
         viewport.Click += (_, _) => _ShowViewportMenu(viewport);
+        // AC-910: the operator's free-text ask about the selection (or, with nothing selected, the wireframe as a
+        // whole), sent to the coupled session the moment it is submitted — see _AddAsk.
+        var ask = new Button { Content = "Ask the agent…", Classes = { "Compact" } };
+        ask.Click += (_, _) => _AddAsk(ask);
         var hint = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -1604,14 +1667,14 @@ internal sealed class WireframeWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { overview, add, text, delete, up, down, move, addScreen, viewport, save, saveStatus, hint },
+            Children = { overview, add, text, delete, up, down, move, addScreen, viewport, ask, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { handEditControls, zoomControls } };
         DockPanel.SetDock(handEditControls, Dock.Left);
         DockPanel.SetDock(zoomControls, Dock.Right);
         return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus,
-            add, text, delete, up, down, move, addScreen, overview, viewport, hint);
+            add, text, delete, up, down, move, addScreen, overview, viewport, ask, hint);
     }
 
     // AC-915: three names, no free-form size — the same MenuFlyout shape as «Move to…». Landing on the viewport

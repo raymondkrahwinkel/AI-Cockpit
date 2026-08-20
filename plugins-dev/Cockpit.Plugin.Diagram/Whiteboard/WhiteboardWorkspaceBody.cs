@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -34,9 +33,9 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private readonly Border _saveBar;
     private readonly Button _saveButton;
     private readonly TextBlock _saveStatus;
-    private readonly Button _pinButton;
+    private readonly Button _askButton;
     private readonly ActivityStrip _activityStrip;
-    private readonly PinStrip _pinStrip;
+    private readonly AskStrip _askStrip;
     private readonly PresenceIndicators _presence;
     private readonly Border _couplingBar;
     private readonly TextBlock _couplingLabel;
@@ -78,7 +77,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         // "undo is broken here", which is the very complaint this ticket came from.
         _control.Canvas.UndoRefused += reason => _host.ShowToast(reason, PluginToastSeverity.Warning);
 
-        (_saveBar, _saveButton, _saveStatus, _pinButton) = _BuildSaveBar();
+        (_saveBar, _saveButton, _saveStatus, _askButton) = _BuildSaveBar();
         (_couplingBar, _couplingLabel, _readChip, _editChip, _pip, _coupleButton, _disconnectButton, _inviteButton) = _BuildCouplingBar();
         (var convertBar, _convertButton, _convertStatus) = _BuildConvertBar();
         var whiteboardJournal = new WhiteboardActivityJournal(_registry, _control.Canvas.Edits);
@@ -89,7 +88,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
                 _control.Canvas.SelectObject(id);
             }
         });
-        _pinStrip = new PinStrip(host, _surfaceId, whiteboard: true, key =>
+        _askStrip = new AskStrip(key =>
         {
             if (Guid.TryParse(key, out var id))
             {
@@ -97,23 +96,23 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             }
         });
         _presence = new PresenceIndicators(_surfaceId, whiteboardJournal, whiteboardJournal);
-        _control.Canvas.SelectionChanged += (_, _) => _RefreshPinButton();
+        _control.Canvas.SelectionChanged += (_, _) => _RefreshAskButton();
 
-        Content = new DockPanel { Children = { _saveBar, _couplingBar, _presence, _pinStrip, _activityStrip, convertBar, _control } };
+        Content = new DockPanel { Children = { _saveBar, _couplingBar, _presence, _askStrip, _activityStrip, convertBar, _control } };
         DockPanel.SetDock(_saveBar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
         DockPanel.SetDock(_presence, Dock.Top);
-        DockPanel.SetDock(_pinStrip, Dock.Bottom);
+        DockPanel.SetDock(_askStrip, Dock.Bottom);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
         DockPanel.SetDock(convertBar, Dock.Bottom);
         _RefreshSaveBar();
 
-        // Bound before the first _RefreshPinButton (AC-849): that reads _sessionBinding.IsLive for the pin button.
-        // The same callback that refreshes the coupling bar on a change refreshes that button too.
-        _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshPinButton(); });
+        // Bound before the first _RefreshAskButton: that reads _sessionBinding.IsLive for the ask button. The same
+        // callback that refreshes the coupling bar on a change refreshes that button too.
+        _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshAskButton(); });
         _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
-        _RefreshPinButton();
+        _RefreshAskButton();
 
         if (_registry is not null)
         {
@@ -176,7 +175,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _RefreshCouplingBar();
-        _RefreshPinButton();
+        _RefreshAskButton();
     }
 
     // AC-842's invite: a Grant *request*, not a silent Grant — the same Approve/Deny gate read_whiteboard uses,
@@ -317,9 +316,9 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     }
 
     // W-2/AC-843: the statusregel — same shape as DiagramWorkspaceBody's save bar (AC-839), one Opslaan button plus
-    // where-it-landed text. AC-849's Prikken sits beside it — the operator's question about whatever is selected,
-    // sent to the coupled session as a "📍 pin N" reference, see _AddPin.
-    private (Border Bar, Button Save, TextBlock Status, Button Pin) _BuildSaveBar()
+    // where-it-landed text. AC-910's "Ask the agent…" sits beside it — the operator's free-text ask about whatever
+    // is selected, or the board as a whole, see _AddAsk.
+    private (Border Bar, Button Save, TextBlock Status, Button Ask) _BuildSaveBar()
     {
         var save = new Button { Content = "Save", Classes = { "Compact" } };
         save.Click += (_, _) => _ = _SaveAsync();
@@ -331,74 +330,58 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
-        var pin = new Button { Content = "Pin", Classes = { "Compact" } };
-        pin.Click += (_, _) => _AddPin(pin);
+        var ask = new Button { Content = "Ask the agent…", Classes = { "Compact" } };
+        ask.Click += (_, _) => _AddAsk(ask);
 
         var bar = new Border
         {
             Padding = new Thickness(8, 4),
-            Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { save, status, pin } },
+            Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { save, status, ask } },
         };
-        return (bar, save, status, pin);
+        return (bar, save, status, ask);
     }
 
-    // AC-849: prikken needs both a selected object and a live session to send the reference to — same "explain at
-    // the point of use" rule as DiagramWorkspaceBody._RefreshHandEditBar's pin button.
-    private void _RefreshPinButton()
+    // AC-910: asking works on the selection or on the board as a whole (criterion 7), so the only real gate is a
+    // live coupled session — same "explain at the point of use" rule as DiagramWorkspaceBody's ask button.
+    private void _RefreshAskButton()
     {
-        var selected = _control.Canvas.SelectedId is not null;
-        _pinButton.IsEnabled = _registry is not null && _sessionBinding.IsLive && selected;
+        _askButton.IsEnabled = _sessionBinding.IsLive;
         ToolTip.SetTip(
-            _pinButton,
-            !_sessionBinding.IsLive ? "Couple a conversation first to be able to pin."
-            : !selected ? "Select an object first to pin it."
-            : "Pin a question on this object.");
+            _askButton,
+            _sessionBinding.IsLive ? "Ask the agent about the selected object, or the whole board."
+            : "Couple a conversation first (\"Couple…\" above) to be able to ask the agent.");
     }
 
-    // AC-849: plants a pin on the selected object and sends its "📍 pin N" reference to the coupled session right
-    // away — same fire-and-forget SendAsync as _Ask's convert prompt, since a pin's whole point is landing as a
-    // chat message, not living only on this board.
-    private void _AddPin(Control anchor)
+    // AC-910: asks the coupled session about whatever is selected, or the board as a whole with nothing selected —
+    // the shared flyout/message/strip, this surface's own descriptor (kind + text + board-pixel rect, never a Guid:
+    // read_whiteboard gives back a PNG, not shapes/strokes as data, so an id here would be noise to the agent).
+    private void _AddAsk(Control anchor)
     {
-        if (_registry is null || !_sessionBinding.IsLive || _control.Canvas.SelectedId is not { } id)
+        if (!_sessionBinding.IsLive)
         {
             return;
         }
 
-        var label = _control.Canvas.Document.Find(id) is PlacedObject placed ? placed.Text ?? placed.ShapeKind.ToString() : null;
-        var question = new TextBox { Width = 260, PlaceholderText = "What are you unsure about?" };
-        var confirm = new Button { Content = "Pin", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
-        var flyout = new Flyout
+        var objectKey = _control.Canvas.SelectedId?.ToString();
+        var context = new AskContext("whiteboard", _surfaceId, _documentTitle, ObjectRef: null, _SelectedObjectLabel());
+        AskFlyout.Show(anchor, "What should the agent do here?", question =>
         {
-            Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { question, confirm } },
-        };
+            _askStrip.Add(question, objectKey);
+            _ = _sessionBinding.SendAsync(AskMessage.Compose(context, question));
+        });
+    }
 
-        void Plant()
+    private string? _SelectedObjectLabel()
+    {
+        if (_control.Canvas.SelectedId is not { } id || _control.Canvas.Document.Find(id) is not { } selected)
         {
-            var text = question.Text?.Trim();
-            if (string.IsNullOrEmpty(text))
-            {
-                return;
-            }
-
-            flyout.Hide();
-            _registry.AddPin(_surfaceId, id.ToString(), text);
-            var index = _registry.Pins(_surfaceId).Count;
-            _ = _sessionBinding.SendAsync(PinMessage.Compose(_documentTitle, index, label, text));
+            return null;
         }
 
-        confirm.Click += (_, _) => Plant();
-        question.KeyDown += (_, key) =>
-        {
-            if (key.Key == Key.Enter)
-            {
-                key.Handled = true;
-                Plant();
-            }
-        };
-
-        flyout.ShowAt(anchor);
-        question.Focus();
+        var bounds = WhiteboardGeometry.BoundsOf(selected);
+        var text = selected is PlacedObject { Text: { } placedText } ? $" reading \"{placedText}\"" : "";
+        var kind = selected is PlacedObject placed ? placed.ShapeKind.ToString() : "freehand stroke";
+        return $"{kind}{text} around ({bounds.X:0}, {bounds.Y:0}), {bounds.Width:0}×{bounds.Height:0}";
     }
 
     // One save path (AC-839's precedent): a hand-drawn stroke, a placed shape, a pasted image and an agent
