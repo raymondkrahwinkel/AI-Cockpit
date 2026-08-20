@@ -97,6 +97,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         });
         _presence = new PresenceIndicators(_surfaceId, whiteboardJournal, whiteboardJournal);
         _control.Canvas.SelectionChanged += (_, _) => _RefreshAskButton();
+        _control.Canvas.ExtraContextMenuItems = _BuildAskContextMenuItems;
 
         Content = new DockPanel { Children = { _saveBar, _couplingBar, _presence, _askStrip, _activityStrip, convertBar, _control } };
         DockPanel.SetDock(_saveBar, Dock.Top);
@@ -369,6 +370,21 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             _askStrip.Add(question, objectKey);
             _ = _sessionBinding.SendAsync(AskMessage.Compose(context, question));
         });
+    }
+
+    // AC-924: the "Ask the agent…" entry for the board's own object menu — built fresh every time that menu opens
+    // (WhiteboardCanvasControl's ExtraContextMenuItems hook), and, per AC-703, posted onto the dispatcher with the
+    // save bar's own ask button as anchor so it never races the menu's own close.
+    private IEnumerable<Control> _BuildAskContextMenuItems()
+    {
+        var ask = new MenuItem { Header = "Ask the agent…", IsEnabled = _sessionBinding.IsLive };
+        if (!_sessionBinding.IsLive)
+        {
+            ToolTip.SetTip(ask, "Couple a conversation first (\"Couple…\" above) to be able to ask the agent.");
+        }
+
+        ask.Click += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => _AddAsk(_askButton));
+        return [ask];
     }
 
     private string? _SelectedObjectLabel()

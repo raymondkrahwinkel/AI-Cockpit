@@ -99,6 +99,7 @@ public sealed class WhiteboardCanvasControl : Border
         Background = Brushes.White;
         ClipToBounds = true;
         Focusable = true;
+        ContextRequested += _OnContextRequested;
 
         // AC-913: fixed workspace size, not the window's — see WhiteboardGeometry for why. `_surface` is pinned to
         // its own top-left corner so the RenderTransform below is the only thing that moves it.
@@ -179,6 +180,10 @@ public sealed class WhiteboardCanvasControl : Border
 
     // Raised after the tool switches, including the automatic switch back to Select once a shape is placed.
     public event EventHandler? ToolChanged;
+
+    // AC-924: the workspace body's own "Ask the agent…" entry (it owns the session binding, this control doesn't) —
+    // called fresh every time the menu opens, same reason the enable-state below is recomputed rather than cached.
+    public Func<IEnumerable<Control>>? ExtraContextMenuItems { get; set; }
 
     // AC-848: a click on an activity-strip line jumps to the object it named — the same select-and-show-handles as
     // a click on the canvas itself, just triggered from off-canvas. A no-op when the object is gone (erased since).
@@ -687,6 +692,81 @@ public sealed class WhiteboardCanvasControl : Border
             _RequestRemove(id);
             e.Handled = true;
         }
+    }
+
+    // AC-924: the board's own object menu — Cut/Copy/Duplicate/Delete, the four handlings AC-917 put on the
+    // keyboard only, plus whatever the workspace body appends ("Ask the agent…"). No selection concept while
+    // Pencil/Marker/Eraser/PlaceShape are active, so this opens nothing then.
+    private void _OnContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        if (Tool != WhiteboardTool.Select)
+        {
+            return;
+        }
+
+        // A position is a real right-click: select whatever is under it (_ControlOf first, a stroke second),
+        // replacing the current selection. No position is the keyboard route — fall back to the current
+        // selection, and open nothing if that is nothing either.
+        if (e.TryGetPosition(_surface, out var point))
+        {
+            if (_ControlOf(e.Source as Visual) is { } control)
+            {
+                _Select(control.Model.Id);
+            }
+            else if (_FreehandAt(point) is { } stroke)
+            {
+                _Select(stroke.Id);
+            }
+            else
+            {
+                return;
+            }
+        }
+        else if (_selectedId is null)
+        {
+            return;
+        }
+
+        ContextMenu = _BuildObjectContextMenu();
+        ContextMenu.Open(this);
+        e.Handled = true;
+    }
+
+    private ContextMenu _BuildObjectContextMenu()
+    {
+        var hasSelection = _selectedId is not null;
+        var reason = hasSelection ? null : "Select an object first.";
+
+        var cut = new MenuItem { Header = "Cut", InputGesture = new KeyGesture(Key.X, KeyModifiers.Control), IsEnabled = hasSelection };
+        cut.Click += (_, _) => _CutSelection();
+        ToolTip.SetTip(cut, reason);
+
+        var copy = new MenuItem { Header = "Copy", InputGesture = new KeyGesture(Key.C, KeyModifiers.Control), IsEnabled = hasSelection };
+        copy.Click += (_, _) => _CopySelection();
+        ToolTip.SetTip(copy, reason);
+
+        var duplicate = new MenuItem { Header = "Duplicate", InputGesture = new KeyGesture(Key.D, KeyModifiers.Control), IsEnabled = hasSelection };
+        duplicate.Click += (_, _) => _DuplicateSelection();
+        ToolTip.SetTip(duplicate, reason);
+
+        var delete = new MenuItem { Header = "Delete", InputGesture = new KeyGesture(Key.Delete), IsEnabled = hasSelection };
+        delete.Click += (_, _) =>
+        {
+            if (_selectedId is { } id)
+            {
+                _RequestRemove(id);
+            }
+        };
+        ToolTip.SetTip(delete, reason);
+
+        var items = new List<Control> { cut, copy, duplicate, delete };
+        if (ExtraContextMenuItems?.Invoke() is { } extra)
+        {
+            items.Add(new Separator());
+            items.AddRange(extra);
+        }
+
+        return new ContextMenu { ItemsSource = items };
     }
 
     // AC-917 AC1/AC2: snapshots the selection now — a clone with its own id, so later edits to the original never

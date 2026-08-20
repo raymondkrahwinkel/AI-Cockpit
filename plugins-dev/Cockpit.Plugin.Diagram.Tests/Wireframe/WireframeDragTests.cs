@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.Core.Abstractions.Wireframe;
@@ -151,6 +152,45 @@ public class WireframeDragTests
         surface.Close();
     }
 
+    // AC-924 criteria 1/3/4/14: a right-click opens the component's own menu on whatever it landed on, and by
+    // itself applies nothing and arms no drag — Registry.Applied stays empty until a menu item is actually clicked.
+    [Fact]
+    public void RightClick_OpensTheMenuOnTheClickedComponent_AndAppliesNothingByItself()
+    {
+        var surface = _Open();
+
+        var at = surface.PointOn("general");
+        surface.Window.MouseDown(at, MouseButton.Right);
+        surface.Window.MouseUp(at, MouseButton.Right);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Empty(surface.Registry.Applied);
+
+        var delete = surface.MenuItem("Delete");
+        delete.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+        Assert.Equal(WireframeComponentEdit.Remove("general"), Assert.Single(surface.Registry.Applied));
+        surface.Close();
+    }
+
+    // AC-924 criterion 14: the keyboard route (Menu key / Shift+F10) opens the same menu on whatever is already
+    // selected — a parameterless ContextRequestedEventArgs carries no position, same convention the whiteboard's
+    // own keyboard-route test uses.
+    [Fact]
+    public void ContextRequested_WithNoPosition_OpensOnTheCurrentSelection()
+    {
+        var surface = _Open();
+        surface.Select("account");
+
+        surface.Viewport.RaiseEvent(new ContextRequestedEventArgs());
+
+        var delete = surface.MenuItem("Delete");
+        delete.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+        Assert.Equal(WireframeComponentEdit.Remove("account"), Assert.Single(surface.Registry.Applied));
+        surface.Close();
+    }
+
     private static SurfaceUnderTest _Open()
     {
         var registry = new RecordingRegistry(Source);
@@ -167,6 +207,13 @@ public class WireframeDragTests
 
     private sealed record SurfaceUnderTest(Window Window, Control Body, RecordingRegistry Registry, ActivityStripTests.FakeHost Host)
     {
+        // AC-924: the one Focusable Border in the tree is the viewport _BuildViewport built — a right-click and
+        // the keyboard route (Menu key / Shift+F10) both fire ContextRequested against it.
+        public Border Viewport => Body.GetVisualDescendants().OfType<Border>().First(b => b.Focusable);
+
+        public MenuItem MenuItem(string header) =>
+            Viewport.ContextMenu!.Items.OfType<MenuItem>().First(item => (string)item.Header! == header);
+
         public void Select(string id)
         {
             var at = PointOn(id);

@@ -39,6 +39,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   a timestamp and a "Handled" button; clicking one jumps back to what it was about. This replaces the diagram's and
   whiteboard's separate "Pin" button — the wireframe never had an equivalent before. Disabled with a tooltip when no
   session is coupled yet.
+- added: diagram, whiteboard and wireframe objects now have a right-click menu with the handlings that object
+  supports — rename, delete, shape/attributes/cardinality, connect, whiteboard cut/copy/duplicate, wireframe
+  move/reorder — plus "Ask the agent…", instead of only the toolbar and (on the whiteboard) the keyboard. The
+  Menu key and Shift+F10 open the same menu on whatever is currently selected; right-clicking empty space still
+  does nothing.
 - added: the whiteboard now has a colour swatch and an eraser. Picking a swatch recolours the current selection, or
   sets what the pencil, marker and next placed shape draw with; a sticky note and a pasted image are unaffected.
   The eraser sweeps away whole strokes and placed shapes while a button is held — never part of a stroke and never
