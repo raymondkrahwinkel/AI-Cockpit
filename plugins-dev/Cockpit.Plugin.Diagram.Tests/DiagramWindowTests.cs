@@ -23,14 +23,21 @@ public class DiagramWindowTests
     }
 
     [Fact]
-    public void New_OpensEmpty_NotWithTheAC809Sample()
+    public void New_WithNoSource_OpensEmpty()
     {
-        // AC-840: a snelstart diagram opens with the snelstart name and no content — the AC-809 sample is now
-        // only reached through the panel's explicit "Voorbeeld invoegen" action.
+        // AC-911: New's source parameter defaults to Empty, so a call-site that still passes only a title (this
+        // one, plus WhiteboardWorkspaceBody's whiteboard→diagram) keeps opening blank.
         var document = DiagramDocument.New("Mijn diagram");
 
         Assert.Equal("Mijn diagram", document.Title);
         Assert.Equal(DiagramDocument.Empty, document.MermaidText);
-        Assert.NotEqual(DiagramDocument.Sample, document.MermaidText);
+    }
+
+    [Fact]
+    public void New_WithASource_OpensWithThatSource()
+    {
+        var document = DiagramDocument.New("Mijn diagram", "erDiagram\n    A ||--o{ B : has");
+
+        Assert.Equal("erDiagram\n    A ||--o{ B : has", document.MermaidText);
     }
 }

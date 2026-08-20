@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 
@@ -65,12 +66,12 @@ internal sealed class DiagramListDialogBody : UserControl
     // what a diagram window needs, so it opens one instead of a tab.
     private async Task _QuickStartAsync()
     {
-        if (await DiagramQuickStartDialog.ShowAsync(_host, "New diagram") is not { } quickStart)
+        if (await SurfaceQuickStartDialog.ShowAsync(_host, "New diagram", "diagram.quickstart", "New diagram", linkSessionByDefault: false, DiagramTemplates.All, DiagramTemplates.Preview) is not { } quickStart)
         {
             return;
         }
 
-        await DiagramWindow.OpenAsync(_host, DiagramDocument.New(quickStart.Name), quickStart.SessionPaneId);
+        await DiagramWindow.OpenAsync(_host, DiagramDocument.New(quickStart.Name, quickStart.TemplateSource), quickStart.SessionPaneId);
     }
 
     private void _Render(IReadOnlyList<DiagramEntry> entries, int memoryRowCount)

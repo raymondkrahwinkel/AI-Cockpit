@@ -8,5 +8,7 @@ internal sealed record WireframeDocument(string Id, string Title, string Text, s
     // A single, childless screen (AC-871's minimal valid source): renders as a blank sketch, not an error.
     public const string Empty = "screen \"New screen\"";
 
-    public static WireframeDocument New(string title) => new(Guid.NewGuid().ToString("n"), title, Empty);
+    // AC-911: a quick-started wireframe opens with whatever template it was given — Empty by default, so existing
+    // call-sites and WireframeWindowTests keep working unchanged.
+    public static WireframeDocument New(string title, string source = Empty) => new(Guid.NewGuid().ToString("n"), title, source);
 }
