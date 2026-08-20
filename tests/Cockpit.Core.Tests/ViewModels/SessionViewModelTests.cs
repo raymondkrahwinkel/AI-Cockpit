@@ -1348,6 +1348,10 @@ public class SessionViewModelTests
 
         var row = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.TurnCompleted);
         Assert.Equal("Turn failed (error_during_execution): No conversation found.", row.Text);
+        // AC-939: this reason does not match any classifier signal, so the subtype stays in the title and the
+        // row renders informational rather than a guessed severity — same as an unclassified SessionError.
+        Assert.Equal(SessionErrorKind.Unknown, row.ErrorKind);
+        Assert.True(row.IsInformationalError);
     }
 
     [Fact]
@@ -1359,6 +1363,32 @@ public class SessionViewModelTests
 
         var row = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.TurnCompleted);
         Assert.Equal("Turn failed (error)", row.Text);
+        // AC-939: no reason to classify at all — stays Unknown/informational, never a guessed severity.
+        Assert.Equal(SessionErrorKind.Unknown, row.ErrorKind);
+        Assert.True(row.IsInformationalError);
+    }
+
+    [Fact]
+    public void Apply_TurnCompleted_Error_WithARecognisedProviderOutage_DropsTheContradictorySubtypeAndRendersTemporary()
+    {
+        // AC-939: Claude reports an upstream 529 overload as `subtype: "success"` with `is_error: true` — the turn
+        // ran to completion, the content is the error. The old title ("Turn failed (success)") was self-contradictory
+        // and gave the operator no reason at all.
+        var vm = NewVm();
+
+        vm.Apply(new TurnCompleted
+        {
+            SessionId = "S1",
+            Subtype = "success",
+            Result = null,
+            IsError = true,
+            Errors = ["API Error: 529 Overloaded"],
+        });
+
+        var row = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.TurnCompleted);
+        Assert.Equal("Turn failed: API Error: 529 Overloaded", row.Text);
+        Assert.Equal(SessionErrorKind.ServiceUnavailable, row.ErrorKind);
+        Assert.True(row.IsTemporaryError);
     }
 
     [Fact]

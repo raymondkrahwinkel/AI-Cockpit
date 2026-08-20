@@ -48,6 +48,12 @@ public static class SessionErrorClassifier
         "timeout",
         "connection refused",
         "overloaded",
+        // AC-939: Claude's own upstream-outage wording ("API Error: 529 {"type":"error","error":{"type":"overloaded_error",…"),
+        // plus the generic gateway/server-error codes other providers report the same way.
+        "529",
+        "overloaded_error",
+        "503",
+        "internal server error",
         "service unavailable",
         "bad gateway",
     ];

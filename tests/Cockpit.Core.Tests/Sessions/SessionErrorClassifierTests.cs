@@ -17,6 +17,10 @@ public class SessionErrorClassifierTests
     [InlineData("The request timed out after 30s", SessionErrorKind.ServiceUnavailable)]
     [InlineData("502 Bad Gateway", SessionErrorKind.ServiceUnavailable)]
     [InlineData("connection refused", SessionErrorKind.ServiceUnavailable)]
+    // AC-939: Claude's own upstream-outage wording for a turn that "succeeded" with the error as its content.
+    [InlineData("API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\"}}", SessionErrorKind.ServiceUnavailable)]
+    [InlineData("503 Service Temporarily Unavailable", SessionErrorKind.ServiceUnavailable)]
+    [InlineData("500 Internal Server Error", SessionErrorKind.ServiceUnavailable)]
     public void RecognisedWording_ClassifiesAccordingly(string message, SessionErrorKind expected)
     {
         Assert.Equal(expected, SessionErrorClassifier.Classify(message));

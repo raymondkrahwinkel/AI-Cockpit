@@ -37,6 +37,34 @@ public class ClaudeStreamJsonTests
         Assert.Null(completed.Errors);
     }
 
+    // AC-939: Claude reports an upstream API failure (rate limit, 529 overload, …) as a *successful* result whose
+    // content is the error — `subtype: "success"`, `is_error: true`, and the failure text in `result`, never in
+    // `errors[]`. Without this fallback the host had no reason to show at all for exactly this failure mode.
+    [Fact]
+    public void ApiErrorResult_WithNoErrorsArray_FallsBackToTheResultText()
+    {
+        const string line = """
+        {"type":"result","subtype":"success","is_error":true,"result":"API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}","session_id":"abc"}
+        """;
+
+        var completed = Assert.IsType<PluginTurnCompleted>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.True(completed.IsError);
+        Assert.Equal("success", completed.Subtype);
+        Assert.Contains("529", Assert.Single(completed.Errors!));
+    }
+
+    [Fact]
+    public void ErrorResult_WithNoErrorsArrayAndNoResult_StaysNull()
+    {
+        // is_error with neither errors[] nor a string result: nothing to fall back to.
+        const string line = """{"type":"result","subtype":"error_during_execution","is_error":true,"session_id":"abc"}""";
+
+        var completed = Assert.IsType<PluginTurnCompleted>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Null(completed.Errors);
+    }
+
     [Fact]
     public void ErrorsArray_WithNonStringEntries_SkipsThemRatherThanThrowing()
     {
