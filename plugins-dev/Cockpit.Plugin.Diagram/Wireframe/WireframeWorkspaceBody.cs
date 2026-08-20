@@ -409,7 +409,68 @@ internal sealed class WireframeWorkspaceBody : UserControl
             _EndDrag();
         };
         viewport.DoubleTapped += (_, e) => _OnDoubleTapped(_NodeAt(e.GetPosition(_surface)));
+
+        // AC-924: the component's own menu, built when it opens. A position is a real right-click and selects
+        // whatever is under it; no position is the keyboard route — fall back to the current selection, and
+        // open nothing if that is nothing either.
+        viewport.ContextRequested += (_, args) =>
+        {
+            var hit = _Selected;
+            if (args.TryGetPosition(_surface, out var point))
+            {
+                hit = _NodeAt(point);
+            }
+
+            if (hit is null)
+            {
+                return;
+            }
+
+            if (!ReferenceEquals(hit, _Selected))
+            {
+                _Select(hit);
+            }
+
+            viewport.ContextMenu = _BuildObjectContextMenu();
+            viewport.ContextMenu.Open(viewport);
+            args.Handled = true;
+        };
         return viewport;
+    }
+
+    // AC-924: mirrors the toolbar exactly — same method, same IsEnabled. Add component… and Move to… open a popup
+    // (AC-703): posted onto the dispatcher, anchored on the toolbar button, so neither ever opens from inside
+    // this menu's own Click routing.
+    private ContextMenu _BuildObjectContextMenu()
+    {
+        return new ContextMenu
+        {
+            ItemsSource = new Control[]
+            {
+                _MenuItemFor("Text…", _textButton, (_, _) => _StartTextEdit(_Selected)),
+                _MenuItemFor("Add component…", _addButton, (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => _AddComponent(_addButton))),
+                _MenuItemFor("Move up", _upButton, (_, _) => _Reorder(-1)),
+                _MenuItemFor("Move down", _downButton, (_, _) => _Reorder(1)),
+                _MenuItemFor("Move to…", _moveButton, (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => _MoveInto(_moveButton))),
+                _MenuItemFor("Delete", _deleteButton, (_, _) => _DeleteSelected()),
+                new Separator(),
+                _MenuItemFor("Ask the agent…", _askButton, (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => _AddAsk(_askButton))),
+            },
+        };
+    }
+
+    // AC-924: one item, reading a toolbar button's own IsEnabled and tooltip — the menu never carries a second
+    // enable-rule or a second wording of why something is off.
+    private static MenuItem _MenuItemFor(string header, Button sameAs, EventHandler<RoutedEventArgs> onClick)
+    {
+        var item = new MenuItem { Header = header, IsEnabled = sameAs.IsEnabled };
+        if (ToolTip.GetTip(sameAs) is { } tip)
+        {
+            ToolTip.SetTip(item, tip);
+        }
+
+        item.Click += onClick;
+        return item;
     }
 
     // AC-901: in the overview a double click is how you step into a screen; inside one it stays what it was — the
@@ -443,6 +504,10 @@ internal sealed class WireframeWorkspaceBody : UserControl
         {
             return;
         }
+
+        // AC-924: focus lands here on every click, not only once a drag actually starts (_StartDrag's own Focus
+        // below) — the keyboard route to the object menu (Menu key / Shift+F10) needs the viewport focused first.
+        _viewport.Focus();
 
         var controls = _ControlMap();
         _pressedOn = _NodeAt(controls, e.GetPosition(_surface));

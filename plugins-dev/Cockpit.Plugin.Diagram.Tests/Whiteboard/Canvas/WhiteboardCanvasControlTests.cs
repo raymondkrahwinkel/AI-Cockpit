@@ -717,6 +717,109 @@ public class WhiteboardCanvasControlTests
         window.Close();
     }
 
+    // AC-924 criterion 4/14: the pencil tool has no selection concept, so a right-click there opens no menu — and,
+    // per the shared guard, never starts a stroke either.
+    [Fact]
+    public void PencilTool_RightClick_OpensNoMenu_AndAddsNothing()
+    {
+        var document = new WhiteboardDocument();
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UsePencilTool();
+        window.MouseDown(new Point(10, 10), MouseButton.Right);
+        window.MouseUp(new Point(10, 10), MouseButton.Right);
+
+        Assert.Empty(document.Objects);
+        Assert.Null(canvas.ContextMenu);
+
+        window.Close();
+    }
+
+    // AC-924 criteria 1/3/14: a right-click with Select active opens the menu on whatever it landed on, selecting it
+    // exactly as a left-click would (replacing whatever was selected before) — and it never arms a drag: the object
+    // stays exactly where it was.
+    [Fact]
+    public void SelectTool_RightClick_OpensTheMenu_SelectsTheHitObject_AndArmsNoDrag()
+    {
+        var document = new WhiteboardDocument();
+        var first = new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 10, Y = 10, Width = 30, Height = 30 };
+        var second = new PlacedObject { ShapeKind = PlacedShapeKind.Ellipse, X = 100, Y = 100, Width = 30, Height = 30 };
+        document.Add(first);
+        document.Add(second);
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.SelectObject(first.Id);
+        window.MouseDown(new Point(115, 115), MouseButton.Right);
+        window.MouseUp(new Point(115, 115), MouseButton.Right);
+
+        Assert.Equal(second.Id, canvas.SelectedId);
+        Assert.NotNull(canvas.ContextMenu);
+        Assert.Equal(100, second.X);
+        Assert.Equal(100, second.Y);
+
+        window.Close();
+    }
+
+    // AC-924 criterion 5/14: the menu's own "Duplicate" runs through the exact same method Ctrl+D does.
+    [Fact]
+    public void ContextMenu_Duplicate_DoesTheSameAsTheShortcut()
+    {
+        var document = new WhiteboardDocument();
+        var placed = new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 10, Y = 10, Width = 30, Height = 30 };
+        document.Add(placed);
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.SelectObject(placed.Id);
+        window.MouseDown(new Point(20, 20), MouseButton.Right);
+        window.MouseUp(new Point(20, 20), MouseButton.Right);
+
+        var duplicate = canvas.ContextMenu!.Items.OfType<MenuItem>().First(item => (string)item.Header! == "Duplicate");
+        duplicate.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+        Assert.Equal(2, document.Objects.Count);
+
+        window.Close();
+    }
+
+    // AC-924 criterion 14: the keyboard route (Menu key / Shift+F10) opens the same menu on the current selection —
+    // a parameterless ContextRequestedEventArgs carries no position, same convention SessionContextMenuTargetView's
+    // own keyboard-route test uses.
+    [Fact]
+    public void ContextRequested_WithNoPosition_OpensOnTheCurrentSelection()
+    {
+        var document = new WhiteboardDocument();
+        var placed = new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 10, Y = 10, Width = 30, Height = 30 };
+        document.Add(placed);
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.SelectObject(placed.Id);
+        canvas.RaiseEvent(new ContextRequestedEventArgs());
+
+        Assert.NotNull(canvas.ContextMenu);
+        Assert.Equal(placed.Id, canvas.SelectedId);
+
+        window.Close();
+    }
+
+    // AC-924 criterion 14: with nothing selected, the keyboard route opens nothing.
+    [Fact]
+    public void ContextRequested_WithNoPositionAndNoSelection_OpensNothing()
+    {
+        var document = new WhiteboardDocument();
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.RaiseEvent(new ContextRequestedEventArgs());
+
+        Assert.Null(canvas.ContextMenu);
+
+        window.Close();
+    }
+
     private static Window _Show(Control content)
     {
         var window = new Window { Width = 300, Height = 300, Content = content };

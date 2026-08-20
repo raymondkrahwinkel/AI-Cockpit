@@ -403,7 +403,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // math, not scroll offset, so a huge diagram never grows the layout past the window around it.
     private Border _BuildViewport()
     {
-        var viewport = new Border { Background = Brushes.Transparent, ClipToBounds = true, Child = _surface };
+        // AC-924: Focusable since the object menu's keyboard route (Menu key / Shift+F10) needs a focused control
+        // to fire ContextRequested against — the diagram had none of the three surfaces' keyboard routes before this.
+        var viewport = new Border { Background = Brushes.Transparent, ClipToBounds = true, Focusable = true, Child = _surface };
         viewport.SizeChanged += (_, _) =>
         {
             if (_isFitMode)
@@ -424,7 +426,96 @@ internal sealed class DiagramWorkspaceBody : UserControl
                 _StartRename(_ObjectAt(e.GetPosition(_surface)));
             }
         };
+
+        // AC-924: the object's own menu. A right-click during Connect mode aborts that mode instead (same as a
+        // click off any node in _OnSurfaceClicked) and opens no menu. Otherwise: a position selects whatever is
+        // under it; no position falls back to the current selection, opening nothing if that is nothing too.
+        viewport.ContextRequested += (_, args) =>
+        {
+            if (_isConnecting)
+            {
+                _SetConnecting(false);
+                return;
+            }
+
+            var hit = _selected;
+            if (args.TryGetPosition(_surface, out var point))
+            {
+                hit = _ObjectAt(point);
+            }
+
+            if (hit is not { } target)
+            {
+                return;
+            }
+
+            if (target != _selected)
+            {
+                _Select(target);
+            }
+
+            viewport.ContextMenu = _BuildObjectContextMenu(target);
+            viewport.ContextMenu.Open(viewport);
+            args.Handled = true;
+        };
+
         return viewport;
+    }
+
+    // AC-924: every item calls the same method as its toolbar counterpart and reads that button's own IsEnabled,
+    // so the menu never drifts from the toolbar. The popup items (AC-703): posted onto the dispatcher, anchored
+    // on the toolbar button, so none of them ever opens from inside this menu's own Click routing.
+    private ContextMenu _BuildObjectContextMenu(DiagramObjectAt target)
+    {
+        var er = _support.Dialect == DiagramEditDialect.Er;
+        var items = new List<Control>();
+
+        if (target.Kind == DiagramObjectAt.Node)
+        {
+            items.Add(_MenuItemFor("Rename", _renameButton, (_, _) => _StartRename(_selected)));
+
+            items.Add(er
+                ? _MenuItemFor("Attributes…", _attributesButton, (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => _EditAttributes(_attributesButton)))
+                : _MenuItemFor("Shape…", _shapeButton, (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => _PickNodeShape(_shapeButton))));
+
+            // AC-924: _SetConnecting(true) nulls _connectFrom, so the source has to be filled in right after — the
+            // second click then runs through the existing _OnSurfaceClicked path, same as the toolbar's Connect.
+            items.Add(_MenuItemFor("Connect from here", _connectButton, (_, _) =>
+            {
+                _SetConnecting(true);
+                _connectFrom = target.Id;
+                _RefreshHandEditBar();
+            }));
+        }
+        else if (er)
+        {
+            var head = target.To!;
+            items.Add(_MenuItemFor("Cardinality and label…", _deleteButton, (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => _AskRelationship(target.Id, head))));
+        }
+        else
+        {
+            items.Add(_MenuItemFor("Change label", _renameButton, (_, _) => _StartRename(_selected)));
+        }
+
+        items.Add(_MenuItemFor("Delete", _deleteButton, (_, _) => _DeleteSelected()));
+        items.Add(new Separator());
+        items.Add(_MenuItemFor("Ask the agent…", _askButton, (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => _AddAsk(_askButton, _selected))));
+
+        return new ContextMenu { ItemsSource = items };
+    }
+
+    // AC-924: one item, reading a toolbar button's own IsEnabled and tooltip — the menu never carries a second
+    // enable-rule or a second wording of why something is off.
+    private static MenuItem _MenuItemFor(string header, Button sameAs, EventHandler<RoutedEventArgs> onClick)
+    {
+        var item = new MenuItem { Header = header, IsEnabled = sameAs.IsEnabled };
+        if (ToolTip.GetTip(sameAs) is { } tip)
+        {
+            ToolTip.SetTip(item, tip);
+        }
+
+        item.Click += onClick;
+        return item;
     }
 
     private void _OnViewportWheel(object? sender, PointerWheelEventArgs e)
