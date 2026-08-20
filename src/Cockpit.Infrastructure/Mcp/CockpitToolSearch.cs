@@ -4,15 +4,9 @@ using Microsoft.Extensions.AI;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// `cockpit-tools` (AC-963): the two tools a session offers instead of its whole catalogue — `search_tools` to find
-// one by name or description, `call_tool` to run it. The point is arithmetic: a session with ~110 mounted tools
-// spends 25-40k tokens on schemas in *every* request before a word of conversation, which a self-hosted model with
-// a small context window cannot afford. Two fixed schemas cost the same whether one server is mounted or twenty.
-//
-// `call_tool` runs the caller's own already-gated `AIFunction` — the same instance a direct call would reach — so
-// the approval flow, the tool classes and the AC-79 delegation ceiling apply to the real tool by its real name.
-// Reaching past that (to the unwrapped tool, or to `IMcpToolInvoker`, which connects outside the session and knows
-// no gate) would make this the back door a delegated session escapes its permission ceiling through.
+// `cockpit-tools` (AC-963). `call_tool` must run the caller's own already-gated `AIFunction`: reaching past it — to
+// the unwrapped tool, or to `IMcpToolInvoker`, which connects outside the session and knows no gate — would make
+// this the back door a delegated session escapes its AC-79 permission ceiling through.
 internal static class CockpitToolSearch
 {
     // Up to this many tools a session keeps everything preloaded, exactly as it did before this existed; above it

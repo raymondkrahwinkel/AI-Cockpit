@@ -123,10 +123,9 @@ public class CockpitToolSearchTests
     [Fact]
     public async Task CallTool_CannotRunWhatTheDelegationCeilingRefuses_AndRefusesItInTheSameWords()
     {
-        // The security criterion (4). A delegated session's ceiling (AC-79) is enforced by the GatedTool wrapper on
-        // the real tool; if call_tool reached past it — to the unwrapped function, or to IMcpToolInvoker, which
-        // connects outside the session and knows no gate — this proxy would be a permission bypass with a friendly
-        // name. Proven red by pointing call_tool at the raw AIFunction: `ran` flips true and no ToolResult error.
+        // The security criterion (4): the AC-79 ceiling lives in the GatedTool around the real tool, so a call_tool
+        // that reached past it would be a permission bypass with a friendly name. Proven red by pointing it at the
+        // raw AIFunction — `ran` flips true and no ToolResult error.
         var ran = false;
         var echo = AIFunctionFactory.Create((string text) => { ran = true; return $"echoed:{text}"; }, "echo");
         var catalog = _CatalogOf(CockpitToolSearch.PreloadThreshold + 1, alwaysMounted: "set_status", extra: echo);

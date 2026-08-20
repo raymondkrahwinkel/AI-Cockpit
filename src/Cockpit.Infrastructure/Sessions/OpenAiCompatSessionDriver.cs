@@ -204,11 +204,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         });
     }
 
-    // What goes into `ChatOptions.Tools` every turn (AC-963). Up to the threshold that is the whole catalogue, byte
-    // for byte what this driver sent before the search layer existed. Above it the schemas are the problem — ~110
-    // tools is 25-40k tokens per request — so only the always-mounted endpoints stay native and the rest moves
-    // behind `search_tools`/`call_tool`. Always-mounted is not negotiable here either: `cockpit-session set_status`
-    // is plumbing every session must be able to reach without going looking for it first.
+    // What rides along in `ChatOptions.Tools` every turn (AC-963). Above the threshold the schemas are the problem,
+    // so only the always-mounted endpoints stay native: `cockpit-session set_status` is plumbing every session must
+    // reach without going looking for it first.
     private List<AITool> _BuildTurnTools()
     {
         if (_gatedTools.Count <= CockpitToolSearch.PreloadThreshold)
