@@ -254,10 +254,12 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     private DateTimeOffset? _retryAfter;
 
     // Auth/config problems block the session until the operator acts — the row that gets the "Log in…" action.
-    public bool IsBlockingError => IsErrorRow && ErrorKind == SessionErrorKind.AuthRequired;
+    // AC-939: keyed on ShowsFailureCard (not IsErrorRow) so a failed-turn row (AC-728) can render blocking/temporary
+    // too, now that SessionViewModel classifies its ErrorKind instead of leaving it permanently Unknown.
+    public bool IsBlockingError => ShowsFailureCard && ErrorKind == SessionErrorKind.AuthRequired;
 
     // Rate limits and outages resolve on their own; the operator's own next attempt is the only "action".
-    public bool IsTemporaryError => IsErrorRow && ErrorKind is SessionErrorKind.RateLimited or SessionErrorKind.ServiceUnavailable;
+    public bool IsTemporaryError => ShowsFailureCard && ErrorKind is SessionErrorKind.RateLimited or SessionErrorKind.ServiceUnavailable;
 
     // Everything else — a parse failure, an empty reply, an unclassified driver, or a failed turn (AC-728,
     // which never carries a SessionErrorKind at all) — and always the safe default: never guessed red or

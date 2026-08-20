@@ -261,23 +261,31 @@ internal static class ClaudeStreamJson
 
     // AC-410: the field _ParseResult otherwise never reads. A failed error_during_execution turn (an unresolvable
     // --resume id, say) carries no "result" — this is the only place the failure's own reason survives at all.
+    // AC-939: an upstream API failure (rate limit, 529 overload, …) instead reports `subtype: "success"` with
+    // `is_error: true` and the failure text in `result`, never in `errors[]` — fall back to that text so the
+    // reason still reaches the transcript row instead of silently disappearing.
     private static IReadOnlyList<string>? _ParseErrors(JsonElement root)
     {
-        if (!root.TryGetProperty("errors", out var errorsProp) || errorsProp.ValueKind != JsonValueKind.Array)
+        if (root.TryGetProperty("errors", out var errorsProp) && errorsProp.ValueKind == JsonValueKind.Array)
         {
-            return null;
-        }
-
-        var errors = new List<string>();
-        foreach (var item in errorsProp.EnumerateArray())
-        {
-            if (item.ValueKind == JsonValueKind.String)
+            var errors = new List<string>();
+            foreach (var item in errorsProp.EnumerateArray())
             {
-                errors.Add(item.GetString() ?? string.Empty);
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    errors.Add(item.GetString() ?? string.Empty);
+                }
+            }
+
+            if (errors.Count > 0)
+            {
+                return errors;
             }
         }
 
-        return errors.Count > 0 ? errors : null;
+        var isError = root.TryGetProperty("is_error", out var errProp) && errProp.ValueKind == JsonValueKind.True;
+        var result = root.TryGetProperty("result", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString() : null;
+        return isError && !string.IsNullOrEmpty(result) ? [result] : null;
     }
 
     private static PluginTokenUsage? _ParseUsage(JsonElement root)

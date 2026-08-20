@@ -189,6 +189,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session that fails because Claude's API is overloaded or unavailable now shows that reason on the
+  failed-turn card ("API Error: 529 …") instead of the confusing, self-contradictory "Turn failed (success)" —
+  a recognised outage renders as a temporary problem that resolves on its own, and an auth failure now offers a
+  Login action instead of a Retry that would just fail again.
 - fixed: a right-click on the whiteboard no longer starts drawing, erasing or dragging — the surface only ever
   meant its middle button to be the exception to a left-click drag, but nothing was actually filtering the rest.
 - fixed: promoting a session out of the rail into focus could occasionally reflow its terminal history with an

@@ -2623,19 +2623,36 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     // AC-720: the subtype alone ("error_during_execution") names nothing actionable — show
                     // the provider's own reason (AC-410's Errors) when the event carries one.
                     var reason = _TurnFailureReason(turn);
+                    // AC-939: classify that reason the same way a driver SessionError does (below), so a
+                    // recognised provider outage (e.g. Claude's "API Error: 529 …") renders through the
+                    // severity card instead of staying permanently Unknown.
+                    var errorKind = reason is null ? SessionErrorKind.Unknown : SessionErrorClassifier.Classify(reason);
+                    // AC-939: the subtype is contradictory once it reads "success" on a failed turn, and
+                    // redundant once a recognised reason already names what happened — drop it from the
+                    // title in both cases instead of always interpolating it.
+                    var dropsSubtype = turn.Subtype == "success" || errorKind != SessionErrorKind.Unknown;
+                    var title = dropsSubtype ? "Turn failed" : $"Turn failed ({turn.Subtype})";
                     var failedTurnRow = new TranscriptEntryViewModel(
                         TranscriptEntryKind.TurnCompleted,
-                        reason is null ? $"Turn failed ({turn.Subtype})" : $"Turn failed ({turn.Subtype}): {reason}")
+                        reason is null ? title : $"{title}: {reason}")
                     {
                         // AC-728: renders through the same severity card as a driver SessionError (AC-720) —
-                        // a failed turn is as much "a problem" as one, just not SessionErrorKind-classified.
+                        // a failed turn is as much "a problem" as one.
                         IsFailedTurnRow = true,
+                        ErrorKind = errorKind,
                     };
 
+                    // AC-939: an auth classification means Retry would just fail again — offer the same
+                    // login-gate the SessionError branch below uses instead.
+                    if (errorKind == SessionErrorKind.AuthRequired && _profile is not null && _loginChecker?.IsLoggedIn(_profile) == false)
+                    {
+                        failedTurnRow.ActionLabel = "Login";
+                        failedTurnRow.ActionCommand = new RelayCommand(() => _StartLoginFlow(failedTurnRow));
+                    }
                     // AC-728: same ActionLabel/ActionCommand convention as AC-713's "Login" row. Left unset when
                     // this turn never went through _DispatchMessageAsync — a scheduled resume's own first turn
                     // (SendPromptAsync, AC-410) is the one case that applies to.
-                    if (_lastDispatchedUserTurn is { } lastTurn)
+                    else if (_lastDispatchedUserTurn is { } lastTurn)
                     {
                         failedTurnRow.ActionLabel = "Retry";
                         failedTurnRow.ActionCommand = new RelayCommand(() => _ = _DispatchMessageAsync(lastTurn.Text, lastTurn.Images));
