@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json.Nodes;
 using Avalonia.Threading;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
@@ -47,6 +48,7 @@ internal sealed class AssistantAgentGateway(
     IAgentNotifyAuditLog notifyAudit,
     IPluginProviderRegistry pluginProviders,
     SessionWatcher watcher,
+    IAssistantSessionHost assistantSessionHost,
     IWorktreeManager? worktreeManager = null,
     ISharedProjectSourceRegistry? sharedProjectSources = null,
     IMcpServerCatalog? mcpServerCatalog = null,
@@ -1130,6 +1132,59 @@ internal sealed class AssistantAgentGateway(
         }
 
         return null;
+    }
+
+    // AC-955: hangs the card straight onto the assistant's own session — reached through
+    // `AssistantSessionHost.Session` rather than `cockpit.Sessions`, which the assistant sits outside of by
+    // design (see `StopAsync`'s remark on the same point). No audit trail, unlike a spawn: showing a question
+    // costs nothing and starts nothing, so there is no decision here worth a record of its own.
+    public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+        string question,
+        IReadOnlyList<(string Label, string? Description)> options,
+        bool multiSelect,
+        bool allowOther,
+        string? header,
+        CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(() =>
+        {
+            if (assistantSessionHost.Session is not { } session)
+            {
+                return Task.FromResult(AskStructuredQuestionResult.Refused(
+                    "My own session is not running, so there is nowhere to show this card."));
+            }
+
+            var inputJson = _BuildAskStructuredQuestionInputJson(question, options, multiSelect, allowOther, header);
+            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Question, question)
+            {
+                InputJson = inputJson,
+                QuestionPrompts = AskUserQuestionViewModel.Parse(inputJson),
+                IsPendingBrokerAnswer = true,
+            });
+
+            return Task.FromResult(AskStructuredQuestionResult.Shown());
+        });
+
+    // A mirror of the native AskUserQuestion tool's own `questions` array (AC-715), one entry, so
+    // `AskUserQuestionViewModel.Parse` reads it unchanged rather than needing a second parser.
+    private static string _BuildAskStructuredQuestionInputJson(
+        string question, IReadOnlyList<(string Label, string? Description)> options, bool multiSelect, bool allowOther, string? header)
+    {
+        var optionsArray = new JsonArray([.. options.Select(option => (JsonNode)new JsonObject
+        {
+            ["label"] = option.Label,
+            ["description"] = option.Description,
+        })]);
+
+        var questionObject = new JsonObject
+        {
+            ["question"] = question,
+            ["header"] = header,
+            ["multiSelect"] = multiSelect,
+            ["allowOther"] = allowOther,
+            ["options"] = optionsArray,
+        };
+
+        return new JsonObject { ["questions"] = new JsonArray(questionObject) }.ToJsonString();
     }
 
     private Task _RecordAsync(AssistantSpawnAuditEntry entry, CancellationToken cancellationToken) =>

@@ -442,7 +442,8 @@ public class AssistantSpawnProjectIsolationTests
                 Substitute.For<IAgentMessageInbox>(),
                 Substitute.For<IAgentNotifyAuditLog>(),
                 Substitute.For<IPluginProviderRegistry>(),
-                new SessionWatcher(Substitute.For<IAgentMessageInbox>())),
+                new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
+                Substitute.For<IAssistantSessionHost>()),
             cockpit,
             trail,
             desk.Id);

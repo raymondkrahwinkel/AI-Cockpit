@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
@@ -725,11 +727,60 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         entry.Kind.ToString(),
         entry.Text,
         entry.ToolName,
-        entry.InputJson,
+        _QuestionInputJsonWithAnswers(entry),
         entry.ToolUseId,
         entry.ResultText,
         entry.IsResultError,
         entry.Timestamp);
+
+    // AC-955: a question card's ticked options and typed "Other" text do not otherwise survive a restart —
+    // `InputJson` alone is the question the agent asked, not what the operator picked. Merged in under
+    // `answers`, keyed by question text like `ClaudeControlProtocol._BuildUpdatedInput` keys the answer it
+    // sends back to the CLI, though the value here is this card's own shape rather than that wire format: the
+    // two serve different readers and nothing parses one as the other.
+    private static string? _QuestionInputJsonWithAnswers(TranscriptEntryViewModel entry)
+    {
+        if (entry.Kind != TranscriptEntryKind.Question
+            || entry.QuestionPrompts is not { Count: > 0 } prompts
+            || string.IsNullOrWhiteSpace(entry.InputJson))
+        {
+            return entry.InputJson;
+        }
+
+        var answered = prompts.Where(prompt => prompt.IsAnswered).ToList();
+        if (answered.Count == 0)
+        {
+            return entry.InputJson;
+        }
+
+        try
+        {
+            var root = JsonNode.Parse(entry.InputJson)!.AsObject();
+            var answers = new JsonObject();
+            foreach (var prompt in answered)
+            {
+                var picked = new JsonObject
+                {
+                    ["options"] = new JsonArray([.. prompt.Options.Where(option => option.IsSelected)
+                        .Select(option => (JsonNode)JsonValue.Create(option.Label))]),
+                };
+
+                if (prompt.IsOtherSelected)
+                {
+                    picked["other"] = prompt.OtherText;
+                }
+
+                answers[prompt.Question] = picked;
+            }
+
+            root["answers"] = answers;
+            return root.ToJsonString();
+        }
+        catch (JsonException)
+        {
+            return entry.InputJson;
+        }
+    }
 
     private static TranscriptEntryViewModel? _FromSnapshotEntry(AssistantTranscriptSnapshotEntry record)
     {
@@ -750,7 +801,67 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             entry.SetResult(record.ResultText, record.IsResultError);
         }
 
+        // AC-955: a question card replays with its options — and, if it was answered, its answer, read-only —
+        // rather than as a blank row for a call the operator already responded to. Reparsed here rather than
+        // carried as its own snapshot field: `InputJson` is already the question payload, and this is the same
+        // parse `PermissionRequested` runs live.
+        if (kind == TranscriptEntryKind.Question && AskUserQuestionViewModel.Parse(record.InputJson) is { Count: > 0 } prompts)
+        {
+            entry.QuestionPrompts = prompts;
+            _ApplySavedAnswers(prompts, record.InputJson);
+        }
+
         return entry;
+    }
+
+    private static void _ApplySavedAnswers(IReadOnlyList<AskUserQuestionViewModel> prompts, string? inputJson)
+    {
+        if (string.IsNullOrWhiteSpace(inputJson))
+        {
+            return;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(inputJson);
+            if (!document.RootElement.TryGetProperty("answers", out var answers) || answers.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+
+            foreach (var prompt in prompts)
+            {
+                if (!answers.TryGetProperty(prompt.Question, out var picked) || picked.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                if (picked.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Array)
+                {
+                    var labels = options.EnumerateArray()
+                        .Where(option => option.ValueKind == JsonValueKind.String)
+                        .Select(option => option.GetString())
+                        .ToHashSet(StringComparer.Ordinal);
+
+                    foreach (var option in prompt.Options.Where(option => labels.Contains(option.Label)))
+                    {
+                        option.IsSelected = true;
+                    }
+                }
+
+                if (picked.TryGetProperty("other", out var other) && other.ValueKind == JsonValueKind.String)
+                {
+                    prompt.OtherText = other.GetString() ?? string.Empty;
+                    prompt.IsOtherSelected = true;
+                }
+
+                prompt.IsAnswered = true;
+            }
+        }
+        catch (JsonException)
+        {
+            // Not a payload worth restoring an answer from — the card still renders, just unanswered.
+        }
     }
 
     // AC-684, criterion 4: a `BySessionId` resume the provider refuses surfaces as an immediate failed turn

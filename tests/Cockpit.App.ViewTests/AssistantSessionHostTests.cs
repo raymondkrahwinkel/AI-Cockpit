@@ -865,6 +865,68 @@ public class AssistantSessionHostTests
     }
 
     /// <summary>
+    /// AC-955 criterion 10: a question card's ticked options and typed "Other" text are captured on save under an
+    /// `answers` key, not just the bare question — otherwise a resumed conversation has nothing to redraw beyond
+    /// an unanswered-looking card for a question the operator already answered.
+    /// </summary>
+    [Fact]
+    public void AnAnsweredQuestionRow_SavesItsOptionsAndAnswer_NotOnlyTheBareQuestion()
+    {
+        var transcript = Substitute.For<IAssistantTranscriptStore>();
+        var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
+
+        const string inputJson = """{"questions":[{"question":"Which profile?","options":[{"label":"Core"},{"label":"All"}]}]}""";
+        var prompts = AskUserQuestionViewModel.Parse(inputJson);
+        prompts[0].Options[1].SelectCommand.Execute(null);
+        prompts[0].IsAnswered = true;
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which profile?")
+        {
+            InputJson = inputJson,
+            QuestionPrompts = prompts,
+        };
+
+        Dispatcher.UIThread.Invoke(() => session.Transcript.Add(entry));
+
+        transcript.Received().SaveAsync(
+            Arg.Is<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(saved =>
+                saved.Count == 1 && saved[0].InputJson != null
+                && saved[0].InputJson!.Contains("\"answers\"", StringComparison.Ordinal)
+                && saved[0].InputJson!.Contains("All", StringComparison.Ordinal)),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// AC-955 criterion 10: a question card replays with its options and, if it was answered, its answer,
+    /// read-only — the gap the grooming named: without this fix a beantwoorde kaart replayed as a blank
+    /// Question row for a call the operator had already responded to.
+    /// </summary>
+    [Fact]
+    public void ResumingByConversationId_ReplaysAnAnsweredQuestionCard_WithItsOptionsAndAnswerReadOnly()
+    {
+        var sessionState = Substitute.For<ISessionStateStore>();
+        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+            [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
+
+        const string savedInputJson = """
+        {"questions":[{"question":"Which profile?","options":[{"label":"Core"},{"label":"All"}]}],
+         "answers":{"Which profile?":{"options":["All"]}}}
+        """;
+        var transcript = Substitute.For<IAssistantTranscriptStore>();
+        transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(_ =>
+            [new("Question", "Which profile?", null, savedInputJson, null, null, false, DateTimeOffset.Now)]);
+
+        var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
+
+        var entry = Assert.Single(session.Transcript);
+        Assert.True(entry.HasQuestionPrompts);
+        var prompt = Assert.Single(entry.QuestionPrompts!);
+        Assert.True(prompt.IsAnswered);
+        Assert.Equal("All", prompt.Answer);
+        Assert.True(prompt.Options[1].IsSelected);
+        Assert.False(prompt.Options[0].IsSelected);
+    }
+
+    /// <summary>
     /// Criterion 4: a conversation id the provider no longer recognises (expired, stopped, unknown) surfaces as an
     /// immediate failed turn (AC-539's <c>error_during_execution</c>), not an exception. Silence here would be the
     /// operator staring at an empty window with no idea why — this recovers onto a fresh conversation and says so.

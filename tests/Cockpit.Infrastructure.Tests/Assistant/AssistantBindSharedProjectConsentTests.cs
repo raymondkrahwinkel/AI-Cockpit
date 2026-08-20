@@ -194,6 +194,11 @@ public sealed class AssistantBindSharedProjectConsentTests : IDisposable
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+            string question, IReadOnlyList<(string Label, string? Description)> options, bool multiSelect, bool allowOther,
+            string? header, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<AgentSpawnResult> SpawnAsync(AgentSpawnRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

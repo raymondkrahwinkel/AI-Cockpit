@@ -273,6 +273,30 @@ public interface IAssistantAgentGateway
         string? category = null,
         IReadOnlyDictionary<string, string>? pluginFields = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Puts a clarifying question to the operator as a card in the assistant's own chat window (AC-955) —
+    /// radio buttons for one pick, checkboxes for several, and an optional "Other, namely…" row with a box to
+    /// type their own answer. Returns as soon as the card is shown; it does not wait for an answer.
+    /// </summary>
+    /// <remarks>
+    /// Nothing here decides whether the operator answers, or when — the card sits in the transcript exactly
+    /// like any other row until <c>SessionViewModel.SubmitQuestionAnswersCommand</c> resolves it, which is a UI
+    /// gesture and not something this method can be told to wait for. Refused only when there is nowhere to put
+    /// the card, e.g. the assistant's own session is not running.
+    /// </remarks>
+    /// <param name="question">The question, shown above the options.</param>
+    /// <param name="options">2 to 6 choices, each a label and an optional one-line description.</param>
+    /// <param name="multiSelect">False shows radio buttons (one pick); true shows checkboxes (several).</param>
+    /// <param name="allowOther">Whether an "Other, namely…" row with a text field is offered.</param>
+    /// <param name="header">A short chip shown above the question. Null for none.</param>
+    Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+        string question,
+        IReadOnlyList<(string Label, string? Description)> options,
+        bool multiSelect,
+        bool allowOther,
+        string? header,
+        CancellationToken cancellationToken = default);
 }
 
 // What came of binding a shared project (AC-798). Same shape and same reason as `AgentStopResult` — a refusal is a
@@ -298,6 +322,15 @@ public sealed record AssistantProjectCreateResult(bool Ok, string? ProjectId, st
     public static AssistantProjectCreateResult Created(string projectId, string name) => new(true, projectId, name, null);
 
     public static AssistantProjectCreateResult Refused(string error) => new(false, null, null, error);
+}
+
+// What came of raising a structured question card (AC-955). Same shape and same reason as `AgentStopResult` — a
+// refusal is a sentence the assistant says, not an exception it fails on.
+public sealed record AskStructuredQuestionResult(bool Ok, string? Error)
+{
+    public static AskStructuredQuestionResult Shown() => new(true, null);
+
+    public static AskStructuredQuestionResult Refused(string error) => new(false, error);
 }
 
 // What came of a handover. Same shape and same reason as `AgentStopResult` — a refusal is a sentence the

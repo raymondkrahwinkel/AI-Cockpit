@@ -71,11 +71,11 @@ public class AskUserQuestionViewModelTests
     }
 
     [Fact]
-    public void Other_ReplacesTheTickedOptions_AndTickingAnOptionAgainReplacesOther()
+    public void OnASingleSelectQuestion_OtherReplacesTheTickedOption_AndTickingAnOptionAgainReplacesOther()
     {
-        // The fallback and the offered options are mutually exclusive, the same rule the SDK's own reference
-        // handler applies: a typed answer stands in for the picks rather than being added to them.
-        var prompt = AskUserQuestionViewModel.Parse(TwoQuestions)[1];
+        // Single-select: the fallback and the offered options are mutually exclusive, the same rule the SDK's own
+        // reference handler applies — a typed answer stands in for the pick rather than being added to it.
+        var prompt = AskUserQuestionViewModel.Parse(TwoQuestions)[0];
         prompt.Options[0].SelectCommand.Execute(null);
 
         prompt.SelectOtherCommand.Execute(null);
@@ -87,7 +87,46 @@ public class AskUserQuestionViewModelTests
         prompt.Options[1].SelectCommand.Execute(null);
 
         Assert.False(prompt.IsOtherSelected);
-        Assert.Equal("View", prompt.Answer);
+        Assert.Equal("Detailed", prompt.Answer);
+    }
+
+    /// <summary>
+    /// AC-955, correction to the original grooming's criterion 5: on a multi-select question there is no reason
+    /// for "Other" to exclude the ticked options — "Core, View and something of my own" is an ordinary answer, so
+    /// the typed text joins the ticked labels as one more chosen value instead of replacing them.
+    /// </summary>
+    [Fact]
+    public void OnAMultiSelectQuestion_OtherJoinsTheTickedOptions_RatherThanReplacingThem()
+    {
+        var prompt = AskUserQuestionViewModel.Parse(TwoQuestions)[1];
+        prompt.Options[0].SelectCommand.Execute(null);
+
+        prompt.SelectOtherCommand.Execute(null);
+        prompt.OtherText = "  Only the flaky ones  ";
+
+        Assert.True(prompt.Options[0].IsSelected);
+        Assert.Equal("Core, Only the flaky ones", prompt.Answer);
+
+        prompt.Options[1].SelectCommand.Execute(null);
+
+        Assert.True(prompt.IsOtherSelected);
+        Assert.Equal("Core, View, Only the flaky ones", prompt.Answer);
+
+        // Toggling "Other" back off drops it from the answer without touching the ticked options.
+        prompt.SelectOtherCommand.Execute(null);
+        Assert.False(prompt.IsOtherSelected);
+        Assert.Equal("Core, View", prompt.Answer);
+    }
+
+    [Theory]
+    [InlineData("""{"questions":[{"question":"Q","options":[{"label":"A"},{"label":"B"}]}]}""", true)]
+    [InlineData("""{"questions":[{"question":"Q","allowOther":true,"options":[{"label":"A"},{"label":"B"}]}]}""", true)]
+    [InlineData("""{"questions":[{"question":"Q","allowOther":false,"options":[{"label":"A"},{"label":"B"}]}]}""", false)]
+    public void Parse_ReadsAllowOther_DefaultingToTrueForANativeAskUserQuestionPayload(string inputJson, bool expected)
+    {
+        // AC-955: a native AskUserQuestion payload carries no `allowOther` field at all and its SDK guarantees the
+        // fallback regardless, so an absent field must default to true — only ask_structured_question turns it off.
+        Assert.Equal(expected, AskUserQuestionViewModel.Parse(inputJson)[0].AllowOther);
     }
 
     [Fact]

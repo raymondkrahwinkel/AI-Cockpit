@@ -73,6 +73,10 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
     private static object? _Argument(ParameterInfo parameter) =>
         parameter.ParameterType == typeof(string) ? Whatever
+            : parameter.ParameterType == typeof(List<AskStructuredQuestionOptionArg>)
+                // ask_structured_question genuinely requires 2-6 real options — unlike every other list/dict
+                // argument on this server, `null` is not a valid filler for it, so it gets one of its own.
+                ? new List<AskStructuredQuestionOptionArg> { new("A"), new("B") }
             : parameter.ParameterType.IsValueType ? Activator.CreateInstance(parameter.ParameterType)
             : null;
 
@@ -442,6 +446,14 @@ public sealed class AssistantActMountRuleTests : IDisposable
         {
             Calls.Add($"CreateProjectAsync({name})");
             return Task.FromResult(AssistantProjectCreateResult.Created("local-1", name));
+        }
+
+        public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+            string question, IReadOnlyList<(string Label, string? Description)> options, bool multiSelect, bool allowOther,
+            string? header, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"AskStructuredQuestionAsync({question})");
+            return Task.FromResult(AskStructuredQuestionResult.Shown());
         }
     }
 

@@ -364,6 +364,7 @@ public class AssistantCreateProjectTests : IDisposable
             Substitute.For<IAgentNotifyAuditLog>(),
             Substitute.For<IPluginProviderRegistry>(),
             new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
+            Substitute.For<IAssistantSessionHost>(),
             worktreeManager: null,
             sharedProjectSources: registry,
             mcpServerCatalog: includeMcpCatalog ? _McpCatalog() : null,

@@ -327,9 +327,12 @@
                                                                 IsEnabled="{Binding IsSelectable}">
                                                             <Grid ColumnDefinitions="Auto,Auto,*">
                                                                 <Panel Grid.Column="0" Width="13" Margin="0,0,7,0">
-                                                                    <materialIcons:MaterialIcon Kind="Check" Width="13" Height="13"
+                                                                    <!-- AC-955: radio glyph for single-select, checkbox glyph for
+                                                                         multi-select — shown ticked or blank rather than only on
+                                                                         selection, so the row reads as a control and not a chip
+                                                                         that is sometimes blank for no visible reason. -->
+                                                                    <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="13" Height="13"
                                                                                                 VerticalAlignment="Center"
-                                                                                                IsVisible="{Binding IsSelected}"
                                                                                                 Foreground="{StaticResource CockpitAccentBrush}"/>
                                                                 </Panel>
                                                                 <TextBlock Grid.Column="1" Text="{Binding Label}" FontWeight="SemiBold"
@@ -344,23 +347,38 @@
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
 
-                                            <!-- The fallback the SDK guarantees, not the main path: it opens a box
-                                                 only once asked for, and typing in it drops the ticked options. -->
-                                            <Button Content="Other…" Classes="Compact" HorizontalAlignment="Left"
-                                                    Command="{Binding SelectOtherCommand}" IsVisible="{Binding !IsAnswered}"/>
-                                            <!-- CockpitSecondaryBgBrush, not the TextBox default: that is the panel
-                                                 colour this card is already painted in, so the box would vanish. -->
-                                            <TextBox Text="{Binding OtherText}" IsVisible="{Binding IsOtherSelected}"
-                                                     IsReadOnly="{Binding IsAnswered}" AcceptsReturn="False"
-                                                     PlaceholderText="Type your own answer"
-                                                     Background="{StaticResource CockpitSecondaryBgBrush}"/>
+                                            <!-- AC-955: "Other, namely…" as a row in the same list as the options,
+                                                 with its text field behind it, rather than a button below the list
+                                                 with the field appearing underneath. The chip and the field are
+                                                 siblings, not nested — a TextBox inside a Button would fight the
+                                                 button for the click that puts focus in it. -->
+                                            <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding AllowOther}">
+                                                <Button Grid.Column="0" Classes="optionChip" Command="{Binding SelectOtherCommand}"
+                                                        IsEnabled="{Binding !IsAnswered}">
+                                                    <Grid ColumnDefinitions="Auto,Auto">
+                                                        <Panel Grid.Column="0" Width="13" Margin="0,0,7,0">
+                                                            <materialIcons:MaterialIcon Kind="{Binding OtherIconKind}" Width="13" Height="13"
+                                                                                        VerticalAlignment="Center"
+                                                                                        Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                        </Panel>
+                                                        <TextBlock Grid.Column="1" Text="Other, namely…" FontWeight="SemiBold"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                </Button>
+                                                <!-- CockpitSecondaryBgBrush, not the TextBox default: that is the panel
+                                                     colour this card is already painted in, so the box would vanish. -->
+                                                <TextBox Grid.Column="1" Text="{Binding OtherText}" Margin="8,0,0,0"
+                                                         IsReadOnly="{Binding IsAnswered}" AcceptsReturn="False"
+                                                         PlaceholderText="Type your own answer"
+                                                         Background="{StaticResource CockpitSecondaryBgBrush}"/>
+                                            </Grid>
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
                             <Button Content="Send" Classes="Accent Compact" HorizontalAlignment="Right"
-                                    IsVisible="{Binding IsPendingPermission}"
+                                    IsVisible="{Binding IsAwaitingAnswer}"
                                     IsEnabled="{Binding CanSubmitAnswers}"
                                     Command="{Binding $parent[controls:TranscriptRowView].Session.SubmitQuestionAnswersCommand}"
                                     CommandParameter="{Binding}"/>

@@ -200,6 +200,10 @@ public sealed class AssistantMemoryBackupToolsConsentTests : IDisposable
             string? category = null,
             IReadOnlyDictionary<string, string>? pluginFields = null,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+            string question, IReadOnlyList<(string Label, string? Description)> options, bool multiSelect, bool allowOther,
+            string? header, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     public void Dispose() => McpRequestContext.Set(null);

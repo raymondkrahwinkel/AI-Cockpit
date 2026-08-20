@@ -227,7 +227,8 @@ public class AssistantSendGatewayTests
             parts.Inbox,
             parts.NotifyAudit,
             Substitute.For<IPluginProviderRegistry>(),
-            new SessionWatcher(parts.Inbox));
+            new SessionWatcher(parts.Inbox),
+            Substitute.For<IAssistantSessionHost>());
 
         return (gateway, cockpit, parts);
     }

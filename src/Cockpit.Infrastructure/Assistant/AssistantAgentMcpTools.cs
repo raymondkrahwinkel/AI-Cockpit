@@ -679,6 +679,59 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    [McpServerTool(Name = "ask_structured_question")]
+    [Description("Puts a clarifying question to the operator as a card in the chat window, with its options beside it to tick or click, rather than in a sentence. USE IT WHEN AN INSTRUCTION IS GENUINELY AMBIGUOUS AND THE ANSWERS ARE A SHORT, CLOSED LIST — which desk, which profile, which of three tickets they meant, which of two ways to do a thing — where the difference is between guessing and knowing. NOT for a yes or no, not for something you could go and look up yourself, and never for something this conversation has already settled. RETURNS AT ONCE — IT DOES NOT WAIT FOR AN ANSWER: the card is shown, and that is the whole of what this call does. Their answer, if they click it, comes back as their own next message in this same conversation — an ordinary user turn, not a return value from this call — and they may just as well ignore the card entirely and answer you in words, or ask about something else altogether. So never say you are waiting on it, never treat the call's return as a decision made, and do not ask the same thing again in the meantime. SAY THE QUESTION AS WELL, IN ONE SHORT SENTENCE: the card is not read aloud and its options never are, so a listening operator hears nothing of it unless you say the question yourself, the way you would say it to someone standing next to you. ONLY YOU MAY CALL THIS — a session cannot: it has AskUserQuestion already, and that one works there.")]
+    public async Task<string> AskStructuredQuestionAsync(
+        [Description("The question, in the operator's own language — the same one you would say out loud.")] string question,
+        [Description("2 to 6 choices, each a short label (what comes back as the answer) and an optional one-line description.")] List<AskStructuredQuestionOptionArg> options,
+        [Description("false (default): radio buttons, one pick, exclusive. true: checkboxes, several picks at once.")] bool multiSelect = false,
+        [Description("true (default): adds an \"Other, namely…\" row with a box for their own words. false: leaves it off, for a question where nothing outside the list is a sensible answer.")] bool allowOther = true,
+        [Description("A short chip shown above the question, 12 characters or fewer. Leave it out for none.")] string? header = null)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (string.IsNullOrWhiteSpace(question))
+            {
+                return _Serialize(new { ok = false, error = "The question is empty." });
+            }
+
+            var trimmedOptions = (options ?? [])
+                .Where(option => !string.IsNullOrWhiteSpace(option.Label))
+                .Select(option => (Label: option.Label.Trim(), Description: option.Description?.Trim()))
+                .ToList();
+
+            if (trimmedOptions.Count is < 2 or > 6)
+            {
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = $"ask_structured_question takes 2 to 6 options with a label; this call had {trimmedOptions.Count}.",
+                });
+            }
+
+            var result = await gateway.AskStructuredQuestionAsync(
+                question.Trim(), trimmedOptions, multiSelect, allowOther, header?.Trim()).ConfigureAwait(false);
+
+            return result.Ok
+                ? _Serialize(new
+                {
+                    ok = true,
+                    shown = true,
+                    note = "The card is in the chat window now. Their answer, if they click it, arrives as their own next message — this call does not wait for one.",
+                })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "remember")]
     [Description("Writes one thing down where you will still have it in your next conversation. Everything else you know about this operator arrives with your instructions and is gone when this conversation ends — this is the only way something they said today reaches you tomorrow. USE IT WHEN THEY TELL YOU SOMETHING THAT IS MEANT TO LAST: what to call them or yourself, how they want you to answer, what a word of theirs means (\"prod is the release desk\"), a standing rule about what to do without asking. Say that you have noted it, in passing — one clause, not an announcement. WHAT DOES NOT BELONG HERE: what is happening right now (that is note_state), anything you worked out yourself rather than were told, and anything you are merely guessing they would want kept. WRITE IT AS A FACT THAT STILL READS IN A MONTH: \"the operator is called Raymond\", not \"he said his name\". One thing per call — two facts in one line cannot be pruned apart later. This does not ask for permission and nothing shows on their screen, so it is on you not to fill it with things nobody asked you to keep: there is no tool to take a line back, and the only way to clear one is the operator opening the file themselves.")]
     public async Task<string> RememberAsync(
@@ -864,3 +917,10 @@ internal sealed class AssistantAgentMcpTools(
 
     private static string _Serialize(object value) => JsonSerializer.Serialize(value, SerializerOptions);
 }
+
+// One offered choice on an `ask_structured_question` call (AC-955) — the MCP argument shape, mapped to the
+// gateway's own `(Label, Description)` tuple rather than carried through as this type: Infrastructure is where
+// the tool's JSON schema lives, and Core's interface stays free of it.
+public sealed record AskStructuredQuestionOptionArg(
+    [property: Description("The choice's label — shown on the chip, and what comes back as the answer.")] string Label,
+    [property: Description("An optional one-line explanation shown beside the label.")] string? Description = null);
