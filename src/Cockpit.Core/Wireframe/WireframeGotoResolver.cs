@@ -2,10 +2,9 @@ using Cockpit.Core.Wireframe.Model;
 
 namespace Cockpit.Core.Wireframe;
 
-// AC-902: `goto:"Title"` names a screen by its title, not its id, because that is what the operator wrote — this is
-// the one place that title gets resolved against the document's actual screens, shared by the parser's post-pass
-// (which turns a bad one into an error), the MCP payload (which turns a good one into the target's id) and the
-// overlay (which turns a good one into an arrow or a marker).
+// AC-902: `goto:"Title"` names a screen by its title, not its id, because that is what the operator wrote — this
+// is the one place that title gets resolved against the document's actual screens, shared by everything that
+// reads a `goto:` so none of them can resolve it differently.
 public static class WireframeGotoResolver
 {
     public static WireframeGotoResolution Resolve(IReadOnlyList<WireframeNode> screens, string title)

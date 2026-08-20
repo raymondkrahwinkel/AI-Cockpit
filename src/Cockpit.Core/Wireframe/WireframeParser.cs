@@ -101,9 +101,7 @@ public static class WireframeParser
         }
 
         // AC-902: `goto:` names a screen by title, and screens can be declared after the component that points at
-        // one — so this cannot run inside _Validate, which reads one line at a time. It also cannot reject the
-        // modifier there: _ReadNode drops the whole line for a null modifier, and the component itself must stay in
-        // the drawing even when its target does not resolve.
+        // one — so this cannot run inside _Validate, which reads one line at a time.
         foreach (var screen in screens)
         {
             _ValidateGotoTargets(screen, screens, errors);
