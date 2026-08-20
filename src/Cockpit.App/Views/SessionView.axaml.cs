@@ -192,13 +192,9 @@ public partial class SessionView : UserControl
         // runs (measured headless: closing a real SessionView without a render orphans it; a forced
         // RequestCommitAsync releases it — TranscriptLeakHuntTests). That is the permanent half of the transcript
         // memory growth; the same render-gated teardown lagging under streaming load is the transient half the
-        // AdaptiveGcCompactor was papering over. Fire-and-forget: a failure to schedule a commit must never take
-        // the close path down.
-        if (e.RootVisual is { } root
-            && Avalonia.Rendering.Composition.ElementComposition.GetElementVisual(root)?.Compositor is { } compositor)
-        {
-            _ = compositor.RequestCommitAsync();
-        }
+        // AdaptiveGcCompactor was papering over. AC-878 pulled this out into CompositorTeardown so other surfaces
+        // with the same risk can share it instead of copying the block.
+        CompositorTeardown.Flush(e.RootVisual);
     }
 
     private void _OnHostWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
