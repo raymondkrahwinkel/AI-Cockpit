@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -5,8 +6,7 @@ using Avalonia.Layout;
 namespace Cockpit.Plugin.Diagram.Collab;
 
 // AC-910: the operator's free-text box for "Ask the agent…", one copy instead of the two identical ones
-// DiagramWorkspaceBody._AddPin and WhiteboardWorkspaceBody._AddPin used to carry (AC-849). An empty box submits
-// nothing — there is no such thing as an empty ask.
+// AC-849's pin flyout used to carry. An empty box submits nothing — there is no such thing as an empty ask.
 internal static class AskFlyout
 {
     public static void Show(Control anchor, string placeholder, Action<string> onAsk)
@@ -15,7 +15,7 @@ internal static class AskFlyout
         var confirm = new Button { Content = "Ask", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
         var flyout = new Flyout
         {
-            Content = new StackPanel { Spacing = 8, Margin = new Avalonia.Thickness(12), Children = { question, confirm } },
+            Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { question, confirm } },
         };
 
         void Submit()
