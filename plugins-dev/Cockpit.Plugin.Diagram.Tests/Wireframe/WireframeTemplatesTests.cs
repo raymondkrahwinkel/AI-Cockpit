@@ -3,11 +3,9 @@ using Cockpit.Plugin.Diagram.Wireframe;
 
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 
-// AC-911 criterion 4: every template the wireframe soortkeuze ships parses without error, produces at least one
-// screen, and — since WireframeParser.Parse itself resolves every goto: as it reads a line (WireframeParser.cs:167)
-// — a dangling goto: shows up here as a parse error, not as a silently broken preview. One [Fact] looping the
-// list rather than [Theory]/MemberData: SurfaceTemplate is internal, and a public theory method cannot take an
-// internal parameter type.
+// AC-911 criterion 4: every wireframe type picker template parses without error and produces at least one screen
+// — Parse itself resolves every goto:, so a dangling one shows up here as a parse error, not a broken preview.
+// SurfaceTemplate is internal, so one [Fact] loops the list instead of a [Theory] taking it as a parameter.
 public class WireframeTemplatesTests
 {
     [Fact]

@@ -5,9 +5,9 @@ using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 
 namespace Cockpit.Plugin.Diagram.Wireframe;
 
-// AC-911: the wireframe soortkeuze — a screen, or a small flow, that already stands there. Blank is
-// WireframeDocument.Empty itself, first and preselected (criterion 7); the rest use what the format could already
-// say before this ticket (AC-901 screens, AC-902 goto, AC-903 palette, AC-915 viewport).
+// AC-911: the wireframe type picker — a screen, or a small flow, that already stands there. Blank is
+// WireframeDocument.Empty itself, first and preselected (criterion 7); the rest use what the format could
+// already say before this ticket (AC-901 screens, AC-902 goto, AC-903 palette, AC-915 viewport).
 internal static class WireframeTemplates
 {
     public static readonly SurfaceTemplate Blank = new("Blank", WireframeDocument.Empty);

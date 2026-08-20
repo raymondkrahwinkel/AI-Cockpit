@@ -4,10 +4,9 @@ using Mermaider;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
-// AC-911 criterion 2: the diagram soortkeuze may only ever offer what DiagramObjectEdit.DialectOf (AC-899) can
-// still hand-edit afterwards — this is the test that fails the moment a template drifts from that. One [Fact]
-// looping the list rather than [Theory]/MemberData: SurfaceTemplate is internal, and a public theory method
-// cannot take an internal parameter type.
+// AC-911 criterion 2: the diagram type picker may only ever offer what DiagramObjectEdit.DialectOf (AC-899) can
+// still hand-edit afterwards. One [Fact] looping the list rather than [Theory]/MemberData: SurfaceTemplate is
+// internal, and a public theory method cannot take an internal parameter type.
 public class DiagramTemplatesTests
 {
     [Fact]
