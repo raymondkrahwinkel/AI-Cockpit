@@ -20,6 +20,11 @@ public static class WireframeModifierRules
         WireframeModifierName.Value => kind is WireframeNodeKind.Input or WireframeNodeKind.Textarea or WireframeNodeKind.Search
             or WireframeNodeKind.Select or WireframeNodeKind.Badge or WireframeNodeKind.Slider or WireframeNodeKind.Progress
             or WireframeNodeKind.Pagination,
+        // AC-902: components that can plausibly be clicked, sitting inside a screen — not a whole screen or column,
+        // and not an input, which has nowhere to go while it is being filled in.
+        WireframeModifierName.Goto => kind is WireframeNodeKind.Button or WireframeNodeKind.Item or WireframeNodeKind.Label
+            or WireframeNodeKind.Card or WireframeNodeKind.Image or WireframeNodeKind.Icon or WireframeNodeKind.Avatar
+            or WireframeNodeKind.Badge or WireframeNodeKind.Row,
         WireframeModifierName.W => parentKind is WireframeNodeKind.Row or WireframeNodeKind.Header or WireframeNodeKind.Footer,
         WireframeModifierName.H => parentKind is WireframeNodeKind.Column or WireframeNodeKind.Group or WireframeNodeKind.Card
             or WireframeNodeKind.Screen or WireframeNodeKind.Nav or WireframeNodeKind.Sidebar or WireframeNodeKind.Main

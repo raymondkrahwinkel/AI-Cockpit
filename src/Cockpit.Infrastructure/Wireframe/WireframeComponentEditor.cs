@@ -157,11 +157,44 @@ internal static class WireframeComponentEditor
 
         var at = node.Line - 1;
         var before = lines[at];
+        var oldTitle = node.Text;
         node.Text = _Clean(edit.Text ?? "");
         lines[at] = WireframeWriter.Line(node, _IndentOf(before));
 
-        var summary = $"set the {_Keyword(node.Kind)} on line {node.Line} to \"{node.Text}\"";
-        return WireframeEdit.Change(string.Join("\n", lines), summary, new WireframePatch(at, _AnchorAbove(lines, at), [before], [lines[at]]));
+        var patches = new List<WireframePatch> { new(at, _AnchorAbove(lines, at), [before], [lines[at]]) };
+
+        // AC-902 AC4: renaming a screen carries every `goto:` that pointed at its old title along with it, in the
+        // same undoable step — the alternative is a wall of refusals the next time anyone touches that screen.
+        if (screens.Contains(node) && !string.IsNullOrEmpty(oldTitle))
+        {
+            foreach (var screen in screens)
+            {
+                _RewriteGotoReferences(screen, oldTitle, node.Text, lines, patches);
+            }
+        }
+
+        var movedFlows = patches.Count - 1;
+        var summary = $"set the {_Keyword(node.Kind)} on line {node.Line} to \"{node.Text}\""
+            + (movedFlows == 0 ? "" : $" — {movedFlows} flow{(movedFlows == 1 ? "" : "s")} to it followed");
+        return WireframeEdit.Change(string.Join("\n", lines), summary, patches.ToArray());
+    }
+
+    private static void _RewriteGotoReferences(WireframeNode node, string from, string to, List<string> lines, List<WireframePatch> patches)
+    {
+        var index = node.Modifiers.FindIndex(modifier => modifier.Name == WireframeModifierName.Goto && modifier.Value == from);
+        if (index >= 0)
+        {
+            var at = node.Line - 1;
+            var before = lines[at];
+            node.Modifiers[index] = node.Modifiers[index] with { Value = to, IsQuoted = true };
+            lines[at] = WireframeWriter.Line(node, _IndentOf(before));
+            patches.Add(new WireframePatch(at, _AnchorAbove(lines, at), [before], [lines[at]]));
+        }
+
+        foreach (var child in node.Children)
+        {
+            _RewriteGotoReferences(child, from, to, lines, patches);
+        }
     }
 
     private static WireframeEdit _Remove(IReadOnlyList<WireframeNode> screens, List<string> lines, WireframeComponentEdit edit)
@@ -176,6 +209,18 @@ internal static class WireframeComponentEditor
         if (screens.Contains(node) && screens.Count == 1)
         {
             return WireframeEdit.Refuse("This is the wireframe's only screen, so it cannot be removed — add another screen first, or replace the whole source with edit_wireframe.");
+        }
+
+        // AC-902 AC5: unlike a rename, a removal has nowhere to move the flow to — stripping the goto: silently
+        // would delete work nobody named, so this is refused instead, naming the screen and what still points at it.
+        if (screens.Contains(node) && node.Text is { } title)
+        {
+            var referrers = screens.SelectMany(screen => _GotoReferencesTo(screen, title)).ToList();
+            if (referrers.Count > 0)
+            {
+                var names = string.Join(", ", referrers.Select(referrer => $"{_Keyword(referrer)}{_Quoted(referrer.Text)}"));
+                return WireframeEdit.Refuse($"{_Keyword(node)}{_Quoted(node.Text)} still has a flow pointing to it from {names} — clear those goto: modifiers first.");
+            }
         }
 
         var at = node.Line - 1;
@@ -255,7 +300,7 @@ internal static class WireframeComponentEditor
 
         if (edit.ModifierName is not { } name)
         {
-            return WireframeEdit.Refuse("Name the modifier to set — one of: primary, selected, checked, disabled, w, h, align, value.");
+            return WireframeEdit.Refuse("Name the modifier to set — one of: primary, selected, checked, disabled, w, h, align, value, goto.");
         }
 
         var parentKind = _ParentOf(screens, node)?.Kind;
@@ -399,6 +444,19 @@ internal static class WireframeComponentEditor
         }
 
         return string.IsNullOrWhiteSpace(edit.Modifiers) ? line : $"{line} {_Clean(edit.Modifiers).Trim()}";
+    }
+
+    private static IEnumerable<WireframeNode> _GotoReferencesTo(WireframeNode node, string title)
+    {
+        if (node.ValueOf(WireframeModifierName.Goto) == title)
+        {
+            yield return node;
+        }
+
+        foreach (var found in node.Children.SelectMany(child => _GotoReferencesTo(child, title)))
+        {
+            yield return found;
+        }
     }
 
     private static WireframeNode? _Find(IReadOnlyList<WireframeNode> screens, string id) =>

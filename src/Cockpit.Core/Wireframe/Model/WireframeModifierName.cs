@@ -11,4 +11,5 @@ public enum WireframeModifierName
     H,
     Align,
     Value,
+    Goto,
 }

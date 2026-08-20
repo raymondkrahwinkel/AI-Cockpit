@@ -49,7 +49,20 @@ internal static class WireframeScreens
           button "Registreren" primary #signup-submit
         """;
 
+    // AC-902: the same two screens, with a flow from the login screen's submit button to the signup screen —
+    // what the rename/remove cascade tests edit.
+    public const string TwoScreensWithFlow = """
+        screen "Aanmelden" #login
+          input "E-mailadres" #login-email
+          button "Aanmelden" primary goto:"Registreren" #login-submit
+
+        screen "Registreren" #signup
+          input "E-mailadres" #signup-email
+          button "Registreren" primary #signup-submit
+        """;
+
     public const string LoginScreen = "login";
+    public const string LoginSubmit = "login-submit";
     public const string SignupScreen = "signup";
     public const string SignupSubmit = "signup-submit";
 

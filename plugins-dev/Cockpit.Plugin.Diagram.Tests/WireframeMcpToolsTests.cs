@@ -225,6 +225,44 @@ public class WireframeMcpToolsTests
     }
 
     [Fact]
+    public async Task SetComponentModifier_Goto_QuotesATitleWithASpace_UnconditionallyUnlikeValue()
+    {
+        // AC-902: goto: is quoted unconditionally, unlike value:, because a screen title almost always carries a
+        // space — value:'s int.TryParse check would leave this one unquoted, splitting it into two tokens.
+        const string source = """
+            screen "Aanmelden" #login
+              button "Verder" primary #go
+
+            screen "Wachtwoord vergeten" #forgot
+              label "Vul je e-mailadres in" #hint
+            """;
+        var built = _Build(ConsentOutcome.Approved);
+        built.registry.SurfaceOpened(SurfaceId, Name, source);
+        var (tools, registry, _) = built;
+
+        var json = JsonNode.Parse(await tools.SetComponentModifier(Session, Name, "go", "goto", "Wachtwoord vergeten"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("goto:\"Wachtwoord vergeten\"", registry.PeekText(SurfaceId));
+    }
+
+    [Fact]
+    public async Task ReadWireframe_AGotoField_ResolvesToTheTargetScreensId()
+    {
+        var built = _Build(ConsentOutcome.Approved);
+        built.registry.SurfaceOpened(SurfaceId, Name, WireframeScreens.TwoScreensWithFlow);
+        var (tools, _, _) = built;
+
+        var json = JsonNode.Parse(await tools.ReadWireframe(Session, Name));
+
+        var components = json!["components"]!.AsArray();
+        var submit = components.Single(component => component!["id"]!.GetValue<string>() == WireframeScreens.LoginSubmit);
+        Assert.Equal(WireframeScreens.SignupScreen, submit!["goto"]!.GetValue<string>());
+        var withoutFlow = components.Single(component => component!["id"]!.GetValue<string>() == WireframeScreens.SignupSubmit);
+        Assert.Null(withoutFlow!["goto"]);
+    }
+
+    [Fact]
     public async Task ChangeComponentType_KeepsThePlaceTheTextAndTheChildren()
     {
         var (tools, registry, asked) = _Open(ConsentOutcome.Approved);

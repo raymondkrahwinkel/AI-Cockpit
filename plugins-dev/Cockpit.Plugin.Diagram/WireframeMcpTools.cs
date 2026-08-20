@@ -84,7 +84,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
     }
 
     [McpServerTool(Name = "read_wireframe")]
-    [Description("Returns a wireframe surface's source — you name it by the id or name from list_wireframes. The first time you read a surface the operator gets an Approve/Deny prompt naming which wireframe and how big it is; only after Approve do you get its source, and it is the surface exactly as it stands now, including anything the operator put there before you connected. Reading does not let you edit — edit_wireframe asks for that separately. Alongside the raw source you get `components`: every component with the ID that add_component, set_component_text, remove_component and move_component take. An id is written in the source as `#name` and stays with its component for as long as it lives, so an id you read stays aimed at the same component even when the operator edits the screen around it — reading a surface is what gives its components ids, so the source comes back with them in it. A wireframe holds one or more screens: `screens` lists them in the order they stand in the source, and every entry in `components` says which screen it belongs to, so a component you name is never one of the same name on another screen.")]
+    [Description("Returns a wireframe surface's source — you name it by the id or name from list_wireframes. The first time you read a surface the operator gets an Approve/Deny prompt naming which wireframe and how big it is; only after Approve do you get its source, and it is the surface exactly as it stands now, including anything the operator put there before you connected. Reading does not let you edit — edit_wireframe asks for that separately. Alongside the raw source you get `components`: every component with the ID that add_component, set_component_text, remove_component and move_component take. An id is written in the source as `#name` and stays with its component for as long as it lives, so an id you read stays aimed at the same component even when the operator edits the screen around it — reading a surface is what gives its components ids, so the source comes back with them in it. A wireframe holds one or more screens: `screens` lists them in the order they stand in the source, and every entry in `components` says which screen it belongs to, so a component you name is never one of the same name on another screen. A component carrying `goto:` gets a `goto` field with the id of the screen it points at, so you can address that screen directly — null when the component carries no `goto:` at all, or when its title does not resolve to exactly one screen (see `problems` for why).")]
     public async Task<string> ReadWireframe(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to read, by its id or name from list_wireframes.")] string wireframe)
@@ -198,24 +198,27 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
             $"move component #{_SingleLine(component)} into container #{_SingleLine(parent)}");
 
     [McpServerTool(Name = "set_component_modifier")]
-    [Description("Sets or clears ONE modifier on ONE component and applies it straight away, leaving everything else alone — the way to make a button primary, tick a checkbox, size a column or fill in a value without rebuilding the component. `modifier` is one of: primary, selected, checked, disabled, w, h, align, value. For the four flags (primary/selected/checked/disabled) omit `value` to turn it on, or pass `clear: true` to take it off. For w/h (a flex ratio 1-6, never pixels), align (left/center/right) and value (text for most components, 0-100 for slider/progress/pagination) pass the new `value`, or `clear: true` to remove it. Refused with a reason if there is no component with that id any more, the modifier is not one this format has, it has no meaning on this component here (e.g. `w:` on something that is not a row/header/footer child), or the operator is editing it right now.")]
+    [Description("Sets or clears ONE modifier on ONE component and applies it straight away, leaving everything else alone — the way to make a button primary, tick a checkbox, size a column, fill in a value or lay a flow to another screen without rebuilding the component. `modifier` is one of: primary, selected, checked, disabled, w, h, align, value, goto. For the four flags (primary/selected/checked/disabled) omit `value` to turn it on, or pass `clear: true` to take it off. For w/h (a flex ratio 1-6, never pixels), align (left/center/right), value (text for most components, 0-100 for slider/progress/pagination) and goto (a screen's title, from read_wireframe's `screens`) pass the new `value`, or `clear: true` to remove it. Refused with a reason if there is no component with that id any more, the modifier is not one this format has, it has no meaning on this component here (e.g. `w:` on something that is not a row/header/footer child), or the operator is editing it right now.")]
     public Task<string> SetComponentModifier(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to edit, by its id or name from list_wireframes.")] string wireframe,
         [Description("The id of the component to change.")] string component,
-        [Description("The modifier keyword: primary, selected, checked, disabled, w, h, align or value.")] string modifier,
-        [Description("The value to set, e.g. `2` for w/h, `right` for align, `Raymond` for value. Leave empty for a flag modifier you are turning on.")] string? value = null,
+        [Description("The modifier keyword: primary, selected, checked, disabled, w, h, align, value or goto.")] string modifier,
+        [Description("The value to set, e.g. `2` for w/h, `right` for align, `Raymond` for value, a screen's title for goto. Leave empty for a flag modifier you are turning on.")] string? value = null,
         [Description("True to remove the modifier instead of setting it.")] bool clear = false)
     {
         if (!Enum.TryParse<WireframeModifierName>(modifier.Trim(), ignoreCase: true, out var name))
         {
-            return Task.FromResult(_Serialize(new { ok = false, error = $"\"{modifier}\" is not a modifier this format has — use one of: primary, selected, checked, disabled, w, h, align, value." }));
+            return Task.FromResult(_Serialize(new { ok = false, error = $"\"{modifier}\" is not a modifier this format has — use one of: primary, selected, checked, disabled, w, h, align, value, goto." }));
         }
 
         var isFlag = name is WireframeModifierName.Primary or WireframeModifierName.Selected or WireframeModifierName.Checked or WireframeModifierName.Disabled;
+        // AC-902: a screen title carries spaces almost by default, so goto: is quoted unconditionally — the
+        // int.TryParse check that spares value: a pair of quotes would read "Wachtwoord vergeten" as two tokens.
+        var quoted = name == WireframeModifierName.Goto || (name == WireframeModifierName.Value && !int.TryParse(value, out _));
         var edit = isFlag
             ? WireframeComponentEdit.ToggleModifier(component, name, on: !clear)
-            : WireframeComponentEdit.SetModifier(component, name, clear ? null : value, quoted: name == WireframeModifierName.Value && !int.TryParse(value, out _));
+            : WireframeComponentEdit.SetModifier(component, name, clear ? null : value, quoted: quoted);
         var ask = clear
             ? $"clear {_Keyword(name)} on component #{_SingleLine(component)}"
             : $"set {_Keyword(name)} on component #{_SingleLine(component)}{(isFlag ? "" : $" to \"{_SingleLine(value ?? "")}\"")}";
@@ -348,7 +351,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         var components = new List<object>();
         foreach (var screen in screens)
         {
-            _Collect(screen, screen, 0, components);
+            _Collect(screen, screen, screens, 0, components);
         }
 
         return components;
@@ -359,8 +362,15 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
     private static IReadOnlyList<object> _Screens(IReadOnlyList<WireframeNode> screens) =>
         screens.Select(screen => (object)new { id = screen.Id, line = screen.Line, title = screen.Text }).ToList();
 
-    private static void _Collect(WireframeNode node, WireframeNode screen, int depth, List<object> into)
+    private static void _Collect(WireframeNode node, WireframeNode screen, IReadOnlyList<WireframeNode> screens, int depth, List<object> into)
     {
+        // AC-902 AC1: the id of the screen a goto: resolves to, not its raw title text — so the agent can address
+        // the target with the other tools directly, without redoing the title lookup itself. Null when the
+        // component carries no goto: or the title does not resolve (see `problems` for why).
+        var target = node.ValueOf(WireframeModifierName.Goto) is { } title
+            ? WireframeGotoResolver.Resolve(screens, title).Screen?.Id
+            : null;
+
         into.Add(new
         {
             id = node.Id,
@@ -371,11 +381,12 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
             type = node.Kind.ToString().ToLowerInvariant(),
             text = node.Text,
             isContainer = node.IsContainer,
+            @goto = target,
         });
 
         foreach (var child in node.Children)
         {
-            _Collect(child, screen, depth + 1, into);
+            _Collect(child, screen, screens, depth + 1, into);
         }
     }
 

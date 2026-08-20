@@ -64,6 +64,12 @@ Ids are unique across the whole document, not per screen, so a component you nam
 another screen. A source written before this — a single screen with everything under it — is exactly what it always
 was and needs no change.
 
+Two screens may share a title; `goto:` naming one is then ambiguous, and refused the same way a duplicate id is
+(above). Renaming a screen — from the properties panel, inline, or with `set_component_text` — carries every
+`goto:` that pointed at the old title to the new one, in the same undoable step. Removing a screen that a `goto:`
+still points at is refused instead: there is nowhere for the flow to move to, so the source stays as it was until
+those `goto:` modifiers are cleared or repointed.
+
 The window shows a document in two ways. The **overview** lays every screen out as a board with its name above it;
 **zoomed in**, one screen fills the canvas. Double-click a board to step into it, the *Overzicht* button to come back
 out, and the zoom level does the same thing: past the level at which one board fills the window you are inside that
@@ -136,6 +142,7 @@ better said with the components that are here than by growing the list until nob
 | `value:` | `input`, `textarea`, `search`, `select`, `badge` | The value shown inside the box or the pill. |
 | `value:N` | `slider`, `progress` | How full, 0–100. |
 | `value:N` | `pagination` | The page you are on. |
+| `goto:"Screen"` | `button`, `item`, `label`, `card`, `image`, `icon`, `avatar`, `badge`, `row` | A flow to another screen by its title. Drawn as an arrow between boards in the overview, and as a clickable marker zoomed in. A title that names no screen, or more than one, is a parse error with a line number rather than a silent no-op. |
 
 There is no size in pixels and no font here, on purpose, and there is exactly one colour: the accent that `primary`
 draws in. Everything else is grey, so the drawing reads as a sketch instead of making promises about a product that

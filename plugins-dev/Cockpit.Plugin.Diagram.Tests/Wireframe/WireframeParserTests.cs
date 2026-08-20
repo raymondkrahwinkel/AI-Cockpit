@@ -307,4 +307,71 @@ public class WireframeParserTests
     {
         Assert.NotEmpty(WireframeParser.Parse("screen #x \"X\"").Errors);
     }
+
+    // ---- Flows between screens (AC-902) ----
+
+    [Fact]
+    public void Goto_ToAnExistingScreen_ParsesAndRoundTrips()
+    {
+        var source = """
+            screen "Aanmelden"
+              button "Verder" primary goto:"Dashboard"
+
+            screen "Dashboard"
+              label "Welkom"
+            """;
+
+        var result = WireframeParser.Parse(source);
+
+        Assert.Empty(result.Errors);
+        var button = result.Screens[0].Children.Single();
+        Assert.Equal("Dashboard", button.ValueOf(WireframeModifierName.Goto));
+        Assert.Equal(source, WireframeWriter.Write(result.Screens));
+    }
+
+    [Fact]
+    public void Goto_DeclaredBeforeItsTargetScreen_StillResolves_BecauseScreensMayForwardReference()
+    {
+        var result = WireframeParser.Parse("""
+            screen "Aanmelden"
+              button "Verder" goto:"Dashboard"
+
+            screen "Dashboard"
+            """);
+
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void Goto_ToAnUnknownScreen_IsAParseError_ButTheComponentStaysInTheTree()
+    {
+        var result = WireframeParser.Parse("""
+            screen "Aanmelden"
+              button "Verder" primary goto:"Onbekend"
+            """);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(2, error.Line);
+        Assert.Contains("Onbekend", error.Message, StringComparison.Ordinal);
+        var button = Assert.Single(result.Screens.Single().Children);
+        Assert.Equal(WireframeNodeKind.Button, button.Kind);
+        Assert.Equal("Onbekend", button.ValueOf(WireframeModifierName.Goto));
+    }
+
+    [Fact]
+    public void Goto_ToATitleTwoScreensShare_IsAParseError_RatherThanTheFirstWinning()
+    {
+        var result = WireframeParser.Parse("""
+            screen "Aanmelden"
+              button "Verder" goto:"Dashboard"
+
+            screen "Dashboard"
+
+            screen "Dashboard"
+            """);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(2, error.Line);
+        Assert.Contains("2 screens", error.Message, StringComparison.Ordinal);
+    }
 }

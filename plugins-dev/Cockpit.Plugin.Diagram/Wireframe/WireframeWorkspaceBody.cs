@@ -763,11 +763,20 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private void _DrawOverlay()
     {
         // Only the marks are cleared; an inline text box in flight keeps its place, since a re-render underneath it
-        // is exactly when the operator is still typing.
+        // is exactly when the operator is still typing. AC-902: flow arrows are Path rather than Border (they are
+        // not a rectangle), so they need their own sweep — left out, they stack up on every re-render.
         foreach (var mark in _overlay.Children.OfType<Border>().ToList())
         {
             _overlay.Children.Remove(mark);
         }
+
+        foreach (var arrow in _overlay.Children.OfType<Avalonia.Controls.Shapes.Path>().ToList())
+        {
+            _overlay.Children.Remove(arrow);
+        }
+
+        // AC-902: flows are drawn whether or not anything is selected — they are not a selection mark.
+        _DrawFlows();
 
         if (_Selected is not { } node || _ControlFor(node) is not { } control
             || control.TranslatePoint(default, _surface) is not { } origin)
@@ -788,6 +797,128 @@ internal sealed class WireframeWorkspaceBody : UserControl
         Canvas.SetLeft(outline, bounds.X);
         Canvas.SetTop(outline, bounds.Y);
         _overlay.Children.Add(outline);
+    }
+
+    // AC-902 (WF-2): a `goto:` between screens, drawn as an arrow between boards in the overview or as a clickable
+    // marker on the component itself when zoomed into one screen — both read the bounding boxes the render just
+    // laid out, the same way the selection mark above does.
+    private void _DrawFlows()
+    {
+        if (_ZoomedScreen is { } screen)
+        {
+            _DrawFlowMarkers(screen);
+        }
+        else
+        {
+            _DrawFlowArrows();
+        }
+    }
+
+    private void _DrawFlowMarkers(WireframeNode screen)
+    {
+        foreach (var node in _FlowSources(screen))
+        {
+            if (node.ValueOf(WireframeModifierName.Goto) is not { } title
+                || WireframeGotoResolver.Resolve(_screens, title).Screen is not { } target
+                || _ControlFor(node) is not { } control || control.TranslatePoint(default, _surface) is not { } origin)
+            {
+                continue;
+            }
+
+            var marker = new Border
+            {
+                Width = 16,
+                Height = 16,
+                Background = _Brush("CockpitAccentBrush"),
+                CornerRadius = new CornerRadius(8),
+                Cursor = new Cursor(StandardCursorType.Hand),
+            };
+            ToolTip.SetTip(marker, $"Goes to «{target.Text}»");
+            marker.Tapped += (_, _) => _ZoomInto(target);
+            Canvas.SetLeft(marker, origin.X + control.Bounds.Width - 12);
+            Canvas.SetTop(marker, origin.Y - 4);
+            _overlay.Children.Add(marker);
+        }
+    }
+
+    private void _DrawFlowArrows()
+    {
+        for (var index = 0; index < _screens.Count; index++)
+        {
+            foreach (var node in _FlowSources(_screens[index]))
+            {
+                if (node.ValueOf(WireframeModifierName.Goto) is not { } title
+                    || WireframeGotoResolver.Resolve(_screens, title).Screen is not { } target || target == _screens[index]
+                    || _ControlFor(node) is not { } control || control.TranslatePoint(default, _surface) is not { } origin)
+                {
+                    continue;
+                }
+
+                var source = new Rect(origin, control.Bounds.Size);
+                var destination = WireframeRenderer.BoardBounds(_screens.IndexOf(target), _screens.Count);
+                _overlay.Children.Add(_Arrow(_EdgePoint(source, destination.Center), _EdgePoint(destination, source.Center)));
+            }
+        }
+    }
+
+    private static IEnumerable<WireframeNode> _FlowSources(WireframeNode node)
+    {
+        if (node.Has(WireframeModifierName.Goto))
+        {
+            yield return node;
+        }
+
+        foreach (var found in node.Children.SelectMany(_FlowSources))
+        {
+            yield return found;
+        }
+    }
+
+    // Where the line from `rect`'s center towards `toward` leaves `rect` — the arrow's end sits on the box, not
+    // buried inside it.
+    private static Point _EdgePoint(Rect rect, Point toward)
+    {
+        var center = rect.Center;
+        var dx = toward.X - center.X;
+        var dy = toward.Y - center.Y;
+        if (dx == 0 && dy == 0)
+        {
+            return center;
+        }
+
+        var scale = Math.Min(
+            dx == 0 ? double.PositiveInfinity : Math.Abs(rect.Width / 2 / dx),
+            dy == 0 ? double.PositiveInfinity : Math.Abs(rect.Height / 2 / dy));
+        return new Point(center.X + dx * scale, center.Y + dy * scale);
+    }
+
+    // A line with a filled triangular head, the same construction as the whiteboard's _PaintArrow — but as a
+    // Shapes.Path rather than a DrawingContext painter, since this lives on the overlay canvas, not inside a Render
+    // override.
+    private static Avalonia.Controls.Shapes.Path _Arrow(Point from, Point to)
+    {
+        const double headSize = 10;
+        const double wing = Math.PI / 7;
+        var angle = Math.Atan2(to.Y - from.Y, to.X - from.X);
+        var back = to - new Vector(Math.Cos(angle), Math.Sin(angle)) * (headSize * 1.6);
+        var left = to - new Vector(Math.Cos(angle - wing), Math.Sin(angle - wing)) * headSize;
+        var right = to - new Vector(Math.Cos(angle + wing), Math.Sin(angle + wing)) * headSize;
+
+        var geometry = new StreamGeometry();
+        using (var context = geometry.Open())
+        {
+            context.BeginFigure(from, isFilled: false);
+            context.LineTo(back);
+            context.EndFigure(false);
+
+            context.BeginFigure(left, isFilled: true);
+            context.LineTo(to);
+            context.LineTo(right);
+            context.EndFigure(true);
+        }
+
+        var brush = _Brush("CockpitAccentBrush");
+        return new Avalonia.Controls.Shapes.Path { Data = geometry, Stroke = brush, StrokeThickness = 2, Fill = brush, IsHitTestVisible = false };
     }
 
     private Control? _ControlFor(WireframeNode node) => _render
@@ -1164,6 +1295,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
         {
             _propertiesContent.Children.Add(_BuildValueField(node, id));
         }
+
+        if (WireframeModifierRules.Applies(node.Kind, parentKind, WireframeModifierName.Goto))
+        {
+            _propertiesContent.Children.Add(_BuildGotoPicker(node, id));
+        }
     }
 
     private static readonly WireframeModifierName[] FlagModifiers =
@@ -1236,6 +1372,28 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private const string NoAlign = "—";
 
     private static readonly string[] AlignChoices = [NoAlign, "left", "center", "right"];
+
+    // AC-902 (WF-2/WF-6): the operator's way to lay a flow without typing the source — a picker of the document's
+    // own screen titles, the current screen left out since a board never points at itself in the overview.
+    private StackPanel _BuildGotoPicker(WireframeNode node, string id)
+    {
+        var own = WireframeHandEdit.ScreenOf(_screens, node);
+        var choices = new[] { NoGoto }.Concat(_screens.Where(screen => screen != own).Select(screen => screen.Text ?? "")).ToArray();
+        var combo = new ComboBox { ItemsSource = choices, SelectedItem = node.ValueOf(WireframeModifierName.Goto) ?? NoGoto, HorizontalAlignment = HorizontalAlignment.Stretch };
+        combo.SelectionChanged += (_, _) =>
+        {
+            var chosen = combo.SelectedItem as string;
+            _Apply(WireframeComponentEdit.SetModifier(id, WireframeModifierName.Goto, chosen == NoGoto ? null : chosen, quoted: true));
+        };
+
+        return new StackPanel
+        {
+            Spacing = 2,
+            Children = { new TextBlock { Text = "Goes to", FontSize = 11 }, combo },
+        };
+    }
+
+    private const string NoGoto = "—";
 
     // AC-905 AC1: `value:` on a slider/progress/pagination is a 0-100 number the format reads back unquoted; every
     // other component takes free text, quoted like the writer already quotes any other text on the line.
