@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: diagram, whiteboard and wireframe windows now have a shared "Ask the agent…" action — in the diagram's and
+  wireframe's toolbar, in the whiteboard's save bar — that sends whatever you type about the current selection (or
+  about the surface as a whole with nothing selected) straight to the coupled session, with enough detail that the
+  agent knows which surface and which object you mean. Every ask you send shows up in a strip on that surface with
+  a timestamp and a "Handled" button; clicking one jumps back to what it was about. This replaces the diagram's and
+  whiteboard's separate "Pin" button — the wireframe never had an equivalent before. Disabled with a tooltip when no
+  session is coupled yet.
 - added: the whiteboard now has a colour swatch and an eraser. Picking a swatch recolours the current selection, or
   sets what the pencil, marker and next placed shape draw with; a sticky note and a pasted image are unaffected.
   The eraser sweeps away whole strokes and placed shapes while a button is held — never part of a stroke and never

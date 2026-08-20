@@ -25,7 +25,7 @@ internal static class WhiteboardGeometry
         var minY = double.MaxValue;
         var maxX = double.MinValue;
         var maxY = double.MinValue;
-        foreach (var bounds in document.Objects.Select(_BoundsOf))
+        foreach (var bounds in document.Objects.Select(BoundsOf))
         {
             minX = Math.Min(minX, bounds.X);
             minY = Math.Min(minY, bounds.Y);
@@ -51,6 +51,11 @@ internal static class WhiteboardGeometry
         var pan = centered - (new Vector(content.X, content.Y) * zoom);
         return new Matrix(zoom, 0, 0, zoom, pan.X, pan.Y);
     }
+
+    // AC-910: the board-pixel rectangle an Ask about a whiteboard object describes it by — the one piece of address
+    // the agent can actually use there (read_whiteboard gives back a PNG, not shapes/strokes as data), so exposed
+    // rather than kept private to ContentBounds alone.
+    public static Rect BoundsOf(WhiteboardObject obj) => _BoundsOf(obj);
 
     private static Rect _BoundsOf(WhiteboardObject obj) => obj switch
     {

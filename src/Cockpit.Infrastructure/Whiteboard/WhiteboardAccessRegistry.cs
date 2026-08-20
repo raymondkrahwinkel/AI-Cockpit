@@ -14,7 +14,6 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
     private readonly Dictionary<string, Surface> _surfaces = new(StringComparer.Ordinal);
     private readonly CouplingLedger<WhiteboardCoupling> _ledger = new(coupling => coupling.SessionId);
     private readonly Dictionary<string, List<HistoryEntry>> _history = new(StringComparer.Ordinal); // surfaceId -> its actions, oldest first
-    private readonly Dictionary<string, List<PinEntry>> _pins = new(StringComparer.Ordinal); // surfaceId -> its pins, oldest first
 
     public event Action<string, byte[]>? SnapshotChanged;
 
@@ -25,8 +24,6 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
     public event Action<string, string>? ObjectErased;
 
     public event Action<string>? HistoryChanged;
-
-    public event Action<string>? PinsChanged;
 
     public void SurfaceOpened(string surfaceId, string name, byte[] initialSnapshotPng)
     {
@@ -50,7 +47,6 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
             _surfaces.Remove(surfaceId);
             wasCoupled = _ledger.Remove(surfaceId);
             _history.Remove(surfaceId);
-            _pins.Remove(surfaceId);
         }
 
         if (wasCoupled)
@@ -283,46 +279,6 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         return null;
     }
 
-    // ---- Pins (AC-849) ----
-
-    public IReadOnlyList<WhiteboardPin> Pins(string surfaceId)
-    {
-        lock (_lock)
-        {
-            return _pins.TryGetValue(surfaceId, out var entries)
-                ? entries.Select(entry => new WhiteboardPin(entry.Id, entry.ObjectId, entry.Question, entry.When, entry.Closed)).ToList()
-                : [];
-        }
-    }
-
-    public string AddPin(string surfaceId, string objectId, string question)
-    {
-        var id = Guid.NewGuid().ToString("N");
-        lock (_lock)
-        {
-            var entries = _pins.TryGetValue(surfaceId, out var list) ? list : _pins[surfaceId] = [];
-            entries.Add(new PinEntry(id, objectId, question, DateTime.Now));
-        }
-
-        PinsChanged?.Invoke(surfaceId);
-        return id;
-    }
-
-    public void ClosePin(string surfaceId, string pinId)
-    {
-        lock (_lock)
-        {
-            if (!_pins.TryGetValue(surfaceId, out var entries) || entries.Find(entry => entry.Id == pinId) is not { } pin)
-            {
-                return;
-            }
-
-            pin.Closed = true;
-        }
-
-        PinsChanged?.Invoke(surfaceId);
-    }
-
     public byte[]? ReadCoupled(string sessionId, string surfaceId)
     {
         lock (_lock)
@@ -394,20 +350,5 @@ internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISin
         public DateTime When { get; } = when;
 
         public bool Reverted { get; set; }
-    }
-
-    // AC-849's pin row: Closed is the operator's own call, never system-detected — there is no correlation between
-    // a pin and whatever the agent later says in the session.
-    private sealed class PinEntry(string id, string objectId, string question, DateTime when)
-    {
-        public string Id { get; } = id;
-
-        public string ObjectId { get; } = objectId;
-
-        public string Question { get; } = question;
-
-        public DateTime When { get; } = when;
-
-        public bool Closed { get; set; }
     }
 }

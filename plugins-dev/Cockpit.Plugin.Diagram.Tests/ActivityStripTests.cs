@@ -20,7 +20,6 @@ public class ActivityStripTests
     internal sealed class FakeDiagramRegistry : IDiagramAccessRegistry
     {
         private readonly Dictionary<string, List<DiagramHistoryEntry>> _history = new();
-        private readonly Dictionary<string, List<DiagramPin>> _pins = new();
 
         public List<string> RevertCalls { get; } = [];
 
@@ -38,14 +37,8 @@ public class ActivityStripTests
 
         public event Action<string>? HistoryChanged;
 
-        // PinStrip (AC-849) needs a real PinsChanged, the same reason CouplingChanged above is real.
-        public event Action<string>? PinsChanged;
-
         public void Seed(string surfaceId, DiagramHistoryEntry entry) =>
             (_history.TryGetValue(surfaceId, out var list) ? list : _history[surfaceId] = []).Add(entry);
-
-        public void Seed(string surfaceId, DiagramPin pin) =>
-            (_pins.TryGetValue(surfaceId, out var list) ? list : _pins[surfaceId] = []).Add(pin);
 
         public void Raise(string surfaceId) => HistoryChanged?.Invoke(surfaceId);
 
@@ -141,40 +134,11 @@ public class ActivityStripTests
         public bool ResolveProposal(string surfaceId, IReadOnlySet<int> acceptedBlocks) => false;
 
         public bool DiscardProposal(string surfaceId) => false;
-
-        public IReadOnlyList<DiagramPin> Pins(string surfaceId) =>
-            _pins.TryGetValue(surfaceId, out var list) ? list : [];
-
-        public string AddPin(string surfaceId, string objectKey, string question)
-        {
-            var pin = new DiagramPin(Guid.NewGuid().ToString("N"), objectKey, question, DateTime.Now, Closed: false);
-            Seed(surfaceId, pin);
-            PinsChanged?.Invoke(surfaceId);
-            return pin.Id;
-        }
-
-        public void ClosePin(string surfaceId, string pinId)
-        {
-            if (!_pins.TryGetValue(surfaceId, out var list))
-            {
-                return;
-            }
-
-            var index = list.FindIndex(pin => pin.Id == pinId);
-            if (index < 0)
-            {
-                return;
-            }
-
-            list[index] = list[index] with { Closed = true };
-            PinsChanged?.Invoke(surfaceId);
-        }
     }
 
     internal sealed class FakeWhiteboardRegistry : IWhiteboardAccessRegistry
     {
         private readonly Dictionary<string, List<WhiteboardHistoryEntry>> _history = new();
-        private readonly Dictionary<string, List<WhiteboardPin>> _pins = new();
 
         public List<string> RevertCalls { get; } = [];
 
@@ -189,14 +153,8 @@ public class ActivityStripTests
 
         public event Action<string>? HistoryChanged;
 
-        // Same reason as FakeDiagramRegistry's PinsChanged above: PinStrip actually subscribes.
-        public event Action<string>? PinsChanged;
-
         public void Seed(string surfaceId, WhiteboardHistoryEntry entry) =>
             (_history.TryGetValue(surfaceId, out var list) ? list : _history[surfaceId] = []).Add(entry);
-
-        public void Seed(string surfaceId, WhiteboardPin pin) =>
-            (_pins.TryGetValue(surfaceId, out var list) ? list : _pins[surfaceId] = []).Add(pin);
 
         public void Raise(string surfaceId) => HistoryChanged?.Invoke(surfaceId);
 
@@ -258,34 +216,6 @@ public class ActivityStripTests
 
         public void SessionEnded(string sessionId)
         {
-        }
-
-        public IReadOnlyList<WhiteboardPin> Pins(string surfaceId) =>
-            _pins.TryGetValue(surfaceId, out var list) ? list : [];
-
-        public string AddPin(string surfaceId, string objectId, string question)
-        {
-            var pin = new WhiteboardPin(Guid.NewGuid().ToString("N"), objectId, question, DateTime.Now, Closed: false);
-            Seed(surfaceId, pin);
-            PinsChanged?.Invoke(surfaceId);
-            return pin.Id;
-        }
-
-        public void ClosePin(string surfaceId, string pinId)
-        {
-            if (!_pins.TryGetValue(surfaceId, out var list))
-            {
-                return;
-            }
-
-            var index = list.FindIndex(pin => pin.Id == pinId);
-            if (index < 0)
-            {
-                return;
-            }
-
-            list[index] = list[index] with { Closed = true };
-            PinsChanged?.Invoke(surfaceId);
         }
     }
 

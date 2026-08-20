@@ -56,7 +56,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly ToggleButton _sourceToggle;
     private readonly TextBox _sourceBox;
     private readonly ActivityStrip _activityStrip;
-    private readonly PinStrip _pinStrip;
+    private readonly AskStrip _askStrip;
     private readonly PresenceIndicators _presence;
     private readonly ToggleButton _followToggle;
     private readonly Button _saveButton;
@@ -80,7 +80,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly Button _deleteButton;
     private readonly Button _attributesButton;
     private readonly Button _shapeButton;
-    private readonly Button _pinButton;
+    private readonly Button _askButton;
     private readonly TextBlock _handHint;
     private DiagramEditSupport _support = new(DiagramEditDialect.Flowchart, null);
     private IReadOnlyList<DiagramObjectAt> _objects = [];
@@ -132,15 +132,15 @@ internal sealed class DiagramWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _connectButton, _renameButton, _deleteButton, _attributesButton, _shapeButton, _pinButton, _handHint, _followToggle) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _connectButton, _renameButton, _deleteButton, _attributesButton, _shapeButton, _askButton, _handHint, _followToggle) = _BuildToolbar();
         var diagramJournal = new DiagramActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, diagramJournal, key => _ = _FlashObjectAsync(key));
-        _pinStrip = new PinStrip(host, _surfaceId, whiteboard: false, key => _ = _FlashObjectAsync(key));
+        _askStrip = new AskStrip(key => _ = _FlashObjectAsync(key));
         _presence = new PresenceIndicators(_surfaceId, diagramJournal, diagramJournal);
 
         Content = new DockPanel
         {
-            Children = { toolbar, _couplingBar, _presence, _proposalPanel, _sourceToggle, _sourceBox, _pinStrip, _activityStrip, _viewport },
+            Children = { toolbar, _couplingBar, _presence, _proposalPanel, _sourceToggle, _sourceBox, _askStrip, _activityStrip, _viewport },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
@@ -148,12 +148,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
         DockPanel.SetDock(_proposalPanel, Dock.Top);
         DockPanel.SetDock(_sourceToggle, Dock.Bottom);
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
-        DockPanel.SetDock(_pinStrip, Dock.Bottom);
+        DockPanel.SetDock(_askStrip, Dock.Bottom);
         DockPanel.SetDock(_activityStrip, Dock.Bottom);
 
         // AC-834: the session is named by whoever opened this window, never guessed — a not-live binding is the
         // "no agent on this diagram" state. Bound before the first _RenderInto (AC-849): its _RefreshHandEditBar
-        // reads _sessionBinding.IsLive for the pin button, refreshed by the same coupling-change callback.
+        // reads _sessionBinding.IsLive for the ask button, refreshed by the same coupling-change callback.
         _sessionBinding = new SurfaceSessionBinding(host, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshHandEditBar(); });
         _RenderInto(document.MermaidText);
         _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
@@ -476,14 +476,17 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _isFitMode = false;
         _ApplyTransform();
 
-        // Dragging a node is the one thing this surface will not do: Mermaid has no coordinates, so the next render
-        // would put it back. Say where that does live rather than letting the gesture look broken.
-        if (_pressedOn is { Kind: DiagramObjectAt.Node } && !_placementHintShown && travelled.Length > ClickSlopPx * 4)
+        // Dragging a node is the one thing this surface will not do: Mermaid has no coordinates. AC-910's D-6: offer
+        // asking the agent right there, about the object under the drag (_pressedOn, captured into a local since
+        // the field clears once the drag ends), not whatever _selected happens to hold.
+        if (_pressedOn is { Kind: DiagramObjectAt.Node } pressed && !_placementHintShown && travelled.Length > ClickSlopPx * 4)
         {
             _placementHintShown = true;
             _host.ShowToast(
                 "A diagram places itself — free dragging happens on the whiteboard. Here you edit the structure.",
-                PluginToastSeverity.Information);
+                PluginToastSeverity.Information,
+                actionLabel: "Ask the agent…",
+                onAction: () => _AddAsk(_askButton, pressed));
         }
     }
 
@@ -1109,49 +1112,22 @@ internal sealed class DiagramWorkspaceBody : UserControl
             : new DiagramHandEdit(er ? DiagramHandEditKind.RemoveEntity : DiagramHandEditKind.RemoveNode, target.Id));
     }
 
-    // AC-849: plants a pin on the selected object and sends its "📍 pin N" reference to the coupled session right
-    // away — the same fire-and-forget SendAsync WhiteboardWorkspaceBody._Ask already uses, since a pin's whole point
-    // is landing as a chat message, not living only on this surface.
-    private void _AddPin(Control anchor)
+    // AC-910: asks the coupled session about `target` (or, with nothing selected, the diagram as a whole) — the
+    // shared flyout/message/strip, this surface's own descriptor. Reachable from the toolbar button (target =
+    // _selected) and from the drag toast (target = whatever was under the drag, D-6).
+    private void _AddAsk(Control anchor, DiagramObjectAt? target)
     {
-        if (_registry is null || _selected is not { } target || !_sessionBinding.IsLive)
+        if (!_sessionBinding.IsLive)
         {
             return;
         }
 
-        var question = new TextBox { Width = 260, PlaceholderText = "What are you unsure about?" };
-        var confirm = new Button { Content = "Pin", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
-        var flyout = new Flyout
+        var context = new AskContext("diagram", _surfaceId, _documentTitle, target?.HoldKey, target?.Label);
+        AskFlyout.Show(anchor, "What should the agent do here?", question =>
         {
-            Content = new StackPanel { Spacing = 8, Margin = new Thickness(12), Children = { question, confirm } },
-        };
-
-        void Plant()
-        {
-            var text = question.Text?.Trim();
-            if (string.IsNullOrEmpty(text))
-            {
-                return;
-            }
-
-            flyout.Hide();
-            _registry.AddPin(_surfaceId, target.HoldKey, text);
-            var index = _registry.Pins(_surfaceId).Count;
-            _ = _sessionBinding.SendAsync(PinMessage.Compose(_documentTitle, index, target.Label, text));
-        }
-
-        confirm.Click += (_, _) => Plant();
-        question.KeyDown += (_, key) =>
-        {
-            if (key.Key == Key.Enter)
-            {
-                key.Handled = true;
-                Plant();
-            }
-        };
-
-        flyout.ShowAt(anchor);
-        question.Focus();
+            _askStrip.Add(question, target?.HoldKey);
+            _ = _sessionBinding.SendAsync(AskMessage.Compose(context, question));
+        });
     }
 
     // One handling is one change towards the registry (AC-838's write path, under the same lock as the agent's), and
@@ -1319,15 +1295,13 @@ internal sealed class DiagramWorkspaceBody : UserControl
         ToolTip.SetTip(_attributesButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? "Manage this entity's attributes." : "Select an entity first."));
         ToolTip.SetTip(_shapeButton, reason ?? (_selected is { Kind: DiagramObjectAt.Node } ? "Change the shape of the selected node." : "Select a node first to change its shape."));
 
-        // AC-849: pinning needs both an object under the operator's hand and a live session to send the reference
-        // to — the coupling bar's "No agent linked" already explains the second half, this button explains it
-        // again at the point of use rather than failing silently when pressed.
-        _pinButton.IsEnabled = editable && _selected is not null && _sessionBinding.IsLive;
+        // AC-910: asking works on the selection or on the diagram as a whole (criterion 7), so the only real gate is
+        // a live coupled session — named by the coupling bar's own button so "why can't I" points somewhere.
+        _askButton.IsEnabled = _sessionBinding.IsLive;
         ToolTip.SetTip(
-            _pinButton,
-            !_sessionBinding.IsLive ? "Link a conversation first to be able to pin."
-            : _selected is null ? "Select an object first to pin."
-            : "Pin a question on this object.");
+            _askButton,
+            _sessionBinding.IsLive ? "Ask the agent about the selected object, or the whole diagram."
+            : "Couple a conversation first (\"Couple…\" above) to be able to ask the agent.");
 
         _handHint.Text = _isConnecting
             ? _connectFrom is null ? $"Click the {box} where the connection starts." : $"Click the {box} that {_connectFrom} points to."
@@ -1394,7 +1368,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // line art). Exports whatever is currently rendered, via the same StorageProvider save-picker pattern as
     // the dashboard/flow export elsewhere in the host (SessionDialogService, WorkflowManagerControl).
     private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus, Button Add,
-        Button Connect, Button Rename, Button Delete, Button Attributes, Button Shape, Button Pin, TextBlock Hint, ToggleButton Follow) _BuildToolbar()
+        Button Connect, Button Rename, Button Delete, Button Attributes, Button Shape, Button Ask, TextBlock Hint, ToggleButton Follow) _BuildToolbar()
     {
         var export = new Button
         {
@@ -1464,10 +1438,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // AC-909: the shape counterpart of Rename — a flowchart node only, same reasoning as Attributes above.
         var shape = new Button { Content = "Shape…", Classes = { "Compact" }, IsVisible = false };
         shape.Click += (_, _) => _PickNodeShape(shape);
-        // AC-849: the operator's question about the selected object, sent to the coupled session as a "📍 pin N"
-        // reference the moment it is planted — see _AddPin.
-        var pin = new Button { Content = "Pin", Classes = { "Compact" } };
-        pin.Click += (_, _) => _AddPin(pin);
+        // AC-910: the operator's free-text ask about the selection (or, with nothing selected, the diagram as a
+        // whole), sent to the coupled session the moment it is submitted — see _AddAsk.
+        var ask = new Button { Content = "Ask the agent…", Classes = { "Compact" } };
+        ask.Click += (_, _) => _AddAsk(ask, _selected);
         var hint = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -1493,14 +1467,14 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { insertSample, addNode, connect, rename, delete, attributes, shape, pin, save, saveStatus, hint },
+            Children = { insertSample, addNode, connect, rename, delete, attributes, shape, ask, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { export, handEditControls, zoomControls } };
         DockPanel.SetDock(export, Dock.Right);
         DockPanel.SetDock(handEditControls, Dock.Left);
 
-        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, addNode, connect, rename, delete, attributes, shape, pin, hint, follow);
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, addNode, connect, rename, delete, attributes, shape, ask, hint, follow);
     }
 
     // One save path for both origins (AC-839): a hand-edit and an accepted agent proposal both arrive through
