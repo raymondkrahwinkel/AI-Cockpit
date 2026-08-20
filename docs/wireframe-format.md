@@ -93,6 +93,49 @@ out, and the zoom level does the same thing: past the level at which one board f
 screen, and back below the level at which the whole overview fits you are looking at the set again. A document with a
 single screen is always shown zoomed in.
 
+## States
+
+*AC-914.* A `screen` may carry `state` children — the empty, loading and error variants of the same screen, without
+duplicating it. A state replaces the **content of one container**; everything else on the screen keeps coming from
+the base:
+
+```
+screen "Search results"
+  header
+    search "Search…"
+  row h:1
+    sidebar "Filters" w:1
+      checkbox "In stock" checked
+    main w:4
+      list #results
+        item "Result 1"
+        item "Result 2"
+
+  state "Empty" replaces:#results
+    label "No results found"
+    button "Clear filters" primary
+
+  state "Loading" replaces:#results
+    space h:3
+```
+
+A state stands directly under its screen — nowhere else — and carries `replaces:#<id>`, the id of a container in
+that same screen. Opening the state draws the screen exactly as it always does, except that named container shows
+the state's own children instead of its usual ones; the container itself (its kind, its `w:`/`h:`) stays the
+screen's. A state carries no `w:`, `h:`, `disabled` or `align` of its own — it is never laid out, only swapped in.
+
+A state is a component like any other: `add_component`, `remove_component` and `set_component_text` reach it the
+same way they reach anything else, so hand-editing and an agent's edits use exactly the same route. What is
+different is where it may live and what it needs: only directly under a screen, and only with a `replaces:#<id>`
+naming a container of that screen — not a widget, not the screen itself, not another state. Removing the container
+a state still replaces is refused, the same way removing a screen a `goto:` still points at is refused. A state
+never appears as a block of its own on the canvas, in the component palette, or as a destination in *Move to…* — it
+is opened from the state strip in the toolbar (*Base · Empty · Loading · Error*, plus *+ State* on a selected
+container), and the overview names it after its screen (`Search results · empty · loading · error`) rather than
+drawing it as a board of its own.
+
+`goto:` never targets a state — see the modifier table below.
+
 ## Containers
 
 | Keyword | What it lays out |
@@ -115,6 +158,7 @@ single screen is always shown zoomed in.
 | `stepper` | Numbered steps from its `item` children. The `selected` one is where you are; everything up to it is drawn as done. |
 | `list` | A list box. `item` children are its rows; without any, it draws placeholder rows so it still reads as a list. |
 | `table` | A table. `item` children are its column headings; without any, the header band is drawn blank. |
+| `state` | Not drawn as a container of its own — see [States](#states) below. |
 
 ## Widgets
 
@@ -159,8 +203,9 @@ better said with the components that are here than by growing the list until nob
 | `value:` | `input`, `textarea`, `search`, `select`, `badge` | The value shown inside the box or the pill. |
 | `value:N` | `slider`, `progress` | How full, 0–100. |
 | `value:N` | `pagination` | The page you are on. |
-| `goto:"Screen"` | `button`, `item`, `label`, `card`, `image`, `icon`, `avatar`, `badge`, `row` | A flow to another screen by its title. Drawn as an arrow between boards in the overview, and as a clickable marker zoomed in. A title that names no screen, or more than one, is a parse error with a line number rather than a silent no-op. |
+| `goto:"Screen"` | `button`, `item`, `label`, `card`, `image`, `icon`, `avatar`, `badge`, `row` | A flow to another screen by its title. Drawn as an arrow between boards in the overview, and as a clickable marker zoomed in. A title that names no screen, or more than one, is a parse error with a line number rather than a silent no-op. **Names a screen only** — `goto:"Empty"` naming a state gives the same `'Empty' is not a screen in this wireframe.` error as any other unknown title, because a state is a condition, not a destination a flow could land on (see [States](#states)). |
 | `note:"…"` | anything, including `screen` | A requirement the drawing itself cannot show — "disabled until both fields are filled in", "max 3 lines, then truncate". Drawn as a numbered marker, and listed in full beside the canvas; never on the canvas itself. |
+| `replaces:#id` | `state` only | The container, in the state's own screen, whose content the state stands in for. See [States](#states). |
 
 There is no size in pixels and no font here, on purpose, and there is exactly one colour: the accent that `primary`
 draws in. Everything else is grey, so the drawing reads as a sketch instead of making promises about a product that

@@ -15,10 +15,14 @@ public static class WireframeModifierRules
         WireframeModifierName.Primary => kind is WireframeNodeKind.Button or WireframeNodeKind.Badge,
         WireframeModifierName.Selected => kind is WireframeNodeKind.Item or WireframeNodeKind.Tab,
         WireframeModifierName.Checked => kind is WireframeNodeKind.Checkbox or WireframeNodeKind.Radio or WireframeNodeKind.Toggle,
-        WireframeModifierName.Disabled => true,
-        WireframeModifierName.Align => true,
+        // AC-914: a state has nothing of its own to dim or align — it stands in for a container's content, drawn
+        // exactly where that container already is.
+        WireframeModifierName.Disabled => kind is not WireframeNodeKind.State,
+        WireframeModifierName.Align => kind is not WireframeNodeKind.State,
         // AC-907: a requirement about behaviour, not about drawing — applies to any component, screen line included.
         WireframeModifierName.Note => true,
+        // AC-914: the one modifier a state carries — the container in its own screen it replaces the content of.
+        WireframeModifierName.Replaces => kind is WireframeNodeKind.State,
         WireframeModifierName.Value => kind is WireframeNodeKind.Input or WireframeNodeKind.Textarea or WireframeNodeKind.Search
             or WireframeNodeKind.Select or WireframeNodeKind.Badge or WireframeNodeKind.Slider or WireframeNodeKind.Progress
             or WireframeNodeKind.Pagination,
@@ -28,9 +32,11 @@ public static class WireframeModifierRules
             or WireframeNodeKind.Card or WireframeNodeKind.Image or WireframeNodeKind.Icon or WireframeNodeKind.Avatar
             or WireframeNodeKind.Badge or WireframeNodeKind.Row,
         WireframeModifierName.W => parentKind is WireframeNodeKind.Row or WireframeNodeKind.Header or WireframeNodeKind.Footer,
-        WireframeModifierName.H => parentKind is WireframeNodeKind.Column or WireframeNodeKind.Group or WireframeNodeKind.Card
-            or WireframeNodeKind.Screen or WireframeNodeKind.Nav or WireframeNodeKind.Sidebar or WireframeNodeKind.Main
-            or WireframeNodeKind.Tab,
+        // AC-914: a state sits directly under a screen too, but it has no height of its own to weight against its
+        // siblings — it is never laid out, only swapped in for a container's content.
+        WireframeModifierName.H => kind is not WireframeNodeKind.State && parentKind is WireframeNodeKind.Column or WireframeNodeKind.Group
+            or WireframeNodeKind.Card or WireframeNodeKind.Screen or WireframeNodeKind.Nav or WireframeNodeKind.Sidebar
+            or WireframeNodeKind.Main or WireframeNodeKind.Tab,
         _ => false,
     };
 

@@ -66,7 +66,9 @@ public static class WireframeHandEdit
         var inside = Containers(node).ToHashSet();
         var placement = Placement(screens, id);
         return screens.SelectMany(Containers)
-            .Where(candidate => candidate.Id is not null && !inside.Contains(candidate))
+            // AC-914: a state stands for a variant of its own screen — it is never a place to move something else
+            // into from the surface, only add_component naming its own id does that.
+            .Where(candidate => candidate.Id is not null && candidate.Kind != WireframeNodeKind.State && !inside.Contains(candidate))
             .Where(candidate => placement is not { } at || candidate != at.Parent || at.Index != at.Parent.Children.Count - 1)
             .ToList();
     }
@@ -81,6 +83,8 @@ public static class WireframeHandEdit
     public static bool CanMoveInto(IReadOnlyList<WireframeNode> screens, string id, WireframeNode into) =>
         into.IsContainer
         && into.Id is not null
+        // AC-914: same reasoning as Destinations above — a state is not a drop target for another component.
+        && into.Kind != WireframeNodeKind.State
         && Find(screens, id) is { } node
         && !screens.Contains(node)
         && Find(node, into.Line) is null;

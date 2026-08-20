@@ -5,6 +5,9 @@ namespace Cockpit.Core.Wireframe.Model;
 public enum WireframeNodeKind
 {
     Screen,
+    // AC-914: a screen's variant, replacing one of its containers' content — kept beside Screen, the other kind
+    // that stands for a whole screen rather than something drawn inside one.
+    State,
     Row,
     Column,
     Group,

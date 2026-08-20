@@ -122,6 +122,14 @@ public static class WireframeParser
             }
             else if (parent.IsContainer)
             {
+                // AC-914: a state stands for a whole screen's variant, so it belongs directly under one — anywhere
+                // else it would be a container inside a container with no screen of its own to have replaced from.
+                if (node.Kind == WireframeNodeKind.State && parent.Kind != WireframeNodeKind.Screen)
+                {
+                    errors.Add(new WireframeParseError(lineNumber, "A 'state' can only be a direct child of a screen."));
+                    continue;
+                }
+
                 parent.Children.Add(node);
             }
             else
@@ -139,6 +147,9 @@ public static class WireframeParser
         foreach (var screen in screens)
         {
             _ValidateGotoTargets(screen, screens, errors);
+            // AC-914: a state can equally be declared above or below the container it names — read the whole
+            // screen first, then resolve `replaces:` against it.
+            _ValidateReplacesTargets(screen, errors);
         }
 
         return new WireframeParseResult(screens, errors, viewport);
@@ -172,6 +183,34 @@ public static class WireframeParser
         foreach (var child in node.Children)
         {
             _ValidateGotoTargets(child, screens, errors);
+        }
+    }
+
+    // AC-914: `replaces:#<id>` resolved against this state's own screen only — ids are document-unique, but a state
+    // stands in for a container of the screen it lives on, never one belonging to another.
+    private static void _ValidateReplacesTargets(WireframeNode screen, List<WireframeParseError> errors)
+    {
+        foreach (var state in screen.Children.Where(child => child.Kind == WireframeNodeKind.State))
+        {
+            if (state.ValueOf(WireframeModifierName.Replaces) is not { } value)
+            {
+                errors.Add(new WireframeParseError(state.Line, "A 'state' needs replaces:#<id> — the container whose contents it stands in for."));
+                continue;
+            }
+
+            var target = WireframeHandEdit.Find(screen, value.TrimStart('#'));
+            if (target is null)
+            {
+                errors.Add(new WireframeParseError(state.Line, $"'{value}' is not a component of this screen."));
+            }
+            else if (!target.IsContainer)
+            {
+                errors.Add(new WireframeParseError(state.Line, $"'{value}' is not a container, so a state cannot replace what is inside it."));
+            }
+            else if (target == screen || target.Kind == WireframeNodeKind.State)
+            {
+                errors.Add(new WireframeParseError(state.Line, "A state replaces a container inside its screen, not the screen itself."));
+            }
         }
     }
 
@@ -304,12 +343,18 @@ public static class WireframeParser
             or WireframeModifierName.Align
             or WireframeModifierName.Value
             or WireframeModifierName.Goto
-            or WireframeModifierName.Note;
+            or WireframeModifierName.Note
+            or WireframeModifierName.Replaces;
 
         if (takesValue && string.IsNullOrEmpty(value))
         {
-            // AC-907: a numeric example is nonsense for a modifier whose value is a sentence.
-            var hint = name is WireframeModifierName.W or WireframeModifierName.H ? $"{written}:2" : $"{written}:\"…\"";
+            // AC-907/AC-914: a numeric or quoted example is nonsense for a modifier whose value is a weight or an id.
+            var hint = name switch
+            {
+                WireframeModifierName.W or WireframeModifierName.H => $"{written}:2",
+                WireframeModifierName.Replaces => $"{written}:#<id>",
+                _ => $"{written}:\"…\"",
+            };
             errors.Add(new WireframeParseError(lineNumber, $"'{written}' needs a value, like '{hint}'."));
             return null;
         }

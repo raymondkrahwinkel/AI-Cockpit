@@ -495,4 +495,173 @@ public class WireframeParserTests
         Assert.Contains("left margin", error.Message, StringComparison.Ordinal);
         Assert.Null(result.Viewport);
     }
+
+    // ---- States (AC-914) ----
+
+    [Fact]
+    public void State_ReplacingAContainer_ParsesAndRoundTrips()
+    {
+        var source = """
+            screen "Search results"
+              main w:4
+                list #results
+                  item "Result 1"
+              state "Empty" replaces:#results
+                label "No results found"
+            """;
+
+        var result = WireframeParser.Parse(source);
+
+        Assert.Empty(result.Errors);
+        var screen = result.Screens.Single();
+        var state = screen.Children.Single(child => child.Kind == WireframeNodeKind.State);
+        Assert.Equal("Empty", state.Text);
+        Assert.Equal("#results", state.ValueOf(WireframeModifierName.Replaces));
+        Assert.Equal(source, WireframeWriter.Write(result.Screens));
+    }
+
+    [Fact]
+    public void State_DeclaredBeforeItsContainer_StillResolves_BecauseAScreenIsReadWhole()
+    {
+        var result = WireframeParser.Parse("""
+            screen "X"
+              state "Empty" replaces:#results
+                label "No results found"
+              list #results
+                item "Result 1"
+            """);
+
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void State_NotDirectlyUnderAScreen_IsRefusedOnItsOwnLine()
+    {
+        var result = WireframeParser.Parse("""
+            screen "X"
+              card
+                state "Empty" replaces:#c
+                  label "Leeg"
+            """);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(3, error.Line);
+        Assert.Contains("direct child of a screen", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void State_AtTheLeftMargin_IsRefused_BecauseAWireframeBeginsWithAScreen()
+    {
+        var result = WireframeParser.Parse("state \"Empty\" replaces:#c");
+
+        Assert.Empty(result.Screens);
+        Assert.NotEmpty(result.Errors);
+    }
+
+    [Fact]
+    public void State_WithoutReplaces_IsRefusedOnItsOwnLine()
+    {
+        var result = WireframeParser.Parse("""
+            screen "X"
+              list #results
+              state "Empty"
+                label "No results found"
+            """);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(3, error.Line);
+        Assert.Contains("replaces:#<id>", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void State_ReplacingAnUnknownId_IsRefused()
+    {
+        var result = WireframeParser.Parse("""
+            screen "X"
+              state "Empty" replaces:#nope
+                label "No results found"
+            """);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(2, error.Line);
+        Assert.Contains("#nope", error.Message, StringComparison.Ordinal);
+        Assert.Contains("not a component of this screen", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void State_ReplacingAWidget_IsRefused_BecauseOnlyAContainerHasContentToStandIn()
+    {
+        var result = WireframeParser.Parse("""
+            screen "X"
+              label "Naam" #name
+              state "Empty" replaces:#name
+                label "No results found"
+            """);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Contains("is not a container", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void State_ReplacingTheScreenItself_IsRefused()
+    {
+        var result = WireframeParser.Parse("""
+            screen "X" #screen
+              state "Empty" replaces:#screen
+                label "No results found"
+            """);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Contains("not the screen itself", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void State_ReplacingAnotherState_IsRefused()
+    {
+        var result = WireframeParser.Parse("""
+            screen "X"
+              list #results
+              state "Empty" replaces:#results #a
+                label "No results found"
+              state "AlsoEmpty" replaces:#a
+                label "Nothing here either"
+            """);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(5, error.Line);
+        Assert.Contains("not the screen itself", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void State_ReplacingAContainerInAnotherScreen_IsRefused_IdsAreDocumentUniqueButAStateStaysOnItsOwnScreen()
+    {
+        var result = WireframeParser.Parse("""
+            screen "First"
+              list #results
+
+            screen "Second"
+              state "Empty" replaces:#results
+                label "No results found"
+            """);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(5, error.Line);
+        Assert.Contains("not a component of this screen", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Goto_ToAStateTitle_IsRefused_TheSameAsAnyOtherUnknownScreen()
+    {
+        var result = WireframeParser.Parse("""
+            screen "X"
+              list #results
+              button "Try again" goto:"Empty"
+              state "Empty" replaces:#results
+                label "No results found"
+            """);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(3, error.Line);
+        Assert.Contains("'Empty' is not a screen in this wireframe.", error.Message, StringComparison.Ordinal);
+    }
 }

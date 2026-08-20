@@ -36,6 +36,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // way every other component's wording is changed.
     private const string NewScreenTitle = "New screen";
 
+    // AC-914: same idea, for a state added from the toolbar.
+    private const string NewStateTitle = "New state";
+
     private static readonly Cursor _PanCursor = new(StandardCursorType.Hand);
     private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
 
@@ -74,6 +77,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly Button _downButton;
     private readonly Button _moveButton;
     private readonly Button _addScreenButton;
+    private readonly StackPanel _stateStrip;
     private readonly Button _overviewButton;
     private readonly Button _viewportButton;
     private readonly Button _askButton;
@@ -94,6 +98,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private WireframeViewport _canvasViewport = WireframeViewport.Desktop;
     private int _zoomedIndex = -1;
     private string? _zoomedId;
+    // AC-914: which state of the zoomed screen is open, by id — null is the base screen itself. Self-heals every
+    // render (see _RenderInto): a state removed from under it, or a switch to a different screen or the overview,
+    // is exactly when it stops resolving, which is also when criterion 6 says it should be forgotten.
+    private string? _stateId;
+    private readonly Dictionary<string, ToggleButton> _stateChips = new(StringComparer.Ordinal);
     private string? _selectedId;
     private WireframeNode? _pressedOn;
     private Dictionary<WireframeNode, Control>? _controls;
@@ -143,7 +152,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _textButton, _deleteButton,
-            _upButton, _downButton, _moveButton, _addScreenButton, _overviewButton, _viewportButton, _askButton, _notesToggle, _handHint) = _BuildToolbar();
+            _upButton, _downButton, _moveButton, _addScreenButton, _stateStrip, _overviewButton, _viewportButton, _askButton, _notesToggle, _handHint) = _BuildToolbar();
         var journal = new WireframeActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, journal, onJumpToObject: null);
         _askStrip = new AskStrip(_JumpToComponent);
@@ -270,10 +279,17 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _canvasViewport = parsed.Viewport ?? WireframeViewport.Desktop;
         _ResolveZoomedScreen();
 
+        // AC-914 criterion 6: a state that no longer resolves against the screen now showing — its own screen
+        // changed, it was removed, or the surface returned to the overview — is exactly what "forgotten" means.
+        if (_stateId is not null && _OpenState is null)
+        {
+            _stateId = null;
+        }
+
         Control content = _screens.Count == 0
             ? _BuildErrorPanel(parsed.Errors)
             : _ZoomedScreen is { } screen
-                ? WireframeRenderer.Render(screen)
+                ? _RenderZoomed(screen)
                 : WireframeRenderer.Overview(_screens, _ScreenSize);
 
         var canvas = _CanvasSize;
@@ -333,6 +349,23 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // AC-915: the sheet size the document's own viewport line names, desktop when it declares none.
     private Size _ScreenSize => WireframeRenderer.SizeOf(_canvasViewport);
+
+    // AC-914: the state open in the zoomed screen, or null while showing its base — resolved by id against the
+    // current tree on every call rather than kept as a node reference, the same reason _Selected works this way.
+    private WireframeNode? _OpenState =>
+        _stateId is { } id && _ZoomedScreen is { } screen ? WireframeHandEdit.Find(screen, id) : null;
+
+    // The container an open state replaces, or null when none is open or its replaces: no longer resolves — the
+    // second case falls back to the base screen rather than throwing mid-render.
+    private WireframeNode? _OpenStateContainer =>
+        _OpenState is { } state && _ZoomedScreen is { } screen && state.ValueOf(WireframeModifierName.Replaces) is { } value
+            ? WireframeHandEdit.Find(screen, value.TrimStart('#'))
+            : null;
+
+    private Control _RenderZoomed(WireframeNode screen) =>
+        _OpenState is { } state && _OpenStateContainer is { } container
+            ? WireframeRenderer.RenderState(screen, container, state)
+            : WireframeRenderer.Render(screen);
 
     // Which screen is zoomed into survives a re-render by its id where it has one, and by its place in the document
     // where it has none — a wireframe nobody has named yet carries no ids at all (AC-906). A document with one
@@ -1107,8 +1140,24 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // to leave it as it was — the diagram's rename, one folder over.
     private void _StartTextEdit(WireframeNode? node)
     {
-        if (node is null || _registry is null || _ControlFor(node) is not { } control
-            || control.TranslatePoint(default, _surface) is not { } origin)
+        if (node is null || _registry is null)
+        {
+            return;
+        }
+
+        // AC-914: a state has no control of its own on the canvas — RenderState never draws it as itself — so its
+        // rename opens beside the chip that selected it rather than over a component that is not there.
+        if (node.Kind == WireframeNodeKind.State)
+        {
+            if (node.Id is { } stateId && _stateChips.TryGetValue(stateId, out var chip))
+            {
+                _RenameStateViaFlyout(node, chip);
+            }
+
+            return;
+        }
+
+        if (_ControlFor(node) is not { } control || control.TranslatePoint(default, _surface) is not { } origin)
         {
             return;
         }
@@ -1146,6 +1195,37 @@ internal sealed class WireframeWorkspaceBody : UserControl
                 _overlay.Children.Remove(box);
             }
         };
+    }
+
+    // AC-914: the state chip's own rename, a small Flyout anchored on the chip rather than the canvas overlay
+    // _StartTextEdit uses for everything else — same Enter/Escape commit, no coordinate math needed.
+    private void _RenameStateViaFlyout(WireframeNode state, Control anchor)
+    {
+        _Select(state);
+        if (_selectedId is not { } id)
+        {
+            return;
+        }
+
+        var box = new TextBox { Text = state.Text ?? "", Width = 160 };
+        var flyout = new Flyout { Content = new StackPanel { Margin = new Thickness(8), Children = { box } } };
+        box.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                key.Handled = true;
+                flyout.Hide();
+                _Apply(WireframeComponentEdit.SetText(id, box.Text ?? ""));
+            }
+            else if (key.Key == Key.Escape)
+            {
+                key.Handled = true;
+                flyout.Hide();
+            }
+        };
+        flyout.ShowAt(anchor);
+        box.Focus();
+        box.SelectAll();
     }
 
     // A new component is named and typed as it is made, and lands either inside the selected container or straight
@@ -1393,6 +1473,71 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         _handHint.Text = _HintFor(target);
         _RefreshPropertiesPanel(target, placement?.Parent.Kind);
+        _RefreshStateStrip();
+    }
+
+    // AC-914: the state strip — Base plus one chip per state on the zoomed screen, and + State on a selected
+    // container — rebuilt here alongside everything else _RefreshHandEditBar keeps in step, so it never drifts out
+    // of sync with the toolbar's own enable-rule the way AC-924 warned a second enable-rule could (val #8).
+    private void _RefreshStateStrip()
+    {
+        _stateChips.Clear();
+        _stateStrip.Children.Clear();
+
+        var states = _ZoomedScreen?.Children.Where(child => child.Kind == WireframeNodeKind.State).ToList() ?? [];
+        _stateStrip.IsVisible = states.Count > 0;
+        if (states.Count == 0)
+        {
+            return;
+        }
+
+        _stateStrip.Children.Add(_StateChip("Base", isOpen: _stateId is null, () => _SelectState(null)));
+        foreach (var state in states)
+        {
+            var chip = _StateChip(state.Text ?? "State", isOpen: state.Id == _stateId, () => _SelectState(state));
+            _stateStrip.Children.Add(chip);
+            if (state.Id is { } id)
+            {
+                _stateChips[id] = chip;
+            }
+        }
+
+        var add = new Button { Content = "+ State", Classes = { "Compact" }, IsEnabled = _CanAddState };
+        ToolTip.SetTip(add, "A state for the selected container — empty, loading, error, whatever this screen needs.");
+        add.Click += (_, _) => _AddState();
+        _stateStrip.Children.Add(add);
+    }
+
+    private ToggleButton _StateChip(string label, bool isOpen, Action onClick)
+    {
+        var chip = new ToggleButton { Content = label, Classes = { "Compact" }, IsChecked = isOpen };
+        chip.Click += (_, _) => onClick();
+        return chip;
+    }
+
+    // AC-914 criterion 6: switching which state is open re-renders the screen and, per the grooming, also selects
+    // the state itself — so Delete and «Text…» are of a piece with picking it, the same as clicking any component.
+    private void _SelectState(WireframeNode? state)
+    {
+        _stateId = state?.Id;
+        _Redraw();
+        _Select(state);
+    }
+
+    // AC-914 criterion 7: a container within this screen, not the screen itself and not another state — the same
+    // container the properties panel would let the operator pick a replaces: target from, if there were one.
+    private bool _CanAddState =>
+        _registry is not null && _ZoomedScreen is not null && _Selected is { } target
+        && target.IsContainer && !_IsScreen(target) && target.Kind != WireframeNodeKind.State;
+
+    private void _AddState()
+    {
+        if (_ZoomedScreen is not { } screen || screen.Id is not { } screenId || _selectedId is not { } targetId)
+        {
+            return;
+        }
+
+        _Apply(WireframeComponentEdit.Add(screenId, "state", NewStateTitle, $"replaces:#{targetId}", null));
     }
 
     // AC-910: asks the coupled session about the selection (or, with nothing selected, the wireframe as a whole) —
@@ -1455,7 +1600,21 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         return target is null
             ? "Click a component to edit it."
-            : $"{_Describe(target)} on line {target.Line} — drag to move it, double-click to change its wording.";
+            : $"{_Describe(target)} on line {target.Line}{_StateScope(target)} — drag to move it, double-click to change its wording.";
+    }
+
+    // AC-914 criterion 9: while a state is open, whether the selected component belongs to it or to the base
+    // screen — said before the operator edits it, since a base edit shows in every state and a state edit does not.
+    private string _StateScope(WireframeNode target)
+    {
+        if (_OpenState is not { } state)
+        {
+            return "";
+        }
+
+        return ReferenceEquals(target, state) || WireframeHandEdit.Find(state, target.Line) is not null
+            ? " (in the open state)"
+            : " (in the base screen, visible in every state)";
     }
 
     private bool _IsScreen(WireframeNode node) => _screens.Contains(node);
@@ -1856,8 +2015,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
     }
 
     private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus, Button Add, Button Text,
-        Button Delete, Button Up, Button Down, Button Move, Button AddScreen, Button Overview, Button Viewport, Button Ask,
-        ToggleButton Notes, TextBlock Hint) _BuildToolbar()
+        Button Delete, Button Up, Button Down, Button Move, Button AddScreen, StackPanel StateStrip, Button Overview,
+        Button Viewport, Button Ask, ToggleButton Notes, TextBlock Hint) _BuildToolbar()
     {
         // AC-837: zoom in/out + Fit, with the current level always on screen.
         var zoomOut = new Button { Content = "−", Classes = { "Compact" }, MinWidth = 28 };
@@ -1910,6 +2069,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         var addScreen = new Button { Content = "+ Screen", Classes = { "Compact" } };
         ToolTip.SetTip(addScreen, "One more screen, alongside the ones already there.");
         addScreen.Click += (_, _) => _AddScreen();
+        // AC-914: Base plus one chip per state, populated by _RefreshStateStrip — empty and invisible until the
+        // zoomed screen actually has states, the same on-demand shape as _overviewButton below.
+        var stateStrip = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
         var overview = new Button { Content = "← Overview", Classes = { "Compact" }, IsVisible = false };
         ToolTip.SetTip(overview, "All screens side by side.");
         overview.Click += (_, _) => _ShowOverview();
@@ -1943,14 +2105,14 @@ internal sealed class WireframeWorkspaceBody : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { overview, add, text, delete, up, down, move, addScreen, viewport, ask, notes, save, saveStatus, hint },
+            Children = { overview, add, text, delete, up, down, move, addScreen, stateStrip, viewport, ask, notes, save, saveStatus, hint },
         };
 
         var bar = new DockPanel { Children = { handEditControls, zoomControls } };
         DockPanel.SetDock(handEditControls, Dock.Left);
         DockPanel.SetDock(zoomControls, Dock.Right);
         return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus,
-            add, text, delete, up, down, move, addScreen, overview, viewport, ask, notes, hint);
+            add, text, delete, up, down, move, addScreen, stateStrip, overview, viewport, ask, notes, hint);
     }
 
     // AC-915: three names, no free-form size — the same MenuFlyout shape as «Move to…». Landing on the viewport

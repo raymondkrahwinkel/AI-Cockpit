@@ -21,6 +21,7 @@ public sealed class WireframeNode(WireframeNodeKind kind, int line, string? text
     // Which kinds may have indented lines under them. A widget with children is nearly always a mis-indent, so the
     // parser says so instead of dropping the lines.
     public bool IsContainer => Kind is WireframeNodeKind.Screen
+        or WireframeNodeKind.State
         or WireframeNodeKind.Row
         or WireframeNodeKind.Column
         or WireframeNodeKind.Group

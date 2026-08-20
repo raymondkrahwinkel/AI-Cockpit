@@ -111,6 +111,13 @@ internal static class WireframeComponentEditor
             return WireframeEdit.Refuse($"\"{edit.Type}\" is not a component this format has — use one of: {_Keywords()}.");
         }
 
+        // AC-914: a state stands for a whole screen's variant — only its own screen may hold one, never a card or
+        // any other container a state itself could otherwise be added into.
+        if (kind == WireframeNodeKind.State && parent.Kind != WireframeNodeKind.Screen)
+        {
+            return WireframeEdit.Refuse("A state can only be added directly to its screen — name the screen's own id as the parent.");
+        }
+
         if (!parent.IsContainer)
         {
             return WireframeEdit.Refuse($"A {_Keyword(parent)} carries no components of its own — name a container such as a row, column, group or list.");
@@ -249,6 +256,20 @@ internal static class WireframeComponentEditor
             }
         }
 
+        // AC-914: a container a state still replaces has nowhere for that state to point after it is gone — the
+        // same "nowhere to move the flow to" reasoning AC-902 applies to a screen a goto: still points at.
+        if (node.Id is { } replacedId && WireframeHandEdit.ScreenOf(screens, node) is { } owner)
+        {
+            var replacedBy = owner.Children
+                .Where(child => child.Kind == WireframeNodeKind.State && child.ValueOf(WireframeModifierName.Replaces) == $"#{replacedId}")
+                .ToList();
+            if (replacedBy.Count > 0)
+            {
+                var names = string.Join(", ", replacedBy.Select(state => $"state{_Quoted(state.Text)}"));
+                return WireframeEdit.Refuse($"{_Keyword(node)}{_Quoted(node.Text)} is still replaced by {names} — remove those states first, or repoint their replaces:.");
+            }
+        }
+
         var at = node.Line - 1;
         var block = lines.GetRange(at, _LastLine(node) - node.Line + 1);
         var anchor = _AnchorAbove(lines, at);
@@ -278,6 +299,13 @@ internal static class WireframeComponentEditor
         if (screens.Contains(node))
         {
             return WireframeEdit.Refuse("A screen stands at the left margin of its own, so it cannot be moved into a container — add_screen and remove_component are how screens come and go.");
+        }
+
+        // AC-914: a state may reorder among its screen's own children, but it stands for a variant of that one
+        // screen and has no meaning moved under another container or another screen.
+        if (node.Kind == WireframeNodeKind.State && WireframeHandEdit.ScreenOf(screens, node) is { } ownerScreen && ownerScreen != parent)
+        {
+            return WireframeEdit.Refuse("A state stays directly under its own screen, so it cannot be moved into another container — add_component and remove_component are how states come and go.");
         }
 
         if (!parent.IsContainer)
@@ -326,7 +354,7 @@ internal static class WireframeComponentEditor
 
         if (edit.ModifierName is not { } name)
         {
-            return WireframeEdit.Refuse("Name the modifier to set — one of: primary, selected, checked, disabled, w, h, align, value, goto, note.");
+            return WireframeEdit.Refuse("Name the modifier to set — one of: primary, selected, checked, disabled, w, h, align, value, goto, note, replaces.");
         }
 
         var parentKind = _ParentOf(screens, node)?.Kind;
@@ -381,9 +409,21 @@ internal static class WireframeComponentEditor
             return WireframeEdit.Refuse("A screen line is a screen of this wireframe, so its type cannot be changed — remove it instead, or add another screen beside it.");
         }
 
+        // AC-914: a state is the second screen-like kind — its type cannot be changed away from State any more than
+        // a screen's can, and no other component can be turned into one (add_component makes a new one instead).
+        if (node.Kind == WireframeNodeKind.State)
+        {
+            return WireframeEdit.Refuse("A state's type cannot be changed — remove it instead, or add another state beside it.");
+        }
+
         if (edit.Type is not { } written || !Enum.TryParse<WireframeNodeKind>(written.Trim(), ignoreCase: true, out var kind))
         {
             return WireframeEdit.Refuse($"\"{edit.Type}\" is not a component this format has — use one of: {_Keywords()}.");
+        }
+
+        if (kind == WireframeNodeKind.State)
+        {
+            return WireframeEdit.Refuse("A component cannot be changed into a state — add_component makes a new one instead.");
         }
 
         if (!new WireframeNode(kind, 0).IsContainer && node.Children.Count > 0)
