@@ -231,7 +231,9 @@ public class SessionViewModelAskUserQuestionTests
         await vm.DisposeAsync();
     }
 
-    /// <summary>Criterion 8: an unanswered broker card blocks nothing — the session can still start another turn.</summary>
+    /// <summary>
+    /// Criterion 8: an unanswered broker card blocks nothing — the session can still start another turn.
+    /// </summary>
     [Fact]
     public async Task AnUnansweredBrokerQuestion_DoesNotBlockTheSessionFromStartingAnotherTurn()
     {

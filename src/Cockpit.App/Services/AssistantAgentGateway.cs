@@ -1134,10 +1134,9 @@ internal sealed class AssistantAgentGateway(
         return null;
     }
 
-    // AC-955: hangs the card straight onto the assistant's own session — reached through
-    // `AssistantSessionHost.Session` rather than `cockpit.Sessions`, which the assistant sits outside of by
-    // design (see `StopAsync`'s remark on the same point). No audit trail, unlike a spawn: showing a question
-    // costs nothing and starts nothing, so there is no decision here worth a record of its own.
+    // AC-955: reaches the assistant's own session via `AssistantSessionHost.Session`, not `cockpit.Sessions`
+    // (the assistant sits outside that list by design — see `StopAsync`'s remark). No audit trail, unlike a
+    // spawn: showing a question costs nothing and starts nothing.
     public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
         string question,
         IReadOnlyList<(string Label, string? Description)> options,

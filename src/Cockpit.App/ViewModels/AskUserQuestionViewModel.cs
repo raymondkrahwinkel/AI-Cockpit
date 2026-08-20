@@ -40,11 +40,9 @@ public partial class AskUserQuestionViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isAnswered;
 
-    // What goes back to the agent. Single-select: the one picked label, or the free text typed under "Other" —
-    // the two are mutually exclusive, the same rule the SDK's own reference handler applies, where a typed
-    // response replaces the numbered pick rather than adding to it. Multi-select (AC-955, corrected grooming
-    // criterion 5): there is no such conflict — "YouTrack, Depot and something of my own" is an ordinary answer
-    // — so a non-empty "Other" text joins the ticked labels as one more chosen value instead of replacing them.
+    // What goes back to the agent (AC-955). Single-select keeps "Other" and the ticked pick mutually
+    // exclusive, the same rule the SDK's own reference handler applies. Multi-select does not: an ordinary
+    // answer can combine picks with typed text, so "Other" joins the ticked labels instead of replacing them.
     public string Answer => MultiSelect
         ? string.Join(", ", _SelectedLabels())
         : IsOtherSelected

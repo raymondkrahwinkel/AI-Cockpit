@@ -733,11 +733,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         entry.IsResultError,
         entry.Timestamp);
 
-    // AC-955: a question card's ticked options and typed "Other" text do not otherwise survive a restart —
-    // `InputJson` alone is the question the agent asked, not what the operator picked. Merged in under
-    // `answers`, keyed by question text like `ClaudeControlProtocol._BuildUpdatedInput` keys the answer it
-    // sends back to the CLI, though the value here is this card's own shape rather than that wire format: the
-    // two serve different readers and nothing parses one as the other.
+    // AC-955: ticked options and typed "Other" text do not otherwise survive a restart — `InputJson` alone is
+    // the question asked, not what was picked. Merged in under `answers`, keyed by question text (same key
+    // `ClaudeControlProtocol._BuildUpdatedInput` uses for the CLI, a different shape).
     private static string? _QuestionInputJsonWithAnswers(TranscriptEntryViewModel entry)
     {
         if (entry.Kind != TranscriptEntryKind.Question
@@ -801,10 +799,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             entry.SetResult(record.ResultText, record.IsResultError);
         }
 
-        // AC-955: a question card replays with its options — and, if it was answered, its answer, read-only —
-        // rather than as a blank row for a call the operator already responded to. Reparsed here rather than
-        // carried as its own snapshot field: `InputJson` is already the question payload, and this is the same
-        // parse `PermissionRequested` runs live.
+        // AC-955: replays with its options and, if answered, its answer, read-only — not a blank row for a
+        // call already responded to. Reparsed here, not a snapshot field of its own: `InputJson` already is
+        // the question payload, the same parse `PermissionRequested` runs live.
         if (kind == TranscriptEntryKind.Question && AskUserQuestionViewModel.Parse(record.InputJson) is { Count: > 0 } prompts)
         {
             entry.QuestionPrompts = prompts;

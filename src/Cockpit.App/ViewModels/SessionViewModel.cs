@@ -2083,10 +2083,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await RespondToPermissionAsync(entry, allow: true);
     }
 
-    // Sends the operator's picks back. Two routes, split on how the card arrived: an AskUserQuestion rides the
-    // permission callback (AC-715), so its answers go back as the tool's own input — an allow without them
-    // approves the question and leaves the agent waiting for an answer that never comes. The assistant's own
-    // `ask_structured_question` (AC-955) has no such callback: it takes the exact path a typed message takes.
+    // Sends the operator's picks back (AC-955). Two routes, split on how the card arrived: a permission-driven
+    // AskUserQuestion (AC-715) answers through the tool's own input — an allow without it leaves the agent
+    // waiting forever. The assistant's own broker has no such callback, so it takes the typed-message path.
     [RelayCommand]
     private async Task SubmitQuestionAnswersAsync(TranscriptEntryViewModel entry)
     {
