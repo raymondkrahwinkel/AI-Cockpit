@@ -39,6 +39,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   a timestamp and a "Handled" button; clicking one jumps back to what it was about. This replaces the diagram's and
   whiteboard's separate "Pin" button — the wireframe never had an equivalent before. Disabled with a tooltip when no
   session is coupled yet.
+- added: a wireframe component can now carry a note — a requirement the drawing itself cannot show, like "disabled
+  until both fields are filled in" or "max 3 lines, then truncate". Set it in the properties panel or clear it by
+  emptying the field; it never changes the layout. Every noted component gets a small numbered marker (top-left,
+  in both the overview and zoomed in), and the full texts list in a new column above the properties panel, grouped
+  and numbered per screen — click a line, or a marker, to select the matching component; selecting a component also
+  highlights its line in the list. A
+  toolbar switch hides markers and list together, and shows them again; the source and what an agent reads back
+  are unaffected either way. An agent sets, changes and clears a note the same way it does any other modifier.
 - added: diagram, whiteboard and wireframe objects now have a right-click menu with the handlings that object
   supports — rename, delete, shape/attributes/cardinality, connect, whiteboard cut/copy/duplicate, wireframe
   move/reorder — plus "Ask the agent…", instead of only the toolbar and (on the whiteboard) the keyboard. The

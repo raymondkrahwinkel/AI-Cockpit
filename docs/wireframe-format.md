@@ -160,10 +160,14 @@ better said with the components that are here than by growing the list until nob
 | `value:N` | `slider`, `progress` | How full, 0–100. |
 | `value:N` | `pagination` | The page you are on. |
 | `goto:"Screen"` | `button`, `item`, `label`, `card`, `image`, `icon`, `avatar`, `badge`, `row` | A flow to another screen by its title. Drawn as an arrow between boards in the overview, and as a clickable marker zoomed in. A title that names no screen, or more than one, is a parse error with a line number rather than a silent no-op. |
+| `note:"…"` | anything, including `screen` | A requirement the drawing itself cannot show — "disabled until both fields are filled in", "max 3 lines, then truncate". Drawn as a numbered marker, and listed in full beside the canvas; never on the canvas itself. |
 
 There is no size in pixels and no font here, on purpose, and there is exactly one colour: the accent that `primary`
 draws in. Everything else is grey, so the drawing reads as a sketch instead of making promises about a product that
 does not exist yet.
+
+A `note:` draws nothing and shifts nothing — it changes no component's size or position, on the canvas or in the
+numbered list beside it.
 
 ## When a line cannot be read
 

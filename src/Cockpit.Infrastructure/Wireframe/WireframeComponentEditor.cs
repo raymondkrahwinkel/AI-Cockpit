@@ -326,7 +326,7 @@ internal static class WireframeComponentEditor
 
         if (edit.ModifierName is not { } name)
         {
-            return WireframeEdit.Refuse("Name the modifier to set — one of: primary, selected, checked, disabled, w, h, align, value, goto.");
+            return WireframeEdit.Refuse("Name the modifier to set — one of: primary, selected, checked, disabled, w, h, align, value, goto, note.");
         }
 
         var parentKind = _ParentOf(screens, node)?.Kind;

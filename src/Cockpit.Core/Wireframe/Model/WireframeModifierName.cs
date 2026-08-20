@@ -12,4 +12,6 @@ public enum WireframeModifierName
     Align,
     Value,
     Goto,
+    // AC-907: a requirement the format cannot draw — never rendered, never a layout input.
+    Note,
 }

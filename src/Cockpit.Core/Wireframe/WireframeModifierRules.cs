@@ -17,6 +17,8 @@ public static class WireframeModifierRules
         WireframeModifierName.Checked => kind is WireframeNodeKind.Checkbox or WireframeNodeKind.Radio or WireframeNodeKind.Toggle,
         WireframeModifierName.Disabled => true,
         WireframeModifierName.Align => true,
+        // AC-907: a requirement about behaviour, not about drawing — applies to any component, screen line included.
+        WireframeModifierName.Note => true,
         WireframeModifierName.Value => kind is WireframeNodeKind.Input or WireframeNodeKind.Textarea or WireframeNodeKind.Search
             or WireframeNodeKind.Select or WireframeNodeKind.Badge or WireframeNodeKind.Slider or WireframeNodeKind.Progress
             or WireframeNodeKind.Pagination,
