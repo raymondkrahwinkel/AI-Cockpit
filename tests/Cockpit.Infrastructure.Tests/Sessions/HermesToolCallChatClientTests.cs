@@ -220,7 +220,7 @@ public class HermesToolCallChatClientTests
         factory.Create(Arg.Any<ProviderConfig>()).Returns(chatClient);
 
         var toolSession = Substitute.For<IMcpToolSession>();
-        toolSession.Tools.Returns(tools);
+        toolSession.Tools.Returns([.. tools.Select(tool => new McpSessionTool(tool, "test-server", AlwaysMounted: false))]);
         toolSession.ConnectedServerNames.Returns(tools.Length == 0 ? Array.Empty<string>() : new[] { "test-server" });
         toolSession.ToolClasses.Returns(new Dictionary<string, ToolPermissionClass>());
         var toolProvider = Substitute.For<IMcpToolProvider>();

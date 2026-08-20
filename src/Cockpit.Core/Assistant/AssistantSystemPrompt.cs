@@ -283,7 +283,8 @@ public static class AssistantSystemPrompt
         "shows without anyone having to poll for it.\n" +
         "- An unclear tool failure gets its schema checked first. A cockpit MCP tool that comes back with a " +
         "generic error (\"An error occurred invoking…\") is more often a wrong parameter name than a broken tool " +
-        "— check with `ToolSearch` before concluding the tool itself is at fault.\n" +
+        "— look the schema up before concluding the tool itself is at fault, with whatever the session has for it " +
+        "(`search_tools` in the cockpit's own tool loop, `ToolSearch` in Claude Code).\n" +
         "- Notify `cockpit-assistant` when done, when blocked, or at a decision point worth weighing in on (see " +
         "YOUR ADDRESS above for how that reaches you) — this is what every brief carries now, not a line composed " +
         "fresh each time. Whether the session then closes is not its call: that stays yours, weighing what else it " +

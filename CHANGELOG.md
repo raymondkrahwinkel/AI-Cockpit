@@ -32,6 +32,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a session on a local model (Ollama, LM Studio) with more than thirty tools no longer sends every tool's
+  schema in every request. It gets two tools instead — `search_tools` to find what it needs and `call_tool` to run
+  it — while the servers that must always be reachable, such as the one carrying the session statusline, stay
+  loaded as before. On a 38-tool session that took the per-request tool schemas from about 4,300 tokens down to
+  about 600, which is the difference between usable and unusable on a model with a small context window. Sessions
+  with thirty tools or fewer behave exactly as they did, and nothing about a profile has to change.
+- added: the hover on a session's activity column now says how that session's tools reach the model — preloaded
+  into every request, or searchable — under the list of servers it already showed.
 - added: the floating assistant window can be docked by dragging it. Take it by its header and a band lights up
   along the right edge of the screen, where the dock rail lives; let go inside it and the assistant moves into the
   rail with the conversation, your unsent text, attachments and scroll position intact — the same handover the

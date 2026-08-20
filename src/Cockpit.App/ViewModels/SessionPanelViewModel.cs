@@ -135,8 +135,39 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         null => "MCP servers\nNot known for this session — neither it nor its profile named a selection.",
         { Count: 0 } => "MCP servers\nNone — this session was started with the selection empty.",
-        var servers => "MCP servers\n" + string.Join('\n', servers.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)),
+        var servers => "MCP servers\n" + string.Join('\n', servers.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)) + McpToolReachLine,
     };
+
+    // How this session's tools reach the model (AC-963): preloaded into every request, or kept out of the prompt
+    // and found with `search_tools`. The line above stays about servers — that is the unit the operator set up —
+    // while this says what became of the tools those servers brought, which is otherwise invisible.
+    private string McpToolReachLine => McpToolReach is { Length: > 0 } reach ? "\n\n" + reach : string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
+    private string? _mcpToolReach;
+
+    private static string _Tools(int count) => count == 1 ? "tool" : "tools";
+
+    // The tool-search proxies, named as literals to keep the App off Infrastructure's internals — kept in sync with
+    // CockpitToolSearch.SearchToolName / CallToolName. Their presence in the init event is what says a session went
+    // into search mode, since only a driver that did offers them.
+    private const string SearchToolName = "search_tools";
+    private const string CallToolName = "call_tool";
+
+    // The tool-reach line for what a driver reported it can reach, or null when it reported nothing (the empty-state
+    // card already says "no tools connected", and a session whose route has no tool loop must not claim otherwise).
+    public static string? McpToolReachFor(IReadOnlyList<string> toolNames)
+    {
+        var searchable = toolNames.Contains(SearchToolName) && toolNames.Contains(CallToolName);
+        var count = searchable ? toolNames.Count - 2 : toolNames.Count;
+        return count switch
+        {
+            <= 0 => null,
+            _ when searchable => $"{count} {_Tools(count)} — searchable with `{SearchToolName}`, not preloaded.",
+            _ => $"{count} {_Tools(count)} — preloaded into every request.",
+        };
+    }
 
     // Mirrors `Cockpit.Core.Debugging.DebugSettings.ShowDebugControls` (#73): whether this
     // session's header shows the controls that exist to investigate the cockpit (the TTY's Redraw) rather than

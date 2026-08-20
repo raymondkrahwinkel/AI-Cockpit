@@ -46,7 +46,7 @@ internal sealed class McpToolProvider(
         var effectiveSelection = McpServerRegistryFilter.WithAutoMountedServers(enabledServerNames, registry, autoMounted);
         var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
         var clients = new List<McpClient>();
-        var tools = new List<AIFunction>();
+        var tools = new List<McpSessionTool>();
         var connectedNames = new List<string>();
         var toolClasses = new Dictionary<string, ToolPermissionClass>(StringComparer.Ordinal);
 
@@ -93,7 +93,9 @@ internal sealed class McpToolProvider(
             }
 
             clients.Add(connection.Client);
-            tools.AddRange(connection.Tools);
+            // AC-963: carry the origin server (and whether it is always mounted) alongside each tool — the search
+            // layer needs it to name where a hit lives, and the driver to decide what stays preloaded.
+            tools.AddRange(connection.Tools.Select(tool => new McpSessionTool(tool, connection.Name, enabledServers[i].AlwaysMounted)));
             connectedNames.Add(connection.Name);
 
             // Trust for the delegated gate is keyed on the bare tool name (AC-79), so a name exposed by two
@@ -391,7 +393,7 @@ internal sealed class McpToolProvider(
     // the in-process tool loop ending is the only signal this component has that the pane is done with it.
     private sealed class McpToolSession(
         IReadOnlyList<McpClient> clients,
-        IReadOnlyList<AIFunction> tools,
+        IReadOnlyList<McpSessionTool> tools,
         IReadOnlyList<string> names,
         IReadOnlyList<string> serversNeedingSignIn,
         IReadOnlyDictionary<string, ToolPermissionClass> toolClasses,
@@ -400,7 +402,7 @@ internal sealed class McpToolProvider(
         string? token = null)
         : IMcpToolSession
     {
-        public IReadOnlyList<AIFunction> Tools => tools;
+        public IReadOnlyList<McpSessionTool> Tools => tools;
 
         public IReadOnlyList<string> ConnectedServerNames => names;
 
