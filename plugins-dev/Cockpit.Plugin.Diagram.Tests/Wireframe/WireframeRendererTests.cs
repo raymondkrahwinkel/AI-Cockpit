@@ -210,7 +210,7 @@ public class WireframeRendererTests
     {
         var screens = WireframeParser.Parse(WireframeScreens.SignInFlow).Screens;
 
-        var overview = WireframeRenderer.Overview(screens);
+        var overview = WireframeRenderer.Overview(screens, WireframeRenderer.ScreenSize);
         overview.Measure(Size.Infinity);
         overview.Arrange(new Rect(0, 0, overview.DesiredSize.Width, overview.DesiredSize.Height));
 
@@ -227,8 +227,8 @@ public class WireframeRendererTests
     [Fact]
     public void OverviewSize_GrowsWithTheNumberOfScreens_AndIsAlwaysBiggerThanOneScreen()
     {
-        var one = WireframeRenderer.OverviewSize(1);
-        var four = WireframeRenderer.OverviewSize(4);
+        var one = WireframeRenderer.OverviewSize(1, WireframeRenderer.ScreenSize);
+        var four = WireframeRenderer.OverviewSize(4, WireframeRenderer.ScreenSize);
 
         Assert.True(one.Width > WireframeRenderer.ScreenSize.Width, "een overzicht van één scherm is breder dan dat scherm zelf");
         Assert.True(one.Height > WireframeRenderer.ScreenSize.Height, "een overzicht van één scherm is hoger dan dat scherm zelf");
@@ -236,13 +236,23 @@ public class WireframeRendererTests
         Assert.True(four.Width > one.Width && four.Height > one.Height, "vier schermen beslaan meer dan één");
     }
 
+    // AC-915: the same document, judged against a narrower sheet, takes up less of the overview.
+    [Fact]
+    public void OverviewSize_IsSmallerForAMobileSheetThanForDesktop()
+    {
+        var desktop = WireframeRenderer.OverviewSize(4, WireframeRenderer.SizeOf(WireframeViewport.Desktop));
+        var mobile = WireframeRenderer.OverviewSize(4, WireframeRenderer.SizeOf(WireframeViewport.Mobile));
+
+        Assert.True(mobile.Width < desktop.Width, "een overzicht van mobiele vellen is smaller dan van desktop-vellen");
+    }
+
     [Fact]
     public void Overview_ActuallyPaints_WithEveryBoardOnIt()
     {
         var screens = WireframeParser.Parse(WireframeScreens.SignInFlow).Screens;
-        var size = WireframeRenderer.OverviewSize(screens.Count);
+        var size = WireframeRenderer.OverviewSize(screens.Count, WireframeRenderer.ScreenSize);
 
-        var colours = _Paint(WireframeRenderer.Overview(screens), "SignInFlow-overview", new PixelSize((int)size.Width, (int)size.Height));
+        var colours = _Paint(WireframeRenderer.Overview(screens, WireframeRenderer.ScreenSize), "SignInFlow-overview", new PixelSize((int)size.Width, (int)size.Height));
 
         Assert.True(colours.Count > 1, "het overzicht schilderde één vlakke kleur — er is niets getekend");
         Assert.Contains(Colors.White, colours);
@@ -251,9 +261,9 @@ public class WireframeRendererTests
     [Fact]
     public void BoardBounds_LayTheScreensOutSideBySide_WithoutOverlapping()
     {
-        var first = WireframeRenderer.BoardBounds(0, 4);
-        var second = WireframeRenderer.BoardBounds(1, 4);
-        var third = WireframeRenderer.BoardBounds(2, 4);
+        var first = WireframeRenderer.BoardBounds(0, 4, WireframeRenderer.ScreenSize);
+        var second = WireframeRenderer.BoardBounds(1, 4, WireframeRenderer.ScreenSize);
+        var third = WireframeRenderer.BoardBounds(2, 4, WireframeRenderer.ScreenSize);
 
         Assert.Equal(first.Y, second.Y);
         Assert.True(second.X >= first.Right, "twee borden op dezelfde rij overlappen niet");

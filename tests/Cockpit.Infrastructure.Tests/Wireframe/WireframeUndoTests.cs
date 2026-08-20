@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Wireframe;
+using Cockpit.Core.Wireframe.Model;
 using Cockpit.Infrastructure.Wireframe;
 
 namespace Cockpit.Infrastructure.Tests.Wireframe;
@@ -196,6 +197,17 @@ public class WireframeUndoTests
         Assert.Equal(WireframeEditKind.SetText, Assert.Single(registry.History(SurfaceId)).Kind);
         var reverted = _Revert(registry);
         Assert.Equal(WireframeScreens.TwoScreensWithFlow, reverted);
+    }
+
+    // AC-915: a viewport switch is a document change like any other — one journal line, taken back the same way.
+    [Fact]
+    public void SetViewport_IsJournaled_AndTakenBackToNoViewportLineAtAll()
+    {
+        var registry = _Coupled();
+        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetViewport(WireframeViewport.Mobile));
+
+        Assert.Equal(WireframeEditKind.SetViewport, Assert.Single(registry.History(SurfaceId)).Kind);
+        Assert.Equal(WireframeScreens.Settings, _Revert(registry));
     }
 
     [Fact]

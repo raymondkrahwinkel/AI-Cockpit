@@ -414,6 +414,45 @@ public class WireframeMcpToolsTests
         Assert.Contains("screen \"Aanmelden\"", registry.PeekText(SurfaceId), StringComparison.Ordinal);
     }
 
+    // ---- Viewport (AC-915) ----
+
+    [Fact]
+    public async Task ReadWireframe_WithNoViewportLine_ReportsDesktopAndItsSize()
+    {
+        var (tools, _, _) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.ReadWireframe(Session, Name));
+
+        var viewport = json!["viewport"]!;
+        Assert.Equal("desktop", viewport["name"]!.GetValue<string>());
+        Assert.Equal(960, viewport["width"]!.GetValue<double>());
+        Assert.Equal(640, viewport["height"]!.GetValue<double>());
+    }
+
+    [Fact]
+    public async Task SetWireframeViewport_AppliesStraightAway_AndReadBackReportsIt()
+    {
+        var (tools, registry, asked) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.SetWireframeViewport(Session, Name, "mobile"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("viewport mobile", registry.PeekText(SurfaceId), StringComparison.Ordinal);
+        Assert.Contains("set the viewport to mobile", Assert.Single(asked).Action, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SetWireframeViewport_WithAnUnknownName_IsRefusedWithoutAskingAnyone()
+    {
+        var (tools, _, asked) = _Open(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await tools.SetWireframeViewport(Session, Name, "phablet"));
+
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("desktop, tablet or mobile", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Empty(asked);
+    }
+
     [Fact]
     public void ListWireframes_NamesTheSurfacesWithoutHandingOverAnythingInThem()
     {

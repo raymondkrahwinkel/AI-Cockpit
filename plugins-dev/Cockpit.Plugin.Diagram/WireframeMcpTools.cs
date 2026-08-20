@@ -8,6 +8,7 @@ using Cockpit.Core.Consent;
 using Cockpit.Core.Wireframe;
 using Cockpit.Core.Wireframe.Model;
 using Cockpit.Plugin.Diagram.Wireframe;
+using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -84,7 +85,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
     }
 
     [McpServerTool(Name = "read_wireframe")]
-    [Description("Returns a wireframe surface's source — you name it by the id or name from list_wireframes. The first time you read a surface the operator gets an Approve/Deny prompt naming which wireframe and how big it is; only after Approve do you get its source, and it is the surface exactly as it stands now, including anything the operator put there before you connected. Reading does not let you edit — edit_wireframe asks for that separately. Alongside the raw source you get `components`: every component with the ID that add_component, set_component_text, remove_component and move_component take. An id is written in the source as `#name` and stays with its component for as long as it lives, so an id you read stays aimed at the same component even when the operator edits the screen around it — reading a surface is what gives its components ids, so the source comes back with them in it. A wireframe holds one or more screens: `screens` lists them in the order they stand in the source, and every entry in `components` says which screen it belongs to, so a component you name is never one of the same name on another screen. A component carrying `goto:` gets a `goto` field with the id of the screen it points at, so you can address that screen directly — null when the component carries no `goto:` at all, or when its title does not resolve to exactly one screen (see `problems` for why).")]
+    [Description("Returns a wireframe surface's source — you name it by the id or name from list_wireframes. The first time you read a surface the operator gets an Approve/Deny prompt naming which wireframe and how big it is; only after Approve do you get its source, and it is the surface exactly as it stands now, including anything the operator put there before you connected. Reading does not let you edit — edit_wireframe asks for that separately. Alongside the raw source you get `components`: every component with the ID that add_component, set_component_text, remove_component and move_component take. An id is written in the source as `#name` and stays with its component for as long as it lives, so an id you read stays aimed at the same component even when the operator edits the screen around it — reading a surface is what gives its components ids, so the source comes back with them in it. A wireframe holds one or more screens: `screens` lists them in the order they stand in the source, and every entry in `components` says which screen it belongs to, so a component you name is never one of the same name on another screen. A component carrying `goto:` gets a `goto` field with the id of the screen it points at, so you can address that screen directly — null when the component carries no `goto:` at all, or when its title does not resolve to exactly one screen (see `problems` for why). `viewport` names the document-wide sheet size everything is measured against — desktop, tablet or mobile, with its pixel width/height — so you can judge how much room a layout actually has; a wireframe that declares none reads as desktop.")]
     public async Task<string> ReadWireframe(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The wireframe to read, by its id or name from list_wireframes.")] string wireframe)
@@ -111,8 +112,25 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
             source,
             screens = _Screens(parsed.Screens),
             components = _Components(parsed.Screens),
+            viewport = _ViewportInfo(parsed.Viewport),
             problems = _Problems(parsed),
         });
+    }
+
+    [McpServerTool(Name = "set_wireframe_viewport")]
+    [Description("Sets the wireframe's viewport — the document-wide sheet size the layout is measured against — to desktop (960×640, what a wireframe that declares none already renders at), tablet (768×1024) or mobile (390×844). Applies straight away, as one undoable step from the activity strip; the components themselves do not change, only the sheet size they are judged against. Needs the same one-off Approve as edit_wireframe. Choosing the viewport already in effect does nothing. Refused with a reason if `viewport` is not one of those three names.")]
+    public Task<string> SetWireframeViewport(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The wireframe to edit, by its id or name from list_wireframes.")] string wireframe,
+        [Description("The viewport name: desktop, tablet or mobile.")] string viewport)
+    {
+        var name = viewport.Trim().ToLowerInvariant();
+        if (name is not ("desktop" or "tablet" or "mobile"))
+        {
+            return Task.FromResult(_Serialize(new { ok = false, error = $"\"{viewport}\" is not a viewport — use desktop, tablet or mobile." }));
+        }
+
+        return _ApplyAsync(session, wireframe, WireframeComponentEdit.SetViewport(Enum.Parse<WireframeViewport>(name, ignoreCase: true)), $"set the viewport to {name}");
     }
 
     [McpServerTool(Name = "edit_wireframe")]
@@ -388,6 +406,13 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         {
             _Collect(child, screen, screens, depth + 1, into);
         }
+    }
+
+    private static object _ViewportInfo(WireframeViewport? parsed)
+    {
+        var viewport = parsed ?? WireframeViewport.Desktop;
+        var size = WireframeRenderer.SizeOf(viewport);
+        return new { name = viewport.ToString().ToLowerInvariant(), width = size.Width, height = size.Height };
     }
 
     private static IReadOnlyList<object> _Problems(WireframeParseResult parsed) =>
