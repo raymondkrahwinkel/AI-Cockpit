@@ -299,6 +299,127 @@ public class WireframeRendererTests
         Assert.Equal(WireframeRenderer.ScreenSize, first.Size);
     }
 
+    // ---- States (AC-914) ----
+
+    [Fact]
+    public void AState_IsNeverDrawnAsABlockOfItsOwnUnderTheScreen()
+    {
+        var screen = WireframeParser.Parse("""
+            screen "X"
+              list #results
+                item "Result 1"
+
+              state "Empty" replaces:#results
+                label "No results found"
+            """).Screens.Single();
+
+        var control = _Arrange(screen);
+        var state = screen.Children.Single(child => child.Kind == WireframeNodeKind.State);
+
+        Assert.DoesNotContain(state, _Controls(control).Select(WireframeSource.GetNode));
+        // Its own children are not drawn where the screen's own rows fall either — only RenderState puts them
+        // somewhere, standing in for the container they replace.
+        Assert.DoesNotContain(state.Children.Single(), _Controls(control).Select(WireframeSource.GetNode));
+    }
+
+    [Fact]
+    public void Overview_NamesAScreensStatesAfterItsOwnCaption_RatherThanDrawingThemAsBoards()
+    {
+        var screens = WireframeParser.Parse("""
+            screen "Search results"
+              list #results
+                item "Result 1"
+
+              state "Empty" replaces:#results
+                label "No results found"
+              state "Loading" replaces:#results
+                space
+            """).Screens;
+
+        var overview = WireframeRenderer.Overview(screens, WireframeRenderer.ScreenSize);
+        overview.Measure(Size.Infinity);
+        overview.Arrange(new Rect(0, 0, overview.DesiredSize.Width, overview.DesiredSize.Height));
+
+        var caption = _Controls(overview).OfType<TextBlock>().Single(text => ReferenceEquals(WireframeSource.GetNode(text), screens[0]));
+        Assert.Equal("Search results · empty · loading", caption.Text);
+    }
+
+    [Fact]
+    public void Overview_AScreenWithNoStates_KeepsItsPlainCaption()
+    {
+        var screens = WireframeParser.Parse(WireframeScreens.Empty).Screens;
+
+        var overview = WireframeRenderer.Overview(screens, WireframeRenderer.ScreenSize);
+        overview.Measure(Size.Infinity);
+        overview.Arrange(new Rect(0, 0, overview.DesiredSize.Width, overview.DesiredSize.Height));
+        var caption = _Controls(overview).OfType<TextBlock>().Single(text => ReferenceEquals(WireframeSource.GetNode(text), screens[0]));
+
+        Assert.Equal("Nieuw scherm", caption.Text);
+    }
+
+    // AC-914's sharpest risk: RenderState must stand a state's content in for a container's without cloning any
+    // part of the tree, because WireframeNode has reference identity and the workspace keys its control cache, its
+    // ReferenceEquals lookups, its screen-line check and WireframeHandEdit's parent/move checks off exactly that.
+    [Fact]
+    public void RenderState_StandsTheStatesContentInForTheContainer_WithoutCloningAnythingElse()
+    {
+        var screen = WireframeParser.Parse("""
+            screen "X"
+              header "Northwind"
+              list #results
+                item "Result 1"
+
+              state "Empty" replaces:#results
+                label "No results found"
+            """).Screens.Single();
+
+        var header = screen.Children.Single(child => child.Kind == WireframeNodeKind.Header);
+        var container = screen.Children.Single(child => child.Id == "results");
+        var state = screen.Children.Single(child => child.Kind == WireframeNodeKind.State);
+        var baseItem = container.Children.Single();
+        var stateLabel = state.Children.Single();
+        var originalChildren = container.Children.ToList();
+
+        var control = WireframeRenderer.RenderState(screen, container, state);
+        control.Measure(new Size(900, 620));
+        control.Arrange(new Rect(0, 0, 900, 620));
+        var carried = _Controls(control).Select(WireframeSource.GetNode).ToHashSet();
+
+        // Everything outside the swap is the very object the model tree holds — not a clone — which is what lets
+        // the four reference-identity lookups elsewhere key off the rendered control at all.
+        Assert.Contains(screen, carried);
+        Assert.Contains(header, carried);
+        // The container's spot now carries the state's own content instead of what it normally holds.
+        Assert.Contains(stateLabel, carried);
+        Assert.DoesNotContain(baseItem, carried);
+        // And the container's model children are exactly back to what they were once the render is done — mutated
+        // in place for the length of one render, not replaced with something new.
+        Assert.Equal(originalChildren, container.Children);
+        Assert.Contains(container, screen.Children);
+    }
+
+    [Fact]
+    public void RenderState_ARepeatedNormalRenderAfterwards_DrawsTheContainersOwnContentAgain()
+    {
+        var screen = WireframeParser.Parse("""
+            screen "X"
+              list #results
+                item "Result 1"
+
+              state "Empty" replaces:#results
+                label "No results found"
+            """).Screens.Single();
+
+        var container = screen.Children.Single(child => child.Id == "results");
+        var state = screen.Children.Single(child => child.Kind == WireframeNodeKind.State);
+        var baseItem = container.Children.Single();
+
+        WireframeRenderer.RenderState(screen, container, state);
+        var control = _Arrange(screen);
+
+        Assert.Contains(baseItem, _Controls(control).Select(WireframeSource.GetNode));
+    }
+
     private static Control _Arrange(WireframeNode root)
     {
         var control = WireframeRenderer.Render(root);

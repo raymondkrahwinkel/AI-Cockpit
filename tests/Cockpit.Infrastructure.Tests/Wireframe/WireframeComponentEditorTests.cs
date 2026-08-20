@@ -571,4 +571,97 @@ public class WireframeComponentEditorTests
         Assert.Null(result.Text);
         Assert.Contains("exactly as it is", result.Refusal);
     }
+
+    // ---- States (AC-914) ----
+
+    [Fact]
+    public void Add_AStateIntoAGroup_IsRefused_AStateOnlyGoesDirectlyUnderItsScreen()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.Settings,
+            WireframeComponentEdit.Add(WireframeScreens.Group, "state", "Empty", "replaces:#name", null));
+
+        Assert.Null(result.Text);
+        Assert.Contains("directly to its screen", result.Refusal);
+    }
+
+    [Fact]
+    public void Add_AStateOnItsScreen_WithReplaces_Succeeds()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.WithState,
+            WireframeComponentEdit.Add(WireframeScreens.Screen, "state", "Loading", "replaces:#results", null));
+
+        Assert.Null(result.Refusal);
+        Assert.Contains("state \"Loading\" replaces:#results", result.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ChangeType_OfAState_IsRefused()
+    {
+        var result = WireframeComponentEditor.Apply(WireframeScreens.WithState, WireframeComponentEdit.ChangeType(WireframeScreens.EmptyState, "card"));
+
+        Assert.Null(result.Text);
+        Assert.Contains("A state's type cannot be changed", result.Refusal);
+    }
+
+    [Fact]
+    public void ChangeType_IntoAState_IsRefused_AddComponentMakesOneInstead()
+    {
+        var result = WireframeComponentEditor.Apply(WireframeScreens.WithState, WireframeComponentEdit.ChangeType(WireframeScreens.Main, "state"));
+
+        Assert.Null(result.Text);
+        Assert.Contains("cannot be changed into a state", result.Refusal);
+    }
+
+    [Fact]
+    public void Remove_OfAContainerAStateStillReplaces_IsRefused_NamingTheState()
+    {
+        var result = WireframeComponentEditor.Apply(WireframeScreens.WithState, WireframeComponentEdit.Remove(WireframeScreens.Results));
+
+        Assert.Null(result.Text);
+        Assert.Contains("state \"Empty\"", result.Refusal);
+    }
+
+    [Fact]
+    public void Remove_OfTheStateItself_LeavesTheContainerItReplacedInPlace()
+    {
+        var result = WireframeComponentEditor.Apply(WireframeScreens.WithState, WireframeComponentEdit.Remove(WireframeScreens.EmptyState));
+
+        Assert.Null(result.Refusal);
+        Assert.Contains("list #results", result.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("state \"Empty\"", result.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Move_AStateIntoAnotherContainer_IsRefused_AStateStaysOnItsOwnScreen()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.WithState,
+            WireframeComponentEdit.Move(WireframeScreens.EmptyState, WireframeScreens.Main, position: null));
+
+        Assert.Null(result.Text);
+        Assert.Contains("stays directly under its own screen", result.Refusal);
+    }
+
+    [Fact]
+    public void Move_AStateWithinItsOwnScreen_Succeeds_BecauseItIsOnlyReordering()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.WithState,
+            WireframeComponentEdit.Move(WireframeScreens.EmptyState, WireframeScreens.Screen, position: 0));
+
+        Assert.Null(result.Refusal);
+    }
+
+    [Fact]
+    public void SetModifier_Replaces_RepointsTheState()
+    {
+        var result = WireframeComponentEditor.Apply(
+            WireframeScreens.WithState,
+            WireframeComponentEdit.SetModifier(WireframeScreens.EmptyState, WireframeModifierName.Replaces, "#main"));
+
+        Assert.Null(result.Refusal);
+        Assert.Contains("replaces:#main", result.Text, StringComparison.Ordinal);
+    }
 }

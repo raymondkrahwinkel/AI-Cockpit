@@ -61,6 +61,21 @@ internal static class WireframeScreens
           button "Registreren" primary #signup-submit
         """;
 
+    // AC-914: a screen with one state, replacing the `list`'s content — what the state-editing tests work against.
+    public const string WithState = """
+        screen "Search results" #screen
+          main w:4 #main
+            list #results
+              item "Result 1"
+
+          state "Empty" replaces:#results #empty
+            label "No results found" #empty-label
+        """;
+
+    public const string Main = "main";
+    public const string Results = "results";
+    public const string EmptyState = "empty";
+
     public const string LoginScreen = "login";
     public const string LoginSubmit = "login-submit";
     public const string SignupScreen = "signup";

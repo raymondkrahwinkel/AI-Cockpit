@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a wireframe screen can now carry states — empty, loading, error, or any other variant — that replace the
+  content of one container while leaving the rest of the screen exactly as it is. Open one from a new "Base ·
+  Empty · Loading · Error" strip in the toolbar; "+ State" makes a new one from the container you have selected.
+  A change to the base screen shows up in every state automatically, since a state only ever replaces the one
+  container it names. The overview lists a screen's states after its name rather than drawing them as extra
+  boards. An agent reaches states through the same `add_component`/`remove_component`/`set_component_text` tools
+  every other component uses — there is no new tool.
 - added: diagram, whiteboard and wireframe windows now have a shared "Ask the agent…" action — in the diagram's and
   wireframe's toolbar, in the whiteboard's save bar — that sends whatever you type about the current selection (or
   about the surface as a whole with nothing selected) straight to the coupled session, with enough detail that the

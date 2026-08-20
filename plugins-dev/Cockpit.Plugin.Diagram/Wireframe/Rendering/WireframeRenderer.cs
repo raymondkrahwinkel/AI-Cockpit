@@ -50,7 +50,7 @@ internal static class WireframeRenderer
 
             // The board goes in first: the selection mark looks up the control a node was drawn as, and it is the
             // board that should carry it rather than the words above it.
-            var caption = _Text(screens[index].Text ?? "Screen", TitleSize, Muted);
+            var caption = _Text(_Caption(screens[index]), TitleSize, Muted);
             WireframeSource.SetNode(caption, screens[index]);
             Canvas.SetLeft(caption, bounds.X);
             Canvas.SetTop(caption, bounds.Y - BoardCaption);
@@ -58,6 +58,19 @@ internal static class WireframeRenderer
         }
 
         return canvas;
+    }
+
+    // AC-914 criterion 13: which states belong to a screen, said after its name rather than drawn as boards of its
+    // own — four screens with three states each would otherwise be sixteen indistinguishable boards, and AC-902's
+    // flow arrows (which index straight into the flat screen list) would need to become group-aware.
+    private static string _Caption(WireframeNode screen)
+    {
+        var title = screen.Text ?? "Screen";
+        var states = screen.Children
+            .Where(child => child.Kind == WireframeNodeKind.State && !string.IsNullOrEmpty(child.Text))
+            .Select(child => child.Text!.ToLowerInvariant())
+            .ToList();
+        return states.Count == 0 ? title : $"{title} · {string.Join(" · ", states)}";
     }
 
     public static int OverviewColumns(int screens) => Math.Max(1, (int)Math.Ceiling(Math.Sqrt(screens)));
@@ -100,6 +113,25 @@ internal static class WireframeRenderer
         }
 
         return control;
+    }
+
+    // AC-914: stands the state's content in for the container's for the length of this one render, never by
+    // building a second tree — WireframeNode has reference identity, and the workspace's control cache and
+    // ReferenceEquals-keyed lookups all lean on the rendered nodes being the very ones the document holds.
+    public static Control RenderState(WireframeNode screen, WireframeNode container, WireframeNode state)
+    {
+        var saved = container.Children.ToList();
+        container.Children.Clear();
+        container.Children.AddRange(state.Children);
+        try
+        {
+            return Render(screen);
+        }
+        finally
+        {
+            container.Children.Clear();
+            container.Children.AddRange(saved);
+        }
     }
 
     private static Control _Build(WireframeNode node) => node.Kind switch
@@ -156,7 +188,12 @@ internal static class WireframeRenderer
         // A modal written straight under the screen covers it, rather than taking a row of its own height in the
         // layout — which is what a dialog does to a screen, and the only way the screen under it stays readable.
         var over = node.Children.Where(child => child.Kind == WireframeNodeKind.Modal).ToList();
-        var body = new Panel { Children = { _Rows(node.Children.Where(child => !over.Contains(child)).ToList()) } };
+        // AC-914: a state is never drawn as a block of its own — it only ever stands in for a container's content,
+        // via RenderState below, so it is left out here exactly like a modal is left out of the ordinary rows.
+        var body = new Panel
+        {
+            Children = { _Rows(node.Children.Where(child => !over.Contains(child) && child.Kind != WireframeNodeKind.State).ToList()) },
+        };
         foreach (var modal in over)
         {
             body.Children.Add(Render(modal));

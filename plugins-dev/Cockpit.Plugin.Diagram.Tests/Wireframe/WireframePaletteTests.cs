@@ -12,10 +12,12 @@ namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 public class WireframePaletteTests
 {
     [Fact]
-    public void ThePalette_OffersEveryKeywordExceptScreen_Once()
+    public void ThePalette_OffersEveryKeywordExceptScreenAndState_Once()
     {
         var offered = WireframeWorkspaceBody.Palette.SelectMany(group => group.Kinds).ToList();
-        var expected = Enum.GetValues<WireframeNodeKind>().Where(kind => kind != WireframeNodeKind.Screen);
+        // AC-914 criterion 14: a state is made from the state strip, not from the palette — it is not a thing you
+        // drop into a screen the way any other component is.
+        var expected = Enum.GetValues<WireframeNodeKind>().Where(kind => kind is not (WireframeNodeKind.Screen or WireframeNodeKind.State));
 
         Assert.Equal(offered.Count, offered.Distinct().Count());
         Assert.Equal(expected.ToHashSet(), offered.ToHashSet());
