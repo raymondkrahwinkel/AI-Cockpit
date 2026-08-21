@@ -136,7 +136,9 @@ public class PluginHostToolLoopTests
         string? confine = null;
         string? project = null;
         var toolProvider = _ToolProvider([], new Dictionary<string, ToolPermissionClass>());
-        toolProvider.ConnectAsync(
+
+        // Discarded rather than awaited: this is NSubstitute recording what to capture, not a call to make.
+        _ = toolProvider.ConnectAsync(
             Arg.Any<IReadOnlySet<string>?>(),
             Arg.Do<string?>(value => pane = value),
             Arg.Do<string?>(value => confine = value),
