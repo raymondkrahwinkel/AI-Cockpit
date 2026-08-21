@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Infrastructure.Whiteboard;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using ModelContextProtocol.Protocol;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Diagram.Tests;
@@ -30,17 +31,24 @@ public class WhiteboardMcpToolsTests
         return (new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage())), registry, host, asked);
     }
 
+    // AC-1007: the image travels as its own content block, not a base64 field a text-only tool result carries.
+    private static JsonNode _Meta(CallToolResult result) => JsonNode.Parse(Assert.IsType<TextContentBlock>(result.Content[0]).Text)!;
+
     [Fact]
     public async Task ReadWhiteboard_FirstTime_AsksConsent_ThenReturnsTheSnapshotAsItStandsNow()
     {
         var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
 
-        var json = JsonNode.Parse(await tools.ReadWhiteboard(Session, "Sprint planning"));
+        var result = await tools.ReadWhiteboard(Session, "Sprint planning");
+        var json = _Meta(result);
 
-        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.True(json["ok"]!.GetValue<bool>());
         Assert.Equal("image/png", json["mimeType"]!.GetValue<string>());
-        Assert.Equal(Convert.ToBase64String(Png), json["imageBase64"]!.GetValue<string>());
+        Assert.Null(json["imageBase64"]);
+        var image = Assert.IsType<ImageContentBlock>(result.Content[1]);
+        Assert.Equal("image/png", image.MimeType);
+        Assert.Equal(Png, image.DecodedData.ToArray());
         Assert.Single(asked);
         Assert.Equal(ConsentRisk.Dangerous, asked[0].Risk);
         Assert.Equal("board-1", asked[0].Source.PaneId);
@@ -214,11 +222,12 @@ public class WhiteboardMcpToolsTests
         registry.Grant("victim-pane", "board-1");
 
         host.CurrentMcpCallerPaneId.Returns("attacker-pane");
-        var json = JsonNode.Parse(await tools.ReadWhiteboard("victim-pane", "Sprint planning"));
+        var result = await tools.ReadWhiteboard("victim-pane", "Sprint planning");
+        var json = _Meta(result);
 
-        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.False(json["ok"]!.GetValue<bool>());
         Assert.Contains("another agent", json["error"]!.GetValue<string>());
-        Assert.Null(json["imageBase64"]);
+        Assert.Single(result.Content);
     }
 
     [Fact]
@@ -227,9 +236,9 @@ public class WhiteboardMcpToolsTests
         var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
 
-        var json = JsonNode.Parse(await tools.ReadWhiteboard(Session, "Sprint planning"));
+        var json = _Meta(await tools.ReadWhiteboard(Session, "Sprint planning"));
 
-        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.False(json["ok"]!.GetValue<bool>());
         Assert.Contains("not approved", json["error"]!.GetValue<string>());
         Assert.Null(registry.CouplingOf(Session, "board-1"));
     }
@@ -239,9 +248,9 @@ public class WhiteboardMcpToolsTests
     {
         var (tools, _, _, asked) = _Build(ConsentOutcome.Approved);
 
-        var json = JsonNode.Parse(await tools.ReadWhiteboard(Session, "ghost"));
+        var json = _Meta(await tools.ReadWhiteboard(Session, "ghost"));
 
-        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.False(json["ok"]!.GetValue<bool>());
         Assert.Contains("No such whiteboard", json["error"]!.GetValue<string>());
         Assert.Empty(asked);
     }
@@ -253,9 +262,9 @@ public class WhiteboardMcpToolsTests
         registry.SurfaceOpened("board-1", "Sprint planning", Png);
         registry.Grant("other-agent", "board-1");
 
-        var json = JsonNode.Parse(await tools.ReadWhiteboard(Session, "Sprint planning"));
+        var json = _Meta(await tools.ReadWhiteboard(Session, "Sprint planning"));
 
-        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.False(json["ok"]!.GetValue<bool>());
         Assert.Contains("another agent", json["error"]!.GetValue<string>());
         Assert.Empty(asked);
     }
@@ -295,23 +304,25 @@ public class WhiteboardMcpToolsTests
             });
         var tools = new WhiteboardMcpTools(host, registry, new DiagramSettings(new FakePluginStorage()));
 
-        var json = JsonNode.Parse(await tools.ReadWhiteboard(Session, "Sprint planning"));
+        var json = _Meta(await tools.ReadWhiteboard(Session, "Sprint planning"));
 
-        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.False(json["ok"]!.GetValue<bool>());
         Assert.Contains("no longer available", json["error"]!.GetValue<string>());
     }
 
     [Fact]
-    public async Task ReadWhiteboard_WithAnEmptySnapshot_StillSucceeds_ReturningNoImageData()
+    public async Task ReadWhiteboard_WithAnEmptySnapshot_StillSucceeds_WithNoImageContentBlock()
     {
-        // Mirrors DiagramMcpTools.ReadDiagram defaulting a missing source to "" rather than erroring.
+        // Mirrors DiagramMcpTools.ReadDiagram defaulting a missing source to "" rather than erroring — here there
+        // is simply nothing to attach as an image content block (AC-1007).
         var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
         registry.SurfaceOpened("board-1", "Sprint planning", []);
 
-        var json = JsonNode.Parse(await tools.ReadWhiteboard(Session, "Sprint planning"));
+        var result = await tools.ReadWhiteboard(Session, "Sprint planning");
+        var json = _Meta(result);
 
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal("", json["imageBase64"]!.GetValue<string>());
+        Assert.True(json["ok"]!.GetValue<bool>());
+        Assert.Single(result.Content);
     }
 
     // ---- open_whiteboard (AC-835, direct path since AC-891): the agent asks for a board of its own ----

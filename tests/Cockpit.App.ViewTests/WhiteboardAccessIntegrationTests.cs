@@ -12,6 +12,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
+using ModelContextProtocol.Protocol;
 
 namespace Cockpit.App.ViewTests;
 
@@ -37,10 +38,12 @@ public class WhiteboardAccessIntegrationTests
         Assert.NotNull(peeked);
         Assert.NotEmpty(peeked!);
 
-        var json = JsonNode.Parse(await _CallAsync(tools, "ReadWhiteboard", "agent-pane", surfaceId));
+        var result = await _CallReadWhiteboardAsync(tools, "agent-pane", surfaceId);
+        var json = JsonNode.Parse(Assert.IsType<TextContentBlock>(result.Content[0]).Text);
 
         Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Equal(Convert.ToBase64String(peeked!), json["imageBase64"]!.GetValue<string>());
+        var image = Assert.IsType<ImageContentBlock>(result.Content[1]);
+        Assert.Equal(peeked, image.DecodedData.ToArray());
 
         plugin.Dispose();
     });
@@ -78,6 +81,11 @@ public class WhiteboardAccessIntegrationTests
     // dynamically, by name — rather than through a compile-time type this project cannot see.
     private static Task<string> _CallAsync(object tools, string method, params object?[] args) =>
         (Task<string>)tools.GetType().GetMethod(method)!.Invoke(tools, args)!;
+
+    // AC-1007: read_whiteboard alone returns CallToolResult (its image travels as its own content block) —
+    // reflected separately since _CallAsync's cast is fixed to the other tools' plain-string replies.
+    private static Task<CallToolResult> _CallReadWhiteboardAsync(object tools, params object?[] args) =>
+        (Task<CallToolResult>)tools.GetType().GetMethod("ReadWhiteboard")!.Invoke(tools, args)!;
 
     private static async Task<(ICockpitPlugin Plugin, WhiteboardAccessRegistry Registry, object Tools, string SurfaceId)> _OpenBoardAsync()
     {

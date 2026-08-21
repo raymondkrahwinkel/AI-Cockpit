@@ -254,6 +254,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: `read_whiteboard` handed the agent a screenshot as a base64 field inside its JSON reply — a quarter
+  million characters for a board with real content on it, which a client with a token limit on tool results
+  refused outright, even though the call itself reported success. The image now travels as its own picture
+  attachment. The snapshot itself is also twice as large (1600×1200, up from 800×600), enough to keep a pasted
+  screenshot's button captions readable rather than an indistinct blur.
 - fixed: the cockpit grew by roughly 18 MB a minute and reached several gigabytes over a working day, with UI
   freezes of up to nineteen seconds as it went. Transcript rows that had scrolled out of view were never released:
   a styling rule kept every discarded row, and every icon in it, reachable for as long as the window stayed open.
