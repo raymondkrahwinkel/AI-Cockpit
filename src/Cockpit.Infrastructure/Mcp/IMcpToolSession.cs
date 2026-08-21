@@ -1,3 +1,4 @@
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions.Permissions;
 using Microsoft.Extensions.AI;
 
@@ -21,6 +22,12 @@ internal interface IMcpToolSession : IAsyncDisposable
     /// apart without inspecting the log: "no tools from this server" versus "this server is waiting on a sign-in".
     /// </summary>
     IReadOnlyList<string> ServersNeedingSignIn { get; }
+
+    /// <summary>
+    /// Every enabled server that ended this session with no tools (AC-997): the same servers behind
+    /// <see cref="ServersNeedingSignIn"/> plus every other connect failure, each with a one-line reason.
+    /// </summary>
+    IReadOnlyList<McpServerConnectionIssue> ConnectionIssues { get; }
 
     /// <summary>
     /// Each connected tool's permission class (AC-79), keyed by tool name, derived from its MCP read-only/

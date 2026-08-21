@@ -76,10 +76,11 @@ internal sealed class McpToolProvider(
         // stay in the same (deterministic) order as enabledServers even though the connects race in parallel.
         var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, sessionToken, cancellationToken)));
         var serversNeedingSignIn = new List<string>();
+        var connectionIssues = new List<McpServerConnectionIssue>();
 
         for (var i = 0; i < connections.Length; i++)
         {
-            var connection = connections[i];
+            var (connection, failureReason) = connections[i];
             if (connection is null)
             {
                 // AC-500: a failed OAuth server is a named outcome ("waiting on a sign-in"), not just an absence
@@ -87,6 +88,14 @@ internal sealed class McpToolProvider(
                 if (enabledServers[i].Auth == McpServerAuth.OAuth)
                 {
                     serversNeedingSignIn.Add(enabledServers[i].Name);
+                    connectionIssues.Add(new McpServerConnectionIssue(enabledServers[i].Name, "Needs a sign-in."));
+                }
+                else if (failureReason is { Length: > 0 })
+                {
+                    // AC-997: the same outcome for every other connect failure — unreachable, or a stdio server
+                    // that started and then exited — so a caller can report it upstream instead of leaving it in
+                    // cockpit.log alone.
+                    connectionIssues.Add(new McpServerConnectionIssue(enabledServers[i].Name, failureReason));
                 }
 
                 continue;
@@ -113,7 +122,7 @@ internal sealed class McpToolProvider(
         // AC-143: hand the session the pane/token it minted above so its own DisposeAsync can revoke exactly that
         // token when this tool loop ends — the same mint site owns the teardown, rather than a shared cross-
         // component path that could revoke a live sibling's token.
-        return new McpToolSession(clients, tools, connectedNames, serversNeedingSignIn, toolClasses, keyring, paneId, sessionToken);
+        return new McpToolSession(clients, tools, connectedNames, serversNeedingSignIn, connectionIssues, toolClasses, keyring, paneId, sessionToken);
     }
 
     public async Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, string? projectId = null, CancellationToken cancellationToken = default)
@@ -131,7 +140,7 @@ internal sealed class McpToolProvider(
 
         // Connect ONLY this one server — bypassing ConnectAsync/_EffectiveServers, which would overlay the built-in
         // local-default servers (filesystem/fetch/git/…) and both spawn and count them (AC-134 security review).
-        var connection = await _ConnectServerAsync(server, sessionToken: null, cancellationToken).ConfigureAwait(false);
+        var (connection, _) = await _ConnectServerAsync(server, sessionToken: null, cancellationToken).ConfigureAwait(false);
         if (connection is null)
         {
             return null;
@@ -181,7 +190,7 @@ internal sealed class McpToolProvider(
             return McpToolInvocationResult.AuthorizationRequired;
         }
 
-        var connection = await _ConnectServerAsync(server, sessionToken: null, cancellationToken).ConfigureAwait(false);
+        var (connection, _) = await _ConnectServerAsync(server, sessionToken: null, cancellationToken).ConfigureAwait(false);
         if (connection is null)
         {
             return McpToolInvocationResult.Failed($"Could not connect to \"{serverName}\".");
@@ -211,7 +220,10 @@ internal sealed class McpToolProvider(
         }
     }
 
-    private async Task<ServerConnection?> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken)
+    // The connect result plus, on failure, the operator-facing reason (AC-997) — carried alongside the null
+    // ServerConnection rather than thrown, since Task.WhenAll below needs one result per server regardless of
+    // which one failed.
+    private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken)
     {
         try
         {
@@ -251,7 +263,7 @@ internal sealed class McpToolProvider(
                     : annotationClass;
             }
 
-            return new ServerConnection(client, [.. serverTools], server.Name, classes);
+            return (new ServerConnection(client, [.. serverTools], server.Name, classes), null);
         }
         catch (Exception ex) when (server.Auth == McpServerAuth.OAuth)
         {
@@ -259,14 +271,18 @@ internal sealed class McpToolProvider(
             // prompt, any failure at this transport reads as "no usable sign-in yet" rather than a specific status
             // code — the SDK's own OAuth negotiation can fail several ways before it ever gets as far as one.
             logger.LogWarning(ex, "MCP server {Name} needs an OAuth sign-in that has not happened yet; skipping its tools", server.Name);
-            return null;
+            return (null, null);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "MCP server {Name} could not be connected — skipping its tools", server.Name);
-            return null;
+            return (null, _ShortReason(ex));
         }
     }
+
+    // The operator-facing reason (AC-997): the exception's own message, one line, no stack trace — never
+    // ex.ToString(), which would carry both.
+    private static string _ShortReason(Exception ex) => ex.Message.Split('\n')[0].Trim();
 
     // One server's successful connect result: the live client (kept for disposal), its tools, their permission classes, and its name.
     private sealed record ServerConnection(McpClient Client, IReadOnlyList<AIFunction> Tools, string Name, IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses);
@@ -396,6 +412,7 @@ internal sealed class McpToolProvider(
         IReadOnlyList<McpSessionTool> tools,
         IReadOnlyList<string> names,
         IReadOnlyList<string> serversNeedingSignIn,
+        IReadOnlyList<McpServerConnectionIssue> connectionIssues,
         IReadOnlyDictionary<string, ToolPermissionClass> toolClasses,
         SessionMcpKeyring? keyring = null,
         string? paneId = null,
@@ -407,6 +424,8 @@ internal sealed class McpToolProvider(
         public IReadOnlyList<string> ConnectedServerNames => names;
 
         public IReadOnlyList<string> ServersNeedingSignIn => serversNeedingSignIn;
+
+        public IReadOnlyList<McpServerConnectionIssue> ConnectionIssues => connectionIssues;
 
         public IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses => toolClasses;
 

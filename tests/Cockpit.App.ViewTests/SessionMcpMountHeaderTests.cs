@@ -9,6 +9,7 @@ using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Sessions;
@@ -46,6 +47,36 @@ public class SessionMcpMountHeaderTests
 
         Assert.Equal("Connected (3 MCP servers).", statusLine);
         Assert.Contains("cockpit-agents", servers!);
+    }
+
+    /// <summary>
+    /// AC-997: a server that fell over stays in the selection instead of reading as one the operator never
+    /// checked, and the header's own line says something is wrong without needing the hover.
+    /// </summary>
+    [Fact]
+    public void AServerThatFailedToConnect_StaysInTheSelection_AndTheHeaderSaysSomethingFellOver()
+    {
+        var (statusLine, servers, tooltip) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var mounts = new SessionMcpMounts();
+            var cockpit = _Cockpit(mounts);
+            var session = new SessionViewModel
+            {
+                McpServerSelection = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "youtrack", "git" },
+            };
+            cockpit.Sessions.Add(session);
+
+            mounts.Report(
+                session.PaneId,
+                ["youtrack"],
+                [new McpServerConnectionIssue("git", "/home/raymond is not a valid Git repository")]);
+
+            return (session.ConnectedStatusLine, Servers: session.McpServerSelection, session.McpServersTooltip);
+        });
+
+        Assert.Equal("Connected (2 MCP servers, 1 could not connect).", statusLine);
+        Assert.Contains("git", servers!);
+        Assert.Contains("git — could not connect: /home/raymond is not a valid Git repository", tooltip);
     }
 
     /// <summary>

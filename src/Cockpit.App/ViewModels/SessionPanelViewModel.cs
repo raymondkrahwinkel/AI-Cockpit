@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Diagnostics;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
@@ -117,12 +118,25 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
     private IReadOnlySet<string>? _mcpServerSelection;
 
+    // Servers in the selection above that never got tools this session — unreachable, crashed at start, or
+    // still waiting on an OAuth sign-in (AC-997). Reported alongside McpServerSelection so a server that fell
+    // over stays in the selection instead of reading as one nobody ever checked.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
+    [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
+    private IReadOnlyList<McpServerConnectionIssue> _mcpServerConnectionIssues = [];
+
     // The header's activity line for the current selection (AC-537). An unknown selection is left unsaid rather
     // than reported as zero — the count is the one figure here that describes the session's own setup, and a
-    // wrong one is worse than none.
+    // wrong one is worse than none. AC-997: a session where something fell over says so right here, so it is not
+    // only visible on hover; a clean session's line is unchanged.
     public string ConnectedStatusLine => McpServerSelection is { Count: > 0 } servers
-        ? $"Connected ({servers.Count} MCP server{(servers.Count == 1 ? string.Empty : "s")})."
+        ? $"Connected ({servers.Count} MCP server{(servers.Count == 1 ? string.Empty : "s")}{McpConnectionIssuesSuffix})."
         : "Connected.";
+
+    private string McpConnectionIssuesSuffix => McpServerConnectionIssues is { Count: > 0 } issues
+        ? $", {issues.Count} could not connect"
+        : string.Empty;
 
     // What the activity column says on hover: the servers this session mounts, by name (AC-563). It hangs on the
     // column rather than on the text inside it, so an agent's `set_status` line cannot carry the list off
@@ -135,8 +149,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         null => "MCP servers\nNot known for this session — neither it nor its profile named a selection.",
         { Count: 0 } => "MCP servers\nNone — this session was started with the selection empty.",
-        var servers => "MCP servers\n" + string.Join('\n', servers.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)) + McpToolReachLine,
+        var servers => "MCP servers\n" + string.Join('\n', servers.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)) + McpConnectionIssuesLine + McpToolReachLine,
     };
+
+    // AC-997: what fell over, spelled out — appended after the server list so a dropped server still reads as
+    // selected, with the reason right next to it instead of only in cockpit.log.
+    private string McpConnectionIssuesLine => McpServerConnectionIssues is { Count: > 0 } issues
+        ? "\n\n" + string.Join('\n', issues.OrderBy(issue => issue.Name, StringComparer.OrdinalIgnoreCase).Select(issue => $"{issue.Name} — could not connect: {issue.Reason}"))
+        : string.Empty;
 
     // How this session's tools reach the model (AC-963): preloaded into every request, or kept out of the prompt
     // and found with `search_tools`. The line above stays about servers — that is the unit the operator set up —

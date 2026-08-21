@@ -40,7 +40,7 @@ public class SessionMcpMountReportTests
     {
         var reported = new List<string>();
         var mounts = new SessionMcpMounts();
-        mounts.Reported += (pane, names) => reported.AddRange(names.Select(name => $"{pane}:{name}"));
+        mounts.Reported += (pane, names, _) => reported.AddRange(names.Select(name => $"{pane}:{name}"));
         var inner = new FakePluginSessionDriver();
         var adapter = new PluginSessionDriverAdapter(
             inner, inner.Capabilities, new McpAuthKey(), _Catalog(), mcpMounts: mounts);
@@ -57,7 +57,7 @@ public class SessionMcpMountReportTests
     {
         var reported = new List<string>();
         var mounts = new SessionMcpMounts();
-        mounts.Reported += (_, names) => reported.AddRange(names);
+        mounts.Reported += (_, names, _) => reported.AddRange(names);
         var inner = Substitute.For<IPluginTtyProvider>();
         inner.BuildLaunch(Arg.Any<PluginTtyLaunchContext>()).Returns(new PluginTtyLaunchSpec(
             "claude", [], new Dictionary<string, string?>(), "/wd", []));
@@ -86,7 +86,7 @@ public class SessionMcpMountReportTests
     {
         var reported = new List<string>();
         var mounts = new SessionMcpMounts();
-        mounts.Reported += (_, names) => reported.AddRange(names);
+        mounts.Reported += (_, names, _) => reported.AddRange(names);
         var toolSession = Substitute.For<IMcpToolSession>();
         toolSession.Tools.Returns([]);
         toolSession.ConnectedServerNames.Returns(["cockpit-session", "cockpit-agents"]);
@@ -105,6 +105,37 @@ public class SessionMcpMountReportTests
             launchOptions: new Dictionary<string, string> { [WellKnownPluginSessionOptions.PaneId] = PaneId });
 
         Assert.Equal(["cockpit-session", "cockpit-agents"], reported);
+    }
+
+    // AC-997: a server that fell over must reach the report too, not only the ones that answered — this is what
+    // lets a caller keep it in the operator's selection instead of silently rewriting the selection around it.
+    [Fact]
+    public async Task TheLocalModelRoute_ReportsConnectionIssuesAlongsideTheServersThatConnected()
+    {
+        IReadOnlyList<McpServerConnectionIssue>? reportedIssues = null;
+        var mounts = new SessionMcpMounts();
+        mounts.Reported += (_, _, issues) => reportedIssues = issues;
+        var toolSession = Substitute.For<IMcpToolSession>();
+        toolSession.Tools.Returns([]);
+        toolSession.ConnectedServerNames.Returns(["cockpit-session"]);
+        toolSession.ConnectionIssues.Returns([new McpServerConnectionIssue("cockpit-agents", "Connection refused")]);
+        toolSession.ToolClasses.Returns(new Dictionary<string, ToolPermissionClass>());
+        var toolProvider = Substitute.For<IMcpToolProvider>();
+        toolProvider
+            .ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(toolSession);
+        var chatClientFactory = Substitute.For<IChatClientFactory>();
+        chatClientFactory.Create(Arg.Any<ProviderConfig>()).Returns(Substitute.For<IChatClient>());
+        var driver = new OpenAiCompatSessionDriver(
+            chatClientFactory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance, mounts);
+
+        await driver.StartAsync(
+            new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1")),
+            launchOptions: new Dictionary<string, string> { [WellKnownPluginSessionOptions.PaneId] = PaneId });
+
+        var issue = Assert.Single(reportedIssues!);
+        Assert.Equal("cockpit-agents", issue.Name);
+        Assert.Equal("Connection refused", issue.Reason);
     }
 
     private static IMcpServerCatalog _Catalog()

@@ -41,6 +41,10 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
     // The servers that really answered, for the header that names this session's mounts (AC-927).
     public IReadOnlyList<string> ConnectedServerNames => _toolSession.ConnectedServerNames;
 
+    // The servers that did not, with why (AC-997) — for the same header, so a fallen-over server is not just an
+    // absence from the count above.
+    public IReadOnlyList<McpServerConnectionIssue> ConnectionIssues => _toolSession.ConnectionIssues;
+
     // The pane token ConnectAsync minted below, so the adapter can hand its plugin the same live token
     // instead of minting a second one for the same pane (AC-994).
     public string? PaneToken => _toolSession.PaneToken;

@@ -17,6 +17,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Consent;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
@@ -2953,12 +2954,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // AC-927: a launch route reporting the servers it mounted. On the UI thread, since it sets the header's own
     // observable; a report for a pane the host no longer holds is dropped, the way a consent for a gone pane is.
-    private void _OnSessionMcpMounted(string paneId, IReadOnlyList<string> serverNames) =>
+    // AC-997: the selection stays the full set this route tried, not only the ones that answered — a server that
+    // fell over stays present instead of reading as one the operator never checked; the issues ride along for
+    // the header's own line and hover to say which one and why.
+    private void _OnSessionMcpMounted(string paneId, IReadOnlyList<string> connectedServerNames, IReadOnlyList<McpServerConnectionIssue> issues) =>
         _OnUiThread(() =>
         {
             if (FindSession(paneId) is { } session)
             {
-                session.McpServerSelection = new HashSet<string>(serverNames, StringComparer.OrdinalIgnoreCase);
+                var selection = new HashSet<string>(connectedServerNames, StringComparer.OrdinalIgnoreCase);
+                foreach (var issue in issues)
+                {
+                    selection.Add(issue.Name);
+                }
+
+                session.McpServerSelection = selection;
+                session.McpServerConnectionIssues = issues;
             }
         });
 
