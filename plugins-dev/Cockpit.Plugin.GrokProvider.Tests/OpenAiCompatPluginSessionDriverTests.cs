@@ -7,7 +7,9 @@ using NSubstitute;
 namespace Cockpit.Plugin.GrokProvider.Tests;
 
 // AC-724: `OpenAiCompatPluginSessionDriver` against a fake `IChatClient`, mirroring the sibling
-// OpenRouter plugin's own driver tests — same shape, minus the tool-loop.
+// OpenRouter plugin's own driver tests — same shape.
+// A session that gets no host toolset stays chat-only; the tool loop it runs when it does get one is covered
+// by OpenAiCompatPluginSessionDriverToolLoopTests in the Gemini provider's tests (AC-964, one shared driver).
 public class OpenAiCompatPluginSessionDriverTests
 {
     [Fact]

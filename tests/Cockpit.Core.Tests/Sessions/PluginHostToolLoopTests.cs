@@ -60,7 +60,9 @@ public class PluginHostToolLoopTests
         // no one could see, and a ceiling that binds nothing is the hole this pins shut.
         await session.Driver.SetDelegatedToolGateAsync(ceiling: string.Empty, allowedTools: []);
 
-        var result = await session.Toolset.InvokeAsync("write_file", "{}");
+        // Raced against a deadline: without the ceiling reaching the gate this call waits on a prompt nobody can
+        // answer, and a hang would leave the mutation looking survivable rather than caught.
+        var result = await _WithinFiveSecondsAsync(session.Toolset.InvokeAsync("write_file", "{}"));
 
         Assert.False(ran);
         Assert.Contains("write", result, StringComparison.OrdinalIgnoreCase);
@@ -170,6 +172,16 @@ public class PluginHostToolLoopTests
 
         await toolProvider.DidNotReceive().ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
         Assert.Null(inner.Toolset);
+    }
+
+    private static async Task<string> _WithinFiveSecondsAsync(Task<string> call)
+    {
+        if (await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(5))) != call)
+        {
+            throw new TimeoutException("The tool call was still waiting on a decision after 5s — nothing decided it.");
+        }
+
+        return await call;
     }
 
     private static AIFunction[] _Tools(int count) =>
