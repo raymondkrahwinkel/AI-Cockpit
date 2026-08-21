@@ -87,6 +87,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly Button _shapeButton;
     private readonly Button _askButton;
     private readonly TextBlock _handHint;
+    private readonly TextBlock _hintSeparator;
     private DiagramEditSupport _support = new(DiagramEditDialect.Flowchart, null);
     private IReadOnlyList<DiagramObjectAt> _objects = [];
     private DiagramObjectAt? _selected;
@@ -137,7 +138,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
-        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _connectButton, _renameButton, _deleteButton, _attributesButton, _shapeButton, _askButton, _handHint, _followToggle) = _BuildToolbar();
+        (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _connectButton, _renameButton, _deleteButton, _attributesButton, _shapeButton, _askButton, _handHint, _followToggle, _hintSeparator) = _BuildToolbar();
         var diagramJournal = new DiagramActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, diagramJournal, key => _ = _FlashObjectAsync(key));
         _askStrip = new AskStrip(key => _ = _FlashObjectAsync(key));
@@ -1456,6 +1457,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
             };
         // AC-973: the label trims with an ellipsis at MaxWidth — the tooltip carries the untrimmed text.
         ToolTip.SetTip(_handHint, _handHint.Text);
+        // AC-981: the separator only makes sense between two texts — hide it when the hint is empty.
+        _hintSeparator.IsVisible = _handHint.Text.Length > 0;
 
         // AC-978: same gate as the ask button just above — the hint only offers "Ask the agent…" when that
         // button would actually do something.
@@ -1532,7 +1535,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // line art). Exports whatever is currently rendered, via the same StorageProvider save-picker pattern as
     // the dashboard/flow export elsewhere in the host (SessionDialogService, WorkflowManagerControl).
     private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus, Button Add,
-        Button Connect, Button Rename, Button Delete, Button Attributes, Button Shape, Button Ask, TextBlock Hint, ToggleButton Follow) _BuildToolbar()
+        Button Connect, Button Rename, Button Delete, Button Attributes, Button Shape, Button Ask, TextBlock Hint,
+        ToggleButton Follow, TextBlock HintSeparator) _BuildToolbar()
     {
         var export = new Button
         {
@@ -1619,6 +1623,15 @@ internal sealed class DiagramWorkspaceBody : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
+        // AC-981: saveStatus (where this file lives) and hint (what to do now) are two different kinds of
+        // information — without a mark between them they read as one nonsense sentence.
+        var hintSeparator = new TextBlock
+        {
+            Text = "·",
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 11,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
 
         // AC-973: a WrapPanel of individual controls, not two DockPanel-docked StackPanels — a group that no
         // longer fits on one line wraps onto the next instead of being clipped or painted over. Export leads so it
@@ -1631,11 +1644,11 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Children =
             {
                 export, zoomOut, zoomLabel, zoomIn, fit, follow,
-                insertTemplate, addNode, connect, rename, delete, attributes, shape, ask, save, saveStatus, hint,
+                insertTemplate, addNode, connect, rename, delete, attributes, shape, ask, save, saveStatus, hintSeparator, hint,
             },
         };
 
-        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, addNode, connect, rename, delete, attributes, shape, ask, hint, follow);
+        return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, addNode, connect, rename, delete, attributes, shape, ask, hint, follow, hintSeparator);
     }
 
     // One save path for both origins (AC-839): a hand-edit and an accepted agent proposal both arrive through
