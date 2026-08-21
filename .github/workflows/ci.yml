@@ -49,7 +49,7 @@ jobs:
 
   build:
     needs: changes
-    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.other == 'true'
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.plugins_dev == 'true' || needs.changes.outputs.other == 'true'
     runs-on: ubuntu-latest
 
     steps:

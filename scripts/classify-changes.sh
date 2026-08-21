@@ -49,6 +49,16 @@ project_closure() {
   printf '%s\n' "${!seen[@]}"
 }
 
+# A suite can be coupled to plugins-dev/ without any <ProjectReference> recording it: a source-tree lint
+# like ThemeHexColorGuardTests reads plugin files directly, at runtime, by path. The closure below is blind
+# to that, so when the diff touches plugins-dev/ we also grep the suite's own tracked .cs/.csproj files for
+# the string "plugins-dev" -- restricted to those extensions so a stray bin/obj artifact can't match.
+suite_mentions_plugins_dev() {
+  local dir="$1"
+  git -C "$repo_root" grep -q -I --fixed-strings -e 'plugins-dev' "$head" \
+    -- ":(glob)${dir}/**/*.cs" ":(glob)${dir}/**/*.csproj" 2>/dev/null
+}
+
 # The project a changed file belongs to, as its repo-relative csproj path. src/plugins-dev/tests all
 # follow the same <root>/<ProjectName>/<ProjectName>.csproj layout in this repo.
 owning_project() {
@@ -104,6 +114,9 @@ for entry in "${TEST_SUITES[@]}"; do
         break
       fi
     done < <(project_closure "$csproj")
+  fi
+  if [ "$run" = false ] && [ "$plugins_dev" = true ] && suite_mentions_plugins_dev "$(dirname "$csproj")"; then
+    run=true
   fi
   printf '%s=%s\n' "$flag" "$run"
 done
