@@ -199,14 +199,9 @@ public class WhiteboardSnapshotRendererTests
         Assert.True(_CloseTo(pixel, WhiteboardObjectPainter.StickyNoteColor), $"expected the sticky note scaled into view, got {pixel}");
     }
 
-    // AC-1007 AC2: the legibility claim, tied to the real fit math (WhiteboardGeometry — the same path
-    // read_whiteboard's snapshot goes through) rather than a raster pixel-sampling proxy. A pixel-sampling attempt
-    // at this turned out to interact with the renderer's image scaling in non-obvious ways (aliasing rather than
-    // blur, since minification without mipmapping doesn't reliably blur a fine pattern), so it couldn't stand in
-    // for "still legible" without being coincidental. Cockpit's own UI text sits at 12-13px (Theme.axaml); ~7px
-    // cap-height is the commonly cited floor below which anti-aliased UI text stops reading as letters. A
-    // screenshot pasted near-native fills most of the board, so its effective on-canvas scale is the whole-board
-    // fit factor computed here.
+    // AC-1007 AC2: uses the real fit math (WhiteboardGeometry) rather than a raster pixel-sampling proxy — a
+    // pixel-sampling attempt aliased instead of blurring under this renderer's minification, so it couldn't stand
+    // in for "still legible". See the AC-1007 PR/ticket for the sizing rationale behind the constants below.
     [Fact]
     public void SnapshotSize_KeepsAFullBoardScreenshotsCaptionAboveTheLegibilityFloor_UnlikeTheOldSize()
     {
