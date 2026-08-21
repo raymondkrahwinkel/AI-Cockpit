@@ -36,8 +36,8 @@ internal static class WhiteboardObjectPainter
     private static readonly IBrush PlacedBrush = new SolidColorBrush(PlacedColor);
     private static readonly IPen PlacedPen = new Pen(PlacedBrush, 2);
 
-    // Semi-transparent by construction — this is what "halfdoorzichtig" and "onderscheidbaar van potlood" mean in
-    // practice: the same stroke geometry as the pencil, just a translucent brush and (at the call site) thicker.
+    // Semi-transparent by construction — this is what "semi-transparent" and "distinguishable from the pencil" mean
+    // in practice: the same stroke geometry as the pencil, just a translucent brush and (at the call site) thicker.
     private static readonly IBrush MarkerBrush = new SolidColorBrush(MarkerColor, 0.35);
 
     private static readonly IBrush StickyNoteBrush = new SolidColorBrush(StickyNoteColor);

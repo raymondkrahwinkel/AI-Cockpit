@@ -1203,7 +1203,7 @@ public sealed class WhiteboardCanvasControl : Border
     }
 
     // AC-912: what one delete took off the board — the removed objects with the spot each sat in, plus the children
-    // whose binding to `FocusId` was cut rather than deleted along ("Alleen de afbeelding").
+    // whose binding to `FocusId` was cut rather than deleted along ("Just the image").
     private sealed record Removal(IReadOnlyList<(WhiteboardObject Item, int Index)> Removed, IReadOnlyList<WhiteboardObject> Unbound, Guid FocusId);
 
     // The instances themselves are journaled, not a copy of the board: restoring one puts back the very object that

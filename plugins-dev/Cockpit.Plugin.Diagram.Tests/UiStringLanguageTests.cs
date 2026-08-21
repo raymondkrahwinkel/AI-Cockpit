@@ -24,6 +24,9 @@ public class UiStringLanguageTests
         $@"(?:{string.Join("|", UiStringProperties.Select(Regex.Escape))})\s*=\s*\$?""((?:[^""\\]|\\.)*)""",
         RegexOptions.Compiled);
 
+    // A `//` not preceded by `:` (so "https://..." inside a comment or string is not mistaken for one).
+    private static readonly Regex LineComment = new(@"(?<!:)//(.*)$", RegexOptions.Compiled);
+
     public static TheoryData<string> PluginSourceFiles()
     {
         var pluginDir = _PluginSourceDirectory();
@@ -51,6 +54,29 @@ public class UiStringLanguageTests
                 var hit = DutchWord.Match(value);
                 Assert.False(hit.Success, $"{relativePath}:{i + 1} looks Dutch (\"{hit.Value}\" in \"{value}\")");
             }
+        }
+    }
+
+    // AC-977's correction: comments are project source too, and the "comments are always English" rule does not
+    // hinge on whether the text is user-visible. Two comments quoting a Dutch design phrase in a string literal
+    // ("Alleen de afbeelding", "onderscheidbaar van potlood") slipped past the property-literal check above.
+    [Theory]
+    [MemberData(nameof(PluginSourceFiles))]
+    public void Comments_ContainNoDutchWords(string relativePath)
+    {
+        var path = Path.Combine(_PluginSourceDirectory(), relativePath);
+        var lines = File.ReadAllLines(path);
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var match = LineComment.Match(lines[i]);
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            var hit = DutchWord.Match(match.Groups[1].Value);
+            Assert.False(hit.Success, $"{relativePath}:{i + 1} comment looks Dutch (\"{hit.Value}\")");
         }
     }
 

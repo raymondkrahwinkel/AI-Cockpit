@@ -2033,7 +2033,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         fit.Click += (_, _) => _ApplyFit();
 
         // AC-874/WF-4: where this wireframe lives, beside the button that puts it there — DiagramWorkspaceBody's
-        // Opslaan, one folder over. "No file yet" is a state the window shows just as well as a path.
+        // Save button, one folder over. "No file yet" is a state the window shows just as well as a path.
         var save = new Button { Content = "Save", Classes = { "Compact" } };
         save.Click += (_, _) => _ = _SaveAsync();
         var saveStatus = new TextBlock
