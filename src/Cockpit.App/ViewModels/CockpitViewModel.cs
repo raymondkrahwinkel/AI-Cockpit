@@ -2197,6 +2197,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Shortcuts settings rather than configurable in-app (#34) — drives the Options-flyout hint text.
     public bool IsLinuxPlatform { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
 
+    // Gates the Windows-only "New terminal (administrator)" action (AC-967).
+    public bool IsWindowsPlatform { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
     // AC-691: the portal re-request button only makes sense where a portal is what's arming the hotkey.
     // X11 uses the same keyboard hook Windows does — nothing there to lose permission for — so the button
     // is Wayland-only, not Linux-wide like the hint text above it.
@@ -4857,6 +4860,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var terminal = _ttySessionFactory();
         AddSession(terminal, name: null, shell.DisplayName);
         terminal.LaunchTerminal(shell);
+    }
+
+    // "New terminal (administrator)" (AC-967): the same shell as `NewTerminal`, but started elevated through
+    // `ShellExecuteEx`+`runas`, which means its own OS console window instead of a pane — an elevated process
+    // cannot be adopted into our ConPTY. Windows-only; nothing here runs on another platform.
+    [RelayCommand]
+    private void NewElevatedTerminal()
+    {
+        if (!IsWindowsPlatform)
+        {
+            return;
+        }
+
+        var shell = _ResolveDefaultShell();
+        if (shell is null)
+        {
+            return;
+        }
+
+        var error = ElevatedTerminalLauncher.Launch(shell);
+        if (error is not null)
+        {
+            ToastHost.Add(error, ToastSeverity.Warning, actionLabel: null, onAction: null);
+        }
     }
 
     // The shell a new terminal opens (#AC-25): the operator's configured default when it is set and still resolves
