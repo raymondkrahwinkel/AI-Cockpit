@@ -40,7 +40,7 @@ public class TerminalGridFitsBoundsTests
         {
             var terminal = NewTerminal();
             SetHeight(terminal, 600);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
 
             var cell = terminal.CellHeight;
             Assert.True(cell > 0, "the harness measured no cell height, so it would prove nothing about fit");
@@ -59,17 +59,17 @@ public class TerminalGridFitsBoundsTests
                     // margin can be swallowed by the deadband, leaving the grid a row below what this loop
                     // then assumes it is starting from. That silently skipped the transition it exists for.
                     SetHeight(terminal, boundary + cell * 0.75);
-                    await SettleAsync(terminal);
+                    await TerminalSettle.WaitAsync(terminal);
 
-                    // If the reference did not take, the settle was too short for this machine. Say so
-                    // here: otherwise it surfaces further down as an invariant violation, which reads as
-                    // the fix being wrong when it is the clock that slipped.
+                    // If the reference did not take, the deadband refused the growth this loop assumes.
+                    // Say so here: otherwise it surfaces further down as an invariant violation, which
+                    // reads as the sample being wrong when the starting grid was.
                     Assert.True(terminal.Buffer.Rows == rows,
                         $"expected {rows} rows at {boundary + cell * 0.75:F2}px before the sample, got "
-                        + $"{terminal.Buffer.Rows} — the resize had not settled");
+                        + $"{terminal.Buffer.Rows} — the grid never reached the reference");
 
                     SetHeight(terminal, height);
-                    await SettleAsync(terminal);
+                    await TerminalSettle.WaitAsync(terminal);
 
                     var reported = terminal.Buffer.Rows;
                     var needed = reported * terminal.CellHeight;
@@ -102,7 +102,7 @@ public class TerminalGridFitsBoundsTests
         {
             var terminal = NewTerminal();
             SetHeight(terminal, 600);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
 
             var cell = terminal.CellHeight;
             var boundary = 21 * cell;
@@ -115,16 +115,16 @@ public class TerminalGridFitsBoundsTests
             var high = boundary + 5;
 
             SetHeight(terminal, high);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
 
             terminal.Resized += (_, _) => resizes++;
 
             for (var cycle = 0; cycle < 4; cycle++)
             {
                 SetHeight(terminal, low);
-                await SettleAsync(terminal);
+                await TerminalSettle.WaitAsync(terminal);
                 SetHeight(terminal, high);
-                await SettleAsync(terminal);
+                await TerminalSettle.WaitAsync(terminal);
             }
         });
 
@@ -151,15 +151,15 @@ public class TerminalGridFitsBoundsTests
             terminal.FontSize = 6;
 
             SetHeight(terminal, 600);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
             cell = terminal.CellHeight;
 
             SetHeight(terminal, 40 * cell + cell * 0.75);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
             before = terminal.Buffer.Rows;
 
             SetHeight(terminal, 41 * cell + cell * 0.6);
-            await SettleAsync(terminal);
+            await TerminalSettle.WaitAsync(terminal);
             after = terminal.Buffer.Rows;
         });
 
@@ -196,31 +196,5 @@ public class TerminalGridFitsBoundsTests
         var size = new Size(Width, height);
         terminal.Measure(size);
         terminal.Arrange(new Rect(size));
-    }
-
-    /// <summary>
-    /// Waits out the control's 50ms resize debounce and then until the grid stops moving.
-    /// <para>
-    /// The floor carries the weight, not the polling: a grid that is being held looks exactly like one
-    /// whose timer has not fired yet, so no amount of polling can tell them apart — only waiting long
-    /// enough can. 150ms leaves 100ms for a dispatcher timer to run late on a loaded agent. The reference
-    /// assertion in the sweep is the backstop if even that is not enough.
-    /// </para>
-    /// </summary>
-    private static async Task SettleAsync(TerminalControl terminal)
-    {
-        var seen = terminal.Buffer.Rows;
-        await Task.Delay(150);
-
-        for (var poll = 0; poll < 12; poll++)
-        {
-            if (terminal.Buffer.Rows == seen)
-            {
-                return;
-            }
-
-            seen = terminal.Buffer.Rows;
-            await Task.Delay(20);
-        }
     }
 }

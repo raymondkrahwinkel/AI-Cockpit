@@ -1094,6 +1094,11 @@ public class TerminalControl : Control, IDisposable
     /// seen.</summary>
     public double CellHeight => _renderer.CellHeight;
 
+    // A layout pass has produced a grid the debounce has not applied yet. Set synchronously from
+    // RecomputeGrid, cleared by ApplyPendingResize, so a host that has to know the buffer is done
+    // moving can wait on this instead of guessing how long the timer takes.
+    public bool HasPendingResize => _pendingResize is not null;
+
     // Minimum grid size we'll honour. Anything smaller is almost
     // certainly a transient layout pass (e.g. mid-reparent after a
     // MoveCell) — resizing to those dimensions would shove live-screen
