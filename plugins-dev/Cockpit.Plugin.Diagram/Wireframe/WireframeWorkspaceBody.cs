@@ -1242,7 +1242,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         var palette = BuildPalette(kind => chosen = kind);
         var text = new TextBox { Width = 220, PlaceholderText = "Text (may be empty)" };
         var asChild = new Button { Content = "In this container", Classes = { "Compact" }, IsEnabled = target.IsContainer };
-        var asSibling = new Button { Content = "Hieronder", Classes = { "Compact" }, IsEnabled = !_IsScreen(target) };
+        var asSibling = new Button { Content = "Below", Classes = { "Compact" }, IsEnabled = !_IsScreen(target) };
         var flyout = new Flyout
         {
             Content = new StackPanel
@@ -2240,7 +2240,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         }
 
         var name = _sessionBinding.DisplayName ?? coupling.SessionId;
-        var readAt = coupling.LastReadAt is { } at ? $" · gelezen {at.ToLocalTime():HH:mm}" : "";
+        var readAt = coupling.LastReadAt is { } at ? $" · read {at.ToLocalTime():HH:mm}" : "";
         _couplingLabel.Text = coupling.CanRead
             ? $"Agent connected — session {name}{readAt}"
             : $"Agent connected — session {name} (no capabilities granted yet)";

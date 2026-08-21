@@ -692,7 +692,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             (from.Bounds.Center.Y + to.Bounds.Center.Y) / 2 * _svgScale);
         var box = new TextBox
         {
-            PlaceholderText = "Label (optioneel)",
+            PlaceholderText = "Label (optional)",
             MinWidth = 90,
             FontSize = 13,
             Padding = new Thickness(4, 2),
@@ -987,7 +987,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             }
 
             var type = new TextBox { Width = 90, PlaceholderText = "type" };
-            var attributeName = new TextBox { Width = 110, PlaceholderText = "naam" };
+            var attributeName = new TextBox { Width = 110, PlaceholderText = "name" };
             string?[] markers = [null, "PK", "FK", "UK"];
             var key = new ComboBox { ItemsSource = new[] { "—", "PK", "FK", "UK" }, SelectedIndex = 0, MinWidth = 64 };
             var add = new Button { Content = "Add", Classes = { "Compact" } };
@@ -1025,7 +1025,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     {
         var fromCardinality = _CardinalityBox();
         var toCardinality = _CardinalityBox();
-        var label = new TextBox { Width = 200, PlaceholderText = "leest als… (bv. plaatst)" };
+        var label = new TextBox { Width = 200, PlaceholderText = "reads as… (e.g. places)" };
         var confirm = new Button { Content = "Connect", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
         var flyout = new Flyout
         {
@@ -1086,10 +1086,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
     private static readonly (DiagramNodeShape Kind, string Label)[] NodeShapeMenuEntries =
     [
-        (DiagramNodeShape.Rectangle, "Rechthoek"),
-        (DiagramNodeShape.Rounded, "Afgerond"),
-        (DiagramNodeShape.Diamond, "Ruit"),
-        (DiagramNodeShape.Stadium, "Stadion"),
+        (DiagramNodeShape.Rectangle, "Rectangle"),
+        (DiagramNodeShape.Rounded, "Rounded"),
+        (DiagramNodeShape.Diamond, "Diamond"),
+        (DiagramNodeShape.Stadium, "Stadium"),
         (DiagramNodeShape.Subroutine, "Subroutine"),
     ];
 
