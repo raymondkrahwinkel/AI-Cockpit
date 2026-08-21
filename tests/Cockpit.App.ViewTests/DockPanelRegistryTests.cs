@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.App.Docking;
+using Cockpit.Plugins.Abstractions.Docking;
 using Material.Icons;
 
 namespace Cockpit.App.ViewTests;

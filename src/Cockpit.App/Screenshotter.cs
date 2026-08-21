@@ -404,6 +404,12 @@ internal static class Screenshotter
         // with Undock where the floating window has Close. The scene that shows what "docked is ordinary cockpit
         // UI" actually looks like: in the column structure beside the session content, no chrome of its own.
         ["assistant-docked"] = (_, _) => _AssistantDockedInTheRail(),
+        // AC-960 criterion 15: a plugin-registered panel (a stand-in for GitHubPullRequestsWidget — Cockpit.App
+        // does not reference that store-distributed plugin's assembly) at the rail's minimum and maximum content
+        // widths, plus the collapsed rail carrying both the Assistant's tab and this one.
+        ["dock-panel-pull-requests-min"] = (_, _) => _DockRailWithPullRequestsPanel(Cockpit.Core.Layout.LayoutSettings.MinDockRailWidth),
+        ["dock-panel-pull-requests-max"] = (_, _) => _DockRailWithPullRequestsPanel(Cockpit.Core.Layout.LayoutSettings.MaxDockRailWidth),
+        ["dock-rail-collapsed-two-tabs"] = (_, _) => _DockRailCollapsedWithTwoTabs(),
         // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
         ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
         // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
@@ -2084,7 +2090,7 @@ internal static class Screenshotter
             TranscriptEntryKind.AssistantText, "Two: **personal - webshop** is waiting on a permission, and the AC-953 desk is idle."));
 
         var panels = new Docking.DockPanelRegistry();
-        panels.Register(new Docking.DockPanelRegistration(
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
             Services.AssistantIndicatorCoordinator.DockPanelId,
             "Assistant",
             Material.Icons.MaterialIconKind.Creation,
@@ -2103,6 +2109,110 @@ internal static class Screenshotter
 
         return new MainWindow { DataContext = cockpit };
     }
+
+    // AC-960: a plugin's own panel open in the rail, at a given content width. Stand-in rows rather than the
+    // real GitHubPullRequestsWidget — see _PullRequestsDockPanel's own remarks.
+    private static Window _DockRailWithPullRequestsPanel(double railWidth)
+    {
+        var panels = new Docking.DockPanelRegistry();
+        panels.Register(_PullRequestsDockPanel());
+
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
+        {
+            OpenDockPanelId = "github.pull-requests",
+            DockRailWidth = railWidth,
+        };
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    // AC-960: nothing open, so the rail is the 40px tab strip — with both the Assistant's tab (AC-953) and a
+    // plugin's, proving the strip holds more than one without a real Assistant session behind it.
+    private static Window _DockRailCollapsedWithTwoTabs()
+    {
+        var panels = new Docking.DockPanelRegistry();
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
+        panels.Register(_PullRequestsDockPanel());
+
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels);
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    // Cockpit.App has no project reference to Cockpit.Plugin.GitHubPullRequests — it is store-distributed, not
+    // bundled — so this stands in for GitHubPullRequestsWidget, copying its own _BuildRow shape (number/title
+    // line, faint repository line, amber left-border stripe for the one waiting on review) rather than plain
+    // text, verified against a real render of that widget (plugins-dev, own test project) before this shape was
+    // written back here.
+    private static Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration _PullRequestsDockPanel() =>
+        new("github.pull-requests", "Pull Requests", Material.Icons.MaterialIconKind.SourcePull, _BuildPullRequestsStandIn);
+
+    private static Control _BuildPullRequestsStandIn()
+    {
+        (int Number, string Title, string Repository, bool Waiting)[] rows =
+        [
+            (101, "Faster startup path for the cold-start benchmark", "raymondkrahwinkel/cockpit", false),
+            (202, "Dock rail: let a plugin register its own panel", "raymondkrahwinkel/cockpit", true),
+            (203, "Fix flaky terminal-grid test on the CI runner", "raymondkrahwinkel/cockpit-plugins", false),
+        ];
+
+        var list = new StackPanel { Spacing = 1 };
+        foreach (var row in rows)
+        {
+            list.Children.Add(_BuildStandInRow(row.Number, row.Title, row.Repository, row.Waiting));
+        }
+
+        return new DockPanel
+        {
+            Margin = new Thickness(4),
+            Children =
+            {
+                new TextBlock
+                {
+                    [DockPanel.DockProperty] = Dock.Top,
+                    Text = "3 open · 1 waiting on you",
+                    FontSize = 11,
+                    Foreground = _Brush("CockpitTextSecondaryBrush"),
+                    Margin = new Thickness(2, 0, 0, 6),
+                },
+                new ScrollViewer { Content = list },
+            },
+        };
+    }
+
+    private static Control _BuildStandInRow(int number, string title, string repository, bool waiting)
+    {
+        var line = new DockPanel();
+        var numberBlock = new TextBlock
+        {
+            [DockPanel.DockProperty] = Dock.Left,
+            Text = $"#{number}",
+            FontSize = 11,
+            Foreground = waiting ? _Brush("CockpitStatusWaitingBrush") : _Brush("CockpitTextFaintBrush"),
+            Margin = new Thickness(0, 0, 6, 0),
+        };
+        line.Children.Add(numberBlock);
+        line.Children.Add(new TextBlock { Text = title, FontSize = 12, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis });
+
+        var repositoryLine = new TextBlock
+        {
+            Text = waiting ? $"{repository} · waiting on your review" : repository,
+            FontSize = 10,
+            Foreground = _Brush("CockpitTextFaintBrush"),
+        };
+
+        return new Border
+        {
+            BorderThickness = new Thickness(2, 0, 0, 0),
+            BorderBrush = waiting ? _Brush("CockpitStatusWaitingBrush") : Avalonia.Media.Brushes.Transparent,
+            Padding = new Thickness(7, 5),
+            Child = new StackPanel { Spacing = 1, Children = { line, repositoryLine } },
+        };
+    }
+
+    private static Avalonia.Media.IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is Avalonia.Media.IBrush brush ? brush : null;
 
     // AC-740 addendum: no session yet, so this also proves the profile-default fallback renders the picker —
     // not just the session's own working directory, which the SessionView scene already covers.

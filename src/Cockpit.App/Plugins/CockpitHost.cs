@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Docking;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
@@ -15,6 +16,7 @@ using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
@@ -146,6 +148,19 @@ internal sealed class CockpitHost(
 
     public IReadOnlyList<WidgetRegistration> Widgets =>
         services.GetRequiredService<IWidgetRegistry>().Widgets;
+
+    // Unlike AddWidget, no storage/sessions travel with this registration: a dock panel's view factory takes no
+    // context, so a plugin that needs per-instance state builds its own IWidgetContext from what host.Storage and
+    // host.Sessions already give it.
+    public void AddDockPanel(DockPanelRegistration registration)
+    {
+        if (!services.GetRequiredService<IDockPanelRegistry>().Register(registration))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                "Dock panel '{DockPanelId}' is already contributed by another plugin; this registration is ignored",
+                registration.Id);
+        }
+    }
 
     // This plugin's own storage and observe surface travel with the registration, the same way a widget's do: a
     // workspace of this type builds its context long after load, and by then the type id is the only thing linking

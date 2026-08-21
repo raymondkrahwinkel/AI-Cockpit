@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -679,6 +680,16 @@ public interface ICockpitHost
     /// only the app's own host renders it.
     /// </summary>
     void AddWidget(WidgetRegistration registration)
+    {
+    }
+
+    /// <summary>
+    /// Registers a panel for the right-hand dock rail (see <see cref="DockPanelRegistration"/>) — the rail's tab
+    /// strip lists it, and opening it builds the registration's own view. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched —
+    /// only the app's own host renders it.
+    /// </summary>
+    void AddDockPanel(DockPanelRegistration registration)
     {
     }
 

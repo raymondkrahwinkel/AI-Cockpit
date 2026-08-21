@@ -26,7 +26,7 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         Id: "github-pull-requests",
         DisplayName: "GitHub Pull Requests",
         Author: "Cockpit",
-        Description: "Shows how many open GitHub pull requests are yours in the left menu — a button with a live \"N / M\" badge, your own open PR count next to how many are waiting on your review — refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP. Clicking it opens a dialog listing every open PR in a searchable, sortable grid with an \"Assigned to me\" filter, plus a Dashboard widget showing the same list as a resizable pane with its own item count; left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). A pull request that starts waiting for your review raises a toast with an \"Open in browser\" button. The prompt template is editable in settings. Also offers a get_pr_status MCP tool so agent sessions and the assistant can ask for one PR's checks/mergeable/reviews/title without polling GitHub themselves.");
+        Description: "Shows how many open GitHub pull requests are yours in the left menu — a button with a live \"N / M\" badge, your own open PR count next to how many are waiting on your review — refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP. Clicking it opens a dialog listing every open PR in a searchable, sortable grid with an \"Assigned to me\" filter, plus a Dashboard widget and a dock-rail panel each showing the same list as a resizable pane with its own item count; left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). A pull request that starts waiting for your review raises a toast with an \"Open in browser\" button. The prompt template is editable in settings. Also offers a get_pr_status MCP tool so agent sessions and the assistant can ask for one PR's checks/mergeable/reviews/title without polling GitHub themselves.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -81,6 +81,9 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
             DefaultRowSpan = 8,
             CreateConfigView = context => new GitHubPullRequestsWidgetSettingsView(context),
         });
+
+        // AC-960: the same list, reachable as a dock-rail panel too, next to the badge and its dialog.
+        PullRequestDockPanelRegistrar.Register(host, settings, _refreshSource);
     }
 
     public void Dispose()

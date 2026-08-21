@@ -11,7 +11,8 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
-// The dashboard-workspace view of your open pull requests (#AC-18): number, title, repository, an amber stripe
+// The dashboard-workspace view of your open pull requests (#AC-18), also reused unchanged as the dock-rail
+// panel (AC-960 — see PullRequestDockPanelRegistrar): number, title, repository, an amber stripe
 // on the ones waiting for your review, left-click to drop a review prompt, right-click for the menu — placed as
 // a resizable pane. It reads the same `PullRequestRefreshSource` the side-menu badge (AC-517)
 // subscribes to (AC-515) and the same connection/repository settings, so the two never disagree about what is
