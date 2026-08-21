@@ -1,15 +1,18 @@
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Cockpit.Core.Abstractions.Diagrams;
+using Cockpit.Infrastructure.Diagrams;
 using Cockpit.Plugin.Diagram.Wireframe;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
-// AC-973: at the window size each surface itself opens with, every toolbar button must be on screen and none of them
-// may cover another. DiagramWindow.OpenAsync opens at 900x640, WireframeWindow.OpenAsync at 960x680; the audit that
-// filed this ticket found Export (diagram) and the whole zoom group (wireframe) silently unreachable at exactly
-// those sizes, with no wrap, overflow menu or truncation mark — a button just stopped existing on screen.
+// AC-973: every toolbar button must stay on screen and unobscured, at each surface's own default window size
+// (DiagramWindow.OpenAsync 900x640, WireframeWindow.OpenAsync 960x680) and at the wider sizes criterion 4 calls
+// out (Attributes… visible, Overview + state strip visible). See the PR description for the audit's findings.
 [Collection("avalonia")]
 public class ToolbarOverflowTests
 {
@@ -39,6 +42,27 @@ public class ToolbarOverflowTests
     }
 
     [Fact]
+    public void Diagram_ErDialectAtAWiderWindow_AttributesButtonIsVisibleAndReachable()
+    {
+        // AC-973 criterion 4's diagram case: an ER diagram shows Attributes… instead of Shape…. That needs a real
+        // IDiagramAccessRegistry to detect the dialect — ActivityStripTests.FakeHost's fake registry always
+        // reports Flowchart, so this test wires up the real one instead, same as DiagramMcpToolsTests does.
+        var registry = new DiagramAccessRegistry();
+        var document = DiagramDocument.New("Test ER diagram", ErSource);
+        var body = new DiagramWorkspaceBody(new _DiagramRegistryHost(registry), document, null);
+        var window = _Show(body, width: 1200, height: 640);
+
+        var attributes = body.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Attributes…"));
+        var shape = body.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Shape…"));
+        Assert.True(attributes.IsVisible);
+        Assert.False(shape.IsVisible);
+
+        _AssertAllReachable(window, body);
+
+        window.Close();
+    }
+
+    [Fact]
     public void Wireframe_AtItsOwnDefaultWindowSize_EveryVisibleToolbarButtonIsReachable()
     {
         var body = new WireframeWorkspaceBody(new ActivityStripTests.FakeHost(), WireframeDocument.New("Test wireframe"), null);
@@ -58,6 +82,67 @@ public class ToolbarOverflowTests
         _AssertAllReachable(window, body);
 
         window.Close();
+    }
+
+    [Fact]
+    public void Wireframe_ZoomedWithOverviewAndStateStripAtAWiderWindow_EveryVisibleToolbarButtonIsReachable()
+    {
+        // AC-973 criterion 4's wireframe case: two screens (so "← Overview" shows) zoomed into the one that
+        // carries a state (so the state strip shows too) — both extra groups the ticket calls out by name.
+        var document = WireframeDocument.New("Test wireframe", TwoScreensOneWithState);
+        var body = new WireframeWorkspaceBody(new ActivityStripTests.FakeHost(), document, null);
+        var window = _Show(body, width: 1200, height: 680);
+        _ZoomIntoFirstScreen(body);
+        Dispatcher.UIThread.RunJobs();
+
+        var overview = body.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "← Overview"));
+        var stateStrip = (StackPanel)typeof(WireframeWorkspaceBody)
+            .GetField("_stateStrip", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(body)!;
+        Assert.True(overview.IsVisible);
+        Assert.True(stateStrip.IsVisible);
+
+        _AssertAllReachable(window, body);
+
+        window.Close();
+    }
+
+    private const string ErSource = """
+        erDiagram
+            CUSTOMER ||--o{ ORDER : "places"
+            CUSTOMER {
+                string name
+                int id PK
+            }
+            ORDER {
+                int id PK
+            }
+        """;
+
+    // Same shape as WireframeScreens.TwoScreens (Cockpit.Infrastructure.Tests) plus WireframeScreens.WithState
+    // combined: two screens, the first carrying a state — nothing existing covers both at once.
+    private const string TwoScreensOneWithState = """
+        screen "Login" #login
+          main w:4 #main
+            list #results
+              item "Result 1"
+
+          state "Empty" replaces:#results #empty
+            label "No results found" #empty-label
+
+        screen "Signup" #signup
+          input "Email" #signup-email
+        """;
+
+    // Zooms into the document's first screen via the same private path a double-click takes in the app — simpler
+    // and less brittle here than simulating the exact gesture and its hit-test geometry.
+    private static void _ZoomIntoFirstScreen(WireframeWorkspaceBody body)
+    {
+        var screens = (System.Collections.IList)typeof(WireframeWorkspaceBody)
+            .GetField("_screens", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(body)!;
+        var zoomInto = typeof(WireframeWorkspaceBody).GetMethod("_ZoomInto", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        zoomInto.Invoke(body, [screens[0]]);
     }
 
     // The body only reaches its own visual tree inside a real, shown window — same reason DiagramCollabWindowTests
@@ -120,4 +205,35 @@ public class ToolbarOverflowTests
         StackPanel panel => string.Join(" ", panel.Children.OfType<TextBlock>().Select(t => t.Text)),
         _ => content?.ToString() ?? "",
     };
+
+    // ActivityStripTests.FakeHost's diagram registry parameter is the concrete fake type, which always reports
+    // Flowchart — this one carries a real IDiagramAccessRegistry instead, so dialect detection is real too.
+    private sealed class _DiagramRegistryHost(IDiagramAccessRegistry registry) : ICockpitHost
+    {
+        public IServiceProvider Services { get; } = new _Services(registry);
+
+        public ICockpitActions Actions => throw new NotSupportedException();
+
+        public IPluginStorage Storage => throw new NotSupportedException();
+
+        public void AddSettings(Func<Control> createView)
+        {
+        }
+
+        public void AddSideMenuButton(string title, Action onInvoke)
+        {
+        }
+
+        public void AddSideMenuSection(string title, Func<Control> createView)
+        {
+        }
+
+        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
+            Task.CompletedTask;
+
+        private sealed class _Services(IDiagramAccessRegistry registry) : IServiceProvider
+        {
+            public object? GetService(Type serviceType) => serviceType == typeof(IDiagramAccessRegistry) ? registry : null;
+        }
+    }
 }
