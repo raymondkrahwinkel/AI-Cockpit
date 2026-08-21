@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the floating assistant window can be docked by dragging it. Take it by its header and a band lights up
+  along the right edge of the screen, where the dock rail lives; let go inside it and the assistant moves into the
+  rail with the conversation, your unsent text, attachments and scroll position intact — the same handover the
+  header's Dock button does. Let go anywhere else and the window simply stays where you dropped it, and Escape
+  mid-drag puts it back where you picked it up. On Windows this window no longer takes part in Aero Snap, which is
+  what the gesture costs.
 - added: a wireframe screen can now carry states — empty, loading, error, or any other variant — that replace the
   content of one container while leaving the rest of the screen exactly as it is. Open one from a new "Base ·
   Empty · Loading · Error" strip in the toolbar; "+ State" makes a new one from the container you have selected.
@@ -222,6 +228,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the assistant's chat sat behind a dark dimming layer, and ignored every click, for as long as it took its
+  session to start — which is several seconds, since the window deliberately opens before the session is up. The
+  layer belongs to the consent card and should only appear when there is actually something to approve.
 - fixed: the whiteboard's colour flyout now has a default swatch, so picking a colour is no longer a one-way trip —
   it resets whatever you draw or place next, and a selected object's own colour, back to its fixed default (yellow
   for a freehand stroke, blue for a placed shape). The swatch that is currently in effect is also outlined in the
