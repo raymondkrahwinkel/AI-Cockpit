@@ -1517,10 +1517,13 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // AC-914 criterion 6: switching which state is open re-renders the screen and, per the grooming, also selects
     // the state itself — so Delete and «Text…» are of a piece with picking it, the same as clicking any component.
+    // AC-972: a state clicked for the first time carries no id yet (AC-906 mints lazily). EnsureComponentId stamps
+    // the registry's copy of the source, not _sourceBox.Text, so rendering must pull the registry's (already
+    // stamped) text rather than the stale local echo — else _RenderInto's "forgotten" guard erases it right back.
     private void _SelectState(WireframeNode? state)
     {
-        _stateId = state?.Id;
-        _Redraw();
+        _stateId = state is null ? null : _registry?.EnsureComponentId(_surfaceId, state.Line) ?? state.Id;
+        _RenderInto(_registry?.PeekText(_surfaceId) ?? _sourceBox.Text ?? "");
         _Select(state);
     }
 
