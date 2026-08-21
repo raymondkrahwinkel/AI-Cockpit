@@ -54,6 +54,16 @@ dotnet publish "$project" \
 cp "$plist_source" "$contents/Info.plist"
 chmod +x "$contents/MacOS/Cockpit.App"
 
+# createdump is what the runtime shells out to when writing a crash/heap dump; missing it does not fail the
+# dump, it just produces an empty file dotnet-dump calls "Complete" (AC-989). This publish is not the file's
+# known loss point (that turned out to be `vpk pack`'s own exclude list, used for the auto-update packages), but
+# a guard here is one line and catches any future publish regression too. It also has to run before the
+# --deep codesign below, since a file added after signing would ship unsigned.
+if [ ! -x "$contents/MacOS/createdump" ]; then
+    echo "createdump is missing (or not executable) in $contents/MacOS — .NET crash dumps would silently fail (AC-989)." >&2
+    exit 1
+fi
+
 # Stamp the version the bundle actually is, rather than shipping whatever number the source plist happened to
 # carry.
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$contents/Info.plist"

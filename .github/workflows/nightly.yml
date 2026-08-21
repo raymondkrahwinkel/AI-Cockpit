@@ -186,7 +186,14 @@ jobs:
           fi
 
           # ${EXTRA[@]+"${EXTRA[@]}"}: bash 3.2 on the macOS runners treats an empty array expansion as unbound.
+          #
+          # --noDefaultExclude: vpk pack silently drops createdump from every package it builds otherwise (its
+          # built-in exclude list, undocumented outside `vpk pack -H`) — the AppImage and nupkg it produces here
+          # are what auto-update actually installs, so that silent drop is what left every packaged build unable
+          # to write a heap dump (AC-989). The --exclude default (.*\.pdb) keeps stripping debug symbols either
+          # way, since that is a separate, explicit option.
           vpk pack ${EXTRA[@]+"${EXTRA[@]}"} \
+            --noDefaultExclude \
             --packId AI-Cockpit \
             --packTitle "Wispslate Cockpit" \
             --packAuthors "Raymond Krahwinkel" \
@@ -196,6 +203,29 @@ jobs:
             --icon "$icon" \
             --channel "$platform-nightly" \
             --outputDir artifacts-velopack
+
+          # Guards the fix above: a package missing createdump is otherwise indistinguishable from a healthy one
+          # until someone tries to collect a dump and gets a silent "Complete" (AC-989). Windows has no
+          # createdump (dotnet-dump uses MiniDumpWriteDump there), so this only runs for linux/osx. The portable
+          # artifact is checked rather than the full nupkg: on Linux the nupkg embeds the whole AppImage as one
+          # opaque file, so its own extractor is the only way in; on macOS the portable zip is a flat listing.
+          case "$platform" in
+            linux)
+              appimage="artifacts-velopack/AI-Cockpit-linux-nightly.AppImage"
+              chmod +x "$appimage"
+              rm -rf squashfs-root
+              "$appimage" --appimage-extract usr/bin/createdump >/dev/null
+              found=$([ -x squashfs-root/usr/bin/createdump ] && echo 1 || echo 0)
+              rm -rf squashfs-root
+              ;;
+            osx)
+              found=$(unzip -l "artifacts-velopack/AI-Cockpit-osx-nightly-Portable.zip" | grep -c "createdump" || true)
+              ;;
+          esac
+          if [ "$platform" != "win" ] && [ "$found" = "0" ]; then
+              echo "createdump is missing from the $platform package — .NET crash dumps would silently fail (AC-989)." >&2
+              exit 1
+          fi
 
       # The plugin SDK for the contract this build actually carries, so an out-of-repo author can follow main
       # rather than wait for a release. Packed on the Linux leg only: a library package is platform-independent.

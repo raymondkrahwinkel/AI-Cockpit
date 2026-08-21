@@ -240,6 +240,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a distributed build (nightly or release, Linux and macOS alike) could not produce a crash/heap dump —
+  the packer that builds the installable/updatable package silently dropped `createdump`, and the collection tool
+  reported "Complete" on an empty result instead of failing. Dumps now actually work on a real install.
 - fixed: the assistant's chat sat behind a dark dimming layer, and ignored every click, for as long as it took its
   session to start — which is several seconds, since the window deliberately opens before the session is up. The
   layer belongs to the consent card and should only appear when there is actually something to approve.
