@@ -1434,6 +1434,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
                     : $"Connection {edge.Id} → {head} selected.",
                 _ => "",
             };
+        // AC-973: the label trims with an ellipsis at MaxWidth — the tooltip carries the untrimmed text.
+        ToolTip.SetTip(_handHint, _handHint.Text);
     }
 
     private void _ZoomByButton(double factor) =>
@@ -1529,14 +1531,6 @@ internal sealed class DiagramWorkspaceBody : UserControl
         ToolTip.SetTip(follow, "Follow the agent to whatever it's currently editing.");
         follow.IsCheckedChanged += (_, _) => _following = follow.IsChecked == true;
 
-        var zoomControls = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children = { zoomOut, zoomLabel, zoomIn, fit, follow },
-        };
-
         // AC-840: empty is a starting point, not a dead end — a template is reachable as an explicit insert
         // rather than a silent default. AC-841 adds the rest of the hand-editing beside it: what the operator
         // clicked on the render decides what these act on.
@@ -1567,6 +1561,8 @@ internal sealed class DiagramWorkspaceBody : UserControl
         {
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = 11,
+            MaxWidth = 320,
+            TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
 
@@ -1583,17 +1579,20 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
 
-        var handEditControls = new StackPanel
+        // AC-973: a WrapPanel of individual controls, not two DockPanel-docked StackPanels — a group that no
+        // longer fits on one line wraps onto the next instead of being clipped or painted over. Export leads so it
+        // is never the one pushed off, matching the criterion this ticket exists for.
+        var bar = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children = { insertTemplate, addNode, connect, rename, delete, attributes, shape, ask, save, saveStatus, hint },
+            ItemSpacing = 4,
+            LineSpacing = 4,
+            Children =
+            {
+                export, zoomOut, zoomLabel, zoomIn, fit, follow,
+                insertTemplate, addNode, connect, rename, delete, attributes, shape, ask, save, saveStatus, hint,
+            },
         };
-
-        var bar = new DockPanel { Children = { export, handEditControls, zoomControls } };
-        DockPanel.SetDock(export, Dock.Right);
-        DockPanel.SetDock(handEditControls, Dock.Left);
 
         return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus, addNode, connect, rename, delete, attributes, shape, ask, hint, follow);
     }
@@ -1664,7 +1663,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         var dirty = (_sourceBox.Text ?? "") != _savedText;
         var where = _filePath ?? "No file yet";
         _saveStatus.Text = dirty ? $"{where} · unsaved changes" : where;
-        ToolTip.SetTip(_saveStatus, _filePath);
+        ToolTip.SetTip(_saveStatus, _saveStatus.Text);
         _saveButton.IsEnabled = dirty || _filePath is null;
     }
 
