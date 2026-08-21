@@ -313,7 +313,10 @@
     <Style Selector=":is(Control).rowIndent">
         <Setter Property="Margin" Value="36,0,0,0"/>
     </Style>
-    <Style Selector="Border.rowRoot.compact :is(Control).rowIndent">
+    <!-- AC-998: the three types that actually carry "rowIndent", spelled out. A base-type match on the right of a
+         descendant selector also matches template-internal visuals that are no logical child, so their subscription
+         on this ancestor's Classes is never removed — that held 31M objects. scripts/check-descendant-selector-scope.py -->
+    <Style Selector="Border.rowRoot.compact Border.rowIndent, Border.rowRoot.compact StackPanel.rowIndent, Border.rowRoot.compact SelectableTextBlock.rowIndent">
         <Setter Property="Margin" Value="0"/>
     </Style>
     <Style Selector="Button.actionButton">
