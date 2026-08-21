@@ -49,7 +49,7 @@ public class ToolbarOverflowTests
         // reports Flowchart, so this test wires up the real one instead, same as DiagramMcpToolsTests does.
         var registry = new DiagramAccessRegistry();
         var document = DiagramDocument.New("Test ER diagram", ErSource);
-        var body = new DiagramWorkspaceBody(new _DiagramRegistryHost(registry), document, null);
+        var body = new DiagramWorkspaceBody(new DiagramRegistryHost(registry), document, null);
         var window = _Show(body, width: 1200, height: 640);
 
         var attributes = body.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Attributes…"));
@@ -208,7 +208,8 @@ public class ToolbarOverflowTests
 
     // ActivityStripTests.FakeHost's diagram registry parameter is the concrete fake type, which always reports
     // Flowchart — this one carries a real IDiagramAccessRegistry instead, so dialect detection is real too.
-    private sealed class _DiagramRegistryHost(IDiagramAccessRegistry registry) : ICockpitHost
+    // Internal, not private: AskRelationshipTests (AC-975) reuses this for the same ER-dialect setup.
+    internal sealed class DiagramRegistryHost(IDiagramAccessRegistry registry) : ICockpitHost
     {
         public IServiceProvider Services { get; } = new _Services(registry);
 
