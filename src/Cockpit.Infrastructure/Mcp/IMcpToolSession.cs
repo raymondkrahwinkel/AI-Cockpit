@@ -28,6 +28,12 @@ internal interface IMcpToolSession : IAsyncDisposable
     /// is treated as <see cref="ToolPermissionClass.Unknown"/>.
     /// </summary>
     IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses { get; }
+
+    /// <summary>
+    /// The pane token this session minted (AC-89), or <c>null</c> when it connected without a pane id. Read by a
+    /// caller that needs the same live token elsewhere (AC-994), so it never mints a second one for the same pane.
+    /// </summary>
+    string? PaneToken { get; }
 }
 
 // One tool of a connected session, with the server it came from and whether that server is always mounted

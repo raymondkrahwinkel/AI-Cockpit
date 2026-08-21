@@ -246,12 +246,19 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // per-session token as COCKPIT_MCP_KEY instead of the shared app key, so the consent broker can attribute a
         // request to the real session rather than trust the id the agent declares. No pane id (or no keyring in a test
         // graph) falls back to the shared key.
+        //
+        // AC-994: a provider with a host tool loop already minted this pane's one live token when StartAsync connected
+        // its toolset above — that token is baked into the toolset's HTTP clients and cannot be revised afterwards, so
+        // minting a second one here would invalidate it and turn every subsequent cockpit-hosted call into a 401.
+        // Reuse it instead; only a session with no host toolset mints here.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
-        var mcpKey = keyring is not null && !string.IsNullOrEmpty(paneId) ? keyring.TokenFor(paneId) : authKey.Value;
+        var mcpKey = _hostToolset is { PaneToken: { } toolsetToken }
+            ? toolsetToken
+            : keyring is not null && !string.IsNullOrEmpty(paneId) ? keyring.TokenFor(paneId) : authKey.Value;
 
-        // Remembered so this session's token dies with it (AC-89). Only when we minted one: the shared app key is the
-        // app's, not ours to drop.
-        if (keyring is not null && !string.IsNullOrEmpty(paneId))
+        // Remembered so this session's token dies with it (AC-89). Only when we minted one here: the host toolset's
+        // token is revoked by its own DisposeAsync, and the shared app key is the app's, not ours to drop.
+        if (_hostToolset is null && keyring is not null && !string.IsNullOrEmpty(paneId))
         {
             _minted = new MintedToken(paneId, mcpKey);
         }

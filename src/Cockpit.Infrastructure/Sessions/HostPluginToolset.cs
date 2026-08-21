@@ -41,6 +41,10 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
     // The servers that really answered, for the header that names this session's mounts (AC-927).
     public IReadOnlyList<string> ConnectedServerNames => _toolSession.ConnectedServerNames;
 
+    // The pane token ConnectAsync minted below, so the adapter can hand its plugin the same live token
+    // instead of minting a second one for the same pane (AC-994).
+    public string? PaneToken => _toolSession.PaneToken;
+
     // Connects the session's servers and wraps each tool in its GatedTool, exactly as the built-in
     // OpenAiCompatSessionDriver does — same ConnectAsync call, so the per-session token (AC-89), worktree
     // confinement (AC-174) and project scoping (AC-218) all apply here too.
