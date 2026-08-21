@@ -11,8 +11,11 @@
          (top-most) child of each pane's root Grid so it covers the header, body and input alike.
          When there is no request the scrim is collapsed, so it takes no space and is hit-test
          transparent — clicks pass straight through to the session underneath. -->
+    <!-- AC-962: FallbackValue, because a null DataContext leaves the binding without a value and IsVisible on its
+         default of true — the assistant's chat window opens before its session exists (AC-959), so the scrim stood
+         over the whole window and swallowed every click until one arrived. -->
     <Border Background="#B3000000"
-            IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}">
+            IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}">
         <ContentControl Content="{Binding PendingConsent}"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         MaxWidth="560" Margin="24">

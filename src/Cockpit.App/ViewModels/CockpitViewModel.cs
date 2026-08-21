@@ -890,6 +890,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _assistantDocked;
 
+    // AC-962: how wide the assistant's drop zone is drawn along this window's right edge while its floating chat
+    // is being dragged — the overlap between the screen band the rail belongs to and this window. Zero means no
+    // drag is running, which is the only state in which the zone is not on screen at all.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAssistantDropZoneVisible))]
+    private double _assistantDropZoneWidth;
+
+    // Whether the pointer stands inside that zone right now — what makes it light up rather than merely show.
+    [ObservableProperty]
+    private bool _isAssistantDropZoneActive;
+
+    public bool IsAssistantDropZoneVisible => AssistantDropZoneWidth > 0;
+
     // What the rail's tab strip lists — read straight off the registry rather than copied into a collection of
     // our own, the same reasoning `WorkspacesViewModel.AvailableWidgets` follows.
     public IReadOnlyList<DockPanelRegistration> DockPanels => _dockPanelRegistry?.Panels ?? [];

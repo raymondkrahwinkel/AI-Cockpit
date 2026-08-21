@@ -343,6 +343,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             if (Avalonia.Application.Current?.ApplicationLifetime
                 is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             {
+                // AC-962: the window measures its drop zone against the cockpit, and this is already the one
+                // place that looks the main window up.
+                _chatWindow.CockpitWindow = main;
+
                 main.Closed += _OnMainWindowClosed;
                 _chatWindow.Closed += (_, _) => main.Closed -= _OnMainWindowClosed;
             }

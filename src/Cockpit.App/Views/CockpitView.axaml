@@ -118,6 +118,22 @@
             <Setter Property="RenderTransform" Value="translateY(0)"/>
         </Style>
 
+        <!-- AC-962: the band the assistant's floating chat is dropped on to dock it. Faint while the drag is
+             merely running and accent-lit once the pointer is inside — same accent language the rail's own open
+             tab uses, so "this is where it lands" reads the same in both places. -->
+        <Style Selector="Border.assistantDropZone">
+            <Setter Property="Background" Value="{StaticResource CockpitCategoryTintBlueBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        </Style>
+        <Style Selector="Border.assistantDropZone.active">
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+            <!-- The tint the rail tab wears is 9% accent, which reads on a 40px strip and all but vanishes over a
+                 quarter of the screen. Same colour, carried far enough that a band this wide is unmistakable. -->
+            <Setter Property="Background">
+                <SolidColorBrush Color="{StaticResource CockpitAccentColor}" Opacity="0.22"/>
+            </Setter>
+        </Style>
+
         <!-- Border.sharedProjectBadge lived here until AC-772, when the card it styles became a control the
              Manage-projects window hosts too — a local style does not cross that boundary, so it moved to
              Styles/Theme.axaml. -->
@@ -1800,6 +1816,18 @@
                            VerticalAlignment="Center"/>
             </DockPanel>
         </Border>
+
+        <!-- AC-962: where the assistant's floating chat docks if it is let go here. Declared last so it lies over
+             everything, and never hit-testable — the pointer belongs to the window being dragged, and a zone that
+             took it would end the gesture it exists to guide. Width comes from AssistantChatWindow. -->
+        <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Grid.ColumnSpan="5"
+                Classes="assistantDropZone"
+                Classes.active="{Binding IsAssistantDropZoneActive}"
+                IsVisible="{Binding IsAssistantDropZoneVisible}"
+                IsHitTestVisible="False"
+                HorizontalAlignment="Right"
+                Width="{Binding AssistantDropZoneWidth}"
+                BorderThickness="2,0,0,0"/>
     </Grid>
     </DockPanel>
 </UserControl>

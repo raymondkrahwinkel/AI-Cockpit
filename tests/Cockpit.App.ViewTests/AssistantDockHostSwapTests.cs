@@ -25,7 +25,7 @@ public sealed class AssistantDockHostSwapTests
 {
     // The coordinator's dependencies are all interfaces or thin wrappers around them, so the real class is what
     // runs here — the point is its host choice, and a stand-in for that would be testing the stand-in.
-    private static (AssistantIndicatorCoordinator Coordinator, CockpitViewModel Cockpit, IDockPanelRegistry Panels) _Build()
+    internal static (AssistantIndicatorCoordinator Coordinator, CockpitViewModel Cockpit, IDockPanelRegistry Panels) Build()
     {
         // One registry, shared by the cockpit and the coordinator, exactly as the container hands it out — with two
         // of them the rail lists nothing and every assertion about it would pass for the wrong reason.
@@ -79,7 +79,7 @@ public sealed class AssistantDockHostSwapTests
     {
         await HeadlessAvalonia.RunAsync(async () =>
         {
-            var (coordinator, cockpit, panels) = _Build();
+            var (coordinator, cockpit, panels) = Build();
 
             // The operator opens the chat the ordinary way: the sidebar chip, undocked, so a window.
             coordinator.Indicator.ClickCommand.Execute(null);
@@ -109,7 +109,7 @@ public sealed class AssistantDockHostSwapTests
     {
         await HeadlessAvalonia.RunAsync(async () =>
         {
-            var (coordinator, cockpit, _) = _Build();
+            var (coordinator, cockpit, _) = Build();
             await cockpit.SetAssistantDockedAsync(true, AssistantIndicatorCoordinator.DockPanelId);
 
             coordinator.Indicator.ClickCommand.Execute(null);
@@ -125,7 +125,7 @@ public sealed class AssistantDockHostSwapTests
     {
         await HeadlessAvalonia.RunAsync(async () =>
         {
-            var (coordinator, cockpit, panels) = _Build();
+            var (coordinator, cockpit, panels) = Build();
             await cockpit.SetAssistantDockedAsync(true, AssistantIndicatorCoordinator.DockPanelId);
 
             var docked = (AssistantChatView)_OpenTheRailPanel(panels);
@@ -154,7 +154,7 @@ public sealed class AssistantDockHostSwapTests
     {
         await HeadlessAvalonia.RunAsync(async () =>
         {
-            var (coordinator, cockpit, _) = _Build();
+            var (coordinator, cockpit, _) = Build();
 
             var main = new Window { Width = 1100, Height = 760, Content = new CockpitView { DataContext = cockpit } };
             main.Show();
