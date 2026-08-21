@@ -8,7 +8,7 @@
              xmlns:projects="using:Cockpit.Core.Projects"
              xmlns:ws="using:Cockpit.Core.Workspaces"
              xmlns:widgets="using:Cockpit.Plugins.Abstractions.Widgets"
-             xmlns:docking="using:Cockpit.App.Docking"
+             xmlns:docking="using:Cockpit.Plugins.Abstractions.Docking"
              xmlns:sharedProjects="using:Cockpit.Plugins.Abstractions.Projects"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              xmlns:avconv="using:Avalonia.Data.Converters"

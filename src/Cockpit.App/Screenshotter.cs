@@ -404,6 +404,12 @@ internal static class Screenshotter
         // with Undock where the floating window has Close. The scene that shows what "docked is ordinary cockpit
         // UI" actually looks like: in the column structure beside the session content, no chrome of its own.
         ["assistant-docked"] = (_, _) => _AssistantDockedInTheRail(),
+        // AC-960 criterion 15: a plugin-registered panel (a stand-in for GitHubPullRequestsWidget — Cockpit.App
+        // does not reference that store-distributed plugin's assembly) at the rail's minimum and maximum content
+        // widths, plus the collapsed rail carrying both the Assistant's tab and this one.
+        ["dock-panel-pull-requests-min"] = (_, _) => _DockRailWithPullRequestsPanel(Cockpit.Core.Layout.LayoutSettings.MinDockRailWidth),
+        ["dock-panel-pull-requests-max"] = (_, _) => _DockRailWithPullRequestsPanel(Cockpit.Core.Layout.LayoutSettings.MaxDockRailWidth),
+        ["dock-rail-collapsed-two-tabs"] = (_, _) => _DockRailCollapsedWithTwoTabs(),
         // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
         ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
         // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
@@ -2084,7 +2090,7 @@ internal static class Screenshotter
             TranscriptEntryKind.AssistantText, "Two: **personal - webshop** is waiting on a permission, and the AC-953 desk is idle."));
 
         var panels = new Docking.DockPanelRegistry();
-        panels.Register(new Docking.DockPanelRegistration(
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
             Services.AssistantIndicatorCoordinator.DockPanelId,
             "Assistant",
             Material.Icons.MaterialIconKind.Creation,
@@ -2102,6 +2108,59 @@ internal static class Screenshotter
         };
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    // AC-960: a plugin's own panel open in the rail, at a given content width. Stand-in rows rather than the
+    // real GitHubPullRequestsWidget — see _PullRequestsDockPanel's own remarks.
+    private static Window _DockRailWithPullRequestsPanel(double railWidth)
+    {
+        var panels = new Docking.DockPanelRegistry();
+        panels.Register(_PullRequestsDockPanel());
+
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
+        {
+            OpenDockPanelId = "github.pull-requests",
+            DockRailWidth = railWidth,
+        };
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    // AC-960: nothing open, so the rail is the 40px tab strip — with both the Assistant's tab (AC-953) and a
+    // plugin's, proving the strip holds more than one without a real Assistant session behind it.
+    private static Window _DockRailCollapsedWithTwoTabs()
+    {
+        var panels = new Docking.DockPanelRegistry();
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
+        panels.Register(_PullRequestsDockPanel());
+
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels);
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    // Cockpit.App has no project reference to Cockpit.Plugin.GitHubPullRequests — it is store-distributed, not
+    // bundled — so this stands in for GitHubPullRequestsWidget with plain rows, close enough in shape to check
+    // the rail's own chrome and width clamping, which is what criterion 15 actually asks to see rendered.
+    private static Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration _PullRequestsDockPanel() =>
+        new("github.pull-requests", "Pull Requests", Material.Icons.MaterialIconKind.SourcePull, _BuildPullRequestsStandIn);
+
+    private static Control _BuildPullRequestsStandIn()
+    {
+        var rows = new StackPanel { Spacing = 6, Margin = new Thickness(8) };
+        string[] titles =
+        [
+            "Faster startup path for the cold-start benchmark",
+            "Fix flaky terminal-grid test on the CI runner",
+            "Dock rail: let a plugin register its own panel",
+        ];
+        foreach (var title in titles)
+        {
+            rows.Children.Add(new TextBlock { Text = title, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        }
+
+        return new ScrollViewer { Content = rows };
     }
 
     // AC-740 addendum: no session yet, so this also proves the profile-default fallback renders the picker —

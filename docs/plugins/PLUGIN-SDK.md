@@ -117,6 +117,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Read the profiles | `host.GetProfilesAsync()` | The configured session profiles (label, provider, config directory) — how you find where a provider keeps its state on disk instead of guessing. |
 | Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
 | Dashboard widget | `host.AddWidget(registration)` | Registers a widget type; it appears in a **Dashboard** workspace's "Add widget" gallery, and each placed instance gets its own view, config and storage. See [Widget plugins](#widget-plugins--a-pane-on-a-dashboard-workspace). |
+| Dock panel | `host.AddDockPanel(registration)` | Registers a panel for the right-hand **dock rail**; it appears as a tab, and opening it builds the registration's own view. No per-instance context — build your own from `host.Storage`/`host.Sessions` if you need one. |
 | Full-surface workspace | `host.AddWorkspaceType(registration)` | Registers a **workspace type** your plugin draws entirely — it appears in the tab strip's **"+"** menu beside Sessions and Dashboard, and its body can even embed a live host session. See [Workspace plugins](#workspace-plugins--a-whole-workspace-surface). |
 | MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
 | Project field | `host.AddProjectField(registration)` | Adds a field to the **project editor** (AC-317) — "which YouTrack project is this", "which repository" — so a project carries the identifier you resolve, picked from a list you supply. Read it back with `host.GetProjectFieldValueAsync(key)`. See [Project fields](#project-fields--link-a-project-to-your-side-of-the-world). |
@@ -163,6 +164,7 @@ public interface ICockpitHost
     Task<ConsentDecision> RequestConsentAsync(ConsentRequest request);  // operator Approve/Deny before a risky action
     void AddSessionProvider(SessionProviderRegistration registration); // register a new session provider (#45)
     void AddWidget(WidgetRegistration registration);            // a widget type for Dashboard workspaces
+    void AddDockPanel(DockPanelRegistration registration);      // a panel for the right-hand dock rail
     void AddWorkspaceType(WorkspaceTypeRegistration registration); // a whole workspace surface the plugin draws
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state

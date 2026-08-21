@@ -339,7 +339,9 @@ public partial class CockpitView : UserControl
 
         // AC-953: with nothing registered there is no rail at all — not a 40px strip of empty chrome — so the
         // column gives its width back to the session content rather than merely hiding what stands in it.
-        var collapsed = cockpit.OpenDockPanelId is null;
+        // AC-960: a restored id no registered panel claims (unloaded/removed plugin) collapses the same way.
+        var collapsed = cockpit.OpenDockPanelId is not { } openPanelId
+            || !cockpit.DockPanels.Any(panel => panel.Id == openPanelId);
         var column = _DockRailColumn();
         column.MinWidth = collapsed ? 0 : LayoutSettings.MinDockRailWidth;
         column.Width = new GridLength(

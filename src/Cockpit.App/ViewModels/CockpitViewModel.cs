@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.App.Docking;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
+using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;

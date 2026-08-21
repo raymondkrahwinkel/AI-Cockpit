@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: plugins can now contribute their own panel to the right-hand dock rail, alongside the Assistant. The
+  GitHub Pull Requests plugin uses it first — your open PRs are now also reachable as a rail panel, next to the
+  existing "Open PRs" button and its dialog.
 - added: a session on a local model (Ollama, LM Studio) with more than thirty tools no longer sends every tool's
   schema in every request. It gets two tools instead — `search_tools` to find what it needs and `call_tool` to run
   it — while the servers that must always be reachable, such as the one carrying the session statusline, stay

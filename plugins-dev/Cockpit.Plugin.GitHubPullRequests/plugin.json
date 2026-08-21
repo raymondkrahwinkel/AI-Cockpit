@@ -1,11 +1,11 @@
 {
   "id": "github-pull-requests",
   "name": "GitHub Pull Requests",
-  "version": "1.19.0",
+  "version": "1.20.0",
   "entryAssembly": "Cockpit.Plugin.GitHubPullRequests.dll",
   "entryType": "Cockpit.Plugin.GitHubPullRequests.GitHubPullRequestsPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "0.22.0",
-  "description": "Shows how many open GitHub pull requests are yours in the left menu — a button with a live \"N / M\" badge, your own open PR count next to how many are waiting on your review — refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP. Clicking it opens a dialog listing every open PR in a searchable, sortable grid with an \"Assigned to me\" filter, plus a Dashboard widget showing the same list as a resizable pane with its own item count; left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). A pull request that starts waiting for your review raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.",
+  "minHostVersion": "0.24.0",
+  "description": "Shows how many open GitHub pull requests are yours in the left menu — a button with a live \"N / M\" badge, your own open PR count next to how many are waiting on your review — refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP. Clicking it opens a dialog listing every open PR in a searchable, sortable grid with an \"Assigned to me\" filter, plus a Dashboard widget and a dock-rail panel each showing the same list as a resizable pane with its own item count; left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). A pull request that starts waiting for your review raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.",
   "author": "Cockpit"
 }
