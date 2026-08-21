@@ -50,6 +50,15 @@ mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications"
 cp -r "$publish_dir/." "$appdir/usr/bin/"
 chmod +x "$appdir/usr/bin/Cockpit.App"
 
+# createdump is what the runtime shells out to when writing a crash/heap dump; missing it does not fail the
+# dump, it just produces an empty file dotnet-dump calls "Complete" (AC-989). This cp is not the file's known
+# loss point (that turned out to be `vpk pack`'s own exclude list), but a guard here is one line and catches
+# any future publish/copy regression too.
+if [ ! -x "$appdir/usr/bin/createdump" ]; then
+    echo "createdump is missing (or not executable) in $appdir/usr/bin — .NET crash dumps would silently fail (AC-989)." >&2
+    exit 1
+fi
+
 # The icon, at every size the desktop asks for. Checked in (scripts/generate-appicon.sh writes them), so this
 # needs no image tooling on the machine that builds the AppImage.
 for icon in "$repo_root"/packaging/linux/icons/*.png; do
