@@ -21,8 +21,6 @@ public sealed partial class DialogModalitySplitTests
         "ShowNewSessionDialogAsync",
         "ShowProjectsDialogAsync",
         "ShowProjectDialogAsync",
-        "ShowManageProfilesDialogAsync",
-        "ShowMcpServersDialogAsync",
         "ShowVerifyRunnersDialogAsync",
         "ShowPluginStoreDialogAsync",
         "ShowOptionsDialogAsync",

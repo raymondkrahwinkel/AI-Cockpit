@@ -297,13 +297,6 @@ internal static class Screenshotter
         // only one of them is exactly the kind of half-landed change a single scene would attest to as finished.
         ["restore-offer"] = (width, height) => _RestorePane(width, height, degraded: false),
         ["restore-offer-degraded"] = (width, height) => _RestorePane(width, height, degraded: true),
-        ["mcp-servers"] = (_, _) => _McpServers(),
-        // AC-499: Sign in's three new states, each its own scene because only the selected row's detail panel
-        // renders at a time — a list with rows in different states never puts more than one of these on screen
-        // together. See _McpServersSignInUnsaved's own remarks for what each state replaced.
-        ["mcp-servers-signin-unsaved"] = (_, _) => _McpServersSignInUnsaved(),
-        ["mcp-servers-signin-invalid"] = (_, _) => _McpServersSignInInvalid(),
-        ["mcp-servers-signin-busy"] = (_, _) => _McpServersSignInBusy(),
         ["plugin-update-badge"] = (_, _) => _PluginUpdateBadge(),
         ["toolbar-actions"] = (_, _) => _ToolbarActions(),
         // The windows that had no scene at all (AC-414). Each is staged in the state that paints the most of
@@ -1520,104 +1513,6 @@ internal static class Screenshotter
         }
 
         return viewModel;
-    }
-
-    // Renders the MCP-servers dialog in the state that had no way of being looked at (AC-427): an OAuth server, so
-    // the sign-in block and both OAuth fields are showing, custom headers so the form overflows, and the notice
-    // about a hidden server, which is the longest thing the footer is ever asked to hold. That combination is what
-    // pushed Cancel and Save off the window, and the whole of it is in one frame here.
-    private static McpServersDialog _McpServers()
-    {
-        var viewModel = new McpServersViewModel
-        {
-            StatusMessage = "Hidden here because the cockpit already runs a server by that name: filesystem, fetch. "
-                            + "Saving removes them — rename yours first if you meant to keep it.",
-        };
-
-        var server = viewModel.Servers[0];
-        server.Transport = McpTransport.Http;
-        server.Url = "https://mcp.example.com/mcp";
-        server.Auth = McpServerAuth.OAuth;
-        server.OAuthAuthority = "https://login.example.com";
-        server.Headers.Add(new McpHeaderRowViewModel("X-Api-Key", "a-value"));
-        server.Headers.Add(new McpHeaderRowViewModel("X-Tenant", "cockpit"));
-
-        return new McpServersDialog { DataContext = viewModel };
-    }
-
-    // The state Sign in used to be dead in (AC-499): a row the operator just added and filled in, never saved.
-    // Before this ticket the button stayed disabled here with "Save this server first"; now it is offered, and
-    // clicking it saves the whole dialog before it authorizes.
-    private static McpServersDialog _McpServersSignInUnsaved()
-    {
-        var viewModel = new McpServersViewModel();
-        viewModel.Servers.Clear();
-        var server = new EditableMcpServerViewModel(
-            new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = "https://depot.example/mcp", Auth = McpServerAuth.OAuth },
-            NoOpOAuthCoordinator.Instance,
-            isPersisted: false);
-        viewModel.Servers.Add(server);
-        viewModel.SelectedServer = server;
-
-        // Taller than the dialog opens, the way the profiles/project-editor scenes already are: the sign-in block
-        // sits below the fold of a default-sized dialog, and DialogScreenClamp still caps the actual render at 90%
-        // of the headless screen regardless of this number — it only pushes the block as high as that ceiling allows.
-        return new McpServersDialog { DataContext = viewModel, Height = 1500 };
-    }
-
-    // A row that is not valid yet (AC-499) — a name but no URL — so Sign in stays refused, and
-    // SignInUnavailableReason now names what is missing instead of asking for a save that is no longer the gate.
-    private static McpServersDialog _McpServersSignInInvalid()
-    {
-        var viewModel = new McpServersViewModel();
-        viewModel.Servers.Clear();
-        var server = new EditableMcpServerViewModel(
-            new McpServerConfig { Name = "vault", Transport = McpTransport.Http, Auth = McpServerAuth.OAuth },
-            NoOpOAuthCoordinator.Instance,
-            isPersisted: false);
-        viewModel.Servers.Add(server);
-        viewModel.SelectedServer = server;
-
-        return new McpServersDialog { DataContext = viewModel, Height = 1500 };
-    }
-
-    // Mid-flight (AC-499): IsAuthBusy now covers the save this row's own sign-in does first, not just the
-    // coordinator round trip, so both buttons stay disabled and "Working…" shows for the whole of it.
-    private static McpServersDialog _McpServersSignInBusy()
-    {
-        var viewModel = new McpServersViewModel();
-        viewModel.Servers.Clear();
-        var server = new EditableMcpServerViewModel(
-            new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = "https://depot.example/mcp", Auth = McpServerAuth.OAuth },
-            NoOpOAuthCoordinator.Instance)
-        {
-            IsAuthBusy = true,
-        };
-        viewModel.Servers.Add(server);
-        viewModel.SelectedServer = server;
-
-        return new McpServersDialog { DataContext = viewModel, Height = 1500 };
-    }
-
-    // A coordinator that never does anything, for the three sign-in scenes above — they only need Sign
-    // in's own gate to see a non-null coordinator, never an actual call.
-    private sealed class NoOpOAuthCoordinator : IMcpOAuthCoordinator
-    {
-        public static readonly NoOpOAuthCoordinator Instance = new();
-
-        public Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default) =>
-            Task.FromResult(McpOAuthAccess.NotRequired);
-
-        public Task<McpOAuthAccess> AcquireForSessionAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
-            Task.FromResult(McpOAuthAccess.NotRequired);
-
-        public Task<McpOAuthAccess> RenewRejectedAsync(McpServerConfig server, string rejectedAccessToken, CancellationToken cancellationToken = default) =>
-            Task.FromResult(McpOAuthAccess.NotRequired);
-
-        public Task<McpAuthState> GetStateAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
-            Task.FromResult(McpAuthState.AuthorizationRequired);
-
-        public Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     // Renders the full window with a plugin-update count seeded (AC-76) so the sidebar "Plugin store" button's
