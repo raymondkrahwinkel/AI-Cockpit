@@ -16,7 +16,23 @@ internal static class CouplingBarFactory
     {
         var titleLabel = new TextBlock { Text = documentTitle, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         var pip = new MaterialIcon { Kind = MaterialIconKind.RobotOutline, Width = 15, Height = 15 };
-        var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Foreground = SurfaceChrome.Brush("CockpitAccentBrush") };
+        // AC-974: MaxWidth+TextTrimming bounds the label's own desired size so it ellipsizes on a long session
+        // name instead of forcing the info group wider than the space the action buttons need.
+        var label = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 12,
+            MaxWidth = 220,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = SurfaceChrome.Brush("CockpitAccentBrush"),
+        };
+        label.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == TextBlock.TextProperty)
+            {
+                ToolTip.SetTip(label, label.Text);
+            }
+        };
         var readChip = SurfaceChrome.Chip();
         var editChip = SurfaceChrome.Chip();
 
@@ -44,11 +60,15 @@ internal static class CouplingBarFactory
                 Children =
                 {
                     actions,
+                    // AC-974: ClipToBounds — a StackPanel doesn't clip overflow by default, so a too-wide info
+                    // group used to paint straight over the action buttons instead of stopping at the boundary
+                    // the DockPanel's fill measurement already gave it.
                     new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
                         Spacing = 6,
                         VerticalAlignment = VerticalAlignment.Center,
+                        ClipToBounds = true,
                         Children = { titleLabel, pip, label, readChip, editChip },
                     },
                 },

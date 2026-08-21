@@ -240,6 +240,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   are now in English like the rest of the surface. A new test now checks every label, placeholder and header
   string in the plugin against a list of non-English function words, so a stray one fails the build instead of
   waiting for the next manual scan to catch it.
+- fixed: the diagram, wireframe and whiteboard coupling bar no longer lets a capability chip or a long session
+  name paint over the action buttons on the right — the status text and chips now ellipsize with the full text
+  in a tooltip, and the info group clips instead of overflowing.
 - fixed: a session that fails because Claude's API is overloaded or unavailable now shows that reason on the
   failed-turn card ("API Error: 529 …") instead of the confusing, self-contradictory "Turn failed (success)" —
   a recognised outage renders as a temporary problem that resolves on its own, and an auth failure now offers a
