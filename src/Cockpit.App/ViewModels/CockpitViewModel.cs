@@ -2008,6 +2008,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _isTestingMic;
 
+    // AC-1000: the Options sidebar's search box. Dialog-local UI state, not a persisted setting — never staged,
+    // so Cancel does not need to (and must not) restore it.
+    [ObservableProperty]
+    private string _optionsSearchText = string.Empty;
+
     // Live microphone level (0..1 RMS) during the mic test, driving the `MicLevelMeter` fill.
     [ObservableProperty]
     private double _micTestLevel;

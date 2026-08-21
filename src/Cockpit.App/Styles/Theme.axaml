@@ -1464,6 +1464,45 @@
         <Setter Property="IsVisible" Value="True"/>
     </Style>
 
+    <!-- AC-1000: the main Options sidebar's group headers (WORKING / VOICE & ASSISTANT / SYSTEM) — plain
+         ListBoxItems with Focusable="False" and IsHitTestVisible="False" set inline, so they never take the
+         subnav ListBoxItem template's hover/selected fill; this just gives them their own spacing. -->
+    <Style Selector="ListBox.subnav ListBoxItem.navGroupHeader">
+        <Setter Property="Padding" Value="8,0,8,0"/>
+        <Setter Property="Margin" Value="0,14,0,4"/>
+    </Style>
+
+    <!-- AC-1000: a category page's numbered subsection headers ("1. SESSION BEHAVIOUR"), inside the content
+         pane rather than the sidebar — same small-caps treatment as .subnavGroup, different Margin since it
+         sits between rows of content instead of atop a rail. -->
+    <Style Selector="TextBlock.optionsSectionHeader">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,14,0,2"/>
+    </Style>
+
+    <!-- AC-1000: the always-visible one-line caption under a row's label (the mockup's DataGrip-like pattern —
+         a short caption in place, the full nuance still in the row's own ToolTip.Tip). -->
+    <Style Selector="TextBlock.optionsHint">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <!-- AC-1000: the sidebar's live-search match-count badge, one per category, only visible while searching. -->
+    <Style Selector="Border.searchMatchBadge">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="Padding" Value="6,1"/>
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+    </Style>
+    <Style Selector="Border.searchMatchBadge > TextBlock">
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+    </Style>
+
     <!-- Plugin store (#62) catalogue rows. The store's middle column is a list of full-width rows
          (categories | plugins | details), not a card grid — each row is a quiet secondary surface that
          lifts on hover (a lighter panel fill + an accent-tinted border) so the catalogue reads as a list

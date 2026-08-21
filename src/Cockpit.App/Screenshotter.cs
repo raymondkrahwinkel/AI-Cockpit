@@ -81,12 +81,16 @@ internal static class Screenshotter
         // AC-445: the workspace ⚙'s own Layout flyout, opened the way session-settings-flyout already proves
         // headless rendering can. Needs a session so `ShowSessionGrid` shows the toolbar the ⚙ lives in.
         ["workspace-layout-flyout"] = (width, height) => _MainWindowWithOneSession(width, height),
-        // AC-546 follow-up: Voice dropped from three sub-pages to two once "Read-aloud" merged into "Assistant" —
-        // its own scenes rather than reusing "options", since neither sub-page renders on the tab that scene opens
-        // on (Notifications) and a layout change to a page nothing captures is a layout change nobody would see
-        // regress.
-        ["voice-transcribe"] = (_, _) => _OptionsVoicePage("Transcribe"),
-        ["voice-assistant"] = (_, _) => _OptionsVoiceAssistantPage(),
+        // AC-1000: Voice and Assistant are now separate top-level categories rather than Carousel sub-pages of one
+        // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
+        // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
+        // would see regress.
+        ["voice-transcribe"] = (_, _) => _OptionsOnTab("Voice"),
+        ["voice-assistant"] = (_, _) => _OptionsAssistantPage(),
+        // AC-1000: the consent-bypass state (one recognised source, one orphaned #K11 key) that used to render on
+        // the old "voice-assistant" scene now lives on Security — its own scene rather than folding it into a plain
+        // "security" scene, since nothing else needs that seeded ConsentBypassSources state.
+        ["security-consent-bypass"] = (_, _) => _OptionsSecurityConsentBypassPage(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
         // The assistant's own profile editor. Its own scene rather than a state of "profiles": it is a different
         // window with a different, shorter set of blocks, and the one control this ticket moved — the restart, which
@@ -1182,53 +1186,48 @@ internal static class Screenshotter
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
-    // Renders the Options dialog with one of its tabs selected, so a tab other than the first one can be
-    // verified without a display.
+    // Renders the Options dialog with one of its sidebar categories selected (AC-1000: the sidebar's CategoryNav
+    // ListBox replaced the old per-tab TabControl), so a category other than the first one can be verified without
+    // a display. Matches by the category's Tag (its lowercase key), case-insensitively, so callers can keep
+    // spelling the category the way its label reads ("Shortcuts", "Debug", ...).
     private static OptionsDialog _OptionsOnTab(string header)
     {
         var dialog = new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() };
-        var tabs = dialog.FindControl<TabControl>("Tabs")
-            ?? throw new InvalidOperationException("The Options dialog has no 'Tabs' TabControl to select on.");
+        var nav = dialog.FindControl<ListBox>("CategoryNav")
+            ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
 
-        tabs.SelectedItem = tabs.Items
-            .OfType<TabItem>()
-            .FirstOrDefault(tab => string.Equals(tab.Header as string, header, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"The Options dialog has no '{header}' tab.");
-
-        return dialog;
-    }
-
-    // Voice tab, on the named sub-page (AC-546 follow-up: "Transcribe" or "Assistant").
-    private static OptionsDialog _OptionsVoicePage(string subPage)
-    {
-        var dialog = _OptionsOnTab("Voice");
-
-        var rail = dialog.FindControl<ListBox>("VoiceNav")
-            ?? throw new InvalidOperationException("The Voice tab has no 'VoiceNav' rail to select on.");
-
-        var index = rail.Items
+        nav.SelectedItem = nav.Items
             .OfType<ListBoxItem>()
-            .Select((item, i) => (item, i))
-            .Where(pair => string.Equals(pair.item.Content as string, subPage, StringComparison.OrdinalIgnoreCase))
-            .Select(pair => (int?)pair.i)
-            .FirstOrDefault()
-            ?? throw new InvalidOperationException($"The Voice rail has no '{subPage}' item.");
+            .FirstOrDefault(item => string.Equals(item.Tag as string, header, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException($"The Options sidebar has no '{header}' category.");
 
-        rail.SelectedIndex = index;
         return dialog;
     }
 
-    // The Assistant sub-page (AC-546 follow-up), enabled rather than dimmed under the off master switch, with one
-    // recognised consent-bypass row and one orphaned one (#K11: a stored key — "kubernetes" — this build no
-    // longer recognises now that a plugin source keys as "plugin:&lt;id&gt;") — so the merged voice/barge-in block,
-    // the reading-level dropdown and the orphan row all render in the state an operator actually sees them in.
-    private static OptionsDialog _OptionsVoiceAssistantPage()
+    // The Assistant category, enabled rather than dimmed under the off master switch, so its profile row renders
+    // filled in rather than showing the design-time graph's "no profile store" fallback.
+    private static OptionsDialog _OptionsAssistantPage()
     {
         var cockpit = new ViewModels.CockpitViewModel();
         cockpit.AssistantOptions.IsEnabled = true;
         // The design-time graph has no profile store, so the row would otherwise render an "Edit…" button with
         // nothing beside it — a state no real cockpit has (an unset slot fills in its reason instead).
         cockpit.AssistantOptions.ProfileLabel = "Claude (assistant) · claude · sonnet";
+
+        var dialog = new OptionsDialog { DataContext = cockpit };
+        var nav = dialog.FindControl<ListBox>("CategoryNav")
+            ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
+        nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "assistant");
+
+        return dialog;
+    }
+
+    // AC-1000: consent-bypass moved from the old Assistant sub-page to Security. One recognised consent-bypass row
+    // and one orphaned one (#K11: a stored key — "kubernetes" — this build no longer recognises now that a plugin
+    // source keys as "plugin:&lt;id&gt;") — the scene moved with the setting, so the orphan-row state stays covered.
+    private static OptionsDialog _OptionsSecurityConsentBypassPage()
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
         // "Allow all" off (#AC-637), because the per-source rows below are what this shot is of — it hides them.
         cockpit.AssistantOptions.ConsentBypassAll = false;
         cockpit.AssistantOptions.ConsentBypassSources.Add(
@@ -1240,14 +1239,9 @@ internal static class Screenshotter
             { BypassLowRisk = true, BypassDangerous = true });
 
         var dialog = new OptionsDialog { DataContext = cockpit };
-        var tabs = dialog.FindControl<TabControl>("Tabs")
-            ?? throw new InvalidOperationException("The Options dialog has no 'Tabs' TabControl to select on.");
-        tabs.SelectedItem = tabs.Items.OfType<TabItem>().First(tab => tab.Header as string == "Voice");
-
-        var rail = dialog.FindControl<ListBox>("VoiceNav")
-            ?? throw new InvalidOperationException("The Voice tab has no 'VoiceNav' rail to select on.");
-        rail.SelectedIndex = rail.Items.OfType<ListBoxItem>().ToList()
-            .FindIndex(item => string.Equals(item.Content as string, "Assistant", StringComparison.OrdinalIgnoreCase));
+        var nav = dialog.FindControl<ListBox>("CategoryNav")
+            ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
+        nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "security");
 
         return dialog;
     }

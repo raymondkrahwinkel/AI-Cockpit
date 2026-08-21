@@ -94,6 +94,7 @@ internal static class OptionsStaging
     public static readonly string[] ImmediateOrTransient =
     [
         "IsTestingMic",
+        "OptionsSearchText",
         "BackupIncludesCredentials",
         "BackupIncludesProfiles",
         "Security.PairWithNodeAddress",

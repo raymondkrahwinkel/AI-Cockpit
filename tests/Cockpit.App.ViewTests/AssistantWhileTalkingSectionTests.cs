@@ -11,10 +11,17 @@ namespace Cockpit.App.ViewTests;
 /// Heading and rows now share one gate: the mic pipeline (<c>VoiceEnabled</c>) and the assistant switch
 /// (<c>AssistantOptions.IsEnabled</c>), both of which open-mic/barge-in actually need.
 /// </summary>
+/// <remarks>
+/// AC-1000: "while you're talking" moved from the old Assistant sub-page to the Voice category (it needs the mic
+/// pipeline Voice owns at least as much as the assistant switch) — this test follows it there. The visibility
+/// condition itself did not change.
+/// </remarks>
 [Collection("avalonia")]
 public class AssistantWhileTalkingSectionTests
 {
-    private const string Heading = "While you're talking";
+    // AC-1000: this section's heading is now one of the category page's numbered subsection headers, like every
+    // other section on the page, rather than a plain unnumbered label.
+    private const string Heading = "4. WHILE YOU'RE TALKING";
 
     [Theory]
     [InlineData(true, true, true)]   // both on: unchanged existing behaviour
@@ -31,12 +38,10 @@ public class AssistantWhileTalkingSectionTests
             var dialog = new OptionsDialog { DataContext = viewModel };
             dialog.Show();
 
-            var tabs = dialog.GetVisualDescendants().OfType<TabControl>().Single();
-            tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(tab => tab.Header as string == "Voice");
-            dialog.UpdateLayout();
-
-            var rail = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "VoiceNav");
-            rail.SelectedIndex = 1; // Assistant sub-page
+            // AC-1000: the sidebar's CategoryNav ListBox replaced the old per-tab TabControl + VoiceNav rail —
+            // Voice is one flat page now, no sub-page selection needed.
+            var nav = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "CategoryNav");
+            nav.SelectedItem = nav.Items.OfType<ListBoxItem>().Single(item => item.Tag as string == "voice");
             dialog.UpdateLayout();
 
             var heading = dialog.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == Heading);
