@@ -590,11 +590,10 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <!-- AC-722: the row itself lives in Controls/TranscriptRowView.axaml, shared with
-                         AssistantChatWindow. The explicit views: anchor (not $parent[UserControl]) is required
-                         here because TranscriptRowView is itself a UserControl and would match first. -->
+                         AssistantChatWindow. AC-990: the session comes off the row's own view model, not from a
+                         $parent lookup — a row is realised before it hangs in the tree, and had no host to find. -->
                     <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
-                        <controls:TranscriptRowView
-                            Session="{Binding $parent[views:SessionView].((vm:SessionViewModel)DataContext)}"/>
+                        <controls:TranscriptRowView/>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

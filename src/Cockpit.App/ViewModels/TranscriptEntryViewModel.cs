@@ -384,6 +384,16 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     private void _OnSubAgentRowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        // AC-990: a nested row never joins the transcript, so the anchor hands its own session down — that is
+        // what its consent buttons bind to.
+        if (e.NewItems is not null)
+        {
+            foreach (TranscriptEntryViewModel nested in e.NewItems)
+            {
+                nested.Session = Session;
+            }
+        }
+
         OnPropertyChanged(nameof(HasSubAgentRows));
         OnPropertyChanged(nameof(SubAgentSummaryText));
     }
@@ -398,6 +408,10 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     // The proposed tool input as raw JSON; needed to build an exact-scope always-allow rule.
     public string? InputJson { get; init; }
+
+    // AC-990: the session this row belongs to, stamped on when it joins the transcript. The row view reads it
+    // from here instead of walking up to its host, which cannot answer while a row is being realised.
+    public SessionViewModel? Session { get; set; }
 
     // When this row was created — its arrival time, shown as a small timestamp when the operator enables it (T7).
     public DateTimeOffset Timestamp { get; }

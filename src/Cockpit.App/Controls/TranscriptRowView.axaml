@@ -11,8 +11,10 @@
              x:DataType="vm:TranscriptEntryViewModel">
 
     <!-- AC-722: one transcript row, shared by SessionView and AssistantChatWindow so a feature added to the
-         row (AC-715's question card) reaches both. `Session` replaces the old `$parent[UserControl]` anchor;
-         `Compact` carries the few numbers that only differ because the assistant window is narrower. -->
+         row (AC-715's question card) reaches both. AC-990: whatever the row needs from the session it reaches
+         through its own `TranscriptEntryViewModel.Session`, never up the tree — a virtualised row is built before
+         it hangs there. `Compact` carries the few numbers that only differ because the assistant window is
+         narrower. -->
     <!-- Row surface: background/border/alignment come from the transcriptRow style classes
          (Theme.axaml), never inline — an inline (local) value would beat the setters. The root
          never carries .userRow itself (AC-749): that bubble tint lives on the inner Border below,
@@ -25,14 +27,14 @@
 
             <!-- Arrival timestamp (T7): a small faint label at the top of the row, shown
                  only when the operator enables timestamps in Options. The toggle lives on
-                 the session view model, so bind up to it via the ItemsControl's DataContext.
+                 the session, which this row carries on its own view model.
                  Suppressed for user and tool-use rows (AC-144): those carry the timestamp
                  inline in their own header line, so the top label would double it. -->
             <TextBlock Text="{Binding TimestampText}" FontSize="10"
                        Foreground="{StaticResource CockpitTextFaintBrush}">
                 <TextBlock.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
-                        <Binding Path="$parent[controls:TranscriptRowView].Session.ShowTimestamps"/>
+                        <Binding Path="Session.ShowTimestamps"/>
                         <Binding Path="IsTopTimestampRow"/>
                     </MultiBinding>
                 </TextBlock.IsVisible>
@@ -67,7 +69,7 @@
                             <TextBlock Grid.Column="0" Text="{Binding TimestampText}" FontSize="10"
                                        HorizontalAlignment="Left" VerticalAlignment="Center"
                                        Foreground="{StaticResource CockpitTextFaintBrush}"
-                                       IsVisible="{Binding $parent[controls:TranscriptRowView].Session.ShowTimestamps}"/>
+                                       IsVisible="{Binding Session.ShowTimestamps}"/>
                             <TextBlock Grid.Column="1" Text="You" HorizontalAlignment="Right" FontSize="10.5"
                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
                         </Grid>
@@ -76,7 +78,7 @@
                              that turns this on (assistant markdown and file previews keep the default). -->
                         <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
                                              PreserveLineBreaks="True"
-                                             BasePath="{Binding $parent[controls:TranscriptRowView].Session.WorkingDirectory}"/>
+                                             BasePath="{Binding Session.WorkingDirectory}"/>
                         <!-- AC-778: the "[+N image]" fragment as its own clickable element (not text baked into
                              the markdown string above) — opens a mini-gallery with the bytes this row still
                              holds in memory. A row without images (or, in principle, one whose bytes are no
@@ -97,7 +99,7 @@
                     <!-- AC-935: reply is scoped to the assistant chat only — see ReplyEnabled's own remarks. -->
                     <Button Classes="Subtle Compact"
                             IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"
-                            Command="{Binding $parent[controls:TranscriptRowView].Session.SetReplyTargetCommand}"
+                            Command="{Binding Session.SetReplyTargetCommand}"
                             CommandParameter="{Binding}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Reply to this message">
@@ -187,16 +189,16 @@
                 </Border>
                 <StackPanel Grid.Column="1" Spacing="3">
                     <TextBlock Classes="senderName" MaxWidth="280" HorizontalAlignment="Left"
-                               Text="{Binding $parent[controls:TranscriptRowView].Session.Title}"/>
+                               Text="{Binding Session.Title}"/>
                     <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
-                                         BasePath="{Binding $parent[controls:TranscriptRowView].Session.WorkingDirectory}"/>
+                                         BasePath="{Binding Session.WorkingDirectory}"/>
                     <!-- Copy hands over the reply's markdown source verbatim. -->
                     <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                                 HorizontalAlignment="Left">
                         <!-- AC-935: reply is scoped to the assistant chat only — see ReplyEnabled's own remarks. -->
                         <Button Classes="Subtle Compact"
                                 IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"
-                                Command="{Binding $parent[controls:TranscriptRowView].Session.SetReplyTargetCommand}"
+                                Command="{Binding Session.SetReplyTargetCommand}"
                                 CommandParameter="{Binding}"
                                 Foreground="{StaticResource CockpitTextFaintBrush}"
                                 ToolTip.Tip="Reply to this message">
@@ -380,7 +382,7 @@
                             <Button Content="Send" Classes="Accent Compact" HorizontalAlignment="Right"
                                     IsVisible="{Binding IsAwaitingAnswer}"
                                     IsEnabled="{Binding CanSubmitAnswers}"
-                                    Command="{Binding $parent[controls:TranscriptRowView].Session.SubmitQuestionAnswersCommand}"
+                                    Command="{Binding Session.SubmitQuestionAnswersCommand}"
                                     CommandParameter="{Binding}"/>
                         </StackPanel>
                     </DockPanel>
@@ -421,7 +423,7 @@
                     <TextBlock Grid.Column="1" Text="{Binding TimestampText}" FontSize="10"
                                HorizontalAlignment="Right" VerticalAlignment="Center"
                                Foreground="{StaticResource CockpitTextFaintBrush}"
-                               IsVisible="{Binding $parent[controls:TranscriptRowView].Session.ShowTimestamps}"/>
+                               IsVisible="{Binding Session.ShowTimestamps}"/>
                 </Grid>
                 <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="14,2,0,2">
                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
@@ -510,10 +512,10 @@
                                                 <DataTemplate DataType="vm:TranscriptEntryViewModel">
                                                     <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal">
                                                         <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
-                                                                Command="{Binding $parent[controls:TranscriptRowView].Session.AllowToolCommand}"
+                                                                Command="{Binding Session.AllowToolCommand}"
                                                                 CommandParameter="{Binding}"/>
                                                         <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
-                                                                Command="{Binding $parent[controls:TranscriptRowView].Session.DenyToolCommand}"
+                                                                Command="{Binding Session.DenyToolCommand}"
                                                                 CommandParameter="{Binding}"/>
                                                     </WrapPanel>
                                                 </DataTemplate>
@@ -574,16 +576,16 @@
                              handed out only while pending, so it is left off. -->
                         <WrapPanel Classes="paneChromeBlank" Orientation="Horizontal">
                             <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
-                                    Command="{Binding $parent[controls:TranscriptRowView].Session.AllowToolCommand}"
+                                    Command="{Binding Session.AllowToolCommand}"
                                     CommandParameter="{Binding}"/>
                             <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
-                                    Command="{Binding $parent[controls:TranscriptRowView].Session.DenyToolCommand}"
+                                    Command="{Binding Session.DenyToolCommand}"
                                     CommandParameter="{Binding}"/>
                             <Button Content="Always (exact)" Classes="Compact" Margin="0,4,6,0"
-                                    Command="{Binding $parent[controls:TranscriptRowView].Session.AllowAlwaysExactToolCommand}"
+                                    Command="{Binding Session.AllowAlwaysExactToolCommand}"
                                     CommandParameter="{Binding}"/>
                             <Button Content="Always (wildcard)" Classes="Compact" Margin="0,4,0,0"
-                                    Command="{Binding $parent[controls:TranscriptRowView].Session.AllowAlwaysWildcardToolCommand}"
+                                    Command="{Binding Session.AllowAlwaysWildcardToolCommand}"
                                     CommandParameter="{Binding}"/>
                         </WrapPanel>
                     </DataTemplate>

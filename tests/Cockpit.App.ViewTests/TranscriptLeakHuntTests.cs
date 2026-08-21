@@ -28,11 +28,11 @@ public sealed class TranscriptLeakHuntTests
         {
             LeakTracker.Reset();
             var vm = new SessionViewModel();
-            // VisibleTranscript is what the transcript ItemsControl binds to; fill it directly (the design VM does
-            // not wire the runtime Transcript->VisibleTranscript sync).
+            // AC-990: through Transcript, the way the app fills it — that is what stamps each row's session and
+            // syncs it into the VisibleTranscript the ItemsControl binds to.
             for (var i = 0; i < 400; i++)
             {
-                vm.VisibleTranscript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, MarkdownDoc(i)));
+                vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, MarkdownDoc(i)));
             }
 
             var view = new SessionView { DataContext = vm };
@@ -159,7 +159,7 @@ public sealed class TranscriptLeakHuntTests
         var vm = new SessionViewModel();
         for (var i = 0; i < 60; i++)
         {
-            vm.VisibleTranscript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, MarkdownDoc(i)));
+            vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, MarkdownDoc(i)));
         }
 
         var view = new SessionView { DataContext = vm };
@@ -177,7 +177,7 @@ public sealed class TranscriptLeakHuntTests
         var vm = new SessionViewModel();
         for (var i = 0; i < 200; i++)
         {
-            vm.VisibleTranscript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, MarkdownDoc(i)));
+            vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, MarkdownDoc(i)));
         }
 
         var view = new SessionView { DataContext = vm };

@@ -12,9 +12,6 @@ namespace Cockpit.App.Controls;
 // AC-722: one transcript row, shared by SessionView and AssistantChatView — see the XAML header comment for why.
 public partial class TranscriptRowView : UserControl
 {
-    public static readonly StyledProperty<SessionViewModel?> SessionProperty =
-        AvaloniaProperty.Register<TranscriptRowView, SessionViewModel?>(nameof(Session));
-
     // The handful of numbers the assistant window's narrower, avatar-less frame needs — see Theme.axaml's
     // ".compact" selectors.
     public static readonly StyledProperty<bool> CompactProperty =
@@ -25,12 +22,6 @@ public partial class TranscriptRowView : UserControl
     // is one attribute here instead of a code change.
     public static readonly StyledProperty<bool> ReplyEnabledProperty =
         AvaloniaProperty.Register<TranscriptRowView, bool>(nameof(ReplyEnabled));
-
-    public SessionViewModel? Session
-    {
-        get => GetValue(SessionProperty);
-        set => SetValue(SessionProperty, value);
-    }
 
     public bool Compact
     {
