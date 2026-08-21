@@ -23,8 +23,9 @@ public class SecurityOptionsViewTests
         var dialog = new OptionsDialog { DataContext = new CockpitViewModel() };
         dialog.Show();
 
-        var tabs = dialog.GetVisualDescendants().OfType<TabControl>().Single();
-        Assert.Contains("Security", tabs.Items.OfType<TabItem>().Select(tab => tab.Header));
+        // AC-1000: the sidebar's CategoryNav ListBox replaced the old per-tab TabControl.
+        var nav = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "CategoryNav");
+        Assert.Contains("security", nav.Items.OfType<ListBoxItem>().Select(item => item.Tag as string));
 
         dialog.Close();
     });

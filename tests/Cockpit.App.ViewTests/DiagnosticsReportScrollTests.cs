@@ -20,8 +20,9 @@ public class DiagnosticsReportScrollTests
         var dialog = new OptionsDialog { DataContext = viewModel };
         dialog.Show();
 
-        var tabs = dialog.GetVisualDescendants().OfType<TabControl>().Single();
-        tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(tab => tab.Header as string == "Debug");
+        // AC-1000: the sidebar's CategoryNav ListBox replaced the old per-tab TabControl.
+        var nav = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "CategoryNav");
+        nav.SelectedItem = nav.Items.OfType<ListBoxItem>().Single(item => item.Tag as string == "debug");
         dialog.UpdateLayout();
 
         viewModel.Diagnostics.Report = new string('x', 4000);

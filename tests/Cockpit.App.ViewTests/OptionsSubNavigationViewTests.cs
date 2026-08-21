@@ -6,70 +6,89 @@ using Cockpit.App.Views;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-69: the Options redesign keeps the top tab-bar but splits a tab into left-rail sub-pages. Voice is the
-/// fully-worked example — Transcribe · Assistant, one page at a time — and the rail drives which page shows. This
-/// pins that wiring: a XAML rename of the sub-nav or its element-name binding to the Carousel would otherwise only
-/// surface by opening the dialog and clicking, which no unit test does.
+/// AC-1000: the eight-tab TabControl (AC-69's per-tab sub-nav rail among them) was replaced by one searchable
+/// sidebar — a single "CategoryNav" ListBox holding 12 selectable categories and 3 non-selectable group headers,
+/// each category's content its own always-present ScrollViewer switched on by a Tag comparison. This pins that
+/// wiring: a XAML rename of the nav, a category dropped from the list, or a group header that became selectable
+/// would otherwise only surface by opening the dialog and clicking, which no unit test does.
 /// </summary>
 /// <remarks>
-/// AC-546 follow-up: the Voice tab used to carry a third page, "Read-aloud", whose settings (voice, language,
-/// barge-in) moved onto the Assistant page once sessions stopped reading their own replies aloud — a page named
-/// after a removed feature is itself a trace of that feature (ticket criterion 5). The rail dropped from three
-/// items to two; this test's own indices moved with it.
+/// Replaces the AC-69-era version of this file, whose two tests (a Voice tab that split into a
+/// Transcribe/Assistant Carousel, and "every tab hangs under its own sub-nav rail") no longer describe anything
+/// this dialog does — Assistant is its own top-level category now, not a Voice sub-page, and there is one main
+/// sidebar rather than eight per-tab rails.
 /// </remarks>
 [Collection("avalonia")]
 public class OptionsSubNavigationViewTests
 {
+    // WORKING, VOICE & ASSISTANT, SYSTEM, in this order — matches AC-1000's acceptance criterion 1.
+    private static readonly string[] ExpectedCategoryTags =
+    [
+        "sessions", "appearance", "terminal", "notifications", "shortcuts",
+        "voice", "assistant",
+        "security", "nodes", "backup", "updates", "debug",
+    ];
+
     [Fact]
-    public void TheVoiceTab_SplitsIntoTwoSubPages_TheRailDrivesWhichShows() => HeadlessAvalonia.Run(() =>
+    public void TheSidebar_ListsAllTwelveCategories_InTheGroomedOrder() => HeadlessAvalonia.Run(() =>
     {
         var dialog = new OptionsDialog { DataContext = new CockpitViewModel() };
         dialog.Show();
 
-        // The Voice tab's content is only realised once it is the selected tab, so select it and force a layout
-        // pass before reaching into its rail and Carousel.
-        var tabs = dialog.GetVisualDescendants().OfType<TabControl>().Single();
-        tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(tab => tab.Header as string == "Voice");
-        dialog.UpdateLayout();
+        var nav = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "CategoryNav");
+        var tags = nav.Items.OfType<ListBoxItem>()
+            .Select(item => item.Tag as string)
+            .Where(tag => tag is not null)
+            .ToArray();
 
-        var rail = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "VoiceNav");
-        // "Assistant" is AC-543's, and last: the page before it is about the microphone, and this one is about a
-        // feature that can be used with neither (and, since AC-546, also carries the speaker settings that used
-        // to be their own "Read-aloud" page).
-        Assert.Equal(
-            new[] { "Transcribe", "Assistant" },
-            rail.Items.OfType<ListBoxItem>().Select(item => item.Content as string));
-
-        var carousel = dialog.GetVisualDescendants().OfType<Carousel>().Single();
-        Assert.Equal(0, rail.SelectedIndex);
-        Assert.Equal(0, carousel.SelectedIndex);
-
-        // The last page, so the rail and the carousel are held to agreeing all the way to the end rather than
-        // only where they happened to line up before a page was added.
-        rail.SelectedIndex = 1;
-        Assert.Equal(1, carousel.SelectedIndex);
+        Assert.Equal(ExpectedCategoryTags, tags);
 
         dialog.Close();
     });
 
-    // The single-page tabs still hang under the new rail (AC-69 umbrella): each is a Grid split into the rail
-    // column and a detail ScrollViewer, so a later ticket can add rail items without a structural change.
+    // AC5: group headers are not selectable and not focusable with Tab.
     [Fact]
-    public void EveryOptionsTab_HangsUnderASubNavRail() => HeadlessAvalonia.Run(() =>
+    public void GroupHeaders_AreNotSelectable_AndNotFocusable() => HeadlessAvalonia.Run(() =>
     {
         var dialog = new OptionsDialog { DataContext = new CockpitViewModel() };
         dialog.Show();
 
-        var tabs = dialog.GetVisualDescendants().OfType<TabControl>().Single();
-        foreach (var tab in tabs.Items.OfType<TabItem>())
-        {
-            tabs.SelectedItem = tab;
-            dialog.UpdateLayout();
+        var nav = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "CategoryNav");
+        var headers = nav.Items.OfType<ListBoxItem>().Where(item => item.Classes.Contains("navGroupHeader")).ToList();
 
-            Assert.True(
-                dialog.GetVisualDescendants().OfType<Border>().Any(border => border.Classes.Contains("subnavRail")),
-                $"the {tab.Header} tab is expected to render its sub-nav rail");
-        }
+        Assert.Equal(3, headers.Count);
+        Assert.All(headers, header =>
+        {
+            Assert.False(header.Focusable, "a group header must not be reachable with Tab");
+            Assert.False(header.IsHitTestVisible, "a group header must not be selectable by clicking it");
+        });
+
+        dialog.Close();
+    });
+
+    // Proves the Tag-based content switch actually wires up at runtime (CategoryTagEqualsConverter), not just that
+    // the markup for both category pages exists.
+    [Fact]
+    public void SelectingACategory_ShowsItsPage_AndHidesTheOthers() => HeadlessAvalonia.Run(() =>
+    {
+        var dialog = new OptionsDialog { DataContext = new CockpitViewModel() };
+        dialog.Show();
+        dialog.UpdateLayout();
+
+        var nav = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "CategoryNav");
+        var pages = dialog.GetVisualDescendants().OfType<ScrollViewer>()
+            .Where(sv => sv.Tag is string tag && ExpectedCategoryTags.Contains(tag))
+            .ToDictionary(sv => (string)sv.Tag!);
+
+        Assert.Equal(ExpectedCategoryTags.ToHashSet(), pages.Keys.ToHashSet());
+
+        nav.SelectedItem = nav.Items.OfType<ListBoxItem>().Single(item => item.Tag as string == "debug");
+        dialog.UpdateLayout();
+
+        Assert.True(pages["debug"].IsEffectivelyVisible);
+        Assert.All(
+            ExpectedCategoryTags.Where(tag => tag != "debug"),
+            tag => Assert.False(pages[tag].IsEffectivelyVisible, $"'{tag}' should be hidden while 'debug' is selected"));
 
         dialog.Close();
     });
