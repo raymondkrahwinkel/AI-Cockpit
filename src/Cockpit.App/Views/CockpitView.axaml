@@ -1237,7 +1237,7 @@
                                Foreground="{StaticResource CockpitTextFaintBrush}">
                         Projects can also come from a plugin, shared with your team.
                         <LineBreak/>
-                        <Run Text="Set one up in "/><Run Text="Options" FontWeight="SemiBold"/><Run Text=" → Plugins."/>
+                        <Run Text="Set one up in "/><Run Text="Options" FontWeight="SemiBold"/><Run Text=", under Plugins."/>
                     </TextBlock>
 
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,24,0,0"

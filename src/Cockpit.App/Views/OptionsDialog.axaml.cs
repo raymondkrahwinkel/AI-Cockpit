@@ -1,19 +1,28 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Data;
+using Avalonia.Data.Converters;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Cockpit.App.Controls;
+using Cockpit.App.Converters;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Configuration;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.App.Views;
 
 // Options dialog (#13): a categorised replacement for the sidebar's Options flyout, which had grown
 // too tall for a popup. Its `Window.DataContext` is the shared `CockpitViewModel`
-// passed in by `Cockpit.App.Services.SessionDialogService.ShowOptionsDialogAsync`. Plugin
-// settings (#14) are no longer top-level tabs — each plugin is configured from the gear next to it in the
-// Plugins tab, which opens the plugin's own settings dialog.
+// passed in by `Cockpit.App.Services.SessionDialogService.ShowOptionsDialogAsync`. The PLUGINS group (AC-1005) is
+// the one part of the sidebar built here in code rather than declared in the XAML above, because its rows come
+// from `CockpitViewModel.PluginOptionsRows` — whichever plugins are installed this session — instead of a fixed,
+// known-at-compile-time list the other 12 categories are.
 public partial class OptionsDialog : Window
 {
     public OptionsDialog()
@@ -30,6 +39,7 @@ public partial class OptionsDialog : Window
             {
                 cockpit.RefreshBackupPlugins();
                 cockpit.Diagnostics.Refresh();
+                _BuildPluginCategories(cockpit);
             }
         };
 
@@ -54,8 +64,13 @@ public partial class OptionsDialog : Window
 
         await cockpit.ApplyOptionsCommand.ExecuteAsync(null);
 
-        // A profile the plugin config view rejected blocks the whole Apply (AC-1001 criterion 5) — stay open with
-        // the error visible (Profiles.StatusMessage) rather than close over it.
+        // A profile the plugin config view rejected, or a plugin settings row that refused to save (AC-1005),
+        // blocks the whole Apply (AC-1001 criterion 5) — stay open with the error visible rather than close over
+        // it. `PluginSettingsError` names which row refused, since the operator may be looking at a different
+        // category than the one that failed.
+        PluginSettingsErrorText.IsVisible = cockpit.PluginSettingsError is { Length: > 0 };
+        PluginSettingsErrorText.Text = cockpit.PluginSettingsError;
+
         if (cockpit.OptionsApplyBlocked)
         {
             return;
@@ -64,6 +79,144 @@ public partial class OptionsDialog : Window
         _closeSettled = true;
         Close();
     }
+
+    // The keywords a plugin's row and its own settings content search under (criterion 7: "docker" must also
+    // find the Docker status line inside Local CI). There is no way to derive these from a view's actual content,
+    // so — like every other category's `ConverterParameter` in the XAML above — they are hand-authored per known
+    // first-party plugin. A plugin with no entry here still gets a row; it just searches on its name alone.
+    private static readonly Dictionary<string, string> _PluginSearchKeywords = new(StringComparer.Ordinal)
+    {
+        ["youtrack"] = "youtrack issue tracker",
+        ["docker"] = "docker containers images engine",
+        ["local-ci"] = "local ci docker run tests workflow jobs",
+        ["autopilot"] = "autopilot",
+        ["depot"] = "depot storage artifacts",
+        ["diagram"] = "diagram",
+        ["github-issues"] = "github issues",
+        ["github-pull-requests"] = "github pull requests",
+        ["git-status"] = "git status",
+        ["kubernetes"] = "kubernetes k8s",
+        ["system-monitor"] = "system monitor cpu memory",
+        ["workflows"] = "workflows",
+    };
+
+    // Builds the PLUGINS group: a non-clickable header (criterion 1) plus one plain row per plugin with a
+    // registered settings view, appended straight into the same `CategoryNav` ListBox and `CategoryContent`
+    // Panel the 12 static categories above declare in XAML — so the sidebar stays the one continuous scroll
+    // region and selection scope (criterion 6) that switching `ScrollViewer.Tag` against
+    // `CategoryTagEqualsConverter` already relies on. Skipped entirely when nothing is installed (criterion 10).
+    private void _BuildPluginCategories(CockpitViewModel cockpit)
+    {
+        if (cockpit.PluginOptionsRows.Count == 0)
+        {
+            return;
+        }
+
+        CategoryNav.Items.Add(new ListBoxItem
+        {
+            Classes = { "navGroupHeader" },
+            Focusable = false,
+            IsHitTestVisible = false,
+            Content = new TextBlock { Classes = { "subnavGroup" }, Text = "PLUGINS" },
+        });
+
+        foreach (var row in cockpit.PluginOptionsRows)
+        {
+            var tag = $"plugin:{row.PluginId}";
+            var keywords = _PluginSearchKeywords.GetValueOrDefault(row.PluginId, row.DisplayName);
+
+            CategoryNav.Items.Add(_BuildPluginNavItem(tag, row.DisplayName, keywords));
+            CategoryContent.Children.Add(_BuildPluginContent(tag, row));
+        }
+
+        // Criterion 8: a small, non-clickable note pointing at the Plugin Store instead of any discovery or
+        // install affordance living in Options itself.
+        CategoryNav.Items.Add(new ListBoxItem
+        {
+            Focusable = false,
+            IsHitTestVisible = false,
+            Margin = new Thickness(10, 4, 10, 0),
+            Content = new TextBlock
+            {
+                Text = "Finding and installing new plugins happens in the separate Plugin store window.",
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = _Brush("CockpitTextFaintBrush"),
+            },
+        });
+    }
+
+    private static readonly IValueConverter _HasSearchTextConverter =
+        new FuncValueConverter<string?, bool>(text => !string.IsNullOrEmpty(text));
+
+    private static ListBoxItem _BuildPluginNavItem(string tag, string displayName, string keywords)
+    {
+        var icon = new MaterialIcon
+        {
+            Kind = MaterialIconKind.Puzzle,
+            Width = 15,
+            Height = 15,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        Grid.SetColumn(icon, 0);
+
+        var label = new TextBlock { Text = displayName, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(label, 1);
+
+        var badgeText = new TextBlock();
+        badgeText.Bind(TextBlock.TextProperty, new Binding(nameof(CockpitViewModel.OptionsSearchText))
+        {
+            Converter = OptionsCategoryMatchCountConverter.Instance,
+            ConverterParameter = keywords,
+        });
+        var badge = new Border { Classes = { "searchMatchBadge" }, Child = badgeText };
+        badge.Bind(IsVisibleProperty, new Binding(nameof(CockpitViewModel.OptionsSearchText)) { Converter = _HasSearchTextConverter });
+        Grid.SetColumn(badge, 2);
+
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        grid.Children.Add(icon);
+        grid.Children.Add(label);
+        grid.Children.Add(badge);
+
+        var item = new ListBoxItem { Tag = tag, Content = grid };
+        item.Bind(IsVisibleProperty, new Binding(nameof(CockpitViewModel.OptionsSearchText))
+        {
+            Converter = OptionsCategoryVisibleConverter.Instance,
+            ConverterParameter = keywords,
+        });
+        return item;
+    }
+
+    private static ScrollViewer _BuildPluginContent(string tag, PluginOptionsRowViewModel row)
+    {
+        var body = new StackPanel { Margin = new Thickness(24, 20), MaxWidth = 900, Spacing = 8 };
+        body.Children.Add(new TextBlock { Text = row.DisplayName, FontSize = 20, FontWeight = FontWeight.Bold });
+        body.Children.Add(new Border { Height = 1, Background = _Brush("CockpitHairlineBrush"), Margin = new Thickness(0, 4) });
+
+        // No footer of its own and no window of its own (criteria 3/5): the view sits flat in the content column,
+        // under the same shared Apply and Close the rest of Options uses.
+        body.Children.Add(row.Content is { } content
+            ? content
+            : new TextBlock
+            {
+                Text = row.UnavailableReason,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = _Brush("CockpitTextSecondaryBrush"),
+            });
+
+        var scroll = new ScrollViewer { Tag = tag, Content = body };
+        scroll.Bind(IsVisibleProperty, new Binding("SelectedItem")
+        {
+            ElementName = "CategoryNav",
+            Converter = CategoryTagEqualsConverter.Instance,
+            ConverterParameter = tag,
+        });
+        return scroll;
+    }
+
+    private static IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
 
     private void OnCancel(object? sender, RoutedEventArgs e) => Close();
 

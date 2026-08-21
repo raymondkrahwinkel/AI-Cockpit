@@ -30,6 +30,10 @@
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                 <Button Grid.Column="0" Content="Restore Defaults" Command="{Binding RestoreOptionDefaultsCommand}"
                         ToolTip.Tip="Puts every setting on these tabs back to its default. Nothing is written until you apply, so Cancel still undoes this."/>
+                <TextBlock Grid.Column="1" x:Name="PluginSettingsErrorText" HorizontalAlignment="Right"
+                           VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" MaxWidth="360"
+                           IsVisible="False"
+                           Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12" FontWeight="SemiBold"/>
                 <TextBlock Grid.Column="1" Text="Unsaved changes" HorizontalAlignment="Right"
                            VerticalAlignment="Center" Margin="0,0,12,0"
                            IsVisible="{Binding HasPendingOptionChanges}"
@@ -222,7 +226,7 @@
                 </DockPanel>
             </Border>
 
-            <Panel Grid.Column="1">
+            <Panel Grid.Column="1" x:Name="CategoryContent">
 
                 <!-- ================= SESSIONS ================= -->
                 <ScrollViewer Tag="sessions"
