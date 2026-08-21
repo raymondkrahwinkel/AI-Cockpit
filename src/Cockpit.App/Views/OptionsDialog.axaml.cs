@@ -188,7 +188,7 @@ public partial class OptionsDialog : Window
         return item;
     }
 
-    private static ScrollViewer _BuildPluginContent(string tag, PluginOptionsRowViewModel row)
+    private ScrollViewer _BuildPluginContent(string tag, PluginOptionsRowViewModel row)
     {
         var body = new StackPanel { Margin = new Thickness(24, 20), MaxWidth = 900, Spacing = 8 };
         body.Children.Add(new TextBlock { Text = row.DisplayName, FontSize = 20, FontWeight = FontWeight.Bold });
@@ -206,9 +206,13 @@ public partial class OptionsDialog : Window
             });
 
         var scroll = new ScrollViewer { Tag = tag, Content = body };
-        scroll.Bind(IsVisibleProperty, new Binding("SelectedItem")
+        // ElementName bindings need a NameScope a code-behind element never gets (AC-1011), unlike the nav
+        // item's DataContext-relative binding above — bind straight to the already-resolved CategoryNav
+        // instance instead.
+        scroll.Bind(IsVisibleProperty, new Binding
         {
-            ElementName = "CategoryNav",
+            Source = CategoryNav,
+            Path = nameof(ListBox.SelectedItem),
             Converter = CategoryTagEqualsConverter.Instance,
             ConverterParameter = tag,
         });
