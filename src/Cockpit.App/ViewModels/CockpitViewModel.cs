@@ -1405,9 +1405,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _notificationSettingsStatus = string.Empty;
 
-    // One shared "Saved" indicator for the Options dialog's single footer Save (#13), shown next to the Save button instead of a per-section label.
+    // Whether the Options dialog is holding edits the operator has not applied (AC-999). Replaces the "Saved"
+    // indicator this used to be: under a staged model that word was a lie the moment it appeared, since nothing
+    // is written until Apply and the dialog closes on the same click.
     [ObservableProperty]
-    private string _allSettingsStatus = string.Empty;
+    private bool _hasPendingOptionChanges;
 
     [ObservableProperty]
     private string _shortcutSettingsStatus = string.Empty;
@@ -4143,7 +4145,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // are known.
     private void _SaveUpdateSettings()
     {
-        if (_updateSettingsStore is not { } store)
+        // AC-999: while the Options dialog is open this is one of the settings held back until Apply, which
+        // flushes it by calling here again once the flag is down.
+        if (_optionsStaged || _updateSettingsStore is not { } store)
         {
             return;
         }
@@ -4305,7 +4309,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     partial void OnLogDiagnosticSnapshotsChanged(bool value) => _diagnosticsBackgroundService?.SetSnapshotsEnabled(value);
 
     // Flips the orchestrator MCP on or off (AC-40) and persists it; it takes effect on the next session's servers.
-    partial void OnOrchestratorMcpEnabledChanged(bool value) => _ = _delegationMcpToggle?.SetMcpEnabledAsync(value);
+    // Held back while the Options dialog is staging (AC-999) — `ApplyOptionsAsync` flips it there instead.
+    partial void OnOrchestratorMcpEnabledChanged(bool value)
+    {
+        if (!_optionsStaged)
+        {
+            _ = _delegationMcpToggle?.SetMcpEnabledAsync(value);
+        }
+    }
 
     // The saved left-menu order/visibility per plugin (#72). Plugins register their contributions during phase-2
     // init, which can beat this read; the rebuild below covers that, since the sidebar re-sorts on the event.
@@ -5931,7 +5942,250 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveRenderingSettingsCommand.ExecuteAsync(null);
         await SaveWorktreeSettingsCommand.ExecuteAsync(null);
         await SaveCloneSettingsCommand.ExecuteAsync(null);
-        AllSettingsStatus = "Saved";
+    }
+
+    // ── Options: staged changes (AC-999) ───────────────────────────────────────────────────────────────────────
+    //
+    // The dialog binds straight onto this view model, so every edit previews live — a font size reaches the open
+    // terminals, a layout switch redraws the grid. What makes that safe to take back is that none of it reaches
+    // `cockpit.json` while the dialog is open: `_optionsStaged` holds off the handful of settings that otherwise
+    // persist the moment they change, and Cancel then re-seeds from a file nobody wrote to.
+    //
+    // *Re-seeding rather than replaying a snapshot.* The load paths below are the app's own startup seeding, so
+    // they restore every setting by construction. A hand-kept table of properties to put back would go stale the
+    // first time somebody adds one, and the failure would be silent: a Cancel that promises to undo and quietly
+    // does not is worse than the honest save-as-you-go dialog this replaces.
+    //
+    // *Values, not actions.* Turning encryption on or off, changing the password, checking for updates, running a
+    // backup and testing the microphone stay immediate and are not undone here — see `OptionsStaging`, which
+    // names them so a control added later has to pick a side.
+    private bool _optionsStaged;
+
+    // Taken when the dialog opens, compared against on every change to answer `HasPendingOptionChanges`.
+    private string _optionsFingerprintAtOpen = string.Empty;
+
+    // The update section is the one Cancel cannot recover from the store: whether a channel was chosen *at all*
+    // is itself state (AC-387), and with nobody having chosen, the displayed channel comes from the running
+    // build rather than from disk. So it is remembered outright instead of reloaded.
+    private (bool StartupChoiceMade, bool ChannelChoiceMade, UpdateChannel? Chosen, bool CheckOnStartup, bool Nightly)
+        _updateChoicesAtOpen;
+
+    public void BeginOptionsEdit()
+    {
+        _optionsStaged = true;
+        Security.SuspendPersistence = true;
+        AssistantOptions.SuspendPersistence = true;
+        _updateChoicesAtOpen =
+            (_startupChoiceMade, _channelChoiceMade, _chosenChannel, CheckForUpdatesOnStartup, IncludeNightlyBuilds);
+        _optionsFingerprintAtOpen = OptionsStaging.Fingerprint(this);
+        HasPendingOptionChanges = false;
+        PropertyChanged += _OnStagedPropertyChanged;
+        Security.PropertyChanged += _OnStagedPropertyChanged;
+        AssistantOptions.PropertyChanged += _OnStagedPropertyChanged;
+    }
+
+    // Any property on any of the three may be the one that moved, so the fingerprint decides rather than the
+    // name — which also means a value put back by hand correctly stops reporting as pending.
+    private void _OnStagedPropertyChanged(object? sender, PropertyChangedEventArgs e) => RefreshPendingOptionChanges();
+
+    // The two lists the dialog edits — the shortcut rows and the usage thresholds — raise their changes on the
+    // rows, which nothing here is subscribed to. The footer's indicator therefore lags behind an edit to one of
+    // those until something else moves, so the close guard asks again rather than trusting the flag it can see.
+    public bool RefreshPendingOptionChanges()
+    {
+        HasPendingOptionChanges = _optionsStaged && OptionsStaging.Fingerprint(this) != _optionsFingerprintAtOpen;
+
+        return HasPendingOptionChanges;
+    }
+
+    // Writes everything the dialog holds. The five writers that `_optionsStaged` held off are flushed by hand
+    // here, in the same order they would have run in had they never been staged.
+    [RelayCommand]
+    private async Task ApplyOptionsAsync()
+    {
+        _EndOptionsEdit();
+        await SaveAllSettingsAsync();
+        _SaveUpdateSettings();
+
+        if (_delegationMcpToggle is { } toggle)
+        {
+            await toggle.SetMcpEnabledAsync(OrchestratorMcpEnabled);
+        }
+
+        await Security.SaveStagedAsync();
+        await AssistantOptions.SaveStagedAsync();
+
+        // AC-233 used to write these after the dialog had closed, which is a path with no Cancel on it.
+        if (UsageThresholdSettings is { } thresholds)
+        {
+            await thresholds.SaveAsync();
+            UsageThresholds = await thresholds.ReloadAsync();
+        }
+    }
+
+    // Puts the cockpit back exactly as the dialog found it. The flag stays up across the whole re-seed: these
+    // load paths assign the very properties whose change handlers persist, and dropping it first would write the
+    // old values back out — a Cancel that saves.
+    [RelayCommand]
+    private async Task CancelOptionsAsync()
+    {
+        await LoadNotificationSettingsAsync();
+        await LoadTranscriptDisplaySettingsAsync();
+        await LoadUsagePillSettingsAsync();
+        await LoadSessionBehaviorSettingsAsync();
+        await LoadScreenshotSettingsAsync();
+        await LoadLayoutSettingsAsync();
+        await LoadVoiceSettingsAsync();
+        await LoadTerminalSettingsAsync();
+        await LoadShortcutSettingsAsync();
+        await LoadDebugSettingsAsync();
+        await LoadRenderingSettingsAsync();
+        await LoadWorktreeSettingsAsync();
+        await LoadCloneSettingsAsync();
+        _RevertUpdateSettings();
+        OrchestratorMcpEnabled = _delegationMcpToggle?.McpEnabled ?? OrchestratorMcpEnabled;
+        await Security.RefreshAsync();
+        await AssistantOptions.RefreshAsync();
+
+        UsageThresholdSettings?.Revert();
+        _EndOptionsEdit();
+    }
+
+    // Fills the buffer — the live properties — with the defaults each settings record declares, writing nothing.
+    // A Cancel straight after this therefore puts the operator's own values back, the same as any other edit.
+    //
+    // Only what the dialog shows: `LayoutSettings` also carries the sidebar width and which dock panel is open,
+    // and "restore defaults" on a settings screen is not an invitation to rearrange the window behind it.
+    [RelayCommand]
+    private void RestoreOptionDefaults()
+    {
+        var notifications = new NotificationSettings();
+        LocalNotificationsEnabled = notifications.LocalEnabled;
+        DiscordNotificationsEnabled = notifications.DiscordEnabled;
+        WebhookUrl = notifications.WebhookUrl ?? string.Empty;
+        IdleThresholdMinutes = (int)notifications.IdleThreshold.TotalMinutes;
+        SessionIdleMinutes = (int)notifications.SessionIdleThreshold.TotalMinutes;
+        NotifyOnSessionFinished = notifications.NotifyOnSessionFinished;
+        NotifyOnSessionIdle = notifications.NotifyOnSessionIdle;
+        NotifyWhenAllSessionsIdle = notifications.NotifyWhenAllSessionsIdle;
+        NotifyOnCiFailure = notifications.NotifyOnCiFailure;
+
+        ShowTimestamps = new TranscriptDisplaySettings().ShowTimestamps;
+
+        var usagePill = new UsagePillSettings();
+        ShowUsagePillContext = usagePill.VisibleFields.Contains(UsagePillField.Context);
+        ShowUsagePillSessionUsage = usagePill.VisibleFields.Contains(UsagePillField.SessionUsage);
+        ShowUsagePillFiveHour = usagePill.VisibleFields.Contains(UsagePillField.FiveHourWindow);
+        ShowUsagePillWeekly = usagePill.VisibleFields.Contains(UsagePillField.WeeklyWindow);
+
+        var behavior = new SessionBehaviorSettings();
+        AutoCloseOnExit = behavior.AutoCloseOnExit;
+        CombineQueuedMessages = behavior.CombineQueuedMessages;
+        WakeAgentsByDefault = behavior.WakeAgentsByDefault;
+
+        var screenshot = new ScreenshotSettings();
+        ScreenshotGlobalHotkeyEnabled = screenshot.GlobalHotkeyEnabled;
+        ScreenshotHotkeyKeyName = screenshot.HotkeyKeyName;
+        ScreenshotPreviewEnabled = screenshot.PreviewEnabled;
+
+        var layout = new LayoutSettings();
+        GlobalSingleSessionLayout = layout.SingleSessionLayout;
+        GlobalStackSessionsVertically = layout.StackSessionsVertically;
+        GlobalFocusRailLayout = layout.FocusRailLayout;
+        MinimizeToTrayOnClose = layout.MinimizeToTrayOnClose;
+
+        var voice = new VoiceSettings();
+        VoiceEnabled = voice.IsEnabled;
+        VoiceModelName = voice.ModelName;
+        _transcriptionModelAuto = voice.ModelAutoSelected;
+        _SyncTranscriptionModelFromName();
+        SelectedVoiceBackendPreference = VoiceBackendPreferences.FirstOrDefault(option => option.Value == voice.BackendPreference)
+                                         ?? VoiceBackendPreferences[0];
+        _UpdateTranscriptionAdvice();
+        VoicePushToTalkKeyName = voice.PushToTalkKeyName;
+        VoiceGlobalPushToTalk = voice.GlobalPushToTalk;
+        VoiceAutoSubmit = voice.AutoSubmitAfterVoice;
+        VoiceOpenMicSilenceTimeoutMs = voice.OpenMicSilenceTimeoutMs;
+        VoiceStopReadAloudWhenSpeaking = voice.StopReadAloudWhenSpeaking;
+        VoiceStopReadAloudLevelThreshold = (decimal)voice.StopReadAloudLevelThreshold;
+        VoiceTtsSpeed = (decimal)voice.TtsSpeed;
+        SelectedTtsVoice = TtsVoices.FirstOrDefault(item => item.Sid == voice.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
+        SelectedReadAloudLanguage = ReadAloudLanguages.FirstOrDefault(language => language.Code == voice.ReadAloudLanguage) ?? ReadAloudLanguages[0];
+        SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == voice.SttLanguage) ?? SttLanguages[0];
+        SelectedInputDevice = InputDevices.Count > 0 ? InputDevices[0] : SelectedInputDevice;
+        SelectedOutputDevice = OutputDevices.Count > 0 ? OutputDevices[0] : SelectedOutputDevice;
+
+        var terminal = new TerminalSettings();
+        TerminalFontFamily = terminal.FontFamily;
+        TerminalFontSize = terminal.FontSize;
+        SyncTerminalFontSelectionFromFamily();
+        _BuildTerminalShellChoices(terminal.Shell);
+
+        _shortcutSettings = ShortcutSettings.Default;
+        _RebuildShortcutRows();
+
+        var debug = new DebugSettings();
+        ShowDebugControls = debug.ShowDebugControls;
+        LogDiagnosticSnapshots = debug.LogDiagnosticSnapshots;
+        OrchestratorMcpEnabled = true;
+
+        RenderBackendSelection = RenderBackendLabel(new RenderingSettings().Backend);
+        WorktreeRoot = new WorktreeSettings().Root ?? string.Empty;
+        CloneRoot = new CloneSettings().Root ?? string.Empty;
+
+        // `UpdateSettings.Channel` defaults to "nobody has chosen", which is not a channel but an absence — the
+        // running build decides then (AC-387). So this puts the record of a choice back to none as well as the
+        // switch it drove, or the next save would persist a stable/nightly nobody picked.
+        var updates = new UpdateSettings();
+        _loadingUpdateSettings = true;
+        try
+        {
+            CheckForUpdatesOnStartup = updates.CheckOnStartup;
+            IncludeNightlyBuilds = _updates is { } service
+                && BuildChannel.FromVersion(service.Current.Version) == UpdateChannel.Nightly;
+        }
+        finally
+        {
+            _loadingUpdateSettings = false;
+        }
+
+        _startupChoiceMade = false;
+        _channelChoiceMade = false;
+        _chosenChannel = updates.Channel;
+
+        Security.RestoreDefaults();
+        AssistantOptions.RestoreDefaults();
+        UsageThresholdSettings?.RestoreDefaults();
+    }
+
+    private void _EndOptionsEdit()
+    {
+        PropertyChanged -= _OnStagedPropertyChanged;
+        Security.PropertyChanged -= _OnStagedPropertyChanged;
+        AssistantOptions.PropertyChanged -= _OnStagedPropertyChanged;
+        _optionsStaged = false;
+        Security.SuspendPersistence = false;
+        AssistantOptions.SuspendPersistence = false;
+        HasPendingOptionChanges = false;
+    }
+
+    private void _RevertUpdateSettings()
+    {
+        var (startupChoiceMade, channelChoiceMade, chosen, checkOnStartup, nightly) = _updateChoicesAtOpen;
+        _startupChoiceMade = startupChoiceMade;
+        _channelChoiceMade = channelChoiceMade;
+        _chosenChannel = chosen;
+
+        _loadingUpdateSettings = true;
+        try
+        {
+            CheckForUpdatesOnStartup = checkOnStartup;
+            IncludeNightlyBuilds = nightly;
+        }
+        finally
+        {
+            _loadingUpdateSettings = false;
+        }
     }
 
     // Attaches a freshly minted session panel: gives it a desk, a title, and a place in `Sessions`.

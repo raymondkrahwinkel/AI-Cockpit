@@ -93,6 +93,34 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
         }
     }
 
+    // AC-999: the rows are already a buffer — nothing here reaches disk before `SaveAsync` — so undoing is a
+    // matter of reading them back off the settings this view model was built from.
+    public void Revert()
+    {
+        _Restore(Providers, _settings.ByProvider);
+        _Restore(AssistantProviders, _settings.ByAssistant);
+    }
+
+    private static void _Restore(ObservableCollection<UsageThresholdProviderViewModel> groups, Dictionary<string, Dictionary<string, double>> level)
+    {
+        foreach (var provider in groups)
+        {
+            foreach (var row in provider.Signals)
+            {
+                row.Threshold = _Stored(level, provider.ProviderId, row.SignalKey);
+            }
+        }
+    }
+
+    // No override at any level is the default: every signal follows what its provider declared.
+    public void RestoreDefaults()
+    {
+        foreach (var row in Providers.Concat(AssistantProviders).SelectMany(provider => provider.Signals))
+        {
+            row.Threshold = null;
+        }
+    }
+
     // The settings as they now stand, for handing to sessions started after the dialog closed.
     public async Task<UsageThresholdSettings> ReloadAsync(CancellationToken cancellationToken = default)
     {

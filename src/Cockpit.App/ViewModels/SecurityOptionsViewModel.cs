@@ -41,6 +41,16 @@ public sealed partial class SecurityOptionsViewModel(
     // design-time/unit-test graph like every store above, and then the node cards simply do not appear.
     INodeSessionsClient? nodeSessions = null) : ObservableObject
 {
+    // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the
+    // view model, written only when the operator applies. The change handlers below therefore skip their write
+    // and `SaveStagedAsync` performs it once, which is also what makes Cancel able to put them back by simply
+    // reloading: it reloads a file this section never touched.
+    //
+    // Deliberately not folded into the `_loading*` flags: those say "this value came from disk, do not echo it
+    // back", which is a different claim and holds for exactly one assignment. Sharing one flag would mean a
+    // failed refresh mid-dialog could leave writes off.
+    public bool SuspendPersistence { get; set; }
+
     // True only while RefreshAsync seeds the toggle from disk, so setting the property then does not turn around and
     // write the same value straight back.
     private bool _loadingTerminalAccess;
@@ -480,10 +490,61 @@ public sealed partial class SecurityOptionsViewModel(
             : "No address yet — restart Cockpit for this to take effect, or check that this machine has a network connection.";
     }
 
+    // Writes the three staged toggles in one pass, for the Options dialog's Apply (AC-999). Everything else on
+    // this tab — encryption, pairing, the MCP server list — acts on the spot and is not part of this.
+    public async Task SaveStagedAsync()
+    {
+        if (screenLockSettings is not null)
+        {
+            await screenLockSettings.SaveAsync(new ScreenLockSettings { LockWhenOperatingSystemLocks = LockWithOperatingSystem }).ConfigureAwait(true);
+        }
+
+        if (terminalAccessSettings is not null)
+        {
+            if (terminalAccessSwitch is not null)
+            {
+                terminalAccessSwitch.Enabled = TerminalAccessEnabled;
+            }
+
+            await terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = TerminalAccessEnabled }).ConfigureAwait(true);
+        }
+
+        if (nodeEndpointSettings is not null)
+        {
+            // Read-modify-write off disk for the same reason `OnNodeEndpointEnabledChanged` does it (AC-792): the
+            // section carries a pairing this screen knows nothing about, and the secret held here can have gone
+            // stale under a rotation.
+            var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
+            var sharedSecret = current.SharedSecret is { Length: > 0 }
+                ? current.SharedSecret
+                : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+
+            NodeEndpointSharedSecret = sharedSecret;
+            NodeEndpointAddressText = _ResolveNodeEndpointAddressText(NodeEndpointEnabled);
+
+            await nodeEndpointSettings.SaveAsync(current with
+            {
+                Enabled = NodeEndpointEnabled,
+                SharedSecret = sharedSecret,
+                AllowedDiscoveryRanges = AllowedDiscoveryRangesText.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+            }).ConfigureAwait(true);
+        }
+    }
+
+    // Puts the three staged toggles back to what a cockpit that had never been configured would show (AC-999).
+    // Writes nothing: this fills the buffer, and Cancel still undoes it.
+    public void RestoreDefaults()
+    {
+        LockWithOperatingSystem = new ScreenLockSettings().LockWhenOperatingSystemLocks;
+        TerminalAccessEnabled = new TerminalAccessSettings().Enabled;
+        NodeEndpointEnabled = new NodeEndpointSettings().Enabled;
+        AllowedDiscoveryRangesText = string.Join(", ", new NodeEndpointSettings().AllowedDiscoveryRanges);
+    }
+
     // Persists the AC-5 toggle the moment it changes. The load above sets it too, which is why that path suppresses this — a seed from disk must not be a write back to disk.
     partial void OnLockWithOperatingSystemChanged(bool value)
     {
-        if (_loadingLockSetting || screenLockSettings is null)
+        if (_loadingLockSetting || SuspendPersistence || screenLockSettings is null)
         {
             return;
         }
@@ -495,7 +556,7 @@ public sealed partial class SecurityOptionsViewModel(
     // unless we are only seeding the value from disk in RefreshAsync (or the store is absent in a test graph).
     async partial void OnTerminalAccessEnabledChanged(bool value)
     {
-        if (_loadingTerminalAccess || terminalAccessSettings is null)
+        if (_loadingTerminalAccess || SuspendPersistence || terminalAccessSettings is null)
         {
             return;
         }
@@ -515,7 +576,7 @@ public sealed partial class SecurityOptionsViewModel(
     // next time binding is turned back on.
     async partial void OnNodeEndpointEnabledChanged(bool value)
     {
-        if (_loadingNodeEndpoint || nodeEndpointSettings is null)
+        if (_loadingNodeEndpoint || SuspendPersistence || nodeEndpointSettings is null)
         {
             return;
         }
@@ -543,7 +604,7 @@ public sealed partial class SecurityOptionsViewModel(
     // what does not parse as a CIDR — so there is nothing here worth validating before it reaches disk.
     async partial void OnAllowedDiscoveryRangesTextChanged(string value)
     {
-        if (_loadingNodeEndpoint || nodeEndpointSettings is null)
+        if (_loadingNodeEndpoint || SuspendPersistence || nodeEndpointSettings is null)
         {
             return;
         }

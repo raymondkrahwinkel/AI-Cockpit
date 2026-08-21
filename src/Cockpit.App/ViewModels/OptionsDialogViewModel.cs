@@ -205,6 +205,42 @@ public sealed partial class AssistantOptionsViewModel(
     // re-arms on `VoiceSettingsSaved` to avoid for F9.
     public event EventHandler? Saved;
 
+    // AC-999: while the Options dialog is staging, these are values held in the view model and written once on
+    // Apply. `_SaveSettings` still folds them into `_lastLoadedSettings` — that is the buffer — and only the
+    // write to disk waits.
+    public bool SuspendPersistence { get; set; }
+
+    // The Options dialog's Apply (AC-999). Writes whatever the buffer holds, even when nothing was touched: a
+    // no-op rewrite of the values just read is cheaper than tracking whether one was.
+    public Task SaveStagedAsync()
+    {
+        if (_settingsStore is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        _Compose();
+        return _SaveAndAnnounceAsync(_lastLoadedSettings);
+    }
+
+    // Fills the buffer with what a fresh cockpit would show (AC-999); writes nothing, so Cancel still undoes it.
+    public void RestoreDefaults()
+    {
+        var defaults = new AssistantSettings();
+        IsEnabled = defaults.IsEnabled;
+        SpeakReplies = defaults.SpeakReplies;
+        PushToTalkKeyName = defaults.PushToTalkKeyName;
+        AlwaysOnTop = defaults.AlwaysOnTop;
+        SelectedReadingLevel = SessionOptionCatalog.ReadingLevels.FirstOrDefault(level => level.Value == defaults.ReadingLevel)
+                               ?? SessionOptionCatalog.DefaultReadingLevel;
+        ConsentBypassAll = defaults.ConsentBypassAll;
+        foreach (var row in ConsentBypassSources)
+        {
+            row.BypassLowRisk = false;
+            row.BypassDangerous = false;
+        }
+    }
+
     private void _SaveSettings()
     {
         if (_loading || _settingsStore is null)
@@ -212,6 +248,18 @@ public sealed partial class AssistantOptionsViewModel(
             return;
         }
 
+        _Compose();
+
+        if (SuspendPersistence)
+        {
+            return;
+        }
+
+        _ = _SaveAndAnnounceAsync(_lastLoadedSettings);
+    }
+
+    private void _Compose()
+    {
         _lastLoadedSettings = _lastLoadedSettings with
         {
             IsEnabled = IsEnabled,
@@ -228,7 +276,6 @@ public sealed partial class AssistantOptionsViewModel(
         };
 
         OnPropertyChanged(nameof(HasConsentBypass));
-        _ = _SaveAndAnnounceAsync(_lastLoadedSettings);
     }
 
     // Announced after the write, not alongside it: every subscriber re-reads the store, so a signal raised while

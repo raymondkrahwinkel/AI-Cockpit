@@ -21,17 +21,21 @@
   <Panel>
     <DockPanel>
 
-        <!-- Footer: Close on the left, one shared Save on the right — replaces the six per-section
-             Save buttons the flyout used to have (T13 dialog migration). -->
+        <!-- Footer (AC-999): the dialog is a transaction now. Restore Defaults fills the buffer, Cancel throws it
+             away, Apply and Close is the only thing that writes. The old "Saved" label is gone with the old Save
+             button — under a staged model it could only ever appear on the click that closes the window. -->
         <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <Button Grid.Column="0" Content="Close" Click="OnClose"/>
-                <TextBlock Grid.Column="1" Text="{Binding AllSettingsStatus}" HorizontalAlignment="Right"
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <Button Grid.Column="0" Content="Restore Defaults" Command="{Binding RestoreOptionDefaultsCommand}"
+                        ToolTip.Tip="Puts every setting on these tabs back to its default. Nothing is written until you apply, so Cancel still undoes this."/>
+                <TextBlock Grid.Column="1" Text="Unsaved changes" HorizontalAlignment="Right"
                            VerticalAlignment="Center" Margin="0,0,12,0"
+                           IsVisible="{Binding HasPendingOptionChanges}"
                            Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
-                <Button Grid.Column="2" Content="Save" Classes="Accent"
-                        Command="{Binding SaveAllSettingsCommand}"/>
+                <!-- IsCancel, so Escape is a Cancel rather than the nothing it used to be. -->
+                <Button Grid.Column="2" Content="Cancel" Click="OnCancel" IsCancel="True" Margin="0,0,8,0"/>
+                <Button Grid.Column="3" Content="Apply and Close" Classes="Accent" Click="OnApplyAndClose"/>
             </Grid>
         </Border>
 
@@ -898,7 +902,8 @@
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
                                                     IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
-                                            <ToggleButton Content="Test microphone" IsChecked="{Binding IsTestingMic}" Classes="Compact"/>
+                                            <ToggleButton Content="Test microphone" IsChecked="{Binding IsTestingMic}" Classes="Compact"
+                                                          ToolTip.Tip="Opens the microphone while it is on — a test, not a setting, so Cancel has nothing to undo here."/>
                                             <controls:MicLevelMeter Level="{Binding MicTestLevel}" Threshold="{Binding VoiceStopReadAloudThresholdValue}"
                                                                     Width="200" Height="12" VerticalAlignment="Center"/>
                                             <materialIcons:MaterialIcon Classes="hint"
@@ -997,7 +1002,8 @@
                                        TextWrapping="Wrap" Margin="0,8,0,0"/>
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                                <Button Content="Check now" Click="OnCheckForUpdates" IsEnabled="{Binding CanCheckForUpdates}"/>
+                                <Button Content="Check now" Click="OnCheckForUpdates" IsEnabled="{Binding CanCheckForUpdates}"
+                                        ToolTip.Tip="Reaches the network straight away — a check, not a setting, so Cancel has nothing to undo here."/>
                                 <!-- Self-updating build (AC-385, AC-388): the same download-and-restart pair as the
                                      persistent banner, in place of the plain release link a copy the updater did not
                                      install keeps below. -->
@@ -1071,6 +1077,9 @@
                                 <Button Content="Restore from a backup…" Click="OnRestoreBackup" IsEnabled="{Binding CanBackUp}"/>
                             </StackPanel>
 
+                            <TextBlock Classes="immediate"
+                                       Text="Both run straight away and are not undone by Cancel."/>
+
                             <TextBlock Text="Restoring replaces every setting, profile and plugin here. What is in place now is moved aside rather than deleted, and the cockpit restarts afterwards."
                                        Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
@@ -1089,6 +1098,9 @@
                                 <Button Content="Export…" Click="OnExportAssistantMemory" IsEnabled="{Binding CanBackUpAssistantMemory}"/>
                                 <Button Content="Import…" Click="OnImportAssistantMemory" IsEnabled="{Binding CanBackUpAssistantMemory}"/>
                             </StackPanel>
+
+                            <TextBlock Classes="immediate"
+                                       Text="Both run straight away and are not undone by Cancel."/>
 
                             <TextBlock Text="Importing replaces the assistant's memory. What is in place now is moved aside rather than deleted."
                                        Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
@@ -1139,6 +1151,11 @@
                                 <Button Content="Turn off encryption…"
                                         IsVisible="{Binding Security.IsEncrypted}" Click="OnDisableEncryption"/>
                             </StackPanel>
+
+                            <!-- AC-999: these three rewrite every stored credential the moment they run, so they sit
+                                 outside the dialog's Apply/Cancel and say so. -->
+                            <TextBlock Classes="immediate"
+                                       Text="These three run straight away and are not undone by Cancel."/>
 
                             <TextBlock Text="{Binding Security.Status}"
                                        IsVisible="{Binding Security.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"

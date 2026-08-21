@@ -33,12 +33,64 @@ public partial class OptionsDialog : Window
             }
         };
 
-        // However the dialog closes (Save, Close, the window chrome, Escape), release the microphone if a level
+        // However the dialog closes (Apply, Cancel, the window chrome, Escape), release the microphone if a level
         // test was left running.
         Closed += (_, _) => (DataContext as CockpitViewModel)?.StopMicTest();
+        Closing += OnClosingDialog;
     }
 
-    private void OnClose(object? sender, RoutedEventArgs e) => Close();
+    // Set by the two paths that have already decided what happens to the edits, so the handler below lets that
+    // close through instead of asking a second time.
+    private bool _closeSettled;
+
+    private async void OnApplyAndClose(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is CockpitViewModel cockpit)
+        {
+            await cockpit.ApplyOptionsCommand.ExecuteAsync(null);
+        }
+
+        _closeSettled = true;
+        Close();
+    }
+
+    private void OnCancel(object? sender, RoutedEventArgs e) => Close();
+
+    // Every way out that is not Apply is a Cancel (AC-999) — the ✕ and Escape included, which is why this hangs
+    // off Closing rather than off the Cancel button. Cancelling the close first is what lets the confirmation be
+    // awaited: Avalonia will not hold a window open across an await on its own.
+    private async void OnClosingDialog(object? sender, WindowClosingEventArgs e)
+    {
+        if (_closeSettled || DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+
+        if (cockpit.RefreshPendingOptionChanges())
+        {
+            var confirmation = new ConfirmationDialog
+            {
+                DataContext = new ConfirmationDialogViewModel(
+                    "Discard your changes",
+                    "Nothing you changed here has been saved yet. Closing puts every setting back the way it was "
+                    + "when you opened this window.\n\n"
+                    + "Turning encryption on or off, changing your password, checking for updates, running a backup "
+                    + "and testing the microphone are not settings and already took effect — those stay.",
+                    "Discard"),
+            };
+
+            if (!await confirmation.ShowDialog<bool>(this))
+            {
+                return;
+            }
+        }
+
+        await cockpit.CancelOptionsCommand.ExecuteAsync(null);
+        _closeSettled = true;
+        Close();
+    }
 
     private void OnRefreshDiagnostics(object? sender, RoutedEventArgs e) =>
         (DataContext as CockpitViewModel)?.Diagnostics.Refresh();
