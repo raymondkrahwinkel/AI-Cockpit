@@ -83,6 +83,10 @@ public partial class ThemeHexColorGuardTests
                 (1, "the decision node's kind stripe — a categorical colour, not a status"),
             [("plugins-dev/Cockpit.Plugin.Workflows/Canvas/WorkflowNodeControl.cs", "#7A8290")] =
                 (1, "the plain step's kind stripe — a neutral slate, deliberately hueless so it cannot be read as a faded accent"),
+
+            // AC-985: same argument as the whiteboard's other content files below — white paper, not UI chrome.
+            [("plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/WhiteboardControl.cs", "Brushes.White")] =
+                (1, "the default colour swatch's paper-white fill, whiteboard content like its neighbours in AllowedFiles"),
         };
 
     /// <summary>
