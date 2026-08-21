@@ -1398,6 +1398,15 @@
         <Setter Property="BorderThickness" Value="0,0,1,0"/>
         <Setter Property="Padding" Value="10,12"/>
     </Style>
+    <!-- AC-999: marks the handful of controls in Options that act on the spot rather than being staged, so a
+         Cancel that puts every value back is not read as putting these back too. -->
+    <Style Selector="TextBlock.immediate">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="FontStyle" Value="Italic"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="Margin" Value="0,2,0,0"/>
+    </Style>
     <Style Selector="TextBlock.subnavGroup">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
         <Setter Property="FontSize" Value="10"/>

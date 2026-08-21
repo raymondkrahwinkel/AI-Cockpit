@@ -605,16 +605,12 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return;
         }
 
-        await _ShowSurfaceAsync(typeof(OptionsDialog), owner, () => new OptionsDialog { DataContext = viewModel });
+        // AC-999: the dialog is a transaction — opened here so it is on whichever way in reaches this, and closed
+        // by the dialog itself through Apply or Cancel. The usage thresholds used to be written right here, after
+        // the window had gone; that is a path with no Cancel on it, so they moved into Apply with the rest.
+        viewModel.BeginOptionsEdit();
 
-        // AC-233: the usage thresholds are edited in place like every other option here, so they are written when
-        // the dialog closes. Sessions already open keep the numbers they were started with; the ones started after
-        // this take the new ones.
-        if (viewModel.UsageThresholdSettings is { } thresholds)
-        {
-            await thresholds.SaveAsync();
-            viewModel.UsageThresholds = await thresholds.ReloadAsync();
-        }
+        await _ShowSurfaceAsync(typeof(OptionsDialog), owner, () => new OptionsDialog { DataContext = viewModel });
     }
 
     // A dashboard travels as ordinary JSON with its own extension: readable enough to look at before you trust

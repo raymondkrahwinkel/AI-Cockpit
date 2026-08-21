@@ -1,0 +1,174 @@
+using System.Globalization;
+using System.Runtime.CompilerServices;
+
+namespace Cockpit.App.ViewModels;
+
+// The Options dialog's staged-changes bookkeeping (AC-999).
+//
+// *What this list is not.* Reverting does not read it — `CockpitViewModel.CancelOptionsAsync` re-seeds from
+// disk through the app's own startup load paths, which cover every setting by construction. This list only
+// answers "has the operator changed anything", for the footer's indicator and the warning on Escape. A name
+// missing here therefore costs a warning, never an undo — the one failure mode that is safe to have. It is kept
+// honest by `OptionsStagingGuardTests`, which reconciles it against every editable control in
+// `OptionsDialog.axaml`, so a control added later has to be put in one of the two lists deliberately.
+internal static class OptionsStaging
+{
+    // A character no setting can contain, so two different sets of values cannot join into the same string.
+    private const char Separator = (char)1;
+
+    // Bound two-way to a control the operator edits, and persisted on Apply. Paths, because three of them live
+    // on the sub-view models the dialog reaches through (`Security`, `AssistantOptions`).
+    public static readonly string[] EditedProperties =
+    [
+        "AutoCloseOnExit",
+        "CheckForUpdatesOnStartup",
+        "CloneRoot",
+        "CombineQueuedMessages",
+        "DiscordNotificationsEnabled",
+        "GlobalFocusRailLayout",
+        "GlobalSingleSessionLayout",
+        "GlobalStackSessionsVertically",
+        "IdleThresholdMinutes",
+        "IncludeNightlyBuilds",
+        "LocalNotificationsEnabled",
+        "LogDiagnosticSnapshots",
+        "MinimizeToTrayOnClose",
+        "NotifyOnCiFailure",
+        "NotifyOnSessionFinished",
+        "NotifyOnSessionIdle",
+        "NotifyWhenAllSessionsIdle",
+        "OrchestratorMcpEnabled",
+        "RenderBackendSelection",
+        "ScreenshotGlobalHotkeyEnabled",
+        "ScreenshotHotkeyKeyName",
+        "ScreenshotPreviewEnabled",
+        "SelectedInputDevice",
+        "SelectedOutputDevice",
+        "SelectedReadAloudLanguage",
+        "SelectedSttLanguage",
+        "SelectedTerminalShell",
+        "SelectedTranscriptionModel",
+        "SelectedTtsVoice",
+        "SelectedVoiceBackendPreference",
+        "SessionIdleMinutes",
+        "ShowDebugControls",
+        "ShowTimestamps",
+        "ShowUsagePillContext",
+        "ShowUsagePillFiveHour",
+        "ShowUsagePillSessionUsage",
+        "ShowUsagePillWeekly",
+        "TerminalCustomFontFamily",
+        "TerminalCustomShell",
+        "TerminalFontSelection",
+        "TerminalFontSize",
+        "VoiceAutoSubmit",
+        "VoiceCustomModelName",
+        "VoiceEnabled",
+        "VoiceGlobalPushToTalk",
+        "VoiceOpenMicSilenceTimeoutMs",
+        "VoicePushToTalkKeyName",
+        "VoiceStopReadAloudLevelThreshold",
+        "VoiceStopReadAloudWhenSpeaking",
+        "VoiceTtsSpeed",
+        "WakeAgentsByDefault",
+        "WebhookUrl",
+        "WorktreeRoot",
+        "Security.AllowedDiscoveryRangesText",
+        "Security.LockWithOperatingSystem",
+        "Security.NodeEndpointEnabled",
+        "Security.TerminalAccessEnabled",
+        "AssistantOptions.AlwaysOnTop",
+        "AssistantOptions.ConsentBypassAll",
+        "AssistantOptions.IsEnabled",
+        "AssistantOptions.PushToTalkKeyName",
+        "AssistantOptions.SelectedReadingLevel",
+        "AssistantOptions.SpeakReplies",
+    ];
+
+    // Editable-looking, but not settings — so deliberately outside the transaction. Cancel does not undo what
+    // these feed, which is exactly why each one has to be named here rather than simply left off the list above:
+    // a new control lands in a category on purpose or the guard test fails.
+    //
+    // The first is the toggle that starts and stops a live microphone; the backup pair are arguments to the
+    // archive the operator is about to write; the last drives a handshake with another cockpit.
+    public static readonly string[] ImmediateOrTransient =
+    [
+        "IsTestingMic",
+        "BackupIncludesCredentials",
+        "BackupIncludesProfiles",
+        "Security.PairWithNodeAddress",
+    ];
+
+    // The handlers in `OptionsDialog.axaml.cs` that act on the spot and are not undone by Cancel (AC-999 §6).
+    // Pinned so a button added to the dialog cannot quietly join them: encryption rewrites every stored
+    // credential, the backup and memory handlers touch files outside the cockpit, and an update check reaches the
+    // network. None of those is a value with a previous state to restore.
+    public static readonly string[] ImmediateActionHandlers =
+    [
+        "OnEnableEncryption",
+        "OnDisableEncryption",
+        "OnChangePassword",
+        "OnCheckForUpdates",
+        "OnOpenUpdate",
+        "OnCreateBackup",
+        "OnRestoreBackup",
+        "OnExportAssistantMemory",
+        "OnImportAssistantMemory",
+        "OnRefreshDiagnostics",
+        "OnCopyDiagnostics",
+    ];
+
+    // A cheap value-identity of everything staged, compared against the same string taken when the dialog
+    // opened. Cheaper and less brittle than mirroring 60-odd properties into a buffer object, and it is only
+    // ever used for equality — the string itself is never shown or stored.
+    public static string Fingerprint(CockpitViewModel cockpit)
+    {
+        var parts = new List<string>(EditedProperties.Length + 2);
+        foreach (var path in EditedProperties)
+        {
+            parts.Add(_Format(_Read(cockpit, path)));
+        }
+
+        // Two collections the dialog edits in place, which no property path reaches.
+        parts.Add(string.Join(Separator, cockpit.ShortcutRows.Select(row => row.Gesture)));
+        parts.Add(cockpit.UsageThresholdSettings is { } thresholds
+            ? string.Join(
+                Separator,
+                thresholds.Providers.Concat(thresholds.AssistantProviders)
+                    .SelectMany(provider => provider.Signals)
+                    .Select(signal => $"{signal.SignalKey}={_Format(signal.Threshold)}"))
+            : string.Empty);
+
+        return string.Join(Separator, parts);
+    }
+
+    private static object? _Read(object? root, string path)
+    {
+        var current = root;
+        foreach (var segment in path.Split('.'))
+        {
+            if (current is null)
+            {
+                return null;
+            }
+
+            current = current.GetType().GetProperty(segment)?.GetValue(current);
+        }
+
+        return current;
+    }
+
+    // Reference types that are not `IFormattable` are combo-box items picked from a fixed catalogue, so which
+    // instance is selected is the change worth seeing — identity says that without every option type having to
+    // override ToString.
+    private static string _Format(object? value) => value switch
+    {
+        null => string.Empty,
+        string text => text,
+        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+        // `bool` is neither a string nor `IFormattable`, and boxing it into the identity branch below would give
+        // the same value a different answer on every call — every setting would read as changed.
+        ValueType boxed => boxed.ToString() ?? string.Empty,
+        _ => RuntimeHelpers.GetHashCode(value).ToString(CultureInfo.InvariantCulture),
+    };
+}
