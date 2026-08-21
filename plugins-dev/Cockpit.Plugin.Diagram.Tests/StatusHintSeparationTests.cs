@@ -10,8 +10,7 @@ namespace Cockpit.Plugin.Diagram.Tests;
 
 // AC-981: saveStatus ("No file yet") and hint ("Click a component to edit it.") sit next to each other in the same
 // WrapPanel, same secondary color, with only ItemSpacing between them — without a visible mark they read as one
-// nonsense sentence. A hintSeparator TextBlock now sits between them; these tests prove it is actually there,
-// visible, and rendered strictly between the two texts rather than just present in the tree.
+// nonsense sentence.
 [Collection("avalonia")]
 public class StatusHintSeparationTests
 {
