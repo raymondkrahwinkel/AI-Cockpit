@@ -60,7 +60,10 @@ public class OptionsStagingGuardTests
     {
         // The footer's own three are the transaction, not actions inside it.
         string[] footer = ["OnApplyAndClose", "OnCancel"];
-        var known = OptionsStaging.ImmediateActionHandlers.Concat(footer).ToHashSet(StringComparer.Ordinal);
+        var known = OptionsStaging.ImmediateActionHandlers
+            .Concat(OptionsStaging.ReversibleValueHandlers)
+            .Concat(footer)
+            .ToHashSet(StringComparer.Ordinal);
 
         var unclassified = Regex.Matches(DialogMarkup, @"Click=""(?<handler>\w+)""")
             .Select(match => match.Groups["handler"].Value)
@@ -72,13 +75,14 @@ public class OptionsStagingGuardTests
             unclassified.Count == 0,
             "OptionsDialog.axaml wires " + string.Join(", ", unclassified)
             + " to a button. If it acts on the spot, name it in OptionsStaging.ImmediateActionHandlers so Cancel is "
-            + "not read as undoing it; if it edits a value, it belongs on a bound control instead.");
+            + "not read as undoing it; if it only fills in an already-staged field (a picker button), name it in "
+            + "OptionsStaging.ReversibleValueHandlers instead.");
     }
 
     [Fact]
     public void EveryDeclaredImmediateAction_StillExists()
     {
-        var missing = OptionsStaging.ImmediateActionHandlers
+        var missing = OptionsStaging.ImmediateActionHandlers.Concat(OptionsStaging.ReversibleValueHandlers)
             .Where(handler => !DialogCodeBehind.Contains($"void {handler}(", StringComparison.Ordinal))
             .ToList();
 

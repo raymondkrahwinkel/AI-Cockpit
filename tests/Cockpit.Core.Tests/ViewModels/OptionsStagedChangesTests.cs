@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.SessionBehavior;
@@ -13,6 +14,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Sessions;
@@ -298,6 +300,78 @@ public class OptionsStagedChangesTests
         Assert.True(assistant.IsEnabled);
         Assert.True(assistant.SpeakReplies);
         await store.DidNotReceive().SaveAsync(Arg.Any<AssistantSettings>());
+    }
+
+    // Profiles (AC-1001): the category is a `ManageProfilesDialogViewModel` handed to the cockpit rather than a
+    // scalar property, so it is exercised separately from the fingerprint-driven scalars above — same contract
+    // (nothing written until Apply, Cancel puts it back exactly), proven at the level the dialog actually drives.
+    [Fact]
+    public async Task Profiles_AreWrittenByApply_RatherThanImmediately()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        var profileStore = Substitute.For<ISessionProfileStore>();
+        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("work", new OllamaConfig("http://localhost:11434", "llama3.1"))]);
+        var profiles = new ManageProfilesDialogViewModel(profileStore, Substitute.For<IProfileLoginChecker>());
+        await profiles.LoadAsync();
+        vm.Profiles = profiles;
+
+        vm.BeginOptionsEdit();
+        profiles.SelectedProfile!.Purpose = "renamed purpose";
+        await profileStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
+
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
+
+        await profileStore.Received(1).SaveAsync(
+            Arg.Is<IReadOnlyList<SessionProfile>>(list => list.Count == 1 && list[0].Purpose == "renamed purpose"),
+            Arg.Any<CancellationToken>());
+    }
+
+    // Criterion 6: a removal is staged like any other edit — Cancel puts the row back, exactly as it puts a typo
+    // back, rather than the standalone dialog's old immediate-and-persisted Remove.
+    [Fact]
+    public async Task Profiles_ARemovedRowComesBackOnCancel_AndNothingIsWritten()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        var profileStore = Substitute.For<ISessionProfileStore>();
+        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("work", new OllamaConfig("http://localhost:11434", "llama3.1"))]);
+        var profiles = new ManageProfilesDialogViewModel(profileStore, Substitute.For<IProfileLoginChecker>());
+        await profiles.LoadAsync();
+        vm.Profiles = profiles;
+
+        vm.BeginOptionsEdit();
+        profiles.SelectedProfile = profiles.Profiles.Single();
+        profiles.RemoveProfileCommand.Execute(null);
+        profiles.ConfirmRemoveCommand.Execute(null);
+        Assert.Empty(profiles.Profiles);
+
+        await vm.CancelOptionsCommand.ExecuteAsync(null);
+
+        Assert.Equal("work", Assert.Single(profiles.Profiles).Label);
+        await profileStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
+    }
+
+    // Criterion 5: a plugin provider's config view rejecting its fields blocks the whole Apply, dialog included —
+    // it does not close over an unsaved profile the way a silent partial-apply would.
+    [Fact]
+    public async Task Profiles_AnInvalidProfile_BlocksApplyEntirely_AndNothingIsWritten()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        var profileStore = Substitute.For<ISessionProfileStore>();
+        var profiles = new ManageProfilesDialogViewModel(profileStore, Substitute.For<IProfileLoginChecker>());
+        vm.Profiles = profiles;
+
+        vm.BeginOptionsEdit();
+        profiles.AddProfileCommand.Execute(null); // an empty new profile: invalid until configured
+        vm.LocalNotificationsEnabled = true; // an unrelated, otherwise-valid change
+
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
+
+        Assert.True(vm.OptionsApplyBlocked);
+        await profileStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
+        await stores.Notifications.DidNotReceive().SaveAsync(Arg.Any<NotificationSettings>());
     }
 
     // Every store the dialog can write to, stubbed to return defaults and watched for writes.

@@ -21,6 +21,7 @@ public class OptionsDialogCategoryMappingTests
 
     [Theory]
     [InlineData("sessions", "AutoCloseOnExit")]
+    [InlineData("profiles", "Profiles.AddProfileCommand")]
     [InlineData("appearance", "GlobalSingleSessionLayout")]
     [InlineData("terminal", "SelectedTerminalShell")]
     [InlineData("notifications", "LocalNotificationsEnabled")]
@@ -59,7 +60,7 @@ public class OptionsDialogCategoryMappingTests
     {
         string[] expected =
         [
-            "sessions", "appearance", "terminal", "notifications", "shortcuts",
+            "sessions", "profiles", "appearance", "terminal", "notifications", "shortcuts",
             "voice", "assistant",
             "security", "nodes", "backup", "updates", "debug",
         ];

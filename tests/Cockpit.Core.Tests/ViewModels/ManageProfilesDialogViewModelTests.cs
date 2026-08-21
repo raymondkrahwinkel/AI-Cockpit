@@ -94,23 +94,27 @@ public class ManageProfilesDialogViewModelTests
     }
 
     [Fact]
-    public async Task ConfirmRemove_DropsTheRowAndPersistsImmediately()
+    public async Task ConfirmRemove_DropsTheRowWithoutPersistingUntilSave()
     {
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(
         [
-            new SessionProfile("default", new ClaudeConfig("/home/r/.claude")),
-            new SessionProfile("personal", new ClaudeConfig("/home/r/.claude-personal")),
+            new SessionProfile("default", new OllamaConfig("http://localhost:11434", "llama3.1")),
+            new SessionProfile("personal", new OllamaConfig("http://localhost:11434", "llama3.1")),
         ]);
         var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
         await vm.LoadAsync();
         vm.SelectedProfile = vm.Profiles.Single(p => p.Label == "default");
         vm.RemoveProfileCommand.Execute(null);
 
-        await vm.ConfirmRemoveCommand.ExecuteAsync(null);
+        vm.ConfirmRemoveCommand.Execute(null);
 
         Assert.False(vm.IsConfirmingRemove);
         Assert.Equal("personal", Assert.Single(vm.Profiles).Label);
+        await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
         await store.Received(1).SaveAsync(
             Arg.Is<IReadOnlyList<SessionProfile>>(list => list.Count == 1 && list[0].Label == "personal"),
             Arg.Any<CancellationToken>());
@@ -141,8 +145,9 @@ public class ManageProfilesDialogViewModelTests
         await vm.LoadAsync();
         vm.SelectedProfile = vm.Profiles.Single(p => p.Label == "personal");
         vm.RemoveProfileCommand.Execute(null);
+        vm.ConfirmRemoveCommand.Execute(null);
 
-        await vm.ConfirmRemoveCommand.ExecuteAsync(null);
+        await vm.SaveCommand.ExecuteAsync(null);
 
         await store.Received(1).SaveAsync(
             Arg.Is<IReadOnlyList<SessionProfile>>(list =>

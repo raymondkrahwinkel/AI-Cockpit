@@ -200,6 +200,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // without one and touch no config.
     public UsageThresholdsViewModel? UsageThresholdSettings { get; set; }
 
+    // Options → Profiles (AC-1001), replacing the standalone ManageProfilesDialog window. Handed in by the app
+    // at startup, same reason as the two above — the profile store it needs is not part of this view model's own
+    // constructor. Null in the test/design-time graphs, where the category simply shows nothing to edit.
+    public ManageProfilesDialogViewModel? Profiles { get; set; }
+
+    // True once `ApplyOptionsAsync` has refused to write because a profile failed validation (a plugin provider's
+    // TryGetConfigJson returning false, most commonly) — read by `OptionsDialog.OnApplyAndClose` to keep the
+    // dialog open and the error visible instead of closing over it (AC-1001 criterion 5).
+    public bool OptionsApplyBlocked { get; private set; }
+
     // The sidebar's own display order (AC-115). Kept apart from `Sessions` on purpose: the session
     // grid binds straight to `Sessions` and keeps its own positional cell layout, so reordering the
     // strip must never touch `Sessions` — moving an item there rebuilds its pane (a fresh TTY with no
@@ -5602,17 +5612,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await sdkSession.ClearContextAsync(result.Profile);
     }
 
-    // Opens the Manage-profiles dialog from the sidebar, independent of creating a session (L2).
+    // Opens Options on the Profiles category (AC-1001) from the sidebar, independent of creating a session (L2).
+    // Used to open the standalone ManageProfilesDialog window; that window still exists for the New-session
+    // dialog's own "manage profiles" link, but this — the menu item and ShortcutAction.ManageProfiles alike — now
+    // deep-links into Options instead, so there is one place for the setting rather than two ways to reach it.
     [RelayCommand]
-    private async Task ManageProfilesAsync()
-    {
-        if (_dialogService is null)
-        {
-            return;
-        }
-
-        await _dialogService.ShowManageProfilesDialogAsync();
-    }
+    private Task ManageProfilesAsync() => _ShowOptionsAsync("profiles");
 
     // Opens the assistant's own profile editor from Options → Voice.
     // The command lives here rather than on `AssistantOptionsViewModel` because the dialog it opens
@@ -5683,7 +5688,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private Task OpenProjectsWorkspaceAsync() => Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
 
-    private async Task _ShowOptionsAsync()
+    private async Task _ShowOptionsAsync(string? category = null)
     {
         if (_dialogService is null)
         {
@@ -5692,7 +5697,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _RefreshAudioDevicesAsync();
         await Plugins.LoadAsync();
-        await _dialogService.ShowOptionsDialogAsync(this);
+
+        // Refreshed before BeginOptionsEdit (inside ShowOptionsDialogAsync) takes its fingerprint, so a profile
+        // added or edited from elsewhere since the app started is what Cancel reverts to, not stale startup state.
+        if (Profiles is not null)
+        {
+            await Profiles.LoadAsync();
+        }
+
+        await _dialogService.ShowOptionsDialogAsync(this, category);
     }
 
     // Opens the plugin store dialog (#62) with the "Available updates" filter preselected (#65) — the
@@ -6008,6 +6021,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task ApplyOptionsAsync()
     {
+        OptionsApplyBlocked = false;
+
+        // Validated first, before anything else writes: a profile a plugin's TryGetConfigJson rejects must block
+        // the whole Apply (AC-1001 criterion 5), not just leave that one category unsaved while everything else
+        // goes through.
+        if (Profiles is not null && !await Profiles.PersistAsync())
+        {
+            OptionsApplyBlocked = true;
+            return;
+        }
+
         _EndOptionsEdit();
         await SaveAllSettingsAsync();
         _SaveUpdateSettings();
@@ -6053,6 +6077,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await AssistantOptions.RefreshAsync();
 
         UsageThresholdSettings?.Revert();
+
+        // Re-fetched from the store rather than tracked in a buffer, same reasoning as every load call above it:
+        // this puts back an edited field, an added row and a removed-but-not-yet-applied row alike, in one call.
+        if (Profiles is not null)
+        {
+            await Profiles.LoadAsync();
+        }
+
         _EndOptionsEdit();
     }
 

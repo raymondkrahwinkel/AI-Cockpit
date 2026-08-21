@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace Cockpit.App.ViewModels;
 
@@ -119,6 +120,17 @@ internal static class OptionsStaging
         "OnCopyDiagnostics",
     ];
 
+    // Click handlers that, unlike the ones above, *are* undone by Cancel — they only fill in a field the Profiles
+    // fingerprint already covers (`EditableProfileViewModel.ConfigDir`/`DefaultWorkingDirectory`/`ExecutablePath`,
+    // reverted with the rest of the profile by `Profiles.LoadAsync()`). They stay Click-driven rather than plain
+    // bindings only because a folder/file picker needs `Window.StorageProvider`, which a binding cannot reach.
+    public static readonly string[] ReversibleValueHandlers =
+    [
+        "OnBrowseProfileConfigDir",
+        "OnBrowseProfileWorkingDirectory",
+        "OnBrowseProfileExecutable",
+    ];
+
     // A cheap value-identity of everything staged, compared against the same string taken when the dialog
     // opened. Cheaper and less brittle than mirroring 60-odd properties into a buffer object, and it is only
     // ever used for equality — the string itself is never shown or stored.
@@ -140,8 +152,23 @@ internal static class OptionsStaging
                     .Select(signal => $"{signal.SignalKey}={_Format(signal.Threshold)}"))
             : string.Empty);
 
+        // Profiles (AC-1001): a full serialization of every edited row's would-be-saved shape, added/removed rows
+        // included, rather than a hand-kept list of property paths — the same reasoning `ToProfile()` already
+        // gives for not exposing a typed selection per provider. Cheap enough for a handful of profiles.
+        //
+        // `ProviderConfig` is serialized a second time by its own runtime type: `SessionProfile.ProviderConfig` is
+        // declared as the abstract `ProviderConfig`, and System.Text.Json serializes a property by its *declared*
+        // type by default — so the first pass alone would see every provider's config as just `{"Provider":...}`
+        // and miss a changed base URL or config directory entirely.
+        parts.Add(cockpit.Profiles is { } profiles
+            ? string.Join(Separator, profiles.Profiles.Select(profile => _ProfileFingerprint(profile.ToProfile())))
+            : string.Empty);
+
         return string.Join(Separator, parts);
     }
+
+    private static string _ProfileFingerprint(Cockpit.Core.Profiles.SessionProfile profile) =>
+        JsonSerializer.Serialize(profile) + Separator + JsonSerializer.Serialize(profile.ProviderConfig, profile.ProviderConfig.GetType());
 
     private static object? _Read(object? root, string path)
     {

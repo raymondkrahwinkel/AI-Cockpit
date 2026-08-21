@@ -25,6 +25,7 @@ using Cockpit.Core.Secrets;
 using Cockpit.Core.Toasts;
 using Cockpit.Plugins.Abstractions.Workflows;
 
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -469,6 +470,18 @@ public partial class App : Application
         {
             _ = _LoadUsageThresholdsAsync(cockpitViewModel, thresholdStore);
         }
+
+        // AC-1001: Options → Profiles, built the same way SessionDialogService builds the standalone dialog it
+        // replaces — same services, same view model type, just handed to the cockpit instead of a window.
+        cockpitViewModel.Profiles = new ManageProfilesDialogViewModel(
+            Program.Services.GetRequiredService<ISessionProfileStore>(),
+            Program.Services.GetRequiredService<IProfileLoginChecker>(),
+            Program.Services.GetService<IModelCatalog>(),
+            Program.Services.GetService<IPluginProviderRegistry>(),
+            Program.Services.GetService<IMcpServerCatalog>(),
+            Program.Services.GetService<IMcpToolTokenEstimator>(),
+            Program.Services.GetService<ITtySessionProviderResolver>(),
+            Program.Services.GetService<IProfileLoginStarter>());
 
         var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
         // The managed-CLI update check (#AC-20) rides the same timer: one look on startup, then every 15 minutes,

@@ -196,10 +196,11 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         IsConfirmingRemove = true;
     }
 
-    // Confirms the remove: drops the selected profile and persists the reduced list immediately, so a
-    // removal takes effect without a separate Save (and isn't lost if another row is mid-edit).
+    // Confirms the remove: drops the selected profile from the in-memory list only. Persisting it — like every
+    // other edit here — is Apply/Save's job (AC-999 value/action split), so Cancel puts a removal back same as a
+    // typo in a label.
     [RelayCommand]
-    private async Task ConfirmRemoveAsync()
+    private void ConfirmRemove()
     {
         IsConfirmingRemove = false;
         if (SelectedProfile is null)
@@ -210,12 +211,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         var index = Profiles.IndexOf(SelectedProfile);
         Profiles.Remove(SelectedProfile);
         SelectedProfile = Profiles.Count == 0 ? null : Profiles[Math.Min(index, Profiles.Count - 1)];
-
-        if (_profileStore is not null)
-        {
-            await _profileStore.SaveAsync(Profiles.Select(profile => profile.ToProfile()).ToList());
-            StatusMessage = "Removed.";
-        }
+        StatusMessage = "Removed — not saved yet.";
     }
 
     [RelayCommand]
@@ -232,26 +228,47 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     [RelayCommand]
     private async Task SaveAsync()
     {
+        if (await PersistAsync())
+        {
+            CloseRequested?.Invoke();
+        }
+    }
+
+    // Validates and writes the whole edited list — shared by the standalone dialog's Save button and by the
+    // Options dialog's Apply and Close (AC-1001), which calls this instead of Save so a validation failure here
+    // blocks Apply without closing anything. False means nothing was written; StatusMessage says why.
+    public async Task<bool> PersistAsync()
+    {
         if (_profileStore is null)
         {
-            return;
+            return true;
         }
 
         // A profile needs the settings its own provider launches with; refuse to persist a half-filled row rather
         // than write junk. The message names the profiles rather than the fields: which fields those are is the
         // provider's business, and a message that enumerates them ("a config directory, or a base URL and model")
         // is one that quietly becomes a lie with every provider added — as it already had for Codex, which needs
-        // neither.
-        if (Profiles.Where(profile => !profile.IsValid).Select(profile => profile.Label).ToList() is { Count: > 0 } incomplete)
+        // neither. Also where a plugin provider's TryGetConfigJson failing surfaces (#45/AC-1001 criterion 5):
+        // IsValid already routes through it, so a rejected config reads exactly like an incomplete profile.
+        //
+        // An *existing* row left orphaned (its provider plugin removed/disabled/failed to load — CanChooseProvider
+        // is false, so it was loaded, not just added) is exempt: IsValid counts it invalid too, but `ToProfile()`
+        // passes its stored config through completely unedited — it is not a half-filled row, just one this screen
+        // cannot currently edit. Gating on it here would mean an unrelated orphan blocks every other profile edit
+        // (and, now that Remove is staged rather than immediate — AC-1001 — blocks removing an unrelated profile
+        // too) until the plugin comes back. A *freshly added* row stuck the same way (no plugin registered for the
+        // provider it defaults to) stays gated — that one really is unconfigured, not preserved.
+        if (Profiles.Where(profile => !profile.IsValid && !(profile.IsPluginProviderMissing && !profile.CanChooseProvider))
+            .Select(profile => profile.Label).ToList() is { Count: > 0 } incomplete)
         {
             var named = incomplete.Select(label => string.IsNullOrWhiteSpace(label) ? "(unnamed)" : label);
             StatusMessage = $"Fill in what these profiles' providers need: {string.Join(", ", named)}.";
-            return;
+            return false;
         }
 
         var profiles = Profiles.Select(profile => profile.ToProfile()).ToList();
         await _profileStore.SaveAsync(profiles);
-        CloseRequested?.Invoke();
+        return true;
     }
 
     [RelayCommand]

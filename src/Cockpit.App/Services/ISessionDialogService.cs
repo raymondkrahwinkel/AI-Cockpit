@@ -115,7 +115,12 @@ public interface ISessionDialogService
     /// <see cref="Avalonia.Controls.Window.DataContext"/> so its tabs bind straight to the cockpit's
     /// existing option properties/commands.
     /// </summary>
-    Task ShowOptionsDialogAsync(CockpitViewModel viewModel);
+    /// <param name="category">
+    /// The nav item's <c>Tag</c> to open on (e.g. <c>"profiles"</c>), or <see langword="null"/> for the dialog's
+    /// own default (Sessions) — AC-1001's deep-link menu items and shortcut actions pass this instead of opening
+    /// their own window.
+    /// </param>
+    Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null);
 
     /// <summary>Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.</summary>
     Task<string?> PickPluginZipAsync();
