@@ -205,6 +205,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // constructor. Null in the test/design-time graphs, where the category simply shows nothing to edit.
     public ManageProfilesDialogViewModel? Profiles { get; set; }
 
+    // Options → MCP Servers (AC-1002), replacing the standalone McpServersDialog window — same reasoning as
+    // Profiles above: the server store it needs is not part of this view model's own constructor. Null in the
+    // test/design-time graphs, where the category simply shows nothing to edit.
+    public McpServersViewModel? McpServers { get; set; }
+
     // True once `ApplyOptionsAsync` has refused to write because a profile failed validation (a plugin provider's
     // TryGetConfigJson returning false, most commonly) — read by `OptionsDialog.OnApplyAndClose` to keep the
     // dialog open and the error visible instead of closing over it (AC-1001 criterion 5).
@@ -5645,17 +5650,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // design-time graphs, where the profile editor simply offers no restart.
     public IAssistantSessionHost? AssistantHost { get; set; }
 
-    // Opens the MCP-servers dialog (#26) from the sidebar to edit the shared MCP-server registry.
+    // Opens Options on the MCP Servers category (AC-1002) from the sidebar menu, independent of creating a
+    // session — the same deep-link split ManageProfilesAsync above uses. Used to open the standalone
+    // McpServersDialog window; that window still exists for Screenshotter's own scenes, but the menu item and
+    // ShortcutAction.McpServers alike now deep-link into Options instead of opening it.
     [RelayCommand]
-    private async Task OpenMcpServersAsync()
-    {
-        if (_dialogService is null)
-        {
-            return;
-        }
-
-        await _dialogService.ShowMcpServersDialogAsync();
-    }
+    private Task OpenMcpServersAsync() => _ShowOptionsAsync("mcp-servers");
 
     // Opens the Verify-runners dialog (AC-86) from the sidebar to register the per-project command the visual verify loop may run.
     [RelayCommand]
@@ -5703,6 +5703,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (Profiles is not null)
         {
             await Profiles.LoadAsync();
+        }
+
+        if (McpServers is not null)
+        {
+            await McpServers.LoadAsync();
         }
 
         await _dialogService.ShowOptionsDialogAsync(this, category);
@@ -6101,6 +6106,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        // Same validation the standalone McpServersDialog enforced (a name plus a command or URL, unique names, no
+        // clash with a reserved server name) — now blocking Apply through the shared PluginSettingsError footer
+        // instead of its own Save button (AC-1002, following AC-1005's exact pattern for a plugin settings row).
+        if (McpServers is not null && !await McpServers.PersistAsync())
+        {
+            PluginSettingsError = $"MCP Servers: {McpServers.StatusMessage}";
+            OptionsApplyBlocked = true;
+            return;
+        }
+
         pluginStaging.Commit();
 
         _EndOptionsEdit();
@@ -6154,6 +6169,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (Profiles is not null)
         {
             await Profiles.LoadAsync();
+        }
+
+        if (McpServers is not null)
+        {
+            await McpServers.LoadAsync();
         }
 
         _EndOptionsEdit();

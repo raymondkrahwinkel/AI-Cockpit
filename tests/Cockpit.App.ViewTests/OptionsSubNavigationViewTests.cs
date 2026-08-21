@@ -11,7 +11,8 @@ namespace Cockpit.App.ViewTests;
 /// each category's content its own always-present ScrollViewer switched on by a Tag comparison. This pins that
 /// wiring: a XAML rename of the nav, a category dropped from the list, or a group header that became selectable
 /// would otherwise only surface by opening the dialog and clicking, which no unit test does.
-/// AC-1001 added Profiles, the 13th category, under WORKING right after Sessions.
+/// AC-1001 added Profiles, the 13th category, under WORKING right after Sessions. AC-1002 added MCP Servers, the
+/// 14th, under SYSTEM right after Security.
 /// </summary>
 /// <remarks>
 /// Replaces the AC-69-era version of this file, whose two tests (a Voice tab that split into a
@@ -28,7 +29,7 @@ public class OptionsSubNavigationViewTests
     [
         "sessions", "profiles", "appearance", "terminal", "notifications", "shortcuts",
         "voice", "assistant",
-        "security", "nodes", "backup", "updates", "debug",
+        "security", "mcp-servers", "nodes", "backup", "updates", "debug",
     ];
 
     [Fact]

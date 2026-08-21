@@ -483,6 +483,13 @@ public partial class App : Application
             Program.Services.GetService<ITtySessionProviderResolver>(),
             Program.Services.GetService<IProfileLoginStarter>());
 
+        // AC-1002: Options → MCP Servers, built the same way SessionDialogService builds the standalone dialog it
+        // replaces — same services, same view model type, just handed to the cockpit instead of a window.
+        cockpitViewModel.McpServers = new McpServersViewModel(
+            Program.Services.GetRequiredService<IMcpServerStore>(),
+            Program.Services.GetServices<ICockpitInternalMcpProvider>(),
+            Program.Services.GetService<IMcpOAuthCoordinator>());
+
         var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
         // The managed-CLI update check (#AC-20) rides the same timer: one look on startup, then every 15 minutes,
         // toasting once when an installed managed CLI (claude/codex) has a newer version available.
