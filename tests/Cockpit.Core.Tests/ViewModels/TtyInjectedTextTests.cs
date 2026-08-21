@@ -77,13 +77,33 @@ public class TtyInjectedTextTests
         var vm = _NewTty(writes);
 
         // AC-64 schedules the submit a beat after the text; run it inline so the ordering is assertable.
-        vm.SetAutoSubmitScheduler(submit => submit());
+        vm.SetAutoSubmitScheduler((_, submit) => submit());
 
         vm.InjectAndSubmit("run the tests\r");
 
         // The text, then a carriage return of its own. Which of the two seams was called now decides whether the
         // session is submitted to, instead of whether the caller's text happened to carry a line break.
         Assert.Equal(new[] { "run the tests", "\r" }, writes);
+    }
+
+    /// <summary>
+    /// AC-993: the beat before the submitting CR has to outlast the CLI's handling of the paste it follows. A spoken
+    /// transcript is a few words and AC-64's 60ms covered it; an agent brief is kilobytes, and a CR that lands while
+    /// the CLI is still taking that paste in is swallowed — the brief stays in the input as an unsent
+    /// <c>[Pasted Text #N]</c>. So the gap scales with what was just typed, while a short transcript keeps its 60ms.
+    /// </summary>
+    [Fact]
+    public void InjectAndSubmit_OfAMultiKilobyteBrief_WaitsLongerBeforeTheCarriageReturnThanAShortTranscriptDoes()
+    {
+        var vm = _NewTty([]);
+        var delays = new List<TimeSpan>();
+        vm.SetAutoSubmitScheduler((delay, submit) => { delays.Add(delay); submit(); });
+
+        vm.InjectAndSubmit("send it");
+        vm.InjectAndSubmit(new string('b', 2048)); // an agent brief, well over AC-752's 64-byte paste threshold
+
+        Assert.True(delays[0] < TimeSpan.FromMilliseconds(70), $"a short transcript got {delays[0].TotalMilliseconds}ms, not AC-64's beat");
+        Assert.True(delays[1] > TimeSpan.FromMilliseconds(500), $"a 2 KB brief got only {delays[1].TotalMilliseconds}ms");
     }
 
     [Fact]
@@ -114,7 +134,7 @@ public class TtyInjectedTextTests
     {
         var writes = new List<string>();
         var vm = _NewTty(writes);
-        vm.SetAutoSubmitScheduler(submit => submit());
+        vm.SetAutoSubmitScheduler((_, submit) => submit());
 
         var wentOutNow = vm.SubmitPromptWhenReady("start on the migration");
 
@@ -143,7 +163,7 @@ public class TtyInjectedTextTests
     {
         var writes = new List<string>();
         var vm = _NewTty(writes);
-        vm.SetAutoSubmitScheduler(submit => submit());
+        vm.SetAutoSubmitScheduler((_, submit) => submit());
         vm.PromptSink = _ => { };
         vm.MarkHostedTuiReady();
 

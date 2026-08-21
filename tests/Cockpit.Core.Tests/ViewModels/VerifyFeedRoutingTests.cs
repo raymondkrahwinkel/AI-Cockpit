@@ -55,7 +55,7 @@ public class VerifyFeedRoutingTests
         var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
         var writes = new List<string>();
         vm.VoiceTranscriptReady += text => writes.Add(text);
-        vm.SetAutoSubmitScheduler(submit => submit());
+        vm.SetAutoSubmitScheduler((_, submit) => submit());
 
         var shown = await vm.FeedVerifyResultAsync(Caption, Screenshot);
 
