@@ -343,6 +343,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: clicking a wireframe state chip for the first time no longer does nothing — the chip stayed unlit and the
   canvas kept showing the base screen until you clicked it again. A state gets its stable id the first time
   something selects it, and the click was reading that id before it had been assigned.
+- fixed: the whiteboard colour flyout's active-swatch outline and clear-icon now follow the app's own theme colours
+  instead of a fixed black and grey, so they stay legible and consistent with the rest of the cockpit under a
+  repaint.
 
 ### Added
 
