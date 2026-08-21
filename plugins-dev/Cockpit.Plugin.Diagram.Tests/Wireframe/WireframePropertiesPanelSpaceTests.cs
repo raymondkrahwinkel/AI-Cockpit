@@ -12,10 +12,9 @@ using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 
-// AC-980: the properties column used to reserve 240px whether or not anything was selected, leaving the wireframe
-// itself squeezed into three quarters of the window's default 960px width for nothing. Fixed by keeping the panel
-// at a smaller, constant width instead of toggling it away on selection — the notes panel above it can afford to
-// disappear because it changes rarely, but this one would flicker the canvas on every single click.
+// AC-980: kept at a smaller, constant width instead of collapsing on selection like the notes panel above it —
+// that panel can afford to disappear because it changes rarely, but this one would flicker the canvas on every
+// single click.
 [Collection("avalonia")]
 public class WireframePropertiesPanelSpaceTests
 {
