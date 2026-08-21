@@ -80,6 +80,9 @@ printf 'seed\n' >plugins-dev/Cockpit.Plugin.Bar/Seed.cs
 printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' >plugins-dev/Cockpit.Plugin.Bar/Cockpit.Plugin.Bar.csproj
 
 printf 'seed\n' >tests/Cockpit.Core.Tests/Seed.cs
+# Stands in for ThemeHexColorGuardTests.cs: a source-tree lint that reads plugins-dev/ by path, with no
+# <ProjectReference> recording the coupling -- the exact case the mention-check below has to catch.
+printf '// scans plugins-dev/ by path, no ProjectReference records it\n' >tests/Cockpit.Core.Tests/PluginsDevLintSeed.cs
 cat >tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj <<'EOF'
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
@@ -147,7 +150,12 @@ run() {
 run "docs-only (md)"             false  false       false  false  false  false  README.md
 run "docs-only (docs/)"          false  false       false  false  false  false  docs/seed.md
 run "docs-only (changelog)"      false  false       false  false  false  false  CHANGELOG.md
-run "plugins-dev-only, unused"   false  true        false  false  false  false  plugins-dev/Cockpit.Plugin.Foo/Seed.cs
+# Foo is unreferenced by any csproj closure, but Core.Tests' own sources mention "plugins-dev" (the
+# ThemeHexColorGuardTests stand-in above) -- the mention-check must still force run_core_tests true here,
+# same as it must for the real, unreferenced Cockpit.Plugin.Workflows. run_infrastructure_tests stays
+# false: Infrastructure.Tests' fixture sources never mention plugins-dev, so the rule has not degraded
+# into "run everything".
+run "plugins-dev-only, unreferenced (lint coupling)" false true false true false false plugins-dev/Cockpit.Plugin.Foo/Seed.cs
 
 # Bar is only reachable through App, so it pulls in every suite that reaches App -- Core.Tests and
 # App.ViewTests, not Infrastructure.Tests (which never references App at all in this layering).
