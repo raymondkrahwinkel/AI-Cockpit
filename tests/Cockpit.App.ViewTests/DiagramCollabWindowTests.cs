@@ -207,22 +207,22 @@ public class DiagramCollabWindowTests
     });
 
     [Fact]
-    public void PickingAShapeThroughVormAction_ChangesTheNodesShape_KeepingItsLabel() => HeadlessAvalonia.Run(() =>
+    public void PickingAShapeThroughTheShapeAction_ChangesTheNodesShape_KeepingItsLabel() => HeadlessAvalonia.Run(() =>
     {
         // AC-909's second acceptance criterion: an existing node's shape can be changed afterwards without losing
         // its label, through a grid of preview shapes rather than a Mermaid-syntax picker (AC4).
         var (plugin, host, content, window, surfaceId) = _OpenOnOneNode();
 
         _ClickCentre(content, window);
-        var vorm = _Button(content, "Shape…");
-        Assert.True(vorm.IsEnabled);
-        vorm.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var shape = _Button(content, "Shape…");
+        Assert.True(shape.IsEnabled);
+        shape.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Dispatcher.UIThread.RunJobs();
 
-        var flyout = Assert.IsType<Flyout>(vorm.Flyout);
+        var flyout = Assert.IsType<Flyout>(shape.Flyout);
         var grid = Assert.IsType<WrapPanel>(Assert.IsType<StackPanel>(flyout.Content).Children.Single());
         var diamond = grid.Children.OfType<Button>()
-            .Single(button => ((StackPanel)button.Content!).Children.OfType<TextBlock>().Any(text => text.Text == "Ruit"));
+            .Single(button => ((StackPanel)button.Content!).Children.OfType<TextBlock>().Any(text => text.Text == "Diamond"));
         diamond.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Dispatcher.UIThread.RunJobs();
 

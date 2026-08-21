@@ -227,6 +227,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   off screen on a wireframe, with nothing to show either was there. The toolbar now wraps onto a second row instead
   of clipping or painting over itself, and the hint and file-status text trim with an ellipsis (full text in the
   tooltip) rather than running into whatever sits next to them.
+- fixed: six remaining non-English labels in the diagram and wireframe plugin — a shape picker's four shape
+  names, two placeholder texts, a relationship label hint, a "Below" button, and a coupling bar's read timestamp —
+  are now in English like the rest of the surface. A new test now checks every label, placeholder and header
+  string in the plugin against a list of non-English function words, so a stray one fails the build instead of
+  waiting for the next manual scan to catch it.
 - fixed: a session that fails because Claude's API is overloaded or unavailable now shows that reason on the
   failed-turn card ("API Error: 529 …") instead of the confusing, self-contradictory "Turn failed (success)" —
   a recognised outage renders as a temporary problem that resolves on its own, and an auth failure now offers a

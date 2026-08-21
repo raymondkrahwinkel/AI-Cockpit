@@ -316,7 +316,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         return stream.ToArray();
     }
 
-    // W-2/AC-843: the statusregel — same shape as DiagramWorkspaceBody's save bar (AC-839), one Opslaan button plus
+    // W-2/AC-843: the status bar — same shape as DiagramWorkspaceBody's save bar (AC-839), one Save button plus
     // where-it-landed text. AC-910's "Ask the agent…" sits beside it — the operator's free-text ask about whatever
     // is selected, or the board as a whole, see _AddAsk.
     private (Border Bar, Button Save, TextBlock Status, Button Ask) _BuildSaveBar()
