@@ -222,6 +222,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: pressing "Connect" with an empty label in an ER diagram's relationship flyout used to do nothing at all —
+  no relationship, no message, the flyout just stayed open. The label is required (Mermaid has no sensible default
+  for the line's text), so the field is now marked as such, and "Connect" stays disabled with a tooltip explaining
+  why until you type something.
 - fixed: the diagram and wireframe toolbars no longer lose buttons at the window size they themselves open with —
   Export used to be completely hidden behind the zoom controls on a diagram, and the whole zoom group used to sit
   off screen on a wireframe, with nothing to show either was there. The toolbar now wraps onto a second row instead

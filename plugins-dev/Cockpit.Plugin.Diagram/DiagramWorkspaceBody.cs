@@ -1025,8 +1025,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
     {
         var fromCardinality = _CardinalityBox();
         var toCardinality = _CardinalityBox();
-        var label = new TextBox { Width = 200, PlaceholderText = "reads as… (e.g. places)" };
-        var confirm = new Button { Content = "Connect", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right };
+        var label = new TextBox { Width = 200, PlaceholderText = "reads as… (required, e.g. places)" };
+        var confirm = new Button { Content = "Connect", Classes = { "Compact" }, HorizontalAlignment = HorizontalAlignment.Right, IsEnabled = false };
+        ToolTip.SetTip(confirm, "Give the line something to read as first — there's no sensible default.");
         var flyout = new Flyout
         {
             Content = new StackPanel
@@ -1068,6 +1069,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
                 Relate();
             }
         };
+        label.TextChanged += (_, _) => confirm.IsEnabled = !string.IsNullOrWhiteSpace(label.Text);
 
         flyout.ShowAt(_connectButton);
         label.Focus();
