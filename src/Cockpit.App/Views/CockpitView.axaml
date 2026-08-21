@@ -311,6 +311,14 @@
                                                 <materialIcons:MaterialIcon Kind="Console" Width="14" Height="14"/>
                                             </MenuItem.Icon>
                                         </MenuItem>
+                                        <!-- AC-967: Windows-only. Opens a separate elevated console window, not a pane. -->
+                                        <MenuItem Header="New terminal (administrator)" Command="{Binding NewElevatedTerminalCommand}"
+                                                  IsVisible="{Binding IsWindowsPlatform}"
+                                                  ToolTip.Tip="The same shell, elevated — opens in its own window after the Windows UAC prompt">
+                                            <MenuItem.Icon>
+                                                <materialIcons:MaterialIcon Kind="ShieldAccountOutline" Width="14" Height="14"/>
+                                            </MenuItem.Icon>
+                                        </MenuItem>
                                     </MenuFlyout>
                                 </Button.Flyout>
                             </Button>
