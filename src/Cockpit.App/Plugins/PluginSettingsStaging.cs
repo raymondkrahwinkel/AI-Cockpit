@@ -21,7 +21,7 @@ internal sealed class PluginSettingsStaging
 
     public bool HasStagedChanges => _commits.Count > 0;
 
-    /// <summary>Validates one view and keeps its write for <see cref="Commit"/>; false leaves nothing staged and fills <paramref name="error"/>.</summary>
+    // Validates one view and keeps its write for `Commit`; false leaves nothing staged and fills `error`.
     public bool TryStage(IPluginSettingsView view, [NotNullWhen(false)] out string? error)
     {
         if (!TryStage(view, out var commit, out error))
@@ -33,7 +33,7 @@ internal sealed class PluginSettingsStaging
         return true;
     }
 
-    /// <summary>Runs every staged write, in the order it was staged, and empties the batch.</summary>
+    // Runs every staged write, in the order it was staged, and empties the batch.
     public void Commit()
     {
         // Copied first: a plugin's own write can reach back into the host (re-registering an MCP server, say),
@@ -46,7 +46,7 @@ internal sealed class PluginSettingsStaging
         }
     }
 
-    /// <summary>Drops everything staged. Nothing was written, so there is nothing else to undo.</summary>
+    // Drops everything staged. Nothing was written, so there is nothing else to undo.
     public void Revert() => _commits.Clear();
 
     // Where a plugin's answer is taken at face value or not. A refusal without a reason is the silent click

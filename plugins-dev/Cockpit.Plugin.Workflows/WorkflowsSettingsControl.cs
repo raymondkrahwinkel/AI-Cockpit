@@ -40,9 +40,10 @@ internal sealed class WorkflowsSettingsControl : UserControl, IPluginSettingsVie
         };
     }
 
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
     {
-        _settings.SaveMcpEnabled(_mcpEnabled.IsChecked ?? true);
+        commit = () => _settings.SaveMcpEnabled(_mcpEnabled.IsChecked ?? true);
+        error = null;
         return true;
     }
 }

@@ -1,7 +1,7 @@
 {
   "id": "gemini-provider",
   "name": "Gemini / OpenAI Provider",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "entryAssembly": "Cockpit.Plugin.GeminiProvider.dll",
   "entryType": "Cockpit.Plugin.GeminiProvider.GeminiProviderPlugin",
   "abstractionsVersion": 2,

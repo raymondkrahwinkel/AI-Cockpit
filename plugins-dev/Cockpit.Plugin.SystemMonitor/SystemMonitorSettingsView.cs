@@ -46,15 +46,15 @@ internal sealed class SystemMonitorSettingsView : UserControl, IPluginSettingsVi
         };
     }
 
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
     {
-        _context.Storage.Set(SystemMonitorMetrics.StorageKey, new SystemMonitorMetrics
+        commit = () => _context.Storage.Set(SystemMonitorMetrics.StorageKey, new SystemMonitorMetrics
         {
             ShowCpu = _cpu.IsChecked == true,
             ShowMemory = _memory.IsChecked == true,
             ShowDisk = _disk.IsChecked == true,
         }.OrDefaultWhenEmpty());
-
+        error = null;
         return true;
     }
 }

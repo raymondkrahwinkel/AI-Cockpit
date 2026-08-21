@@ -1,11 +1,11 @@
 {
   "id": "system-monitor",
   "name": "System Monitor",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "entryAssembly": "Cockpit.Plugin.SystemMonitor.dll",
   "entryType": "Cockpit.Plugin.SystemMonitor.SystemMonitorPlugin",
-  "abstractionsVersion": 1,
-  "minHostVersion": "0.1.0",
+  "abstractionsVersion": 2,
+  "minHostVersion": "0.26.0",
   "description": "CPU, memory and disk usage for a Dashboard workspace. You pick which of the three in its settings.",
   "author": "Cockpit"
 }

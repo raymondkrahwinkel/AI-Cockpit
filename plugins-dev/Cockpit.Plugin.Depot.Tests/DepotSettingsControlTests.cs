@@ -19,6 +19,19 @@ namespace Cockpit.Plugin.Depot.Tests;
 [Collection("avalonia")]
 public class DepotSettingsControlTests
 {
+    // What the host does on a Save click (AC-1003): stage, then run the write the view handed back. False means
+    // the view refused and nothing was written.
+    private static bool _Save(IPluginSettingsView view)
+    {
+        if (!view.TryStage(out var commit, out _))
+        {
+            return false;
+        }
+
+        commit();
+        return true;
+    }
+
     [Fact]
     public void Save_NewConnection_NeverPushesItIntoTheSharedMcpRegistry()
     {
@@ -27,7 +40,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 0, name: "Work", url: "https://depot.example.com");
 
-        var saved = view.Save();
+        var saved = _Save(view);
 
         Assert.True(saved);
         _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
@@ -45,7 +58,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _RemoveRow(view, index: 0);
 
-        var saved = view.Save();
+        var saved = _Save(view);
 
         Assert.True(saved);
         _ = host.Received(1).RemoveMcpServer("Depot: Work");
@@ -66,7 +79,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 0, name: "Work (new)", url: "https://depot.example.com");
 
-        view.Save();
+        _Save(view);
 
         _ = host.Received(1).RemoveMcpServer("Depot: Work");
         _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
@@ -86,7 +99,7 @@ public class DepotSettingsControlTests
         _SetRowFields(view, index: 0, name: "Work", url: "https://first.example.com");
         _SetRowFields(view, index: 1, name: "Work", url: "https://second.example.com");
 
-        var saved = view.Save();
+        var saved = _Save(view);
 
         Assert.False(saved);
         Assert.Empty(settings.Connections);
@@ -106,7 +119,7 @@ public class DepotSettingsControlTests
         _SetRowFields(view, index: 0, name: "Work", url: "https://first.example.com");
         _SetRowFields(view, index: 1, name: "work", url: "https://second.example.com");
 
-        var saved = view.Save();
+        var saved = _Save(view);
 
         Assert.False(saved);
         Assert.Empty(settings.Connections);
@@ -125,7 +138,7 @@ public class DepotSettingsControlTests
         _SetRowFields(view, index: 0, name: "Work", url: "https://depot.example.com");
         _SetRowFields(view, index: 1, name: "Work (personal)", url: "https://depot.example.com");
 
-        var saved = view.Save();
+        var saved = _Save(view);
 
         Assert.False(saved);
         Assert.Empty(settings.Connections);
@@ -143,7 +156,7 @@ public class DepotSettingsControlTests
         _SetRowFields(view, index: 0, name: "Work", url: "https://depot.example.com/mcp");
         _SetRowFields(view, index: 1, name: "Work (personal)", url: "https://depot.example.com/");
 
-        var saved = view.Save();
+        var saved = _Save(view);
 
         Assert.False(saved);
         Assert.Empty(settings.Connections);
@@ -179,7 +192,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 0, name: "Acme", url: "https://depot.example.com");
 
-        view.Save();
+        _Save(view);
 
         host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration =>
             registration.Scheme == "depot" && registration.Title.Contains("Acme")));
@@ -197,7 +210,7 @@ public class DepotSettingsControlTests
         _AddRow(view);
         _SetRowFields(view, index: 1, name: "Wispslate", url: "https://wispslate.example.com");
 
-        view.Save();
+        _Save(view);
 
         host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration => registration.Scheme == "depot.wispslate"));
     }
@@ -213,7 +226,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _RemoveRow(view, index: 0);
 
-        view.Save();
+        _Save(view);
 
         host.Received(1).RemoveProjectMemorySource("depot");
         host.DidNotReceive().AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>());
@@ -232,7 +245,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
 
-        view.Save();
+        _Save(view);
 
         host.Received(1).RemoveProjectMemorySource("depot");
         host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration =>
@@ -251,7 +264,7 @@ public class DepotSettingsControlTests
         };
         var view = new DepotSettingsControl(host, settings);
 
-        view.Save();
+        _Save(view);
 
         host.DidNotReceive().AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>());
         host.DidNotReceive().RemoveProjectMemorySource(Arg.Any<string>());
@@ -267,7 +280,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 0, name: "Acme", url: "https://depot.example.com");
 
-        view.Save();
+        _Save(view);
 
         host.Received(1).AddSharedProjectSource(Arg.Is<ISharedProjectSource>(source =>
             source.Key == "depot" && source.SourceName.Contains("Acme")));
@@ -285,7 +298,7 @@ public class DepotSettingsControlTests
         _AddRow(view);
         _SetRowFields(view, index: 1, name: "Wispslate", url: "https://wispslate.example.com");
 
-        view.Save();
+        _Save(view);
 
         host.Received(1).AddSharedProjectSource(Arg.Is<ISharedProjectSource>(source => source.Key == "depot.wispslate"));
     }
@@ -301,7 +314,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _RemoveRow(view, index: 0);
 
-        view.Save();
+        _Save(view);
 
         host.Received(1).RemoveSharedProjectSource("depot");
         host.DidNotReceive().AddSharedProjectSource(Arg.Any<ISharedProjectSource>());
@@ -321,7 +334,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
 
-        view.Save();
+        _Save(view);
 
         host.Received(1).RemoveSharedProjectSource("depot");
         host.Received(1).AddSharedProjectSource(Arg.Is<ISharedProjectSource>(source =>
@@ -338,7 +351,7 @@ public class DepotSettingsControlTests
         };
         var view = new DepotSettingsControl(host, settings);
 
-        view.Save();
+        _Save(view);
 
         host.DidNotReceive().AddSharedProjectSource(Arg.Any<ISharedProjectSource>());
         host.DidNotReceive().RemoveSharedProjectSource(Arg.Any<string>());
@@ -371,7 +384,7 @@ public class DepotSettingsControlTests
 
         var view = new DepotSettingsControl(host, settings);
 
-        view.Save();
+        _Save(view);
 
         // And Save — which runs exactly this shape internally — must not treat the connection as changed.
         host.DidNotReceive().AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>());
@@ -395,7 +408,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _RemoveRow(view, index: 0);
 
-        view.Save();
+        _Save(view);
 
         host.Received(1).RemoveProjectMemorySource("depot");
         host.Received(1).RemoveProjectMemorySource("depot.wispslate");
@@ -436,7 +449,7 @@ public class DepotSettingsControlTests
         _SetRowFields(view, index: 1, name: "Gamma", url: "https://beta.example.com");
         _SetRowFields(view, index: 2, name: "Beta", url: "https://gamma.example.com");
 
-        view.Save();
+        _Save(view);
 
         Assert.Equal(3, registry.Sources.Count);
         Assert.True(registry.Sources.TryGetValue("depot.beta", out var beta) && beta.Title.Contains("Beta"));
@@ -469,7 +482,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 0, name: "Acme", url: "https://depot.example.com");
 
-        view.Save();
+        _Save(view);
 
         Assert.True(registry.Sources.TryGetValue("depot", out var registration));
         Assert.Equal("depot", registration!.FamilyKey);
@@ -492,7 +505,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 0, name: "Acme (renamed)", url: "https://depot.example.com");
 
-        view.Save();
+        _Save(view);
 
         Assert.True(registry.Sources.TryGetValue("depot", out var registration));
         Assert.Equal("depot", registration!.FamilyKey);
@@ -524,7 +537,7 @@ public class DepotSettingsControlTests
         _SetRowFields(view, index: 1, name: "Gamma", url: "https://beta.example.com");
         _SetRowFields(view, index: 2, name: "Beta", url: "https://gamma.example.com");
 
-        view.Save();
+        _Save(view);
 
         Assert.True(registry.Sources.TryGetValue("depot.beta", out var beta));
         Assert.Equal("Beta", beta!.InstanceTitle);
@@ -556,7 +569,7 @@ public class DepotSettingsControlTests
         var view = new DepotSettingsControl(host, settings);
         _SetRowFields(view, index: 1, name: "★★★", url: "https://wispslate.example.com");
 
-        view.Save();
+        _Save(view);
 
         Assert.True(registry.Sources.TryGetValue("depot.conn-2", out var registration));
         Assert.Equal("depot", registration!.FamilyKey);
@@ -585,7 +598,7 @@ public class DepotSettingsControlTests
         _SetRowFields(view, index: 1, name: "Work", url: "https://work-a.example.com");
         _SetRowFields(view, index: 2, name: "work!", url: "https://work-b.example.com");
 
-        view.Save();
+        _Save(view);
 
         Assert.Equal(3, registry.Sources.Count);
         Assert.True(registry.Sources.TryGetValue("depot.work", out var first));
@@ -602,7 +615,7 @@ public class DepotSettingsControlTests
         var settings = new DepotSettings(new FakePluginStorage());
         var view = new DepotSettingsControl(host, settings);
 
-        var saved = view.Save();
+        var saved = _Save(view);
 
         Assert.True(saved);
         Assert.Empty(settings.Connections);

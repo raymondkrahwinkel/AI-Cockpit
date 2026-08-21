@@ -100,14 +100,37 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         }
     }
 
-    public bool Save() => _SaveDetailed().Success;
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        if (!_TryValidate(out var candidates, out error))
+        {
+            commit = null;
+            return false;
+        }
 
-    // The real implementation behind `Save`, returning the duplicate name a collision was refused on
-    // (if any) so `DepotConnectionRowControl.SignInAsync` can say what went wrong instead of just that
-    // something did.
+        commit = () => _Write(candidates);
+        return true;
+    }
+
+    // Validate-and-write in one call, kept for `DepotConnectionRowControl.SignInAsync`: a row's own Sign-in
+    // persists the whole list on the spot (AC-499) rather than waiting for the footer, and reports the refusal
+    // itself. AC-1004 decides whether that path should go through the host too.
     private DepotSaveResult _SaveDetailed()
     {
-        var candidates = _rows
+        if (!_TryValidate(out var candidates, out var reason))
+        {
+            return (false, reason);
+        }
+
+        _Write(candidates);
+        return (true, null);
+    }
+
+    // Refuses, with the reason, or hands back the connections to write. Reads the rows and nothing else.
+    private bool _TryValidate(out List<DepotConnectionRegistration> candidates, out string? error)
+    {
+        error = null;
+        candidates = _rows
             .Where(row => !row.IsBlank)
             .Select(row => row.ToRegistration())
             .Where(registration => !string.IsNullOrWhiteSpace(registration.Name) && !string.IsNullOrWhiteSpace(registration.Url))
@@ -124,7 +147,8 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
                 .GroupBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault(group => group.Count() > 1) is { } duplicateName)
         {
-            return (false, $"\"{duplicateName.Key}\" is used by another row above. Rename one of them and try again.");
+            error = $"\"{duplicateName.Key}\" is used by another row above. Rename one of them and try again.";
+            return false;
         }
 
         // AC-248: two rows pointed at the same (already-normalized) Url would register the same shared-project
@@ -134,9 +158,17 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
                 .GroupBy(candidate => candidate.Url, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault(group => group.Count() > 1) is { } duplicateUrl)
         {
-            return (false, $"This Depot instance is already connected as \"{duplicateUrl.First().Name}\". Remove one of the rows instead of adding a second connection to the same instance.");
+            error = $"This Depot instance is already connected as \"{duplicateUrl.First().Name}\". Remove one of the rows instead of adding a second connection to the same instance.";
+            return false;
         }
 
+        return true;
+    }
+
+    // Everything that persists, run by the host once the operator confirms (AC-1003) — or straight away by
+    // `_SaveDetailed` for a Sign-in click.
+    private void _Write(List<DepotConnectionRegistration> candidates)
+    {
         var keptNames = candidates.Select(registration => registration.McpServerName).ToHashSet(StringComparer.Ordinal);
 
         // A connection removed, or renamed (which changes McpServerName), leaves its old MCP-registry entry behind
@@ -165,7 +197,7 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         // readonly opening snapshot broke a second save on the same open view.
         _originalConnections = candidates;
 
-        // Fire-and-forget keeps Save() synchronous (the IPluginSettingsView contract); RemoveMcpServer's own
+        // Fire-and-forget keeps the write synchronous (the IPluginSettingsView contract); RemoveMcpServer's own
         // load-modify-save round trip against the shared store is the only I/O left here now that Save no longer
         // adds anything to that store.
         //
@@ -175,8 +207,6 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         // again, this becomes a real lost update; upgrade = one sequential await-chain per call, per the
         // AddMcpServer/RemoveMcpServer race BuildTraps.md documents for AC-243, not a lock.
         _ = _ReclaimOrphanedMcpRegistryEntriesAsync(orphanedNames);
-
-        return (true, null);
     }
 
     // The live-refresh half of AC-501: a connection's memory source used to be registered once at Initialize and
