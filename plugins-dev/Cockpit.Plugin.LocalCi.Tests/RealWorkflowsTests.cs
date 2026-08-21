@@ -16,13 +16,16 @@ public class RealWorkflowsTests
         Assert.All(Workflows, workflow => Assert.Null(workflow.Error));
     }
 
+    // The sequence pins the set, the order and the count in one assertion. A separate count assertion said the
+    // same thing twice and had to be edited twice, which is how AC-998's new job left this red on main.
     [Fact]
-    public void CiHasExactlyFiveLocallyRunnableJobs()
+    public void CiLocallyRunnableJobsAreExactlyTheOnesListed()
     {
         var verdicts = _VerdictsFor("ci.yml");
 
-        Assert.Equal(5, verdicts.Count(verdict => verdict.CanRunLocally));
-        Assert.Equal(["changes", "build", "plugins", "plugin-versions", "xmldoc-scope"], verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));
+        Assert.Equal(
+            ["changes", "build", "plugins", "plugin-versions", "xmldoc-scope", "descendant-selector-scope"],
+            verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));
     }
 
     [Theory]
