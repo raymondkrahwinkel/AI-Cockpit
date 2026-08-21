@@ -75,6 +75,23 @@ public interface IPluginSessionDriver : IAsyncDisposable
     Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, CancellationToken cancellationToken) =>
         StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken);
 
+    /// <summary>
+    /// Starts the session with, additionally, the tools the host mounted and gates for it (AC-964) — the surface a
+    /// driver that runs the model's tool loop itself overrides, so a chat provider gains tool calling without ever
+    /// owning an MCP client or a permission decision.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="toolset"/> is non-null only when this provider's registration declares a
+    /// <see cref="PluginSessionCapabilities.HostToolLoop"/> other than <see cref="PluginHostToolLoop.None"/>, and it
+    /// replaces <paramref name="mcpServers"/> rather than adding to it: the host already connected those endpoints
+    /// on this session's behalf. Every call goes back through the host, which decides it against the operator's
+    /// approval and this session's permission ceiling and writes the transcript's tool rows — so a driver that
+    /// forgets any of that cannot widen what the session may do. The default drops it and calls the overload above,
+    /// so an already-compiled plugin loads and behaves exactly as before.
+    /// </remarks>
+    Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, IPluginToolset? toolset, CancellationToken cancellationToken) =>
+        StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, cancellationToken);
+
     /// <summary>Sends a user message; the session stays open for further turns afterwards.</summary>
     Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default);
 

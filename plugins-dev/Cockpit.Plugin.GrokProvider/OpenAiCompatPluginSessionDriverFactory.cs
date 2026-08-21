@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.OpenAiCompat;
 
 namespace Cockpit.Plugin.GrokProvider;
 

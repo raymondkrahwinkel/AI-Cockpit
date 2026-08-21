@@ -155,15 +155,20 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private const string SearchToolName = "search_tools";
     private const string CallToolName = "call_tool";
 
-    // The tool-reach line for what a driver reported it can reach, or null when it reported nothing (the empty-state
-    // card already says "no tools connected", and a session whose route has no tool loop must not claim otherwise).
+    // What the hover says when a session reports no tools at all (AC-964): its servers may well have connected,
+    // and none of their tools can be reached from here — which is what a provider with no tool loop looks like.
+    // Deliberately about reach rather than cause: a loop that connected and found nothing looks the same here.
+    public const string NoToolReach = "None of these servers' tools can be called from this session.";
+
+    // The tool-reach line for what a driver reported it can reach. Only ever shown beside a non-empty server list
+    // (see McpServersTooltip), so it never reads as a claim about a session that mounted nothing.
     public static string? McpToolReachFor(IReadOnlyList<string> toolNames)
     {
         var searchable = toolNames.Contains(SearchToolName) && toolNames.Contains(CallToolName);
         var count = searchable ? toolNames.Count - 2 : toolNames.Count;
         return count switch
         {
-            <= 0 => null,
+            <= 0 => NoToolReach,
             _ when searchable => $"{count} {_Tools(count)} — searchable with `{SearchToolName}`, not preloaded.",
             _ => $"{count} {_Tools(count)} — preloaded into every request.",
         };

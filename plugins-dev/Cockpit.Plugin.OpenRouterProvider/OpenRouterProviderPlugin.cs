@@ -5,7 +5,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Plugin.OpenRouterProvider;
 
 // AC-806: registers "OpenRouter" as a selectable session provider on the same OpenAiCompat driver the
-// Gemini/GitHub Models plugins use — chat-only, and declares no usage signals since OpenRouter's
+// Gemini/GitHub Models plugins use — with the host's tool loop (AC-964), and declares no usage signals since OpenRouter's
 // chat-completions response carries no rolling allowance/context figure to read.
 public sealed class OpenRouterProviderPlugin : ICockpitPlugin
 {
@@ -16,7 +16,7 @@ public sealed class OpenRouterProviderPlugin : ICockpitPlugin
         Id: "openrouter-provider",
         DisplayName: "OpenRouter",
         Author: "Cockpit",
-        Description: "Experimental: adds OpenRouter as a selectable session provider, over its OpenAI-compatible chat-completions endpoint via Microsoft.Extensions.AI. Chat-only — no tools, file access or permission prompts. Configure an OpenRouter API key and vendor/model id (e.g. anthropic/claude-sonnet-4.5) per profile in Manage profiles.");
+        Description: "Experimental: adds OpenRouter as a selectable session provider, over its OpenAI-compatible chat-completions endpoint via Microsoft.Extensions.AI. Runs the session's MCP tools through the cockpit, which gates every call. Configure an OpenRouter API key and vendor/model id (e.g. anthropic/claude-sonnet-4.5) per profile in Manage profiles.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -30,7 +30,13 @@ public sealed class OpenRouterProviderPlugin : ICockpitPlugin
             ProviderId: "openrouter-provider.openrouter",
             DisplayName: "OpenRouter",
             CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
+            {
+                // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the
+                // host's may ride along without ever giving the model two ways to find the same tool. The driver
+                // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
+                HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
+            },
             CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenRouterDefaultBaseUrl),
             DefaultBaseUrl: OpenRouterDefaultBaseUrl));
     }

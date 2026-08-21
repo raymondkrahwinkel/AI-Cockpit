@@ -83,6 +83,14 @@ for name in Alpha Beta Gamma Delta Epsilon; do
 done
 mkdir -p plugins-dev/Cockpit.Plugin.Epsilon.Tests
 printf 'int t = 1;\n' >plugins-dev/Cockpit.Plugin.Epsilon.Tests/Tests.cs
+# Eta and Theta link the same shared source file; only Eta's project names it. Theta is the control: shared
+# source must not make a bump due from a plugin that does not compile it in.
+mkdir -p plugins-dev/_shared
+printf 'int shared = 1;\n' >plugins-dev/_shared/Loop.cs
+manifest plugins-dev/Cockpit.Plugin.Eta 1.0.0
+printf '<Project><Compile Include="..\\_shared\\Loop.cs" /></Project>\n' >plugins-dev/Cockpit.Plugin.Eta/Eta.csproj
+manifest plugins-dev/Cockpit.Plugin.Theta 1.0.0
+printf '<Project></Project>\n' >plugins-dev/Cockpit.Plugin.Theta/Theta.csproj
 git add -A
 git commit --quiet -m base
 base="$(git rev-parse HEAD)"
@@ -97,6 +105,7 @@ manifest plugins-dev/Cockpit.Plugin.Delta 0.9.0                              # n
 printf 'int t = 2;\n' >plugins-dev/Cockpit.Plugin.Epsilon.Tests/Tests.cs     # test project only
 manifest plugins-dev/Cockpit.Plugin.Zeta 0.1.0                               # brand new plugin
 printf 'int v = 1;\n' >plugins-dev/Cockpit.Plugin.Zeta/Plugin.cs
+printf 'int shared = 2;\n' >plugins-dev/_shared/Loop.cs                     # shared source only
 git add -A
 git commit --quiet -m head
 
@@ -114,10 +123,13 @@ assert_absent "a proper bump is not reported" "Cockpit.Plugin.Beta" "$output"
 assert_absent "a README-only change needs no release" "Cockpit.Plugin.Gamma" "$output"
 assert_absent "a test project ships nothing, so it needs no release" "Cockpit.Plugin.Epsilon" "$output"
 assert_absent "a first release has nothing to bump past" "Cockpit.Plugin.Zeta" "$output"
+assert_contains "shared source a plugin compiles in makes a bump due" "Cockpit.Plugin.Eta" "$output"
+assert_absent "but not for a plugin that does not link it" "Cockpit.Plugin.Theta" "$output"
 
 # --- and the pass path, on the same content: fix both offenders --------------------------------------
 manifest plugins-dev/Cockpit.Plugin.Alpha 1.0.1
 manifest plugins-dev/Cockpit.Plugin.Delta 1.0.1
+manifest plugins-dev/Cockpit.Plugin.Eta 1.0.1
 git add -A
 git commit --quiet -m fixed
 

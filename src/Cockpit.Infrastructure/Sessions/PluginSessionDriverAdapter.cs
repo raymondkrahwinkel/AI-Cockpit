@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
@@ -18,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // rest of the app unchanged. The Claude-CLI-only live-control members (permission mode / model / thinking-budget
 // switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 // here, gated off in the UI by `Capabilities` reporting them unsupported.
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null, IMcpToolProvider? mcpToolProvider = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -52,8 +53,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // provider whose confinement rests on its permission system (ConfinesViaPermissionsOnly), a bypass permission mode
     // disables that guard, so the static registration capability would vouch a confinement the session does not deliver.
     // The host reads this instance capability after start, so the value reflects the session's resolved permission mode.
+    // SupportsTools takes the running driver's answer as well as the registration's (AC-964): a provider whose tools
+    // arrive at start knows only then whether it has any. Either saying yes is enough, so no registration loses a vouch.
     public SessionCapabilities Capabilities => new(
-        SupportsTools: pluginCapabilities.SupportsTools,
+        SupportsTools: pluginCapabilities.SupportsTools || inner.Capabilities.SupportsTools,
         SupportsPermissions: pluginCapabilities.SupportsPermissions,
         SupportsLiveModelSwitch: pluginCapabilities.SupportsLiveModelSwitch,
         SupportsPlanMode: false,
@@ -138,19 +141,25 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // session), so the fallback belongs here rather than on the dialog-only TTY route.
         var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
 
-        var mcpServers = await _ResolveMcpServersAsync(selection, projectId, workingDirectory, cancellationToken).ConfigureAwait(false);
-
         // AC-165: what the plugins give this session, resolved from the pane it is starting in so a contribution
         // can depend on the project that pane belongs to. AC-408: kept on the field too, so the event loop below
         // knows which pane to report a later conversation-id change against.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var pane) ? pane : null;
         _paneId = paneId;
 
+        // AC-964: a provider that declared a host tool loop gets the tools already connected and gated instead of
+        // the endpoints to mount itself — the two are alternatives, so the server list stays empty here rather than
+        // handing the same servers over twice.
+        _hostToolset = await _ConnectHostToolsetAsync(selection, paneId, workingDirectory, projectId, launchOptions, cancellationToken).ConfigureAwait(false);
+        var mcpServers = _hostToolset is null
+            ? await _ResolveMcpServersAsync(selection, projectId, workingDirectory, cancellationToken).ConfigureAwait(false)
+            : [];
+
         // AC-927: what this session actually mounted, so the header names those servers rather than the checklist
         // it was launched from — which never holds the always-mounted and auto-mounted ones it also just got.
         if (paneId is { Length: > 0 })
         {
-            mcpMounts?.Report(paneId, [.. mcpServers.Select(server => server.Name)]);
+            mcpMounts?.Report(paneId, _hostToolset is { } toolset ? toolset.ConnectedServerNames : [.. mcpServers.Select(server => server.Name)]);
         }
 
         var contributed = sessionResources is null
@@ -173,8 +182,50 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         _permissionModeConfines = _PermissionModeConfines(options);
 
         var environment = _SpawnEnvironment(profile, launchOptions, contributed);
-        await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, cancellationToken).ConfigureAwait(false);
+        await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
     }
+
+    // The host-run tool loop for a provider that asked for one (AC-964), or null for every other provider — which
+    // is every already-published plugin, since the capability defaults to None. Same ConnectAsync call as the
+    // built-in local-model driver, so the per-session token (AC-89), worktree confinement (AC-174) and project
+    // scoping (AC-218) hold identically on this route.
+    private async Task<HostPluginToolset?> _ConnectHostToolsetAsync(
+        IReadOnlySet<string>? selection,
+        string? paneId,
+        string? workingDirectory,
+        string? projectId,
+        IReadOnlyDictionary<string, string>? launchOptions,
+        CancellationToken cancellationToken)
+    {
+        if (pluginCapabilities.HostToolLoop == PluginHostToolLoop.None || mcpToolProvider is null)
+        {
+            return null;
+        }
+
+        // Confinement (AC-174) needs both the host's flag and a real directory to confine to; the capability the
+        // isolation gate reads is vouched from that same pair, so a flag without a directory never confines.
+        var confineRoot = launchOptions is not null
+            && launchOptions.TryGetValue(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory, out var confineFlag)
+            && string.Equals(confineFlag, "true", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(workingDirectory)
+                ? workingDirectory
+                : null;
+
+        return await HostPluginToolset.ConnectAsync(
+            mcpToolProvider,
+            pluginCapabilities.HostToolLoop,
+            selection,
+            paneId,
+            confineRoot,
+            projectId,
+            workingDirectory,
+            () => inner.SessionId,
+            logger,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    // Non-null once StartAsync mounted one for this session.
+    private HostPluginToolset? _hostToolset;
 
     // The environment the plugin driver receives: this run's MCP auth key (AC-40) so a cockpit-hosted server's
     // config can reference it instead of embedding a literal, plus the profile's own variables (AC-22) scrubbed
@@ -493,21 +544,44 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     public Task CompactContextAsync(CancellationToken cancellationToken = default) =>
         inner.CompactContextAsync(cancellationToken);
 
+    // A prompt the host's own tool loop raised is answered here; anything else is the plugin's own (AC-964).
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
-        inner.RespondToPermissionAsync(toolUseId, allow, cancellationToken);
+        _hostToolset?.Gate.Respond(toolUseId, allow) == true
+            ? Task.CompletedTask
+            : inner.RespondToPermissionAsync(toolUseId, allow, cancellationToken);
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
-        inner.RespondToPermissionAsync(toolUseId, allow, answersJson, cancellationToken);
+        _hostToolset?.Gate.Respond(toolUseId, allow) == true
+            ? Task.CompletedTask
+            : inner.RespondToPermissionAsync(toolUseId, allow, answersJson, cancellationToken);
 
-    public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default) =>
-        inner.SetAutoApproveToolsAsync(enabled, cancellationToken);
+    // Both gates are told: the host's when it runs this session's tools, and the plugin's for its own, so a
+    // provider that has both never ends up with one of them still prompting.
+    public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        _hostToolset?.Gate.SetAutoApprove(enabled);
+        return inner.SetAutoApproveToolsAsync(enabled, cancellationToken);
+    }
+
+    // AC-79: a delegated session has no operator to prompt, so its ceiling has to reach the gate that decides.
+    // Without this the host-run loop would raise a prompt nobody answers — and the ceiling would bind nothing.
+    public Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default)
+    {
+        _hostToolset?.Gate.SetDelegatedGate(ceiling, allowedTools);
+        return Task.CompletedTask;
+    }
 
     // Always-allow is session-scoped on the narrow plugin surface (D4): forward the intent so a driver that can
     // persist it for the session (Codex's acceptForSession) does, and one that cannot falls back to a one-time
     // allow via the interface default. The Claude rule args (toolName/input/scope) have no equivalent here — a
     // cross-restart per-profile rule stays a Claude-CLI concern, which is why they are not passed on.
+    // The host's gate first, for the same reason as RespondToPermissionAsync: it raised the prompt, so only it
+    // can free the call waiting behind it. Passing this straight to the plugin would leave that call hanging on
+    // a decision the operator has already made.
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) =>
-        inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
+        _hostToolset?.Gate.AllowAlways(toolUseId, toolName) == true
+            ? Task.CompletedTask
+            : inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
 
     // No live control channel behind the narrow interface — these Claude-CLI-only operations are deliberate no-ops.
     // The host's native permission-mode / model dropdowns switch mid-session through these; wire them to the plugin's
@@ -529,7 +603,19 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
+    {
+        // Before the driver goes: the host's tool loop holds live MCP clients (and, for stdio servers, their
+        // processes), and any prompt still waiting has to be refused rather than left hanging.
+        if (_hostToolset is not null)
+        {
+            await _hostToolset.DisposeAsync().ConfigureAwait(false);
+        }
+
+        await _DisposeInnerAsync().ConfigureAwait(false);
+    }
+
+    private ValueTask _DisposeInnerAsync()
     {
         // The session is over, so its MCP identity goes with it rather than staying a valid bearer until the app
         // restarts. Scoped to the token this adapter minted: a restarting pane mints its replacement before the old
@@ -563,10 +649,55 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     private async IAsyncEnumerable<SessionEvent> _AdaptEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var pluginEvent in inner.Events.WithCancellation(cancellationToken).ConfigureAwait(false))
+        await foreach (var pluginEvent in _PluginEventsAsync(cancellationToken).ConfigureAwait(false))
         {
             _ReportConversationIfChanged();
             yield return _Adapt(pluginEvent);
+        }
+    }
+
+    // One stream out of the driver's own events and — for a provider with a host-run tool loop (AC-964) — the tool
+    // rows and permission prompts the host raises for it. The tool loop's stream ends with the driver's, since the
+    // session is over either way; both are the same plugin event types, so they map through one translation below.
+    private async IAsyncEnumerable<PluginSessionEvent> _PluginEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        // Read once, on the first move. SessionRuntime starts its pump only after awaiting StartAsync, so the
+        // toolset is already mounted by then; a caller that enumerated first would silently get the driver's
+        // events alone, which is why this reads it here rather than assuming it can never be null.
+        if (_hostToolset is not { } toolset)
+        {
+            await foreach (var pluginEvent in inner.Events.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                yield return pluginEvent;
+            }
+
+            yield break;
+        }
+
+        var merged = Channel.CreateUnbounded<PluginSessionEvent>(new UnboundedChannelOptions { SingleReader = true });
+        var pumps = Task.WhenAll(
+            _PumpAsync(inner.Events, merged.Writer, cancellationToken),
+            _PumpAsync(toolset.Events.Events, merged.Writer, cancellationToken));
+        _ = pumps.ContinueWith(_ => merged.Writer.TryComplete(), TaskScheduler.Default);
+
+        await foreach (var pluginEvent in merged.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            yield return pluginEvent;
+        }
+    }
+
+    private static async Task _PumpAsync(IAsyncEnumerable<PluginSessionEvent> source, ChannelWriter<PluginSessionEvent> destination, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var pluginEvent in source.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                destination.TryWrite(pluginEvent);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The session is going away; the reader is ending on the same token.
         }
     }
 

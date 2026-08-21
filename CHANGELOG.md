@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: sessions on the Gemini, OpenAI, Grok, OpenRouter and GitHub Models providers can now use their MCP
+  tools. Those providers ran chat-only until now: however many servers the session header showed as connected,
+  the model could not call a single tool. Every call is approved the same way a local-model session's is, shows
+  in the transcript as its own row, and honours a delegated run's permission ceiling. Above roughly thirty tools
+  the catalogue moves behind `search_tools`/`call_tool` instead of riding in every request, as it already does
+  for Ollama and LM Studio.
+
 - added: plugins can now contribute their own panel to the right-hand dock rail, alongside the Assistant. The
   GitHub Pull Requests plugin uses it first — your open PRs are now also reachable as a rail panel, next to the
   existing "Open PRs" button and its dialog.
@@ -216,6 +223,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   list instead of always inserting one fixed sample diagram.
 
 ### Changed
+
+- changed: a session whose provider has no tool loop at all now says so when you hover its MCP servers, rather
+  than listing servers none of whose tools it can reach.
+
 
 - changed: clicking the git badge in a session's header (the dot and branch name) now opens that session's Session
   review panel — its uncommitted changes as a file tree and a diff — instead of pasting a one-line status summary

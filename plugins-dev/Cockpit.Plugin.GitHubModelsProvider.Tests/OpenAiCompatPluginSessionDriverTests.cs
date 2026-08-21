@@ -1,14 +1,16 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.OpenAiCompat;
 using NSubstitute;
 
 namespace Cockpit.Plugin.GitHubModelsProvider.Tests;
 
 // `OpenAiCompatPluginSessionDriver` against a fake `IChatClient` (#63, mirroring
 // the Gemini/OpenAI provider plugin's #45 `OpenAiCompatPluginSessionDriverTests`) — same
-// history/streaming/error-handling shape, minus the tool-loop (this driver has no tool source of its own,
-// so `PluginSessionCapabilities.SupportsTools` is always false).
+// history/streaming/error-handling shape.
+// A session that gets no host toolset stays chat-only; the tool loop it runs when it does get one is covered
+// by OpenAiCompatPluginSessionDriverToolLoopTests in the Gemini provider's tests (AC-964, one shared driver).
 public class OpenAiCompatPluginSessionDriverTests
 {
     [Fact]

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.OpenAiCompat;
 using NSubstitute;
 
 namespace Cockpit.Plugin.OpenRouterProvider.Tests;

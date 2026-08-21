@@ -1,5 +1,4 @@
 using System.ClientModel;
-using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using System.Threading.Channels;
@@ -22,7 +21,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // tool-loop (#26): the model's tool calls are gated through the cockpit's PermissionRequested flow and
 // executed via MCP only on approval. The Claude-CLI-specific control operations (permission mode, thinking
 // budget) remain no-ops; `Capabilities` tells the UI which controls to show.
-internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalGate, ITransientService
+internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientService
 {
     private readonly IChatClientFactory _chatClientFactory;
     private readonly IMcpToolProvider _mcpToolProvider;
@@ -31,15 +30,6 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
 
     private readonly Channel<SessionEvent> _events = Channel.CreateUnbounded<SessionEvent>();
     private readonly List<ChatMessage> _history = [];
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingApprovals = new();
-    private readonly ConcurrentDictionary<string, byte> _alwaysAllowedTools = new();
-    private volatile bool _autoApproveTools;
-
-    // Non-interactive delegated gate (AC-79): when a ceiling is set, this session has no human to prompt, so a
-    // tool call is decided against the ceiling + allow-list rather than raising PermissionRequested. Null for an
-    // ordinary interactive session.
-    private volatile string? _delegatedGateCeiling;
-    private volatile IReadOnlySet<string>? _delegatedGateAllowList;
 
     private IChatClient? _agent;
     private IMcpToolSession? _toolSession;
@@ -61,12 +51,25 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     // pool thread, so a volatile flag rather than a local.
     private volatile bool _turnHadToolActivity;
 
+    // The shared approval gate (AC-964): the same decision path the plugin-provider tool loop runs, so the one
+    // place a mistake would be a permission hole exists once. A tool call means this turn produced something
+    // visible even if it ends with no assistant text, so the no-response vangnet must not fire for it (AC-132).
+    private readonly SessionToolApprovalGate _gate;
+
     public OpenAiCompatSessionDriver(IChatClientFactory chatClientFactory, IMcpToolProvider mcpToolProvider, ILogger<OpenAiCompatSessionDriver> logger, SessionMcpMounts? mcpMounts = null)
     {
         _chatClientFactory = chatClientFactory;
         _mcpToolProvider = mcpToolProvider;
         _logger = logger;
         _mcpMounts = mcpMounts;
+        _gate = new SessionToolApprovalGate(
+            (toolUseId, toolName, inputJson) =>
+            {
+                _turnHadToolActivity = true;
+                _events.Writer.TryWrite(new ToolUseRequested { SessionId = _sessionId, ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson });
+            },
+            (toolUseId, toolName, inputJson) => _events.Writer.TryWrite(new PermissionRequested { SessionId = _sessionId, ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson }),
+            (toolUseId, content, isError) => _events.Writer.TryWrite(new ToolResult { SessionId = _sessionId, ToolUseId = toolUseId, Content = content, IsError = isError }));
     }
 
     // Tool support is set once the MCP servers connect (below); permission mode / model switch / thinking
@@ -170,7 +173,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
                 string.Join(", ", _toolSession.ServersNeedingSignIn));
         }
 
-        _gatedTools = [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, this) })];
+        _gate.ToolClasses = _toolSession.ToolClasses;
+        _gatedTools = [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, _gate) })];
         _turnTools = _BuildTurnTools();
         // SupportsTools flips true once servers connected. ConfinesFileAccessToWorkingDirectory is vouched only when we
         // actually confined this session (confineRoot set → the tool provider re-rooted file access to the worktree and
@@ -465,51 +469,6 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
             : null;
     }
 
-    async Task<ToolApprovalResult> IToolApprovalGate.RequestApprovalAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken)
-    {
-        // A tool call means this turn produced something visible even if it ends with no assistant text, so the
-        // no-response vangnet in _RunTurnAsync must not fire for it (AC-132).
-        _turnHadToolActivity = true;
-
-        // Surface the call in the transcript, then either auto-allow (an always-allow rule this session), decide
-        // it non-interactively (a delegated session), or prompt and await the operator's decision.
-        _events.Writer.TryWrite(new ToolUseRequested { SessionId = _sessionId, ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson });
-
-        // Auto-approve mode (the session's "allow all tools" toggle) or a per-tool always-allow rule runs the
-        // call without prompting — the tool row is still emitted above, so it stays visible either way.
-        if (_autoApproveTools || _alwaysAllowedTools.ContainsKey(toolName))
-        {
-            return ToolApprovalResult.Allow;
-        }
-
-        // A delegated session has no human to answer a prompt (AC-79): decide non-interactively against the
-        // profile's permission ceiling and tool allow-list instead of raising PermissionRequested. A denial
-        // carries its reason to the model (via GatedTool) and never blocks — no PermissionRequested is emitted.
-        if (_delegatedGateCeiling is { } ceiling)
-        {
-            var toolClass = _toolSession?.ToolClasses.GetValueOrDefault(toolName, ToolPermissionClass.Unknown) ?? ToolPermissionClass.Unknown;
-            var onAllowList = _delegatedGateAllowList?.Contains(toolName) == true;
-            var decision = DelegatedToolPermissionPolicy.Decide(ceiling, toolClass, toolName, onAllowList);
-            return decision.IsAllowed ? ToolApprovalResult.Allow : ToolApprovalResult.Deny(decision.DenyMessage);
-        }
-
-        var pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingApprovals[toolUseId] = pending;
-        _events.Writer.TryWrite(new PermissionRequested { SessionId = _sessionId, ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson });
-
-        using (cancellationToken.Register(() => pending.TrySetResult(false)))
-        {
-            var approved = await pending.Task.ConfigureAwait(false);
-            return approved ? ToolApprovalResult.Allow : ToolApprovalResult.Deny(null);
-        }
-    }
-
-    void IToolApprovalGate.ReportToolResult(string toolUseId, string content, bool isError)
-    {
-        _pendingApprovals.TryRemove(toolUseId, out _);
-        _events.Writer.TryWrite(new ToolResult { SessionId = _sessionId, ToolUseId = toolUseId, Content = content, IsError = isError });
-    }
-
     public Task InterruptAsync(CancellationToken cancellationToken = default)
     {
         _turnCancellation?.Cancel();
@@ -528,51 +487,25 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default)
     {
-        if (_pendingApprovals.TryRemove(toolUseId, out var decision))
-        {
-            decision.TrySetResult(allow);
-        }
-
+        _gate.Respond(toolUseId, allow);
         return Task.CompletedTask;
     }
 
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default)
     {
-        _alwaysAllowedTools.TryAdd(toolName, 0);
-        if (_pendingApprovals.TryRemove(toolUseId, out var decision))
-        {
-            decision.TrySetResult(true);
-        }
-
+        _gate.AllowAlways(toolUseId, toolName);
         return Task.CompletedTask;
     }
 
     public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default)
     {
-        _autoApproveTools = enabled;
-
-        // Flipping it on frees any prompt already waiting, so the operator does not have to answer a prompt
-        // they just chose to stop seeing.
-        if (enabled)
-        {
-            foreach (var pending in _pendingApprovals.Values)
-            {
-                pending.TrySetResult(true);
-            }
-        }
-
+        _gate.SetAutoApprove(enabled);
         return Task.CompletedTask;
     }
 
     public Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default)
     {
-        // Set the allow-list first, then the ceiling — the ceiling being non-null is what arms the gate in
-        // RequestApprovalAsync, so the list it reads is already in place by the time a decision consults it.
-        // Coerce a null ceiling to empty (not null): a caller that asked for the gate must always get it armed —
-        // an empty ceiling grades as the most restrictive (read-only only), never "unarmed" (which would fall
-        // through to a prompt that hangs a headless session).
-        _delegatedGateAllowList = new HashSet<string>(allowedTools, StringComparer.Ordinal);
-        _delegatedGateCeiling = ceiling ?? string.Empty;
+        _gate.SetDelegatedGate(ceiling, allowedTools);
         return Task.CompletedTask;
     }
 
@@ -586,10 +519,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         _events.Writer.TryComplete();
         _turnCancellation?.Cancel();
         _turnCancellation?.Dispose();
-        foreach (var pending in _pendingApprovals.Values)
-        {
-            pending.TrySetResult(false);
-        }
+        _gate.CancelPending();
 
         if (_toolSession is not null)
         {
