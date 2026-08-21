@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Avalonia.Threading;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Core.Consent;
@@ -73,32 +74,41 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
     }
 
     [McpServerTool(Name = "read_whiteboard")]
-    [Description("Returns a screenshot of a whiteboard surface — you name it by the id or name from list_whiteboards. This shares an IMAGE of the WHOLE board, scaled to fit — a render of what is drawn and placed on it, not a crop of whatever the operator happens to have in view, and not its shapes or strokes as data. The first time you read a surface the operator gets an Approve/Deny prompt naming which whiteboard and that a screenshot is being shared. Reading does not let you put anything on the board — place_on_whiteboard asks for that separately.")]
-    public async Task<string> ReadWhiteboard(
+    [Description("Returns a screenshot of a whiteboard surface — you name it by the id or name from list_whiteboards. This shares an IMAGE of the WHOLE board, scaled to fit — a render of what is drawn and placed on it, not a crop of whatever the operator happens to have in view, and not its shapes or strokes as data. It comes back as an image content block, not a base64 field in the JSON — your client should offer it to you as a picture. The first time you read a surface the operator gets an Approve/Deny prompt naming which whiteboard and that a screenshot is being shared. Reading does not let you put anything on the board — place_on_whiteboard asks for that separately.")]
+    public async Task<CallToolResult> ReadWhiteboard(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
         [Description("The whiteboard to read, by its id or name from list_whiteboards.")] string whiteboard)
     {
         if (registry.Resolve(whiteboard) is not { } surface)
         {
-            return _Serialize(new { ok = false, error = "No such whiteboard surface — call list_whiteboards for the open surfaces and their ids." });
+            return _TextResult(new { ok = false, error = "No such whiteboard surface — call list_whiteboards for the open surfaces and their ids." });
         }
 
         var caller = host.CurrentMcpCallerPaneId ?? session;
         if (await _EnsureCapabilityAsync(caller, surface, WhiteboardCapability.Read).ConfigureAwait(false) is { } error)
         {
-            return _Serialize(new { ok = false, error });
+            return _TextResult(new { ok = false, error });
         }
 
         var snapshotPng = registry.ReadCoupled(caller, surface.SurfaceId) ?? [];
         registry.MarkRead(caller, surface.SurfaceId);
-        return _Serialize(new
+        var meta = new { ok = true, id = surface.SurfaceId, name = surface.Name, mimeType = "image/png" };
+
+        // AC-1007: an empty snapshot (no board yet rendered) has nothing to hand over as an image content block —
+        // the metadata alone still tells the caller the read succeeded.
+        if (snapshotPng.Length == 0)
         {
-            ok = true,
-            id = surface.SurfaceId,
-            name = surface.Name,
-            mimeType = "image/png",
-            imageBase64 = Convert.ToBase64String(snapshotPng),
-        });
+            return _TextResult(meta);
+        }
+
+        return new CallToolResult
+        {
+            Content =
+            [
+                new TextContentBlock { Text = _Serialize(meta) },
+                ImageContentBlock.FromBytes(snapshotPng, "image/png"),
+            ],
+        };
     }
 
     [McpServerTool(Name = "place_on_whiteboard")]
@@ -254,4 +264,9 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
                 : character).ToArray());
 
     private static string _Serialize(object value) => JsonSerializer.Serialize(value, SerializerOptions);
+
+    // AC-1007: read_whiteboard's non-image replies (errors, the empty-snapshot case) still go back as plain text —
+    // only a real screenshot earns its own image content block.
+    private static CallToolResult _TextResult(object value) =>
+        new() { Content = [new TextContentBlock { Text = _Serialize(value) }] };
 }

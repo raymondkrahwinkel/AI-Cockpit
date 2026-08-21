@@ -21,7 +21,9 @@ namespace Cockpit.Plugin.Diagram.Whiteboard;
 // visible ask (Couple never implies Grant, AC-810) and only ever offers read; write (AC-854) is asked by the agent.
 internal sealed class WhiteboardWorkspaceBody : UserControl
 {
-    private static readonly PixelSize SnapshotSize = new(800, 600);
+    // AC-1007: 800x600 left a pasted screenshot's button captions unreadable after the scale-down. 1600x1200 is a
+    // fixed upper bound, not the board's full 2400x1800 — see the AC-1007 PR/ticket for the sizing rationale.
+    private static readonly PixelSize SnapshotSize = new(1600, 1200);
 
     private readonly ICockpitHost _host;
     private readonly IWhiteboardAccessRegistry? _registry;

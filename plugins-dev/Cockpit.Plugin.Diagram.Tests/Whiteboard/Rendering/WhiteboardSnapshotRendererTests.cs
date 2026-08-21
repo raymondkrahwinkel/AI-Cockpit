@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Cockpit.Plugin.Diagram.Whiteboard;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
@@ -196,6 +197,27 @@ public class WhiteboardSnapshotRendererTests
         var pixel = _PixelAt(_Render(document, new PixelSize(50, 50)), 25, 25);
 
         Assert.True(_CloseTo(pixel, WhiteboardObjectPainter.StickyNoteColor), $"expected the sticky note scaled into view, got {pixel}");
+    }
+
+    // AC-1007 AC2: uses the real fit math (WhiteboardGeometry) rather than a raster pixel-sampling proxy — a
+    // pixel-sampling attempt aliased instead of blurring under this renderer's minification, so it couldn't stand
+    // in for "still legible". See the AC-1007 PR/ticket for the sizing rationale behind the constants below.
+    [Fact]
+    public void SnapshotSize_KeepsAFullBoardScreenshotsCaptionAboveTheLegibilityFloor_UnlikeTheOldSize()
+    {
+        const double CaptionHeight = 13; // Theme.axaml's own button/caption font size
+        const double LegibilityFloor = 7; // commonly cited minimum cap-height for anti-aliased UI text to stay readable
+
+        var board = WhiteboardGeometry.WorkspaceSize;
+        var document = new WhiteboardDocument();
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 0, Y = 0, Width = board.Width, Height = board.Height, ImageData = [], IsPastedScreenshot = true });
+        var content = WhiteboardGeometry.ContentBounds(document);
+
+        var oldZoom = WhiteboardGeometry.FitTransform(content, new Size(800, 600)).M11; // AC-1007: what read_whiteboard used to hand the agent
+        var newZoom = WhiteboardGeometry.FitTransform(content, new Size(1600, 1200)).M11; // WhiteboardWorkspaceBody.SnapshotSize since AC-1007
+
+        Assert.True(CaptionHeight * oldZoom < LegibilityFloor, $"expected the old size to scale a caption below {LegibilityFloor}px, got {CaptionHeight * oldZoom:0.0}px");
+        Assert.True(CaptionHeight * newZoom >= LegibilityFloor, $"expected the new size to keep a caption at or above {LegibilityFloor}px, got {CaptionHeight * newZoom:0.0}px");
     }
 
     private static byte[] _TinyPngBytes()
