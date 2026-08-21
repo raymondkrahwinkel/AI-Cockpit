@@ -410,6 +410,8 @@ internal sealed class McpToolProvider(
 
         public IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses => toolClasses;
 
+        public string? PaneToken => token;
+
         public async ValueTask DisposeAsync()
         {
             foreach (var client in clients)

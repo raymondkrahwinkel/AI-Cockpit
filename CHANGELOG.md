@@ -254,6 +254,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session on Gemini, Grok, OpenRouter or GitHub Models — the providers that run their tools through the
+  cockpit's own tool loop — started up but then failed every single tool call with an unauthorized error. Starting
+  such a session minted its access token twice, and the second mint silently invalidated the first, which the
+  running session kept presenting on every call. Consent was granted and shown as allowed, but the call behind it
+  never went through.
 - fixed: a distributed build (nightly or release, Linux and macOS alike) could not produce a crash/heap dump —
   the packer that builds the installable/updatable package silently dropped `createdump`, and the collection tool
   reported "Complete" on an empty result instead of failing. Dumps now actually work on a real install.

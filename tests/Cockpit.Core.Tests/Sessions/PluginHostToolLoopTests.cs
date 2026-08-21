@@ -227,6 +227,76 @@ public class PluginHostToolLoopTests
         Assert.Null(withoutLoop.Toolset);
     }
 
+    // AC-994, criterion 3: the token the toolset baked into its own HTTP clients at connect must still resolve to
+    // its pane once StartAsync returns. Proven red before the fix: PaneFor(the toolset's own token) came back null.
+    [Fact]
+    public async Task StartAsync_TheTokenTheToolsetMinted_StillResolvesToThePane_AfterStartAsyncReturns()
+    {
+        var keyring = new SessionMcpKeyring();
+        var toolProvider = _ToolProviderMintingFromTheKeyring(keyring, out var toolsetToken);
+        var inner = new StubPluginDriver();
+        var driver = new PluginSessionDriverAdapter(
+            inner,
+            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false) { HostToolLoop = PluginHostToolLoop.ToolsAndSearch },
+            new McpAuthKey(),
+            keyring: keyring,
+            mcpToolProvider: toolProvider);
+
+        await driver.StartAsync(launchOptions: new Dictionary<string, string> { [WellKnownPluginSessionOptions.PaneId] = "pane-42" });
+
+        // The token captured the instant the toolset connected — the one baked into its HTTP clients' headers —
+        // must still resolve to this pane once StartAsync (and whatever it does afterwards) has finished.
+        Assert.NotNull(toolsetToken());
+        Assert.Equal("pane-42", keyring.PaneFor(toolsetToken()!));
+
+        // Criterion 2: one pane, one live token — not a second mint that replaced the toolset's.
+        Assert.Equal(1, keyring.LiveTokenCount);
+        Assert.Equal(1, keyring.LivePaneCount);
+
+        // AC-4/AC-89: COCKPIT_MCP_KEY carries that exact same token, not a different (even if still-valid) one.
+        Assert.NotNull(inner.LastEnvironment);
+        Assert.Equal(toolsetToken(), inner.LastEnvironment![WellKnownSessionEnvironment.CockpitMcpKey]);
+
+        // Criterion 5: teardown revokes exactly that one token and leaves nothing behind.
+        await driver.DisposeAsync();
+        Assert.Equal(0, keyring.LiveTokenCount);
+    }
+
+    private static IMcpToolProvider _ToolProviderMintingFromTheKeyring(SessionMcpKeyring keyring, out Func<string?> mintedToken)
+    {
+        var toolSession = Substitute.For<IMcpToolSession>();
+        toolSession.Tools.Returns(Array.Empty<McpSessionTool>());
+        toolSession.ConnectedServerNames.Returns([]);
+        toolSession.ServersNeedingSignIn.Returns([]);
+        toolSession.ToolClasses.Returns(new Dictionary<string, ToolPermissionClass>());
+
+        string? captured = null;
+        mintedToken = () => captured;
+
+        var toolProvider = Substitute.For<IMcpToolProvider>();
+        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                // The same mint McpToolProvider.ConnectAsync itself does (AC-89): once per connect, for this pane —
+                // captured immediately, the way the real toolset bakes it into its HTTP clients' headers right here.
+                var paneId = callInfo.ArgAt<string?>(1);
+                var token = paneId is null ? null : keyring.TokenFor(paneId);
+                captured = token;
+                toolSession.PaneToken.Returns(token);
+                // The real McpToolSession revokes its own mint on dispose (AC-143) — mirrored here so the
+                // teardown criterion (5) is measured against the same behaviour a real connect gives.
+                toolSession.When(session => session.DisposeAsync()).Do(_ =>
+                {
+                    if (paneId is not null && token is not null)
+                    {
+                        keyring.Revoke(paneId, token);
+                    }
+                });
+                return Task.FromResult(toolSession);
+            });
+        return toolProvider;
+    }
+
     private static ISessionDriver _AdapterWithCatalog(StubPluginDriver inner, PluginHostToolLoop loop, IMcpServerCatalog catalog) =>
         new PluginSessionDriverAdapter(
             inner,
@@ -333,6 +403,8 @@ public class PluginHostToolLoopTests
 
         public IReadOnlyList<PluginMcpServer>? McpServers { get; private set; }
 
+        public IReadOnlyDictionary<string, string>? LastEnvironment { get; private set; }
+
         public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: false, SupportsPermissions: false);
 
         public string? SessionId { get; private set; }
@@ -349,6 +421,7 @@ public class PluginHostToolLoopTests
         {
             Toolset = toolset;
             McpServers = mcpServers;
+            LastEnvironment = environment;
             return StartAsync(model, cancellationToken);
         }
 
