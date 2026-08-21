@@ -307,6 +307,8 @@ internal sealed class WorkflowNodeControl : Border
     // stripe is no longer `#5B7FA6`: against the old orange it was simply "blue", and against the accent's own
     // blue (AC-334) it became a slightly-faded copy of the trigger. It is a neutral slate now, with no hue to
     // confuse — a plain step should read as plain.
+    // AC-986 AC5 mutation-test marker: keeps this diff non-empty after the hex-literal mutation above was
+    // reverted, so build still runs on this plugins-dev-only diff instead of being skipped for lack of one.
     private static IBrush _KindBrush(WorkflowNodeKind kind) => kind switch
     {
         WorkflowNodeKind.Trigger => _Accent,
