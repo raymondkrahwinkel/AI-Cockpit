@@ -1246,6 +1246,67 @@ public class CockpitViewModelTests
         Assert.Equal("YouTrack: Two connections are named 'work'", vm.PluginSettingsError);
     }
 
+    // The menu item and ShortcutAction.McpServers alike deep-link into Options on the mcp-servers category now
+    // (AC-1002) — there is no standalone McpServersDialog window reachable from the UI any more.
+    [Fact]
+    public async Task OpenMcpServers_DeepLinksIntoOptionsOnTheMcpServersCategory()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var vm = NewVm(dialogService: dialogService);
+
+        await vm.OpenMcpServersCommand.ExecuteAsync(null);
+
+        await dialogService.Received(1).ShowOptionsDialogAsync(vm, "mcp-servers");
+    }
+
+    // A server missing a name (or a command/URL for its transport) blocks the whole Apply, the same as a
+    // refusing plugin view (AC-1005's pattern, reused rather than duplicated per AC-1002).
+    [Fact]
+    public async Task ApplyingOptions_WithAnIncompleteMcpServer_BlocksApply()
+    {
+        var vm = NewVm();
+        var store = Substitute.For<Cockpit.Core.Abstractions.Mcp.IMcpServerStore>();
+        store.LoadAsync().Returns([]);
+        vm.McpServers = new McpServersViewModel(store, []);
+        await vm.McpServers.LoadAsync();
+        vm.McpServers.AddServerCommand.Execute(null);
+        vm.McpServers.SelectedServer!.Name = string.Empty;
+
+        vm.BeginOptionsEdit();
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
+
+        Assert.True(vm.OptionsApplyBlocked);
+        Assert.Equal("MCP Servers: Every server needs a name, plus a command (stdio) or a URL (http).", vm.PluginSettingsError);
+        await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<Cockpit.Core.Mcp.McpServerConfig>>());
+    }
+
+    // Sign-in is a handling, not a value (AC-999) — EditableMcpServerViewModel.SignInAsync saves through the
+    // store immediately, outside the Options transaction, so it must not wait for Apply and must survive Cancel.
+    [Fact]
+    public async Task McpServerSignIn_SavesImmediately_NotThroughTheOptionsTransaction()
+    {
+        var vm = NewVm();
+        var store = Substitute.For<Cockpit.Core.Abstractions.Mcp.IMcpServerStore>();
+        store.LoadAsync().Returns([]);
+        vm.McpServers = new McpServersViewModel(store, []);
+        await vm.McpServers.LoadAsync();
+        vm.McpServers.AddServerCommand.Execute(null);
+        vm.McpServers.SelectedServer!.Name = "depot";
+        vm.McpServers.SelectedServer!.Transport = Cockpit.Core.Mcp.McpTransport.Http;
+        vm.McpServers.SelectedServer!.Url = "https://depot.example.com/mcp";
+
+        vm.BeginOptionsEdit();
+
+        // No sign-in coordinator wired here — the point is only that the row's own save route (what a real
+        // sign-in calls before it authorizes) writes to the store without going through ApplyOptionsCommand.
+        var persisted = await vm.McpServers.PersistAsync();
+        await vm.CancelOptionsCommand.ExecuteAsync(null);
+
+        Assert.True(persisted);
+        await store.Received(1).SaveAsync(Arg.Is<IReadOnlyList<Cockpit.Core.Mcp.McpServerConfig>>(
+            servers => servers.Any(server => server.Name == "depot")));
+    }
+
     [Fact]
     public async Task OpenPluginSettings_ForAPluginThatRegisteredNone_DoesNothing()
     {

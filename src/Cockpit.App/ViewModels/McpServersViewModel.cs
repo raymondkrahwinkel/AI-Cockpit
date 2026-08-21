@@ -215,6 +215,20 @@ public partial class McpServersViewModel : ViewModelBase
         }
     }
 
+    // Validates and writes the whole edited list without closing anything — what the Options dialog's Apply and
+    // Close (AC-1002) calls instead of Save, the same split AC-1001 made for ManageProfilesDialogViewModel's own
+    // PersistAsync. False means nothing was written; StatusMessage says why, and CockpitViewModel.ApplyOptionsAsync
+    // folds that into the shared PluginSettingsError footer (AC-1005's pattern, reused rather than duplicated).
+    public async Task<bool> PersistAsync()
+    {
+        if (_store is null)
+        {
+            return true;
+        }
+
+        return await _SaveAllForSignInAsync() is not null;
+    }
+
     // Validates and persists the whole edited list without closing the dialog (AC-499) — the one save route, shared
     // by the Save button and a row's own sign-in (`EditableMcpServerViewModel.SignInAsync` saves through
     // this before it authorizes, so a token is never filed under a name the operator has not actually saved). Only
