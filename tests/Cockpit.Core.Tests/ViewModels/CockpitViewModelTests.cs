@@ -24,6 +24,7 @@ using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Voice;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
@@ -1196,63 +1197,76 @@ public class CockpitViewModelTests
     }
 
     // Settings are now reachable from several places (the manager's gear, the gear on a plugin's left-menu entry
-    // or dialog, and the plugin itself), and every one of them opens the same dialog through this one seam —
-    // titled after the plugin, whichever gear was pressed.
+    // or dialog, and the plugin itself) and every one of them routes through this one seam (AC-1005) — there is
+    // no standalone settings window any more, only a deep-link into Options on that plugin's own sidebar row.
     [Fact]
-    public async Task OpenPluginSettings_OpensThePluginsOwnViewTitledAfterIt()
+    public async Task OpenPluginSettings_DeepLinksIntoOptionsOnThePluginsRow()
     {
-        var dialogHost = Substitute.For<IPluginDialogHost>();
-        var vm = NewVm(pluginDialogHost: dialogHost);
-        var view = new TextBlock();
-        ((IPluginContributionSink)vm).AddPluginSettings("youtrack", "YouTrack", () => view);
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var vm = NewVm(dialogService: dialogService);
+        ((IPluginContributionSink)vm).AddPluginSettings("youtrack", "YouTrack", () => new TextBlock());
 
         await vm.OpenPluginSettingsAsync("youtrack");
 
-        await dialogHost.Received(1).ShowSettingsDialogAsync(
-            "YouTrack settings",
-            Arg.Any<Func<Control>>(),
-            Arg.Any<double>(),
-            Arg.Any<double>(),
-            Arg.Any<Action?>(),
-            // Keyed on the plugin, not merely keyed (AC-367): both gears route here, and since these windows stopped
-            // being modal two forms could otherwise stand open over one store with the last save winning silently.
-            "settings:youtrack");
+        await dialogService.Received(1).ShowOptionsDialogAsync(vm, "plugin:youtrack");
     }
 
-    // Saving from any gear must run the plugin's settings-saved handlers: a plugin that re-registers its MCP
-    // server on save cannot depend on which one the operator reached for.
+    // Applying Options must run a plugin's settings-saved handlers exactly as any other saved category would —
+    // a plugin that re-registers its MCP server on save cannot depend on which gear opened Options.
     [Fact]
-    public async Task SavingFromAnyGear_RunsThePluginsSettingsSavedHandlers()
+    public async Task ApplyingOptions_RunsThePluginsSettingsSavedHandlers()
     {
-        var dialogHost = Substitute.For<IPluginDialogHost>();
-        dialogHost
-            .ShowSettingsDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<Action?>(), Arg.Any<string?>())
-            .Returns(callInfo =>
-            {
-                callInfo.Arg<Action?>()?.Invoke();
-                return Task.CompletedTask;
-            });
-        var vm = NewVm(pluginDialogHost: dialogHost);
+        var vm = NewVm();
         var sink = (IPluginContributionSink)vm;
         var saves = 0;
-        sink.AddPluginSettings("youtrack", "YouTrack", () => new TextBlock());
+        sink.AddPluginSettings("youtrack", "YouTrack", () => new FakeSettingsView());
         sink.AddSettingsSavedHandler("youtrack", () => saves++);
 
-        await vm.OpenPluginSettingsAsync("youtrack");
+        // BeginOptionsEdit is what SessionDialogService.ShowOptionsDialogAsync calls before showing the window
+        // (builds PluginOptionsRows); driven directly here since the dialog service itself is faked out above.
+        vm.BeginOptionsEdit();
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
 
         Assert.Equal(1, saves);
+    }
+
+    // A plugin settings view that refuses to save (IPluginSettingsView.TryStage returning false) blocks the
+    // whole Apply, the same as a rejected profile (AC-1001 criterion 5) — it must not close over the error.
+    [Fact]
+    public async Task ApplyingOptions_WithARefusingPluginView_BlocksApply()
+    {
+        var vm = NewVm();
+        var sink = (IPluginContributionSink)vm;
+        sink.AddPluginSettings("youtrack", "YouTrack", () => new FakeSettingsView(accepts: false, error: "Two connections are named 'work'"));
+
+        vm.BeginOptionsEdit();
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
+
+        Assert.True(vm.OptionsApplyBlocked);
+        Assert.Equal("YouTrack: Two connections are named 'work'", vm.PluginSettingsError);
     }
 
     [Fact]
     public async Task OpenPluginSettings_ForAPluginThatRegisteredNone_DoesNothing()
     {
-        var dialogHost = Substitute.For<IPluginDialogHost>();
-        var vm = NewVm(pluginDialogHost: dialogHost);
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var vm = NewVm(dialogService: dialogService);
 
         await vm.OpenPluginSettingsAsync("youtrack");
 
         Assert.False(vm.HasPluginSettings("youtrack"));
-        await dialogHost.DidNotReceiveWithAnyArgs().ShowSettingsDialogAsync(default!, default!, default, default, default);
+        await dialogService.DidNotReceiveWithAnyArgs().ShowOptionsDialogAsync(default!, default);
+    }
+
+    // A minimal IPluginSettingsView for the Apply-flow tests above — a bare Control that just answers TryStage.
+    private sealed class FakeSettingsView(bool accepts = true, string? error = null) : TextBlock, IPluginSettingsView
+    {
+        public bool TryStage(out Action? commit, out string? error2)
+        {
+            commit = accepts ? () => { } : null;
+            error2 = accepts ? null : error;
+            return accepts;
+        }
     }
 
     private static async Task<CockpitViewModel> NewVmWithSessionsAsync(int count)

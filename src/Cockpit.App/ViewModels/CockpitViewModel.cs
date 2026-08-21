@@ -210,6 +210,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // dialog open and the error visible instead of closing over it (AC-1001 criterion 5).
     public bool OptionsApplyBlocked { get; private set; }
 
+    // One row per plugin with a registered settings view (AC-1005), rebuilt on every `BeginOptionsEdit` — the
+    // PLUGINS group in the Options sidebar renders straight from this instead of a per-plugin dialog.
+    public ObservableCollection<PluginOptionsRowViewModel> PluginOptionsRows { get; } = [];
+
+    // Set by `ApplyOptionsAsync` when a plugin's own `TryStage` refuses the save (AC-1005) — same role as
+    // `Profiles.StatusMessage`, just for a plugin row instead of the profile list.
+    public string? PluginSettingsError { get; private set; }
+
     // The sidebar's own display order (AC-115). Kept apart from `Sessions` on purpose: the session
     // grid binds straight to `Sessions` and keeps its own positional cell layout, so reordering the
     // strip must never touch `Sessions` — moving an item there rebuilds its pane (a fresh TTY with no
@@ -614,26 +622,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public bool HasPluginSettings(string pluginId) => PluginSettings.ContainsKey(pluginId);
 
     // The single way a plugin's settings dialog opens, wherever the gear that opened it sits (#: settings from
-    // anywhere). Every entry point routes here rather than opening the view itself, so a settings change saved
-    // from a plugin's own dialog runs the same settings-saved handlers as one saved from the manager — a plugin
-    // that re-registers its MCP server on save must not depend on which gear the operator happened to reach for.
+    // anywhere) — including the gear in the Plugin Store dialog (AC-1005). There is no standalone settings window
+    // for a plugin any more: this deep-links into Options on that plugin's own sidebar row instead, the same
+    // shared Save/Close transaction every other category uses, so a change saved through this gear runs the same
+    // settings-saved handlers as one saved from any other route.
     public async Task OpenPluginSettingsAsync(string pluginId)
     {
-        if (_pluginDialogHost is null || !PluginSettings.TryGetValue(pluginId, out var settings))
+        if (!PluginSettings.ContainsKey(pluginId))
         {
             return;
         }
 
-        await _pluginDialogHost.ShowSettingsDialogAsync(
-            $"{settings.PluginName} settings",
-            settings.CreateView,
-            640,
-            560,
-            onSaved: () => ((IPluginContributionSink)this).NotifySettingsSaved(pluginId),
-            // One settings window per plugin (AC-367): every gear that reaches a plugin's settings routes here, so
-            // the one on its own dialog and the one in the manager would otherwise open two forms over one store,
-            // where whichever is saved last wins without saying so.
-            singleInstanceKey: $"settings:{pluginId}");
+        await _ShowOptionsAsync($"plugin:{pluginId}");
     }
 
     // The ⚙ on a widget pane. The widget supplies the form's content and the host puts it in the same
@@ -6000,6 +6000,56 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         PropertyChanged += _OnStagedPropertyChanged;
         Security.PropertyChanged += _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged += _OnStagedPropertyChanged;
+        _RebuildPluginOptionsRows();
+    }
+
+    // One row per plugin that has ever registered a settings view (`PluginRowViewModel.HasSettings`, backed by
+    // the persisted settings registry — true even for a plugin disabled this session, which never called
+    // `AddSettings` at all). A loaded plugin gets its live view; anything else shows why it has none, so the row
+    // never simply disappears (AC-1005 criterion 10).
+    private void _RebuildPluginOptionsRows()
+    {
+        // `ShowOptionsDialogAsync` calls `BeginOptionsEdit` unconditionally even when the dialog is merely
+        // activated rather than recreated (a second gear clicked while Options is already open) — guarded so
+        // that never discards the views the operator may already be mid-edit on. `_EndOptionsEdit` is what
+        // empties this list, once per real close.
+        if (PluginOptionsRows.Count > 0)
+        {
+            return;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var row in Plugins.Plugins.Where(row => row.HasSettings))
+        {
+            seen.Add(row.FolderId);
+            if (PluginSettings.TryGetValue(row.FolderId, out var registration))
+            {
+                var view = registration.CreateView();
+                var body = PluginSettingsBodyBuilder.Build(view);
+                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, body.Content, view, unavailableReason: null));
+            }
+            else
+            {
+                var reason = row.HasFailure ? $"{row.StatusText} — {row.FailureText}" : row.StatusText;
+                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, content: null, rawView: null, reason));
+            }
+        }
+
+        // A plugin that registered a settings view this session but the manager has not (also) discovered —
+        // the design-time/test graphs build a CockpitViewModel with no plugin discovery wired at all, so without
+        // this a plugin that just called AddSettings would silently get no row.
+        foreach (var (pluginId, registration) in PluginSettings)
+        {
+            if (!seen.Add(pluginId))
+            {
+                continue;
+            }
+
+            var view = registration.CreateView();
+            var body = PluginSettingsBodyBuilder.Build(view);
+            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, body.Content, view, unavailableReason: null));
+        }
     }
 
     // Any property on any of the three may be the one that moved, so the fingerprint decides rather than the
@@ -6022,6 +6072,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private async Task ApplyOptionsAsync()
     {
         OptionsApplyBlocked = false;
+        PluginSettingsError = null;
+
+        // Validated first, before anything else writes (same reasoning as the Profiles check below, AC-1005):
+        // `TryStage` only checks fields and hands back the write, so nothing is persisted yet on a refusal.
+        var pluginStaging = new PluginSettingsStaging();
+        foreach (var row in PluginOptionsRows)
+        {
+            if (row.RawView is not IPluginSettingsView settingsView)
+            {
+                continue;
+            }
+
+            if (!pluginStaging.TryStage(settingsView, () => ((IPluginContributionSink)this).NotifySettingsSaved(row.PluginId), out var error))
+            {
+                PluginSettingsError = $"{row.DisplayName}: {error}";
+                OptionsApplyBlocked = true;
+                return;
+            }
+        }
 
         // Validated first, before anything else writes: a profile a plugin's TryGetConfigJson rejects must block
         // the whole Apply (AC-1001 criterion 5), not just leave that one category unsaved while everything else
@@ -6031,6 +6100,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OptionsApplyBlocked = true;
             return;
         }
+
+        pluginStaging.Commit();
 
         _EndOptionsEdit();
         await SaveAllSettingsAsync();
@@ -6204,6 +6275,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Security.SuspendPersistence = false;
         AssistantOptions.SuspendPersistence = false;
         HasPendingOptionChanges = false;
+
+        // Drops the views this session created — a fresh `CreateView()` next open is Cancel's revert, and there
+        // is nothing left here worth holding onto once the dialog is gone either way.
+        PluginOptionsRows.Clear();
     }
 
     private void _RevertUpdateSettings()
