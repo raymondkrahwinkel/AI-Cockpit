@@ -41,7 +41,7 @@ public sealed class WhiteboardCanvasControl : Border
 
     private readonly Avalonia.Controls.Canvas _surface = new() { Background = Brushes.Transparent };
     private readonly FreehandLayer _freehandLayer;
-    private readonly EmptyStateOverlay _emptyState = new() { IsHitTestVisible = false };
+    private readonly EmptyStateOverlay _emptyState = new("Empty board. Draw, paste a screenshot, or place a shape.") { IsHitTestVisible = false };
     private readonly Dictionary<Guid, PlacedObjectControl> _placedControls = [];
     private readonly List<ResizeHandle> _handles = [];
 
@@ -1047,13 +1047,26 @@ public sealed class WhiteboardCanvasControl : Border
 
     // Paints straight into the live canvas, never the exported snapshot — the ticket points at this control's own
     // blank white background, not at what PNG the registry sees.
-    internal sealed class EmptyStateOverlay : Control
+    // AC-978: message is settable, not a const, so DiagramWorkspaceBody can reuse this same overlay for its own
+    // empty-diagram hint (which changes wording once a session couples) instead of a second dot-grid class.
+    internal sealed class EmptyStateOverlay(string message) : Control
     {
         private const double DotSpacing = 24;
-        private const string Message = "Empty board. Draw, paste a screenshot, or place a shape.";
 
         private static readonly IBrush DotBrush = new SolidColorBrush(Color.Parse("#D6DEE8"));
         private static readonly IBrush TextBrush = new SolidColorBrush(Color.Parse("#94A3B8"));
+
+        private string _message = message;
+
+        public string Message
+        {
+            get => _message;
+            set
+            {
+                _message = value;
+                InvalidateVisual();
+            }
+        }
 
         public override void Render(DrawingContext context)
         {
@@ -1067,8 +1080,12 @@ public sealed class WhiteboardCanvasControl : Border
                 }
             }
 
+            // AC-978: origin is the layout box's top-left, not the glyphs' — TextAlignment.Center already
+            // centers inside that box. Re-centering the origin off `formatted.Width` double-counted it and
+            // pushed the text right of centre; a fixed half-margin origin leaves the centering to TextAlignment.
+            var maxWidth = Math.Max(1, bounds.Width - 80);
             var formatted = new FormattedText(
-                Message,
+                _message,
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 Typeface.Default,
@@ -1076,10 +1093,10 @@ public sealed class WhiteboardCanvasControl : Border
                 TextBrush)
             {
                 TextAlignment = TextAlignment.Center,
-                MaxTextWidth = Math.Max(1, bounds.Width - 80),
+                MaxTextWidth = maxWidth,
             };
 
-            context.DrawText(formatted, new Point((bounds.Width - formatted.Width) / 2, (bounds.Height - formatted.Height) / 2));
+            context.DrawText(formatted, new Point((bounds.Width - maxWidth) / 2, (bounds.Height - formatted.Height) / 2));
         }
     }
 

@@ -11,6 +11,7 @@ using Avalonia.VisualTree;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Diagrams;
 using Cockpit.Plugin.Diagram.Collab;
+using Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Material.Icons;
@@ -45,6 +46,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private readonly Canvas _overlay;
     private readonly Panel _surface;
     private readonly Border _viewport;
+    // AC-978: reuses the whiteboard's own overlay so a blank diagram gives the same "here's what to do" hint,
+    // instead of the near-zero SVG bounds silently clamping the fit zoom to 800% over nothing.
+    private readonly WhiteboardCanvasControl.EmptyStateOverlay _emptyState =
+        new(_EmptyStateMessage(sessionIsLive: false)) { IsHitTestVisible = false };
     private readonly TextBlock _zoomLabel;
     private readonly Border _couplingBar;
     private readonly TextBlock _couplingLabel;
@@ -414,6 +419,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
             }
         }
 
+        // AC-978: unconditional (not folded into _RefreshEditSupport below) — that call is skipped entirely
+        // without a registry, and an object-less diagram still needs its hint on an older host.
+        _UpdateEmptyState();
         _RefreshOverlay();
         _RefreshEditSupport();
 
@@ -435,9 +443,19 @@ internal sealed class DiagramWorkspaceBody : UserControl
     {
         // AC-924: Focusable since the object menu's keyboard route (Menu key / Shift+F10) needs a focused control
         // to fire ContextRequested against — the diagram had none of the three surfaces' keyboard routes before this.
-        var viewport = new Border { Background = Brushes.Transparent, ClipToBounds = true, Focusable = true, Child = _surface };
-        viewport.SizeChanged += (_, _) =>
+        // AC-978: `_emptyState` is a sibling of `_surface`, not a child of it, so it tracks the viewport's own
+        // bounds and stays put — never scaled or panned away — same reasoning as WhiteboardCanvasControl's.
+        var viewport = new Border
         {
+            Background = Brushes.Transparent,
+            ClipToBounds = true,
+            Focusable = true,
+            Child = new Panel { Children = { _surface, _emptyState } },
+        };
+        viewport.SizeChanged += (_, e) =>
+        {
+            _emptyState.Width = e.NewSize.Width;
+            _emptyState.Height = e.NewSize.Height;
             if (_isFitMode)
             {
                 _ApplyFit();
@@ -1438,6 +1456,10 @@ internal sealed class DiagramWorkspaceBody : UserControl
             };
         // AC-973: the label trims with an ellipsis at MaxWidth — the tooltip carries the untrimmed text.
         ToolTip.SetTip(_handHint, _handHint.Text);
+
+        // AC-978: same gate as the ask button just above — the hint only offers "Ask the agent…" when that
+        // button would actually do something.
+        _UpdateEmptyState();
     }
 
     private void _ZoomByButton(double factor) =>
@@ -1455,7 +1477,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private void _ApplyFit()
     {
         _isFitMode = true;
-        var fitZoom = DiagramZoomMath.FitZoom(_viewport.Bounds.Size, _diagramSize, MinZoom, MaxZoom);
+
+        // AC-978: an object-less flowchart's rendered SVG is close to zero-sized, so fitting the viewport to it
+        // clamps to MaxZoom — a meaningless 800% over a blank canvas. There is nothing to fit to, so open at 100%.
+        var fitZoom = _objects.Count == 0
+            ? 1.0
+            : DiagramZoomMath.FitZoom(_viewport.Bounds.Size, _diagramSize, MinZoom, MaxZoom);
         if (fitZoom <= 0)
         {
             return;
@@ -1471,6 +1498,18 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _surface.RenderTransform = new MatrixTransform(new Matrix(_zoom, 0, 0, _zoom, _panOffset.X, _panOffset.Y));
         _zoomLabel.Text = $"{_zoom * 100:0}%";
     }
+
+    // AC-978: shown until the first object lands, same rule as the whiteboard's own overlay. The wording names
+    // the exact toolbar buttons so the hint doubles as a map to them.
+    private void _UpdateEmptyState()
+    {
+        _emptyState.IsVisible = _objects.Count == 0;
+        _emptyState.Message = _EmptyStateMessage(_sessionBinding.IsLive);
+    }
+
+    private static string _EmptyStateMessage(bool sessionIsLive) => sessionIsLive
+        ? "Empty diagram. Use + Node, Insert template…, or Ask the agent… to get started."
+        : "Empty diagram. Use + Node or Insert template… to get started.";
 
     // AC-824: the Mermaid source is one click away — collapsed under the render, never only in memory.
     private static (ToggleButton Toggle, TextBox Box) _BuildSourceToggle()

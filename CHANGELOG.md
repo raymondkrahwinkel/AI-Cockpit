@@ -240,6 +240,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   are now in English like the rest of the surface. A new test now checks every label, placeholder and header
   string in the plugin against a list of non-English function words, so a stray one fails the build instead of
   waiting for the next manual scan to catch it.
+- fixed: a brand-new, empty diagram no longer opens on a blank canvas zoomed to a meaningless 800% with no clue
+  what to do next — a node-less diagram's rendered picture is close to zero-sized, which was clamping the
+  fit-to-window zoom to its own maximum. An empty diagram now opens at 100% and shows the same kind of "here's
+  what to do" hint the whiteboard already had, naming the exact toolbar buttons ("+ Node", "Insert template…",
+  and "Ask the agent…" once a session is coupled) and disappearing the moment anything is on the diagram. Fixed
+  the same overlay's text rendering off-centre while touching it — it was true for the whiteboard's own hint too.
 - fixed: the diagram, wireframe and whiteboard coupling bar no longer lets a capability chip or a long session
   name paint over the action buttons on the right — the status text and chips now ellipsize with the full text
   in a tooltip, and the info group clips instead of overflowing.
