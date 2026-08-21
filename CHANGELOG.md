@@ -250,6 +250,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: a wireframe's note marker no longer paints over the first letters of the component's own text — "Email
   address" used to read as "①mail address" once a note was attached. The marker now sits fully to the left of the
   component instead of overlapping its first pixels, matching the flow marker's placement on the opposite corner.
+- fixed: a wireframe's properties column no longer reserves a fixed 240px whether or not anything is selected —
+  on the window's own default 960px width that pushed the drawing itself into three quarters of the available
+  space for an empty column with nothing to show. The column is now narrower and always shows something, a
+  short hint when nothing is selected, so the canvas keeps its extra room without the layout jumping around on
+  every click.
 - fixed: a brand-new, empty diagram no longer opens on a blank canvas zoomed to a meaningless 800% with no clue
   what to do next — a node-less diagram's rendered picture is close to zero-sized, which was clamping the
   fit-to-window zoom to its own maximum. An empty diagram now opens at 100% and shows the same kind of "here's

@@ -88,6 +88,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly TextBlock _handHint;
     private readonly TextBlock _hintSeparator;
     private readonly StackPanel _propertiesContent;
+    private readonly Border _propertiesPanel;
     private readonly Border _notesPanel;
     private readonly StackPanel _notesContent;
     private double _zoom = 1.0;
@@ -172,13 +173,14 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _askStrip = new AskStrip(_JumpToComponent);
         _presence = new PresenceIndicators(_surfaceId, journal, journal);
         var (propertiesPanel, propertiesContent) = _BuildPropertiesPanel();
+        _propertiesPanel = propertiesPanel;
         _propertiesContent = propertiesContent;
         // AC-907: its own column above the properties panel, not on the canvas — the fit-zoom and the overlay's own
         // sweep (AC-902) both work against a numbered list living there (see the grooming on this ticket).
         var (notesPanel, notesContent) = _BuildNotesPanel();
         _notesPanel = notesPanel;
         _notesContent = notesContent;
-        var rightColumn = new DockPanel { Children = { _notesPanel, propertiesPanel } };
+        var rightColumn = new DockPanel { Children = { _notesPanel, _propertiesPanel } };
         DockPanel.SetDock(_notesPanel, Dock.Top);
 
         Content = new DockPanel
@@ -1756,12 +1758,17 @@ internal sealed class WireframeWorkspaceBody : UserControl
         }
     }
 
+    // AC-980: narrower than the notes panel above it (240px), because unlike that panel this one cannot simply
+    // disappear without a selection — hiding and reappearing on every click would make the canvas jump underneath
+    // it (see the ticket). Staying put at a smaller width instead gives the drawing back real room permanently.
+    private const double PropertiesPanelWidth = 160;
+
     private static (Border Panel, StackPanel Content) _BuildPropertiesPanel()
     {
         var content = new StackPanel { Spacing = 10 };
         var panel = new Border
         {
-            Width = 240,
+            Width = PropertiesPanelWidth,
             Padding = new Thickness(12),
             BorderThickness = new Thickness(1, 0, 0, 0),
             BorderBrush = _Brush("CockpitHairlineBrush"),
@@ -1770,13 +1777,20 @@ internal sealed class WireframeWorkspaceBody : UserControl
         return (panel, content);
     }
 
-    // AC-905 AC6: nothing at all with no selection — the toolbar's own hint already says to click a component — and
-    // for the screen line only what WireframeModifierRules says applies there (disabled + align, nothing else).
+    // AC-980: a hint instead of nothing when there is no selection — the panel itself stays put (see above), so
+    // this is what fills it, not the toolbar's own hint text which is easy to miss beside an otherwise-blank column.
     private void _RefreshPropertiesPanel(WireframeNode? node, Kind? parentKind)
     {
         _propertiesContent.Children.Clear();
         if (node is null || _selectedId is not { } id)
         {
+            _propertiesContent.Children.Add(new TextBlock
+            {
+                Text = "Select a component to see its properties.",
+                FontSize = 12,
+                Foreground = _Brush("CockpitTextSecondaryBrush"),
+                TextWrapping = TextWrapping.Wrap,
+            });
             return;
         }
 
