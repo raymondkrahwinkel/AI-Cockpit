@@ -46,6 +46,9 @@ internal sealed class SystemMonitorSettingsView : UserControl, IPluginSettingsVi
         };
     }
 
+    // AC-1004, criterion 3: the old `Save()` was this one storage write and nothing else. The widget it belongs to
+    // is refreshed by the host's own saved-signal for a widget form (`ShowWidgetSettingsAsync` passes
+    // `pane.Refresh`), which runs after the write — not from in here.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = () => _context.Storage.Set(SystemMonitorMetrics.StorageKey, new SystemMonitorMetrics

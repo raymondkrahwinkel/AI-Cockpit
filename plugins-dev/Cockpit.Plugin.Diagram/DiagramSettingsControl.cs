@@ -41,6 +41,8 @@ internal sealed class DiagramSettingsControl : UserControl, IPluginSettingsView
         };
     }
 
+    // AC-1004, criterion 3: the old `Save()` was these three consent toggles and nothing else — no side effect to
+    // place. Every reader takes the setting fresh off storage on the next prompt, so nothing needs telling.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = _Commit;

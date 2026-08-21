@@ -54,6 +54,10 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
         };
     }
 
+    // AC-1004, criterion 3: the old `Save()` was these three property writes and nothing else. The side effect a
+    // saved endpoint needs — the Docker engine's cached client being dropped (`DockerPlugin` wires
+    // `engine.Invalidate`) — hangs on `ICockpitHost.OnSettingsSaved`, which the host raises after this write, so
+    // the rebuilt client reads the new endpoint rather than the one it just replaced.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = _Commit;

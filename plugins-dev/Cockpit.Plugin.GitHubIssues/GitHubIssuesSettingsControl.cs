@@ -126,7 +126,9 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
         };
     }
 
-    // Persists every field to the plugin's storage; always succeeds, so the host closes the dialog.
+    // Hands the host every field to write; always succeeds, so the host closes the dialog. AC-1004, criterion 3:
+    // the old `Save()` was these property writes and nothing else — no side effect to place, and this plugin
+    // subscribes to no settings-saved signal either.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = _Commit;

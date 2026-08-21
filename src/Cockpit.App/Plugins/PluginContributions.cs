@@ -100,7 +100,7 @@ public interface IPluginContributionSink
     /// <summary>Registers <paramref name="callback"/> to run when <paramref name="pluginId"/>'s settings are next saved (#52) — see <see cref="ICockpitHost.OnSettingsSaved"/>.</summary>
     void AddSettingsSavedHandler(string pluginId, Action callback);
 
-    /// <summary>Runs every callback registered via <see cref="AddSettingsSavedHandler"/> for <paramref name="pluginId"/> (#52) — called once that plugin's settings dialog Save() has returned true.</summary>
+    /// <summary>Runs every callback registered via <see cref="AddSettingsSavedHandler"/> for <paramref name="pluginId"/> (#52) — called once the host has run the write <see cref="IPluginSettingsView.TryStage"/> handed it, never at staging time (AC-1004).</summary>
     void NotifySettingsSaved(string pluginId);
 
     /// <summary>Applies the left-menu order/visibility the plugin manager just persisted for <paramref name="pluginId"/> (#72), so the sidebar re-renders without a restart.</summary>

@@ -504,6 +504,9 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         CeoValidationModelBox.ItemsSource = suggestions is { Count: > 0 } ? suggestions : null;
     }
 
+    // AC-1004, criterion 3: the old `Save()` was these `Set*` writes and nothing else. Each setter raises
+    // `AutopilotSettings.Changed` itself, so the live-surface refresh rides along with the write into the commit
+    // rather than needing a place of its own — that event is why this plugin uses no settings-saved handler.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = _Commit;

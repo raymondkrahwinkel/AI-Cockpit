@@ -153,7 +153,10 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
         };
     }
 
-    // Persists every field to the plugin's storage; always succeeds, so the host closes the dialog.
+    // Hands the host every field to write; always succeeds, so the host closes the dialog. AC-1004, criterion 3:
+    // the old `Save()` was these property writes and nothing else. The plugin's one side effect on a save — the
+    // pull-request list refreshing (`PullRequestRefreshSource`) — hangs on `ICockpitHost.OnSettingsSaved`, which
+    // the host raises after this write, so a refresh never runs against the settings being replaced.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = _Commit;

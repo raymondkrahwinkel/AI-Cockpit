@@ -100,6 +100,10 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         }
     }
 
+    // AC-1004, criterion 3 — where the old `Save()` ended up. Validation: the duplicate name and URL refusals
+    // (AC-499/AC-248), which read the rows and nothing else, are `_TryValidate`. Commit: everything that writes or
+    // touches a registry — the connection list, the memory-source and shared-project syncs, the orphaned
+    // MCP-registry reclaim — is `_Write`. The one exception is `_SaveDetailed` below, and it says why.
     public bool TryStage(out Action? commit, out string? error)
     {
         if (!_TryValidate(out var candidates, out error))
@@ -114,7 +118,17 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 
     // Validate-and-write in one call, kept for `DepotConnectionRowControl.SignInAsync`: a row's own Sign-in
     // persists the whole list on the spot (AC-499) rather than waiting for the footer, and reports the refusal
-    // itself. AC-1004 decides whether that path should go through the host too.
+    // itself.
+    //
+    // shortcut (AC-1004, considered and kept): this is the one write in the plugin that does not go through the
+    // host. It cannot simply be staged — the host files the token under the connection's *registered* MCP server
+    // name, so the connection has to be in storage before the browser opens, and no Cancel can un-issue a token
+    // that came back. Sign-in is an action the operator takes, not a value they are editing, and the row says
+    // "Saving…" before the browser opens rather than doing it behind their back.
+    // ceiling = a Depot embedded in the Options screen (AC-1005) would let a Sign-in click write the connection
+    // list while the rest of that screen is still staged, so Cancel takes back everything except this;
+    // upgrade = AC-1005 decides between disabling Sign-in until Apply and telling the operator, in the row, that
+    // signing in saves the connections first — both need the embedding contract that ticket introduces.
     private DepotSaveResult _SaveDetailed()
     {
         if (!_TryValidate(out var candidates, out var reason))

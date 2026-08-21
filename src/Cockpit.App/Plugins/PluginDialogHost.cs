@@ -116,15 +116,18 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
             var save = new Button { Content = "Save", Classes = { "Accent" } };
             save.Click += (_, _) =>
             {
-                if (!PluginSettingsStaging.TryStage(settingsView, out var commit, out var error))
+                // Through the same staging the Options screen uses (AC-1004), for the settings-saved signal rather
+                // than for the holding: staging it here and committing on the next line is what pins that signal to
+                // the write for both hosts at once, instead of each host remembering to fire it in the right order.
+                var staging = new PluginSettingsStaging();
+                if (!staging.TryStage(settingsView, onSaved, out var error))
                 {
                     status.Text = error;
                     status.IsVisible = true;
                     return;
                 }
 
-                commit();
-                onSaved?.Invoke();
+                staging.Commit();
                 window.Close();
             };
             buttons.Children.Add(save);

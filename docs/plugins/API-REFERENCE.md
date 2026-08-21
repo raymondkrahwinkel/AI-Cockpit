@@ -182,6 +182,9 @@ await host.ShowDialogAsync("Issues", () => BuildIssuesView(), width: 900, height
 Registers `callback` to run (UI thread) after **this plugin's own** settings are saved from the manager's
 gear (#52) — i.e. the host committed what your `IPluginSettingsView.TryStage()` handed it. Enabling/disabling/installing a plugin
 still needs a restart (its assembly can't be unloaded/loaded live), but a settings change doesn't have to.
+- **Never at staging time, always after the write.** Your callback runs once the commit you handed back has
+  run, so a cache you drop here is rebuilt from the new values — not from the ones being replaced. A settings
+  screen the operator then cancels never staged a write and never calls you either.
 - **When you need this:** a contribution that read settings once at construction and cached the result — e.g.
   a side-menu section's already-fetched list (`AddSideMenuSection`) — should subscribe and reload.
 - **When you don't:** a contribution that reads `Storage`-backed settings fresh on every access already
