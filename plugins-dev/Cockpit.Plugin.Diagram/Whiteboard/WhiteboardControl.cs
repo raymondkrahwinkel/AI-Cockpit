@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.Plugin.Diagram.Collab;
 using Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
 using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
@@ -123,7 +124,7 @@ public sealed class WhiteboardControl : UserControl
         if (hex is null)
         {
             ToolTip.SetTip(swatch, "Default colour");
-            swatch.Content = new MaterialIcon { Kind = MaterialIconKind.CloseCircleOutline, Width = 14, Height = 14, Foreground = Brushes.Gray };
+            swatch.Content = new MaterialIcon { Kind = MaterialIconKind.CloseCircleOutline, Width = 14, Height = 14, Foreground = _Brush("CockpitTextSecondaryBrush") };
         }
 
         swatch.Click += (_, _) =>
@@ -145,7 +146,7 @@ public sealed class WhiteboardControl : UserControl
 
         foreach (var button in row.Children.OfType<Button>())
         {
-            button.BorderBrush = Equals(button.Tag, active) ? Brushes.Black : Brushes.Transparent;
+            button.BorderBrush = Equals(button.Tag, active) ? _Brush("CockpitAccentBrush") : Brushes.Transparent;
         }
     }
 
@@ -227,4 +228,6 @@ public sealed class WhiteboardControl : UserControl
         public override void Render(DrawingContext context) =>
             WhiteboardObjectPainter.PaintPlaced(context, Kind, new Rect(Bounds.Size), null, null);
     }
+
+    private static IBrush? _Brush(string resourceKey) => SurfaceChrome.Brush(resourceKey);
 }
