@@ -254,6 +254,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the cockpit grew by roughly 18 MB a minute and reached several gigabytes over a working day, with UI
+  freezes of up to nineteen seconds as it went. Transcript rows that had scrolled out of view were never released:
+  a styling rule kept every discarded row, and every icon in it, reachable for as long as the window stayed open.
+  In a two-and-a-half-hour session that was about 5,400 dead rows and 95% of everything the app held in memory.
 - fixed: an MCP server that failed to connect at session start used to vanish without a trace — no message, and
   the server quietly disappeared from your own checklist too, so it read as one you had never selected. The
   session header now names it and says why, and it stays checked in your selection so restarting the session
