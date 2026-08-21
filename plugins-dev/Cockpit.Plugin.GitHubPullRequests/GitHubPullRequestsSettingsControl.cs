@@ -154,7 +154,14 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
     }
 
     // Persists every field to the plugin's storage; always succeeds, so the host closes the dialog.
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        commit = _Commit;
+        error = null;
+        return true;
+    }
+
+    private void _Commit()
     {
         _settings.UseGitHubCli = _useGh.IsChecked == true;
         _settings.GhOwner = string.IsNullOrWhiteSpace(_ghOwner.Text) ? "@me" : _ghOwner.Text.Trim();
@@ -167,7 +174,6 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
         _settings.WatchEverythingIAmInvolvedWith = _watchInvolved.IsChecked == true;
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
         _settings.McpEnabled = _mcpEnabled.IsChecked == true;
-        return true;
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "entryAssembly": "Cockpit.Plugin.OpencodeProvider.dll",
   "entryType": "Cockpit.Plugin.OpencodeProvider.OpencodeProviderPlugin",
-  "abstractionsVersion": 1,
+  "abstractionsVersion": 2,
   "minHostVersion": "0.10.0",
   "description": "Adds opencode as a session provider, driven over the Agent Client Protocol (JSON-RPC 2.0 over stdio) via `opencode acp` — a persistent process for the whole session, with streaming text/thinking, real tool calls and live permission prompts routed through Cockpit's own consent card. Requires the opencode CLI installed on this machine (opencode.ai/docs); most models also need authentication (an API key, or `opencode auth login`) though opencode's own free-tier models need neither. Live usage/cost figures stream per turn over ACP's usage_update notification. opencode has no way to receive a system prompt over ACP, so a profile identity or project instruction is not applied — the session says so in the transcript rather than dropping it silently.",
   "author": "Cockpit"

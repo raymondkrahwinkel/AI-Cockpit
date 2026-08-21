@@ -194,7 +194,8 @@ public interface IPluginStorage
 
 public interface IPluginSettingsView
 {
-    bool Save(); // return true to close the dialog, false to keep it open (e.g. validation failed)
+    // Validate and hand over the write; the host performs it. False keeps the screen open and shows `error`.
+    bool TryStage(out Action? commit, out string? error);
 }
 
 // Version is filled in by the host from your plugin.json — leave it unset.
@@ -221,13 +222,73 @@ control implements `IPluginSettingsView` — a **Save** button too:
 ```csharp
 public sealed class MySettingsControl : UserControl, IPluginSettingsView
 {
-    public bool Save() { /* persist via host.Storage */ return true; } // return false to keep the dialog open
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        if (string.IsNullOrWhiteSpace(_token.Text))
+        {
+            commit = null;
+            error = "Fill in an API token first.";   // shown by the host, in its own footer
+            return false;
+        }
+
+        commit = () => _host.Storage.SetSecret("token", _token.Text!.Trim());
+        error = null;
+        return true;
+    }
 }
 ```
 
-The host calls `Save()` and closes the dialog when it returns true, so every plugin's settings dialog gets
-the same Save/Close behaviour — you don't add your own Save button. A view that applies changes live can
-skip the interface and just gets a Close button.
+**You validate; the host writes.** `TryStage` must not persist anything — it checks the fields and hands back
+the write to perform. The host runs that `commit` when the operator confirms, and simply never runs it when
+they cancel. That is what lets a plugin's settings sit inside the cockpit's Options screen, which is one
+transaction: Cancel there has to take your change back too, and it cannot take back a write that already
+happened.
+
+You don't add your own Save button — every plugin's settings screen gets the same Save/Close behaviour. A view
+that applies changes live can skip the interface and just gets a Close button.
+
+**Refuse with a reason.** A `false` with an `error` keeps the screen open and shows your line to the operator,
+so say what is wrong and what to do about it ("Two connections are named 'work'. Rename one of them."). The
+host has nothing better to fall back on than telling them a plugin refused without saying why.
+
+#### Migrating from `bool Save()` — contract 1 → 2
+
+`IPluginSettingsView` was one method, `bool Save()`, which persisted on the spot and answered with a bare
+true/false. It is gone; there is no compatibility shim, and a plugin built against contract 1 is refused by the
+host rather than half-loaded. Three steps:
+
+1. **Rename and split.** `public bool Save()` becomes the body of a private method, minus its `return true`;
+   add the new member in front of it:
+
+   ```diff
+   -public bool Save()
+   -{
+   -    _settings.ShowBranchName = _showBranchName.IsChecked ?? true;
+   -    return true;
+   -}
+   +public bool TryStage(out Action? commit, out string? error)
+   +{
+   +    commit = _Commit;
+   +    error = null;
+   +    return true;
+   +}
+   +
+   +private void _Commit() => _settings.ShowBranchName = _showBranchName.IsChecked ?? true;
+   ```
+
+   For a one-liner, skip the private method and hand back the lambda directly: `commit = () => …`.
+
+2. **Move each `return false` up into the validation half**, and give it the reason you were showing in your
+   own view. Whatever you did *before* deciding to refuse — reading fields, checking for duplicates — stays in
+   `TryStage`; only the writing moves into `commit`. If you were refusing without saying anything, this is the
+   moment to write that sentence: it is the whole point of the change.
+
+3. **Set `"abstractionsVersion": 2` in your `plugin.json`** (and `minHostVersion` to `0.26.0` — the release the
+   contract changed in). Without it the host refuses to load your plugin at all, which is deliberate: the
+   alternative is your settings control failing to load the moment the operator opens your gear.
+
+Nothing else changes. `IPluginSettingsSections`, `AddSettings`, `OnSettingsSaved` and the widget settings form
+are untouched, and a view that never implemented `IPluginSettingsView` needs no change beyond step 3.
 
 Once a settings view has more in it than fits a screen, implement
 [`IPluginSettingsSections`](API-REFERENCE.md#ipluginsettingssections) as well: name your sections and the host
@@ -358,7 +419,9 @@ host.AddWidget(new WidgetRegistration("widgets.system-monitor", "System Monitor"
 ```
 
 You supply the form's content only; the host wraps it in the dialog with the Save/Close footer, exactly as it
-does for `AddSettings` — so implement `IPluginSettingsView` if you want a Save button. Saving raises
+does for `AddSettings` — so implement `IPluginSettingsView` if you want a Save button. This dialog is a window
+of its own and has no transaction to wait for, so it stages and commits on the same click; your view notices no
+difference between the two hosts. Saving raises
 `RefreshRequested` on that instance, which is how the view picks up new config without watching its own storage.
 
 ### Publishing a widget plugin to a store
@@ -674,7 +737,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
   "version": "1.0.0",
   "entryAssembly": "My.Plugin.dll",
   "entryType": "My.Plugin.MyPlugin",
-  "abstractionsVersion": 1,
+  "abstractionsVersion": 2,
   "minHostVersion": "0.1.0",
   "description": "What it does, one line.",
   "author": "You"
@@ -995,7 +1058,7 @@ Identical to the in-repo one in [Project setup](#project-setup) except for the f
 </Project>
 ```
 
-Set `abstractionsVersion` in your `plugin.json` to this package's **major** (`1`), and `minHostVersion` to the
+Set `abstractionsVersion` in your `plugin.json` to this package's **major** (`2`), and `minHostVersion` to the
 first host release that carries the contribution points you call — see [the manifest](#the-manifest--pluginjson)
 and [Match the host's versions](#match-the-hosts-versions).
 
@@ -1072,7 +1135,7 @@ complete file using every field below.
         {
           "version": "1.1.0",
           "path": "github-issues/github-issues-1.1.0.zip",
-          "abstractionsVersion": 1,
+          "abstractionsVersion": 2,
           "minHostVersion": "1.0.0",
           "sha256": "<sha-256 of the zip, hex lowercase — optional but recommended>",
           "notes": "gh CLI support, cross-repo issues, searchable/sortable dialog."
@@ -1080,7 +1143,7 @@ complete file using every field below.
         {
           "version": "1.0.0",
           "path": "github-issues/github-issues-1.0.0.zip",
-          "abstractionsVersion": 1,
+          "abstractionsVersion": 2,
           "minHostVersion": "1.0.0",
           "sha256": "<sha-256 of the 1.0.0 zip>",
           "notes": "Initial release."

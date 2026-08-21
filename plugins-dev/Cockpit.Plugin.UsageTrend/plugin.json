@@ -4,7 +4,7 @@
   "version": "0.1.3",
   "entryAssembly": "Cockpit.Plugin.UsageTrend.dll",
   "entryType": "Cockpit.Plugin.UsageTrend.UsageTrendPlugin",
-  "abstractionsVersion": 1,
+  "abstractionsVersion": 2,
   "minHostVersion": "0.1.0",
   "description": "Charts the context / 5h / weekly usage of your sessions over time, per profile, on a Dashboard workspace.",
   "author": "Cockpit"

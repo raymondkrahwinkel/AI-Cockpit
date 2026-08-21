@@ -1645,7 +1645,7 @@ internal static class Screenshotter
     {
         var entry = new PluginStoreEntry(
             id, name, description, "Cockpit", "1.0.0",
-            [new PluginStoreVersion("1.0.0", $"{id}-1.0.0.zip", 1, null, null, null)],
+            [new PluginStoreVersion("1.0.0", $"{id}-1.0.0.zip", Cockpit.Plugins.Abstractions.AbstractionsContract.Version, null, null, null)],
             Category: PluginStoreEntry.ProviderCategory);
         var store = PluginStoreConfig.Remote("https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit-Plugins/main/index.json");
         var row = new StorePluginRowViewModel(entry, store, installedVersion, hostAbstractionsMajor: hostAbstractionsMajor);

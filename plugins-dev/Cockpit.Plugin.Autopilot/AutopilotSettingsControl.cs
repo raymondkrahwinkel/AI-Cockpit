@@ -14,7 +14,7 @@ namespace Cockpit.Plugin.Autopilot;
 // steps, which profile/model per step, which gates are hard, which tracker stage a phase maps to — is context- or
 // tracker-specific and the CEO decides it dynamically per plan (a global tracker mapping breaks the moment there are
 // two trackers, or a non-tracker workload), so none of that is fixed here. Implements `IPluginSettingsView`
-// so the host dialog shows a Save button; `Save` writes the global level.
+// so the host dialog shows a Save button; the write it hands the host (AC-1003) sets the global level.
 //
 // The four groups these settings were already written in (AC-316) are also the dialog's pages: implementing
 // `IPluginSettingsSections` puts them in the host's navigation rail instead of stacking them into one
@@ -504,7 +504,14 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         CeoValidationModelBox.ItemsSource = suggestions is { Count: > 0 } ? suggestions : null;
     }
 
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        commit = _Commit;
+        error = null;
+        return true;
+    }
+
+    private void _Commit()
     {
         _settings.SetCeoProfileLabel(_ceoProfile.SelectedItem as string);
         _settings.SetCeoModel(_ceoModel.IsEnabled ? _Trimmed(_ceoModel.Text) : null);
@@ -519,8 +526,6 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         {
             _settings.SetExecutableStage(trackerId, box.Text?.Trim() ?? string.Empty);
         }
-
-        return true;
     }
 
     private static string? _Trimmed(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();

@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Plugins;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Core.Tests.Voice;
 using Cockpit.Core.Toasts;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -271,7 +272,7 @@ public class PluginUpdateCheckerTests
         return storeClient;
     }
 
-    private static PluginStoreEntry _Entry(string id, string latestVersion, int abstractionsVersion = 1, string? minHostVersion = "1.0.0") =>
+    private static PluginStoreEntry _Entry(string id, string latestVersion, int abstractionsVersion = AbstractionsContract.Version, string? minHostVersion = "1.0.0") =>
         new(id, id, null, null, latestVersion, [new PluginStoreVersion(latestVersion, $"{id}/{latestVersion}.zip", abstractionsVersion, minHostVersion, "sha", null)]);
 
     private static DiscoveredPlugin _Plugin(string folderId, string name, string version) =>

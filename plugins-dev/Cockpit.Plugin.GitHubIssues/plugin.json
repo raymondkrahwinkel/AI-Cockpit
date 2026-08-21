@@ -4,8 +4,8 @@
   "version": "1.20.0",
   "entryAssembly": "Cockpit.Plugin.GitHubIssues.dll",
   "entryType": "Cockpit.Plugin.GitHubIssues.GitHubIssuesPlugin",
-  "abstractionsVersion": 1,
-  "minHostVersion": "0.9.0",
+  "abstractionsVersion": 2,
+  "minHostVersion": "0.26.0",
   "description": "Browse open GitHub issues across your repos (via the gh CLI) or one repo in a searchable, sortable dialog, with an \"Assigned to me\" filter; click one to drop a prompt asking the agent to open and review it — or start it in a new session, which opens the new-session dialog with that prompt ready — and with the cockpit project linked to that repository already selected — so you pick the profile and folder yourself. An issue can also be started in Autopilot (the operator-triggered issue → merge-ready-PR pipeline), which posts its progress back as issue comments. Link a cockpit project to a repository in the project editor, picked from the list gh can see, and this dialog opens on it instead of on every repository you have. Linking an issue to a session you already have open labels that session: it says what it is working on, and takes the issue as its name unless you gave it one yourself. Sessions started under a linked project also run with GH_REPO set to that repository, so a gh command the agent runs is about the repository the project is tracked in rather than whichever one its folder happens to be. The prompt template is editable in settings.",
   "author": "Cockpit"
 }

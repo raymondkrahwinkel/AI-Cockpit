@@ -1,6 +1,7 @@
 using Cockpit.App.ViewModels;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.Core.Plugins;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Core.Tests.ViewModels.Onboarding;
 
@@ -13,7 +14,7 @@ public class ProviderPickerRowViewModelTests
 {
     private static readonly PluginStoreConfig Store = PluginStoreConfig.Remote("https://example.com/index.json");
 
-    private static PluginStoreEntry _Entry(int abstractionsVersion = 1) => new(
+    private static PluginStoreEntry _Entry(int abstractionsVersion = AbstractionsContract.Version) => new(
         "claude-provider", "Claude Code", "d", "Cockpit", "1.0.0",
         [new PluginStoreVersion("1.0.0", "claude-provider-1.0.0.zip", abstractionsVersion, null, null, null)],
         Category: PluginStoreEntry.ProviderCategory);

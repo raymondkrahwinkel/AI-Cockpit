@@ -54,13 +54,13 @@ internal sealed class GitHubPullRequestsWidgetSettingsView : UserControl, IPlugi
         };
     }
 
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
     {
-        _context.Storage.Set(GitHubPullRequestsWidgetConfig.StorageKey, new GitHubPullRequestsWidgetConfig
+        commit = () => _context.Storage.Set(GitHubPullRequestsWidgetConfig.StorageKey, new GitHubPullRequestsWidgetConfig
         {
             MaxItems = (int)(_maxItems.Value ?? GitHubPullRequestsWidgetConfig.Default.MaxItems),
         }.Sanitized());
-
+        error = null;
         return true;
     }
 }
