@@ -332,6 +332,7 @@ public class AssistantBindSharedProjectTests : IDisposable
             Substitute.For<IAgentNotifyAuditLog>(),
             Substitute.For<IPluginProviderRegistry>(),
             new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
+            Substitute.For<IAssistantSessionHost>(),
             worktreeManager: null,
             sharedProjectSources: registry));
 

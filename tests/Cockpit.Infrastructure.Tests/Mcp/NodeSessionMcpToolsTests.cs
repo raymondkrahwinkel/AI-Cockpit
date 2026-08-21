@@ -412,5 +412,10 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
             IReadOnlyDictionary<string, string>? links = null,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+            string question, IReadOnlyList<(string Label, string? Description)> options, bool multiSelect, bool allowOther,
+            string? header, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

@@ -1055,6 +1055,7 @@ public class AssistantAgentGatewayTests
                 Substitute.For<IAgentNotifyAuditLog>(),
                 pluginProviders ?? Substitute.For<IPluginProviderRegistry>(),
                 new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
+                Substitute.For<IAssistantSessionHost>(),
                 worktreeManager),
             cockpit,
             trail);
@@ -1078,7 +1079,8 @@ public class AssistantAgentGatewayTests
             Substitute.For<IAgentMessageInbox>(),
             Substitute.For<IAgentNotifyAuditLog>(),
             pluginProviders,
-            new SessionWatcher(Substitute.For<IAgentMessageInbox>()));
+            new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
+            Substitute.For<IAssistantSessionHost>());
     }
 
     // A plugin-backed profile under the test's own label, with whatever start defaults the caller wants on it —

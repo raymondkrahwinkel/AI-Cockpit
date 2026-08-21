@@ -2083,8 +2083,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await RespondToPermissionAsync(entry, allow: true);
     }
 
-    // Sends the operator's picks back as the tool's own input — where AskUserQuestion reads them. An allow
-    // without them approves the question and leaves the agent waiting for an answer that never comes.
+    // Sends the operator's picks back (AC-955). Two routes, split on how the card arrived: a permission-driven
+    // AskUserQuestion (AC-715) answers through the tool's own input — an allow without it leaves the agent
+    // waiting forever. The assistant's own broker has no such callback, so it takes the typed-message path.
     [RelayCommand]
     private async Task SubmitQuestionAnswersAsync(TranscriptEntryViewModel entry)
     {
@@ -2093,15 +2094,31 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
+        foreach (var prompt in prompts)
+        {
+            prompt.IsAnswered = true;
+        }
+
+        if (entry.IsPendingBrokerAnswer)
+        {
+            entry.IsPendingBrokerAnswer = false;
+            InjectAndSubmit(_BuildBrokerAnswerText(prompts[0]));
+            return;
+        }
+
         var answers = new JsonObject();
         foreach (var prompt in prompts)
         {
             answers[prompt.Question] = prompt.Answer;
-            prompt.IsAnswered = true;
         }
 
         await RespondToPermissionAsync(entry, allow: true, answers.ToJsonString());
     }
+
+    // The wire format for a broker question's answer: spelled out because the model never sees the card itself,
+    // and a bare label on its own could otherwise read as a fresh instruction rather than an answer to this one.
+    private static string _BuildBrokerAnswerText(AskUserQuestionViewModel prompt) =>
+        $"\"{prompt.Question}\" → {prompt.Answer}";
 
     [RelayCommand]
     private async Task DenyToolAsync(TranscriptEntryViewModel entry)

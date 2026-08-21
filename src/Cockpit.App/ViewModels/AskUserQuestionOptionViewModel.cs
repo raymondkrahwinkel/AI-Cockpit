@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Material.Icons;
 
 namespace Cockpit.App.ViewModels;
 
@@ -17,6 +18,10 @@ public partial class AskUserQuestionOptionViewModel(string label, string descrip
     // Set by the owning question when it takes ownership of this option.
     public Action? SelectRequested { get; set; }
 
+    // Set by the owning question at construction (AC-955): a radio glyph for single-select, a checkbox glyph
+    // for multi-select — the tick is the same idea, but the two shapes say "one" and "several" apart.
+    public bool MultiSelect { get; set; }
+
     [ObservableProperty]
     private bool _isSelected;
 
@@ -24,6 +29,12 @@ public partial class AskUserQuestionOptionViewModel(string label, string descrip
     // of what was chosen rather than as a control that still does something.
     [ObservableProperty]
     private bool _isSelectable = true;
+
+    public MaterialIconKind IconKind => MultiSelect
+        ? (IsSelected ? MaterialIconKind.CheckboxMarked : MaterialIconKind.CheckboxBlankOutline)
+        : (IsSelected ? MaterialIconKind.RadioboxMarked : MaterialIconKind.RadioboxBlank);
+
+    partial void OnIsSelectedChanged(bool value) => OnPropertyChanged(nameof(IconKind));
 
     [RelayCommand]
     private void Select() => SelectRequested?.Invoke();

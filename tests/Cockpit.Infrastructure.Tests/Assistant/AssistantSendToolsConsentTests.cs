@@ -324,6 +324,10 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
             IReadOnlyDictionary<string, string>? pluginFields = null,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
+        public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+            string question, IReadOnlyList<(string Label, string? Description)> options, bool multiSelect, bool allowOther,
+            string? header, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
         public Task<AgentMessageResult> SendMessageAsync(string paneId, string kind, string body, CancellationToken cancellationToken = default)
         {
             Calls.Add($"SendMessageAsync({paneId})");

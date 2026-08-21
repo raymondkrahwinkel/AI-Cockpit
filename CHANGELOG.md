@@ -73,6 +73,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   move/reorder — plus "Ask the agent…", instead of only the toolbar and (on the whiteboard) the keyboard. The
   Menu key and Shift+F10 open the same menu on whatever is currently selected; right-clicking empty space still
   does nothing.
+- added: the assistant can now put a clarifying question to you as a card in its chat window — radio buttons for
+  one pick, checkboxes for several, and an "Other, namely…" row with a box for your own words when neither fits.
+  It shows up at once and never blocks the conversation: answer by clicking, or just say it out loud like anything
+  else. The same radio/checkbox look now also applies to the AskUserQuestion card in ordinary session panes.
 - added: the whiteboard now has a colour swatch and an eraser. Picking a swatch recolours the current selection, or
   sets what the pencil, marker and next placed shape draw with; a sticky note and a pasted image are unaffected.
   The eraser sweeps away whole strokes and placed shapes while a button is held — never part of a stroke and never

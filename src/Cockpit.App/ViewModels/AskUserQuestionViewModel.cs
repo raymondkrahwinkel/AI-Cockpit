@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Material.Icons;
 
 namespace Cockpit.App.ViewModels;
 
@@ -17,6 +18,10 @@ public partial class AskUserQuestionViewModel : ViewModelBase
     public bool HasHeader => Header.Length > 0;
 
     public bool MultiSelect { get; }
+
+    // Whether the "Other, namely…" row shows at all (AC-955) — on for a native AskUserQuestion, whose SDK
+    // guarantees the fallback and carries no field to turn it off; ask_structured_question sets it explicitly.
+    public bool AllowOther { get; }
 
     public IReadOnlyList<AskUserQuestionOptionViewModel> Options { get; }
 
@@ -35,24 +40,46 @@ public partial class AskUserQuestionViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isAnswered;
 
-    // What goes back to the agent: the chosen option labels, comma-separated when several are allowed, or the
-    // free text typed under "Other". The two are mutually exclusive — the same rule the SDK's own reference
-    // handler applies, where a typed response replaces the numbered picks rather than adding to them.
-    public string Answer => IsOtherSelected
-        ? OtherText.Trim()
-        : string.Join(", ", Options.Where(option => option.IsSelected).Select(option => option.Label));
+    // What goes back to the agent (AC-955). Single-select keeps "Other" and the ticked pick mutually
+    // exclusive, the same rule the SDK's own reference handler applies. Multi-select does not: an ordinary
+    // answer can combine picks with typed text, so "Other" joins the ticked labels instead of replacing them.
+    public string Answer => MultiSelect
+        ? string.Join(", ", _SelectedLabels())
+        : IsOtherSelected
+            ? OtherText.Trim()
+            : string.Join(", ", Options.Where(option => option.IsSelected).Select(option => option.Label));
+
+    private IEnumerable<string> _SelectedLabels()
+    {
+        foreach (var option in Options.Where(option => option.IsSelected))
+        {
+            yield return option.Label;
+        }
+
+        if (IsOtherSelected && OtherText.Trim() is { Length: > 0 } otherText)
+        {
+            yield return otherText;
+        }
+    }
 
     public bool HasAnswer => Answer.Length > 0;
 
-    public AskUserQuestionViewModel(string question, string header, bool multiSelect, IReadOnlyList<AskUserQuestionOptionViewModel> options)
+    public MaterialIconKind OtherIconKind => MultiSelect
+        ? (IsOtherSelected ? MaterialIconKind.CheckboxMarked : MaterialIconKind.CheckboxBlankOutline)
+        : (IsOtherSelected ? MaterialIconKind.RadioboxMarked : MaterialIconKind.RadioboxBlank);
+
+    public AskUserQuestionViewModel(
+        string question, string header, bool multiSelect, bool allowOther, IReadOnlyList<AskUserQuestionOptionViewModel> options)
     {
         Question = question;
         Header = header;
         MultiSelect = multiSelect;
+        AllowOther = allowOther;
         Options = options;
 
         foreach (var option in options)
         {
+            option.MultiSelect = multiSelect;
             option.SelectRequested = () => SelectOption(option);
         }
     }
@@ -77,6 +104,8 @@ public partial class AskUserQuestionViewModel : ViewModelBase
 
         if (MultiSelect)
         {
+            // AC-955: ticking an option leaves "Other" exactly as it was — the two stack for a multi-select
+            // question, so picking one more choice must not silently drop a typed answer that stood beside it.
             option.IsSelected = !option.IsSelected;
         }
         else
@@ -85,13 +114,16 @@ public partial class AskUserQuestionViewModel : ViewModelBase
             {
                 candidate.IsSelected = ReferenceEquals(candidate, option);
             }
+
+            IsOtherSelected = false;
         }
 
-        IsOtherSelected = false;
         _RaiseAnswerChanged();
     }
 
-    // Switches to the free-text fallback, dropping whatever was ticked.
+    // Switches to the free-text fallback. Single-select: exclusive, dropping whatever was ticked, same as the
+    // SDK's own reference handler. Multi-select (AC-955): a checkbox like any other — toggles on or off beside
+    // whatever options are already ticked, rather than replacing them.
     [RelayCommand]
     private void SelectOther()
     {
@@ -100,12 +132,20 @@ public partial class AskUserQuestionViewModel : ViewModelBase
             return;
         }
 
-        foreach (var option in Options)
+        if (MultiSelect)
         {
-            option.IsSelected = false;
+            IsOtherSelected = !IsOtherSelected;
+        }
+        else
+        {
+            foreach (var option in Options)
+            {
+                option.IsSelected = false;
+            }
+
+            IsOtherSelected = true;
         }
 
-        IsOtherSelected = true;
         _RaiseAnswerChanged();
     }
 
@@ -115,6 +155,7 @@ public partial class AskUserQuestionViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(Answer));
         OnPropertyChanged(nameof(HasAnswer));
+        OnPropertyChanged(nameof(OtherIconKind));
     }
 
     private void _RaiseAnswerChanged()
@@ -162,7 +203,10 @@ public partial class AskUserQuestionViewModel : ViewModelBase
         }
 
         var multiSelect = element.TryGetProperty("multiSelect", out var multi) && multi.ValueKind == JsonValueKind.True;
-        return new AskUserQuestionViewModel(question, _ReadString(element, "header"), multiSelect, _ParseOptions(element));
+        // Defaults to on: a native AskUserQuestion carries no such field and its SDK guarantees the fallback
+        // regardless (AC-715); only ask_structured_question's own payload can turn it off explicitly (AC-955).
+        var allowOther = !element.TryGetProperty("allowOther", out var other) || other.ValueKind != JsonValueKind.False;
+        return new AskUserQuestionViewModel(question, _ReadString(element, "header"), multiSelect, allowOther, _ParseOptions(element));
     }
 
     private static IReadOnlyList<AskUserQuestionOptionViewModel> _ParseOptions(JsonElement question)

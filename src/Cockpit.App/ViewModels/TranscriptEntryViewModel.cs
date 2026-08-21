@@ -238,10 +238,26 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // subscription. Non-pending tool rows (the overwhelming majority) never build them at all.
     public object? PermissionBranch => IsPendingToolPermission ? this : null;
 
+    // Set only on a card the assistant's own broker raised (AC-955's `ask_structured_question`), which has no
+    // permission callback to ride: this is that card's own "still open for an answer", parallel to
+    // `IsPendingPermission` for the AC-715 kind, and cleared the same way once Send goes out.
+    [ObservableProperty]
+    private bool _isPendingBrokerAnswer;
+
+    // A question card is still open for an answer whichever route raised it — the permission callback (AC-715)
+    // or the assistant's own broker (AC-955). Send and CanSubmitAnswers do not care which.
+    public bool IsAwaitingAnswer => IsPendingPermission || IsPendingBrokerAnswer;
+
     // Send only lights up once every question on the card has an answer — a half-filled card would send the agent
     // an answers object missing the keys it asked about.
     public bool CanSubmitAnswers =>
-        IsPendingPermission && QuestionPrompts is { Count: > 0 } prompts && prompts.All(prompt => prompt.HasAnswer);
+        IsAwaitingAnswer && QuestionPrompts is { Count: > 0 } prompts && prompts.All(prompt => prompt.HasAnswer);
+
+    partial void OnIsPendingBrokerAnswerChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsAwaitingAnswer));
+        OnPropertyChanged(nameof(CanSubmitAnswers));
+    }
 
     // --- Error severity (AC-720) ------------------------------------------------------------------------------
     // The driver's own Kind, or the host's text-heuristic guess when it hasn't set one — presentation only,
@@ -561,6 +577,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(HumanToolText));
         OnPropertyChanged(nameof(IsPendingToolPermission));
         OnPropertyChanged(nameof(PermissionBranch));
+        OnPropertyChanged(nameof(IsAwaitingAnswer));
         OnPropertyChanged(nameof(CanSubmitAnswers));
     }
 

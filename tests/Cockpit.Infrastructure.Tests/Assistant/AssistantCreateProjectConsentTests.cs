@@ -267,6 +267,14 @@ public sealed class AssistantCreateProjectConsentTests : IDisposable
             return Task.FromResult(AssistantProjectCreateResult.Created("local-1", name));
         }
 
+        public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+            string question, IReadOnlyList<(string Label, string? Description)> options, bool multiSelect, bool allowOther,
+            string? header, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"AskStructuredQuestionAsync({question})");
+            return Task.FromResult(AskStructuredQuestionResult.Shown());
+        }
+
         public Task<AssistantProjectBindResult> BindSharedProjectAsync(
             string sharedProjectId,
             string sourceDirectory,

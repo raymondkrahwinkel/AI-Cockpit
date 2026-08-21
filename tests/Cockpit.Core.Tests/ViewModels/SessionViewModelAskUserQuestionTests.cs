@@ -166,6 +166,92 @@ public class SessionViewModelAskUserQuestionTests
         await toolVm.DisposeAsync();
     }
 
+    // ── AC-955: the assistant's own broker (ask_structured_question), which has no permission callback ────────
+
+    private const string OneBrokerQuestion = """
+    {"questions":[{"question":"Which profile?","multiSelect":false,
+      "options":[{"label":"Programmer (Opus)"},{"label":"Programmer (Sonnet)"}]}]}
+    """;
+
+    private static TranscriptEntryViewModel _RaiseBrokerQuestion(SessionViewModel vm, string inputJson)
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which profile?")
+        {
+            InputJson = inputJson,
+            QuestionPrompts = AskUserQuestionViewModel.Parse(inputJson),
+            IsPendingBrokerAnswer = true,
+        };
+        vm.Transcript.Add(entry);
+        return entry;
+    }
+
+    /// <summary>
+    /// Criterion 7: Send on a broker card takes the exact path a typed message takes — a new user-turn row with
+    /// the wire-format answer, sent through the driver — rather than a permission response, because there is no
+    /// permission callback for this call to ride.
+    /// </summary>
+    [Fact]
+    public async Task SubmitQuestionAnswers_OnABrokerQuestion_SendsTheAnswerAsAnOrdinaryUserTurn()
+    {
+        var (vm, driver) = await _StartedAsync();
+        var entry = _RaiseBrokerQuestion(vm, OneBrokerQuestion);
+        entry.QuestionPrompts?[0].Options[1].SelectCommand.Execute(null);
+
+        await vm.SubmitQuestionAnswersCommand.ExecuteAsync(entry);
+
+        await driver.Received(1).SendUserMessageAsync(
+            "\"Which profile?\" → Programmer (Sonnet)", Arg.Any<IReadOnlyList<Core.Sessions.ImageAttachment>?>(), Arg.Any<CancellationToken>());
+        await driver.DidNotReceive().RespondToPermissionAsync(
+            Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        Assert.True(vm.Transcript.Last().Kind == TranscriptEntryKind.UserText);
+        Assert.False(entry.IsPendingBrokerAnswer);
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Criterion 9: this is the whole reason the broker route exists rather than reusing AskUserQuestion — a
+    /// broker card never touches <see cref="TranscriptEntryViewModel.IsPendingPermission"/>, so it works exactly
+    /// the same whether or not the SDK's permission-prompt-tool is even wired up (i.e. on `bypassPermissions`,
+    /// where AC-715's own route silently never fires at all).
+    /// </summary>
+    [Fact]
+    public async Task BrokerQuestion_NeverSetsIsPendingPermission_SoItDoesNotDependOnThePermissionCallback()
+    {
+        var (vm, _) = await _StartedAsync();
+        var entry = _RaiseBrokerQuestion(vm, OneBrokerQuestion);
+
+        Assert.True(entry.HasQuestionPrompts);
+        Assert.True(entry.IsAwaitingAnswer);
+        Assert.False(entry.IsPendingPermission);
+
+        entry.QuestionPrompts?[0].Options[0].SelectCommand.Execute(null);
+        Assert.True(entry.CanSubmitAnswers);
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Criterion 8: an unanswered broker card blocks nothing — the session can still start another turn.
+    /// </summary>
+    [Fact]
+    public async Task AnUnansweredBrokerQuestion_DoesNotBlockTheSessionFromStartingAnotherTurn()
+    {
+        var (vm, driver) = await _StartedAsync();
+        var entry = _RaiseBrokerQuestion(vm, OneBrokerQuestion);
+
+        Assert.False(vm.IsBusy);
+        vm.InputText = "ask something else in the meantime";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        await driver.Received(1).SendUserMessageAsync(
+            "ask something else in the meantime", Arg.Any<IReadOnlyList<Core.Sessions.ImageAttachment>?>(), Arg.Any<CancellationToken>());
+        Assert.True(entry.IsPendingBrokerAnswer);
+        Assert.True(entry.CanSubmitAnswers == false); // still no answer picked — remains open, not stuck
+
+        await vm.DisposeAsync();
+    }
+
     private static TranscriptEntryViewModel _RaiseQuestion(SessionViewModel vm, string inputJson)
     {
         vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = ToolName, InputJson = inputJson });
