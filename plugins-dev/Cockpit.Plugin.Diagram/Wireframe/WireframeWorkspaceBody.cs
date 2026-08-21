@@ -1472,6 +1472,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
             : "Couple a conversation first (\"Couple…\" above) to be able to ask the agent.");
 
         _handHint.Text = _HintFor(target);
+        // AC-973: the label trims with an ellipsis at MaxWidth — the tooltip carries the untrimmed text.
+        ToolTip.SetTip(_handHint, _handHint.Text);
         _RefreshPropertiesPanel(target, placement?.Parent.Kind);
         _RefreshStateStrip();
     }
@@ -2030,14 +2032,6 @@ internal sealed class WireframeWorkspaceBody : UserControl
         var fit = new Button { Content = "Fit", Classes = { "Compact" } };
         fit.Click += (_, _) => _ApplyFit();
 
-        var zoomControls = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children = { zoomOut, zoomLabel, zoomIn, fit },
-        };
-
         // AC-874/WF-4: where this wireframe lives, beside the button that puts it there — DiagramWorkspaceBody's
         // Opslaan, one folder over. "No file yet" is a state the window shows just as well as a path.
         var save = new Button { Content = "Save", Classes = { "Compact" } };
@@ -2100,20 +2094,25 @@ internal sealed class WireframeWorkspaceBody : UserControl
         {
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = 11,
+            MaxWidth = 320,
+            TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
 
-        var handEditControls = new StackPanel
+        // AC-973: a WrapPanel of individual controls, not two DockPanel-docked StackPanels — a group that no
+        // longer fits on one line wraps onto the next instead of running off screen. Zoom leads so it is never the
+        // one pushed off, matching the criterion this ticket exists for.
+        var bar = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children = { overview, add, text, delete, up, down, move, addScreen, stateStrip, viewport, ask, notes, save, saveStatus, hint },
+            ItemSpacing = 4,
+            LineSpacing = 4,
+            Children =
+            {
+                zoomOut, zoomLabel, zoomIn, fit,
+                overview, add, text, delete, up, down, move, addScreen, stateStrip, viewport, ask, notes, save, saveStatus, hint,
+            },
         };
-
-        var bar = new DockPanel { Children = { handEditControls, zoomControls } };
-        DockPanel.SetDock(handEditControls, Dock.Left);
-        DockPanel.SetDock(zoomControls, Dock.Right);
         return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus,
             add, text, delete, up, down, move, addScreen, stateStrip, overview, viewport, ask, notes, hint);
     }
@@ -2205,7 +2204,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         var dirty = (_sourceBox.Text ?? "") != _savedText;
         var where = _filePath ?? "No file yet";
         _saveStatus.Text = dirty ? $"{where} · unsaved changes" : where;
-        ToolTip.SetTip(_saveStatus, _filePath);
+        ToolTip.SetTip(_saveStatus, _saveStatus.Text);
         _saveButton.IsEnabled = dirty || _filePath is null;
     }
 

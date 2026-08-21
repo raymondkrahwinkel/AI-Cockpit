@@ -222,6 +222,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the diagram and wireframe toolbars no longer lose buttons at the window size they themselves open with —
+  Export used to be completely hidden behind the zoom controls on a diagram, and the whole zoom group used to sit
+  off screen on a wireframe, with nothing to show either was there. The toolbar now wraps onto a second row instead
+  of clipping or painting over itself, and the hint and file-status text trim with an ellipsis (full text in the
+  tooltip) rather than running into whatever sits next to them.
 - fixed: a session that fails because Claude's API is overloaded or unavailable now shows that reason on the
   failed-turn card ("API Error: 529 …") instead of the confusing, self-contradictory "Turn failed (success)" —
   a recognised outage renders as a temporary problem that resolves on its own, and an auth failure now offers a
