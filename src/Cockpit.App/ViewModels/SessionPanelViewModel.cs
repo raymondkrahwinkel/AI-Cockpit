@@ -155,6 +155,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private const string SearchToolName = "search_tools";
     private const string CallToolName = "call_tool";
 
+    // What the hover says for a session whose provider runs no tool loop at all (AC-964) — its servers may well be
+    // connected, and none of their tools can be called from here.
+    public const string NoToolLoopReach = "This provider has no tool loop, so none of these servers' tools can be called from this session.";
+
     // The tool-reach line for what a driver reported it can reach, or null when it reported nothing (the empty-state
     // card already says "no tools connected", and a session whose route has no tool loop must not claim otherwise).
     public static string? McpToolReachFor(IReadOnlyList<string> toolNames)

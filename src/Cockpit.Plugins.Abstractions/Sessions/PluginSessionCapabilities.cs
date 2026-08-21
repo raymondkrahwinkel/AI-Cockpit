@@ -87,6 +87,21 @@ public sealed record PluginSessionCapabilities(
     public bool SupportsContextCompaction { get; init; }
 
     /// <summary>
+    /// Whether the host mounts its own permission-gated <see cref="IPluginToolset"/> for this provider's sessions,
+    /// and whether that includes the host's tool-search proxies (AC-964).
+    /// </summary>
+    /// <remarks>
+    /// A provider that mounts <see cref="PluginMcpServer"/> endpoints itself must leave this
+    /// <see cref="PluginHostToolLoop.None"/>, or its servers are connected twice. Whether the host's tool search
+    /// rides along is a separate, deliberate answer rather than a consequence of running a loop: a provider that
+    /// brings its own search offers <see cref="PluginHostToolLoop.ToolsOnly"/>, so the model is never given two
+    /// ways to do the same thing. The default is <see cref="PluginHostToolLoop.None"/> — an unstated answer adds
+    /// nothing, which is the harmless one of the two mistakes. Init-only for the same back-compat reason as
+    /// <see cref="SupportsLiveModelSwitch"/>.
+    /// </remarks>
+    public PluginHostToolLoop HostToolLoop { get; init; }
+
+    /// <summary>
     /// The session options this provider actually understands, in its own vocabulary (AC-649) — Claude's
     /// <c>permission-mode</c>/<c>model</c>/<c>effort</c>, Codex's <c>sandbox</c> — so a consumer can read what a key
     /// means and which values it takes instead of guessing at an opaque options map. Init-only for the same

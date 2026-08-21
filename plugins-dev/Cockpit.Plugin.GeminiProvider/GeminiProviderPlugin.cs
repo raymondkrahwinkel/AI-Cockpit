@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.GeminiProvider;
 
 // Fase A worked example provider-plugin (#45): registers two session providers, Gemini and OpenAI, both
 // backed by the same `OpenAiCompatPluginSessionDriverFactory` — they differ only in which
-// OpenAI-compatible base URL a profile targets. Chat-only capabilities (no tools/permissions/live model
+// OpenAI-compatible base URL a profile targets. Tools come from the host's own loop (AC-964); no permissions/live model
 // switch/plan mode/thinking) — see `OpenAiCompatPluginSessionDriver.Capabilities`.
 public sealed class GeminiProviderPlugin : ICockpitPlugin
 {
@@ -20,7 +20,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
         Id: "gemini-provider",
         DisplayName: "Gemini / OpenAI Provider",
         Author: "Cockpit",
-        Description: "Adds Gemini and OpenAI as selectable session providers, both over an OpenAI-compatible chat-completions endpoint via Microsoft.Extensions.AI. Configure an API key and model per profile in Manage profiles.");
+        Description: "Adds Gemini and OpenAI as selectable session providers, both over an OpenAI-compatible chat-completions endpoint via Microsoft.Extensions.AI. Runs the session's MCP tools through the cockpit, which gates every call. Configure an API key and model per profile in Manage profiles.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -34,7 +34,13 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
             ProviderId: "gemini-provider.gemini",
             DisplayName: "Gemini (OpenAI-compatible)",
             CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
+            {
+                // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the
+                // host's may ride along without ever giving the model two ways to find the same tool. The driver
+                // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
+                HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
+            },
             CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GeminiDefaultBaseUrl),
             DefaultBaseUrl: GeminiDefaultBaseUrl));
 
@@ -42,7 +48,13 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
             ProviderId: "gemini-provider.openai",
             DisplayName: "OpenAI",
             CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false)
+            {
+                // AC-964: this endpoint is plain chat completions — it brings no tool search of its own, so the
+                // host's may ride along without ever giving the model two ways to find the same tool. The driver
+                // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
+                HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
+            },
             CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiDefaultBaseUrl),
             DefaultBaseUrl: OpenAiDefaultBaseUrl));
     }

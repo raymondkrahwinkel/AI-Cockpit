@@ -45,6 +45,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The chat/streaming/tool-loop driver is one source file shared by this whole provider family (AC-964),
+         linked in rather than duplicated: four near-identical copies is how they drift apart. Still compiled
+         into this plugin's own dll, so it ships and versions on its own exactly as before. -->
+    <Compile Include="..\_shared\OpenAiCompatPluginSessionDriver.cs" Link="OpenAiCompatPluginSessionDriver.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="plugin.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

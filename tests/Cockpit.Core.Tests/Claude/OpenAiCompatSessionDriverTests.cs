@@ -331,18 +331,24 @@ public class OpenAiCompatSessionDriverTests
     [Fact]
     public async Task ToolApproval_EmitsToolUseAndPermissionRequested_AndRespondCompletesTheDecision()
     {
-        var driver = _CreateDriver(Substitute.For<IChatClient>());
+        // Driven through a real tool call rather than the gate interface: the gate moved to its own type
+        // (AC-964, shared with the plugin-provider loop), so the seam worth testing is what a turn produces.
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("read_file", ("path", "x")), _Stream("done"));
+        var driver = _CreateDriver(chatClient, AIFunctionFactory.Create((string path) => $"read {path}", "read_file"));
         await driver.StartAsync(LocalProfile);
-        var gate = (IToolApprovalGate)driver;
 
-        var approval = gate.RequestApprovalAsync("tool_1", "read_file", """{"path":"x"}""", CancellationToken.None);
+        await driver.SendUserMessageAsync("go");
         var events = await _CollectUntilAsync(driver, evt => evt is PermissionRequested);
 
-        Assert.Equal("read_file", Assert.Single(events.OfType<PermissionRequested>()).ToolName);
+        var prompt = Assert.Single(events.OfType<PermissionRequested>());
+        Assert.Equal("read_file", prompt.ToolName);
         Assert.Contains(events, evt => evt is ToolUseRequested);
 
-        await driver.RespondToPermissionAsync("tool_1", allow: true);
-        Assert.True((await approval).Approved);
+        await driver.RespondToPermissionAsync(prompt.ToolUseId, allow: true);
+        var completed = await _CollectUntilTurnCompletedAsync(driver);
+        Assert.Contains("read x", completed.OfType<ToolResult>().Single().Content);
     }
 
     [Fact]

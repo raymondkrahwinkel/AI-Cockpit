@@ -17,6 +17,10 @@ internal static class CockpitToolSearch
     public const string SearchToolName = "search_tools";
     public const string CallToolName = "call_tool";
 
+    // What the two proxies name as their origin where a tool otherwise names its MCP server. They come from no
+    // server — the cockpit itself puts them there.
+    public const string ProxyServerName = "cockpit-tools";
+
     private const int DefaultLimit = 10;
     private const int MaxLimit = 50;
 
