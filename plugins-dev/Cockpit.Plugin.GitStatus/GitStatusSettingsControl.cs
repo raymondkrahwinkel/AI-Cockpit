@@ -39,6 +39,8 @@ internal sealed class GitStatusSettingsControl : UserControl, IPluginSettingsVie
         };
     }
 
+    // AC-1004, criterion 3: the old `Save()` was this one property write. `GitStatusSettings.ShowBranchName`
+    // raises `Changed` from its own setter, so the header badge's refresh rides with the write into the commit.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = () => _settings.ShowBranchName = _showBranchName.IsChecked ?? true;

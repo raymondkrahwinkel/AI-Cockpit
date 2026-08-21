@@ -54,6 +54,9 @@ internal sealed class GitHubPullRequestsWidgetSettingsView : UserControl, IPlugi
         };
     }
 
+    // AC-1004, criterion 3: the old `Save()` was this one storage write and nothing else. The pane picks the new
+    // config up through the host's saved-signal for a widget form (`ShowWidgetSettingsAsync` passes
+    // `pane.Refresh`), raised after the write — this view never refreshes anything itself.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = () => _context.Storage.Set(GitHubPullRequestsWidgetConfig.StorageKey, new GitHubPullRequestsWidgetConfig

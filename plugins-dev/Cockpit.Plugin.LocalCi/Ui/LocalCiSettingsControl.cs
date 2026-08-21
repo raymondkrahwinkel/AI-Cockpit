@@ -104,6 +104,9 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
         _ = _CheckAsync(invalidateFirst: false);
     }
 
+    // AC-1004, criterion 3: the old `Save()` was these three property writes and nothing else. The runtime probe's
+    // cache being dropped (`LocalCiPlugin` wires `runtime.Invalidate`) hangs on `ICockpitHost.OnSettingsSaved`,
+    // raised by the host after this write. The Check-again button re-probes on its own and is not a save.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = _Commit;

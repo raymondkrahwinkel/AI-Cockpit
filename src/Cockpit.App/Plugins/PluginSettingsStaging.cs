@@ -10,11 +10,11 @@ namespace Cockpit.App.Plugins;
 // so dropping the collected commits *is* the undo. That is the whole reason the contract is one `TryStage` and
 // not the stage/commit/revert triple: the two halves the host cannot do itself are validating and writing.
 //
-// Used both ways round. The standalone settings window (`PluginDialogHost.BuildSettingsFooter`) has nothing to
-// wait for and calls the static `TryStage` straight through, committing on the same click. The instance half is
-// for the Options dialog, which stages every plugin view it hosts, blocks Apply on the first refusal and commits
-// the batch — the same shape `ApplyOptionsAsync` already gives `Profiles.PersistAsync` (AC-1001). Nothing is
-// embedded in Options yet (that is the next ticket), so the batch side is exercised by its tests only.
+// Used both ways round, and by both hosts through the same instance. The standalone settings window
+// (`PluginDialogHost.BuildSettingsFooter`) has nothing to wait for, so it stages and commits on the same click;
+// the Options dialog stages every plugin view it hosts, blocks Apply on the first refusal and commits the batch —
+// the same shape `ApplyOptionsAsync` already gives `Profiles.PersistAsync` (AC-1001). Nothing is embedded in
+// Options yet (that is the next ticket), so the batch side is exercised by its tests only.
 internal sealed class PluginSettingsStaging
 {
     private readonly List<Action> _commits = [];
@@ -22,14 +22,21 @@ internal sealed class PluginSettingsStaging
     public bool HasStagedChanges => _commits.Count > 0;
 
     // Validates one view and keeps its write for `Commit`; false leaves nothing staged and fills `error`.
-    public bool TryStage(IPluginSettingsView view, [NotNullWhen(false)] out string? error)
+    //
+    // `onSaved` — a plugin's `ICockpitHost.OnSettingsSaved` subscribers (AC-1004) — is a parameter rather than
+    // something the caller runs afterwards because it must fire *after* the write and never on a stage. Four
+    // plugins hang a cache invalidation off that signal (Docker's engine, LocalCi's runtime, Kubernetes'
+    // connections, GitHub PR's refresh); fired while the values were only staged, each would rebuild against the
+    // settings the operator just replaced. Bound to the commit here, no host can hold the two apart by accident.
+    // Pass null for a view whose host has nothing to notify.
+    public bool TryStage(IPluginSettingsView view, Action? onSaved, [NotNullWhen(false)] out string? error)
     {
         if (!TryStage(view, out var commit, out error))
         {
             return false;
         }
 
-        _commits.Add(commit);
+        _commits.Add(onSaved is null ? commit : () => { commit(); onSaved(); });
         return true;
     }
 

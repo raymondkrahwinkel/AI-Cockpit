@@ -10,9 +10,9 @@ namespace Cockpit.Plugin.Kubernetes.Ui;
 
 // The plugin's settings view (opened from the gear in the plugin manager): a manageable list of cluster rows
 // (add/remove, each with its own kubeconfig, allowed namespaces and capability toggles) plus the MCP on/off
-// toggle. Implements `IPluginSettingsView`, so the host renders the Save/Close footer and
-// `Save` persists on Save — the metadata to storage, each kubeconfig through the secret layer, and
-// clears the credential of any cluster that was removed.
+// toggle. Implements `IPluginSettingsView`, so the host renders the Save/Close footer and performs the write this
+// view hands it (AC-1003) — the metadata to storage, each kubeconfig through the secret layer, and clearing the
+// credential of any cluster that was removed.
 internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly KubernetesSettings _settings;
@@ -75,16 +75,29 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
         _clustersPanel.Children.Add(row);
     }
 
+    // AC-1004, criterion 3: the old `Save()` validated nothing and wrote everything. The one check it did make —
+    // a cluster needs a label — it made by silently dropping the row, taking the operator's kubeconfig with it.
+    // That is the half that belongs here now that a refusal can carry a reason; every write stays in `_Commit`.
     public bool TryStage(out Action? commit, out string? error)
     {
+        // Numbered by position in the panel, since a row with no label has nothing else to be called by.
+        var labelless = _rows.FindIndex(row => !row.IsBlank && string.IsNullOrWhiteSpace(row.ToRegistration().Label));
+        if (labelless >= 0)
+        {
+            commit = null;
+            error = $"Cluster {labelless + 1} has no label — an agent names a cluster by it, and so does every "
+                + "consent prompt. Give it one, or remove the row.";
+            return false;
+        }
+
         commit = _Commit;
         error = null;
         return true;
     }
 
     // Whole body, writes included: this one stores each row's kubeconfig as it walks the list (and clears the
-    // orphans afterwards), so validating without writing would mean reading the effective kubeconfig twice.
-    // AC-1004 revisits that — and whether a labelless row deserves a refusal instead of being skipped in silence.
+    // orphans afterwards), so splitting the writes out of it would mean reading the effective kubeconfig twice —
+    // once to validate, once to store — for nothing. Nothing here runs before the operator confirms.
     private void _Commit()
     {
         var kept = _rows.Where(row => !row.IsBlank).ToList();
@@ -93,14 +106,6 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
         foreach (var row in kept)
         {
             var registration = row.ToRegistration();
-
-            // A cluster needs a label — it is how an agent names it and how a consent prompt identifies it. Skip a
-            // labelless row rather than persist an empty-named cluster.
-            if (string.IsNullOrWhiteSpace(registration.Label))
-            {
-                continue;
-            }
-
             var pasted = row.KubeconfigInput.Trim();
             if (!string.IsNullOrEmpty(registration.KubeconfigPath))
             {
@@ -125,8 +130,8 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
             registrations.Add(registration);
         }
 
-        // Clear the stored kubeconfig of any cluster that is no longer saved — removed, or its label cleared so it
-        // was dropped above — so an orphaned secret does not linger.
+        // Clear the stored kubeconfig of any cluster that is no longer saved — removed, or emptied out until the
+        // row counted as blank — so an orphaned secret does not linger.
         var savedIds = registrations.Select(registration => registration.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var goneId in _originalClusterIds.Where(id => !savedIds.Contains(id)))
         {

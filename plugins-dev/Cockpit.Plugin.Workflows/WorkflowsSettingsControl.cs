@@ -40,6 +40,8 @@ internal sealed class WorkflowsSettingsControl : UserControl, IPluginSettingsVie
         };
     }
 
+    // AC-1004, criterion 3: the old `Save()` was this one storage write and nothing else — the MCP toggle is read
+    // fresh whenever the plugin is asked for its servers, so there is nothing to re-register here.
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = () => _settings.SaveMcpEnabled(_mcpEnabled.IsChecked ?? true);

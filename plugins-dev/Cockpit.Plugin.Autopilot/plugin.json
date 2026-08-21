@@ -1,7 +1,7 @@
 {
   "id": "autopilot",
   "name": "Autopilot",
-  "version": "0.17.10",
+  "version": "0.17.11",
   "entryAssembly": "Cockpit.Plugin.Autopilot.dll",
   "entryType": "Cockpit.Plugin.Autopilot.AutopilotPlugin",
   "abstractionsVersion": 2,

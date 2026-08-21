@@ -15,6 +15,8 @@
          Material.Icons, so substituting it needs those types loadable — same set the other plugin test projects carry. -->
     <PackageReference Include="Avalonia" Version="12.1.1" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
+    <!-- AC-1004: the settings view's staging tests build the real control, and a control needs a platform. -->
+    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

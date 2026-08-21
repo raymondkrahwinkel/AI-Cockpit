@@ -89,6 +89,23 @@ public class PluginDialogHostSettingsFooterTests
         Assert.False(window.IsVisible);
     });
 
+    // AC-1004, criterion 5: the settings-saved signal follows the write, and it is this window's job to keep the
+    // two together even though it performs them on one click — a plugin invalidating a cache from that signal
+    // (Docker, LocalCi, Kubernetes, GitHub PR all do) would otherwise rebuild against the values being replaced.
+    [Fact]
+    public void TheSettingsSavedSignalRunsAfterTheWrite_NotBeforeIt() => HeadlessAvalonia.Run(() =>
+    {
+        var window = new Window();
+        window.Show();
+        var order = new List<string>();
+        var view = new OrderedSettingsView(order);
+        var footer = PluginDialogHost.BuildSettingsFooter(window, view, () => order.Add("notified"));
+
+        _Button(footer, "Save").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Equal(["write", "notified"], order);
+    });
+
     [Fact]
     public void AViewWithNoSaveCapability_GetsOnlyClose_AndNoFallbackLine() => HeadlessAvalonia.Run(() =>
     {
@@ -98,6 +115,16 @@ public class PluginDialogHostSettingsFooterTests
         Assert.Single(footer.GetVisualDescendants().OfType<Button>());
         Assert.False(_Status(footer).IsVisible);
     });
+
+    private sealed class OrderedSettingsView(List<string> order) : UserControl, IPluginSettingsView
+    {
+        public bool TryStage(out Action? commit, out string? error)
+        {
+            commit = () => order.Add("write");
+            error = null;
+            return true;
+        }
+    }
 
     private static Button _Button(Control footer, string content) =>
         footer.GetVisualDescendants().OfType<Button>().Single(button => (string?)button.Content == content);

@@ -330,7 +330,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Per-plugin settings views (#14) keyed by plugin folder id, opened from any of the gears — the plugin manager's, the left-menu button's, a plugin dialog's — or by the plugin itself.
     public Dictionary<string, PluginSettingsRegistration> PluginSettings { get; } = [];
 
-    // Settings-saved callbacks (#52) keyed by plugin folder id, registered via `ICockpitHost.OnSettingsSaved` and run once that plugin's settings dialog Save() returns true.
+    // Settings-saved callbacks (#52) keyed by plugin folder id, registered via `ICockpitHost.OnSettingsSaved` and run once the host has performed that plugin's staged write (AC-1004).
     private readonly Dictionary<string, List<Action>> _settingsSavedHandlers = [];
 
     // The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins. Loaded when the Options dialog opens.
