@@ -744,6 +744,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             foreach (TranscriptEntryViewModel entry in e.NewItems)
             {
+                entry.Session = this;
                 entry.ReadingLevel = ReadingLevel;
                 entry.PropertyChanged += _OnEntryPropertyChanged;
             }

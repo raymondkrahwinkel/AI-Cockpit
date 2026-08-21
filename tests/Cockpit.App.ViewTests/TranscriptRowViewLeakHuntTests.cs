@@ -54,7 +54,7 @@ public sealed class TranscriptRowViewLeakHuntTests
         var vm = new SessionViewModel();
         for (var i = 0; i < 60; i++)
         {
-            vm.VisibleTranscript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, MarkdownDoc(i)));
+            vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, MarkdownDoc(i)));
         }
 
         var view = new SessionView { DataContext = vm };

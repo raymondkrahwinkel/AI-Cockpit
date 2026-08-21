@@ -787,10 +787,10 @@
                     <ItemsControl.ItemTemplate>
                         <!-- AC-722: same row as SessionView.axaml, via Controls/TranscriptRowView.axaml —
                              this is what makes AC-715's question card (and everything else the old, narrower
-                             copy of this template never grew) work in this window too. -->
+                             copy of this template never grew) work in this window too. AC-990: same source for
+                             the session as SessionView now — the row's own view model, not a $parent lookup. -->
                         <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
-                            <controls:TranscriptRowView Compact="True" ReplyEnabled="True"
-                                Session="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).Session}"/>
+                            <controls:TranscriptRowView Compact="True" ReplyEnabled="True"/>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
