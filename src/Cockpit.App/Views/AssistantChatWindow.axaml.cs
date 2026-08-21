@@ -73,6 +73,7 @@ public partial class AssistantChatWindow : Window
         ChatView.HeaderBar.PointerPressed += _OnHeaderPressed;
         ChatView.HeaderBar.PointerMoved += _OnHeaderMoved;
         ChatView.HeaderBar.PointerReleased += _OnHeaderReleased;
+        ChatView.HeaderBar.PointerCaptureLost += _OnHeaderCaptureLost;
         AddHandler(KeyDownEvent, _OnKeyDownTunnel, RoutingStrategies.Tunnel);
 
         _normalPosition = Position;
@@ -225,6 +226,11 @@ public partial class AssistantChatWindow : Window
             chat.ToggleDockCommand.Execute(null);
         }
     }
+
+    // The pointer can also be taken away rather than let go — another window grabbing it, a cancelled touch, a
+    // backend withdrawing the capture. No release follows, so without this the zone would stay on screen. The
+    // window keeps the position it had reached: the drag was interrupted, not abandoned the way Esc abandons it.
+    private void _OnHeaderCaptureLost(object? sender, PointerCaptureLostEventArgs e) => _EndDrag();
 
     // Esc abandons the move — the window goes back where it was picked up and nothing docks (AC-962 criterion 6).
     // Tunnelled, so it is seen before the composer below can take an Escape of its own for closing a picker.

@@ -173,6 +173,42 @@ public sealed class AssistantDragToDockTests
         });
     }
 
+    // Losing the capture is the one way out of the drag that raises no release at all, so it is the one that
+    // would otherwise leave the zone lying over the cockpit until somebody dragged and let go properly.
+    [Fact]
+    public async Task LosingThePointerCaptureMidDrag_EndsTheDrag_WithoutDocking()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var (coordinator, cockpit, main, chat) = await _OpenTheFloatingChatAsync();
+
+            try
+            {
+                var header = chat.GetVisualDescendants().OfType<Border>().First(border => border.Name == "HeaderBar");
+                IPointer? pointer = null;
+                header.PointerPressed += (_, e) => pointer = e.Pointer;
+
+                chat.MouseDown(_HeaderGrip(chat), MouseButton.Left);
+                chat.MouseMove(InsideTheZone, RawInputModifiers.LeftMouseButton);
+                Assert.True(cockpit.IsAssistantDropZoneActive);
+
+                // What a backend withdrawing the capture does — no release follows it.
+                pointer!.Capture(null);
+                await Task.Delay(100);
+
+                Assert.Equal(0, cockpit.AssistantDropZoneWidth);
+                Assert.False(cockpit.IsAssistantDropZoneVisible);
+                Assert.False(cockpit.IsAssistantDropZoneActive);
+                Assert.False(cockpit.AssistantDocked);
+                Assert.Same(chat, coordinator.OpenChatWindow);
+            }
+            finally
+            {
+                main.Close();
+            }
+        });
+    }
+
     // The zone is the overlap between the screen band and the cockpit window, so a cockpit that does not reach
     // the band offers nothing to drop on — and a drop there must not dock behind the operator's back.
     [Fact]
