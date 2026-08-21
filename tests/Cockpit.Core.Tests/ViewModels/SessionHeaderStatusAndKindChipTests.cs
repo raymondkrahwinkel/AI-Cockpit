@@ -143,12 +143,37 @@ public class SessionHeaderStatusAndKindChipTests
         vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
 
         var counted = int.Parse(new string([.. vm.Status.Where(char.IsDigit)]), CultureInfo.InvariantCulture);
-        var listed = vm.McpServersTooltip.Split('\n')[1..];
+        // The server block is the tooltip's first paragraph; AC-963 hangs a second one under it saying how those
+        // servers' tools reach the model, which is a statement about tools rather than a name in this list.
+        var listed = vm.McpServersTooltip.Split("\n\n")[0].Split('\n')[1..];
 
         Assert.Equal(counted, listed.Length);
         // Sorted, because a list you look a name up in is sorted, and the order a caller happened to build the
         // set in is not an order.
         Assert.Equal(new[] { "filesystem", "git", "youtrack" }, listed);
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
+    /// AC-963 criterion 6. The status line stays about servers — that is the unit the operator set up — so what
+    /// became of the tools those servers brought has to be said somewhere, or a session running in search mode is
+    /// indistinguishable from one that preloaded everything. "Nothing reported" stays unsaid rather than being
+    /// rendered as a claim, same rule as the unknown selection below.
+    /// </summary>
+    [Fact]
+    public async Task TheHoverSaysWhetherTheToolsArePreloadedOrSearchable()
+    {
+        var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string> { "youtrack" });
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["read_file", "write_file"] });
+        Assert.Contains("2 tools — preloaded", vm.McpServersTooltip, StringComparison.Ordinal);
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["read_file", "search_tools", "call_tool"] });
+        Assert.Contains("1 tool — searchable", vm.McpServersTooltip, StringComparison.Ordinal);
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = [] });
+        Assert.DoesNotContain("preloaded", vm.McpServersTooltip, StringComparison.Ordinal);
 
         await vm.DisposeAsync();
     }

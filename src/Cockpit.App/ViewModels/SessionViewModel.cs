@@ -2314,6 +2314,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     ? "No tools connected — add an MCP server (e.g. filesystem) to give this session tools."
                     : $"{init.Tools.Count} tools connected";
 
+                // AC-963: the same hover that lists the servers now says what became of their tools — preloaded, or
+                // kept out of the prompt behind search_tools. Only the init event knows which of the two happened.
+                McpToolReach = McpToolReachFor(init.Tools);
+
                 // AC-141: a session launched with no explicit model (Auto/default) built its Model live-control
                 // with nothing to show — the init event is the one place the CLI states which model it actually
                 // picked. Seed it in, don't fire a switch: the driver already reported this, and set_model would

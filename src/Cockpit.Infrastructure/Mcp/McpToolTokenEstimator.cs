@@ -50,7 +50,7 @@ internal sealed class McpToolTokenEstimator(IMcpToolProvider toolProvider, ILogg
                 return McpServerToolEstimate.Unavailable(serverName);
             }
 
-            var tokens = McpToolTokenMath.EstimateTokens(tools.Select(_Serialise));
+            var tokens = McpToolTokenMath.EstimateTokens(tools.Select(SerialiseForEstimate));
             return new McpServerToolEstimate(serverName, tools.Count, tokens, Available: true);
         }
         catch (Exception ex)
@@ -61,6 +61,8 @@ internal sealed class McpToolTokenEstimator(IMcpToolProvider toolProvider, ILogg
     }
 
     // A tool as the model sees it in the prompt: its name, its description, and its JSON input schema.
-    private static string _Serialise(AIFunction tool) =>
+    // Also what the local-model driver weighs when it reports how much schema its search mode keeps out of a
+    // request (AC-963) — one formula, so the two numbers stay comparable.
+    internal static string SerialiseForEstimate(AIFunction tool) =>
         $"{tool.Name}\n{tool.Description}\n{tool.JsonSchema.GetRawText()}";
 }

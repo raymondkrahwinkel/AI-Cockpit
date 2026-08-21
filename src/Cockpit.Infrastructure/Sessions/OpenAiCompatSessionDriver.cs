@@ -43,7 +43,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
 
     private IChatClient? _agent;
     private IMcpToolSession? _toolSession;
-    private List<AITool> _gatedTools = [];
+
+    // Every mounted tool, wrapped in its `GatedTool` — the catalogue `search_tools` reads and `call_tool` runs
+    // against (AC-963), and the list of what this session can reach at all.
+    private List<McpSessionTool> _gatedTools = [];
+
+    // What actually rides along in `ChatOptions.Tools` each turn: the whole catalogue below the threshold, and
+    // above it only the always-mounted endpoints plus the two `cockpit-tools` proxies.
+    private List<AITool> _turnTools = [];
     private string? _model;
     private string? _sessionId;
     private CancellationTokenSource? _turnCancellation;
@@ -163,14 +170,15 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
                 string.Join(", ", _toolSession.ServersNeedingSignIn));
         }
 
-        _gatedTools = _toolSession.Tools.Select(tool => (AITool)new GatedTool(tool, this)).ToList();
+        _gatedTools = [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, this) })];
+        _turnTools = _BuildTurnTools();
         // SupportsTools flips true once servers connected. ConfinesFileAccessToWorkingDirectory is vouched only when we
         // actually confined this session (confineRoot set → the tool provider re-rooted file access to the worktree and
         // dropped every escape channel); the host's fail-closed isolation gate reads it, so it must never read true on a
         // session that was not confined.
         Capabilities = Capabilities with
         {
-            SupportsTools = _gatedTools.Count > 0,
+            SupportsTools = _turnTools.Count > 0,
             ConfinesFileAccessToWorkingDirectory = confineRoot is not null,
         };
 
@@ -186,7 +194,36 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         // Report the actual tool names (not the server names) so the session's "N tools" count is real and
         // the UI can show exactly which tools — e.g. read_file — the local model has, making it verifiable
         // whether a file tool is even available before wondering why the model didn't call one.
-        _events.Writer.TryWrite(new SessionInitialized { SessionId = _sessionId, Cwd = string.Empty, Tools = [.. _gatedTools.Select(tool => tool.Name)] });
+        // In search mode the catalogue is reachable through `call_tool` rather than preloaded, so this still names
+        // every tool the model can get to — plus the two proxies it gets there with.
+        _events.Writer.TryWrite(new SessionInitialized
+        {
+            SessionId = _sessionId,
+            Cwd = string.Empty,
+            Tools = [.. _gatedTools.Select(tool => tool.Function.Name), .. _turnTools.Select(tool => tool.Name).Where(name => name is CockpitToolSearch.SearchToolName or CockpitToolSearch.CallToolName)],
+        });
+    }
+
+    // What rides along in `ChatOptions.Tools` every turn (AC-963). Above the threshold the schemas are the problem,
+    // so only the always-mounted endpoints stay native: `cockpit-session set_status` is plumbing every session must
+    // reach without going looking for it first.
+    private List<AITool> _BuildTurnTools()
+    {
+        if (_gatedTools.Count <= CockpitToolSearch.PreloadThreshold)
+        {
+            return [.. _gatedTools.Select(tool => (AITool)tool.Function)];
+        }
+
+        var preloaded = _gatedTools.Where(tool => tool.AlwaysMounted).ToList();
+        var searchable = _gatedTools.Except(preloaded).ToList();
+        _logger.LogInformation(
+            "Tool search mode: {Preloaded} always-mounted tool(s) preloaded, {Searchable} behind {SearchTool} — about {Tokens} tokens of schema kept out of every request.",
+            preloaded.Count,
+            searchable.Count,
+            CockpitToolSearch.SearchToolName,
+            McpToolTokenMath.Format(McpToolTokenMath.EstimateTokens(searchable.Select(tool => McpToolTokenEstimator.SerialiseForEstimate(tool.Function)))));
+
+        return [.. preloaded.Select(tool => (AITool)tool.Function), .. CockpitToolSearch.Build(_gatedTools)];
     }
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
@@ -206,12 +243,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     private async Task _RunTurnAsync(string text, CancellationToken cancellationToken)
     {
         _history.Add(new ChatMessage(ChatRole.User, text));
-        var toolsAvailable = _gatedTools.Count > 0;
+        var toolsAvailable = _turnTools.Count > 0;
         _turnHadToolActivity = false;
 
         try
         {
-            await _StreamTurnAsync(toolsAvailable ? _gatedTools : null, cancellationToken).ConfigureAwait(false);
+            await _StreamTurnAsync(toolsAvailable ? _turnTools : null, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

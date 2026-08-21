@@ -10,7 +10,7 @@ namespace Cockpit.Infrastructure.Mcp;
 /// </summary>
 internal interface IMcpToolSession : IAsyncDisposable
 {
-    IReadOnlyList<AIFunction> Tools { get; }
+    IReadOnlyList<McpSessionTool> Tools { get; }
 
     IReadOnlyList<string> ConnectedServerNames { get; }
 
@@ -29,3 +29,8 @@ internal interface IMcpToolSession : IAsyncDisposable
     /// </summary>
     IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses { get; }
 }
+
+// One tool of a connected session, with the server it came from and whether that server is always mounted
+// (AC-963). The origin travels with the tool rather than in a name-keyed side map because two servers may expose
+// the same tool name, and the search layer has to be able to tell the operator which of the two it found.
+internal sealed record McpSessionTool(AIFunction Function, string ServerName, bool AlwaysMounted);

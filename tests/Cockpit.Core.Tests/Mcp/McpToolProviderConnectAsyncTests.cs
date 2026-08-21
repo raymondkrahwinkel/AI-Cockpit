@@ -37,7 +37,7 @@ public class McpToolProviderConnectAsyncTests
 
         // Both connected, in the same order the servers were listed (deterministic despite racing in parallel).
         Assert.Equal(new[] { "server-a", "server-b" }, session.ConnectedServerNames);
-        var toolNames = session.Tools.Select(tool => tool.Name).ToList();
+        var toolNames = session.Tools.Select(tool => tool.Function.Name).ToList();
         Assert.Contains("tool_a", toolNames);
         Assert.Contains("tool_b", toolNames);
 
@@ -70,7 +70,7 @@ public class McpToolProviderConnectAsyncTests
         await using var session = await provider.ConnectAsync(new HashSet<string> { "server-a" });
 
         Assert.Equal(new[] { "server-a" }, session.ConnectedServerNames);
-        Assert.Equal("tool_a", Assert.Single(session.Tools).Name);
+        Assert.Equal("tool_a", Assert.Single(session.Tools).Function.Name);
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class McpToolProviderConnectAsyncTests
         await using var session = await provider.ConnectAsync();
 
         Assert.Equal(new[] { "server-a" }, session.ConnectedServerNames);
-        Assert.Equal("tool_a", Assert.Single(session.Tools).Name);
+        Assert.Equal("tool_a", Assert.Single(session.Tools).Function.Name);
     }
 
     // AC-500 acceptance criterion 3: an OAuth server whose sign-in never happened must not disappear into the same
