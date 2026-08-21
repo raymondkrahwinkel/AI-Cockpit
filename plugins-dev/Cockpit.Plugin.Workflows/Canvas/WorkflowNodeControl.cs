@@ -311,7 +311,7 @@ internal sealed class WorkflowNodeControl : Border
     {
         WorkflowNodeKind.Trigger => _Accent,
         WorkflowNodeKind.Decision => new SolidColorBrush(Color.Parse("#C79A4A")),
-        _ => new SolidColorBrush(Color.Parse("#123456")),
+        _ => new SolidColorBrush(Color.Parse("#7A8290")),
     };
 
     private static Control _Docked(Control control, Dock dock)
