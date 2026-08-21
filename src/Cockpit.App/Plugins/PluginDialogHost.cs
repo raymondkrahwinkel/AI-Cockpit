@@ -13,8 +13,8 @@ namespace Cockpit.App.Plugins;
 // Shows a plugin's content in a window beside the cockpit (#14), wrapped in the shared cockpit window
 // chrome (`CockpitWindowChrome`) so a plugin dialog looks native to the app. The plugin owns
 // the content control. The settings variant adds a host-provided Save/Close footer so every plugin's
-// settings dialog behaves the same — Save calls the view's `IPluginSettingsView.Save` and
-// closes the window on success.
+// settings dialog behaves the same — Save takes the write `IPluginSettingsView.TryStage` hands over, performs
+// it, and closes the window.
 //
 // These are surfaces, not questions (AC-367): a plugin's issue list or workflow manager is read and worked
 // in for minutes, and as a modal it took every running session down with it.
@@ -87,23 +87,13 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
     // testable without the rest of `ShowSettingsDialogAsync`'s `Application.Current.ApplicationLifetime`
     // dependency (owner/sizing, in `_TryCreateWindow`) — this only touches the window and view it is handed.
     //
-    // *On a refused save (AC-499 review fix, follow-up finding):* `IPluginSettingsView.Save` answers
-    // only `true`/`false`, with no channel back for a reason — a deliberate ABI-safe
-    // surface every published plugin (11+ in this repo alone, plus whatever a third party has built against it)
-    // implements today. Until AC-499 no settings view ever returned `false` for anything but "the
-    // operator has not filled the form in yet" (silently doing nothing was tolerable there), so the gap was never
-    // visible. Depot's own save now refuses the whole batch on a name collision instead of silently dropping one
-    // row — a real, occupied failure that this footer used to say nothing about at all: the operator's click just
-    // did not do anything.
+    // This is the immediate half of the staged contract (AC-1003): a standalone settings window has nothing to
+    // hold a commit for, so it stages and commits on the same click. The Options screen keeps the very same
+    // `TryStage` result across its transaction instead — see `PluginSettingsStaging`.
     //
-    // Two ways to close that gap were weighed. *Widening `IPluginSettingsView`* (even additively —
-    // a default-implemented member, never a changed signature) would only help a plugin that adopts it; every
-    // existing prebuilt plugin, and every plugin published before the widening, keeps answering with a bare bool and
-    // the operator is back to a silent click until each one is rebuilt. A generic host-level line, chosen here
-    // instead, helps every plugin the moment this ships — including the ones already out there — at the cost of not
-    // being able to name the specific reason. A plugin that wants to say more (Depot's own per-row detail, e.g.
-    // `DepotConnectionRowControl`'s "'\"{name}\" is used by another row above'") still can, in its own view —
-    // this line only promises that a refusal is never silent, not that it is the operator's only answer.
+    // *On a refused save:* the reason now comes from the view (AC-1003, replacing the generic host-level line
+    // AC-499 had to settle for while `bool Save()` carried no channel for one). Depot's duplicate-name refusal,
+    // for one, can finally name the row it refused on in the footer the operator clicked in.
     internal static Border BuildSettingsFooter(Window window, Control view, Action? onSaved)
     {
         var status = new TextBlock
@@ -126,15 +116,16 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
             var save = new Button { Content = "Save", Classes = { "Accent" } };
             save.Click += (_, _) =>
             {
-                if (settingsView.Save())
+                if (!PluginSettingsStaging.TryStage(settingsView, out var commit, out var error))
                 {
-                    onSaved?.Invoke();
-                    window.Close();
+                    status.Text = error;
+                    status.IsVisible = true;
                     return;
                 }
 
-                status.Text = "This screen could not save its changes — see the screen itself for the reason.";
-                status.IsVisible = true;
+                commit();
+                onSaved?.Invoke();
+                window.Close();
             };
             buttons.Children.Add(save);
         }

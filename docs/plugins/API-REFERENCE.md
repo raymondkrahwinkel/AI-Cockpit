@@ -4,10 +4,13 @@ Every type and method a plugin can call, from the one assembly you reference:
 **`Cockpit.Plugins.Abstractions`**. For the how-to (project setup, manifest, packaging, install, stores),
 see the [Plugin SDK guide](PLUGIN-SDK.md); this page is the method-by-method reference.
 
-- **Contract version:** `AbstractionsContract.Version` (currently **`1`**). Your `plugin.json`'s
-  `abstractionsVersion` must equal the host's major, or the host refuses to load the plugin.
-- **Threading:** contribution callbacks (`Func<Control>`, `Action onInvoke`, `Save()`) run on the **UI
-  thread**. `ICockpitActions` methods are async and safe to `await` from the UI thread.
+- **Contract version:** `AbstractionsContract.Version` (currently **`2`**). Your `plugin.json`'s
+  `abstractionsVersion` must equal the host's major, or the host refuses to load the plugin. Coming from `1`?
+  See [Migrating from `bool Save()`](PLUGIN-SDK.md#migrating-from-bool-save--contract-1--2) — the settings
+  contract is the only thing that changed.
+- **Threading:** contribution callbacks (`Func<Control>`, `Action onInvoke`, `TryStage()` and the `commit` it
+  hands back) run on the **UI thread**. `ICockpitActions` methods are async and safe to `await` from the UI
+  thread.
 - **Nullability:** the assembly is nullable-annotated; honour it.
 
 ---
@@ -17,13 +20,17 @@ see the [Plugin SDK guide](PLUGIN-SDK.md); this page is the method-by-method ref
 ```csharp
 public static class AbstractionsContract
 {
-    public const int Version = 1;
+    public const int Version = 2;
 }
 ```
 
 The plugin-contract major. The host loads a plugin only when its manifest `abstractionsVersion` equals
 this. The contract grows **additively** within a major (new members arrive as default interface methods on
 `ICockpitHost`); a breaking change bumps `Version`.
+
+**`2`** (host 0.26.0) — `IPluginSettingsView` no longer persists its own settings: `bool Save()` became
+[`bool TryStage(out Action? commit, out string? error)`](#ipluginsettingsview). The only break so far, and the
+only reason a contract-`1` plugin is refused.
 
 ---
 
@@ -136,8 +143,9 @@ is no top-level Options tab per plugin).
 - **Parameter** `createView` — a factory returning your settings `Control`, invoked on the UI thread when the
   gear is clicked.
 - **Call at most once.**
-- If your control implements [`IPluginSettingsView`](#ipluginsettingsview), the host's dialog shows a **Save**
-  button; otherwise just **Close**.
+- If your control implements [`IPluginSettingsView`](#ipluginsettingsview), the host's screen shows a **Save**
+  button; otherwise just **Close**. The host performs the write your view hands it — your view never persists
+  by itself.
 ```csharp
 host.AddSettings(() => new MySettingsControl(host.Storage));
 ```
@@ -172,7 +180,7 @@ await host.ShowDialogAsync("Issues", () => BuildIssuesView(), width: 900, height
 
 ### `void OnSettingsSaved(Action callback)`
 Registers `callback` to run (UI thread) after **this plugin's own** settings are saved from the manager's
-gear (#52) — i.e. your `IPluginSettingsView.Save()` returned `true`. Enabling/disabling/installing a plugin
+gear (#52) — i.e. the host committed what your `IPluginSettingsView.TryStage()` handed it. Enabling/disabling/installing a plugin
 still needs a restart (its assembly can't be unloaded/loaded live), but a settings change doesn't have to.
 - **When you need this:** a contribution that read settings once at construction and cached the result — e.g.
   a side-menu section's already-fetched list (`AddSideMenuSection`) — should subscribe and reload.
@@ -959,7 +967,8 @@ A name passed here counts as a name somebody chose, so a ticket linked to that s
 Leave it null and the profile and the clock name it, and that composed name stays open to being relabelled later.
 
 It is a separate overload rather than a fourth optional parameter on the three-argument form, because adding one would
-change that method's signature and every plugin zip already published calls it. `abstractionsVersion` stays `1`.
+change that method's signature and every plugin zip already published calls it — so it needed no
+`abstractionsVersion` bump of its own.
 
 That protects an old plugin on a new host. The other direction is on you: plugins reference this assembly compile-only
 and bind to the host's copy, so a host older than this member loads an SDK that does not have it and the call fails
@@ -1046,30 +1055,51 @@ the runtime.
 ## `IPluginSettingsView`
 
 Optional interface your **settings control** (the one passed to `AddSettings`) implements to get a standard
-**Save** button in the host's settings dialog.
+**Save** button in the host's settings screen.
 
 ```csharp
 public interface IPluginSettingsView
 {
-    bool Save();
+    bool TryStage(out Action? commit, out string? error);
 }
 ```
 
-### `bool Save()`
-Persist the settings (typically via `host.Storage`). **Return `true`** to close the dialog, **`false`** to keep
-it open (e.g. validation failed). A settings view that applies changes live can skip this interface and just
-gets a Close button.
+### `bool TryStage(out Action? commit, out string? error)`
+Validate the current field values **without writing anything**, and hand the host the write to perform.
+
+| Member | Meaning |
+|---|---|
+| `commit` | Runs your persistence — `host.Storage` writes and whatever else saving means for you (registering an MCP server, dropping an entry that is now orphaned). The host calls it at most once, when the operator confirms, and not at all when they cancel. |
+| `error` | One line the operator can act on, shown by the host when you return `false`. Say what is wrong and what to do about it. |
+
+**Why you don't write yourself:** your settings may sit inside the cockpit's Options screen, which is one
+staged transaction — Cancel there has to take your change back too, and it cannot take back a write that has
+already happened. A standalone settings window (your own gear, a widget's gear) stages and commits in the same
+click, so one implementation serves both.
+
+A settings view that applies changes live can skip this interface and just gets a Close button.
+
 ```csharp
 public sealed class MySettingsControl : UserControl, IPluginSettingsView
 {
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
     {
-        if (string.IsNullOrWhiteSpace(_repo.Text)) return false; // keep open
-        _storage.Set("repo", _repo.Text);
-        return true;                                             // close
+        if (string.IsNullOrWhiteSpace(_repo.Text))
+        {
+            commit = null;
+            error = "Fill in the repository (owner/name) first.";  // screen stays open, host shows this
+            return false;
+        }
+
+        var repo = _repo.Text.Trim();
+        commit = () => _storage.Set("repo", repo);                 // the host runs this, not you
+        error = null;
+        return true;
     }
 }
 ```
+
+Migrating from `bool Save()`? See [the migration steps](PLUGIN-SDK.md#migrating-from-bool-save--contract-1--2).
 
 ---
 
@@ -1089,8 +1119,8 @@ public interface IPluginSettingsSections
 
 Your control stays the one thing the host renders — it is not replaced or taken apart. The host asks it to
 show a section; swapping its own content is your business, so everything a settings view already relies on
-(its attach/detach lifetime, the fields `Save()` reads) is untouched. Save stays one shared footer across all
-sections: a section is a page of the same form, not a form of its own.
+(its attach/detach lifetime, the fields `TryStage()` reads) is untouched. Save stays one shared footer across
+all sections: a section is a page of the same form, not a form of its own.
 
 The rail appears **from two sections up** — beside a single page it costs width and navigates nothing — and a
 control that does not implement this gets exactly the dialog it has today.

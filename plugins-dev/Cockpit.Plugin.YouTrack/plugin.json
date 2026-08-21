@@ -1,11 +1,11 @@
 {
   "id": "youtrack",
   "name": "YouTrack",
-  "version": "1.27.0",
+  "version": "1.27.1",
   "entryAssembly": "Cockpit.Plugin.YouTrack.dll",
   "entryType": "Cockpit.Plugin.YouTrack.YouTrackPlugin",
-  "abstractionsVersion": 1,
-  "minHostVersion": "0.9.0",
+  "abstractionsVersion": 2,
+  "minHostVersion": "0.26.0",
   "description": "A left-menu button (or the Shift+Y shortcut) opens a dialog listing open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, in a searchable, sortable grid; click one to drop a prompt asking the agent to work on it — or start it in a new session, which opens the new-session dialog with that prompt ready — and with the cockpit project that tracks this YouTrack project already selected — so you pick the profile and folder yourself. Run the ticket workflow from the cockpit: Start an issue (move it to in progress, assign it to you, and tie it to the session you work in), or move it to any state the board itself allows — including workflow-governed boards, whose allowed transitions are read rather than assumed. A linked issue appears with its status in that session's own header, with quick actions (move state, copy branch name, open in browser), and linking one to a session you already have open labels that session: it says what it is working on, and takes the ticket as its name unless you gave it one yourself. An issue can also be started in Autopilot (the operator-triggered issue → merge-ready-PR pipeline), which posts its progress and moves the issue's stage back through this plugin. The prompt template is editable in settings. Link a cockpit project to a YouTrack project in the project editor, picked from the instance's own list, and this dialog opens on it instead of on everything. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools. Screenshots you send with a message are attached automatically to the issue the agent creates or updates that turn (a global setting, on by default).",
   "author": "Cockpit"
 }

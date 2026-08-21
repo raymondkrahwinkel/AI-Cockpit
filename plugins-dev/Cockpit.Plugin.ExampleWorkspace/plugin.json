@@ -1,10 +1,10 @@
 {
   "id": "example-workspace",
   "name": "Example Workspace",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "entryAssembly": "Cockpit.Plugin.ExampleWorkspace.dll",
   "entryType": "Cockpit.Plugin.ExampleWorkspace.ExampleWorkspacePlugin",
-  "abstractionsVersion": 1,
+  "abstractionsVersion": 2,
   "minHostVersion": "0.8.0",
   "description": "A full-surface workspace a plugin draws end to end, with a real host session embedded in it (AC-122).",
   "author": "Cockpit"

@@ -8,6 +8,13 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 [Collection("avalonia")]
 public class AutopilotSettingsControlValidationTests
 {
+    // What the host does on a Save click (AC-1003): stage, then run the write the view handed back.
+    private static void _Save(IPluginSettingsView view)
+    {
+        Assert.True(view.TryStage(out var commit, out _));
+        commit!();
+    }
+
     [Fact]
     public void ValidationBoxes_StartBlank_WhenNoOverrideIsStored()
     {
@@ -26,7 +33,7 @@ public class AutopilotSettingsControlValidationTests
 
         control.CeoValidationProfileBox.SelectedItem = "work-sonnet";
         control.CeoValidationModelBox.Text = "sonnet";
-        control.Save();
+        _Save(control);
 
         // Read from a fresh instance over the same backing storage, the way the real host reopens settings next
         // time — proves Save actually wrote the override rather than only updating the in-memory settings object.
@@ -45,7 +52,7 @@ public class AutopilotSettingsControlValidationTests
         Assert.Equal("sonnet", control.CeoValidationModelBox.Text);
 
         control.CeoValidationModelBox.Text = string.Empty;
-        control.Save();
+        _Save(control);
 
         Assert.Null(settings.CeoValidationModelOverride());
     }

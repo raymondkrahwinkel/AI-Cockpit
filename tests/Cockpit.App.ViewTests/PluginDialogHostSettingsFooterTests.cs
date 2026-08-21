@@ -7,31 +7,42 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// The plugin-settings footer's Save button used to answer a refused save with nothing at all: <see cref="IPluginSettingsView.Save"/>
-/// only ever returns true/false, and a false answer closed no window, showed no message, and told the operator
-/// nothing had happened at all — found when Depot's own save (a separate change) started refusing a whole batch on
-/// a name collision instead of silently dropping one row. This pins the host-level fallback line
-/// <see cref="PluginDialogHost.BuildSettingsFooter"/> now shows instead of staying silent.
+/// The standalone plugin-settings window — a plugin's own gear and a widget pane's gear both end up here
+/// (<c>OpenPluginSettingsAsync</c> / <c>ShowWidgetSettingsAsync</c>), and it is the host that has no transaction
+/// to wait for: it stages and commits on the same click. Pins that half of the staged contract (AC-1003) —
+/// nothing is written when the view refuses, the view's own reason is what the operator reads (it used to be a
+/// generic host line, AC-499), and the write only happens through the host.
 /// </summary>
 [Collection("avalonia")]
 public class PluginDialogHostSettingsFooterTests
 {
-    private sealed class FakeSettingsView : UserControl, IPluginSettingsView
+    private sealed class FakeSettingsView(string? refusal = null) : UserControl, IPluginSettingsView
     {
-        private readonly bool _saves;
+        public int Committed { get; private set; }
 
-        public FakeSettingsView(bool saves) => _saves = saves;
+        public bool TryStage(out Action? commit, out string? error)
+        {
+            if (refusal is not null)
+            {
+                commit = null;
+                error = refusal;
+                return false;
+            }
 
-        public bool Save() => _saves;
+            commit = () => Committed++;
+            error = null;
+            return true;
+        }
     }
 
     [Fact]
-    public void ARefusedSave_ShowsAFallbackReason_AndLeavesTheWindowOpen() => HeadlessAvalonia.Run(() =>
+    public void ARefusedSave_ShowsTheViewsOwnReason_WritesNothing_AndLeavesTheWindowOpen() => HeadlessAvalonia.Run(() =>
     {
         var window = new Window();
         window.Show();
         var saved = 0;
-        var footer = PluginDialogHost.BuildSettingsFooter(window, new FakeSettingsView(saves: false), () => saved++);
+        var view = new FakeSettingsView(refusal: "\"work\" is used by another row above.");
+        var footer = PluginDialogHost.BuildSettingsFooter(window, view, () => saved++);
         var status = _Status(footer);
 
         Assert.False(status.IsVisible);
@@ -39,22 +50,40 @@ public class PluginDialogHostSettingsFooterTests
         _Button(footer, "Save").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
         Assert.True(status.IsVisible);
-        Assert.False(string.IsNullOrEmpty(status.Text));
+        Assert.Equal("\"work\" is used by another row above.", status.Text);
+        Assert.Equal(0, view.Committed);
         Assert.Equal(0, saved);
         Assert.True(window.IsVisible);
     });
 
     [Fact]
-    public void ASuccessfulSave_RunsOnSavedAndClosesTheWindow_WithoutShowingTheFallback() => HeadlessAvalonia.Run(() =>
+    public void ARefusalWithNoReason_StillSaysSomething() => HeadlessAvalonia.Run(() =>
+    {
+        var window = new Window();
+        window.Show();
+        var footer = PluginDialogHost.BuildSettingsFooter(window, new FakeSettingsView(refusal: "  "), onSaved: null);
+
+        _Button(footer, "Save").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        var status = _Status(footer);
+        Assert.True(status.IsVisible);
+        Assert.False(string.IsNullOrWhiteSpace(status.Text));
+        Assert.True(window.IsVisible);
+    });
+
+    [Fact]
+    public void AnAcceptedSave_CommitsThroughTheHost_RunsOnSaved_AndClosesTheWindow() => HeadlessAvalonia.Run(() =>
     {
         var window = new Window();
         window.Show();
         var saved = 0;
-        var footer = PluginDialogHost.BuildSettingsFooter(window, new FakeSettingsView(saves: true), () => saved++);
+        var view = new FakeSettingsView();
+        var footer = PluginDialogHost.BuildSettingsFooter(window, view, () => saved++);
         var status = _Status(footer);
 
         _Button(footer, "Save").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
+        Assert.Equal(1, view.Committed);
         Assert.Equal(1, saved);
         Assert.False(status.IsVisible);
         Assert.False(window.IsVisible);

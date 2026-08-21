@@ -1,5 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Plugins;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -19,7 +20,7 @@ public class StorePluginRowViewModelTests
         bool featured = false,
         string? published = null,
         string latestVersion = "1.0.0",
-        int? abstractionsVersion = 1,
+        int? abstractionsVersion = AbstractionsContract.Version,
         string? minHostVersion = "1.0.0",
         string? logoAsset = null) => new(
         Id: "github-issues",
@@ -214,7 +215,7 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(
             _Entry(minHostVersion: "2.0.0"), PluginStoreConfig.Remote("url"), installedVersion: null,
-            hostAbstractionsMajor: 1, hostVersion: new Version(1, 5, 0));
+            hostAbstractionsMajor: AbstractionsContract.Version, hostVersion: new Version(1, 5, 0));
 
         Assert.True(row.IsIncompatible);
         Assert.Contains("2.0.0", row.IncompatibilityReason);
@@ -228,7 +229,7 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(
             _Entry(minHostVersion: "1.5.0"), PluginStoreConfig.Remote("url"), installedVersion: null,
-            hostAbstractionsMajor: 1, hostVersion: new Version(1, 5, 0));
+            hostAbstractionsMajor: AbstractionsContract.Version, hostVersion: new Version(1, 5, 0));
 
         Assert.False(row.IsIncompatible);
         Assert.Null(row.IncompatibilityReason);
@@ -243,7 +244,7 @@ public class StorePluginRowViewModelTests
         // can never disagree with what an actual install attempt on this same host would do.
         var row = new StorePluginRowViewModel(
             _Entry(minHostVersion: "1.0.0"), PluginStoreConfig.Remote("url"), installedVersion: null,
-            hostAbstractionsMajor: 1, hostVersion: new Version(0, 13, 0));
+            hostAbstractionsMajor: AbstractionsContract.Version, hostVersion: new Version(0, 13, 0));
 
         Assert.False(row.IsIncompatible);
     }
@@ -255,7 +256,7 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(
             _Entry(minHostVersion: "0.14.0"), PluginStoreConfig.Remote("url"), installedVersion: null,
-            hostAbstractionsMajor: 1, hostVersion: new Version(0, 13, 0));
+            hostAbstractionsMajor: AbstractionsContract.Version, hostVersion: new Version(0, 13, 0));
 
         Assert.True(row.IsIncompatible);
         Assert.Contains("0.14.0", row.IncompatibilityReason);
@@ -270,7 +271,7 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(
             _Entry(latestVersion: "2.0.0", minHostVersion: "2.0.0"), PluginStoreConfig.Remote("url"), installedVersion: "1.0.0",
-            hostAbstractionsMajor: 1, hostVersion: new Version(1, 5, 0));
+            hostAbstractionsMajor: AbstractionsContract.Version, hostVersion: new Version(1, 5, 0));
 
         Assert.False(row.IsIncompatible); // the installed copy runs fine — only the update is out of reach
         Assert.False(row.CanUpdate);

@@ -127,7 +127,14 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
     }
 
     // Persists every field to the plugin's storage; always succeeds, so the host closes the dialog.
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        commit = _Commit;
+        error = null;
+        return true;
+    }
+
+    private void _Commit()
     {
         _settings.UseGitHubCli = _useGh.IsChecked == true;
         _settings.GhOwner = string.IsNullOrWhiteSpace(_ghOwner.Text) ? "@me" : _ghOwner.Text.Trim();
@@ -138,7 +145,6 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
         _settings.PickerTerms = _pickerTerms.Text?.Trim() ?? string.Empty;
         _settings.BranchPattern = string.IsNullOrWhiteSpace(_branchPattern.Text) ? GitHubBranchName.DefaultPattern : _branchPattern.Text.Trim();
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
-        return true;
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };

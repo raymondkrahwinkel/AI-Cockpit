@@ -308,8 +308,8 @@ public interface ICockpitHost
 
     /// <summary>
     /// Registers <paramref name="callback"/> to run (on the UI thread) after this plugin's own settings are
-    /// saved from the plugin manager's gear (#52) — i.e. <see cref="IPluginSettingsView.Save"/> returned
-    /// true. A contribution that read settings once at construction and cached the result (e.g. a side-menu
+    /// saved from the plugin manager's gear (#52) — i.e. the host committed what
+    /// <see cref="IPluginSettingsView.TryStage"/> handed it. A contribution that read settings once at construction and cached the result (e.g. a side-menu
     /// section's already-fetched list) should subscribe here and reload, so a settings change takes effect
     /// immediately instead of requiring an app restart. A contribution that reads <see cref="IPluginStorage"/>-backed
     /// settings fresh on every access (the common case — see <see cref="Storage"/>) already reflects a save

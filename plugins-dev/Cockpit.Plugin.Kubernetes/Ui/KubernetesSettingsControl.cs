@@ -75,7 +75,17 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
         _clustersPanel.Children.Add(row);
     }
 
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        commit = _Commit;
+        error = null;
+        return true;
+    }
+
+    // Whole body, writes included: this one stores each row's kubeconfig as it walks the list (and clears the
+    // orphans afterwards), so validating without writing would mean reading the effective kubeconfig twice.
+    // AC-1004 revisits that — and whether a labelless row deserves a refusal instead of being skipped in silence.
+    private void _Commit()
     {
         var kept = _rows.Where(row => !row.IsBlank).ToList();
 
@@ -125,7 +135,6 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
 
         _settings.Clusters = registrations;
         _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
-        return true;
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };

@@ -8,7 +8,16 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.25.0: a provider plugin can now let the host run the model's tool loop for it (AC-964) — new SDK
+    <!-- 0.26.0: a plugin's settings view no longer persists its own settings (AC-1003) — `IPluginSettingsView`'s
+         `bool Save()` became `bool TryStage(out Action? commit, out string? error)`: it validates, hands the host
+         the write, and the host decides whether and when to run it. That is what lets the Options dialog's staged
+         transaction (AC-999) take a plugin's change back on Cancel, and it finally gives a refused save a reason
+         the operator can read instead of the generic host line AC-499 had to settle for. Unlike every entry below
+         this is a *break*, not an addition: `AbstractionsContract.Version` goes to 2, so a plugin built against 1
+         is refused rather than crashing at its own gear. Every plugin sets `abstractionsVersion: 2` and
+         minHostVersion 0.26.0 when it migrates (AC-1004). Allowed to break because we are still the only supplier
+         of plugins (Raymond, 2026-08-21); still 0.x.
+         0.25.0: a provider plugin can now let the host run the model's tool loop for it (AC-964) — new SDK
          surface a plugin takes rather than provides: IPluginToolset and the PluginToolDescriptor it hands out,
          PluginSessionCapabilities.HostToolLoop (with PluginHostToolLoop) to ask for one, and the toolset-carrying
          IPluginSessionDriver.StartAsync overload it arrives on. The host keeps connecting, permission-gating and
@@ -187,7 +196,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.25.0</VersionPrefix>
+    <VersionPrefix>0.26.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

@@ -4,6 +4,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -18,7 +19,7 @@ public class PluginManagerViewModelProvisioningTests
 {
     private static StorePluginRowViewModel _Row(string id = "acme", string name = "Acme")
     {
-        var version = new PluginStoreVersion("1.0.0", $"{id}-1.0.0.zip", 1, null, null, null);
+        var version = new PluginStoreVersion("1.0.0", $"{id}-1.0.0.zip", AbstractionsContract.Version, null, null, null);
         var entry = new PluginStoreEntry(id, name, null, "Cockpit", "1.0.0", [version]);
 
         return new StorePluginRowViewModel(entry, PluginStoreConfig.Remote("https://store.example/index.json"), installedVersion: null);
@@ -84,7 +85,7 @@ public class PluginManagerViewModelProvisioningTests
             {
                 using (var manifestWriter = new StreamWriter(archive.CreateEntry("plugin.json").Open()))
                 {
-                    manifestWriter.Write("""{"id":"acme","name":"acme","version":"1.0.0","entryAssembly":"Plugin.dll","abstractionsVersion":1}""");
+                    manifestWriter.Write($$"""{"id":"acme","name":"acme","version":"1.0.0","entryAssembly":"Plugin.dll","abstractionsVersion":{{AbstractionsContract.Version}}}""");
                 }
 
                 using (var dllWriter = new StreamWriter(archive.CreateEntry("Plugin.dll").Open()))
@@ -109,7 +110,7 @@ public class PluginManagerViewModelProvisioningTests
                 new PluginDiagnostics());
 
             var store = PluginStoreConfig.Local(storeDir);
-            var version = new PluginStoreVersion("1.0.0", "acme-1.0.0.zip", 1, null, null, null);
+            var version = new PluginStoreVersion("1.0.0", "acme-1.0.0.zip", AbstractionsContract.Version, null, null, null);
             var entry = new PluginStoreEntry("acme", "Acme", null, "Cockpit", "1.0.0", [version]);
             var row = new StorePluginRowViewModel(entry, store, installedVersion: null);
 

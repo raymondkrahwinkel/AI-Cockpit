@@ -54,11 +54,17 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
         };
     }
 
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        commit = _Commit;
+        error = null;
+        return true;
+    }
+
+    private void _Commit()
     {
         _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
         _settings.AllowExec = _allowExec.IsChecked ?? false;
         _settings.DaemonEndpoint = (_endpoint.Text ?? string.Empty).Trim();
-        return true;
     }
 }

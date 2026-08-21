@@ -104,12 +104,18 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
         _ = _CheckAsync(invalidateFirst: false);
     }
 
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        commit = _Commit;
+        error = null;
+        return true;
+    }
+
+    private void _Commit()
     {
         _settings.RunnerImage = _runnerImage.Text ?? string.Empty;
         _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
         _settings.SkipConsent = _skipConsent.IsChecked ?? false;
-        return true;
     }
 
     private async Task _CheckAsync(bool invalidateFirst)

@@ -41,11 +41,17 @@ internal sealed class DiagramSettingsControl : UserControl, IPluginSettingsView
         };
     }
 
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        commit = _Commit;
+        error = null;
+        return true;
+    }
+
+    private void _Commit()
     {
         _settings.SkipDiagramConsent = _skipDiagram.IsChecked ?? false;
         _settings.SkipWhiteboardConsent = _skipWhiteboard.IsChecked ?? false;
         _settings.SkipWireframeConsent = _skipWireframe.IsChecked ?? false;
-        return true;
     }
 }

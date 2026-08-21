@@ -18,9 +18,11 @@ public interface IPluginDialogHost
     Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null, string? singleInstanceKey = null);
 
     /// <summary>
-    /// Opens a plugin's settings view with a host-provided Save/Close footer; Save calls the view's
-    /// <c>IPluginSettingsView.Save()</c> and closes on success, running <paramref name="onSaved"/> first
-    /// (#52) so the caller can trigger that plugin's <c>ICockpitHost.OnSettingsSaved</c> subscribers.
+    /// Opens a plugin's settings view with a host-provided Save/Close footer; Save asks the view's
+    /// <c>IPluginSettingsView.TryStage()</c> for its write, performs it, and closes — running
+    /// <paramref name="onSaved"/> first (#52) so the caller can trigger that plugin's
+    /// <c>ICockpitHost.OnSettingsSaved</c> subscribers. A refused save keeps the window open and shows the
+    /// view's own reason.
     /// </summary>
     Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height, Action? onSaved = null, string? singleInstanceKey = null);
 }

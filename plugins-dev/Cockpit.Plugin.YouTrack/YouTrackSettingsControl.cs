@@ -112,14 +112,20 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
     }
 
     // Persists every non-blank instance row plus the template to the plugin's storage; always succeeds, so the host closes the dialog.
-    public bool Save()
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        commit = _Commit;
+        error = null;
+        return true;
+    }
+
+    private void _Commit()
     {
         _settings.Instances = _rows.Where(row => !row.IsBlank).Select(row => row.ToInstance()).ToList();
         _settings.AutoAttachImages = _autoAttachImages.IsChecked ?? true;
         _settings.PickerQuery = string.IsNullOrWhiteSpace(_pickerQuery.Text) ? "#Unresolved" : _pickerQuery.Text.Trim();
         _settings.BranchPattern = string.IsNullOrWhiteSpace(_branchPattern.Text) ? BranchName.DefaultPattern : _branchPattern.Text.Trim();
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
-        return true;
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };

@@ -1,12 +1,19 @@
 # Cockpit plugin docs
 
+> **Plugin contract 2 (host 0.26.0)** — `IPluginSettingsView.Save()` is gone: a settings view now validates and
+> hands the host the write (`TryStage`), so the cockpit's Options screen can take a plugin's change back on
+> Cancel. Set `"abstractionsVersion": 2` and follow
+> [the migration steps](PLUGIN-SDK.md#migrating-from-bool-save--contract-1--2); a contract-1 plugin is refused
+> by the host until you do.
+
 - **[PLUGIN-SDK.md](PLUGIN-SDK.md)** — the how-to guide: overview and load model, quickstart, contribution
   points (settings, side-menu button/section, dialogs, **session header items**, **conversation pickers**,
   **provider plugins**, **widget plugins** for a Dashboard workspace, **MCP server registration**), the
   `plugin.json` manifest, project setup, packaging/install/enable/disable/remove, the plugins that ship with the
   app, publishing a plugin store (the `index.json` schema), gotchas, and a tour of the example plugins.
 - **[API-REFERENCE.md](API-REFERENCE.md)** — every type and method in `Cockpit.Plugins.Abstractions`
-  (`ICockpitHost`, `ICockpitActions`, `IPluginStorage`, `IPluginSettingsView`, `IPluginSessionContext`,
+  (`ICockpitHost`, `ICockpitActions`, `IPluginStorage`, `IPluginSettingsView` — which validates and hands the
+  host the write, rather than persisting itself — `IPluginSessionContext`,
   `ConversationPickerRegistration`, `PluginProfileInfo`, the `Sessions` namespace for provider plugins, the
   `Mcp` namespace for MCP registration), with signatures and small code examples.
 - **[example-store-index.json](example-store-index.json)** — a real `index.json` excerpt (the official store's,
