@@ -697,6 +697,35 @@ public class WhiteboardCanvasControlTests
         window.Close();
     }
 
+    // AC-982 AC1/AC2/AC4: SetColor(null) is the way back a picked swatch previously had none of — it clears the
+    // pending colour for whatever gets drawn/placed next and, on a selection, drops that object's override too, so
+    // it falls back to the fixed default for its kind. Undoable the same as any other recolour.
+    [Fact]
+    public void SetColor_Null_OnARecolouredShape_ResetsItAndThePendingColourBackToDefault()
+    {
+        var document = new WhiteboardDocument();
+        var canvas = new WhiteboardCanvasControl(document);
+        var window = _Show(canvas);
+
+        canvas.UseShapeTool(PlacedShapeKind.Rectangle);
+        window.MouseDown(new Point(10, 10), MouseButton.Left);
+        window.MouseUp(new Point(10, 10), MouseButton.Left);
+        var placed = Assert.IsType<PlacedObject>(Assert.Single(document.Objects));
+
+        canvas.SetColor("#DC2626");
+        Assert.Equal("#DC2626", placed.Color);
+        Assert.Equal("#DC2626", canvas.PendingColor);
+
+        canvas.SetColor(null);
+        Assert.Null(placed.Color);
+        Assert.Null(canvas.PendingColor);
+
+        window.KeyPressQwerty(PhysicalKey.Z, RawInputModifiers.Control);
+        Assert.Equal("#DC2626", placed.Color);
+
+        window.Close();
+    }
+
     [Fact]
     public void DuplicateSelection_CarriesTheColourAlong()
     {

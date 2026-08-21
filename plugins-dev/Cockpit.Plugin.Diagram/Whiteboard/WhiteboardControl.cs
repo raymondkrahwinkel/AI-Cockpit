@@ -89,30 +89,64 @@ public sealed class WhiteboardControl : UserControl
     public WhiteboardCanvasControl Canvas { get; }
 
     // A swatch row, not a colour picker (AC4) — one flyout of buttons, the same shape _BuildShapeFlyout already
-    // uses for shape templates. Picking a swatch sets what gets drawn/placed next and recolours the selection, if any.
+    // uses for shape templates. Picking a swatch sets what gets drawn/placed next and recolours the selection, if
+    // any. AC-982: leads with a default swatch (SetColor(null)) — never WhiteboardObjectPainter.PlacedColor.
     private Flyout _BuildColorFlyout()
     {
         var flyout = new Flyout();
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(4) };
+
+        row.Children.Add(_ColorSwatchButton(flyout, null));
         foreach (var hex in WhiteboardObjectPainter.Palette)
         {
-            var swatch = new Button
-            {
-                Width = 24,
-                Height = 24,
-                Background = new SolidColorBrush(Color.Parse(hex)),
-                CornerRadius = new CornerRadius(12),
-            };
-            swatch.Click += (_, _) =>
-            {
-                Canvas.SetColor(hex);
-                flyout.Hide();
-            };
-            row.Children.Add(swatch);
+            row.Children.Add(_ColorSwatchButton(flyout, hex));
         }
 
         flyout.Content = row;
+        flyout.Opened += (_, _) => _HighlightActiveSwatch(row);
         return flyout;
+    }
+
+    private Button _ColorSwatchButton(Flyout flyout, string? hex)
+    {
+        var swatch = new Button
+        {
+            Width = 24,
+            Height = 24,
+            CornerRadius = new CornerRadius(12),
+            BorderThickness = new Thickness(2),
+            BorderBrush = Brushes.Transparent,
+            Background = hex is null ? Brushes.White : new SolidColorBrush(Color.Parse(hex)),
+            Tag = hex,
+        };
+
+        if (hex is null)
+        {
+            ToolTip.SetTip(swatch, "Default colour");
+            swatch.Content = new MaterialIcon { Kind = MaterialIconKind.CloseCircleOutline, Width = 14, Height = 14, Foreground = Brushes.Gray };
+        }
+
+        swatch.Click += (_, _) =>
+        {
+            Canvas.SetColor(hex);
+            flyout.Hide();
+        };
+
+        return swatch;
+    }
+
+    // AC-982 AC3: built fresh every time the flyout opens, same reason ExtraContextMenuItems is invoked fresh on
+    // the object menu — the active colour can have moved since the flyout was built (a new selection, an undo).
+    private void _HighlightActiveSwatch(StackPanel row)
+    {
+        var active = Canvas.SelectedId is { } id && Canvas.Document.Find(id) is { } selected
+            ? selected.Color
+            : Canvas.PendingColor;
+
+        foreach (var button in row.Children.OfType<Button>())
+        {
+            button.BorderBrush = Equals(button.Tag, active) ? Brushes.Black : Brushes.Transparent;
+        }
     }
 
     private Flyout _BuildShapeFlyout()

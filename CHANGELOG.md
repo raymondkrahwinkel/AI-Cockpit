@@ -222,6 +222,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the whiteboard's colour flyout now has a default swatch, so picking a colour is no longer a one-way trip —
+  it resets whatever you draw or place next, and a selected object's own colour, back to its fixed default (yellow
+  for a freehand stroke, blue for a placed shape). The swatch that is currently in effect is also outlined in the
+  flyout, so you can see at a glance what you are about to draw or place with.
 - fixed: the diagram and wireframe toolbars no longer run the save status ("No file yet", say) straight into the
   hint text next to it ("Click a component to edit it.") — the two now read as separate pieces of information,
   divided by a middle dot.
