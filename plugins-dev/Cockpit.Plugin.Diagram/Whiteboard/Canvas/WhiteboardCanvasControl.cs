@@ -214,8 +214,9 @@ public sealed class WhiteboardCanvasControl : Border
     public string? PendingColor => _pendingColor;
 
     // Sets what gets drawn/placed next, and — if something is already selected — recolours it as one journaled
-    // handling (AC7), the same shape _ApplyText already uses for editing a shape's text.
-    public void SetColor(string color)
+    // handling (AC7), the same shape _ApplyText already uses for editing a shape's text. AC-982: nullable so the
+    // flyout's default swatch can reach null (the operator's own default) through this same path.
+    public void SetColor(string? color)
     {
         _pendingColor = color;
 
