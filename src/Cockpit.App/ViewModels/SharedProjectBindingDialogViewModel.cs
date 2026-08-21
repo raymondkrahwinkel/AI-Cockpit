@@ -176,6 +176,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSave))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private string? _selectedProfileLabel;
 
     [ObservableProperty]

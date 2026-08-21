@@ -70,6 +70,24 @@ public class SharedProjectBindingDialogViewModelTests
     }
 
     [Fact]
+    public async Task SaveCommand_AProfileIsPicked_BecomesExecutableAndSaysSo()
+    {
+        // AC-992: the button binds to SaveCommand, not CanSave — without a CanExecuteChanged it stays greyed out.
+        var source = _SourceReturning(SharedProjectBindingResult.Success(new SharedProjectBinding("Migratie-2026")));
+        var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
+            _SharedProject, "Work", source, _ProfileStoreWith("Zyra"));
+
+        Assert.False(viewModel!.SaveCommand.CanExecute(null));
+        var raised = 0;
+        viewModel.SaveCommand.CanExecuteChanged += (_, _) => raised++;
+
+        viewModel.SelectedProfileLabel = "Zyra";
+
+        Assert.True(viewModel.SaveCommand.CanExecute(null));
+        Assert.True(raised > 0);
+    }
+
+    [Fact]
     public async Task ToProject_ANotesOnlyProjectWithNoGitUrlAndNoFolder_StillProducesAStartableProject()
     {
         var source = _SourceReturning(SharedProjectBindingResult.Success(new SharedProjectBinding("Migratie-2026")));
