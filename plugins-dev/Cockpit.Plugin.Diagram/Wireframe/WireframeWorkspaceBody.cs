@@ -59,6 +59,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly TextBlock _zoomLabel;
     private readonly Border _couplingBar;
     private readonly TextBlock _couplingLabel;
+    // AC-976: stays visible above the render for as long as `_parseErrors` is non-empty, even once a screen next
+    // to the broken one parses fine and the render below it is no longer empty.
+    private readonly Border _errorBanner;
     private readonly TextBlock _readChip;
     private readonly TextBlock _editChip;
     private readonly Button _coupleButton;
@@ -93,6 +96,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private Point _panPointerStart;
     private Vector _panOffsetStart;
     private List<WireframeNode> _screens = [];
+    // AC-976: kept separately from whether anything renders — a screen parsing fine does not mean the document
+    // does, and this is what both the banner and Save gate on.
+    private IReadOnlyList<WireframeParseError> _parseErrors = [];
     // AC-915: the document's own sheet size, read off the source on every render — `_viewport` above is already
     // taken by the zoom/pan border, so this is named for what it holds instead.
     private WireframeViewport _canvasViewport = WireframeViewport.Desktop;
@@ -149,6 +155,13 @@ internal sealed class WireframeWorkspaceBody : UserControl
         };
         _viewport = _BuildViewport();
 
+        _errorBanner = new Border
+        {
+            Background = WireframePalette.Tint,
+            BorderBrush = WireframePalette.Outline,
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            IsVisible = false,
+        };
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _textButton, _deleteButton,
@@ -169,11 +182,12 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
         Content = new DockPanel
         {
-            Children = { toolbar, _couplingBar, _presence, _sourceToggle, _sourceBox, _askStrip, _activityStrip, rightColumn, _viewport },
+            Children = { toolbar, _couplingBar, _presence, _errorBanner, _sourceToggle, _sourceBox, _askStrip, _activityStrip, rightColumn, _viewport },
         };
         DockPanel.SetDock(toolbar, Dock.Top);
         DockPanel.SetDock(_couplingBar, Dock.Top);
         DockPanel.SetDock(_presence, Dock.Top);
+        DockPanel.SetDock(_errorBanner, Dock.Top);
         DockPanel.SetDock(_sourceToggle, Dock.Bottom);
         DockPanel.SetDock(_sourceBox, Dock.Bottom);
         DockPanel.SetDock(_askStrip, Dock.Bottom);
@@ -276,6 +290,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _sourceBox.Text = source;
         var parsed = WireframeParser.Parse(source);
         _screens = parsed.Screens.ToList();
+        _parseErrors = parsed.Errors;
         _canvasViewport = parsed.Viewport ?? WireframeViewport.Desktop;
         _ResolveZoomedScreen();
 
@@ -287,7 +302,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         }
 
         Control content = _screens.Count == 0
-            ? _BuildErrorPanel(parsed.Errors)
+            ? _BuildErrorPanel(_parseErrors)
             : _ZoomedScreen is { } screen
                 ? _RenderZoomed(screen)
                 : WireframeRenderer.Overview(_screens, _ScreenSize);
@@ -297,6 +312,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _surface.Height = canvas.Height;
         _render.Children.Clear();
         _render.Children.Add(content);
+        _RefreshErrorBanner();
         _RefreshSelection();
 
         if (_isFitMode)
@@ -405,10 +421,28 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     private static Control _BuildErrorPanel(IReadOnlyList<WireframeParseError> errors)
     {
-        var list = new StackPanel { Spacing = 4, Margin = new Thickness(16) };
+        var list = _BuildErrorList(errors, headOfDocument: true);
+        list.Margin = new Thickness(16);
+        return new Border
+        {
+            Background = WireframePalette.Paper,
+            BorderBrush = WireframePalette.Outline,
+            BorderThickness = new Thickness(1),
+            Child = list,
+        };
+    }
+
+    // AC-976 AC1/AC3: shared between the full-panel state (no screen parsed at all) and the banner below, so a
+    // broken line reads the same way whichever one is showing it — heading and all, down to the line numbers and
+    // the referral to the coupled agent, since the source box itself is read-only (AC-908).
+    private static StackPanel _BuildErrorList(IReadOnlyList<WireframeParseError> errors, bool headOfDocument)
+    {
+        var list = new StackPanel { Spacing = 4 };
         list.Children.Add(new TextBlock
         {
-            Text = "Cannot render this wireframe:",
+            Text = headOfDocument
+                ? "Cannot render this wireframe:"
+                : errors.Count == 1 ? "1 line of this wireframe did not parse:" : $"{errors.Count} lines of this wireframe did not parse:",
             FontWeight = FontWeight.Bold,
             Foreground = WireframePalette.Ink,
             TextWrapping = TextWrapping.Wrap,
@@ -424,13 +458,33 @@ internal sealed class WireframeWorkspaceBody : UserControl
             });
         }
 
-        return new Border
+        list.Children.Add(new TextBlock
         {
-            Background = WireframePalette.Paper,
-            BorderBrush = WireframePalette.Outline,
-            BorderThickness = new Thickness(1),
-            Child = list,
-        };
+            Text = "The source box is read-only — ask the coupled agent to fix this.",
+            FontSize = WireframePalette.CaptionSize,
+            FontStyle = FontStyle.Italic,
+            Foreground = WireframePalette.Muted,
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        return list;
+    }
+
+    // AC-976 AC1: `_screens.Count == 0` already shows the errors full-screen via _BuildErrorPanel above — this is
+    // the other case, where a screen next to the broken one parsed fine and would otherwise carry the error off
+    // screen with it.
+    private void _RefreshErrorBanner()
+    {
+        var visible = _screens.Count > 0 && _parseErrors.Count > 0;
+        _errorBanner.IsVisible = visible;
+        if (!visible)
+        {
+            return;
+        }
+
+        var list = _BuildErrorList(_parseErrors, headOfDocument: false);
+        list.Margin = new Thickness(12, 8);
+        _errorBanner.Child = list;
     }
 
     // The zoom/pan surface (AC-837): a plain Border, not a ScrollViewer — panning is our own RenderTransform math,
@@ -2199,13 +2253,19 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _RefreshSaveBar();
     }
 
+    // AC-976 AC2: a source with parse errors is exactly the one case where the file on disk staying ahead of a
+    // silent typo matters more than "unsaved changes" — so this is the one thing gating Save even when the box
+    // reads dirty and would otherwise offer to write it.
     private void _RefreshSaveBar()
     {
         var dirty = (_sourceBox.Text ?? "") != _savedText;
+        var blocked = _parseErrors.Count > 0;
         var where = _filePath ?? "No file yet";
-        _saveStatus.Text = dirty ? $"{where} · unsaved changes" : where;
+        _saveStatus.Text = blocked
+            ? $"{where} · {_parseErrors.Count} parse error(s) — fix before saving"
+            : dirty ? $"{where} · unsaved changes" : where;
         ToolTip.SetTip(_saveStatus, _saveStatus.Text);
-        _saveButton.IsEnabled = dirty || _filePath is null;
+        _saveButton.IsEnabled = !blocked && (dirty || _filePath is null);
     }
 
     // The "agent connected" bar (AC-810/AC-834's precedent), always on screen: "no agent on this wireframe" is a

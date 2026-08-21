@@ -226,6 +226,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   no relationship, no message, the flyout just stayed open. The label is required (Mermaid has no sensible default
   for the line's text), so the field is now marked as such, and "Connect" stays disabled with a tooltip explaining
   why until you type something.
+- fixed: a wireframe with lines that fail to parse no longer loses its error message the moment any change — such
+  as "+ Screen" — makes at least one screen render. The warning now stays on screen for as long as the broken
+  lines are still broken, next to whatever does render, and Save is blocked until they are fixed — previously the
+  broken lines stayed in the source with no sign anything was wrong, and Save would write them to disk anyway.
 - fixed: the diagram and wireframe toolbars no longer lose buttons at the window size they themselves open with —
   Export used to be completely hidden behind the zoom controls on a diagram, and the whole zoom group used to sit
   off screen on a wireframe, with nothing to show either was there. The toolbar now wraps onto a second row instead
