@@ -41,7 +41,7 @@
             <Border x:Name="HeaderBar" DockPanel.Dock="Top" Background="{StaticResource CockpitChromeBgBrush}"
                     BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
                     Padding="12,9">
-                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto">
                     <Border Grid.Column="0" Classes="avatarBadge" Width="28" Height="28" CornerRadius="9" Margin="0,0,8,0">
                         <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
                                                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -181,9 +181,17 @@
                                                     Width="14" Height="14"/>
                     </Button>
 
+                    <!-- AC-1009: hidden while docked, same reason as Close — a docked panel has no window of its
+                         own to minimise. -->
+                    <Button x:Name="MinimizeButton" Grid.Column="6" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
+                            IsVisible="{Binding !IsDocked}"
+                            Click="_OnMinimizeClick" ToolTip.Tip="Minimize">
+                        <materialIcons:MaterialIcon Kind="WindowMinimize" Width="13" Height="13"/>
+                    </Button>
+
                     <!-- AC-952: hidden while docked, where Undock takes its place (AC-953) — the docked host's
                          TopLevel is MainWindow, so there is no window of its own here to close. -->
-                    <Button x:Name="CloseButton" Grid.Column="6" Classes="Subtle Compact" VerticalAlignment="Center"
+                    <Button x:Name="CloseButton" Grid.Column="7" Classes="Subtle Compact" VerticalAlignment="Center"
                             IsVisible="{Binding !IsDocked}"
                             Click="_OnCloseClick" ToolTip.Tip="Close (the conversation keeps running)">
                         <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>

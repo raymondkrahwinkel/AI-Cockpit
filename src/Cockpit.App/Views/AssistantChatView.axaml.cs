@@ -534,6 +534,20 @@ public partial class AssistantChatView : UserControl
         (TopLevel.GetTopLevel(this) as Window)?.Close();
     }
 
+    // AC-1009: same docked guard as Close — a docked panel has no window of its own to minimise.
+    private void _OnMinimizeClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not AssistantChatViewModel { IsDocked: false })
+        {
+            return;
+        }
+
+        if (TopLevel.GetTopLevel(this) is Window window)
+        {
+            window.WindowState = WindowState.Minimized;
+        }
+    }
+
     // Saves the conversation as a text file, so it can be handed to somebody who was not in the room.
     // A save dialog rather than a fixed folder: this exists to be shared, and where a file lands decides whether
     // it is findable. Silent on cancel — closing a file picker is an answer, not a failure worth reporting.
