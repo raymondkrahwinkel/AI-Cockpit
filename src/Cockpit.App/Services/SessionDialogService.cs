@@ -598,7 +598,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             : null;
     }
 
-    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel)
+    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -610,7 +610,18 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // the window had gone; that is a path with no Cancel on it, so they moved into Apply with the rest.
         viewModel.BeginOptionsEdit();
 
-        await _ShowSurfaceAsync(typeof(OptionsDialog), owner, () => new OptionsDialog { DataContext = viewModel });
+        await _ShowSurfaceAsync(typeof(OptionsDialog), owner, () =>
+        {
+            var dialog = new OptionsDialog { DataContext = viewModel };
+            if (category is not null)
+            {
+                // Only when Options is not already open — a category jump has no effect on the surface
+                // `_ShowSurfaceAsync` merely activates (AC-1001's deep-link is the common case, not this one).
+                dialog.SelectCategory(category);
+            }
+
+            return dialog;
+        });
     }
 
     // A dashboard travels as ordinary JSON with its own extension: readable enough to look at before you trust

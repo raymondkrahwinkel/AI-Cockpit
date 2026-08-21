@@ -45,9 +45,20 @@ public partial class OptionsDialog : Window
 
     private async void OnApplyAndClose(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is CockpitViewModel cockpit)
+        if (DataContext is not CockpitViewModel cockpit)
         {
-            await cockpit.ApplyOptionsCommand.ExecuteAsync(null);
+            _closeSettled = true;
+            Close();
+            return;
+        }
+
+        await cockpit.ApplyOptionsCommand.ExecuteAsync(null);
+
+        // A profile the plugin config view rejected blocks the whole Apply (AC-1001 criterion 5) — stay open with
+        // the error visible (Profiles.StatusMessage) rather than close over it.
+        if (cockpit.OptionsApplyBlocked)
+        {
+            return;
         }
 
         _closeSettled = true;
@@ -94,6 +105,104 @@ public partial class OptionsDialog : Window
 
     private void OnRefreshDiagnostics(object? sender, RoutedEventArgs e) =>
         (DataContext as CockpitViewModel)?.Diagnostics.Refresh();
+
+    // Deep-link (AC-1001): jumps the sidebar to the nav item whose Tag matches, e.g. "profiles". A tag nothing
+    // matches (typo, a category renamed later) leaves the dialog on whatever it already had selected.
+    public void SelectCategory(string tag)
+    {
+        if (CategoryNav.Items.OfType<ListBoxItem>().FirstOrDefault(item => item.Tag as string == tag) is { } match)
+        {
+            CategoryNav.SelectedItem = match;
+        }
+    }
+
+    // Browse buttons for the Profiles category (AC-1001) — same file/folder pickers ManageProfilesDialog uses,
+    // now against `cockpit.Profiles.SelectedProfile` instead of a dedicated dialog's own DataContext.
+    private async void OnBrowseProfileConfigDir(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel { Profiles.SelectedProfile: { } profile })
+        {
+            return;
+        }
+
+        try
+        {
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Select the profile's config directory",
+                AllowMultiple = false,
+            });
+
+            var path = folders.FirstOrDefault()?.TryGetLocalPath();
+            if (!string.IsNullOrEmpty(path))
+            {
+                profile.ConfigDir = path;
+            }
+        }
+        catch
+        {
+            // Picker unavailable/failed — keep the current value.
+        }
+    }
+
+    private async void OnBrowseProfileWorkingDirectory(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel { Profiles.SelectedProfile: { } profile })
+        {
+            return;
+        }
+
+        try
+        {
+            var start = string.IsNullOrWhiteSpace(profile.DefaultWorkingDirectory)
+                ? null
+                : await StorageProvider.TryGetFolderFromPathAsync(profile.DefaultWorkingDirectory);
+
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Select the profile's default working directory",
+                AllowMultiple = false,
+                SuggestedStartLocation = start,
+            });
+
+            var path = folders.FirstOrDefault()?.TryGetLocalPath();
+            if (!string.IsNullOrEmpty(path))
+            {
+                profile.DefaultWorkingDirectory = path;
+            }
+        }
+        catch
+        {
+            // Picker unavailable/failed — keep the current value.
+        }
+    }
+
+    private async void OnBrowseProfileExecutable(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel { Profiles.SelectedProfile: { } profile })
+        {
+            return;
+        }
+
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Select the claude executable",
+                AllowMultiple = false,
+            });
+
+            var path = files.FirstOrDefault()?.TryGetLocalPath();
+            if (!string.IsNullOrEmpty(path))
+            {
+                profile.ExecutablePath = path;
+            }
+        }
+        catch
+        {
+            // Picker unavailable/failed — keep the current value.
+        }
+    }
 
     // Copying is a view's job (the clipboard is the window's), the same split as the file pickers below: the view
     // model builds the text, this hands it to the OS and lets the panel say it was copied.

@@ -7,10 +7,11 @@ namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// AC-1000: the eight-tab TabControl (AC-69's per-tab sub-nav rail among them) was replaced by one searchable
-/// sidebar — a single "CategoryNav" ListBox holding 12 selectable categories and 3 non-selectable group headers,
+/// sidebar — a single "CategoryNav" ListBox holding selectable categories and 3 non-selectable group headers,
 /// each category's content its own always-present ScrollViewer switched on by a Tag comparison. This pins that
 /// wiring: a XAML rename of the nav, a category dropped from the list, or a group header that became selectable
 /// would otherwise only surface by opening the dialog and clicking, which no unit test does.
+/// AC-1001 added Profiles, the 13th category, under WORKING right after Sessions.
 /// </summary>
 /// <remarks>
 /// Replaces the AC-69-era version of this file, whose two tests (a Voice tab that split into a
@@ -21,16 +22,17 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class OptionsSubNavigationViewTests
 {
-    // WORKING, VOICE & ASSISTANT, SYSTEM, in this order — matches AC-1000's acceptance criterion 1.
+    // WORKING, VOICE & ASSISTANT, SYSTEM, in this order — matches AC-1000's acceptance criterion 1, plus
+    // Profiles (AC-1001) right after Sessions.
     private static readonly string[] ExpectedCategoryTags =
     [
-        "sessions", "appearance", "terminal", "notifications", "shortcuts",
+        "sessions", "profiles", "appearance", "terminal", "notifications", "shortcuts",
         "voice", "assistant",
         "security", "nodes", "backup", "updates", "debug",
     ];
 
     [Fact]
-    public void TheSidebar_ListsAllTwelveCategories_InTheGroomedOrder() => HeadlessAvalonia.Run(() =>
+    public void TheSidebar_ListsAllCategories_InTheGroomedOrder() => HeadlessAvalonia.Run(() =>
     {
         var dialog = new OptionsDialog { DataContext = new CockpitViewModel() };
         dialog.Show();
