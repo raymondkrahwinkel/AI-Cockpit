@@ -18,13 +18,18 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     private readonly IWorktreeRegistry _registry;
     private readonly Func<CancellationToken, Task<string>> _resolveRoot;
     private readonly ILogger<WorktreeManager>? _logger;
+    private readonly IDockerCli? _dockerCli;
 
     public event Action<WorktreeSourceRefresh>? SourceRefreshed;
 
-    public WorktreeManager(IWorktreeRegistry registry, IWorktreeSettingsStore settings, ILogger<WorktreeManager>? logger = null)
+    public WorktreeManager(IWorktreeRegistry registry, IWorktreeSettingsStore settings, ILogger<WorktreeManager>? logger = null, IDockerCli? dockerCli = null)
     {
         _registry = registry;
         _logger = logger;
+        // Nullable like `_liveSessions`/`_consent` on WorktreeTools: production DI resolves the real IDockerCli
+        // (Scrutor registers it unconditionally — docker plugin installed or not, see DockerCli's own comment),
+        // tests construct this directly and simply omit it to skip the cleanup being exercised.
+        _dockerCli = dockerCli;
 
         // Resolved per create, so an override the operator changes in Options takes effect on the next worktree
         // rather than only on a restart. A blank override keeps the default under the app state root. An unreadable
@@ -47,11 +52,12 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     }
 
     // Test seam: place the worktrees under an arbitrary fixed root instead of the app state directory.
-    internal WorktreeManager(IWorktreeRegistry registry, string worktreesRoot, ILogger<WorktreeManager>? logger = null)
+    internal WorktreeManager(IWorktreeRegistry registry, string worktreesRoot, ILogger<WorktreeManager>? logger = null, IDockerCli? dockerCli = null)
     {
         _registry = registry;
         _resolveRoot = _ => Task.FromResult(worktreesRoot);
         _logger = logger;
+        _dockerCli = dockerCli;
     }
 
     public async Task<GitRepositoryInfo?> DetectRepositoryAsync(string directory, CancellationToken cancellationToken = default)
@@ -469,6 +475,10 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     // should know about — null on a plain removal, with nothing left behind to mention.
     public async Task<string?> RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default)
     {
+        // AC-1010: every removal path converges here, so the worktree's dev stack is torn down with it.
+        // Best-effort and reported, never fatal — see _CleanupContainersAsync.
+        var dockerNotice = await _CleanupContainersAsync(record, cancellationToken).ConfigureAwait(false);
+
         if (Directory.Exists(record.RepositoryRoot))
         {
             var refusal = await _AskGitToRemoveAsync(record, force, cancellationToken).ConfigureAwait(false);
@@ -549,7 +559,81 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         await _registry.RemoveAsync(record.Path, cancellationToken).ConfigureAwait(false);
         _TryRemoveIfEmpty(record.Path);
         _TryRemoveIfEmpty(Path.GetDirectoryName(record.Path));
-        return notice;
+
+        return dockerNotice is null
+            ? notice
+            : notice is null ? dockerNotice : $"{notice}{Environment.NewLine}{dockerNotice}";
+    }
+
+    // AC-1010: tears down the docker-compose stack this worktree started, keyed on docker's own exact-path label
+    // (never a name guess) so a live worktree's stack is never a candidate. Volumes go too — see PR description
+    // for the full rationale.
+    private async Task<string?> _CleanupContainersAsync(WorktreeRecord record, CancellationToken cancellationToken)
+    {
+        if (_dockerCli is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var listing = await _dockerCli.RunAsync(
+                ["ps", "-a", "--filter", $"label=com.docker.compose.project.working_dir={record.Path}",
+                    "--format", "{{.ID}}\t{{.Label \"com.docker.compose.project\"}}"],
+                cancellationToken).ConfigureAwait(false);
+
+            if (listing.ExitCode != 0)
+            {
+                return $"Could not check for docker containers left by this worktree ('{listing.StandardError.Trim()}'); none were touched.";
+            }
+
+            var rows = listing.StandardOutput
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => line.Split('\t'))
+                .ToList();
+            var containerIds = rows.Select(row => row[0].Trim()).Where(id => id.Length > 0).ToList();
+            if (containerIds.Count == 0)
+            {
+                return null;
+            }
+
+            await _dockerCli.RunAsync(["rm", "-f", .. containerIds], cancellationToken).ConfigureAwait(false);
+
+            var projects = rows
+                .Where(row => row.Length > 1 && row[1].Trim().Length > 0)
+                .Select(row => row[1].Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var removedVolumes = 0;
+            foreach (var project in projects)
+            {
+                var volumeListing = await _dockerCli.RunAsync(
+                    ["volume", "ls", "-q", "--filter", $"label=com.docker.compose.project={project}"],
+                    cancellationToken).ConfigureAwait(false);
+                var volumeIds = volumeListing.ExitCode == 0
+                    ? volumeListing.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(id => id.Trim()).Where(id => id.Length > 0).ToList()
+                    : [];
+                if (volumeIds.Count > 0)
+                {
+                    await _dockerCli.RunAsync(["volume", "rm", .. volumeIds], cancellationToken).ConfigureAwait(false);
+                    removedVolumes += volumeIds.Count;
+                }
+            }
+
+            _logger?.LogInformation(
+                "Removed {ContainerCount} docker container(s) and {VolumeCount} volume(s) left running by worktree '{Path}'.",
+                containerIds.Count, removedVolumes, record.Path);
+
+            return $"Stopped and removed {containerIds.Count} docker container(s) (and {removedVolumes} volume(s)) this worktree's dev stack left running.";
+        }
+        catch (Exception exception)
+        {
+            // docker not installed, not on PATH, unreachable (no daemon), or no permission — never lets a worktree
+            // fail to go away because its dev stack could not be checked (AC criterion 4), only says so.
+            _logger?.LogWarning(exception, "Could not clean up docker containers for worktree '{Path}'.", record.Path);
+            return $"Could not clean up docker containers left by this worktree ({exception.Message}); none were touched.";
+        }
     }
 
     private static string _LeftOnDiskNotice(WorktreeRecord record) =>
