@@ -115,6 +115,43 @@ public class McpToolProviderConnectAsyncTests
         Assert.Equal(new[] { "server-oauth" }, session.ServersNeedingSignIn);
     }
 
+    // AC-997: a server that fails to connect for any other reason (unreachable, or a stdio server that starts and
+    // then exits) is a named outcome too — a caller reporting the mount upstream needs the name and a short reason
+    // rather than nothing at all, which is what let the operator's own selection get silently rewritten around it.
+    [Fact]
+    public async Task ConnectAsync_AnUnreachableServer_IsReportedAsAConnectionIssue_WithAShortOneLineReason()
+    {
+        var provider = _ProviderFor(_DisableBuiltIns().Concat(
+        [
+            // Nothing listens on this loopback port — McpClient.CreateAsync fails to connect.
+            new McpServerConfig { Name = "server-fail", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" },
+        ]));
+
+        await using var session = await provider.ConnectAsync();
+
+        var issue = Assert.Single(session.ConnectionIssues);
+        Assert.Equal("server-fail", issue.Name);
+        Assert.False(string.IsNullOrWhiteSpace(issue.Reason));
+        Assert.DoesNotContain('\n', issue.Reason);
+        Assert.Empty(session.ServersNeedingSignIn);
+    }
+
+    // Same acceptance criterion, other half: the existing AC-500 outcome must reach this new list too, so a
+    // caller reporting connection issues upstream does not have to also read ServersNeedingSignIn separately.
+    [Fact]
+    public async Task ConnectAsync_AnOAuthServerThatNeverSignedIn_AlsoAppearsInConnectionIssues()
+    {
+        var provider = _ProviderFor(
+            _DisableBuiltIns().Append(new McpServerConfig { Name = "server-oauth", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", Auth = McpServerAuth.OAuth }),
+            oauthAuthorizer: new FakeMcpOAuthAuthorizer());
+
+        await using var session = await provider.ConnectAsync();
+
+        var issue = Assert.Single(session.ConnectionIssues);
+        Assert.Equal("server-oauth", issue.Name);
+        Assert.False(string.IsNullOrWhiteSpace(issue.Reason));
+    }
+
     /// <summary>Disables the built-in stdio presets (npx/uvx) — irrelevant here and not guaranteed available on a test machine.</summary>
     private static IReadOnlyList<McpServerConfig> _DisableBuiltIns() =>
         [.. McpServerPresets.LocalDefaults.Select(server => server with { Enabled = false })];

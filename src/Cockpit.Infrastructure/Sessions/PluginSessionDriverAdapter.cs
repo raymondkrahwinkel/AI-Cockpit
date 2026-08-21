@@ -159,7 +159,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // it was launched from — which never holds the always-mounted and auto-mounted ones it also just got.
         if (paneId is { Length: > 0 })
         {
-            mcpMounts?.Report(paneId, _hostToolset is { } toolset ? toolset.ConnectedServerNames : [.. mcpServers.Select(server => server.Name)]);
+            mcpMounts?.Report(
+                paneId,
+                _hostToolset is { } toolset ? toolset.ConnectedServerNames : [.. mcpServers.Select(server => server.Name)],
+                _hostToolset?.ConnectionIssues);
         }
 
         var contributed = sessionResources is null

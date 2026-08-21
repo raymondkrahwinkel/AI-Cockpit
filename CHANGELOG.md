@@ -254,6 +254,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: an MCP server that failed to connect at session start used to vanish without a trace — no message, and
+  the server quietly disappeared from your own checklist too, so it read as one you had never selected. The
+  session header now names it and says why, and it stays checked in your selection so restarting the session
+  tries it again instead of silently dropping it for good.
 - fixed: a session on Gemini, Grok, OpenRouter or GitHub Models — the providers that run their tools through the
   cockpit's own tool loop — started up but then failed every single tool call with an unauthorized error. Starting
   such a session minted its access token twice, and the second mint silently invalidated the first, which the
