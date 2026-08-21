@@ -96,6 +96,24 @@ public class PluginHostToolLoopTests
     }
 
     [Fact]
+    public async Task ToolCall_AllowAlways_FreesTheWaitingCallAndStopsPromptingForThatTool()
+    {
+        var tool = AIFunctionFactory.Create(() => "ok", "read_file");
+        await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch, tool);
+
+        var first = session.Toolset.InvokeAsync("read_file", "{}");
+        var prompt = await session.NextAsync<PermissionRequested>();
+
+        // "Allow always" is answered by whichever gate raised the prompt. Routed to the plugin instead, this call
+        // would sit on a decision the operator has already made — the host's gate is the only one holding it.
+        await session.Driver.AllowPermissionAlwaysAsync(prompt.ToolUseId, prompt.ToolName, "{}", PermissionRuleScope.Wildcard);
+        Assert.Equal("ok", await _WithinFiveSecondsAsync(first));
+
+        // And the rule sticks for the rest of the session: the second call needs no prompt at all.
+        Assert.Equal("ok", await _WithinFiveSecondsAsync(session.Toolset.InvokeAsync("read_file", "{}")));
+    }
+
+    [Fact]
     public async Task Tools_BelowTheThreshold_AreAllOfferedWithNoSearchProxies()
     {
         await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch, _Tools(3));

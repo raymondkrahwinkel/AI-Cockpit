@@ -575,8 +575,13 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // persist it for the session (Codex's acceptForSession) does, and one that cannot falls back to a one-time
     // allow via the interface default. The Claude rule args (toolName/input/scope) have no equivalent here — a
     // cross-restart per-profile rule stays a Claude-CLI concern, which is why they are not passed on.
+    // The host's gate first, for the same reason as RespondToPermissionAsync: it raised the prompt, so only it
+    // can free the call waiting behind it. Passing this straight to the plugin would leave that call hanging on
+    // a decision the operator has already made.
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) =>
-        inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
+        _hostToolset?.Gate.AllowAlways(toolUseId, toolName) == true
+            ? Task.CompletedTask
+            : inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
 
     // No live control channel behind the narrow interface — these Claude-CLI-only operations are deliberate no-ops.
     // The host's native permission-mode / model dropdowns switch mid-session through these; wire them to the plugin's
@@ -656,8 +661,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // session is over either way; both are the same plugin event types, so they map through one translation below.
     private async IAsyncEnumerable<PluginSessionEvent> _PluginEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        // Read once here rather than per event: StartAsync sets it before anything can be published, and re-reading
-        // a field the enumerator does not own would let the two halves of one session disagree about which it is.
+        // Read once, on the first move. SessionRuntime starts its pump only after awaiting StartAsync, so the
+        // toolset is already mounted by then; a caller that enumerated first would silently get the driver's
+        // events alone, which is why this reads it here rather than assuming it can never be null.
         if (_hostToolset is not { } toolset)
         {
             await foreach (var pluginEvent in inner.Events.WithCancellation(cancellationToken).ConfigureAwait(false))
