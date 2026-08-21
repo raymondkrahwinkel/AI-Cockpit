@@ -11,10 +11,9 @@ using Cockpit.Plugin.Diagram.Wireframe.Rendering;
 
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 
-// AC-972: a state that has never been selected before carries no #id in the source yet (AC-906 mints lazily), and
-// the bug this guards against — the first click doing nothing, only the second one opening the state — only shows
-// up on exactly that state. A real WireframeAccessRegistry is used, not RecordingRegistry, since that fake's
-// EnsureComponentId only ever looks an id up and never mints one — it would not reproduce the bug either way.
+// AC-972: a state that has never been selected before carries no #id in the source yet (AC-906 mints lazily).
+// A real WireframeAccessRegistry is used, not RecordingRegistry, since that fake's EnsureComponentId only ever
+// looks an id up and never mints one — it would not reproduce the bug either way. See the PR for the full story.
 [Collection("avalonia")]
 public class WireframeStateChipTests
 {
