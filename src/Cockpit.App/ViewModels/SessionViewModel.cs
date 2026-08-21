@@ -1433,13 +1433,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             if (runtime.Capabilities is { } capabilities)
             {
                 Capabilities = capabilities;
-
-                // AC-964: a route with no tool loop reaches none of the servers the hover lists, however many of
-                // them connected. Say that there, rather than let the list read as a claim the session cannot make.
-                if (!capabilities.SupportsTools)
-                {
-                    McpToolReach = NoToolLoopReach;
-                }
             }
 
             // The provider's generic live controls (#45 D4) settle at the same moment as capabilities — the driver
@@ -2341,9 +2334,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
                 // AC-963: the same hover that lists the servers now says what became of their tools — preloaded, or
                 // kept out of the prompt behind search_tools. Only the init event knows which of the two happened.
-                // Never back to nothing: a driver reporting no tools does not unsay what the capability above
-                // already established about this route.
-                McpToolReach = McpToolReachFor(init.Tools) ?? McpToolReach;
+                McpToolReach = McpToolReachFor(init.Tools);
 
                 // AC-141: a session launched with no explicit model (Auto/default) built its Model live-control
                 // with nothing to show — the init event is the one place the CLI states which model it actually

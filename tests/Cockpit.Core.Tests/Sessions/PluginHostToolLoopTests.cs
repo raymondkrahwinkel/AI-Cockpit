@@ -1,5 +1,7 @@
 using Microsoft.Extensions.AI;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Mcp;
@@ -184,6 +186,35 @@ public class PluginHostToolLoopTests
         return await call;
     }
 
+    [Fact]
+    public async Task StartAsync_WithAHostToolLoop_HandsTheDriverNoServersToMountItself()
+    {
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns([new McpServerConfig { Name = "filesystem", Transport = McpTransport.Stdio, Command = "npx" }]);
+
+        var withLoop = new StubPluginDriver();
+        await _AdapterWithCatalog(withLoop, PluginHostToolLoop.ToolsAndSearch, catalog).StartAsync();
+
+        var withoutLoop = new StubPluginDriver();
+        await _AdapterWithCatalog(withoutLoop, PluginHostToolLoop.None, catalog).StartAsync();
+
+        // The endpoints and the toolset are alternatives, never both: the host already connected these servers for
+        // the first driver, and handing them over as well would start every stdio server a second time.
+        Assert.Empty(withLoop.McpServers ?? []);
+        Assert.NotNull(withLoop.Toolset);
+        Assert.Single(withoutLoop.McpServers ?? []);
+        Assert.Null(withoutLoop.Toolset);
+    }
+
+    private static ISessionDriver _AdapterWithCatalog(StubPluginDriver inner, PluginHostToolLoop loop, IMcpServerCatalog catalog) =>
+        new PluginSessionDriverAdapter(
+            inner,
+            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false) { HostToolLoop = loop },
+            new McpAuthKey(),
+            catalog,
+            mcpToolProvider: _ToolProvider([], new Dictionary<string, ToolPermissionClass>()));
+
     private static AIFunction[] _Tools(int count) =>
         [.. Enumerable.Range(0, count).Select(index => AIFunctionFactory.Create(() => "ok", $"tool_{index}"))];
 
@@ -280,6 +311,8 @@ public class PluginHostToolLoopTests
 
         public IPluginToolset? Toolset { get; private set; }
 
+        public IReadOnlyList<PluginMcpServer>? McpServers { get; private set; }
+
         public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: false, SupportsPermissions: false);
 
         public string? SessionId { get; private set; }
@@ -295,6 +328,7 @@ public class PluginHostToolLoopTests
         public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, IPluginToolset? toolset, CancellationToken cancellationToken)
         {
             Toolset = toolset;
+            McpServers = mcpServers;
             return StartAsync(model, cancellationToken);
         }
 
