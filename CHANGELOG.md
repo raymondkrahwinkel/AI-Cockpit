@@ -298,6 +298,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   stopped one, this waits for a full minute of no drawing at all, four times longer than the point at which the
   diagnostics log first mentions it. Windows and Linux are untouched: their drawing clock cannot be taken away by
   the system, so minimising already covers them.
+- fixed: clicking a wireframe state chip for the first time no longer does nothing — the chip stayed unlit and the
+  canvas kept showing the base screen until you clicked it again. A state gets its stable id the first time
+  something selects it, and the click was reading that id before it had been assigned.
 
 ### Added
 
