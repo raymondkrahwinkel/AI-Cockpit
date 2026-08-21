@@ -240,6 +240,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   are now in English like the rest of the surface. A new test now checks every label, placeholder and header
   string in the plugin against a list of non-English function words, so a stray one fails the build instead of
   waiting for the next manual scan to catch it.
+- fixed: a wireframe's note marker no longer paints over the first letters of the component's own text — "Email
+  address" used to read as "①mail address" once a note was attached. The marker now sits fully to the left of the
+  component instead of overlapping its first pixels, matching the flow marker's placement on the opposite corner.
 - fixed: a brand-new, empty diagram no longer opens on a blank canvas zoomed to a meaningless 800% with no clue
   what to do next — a node-less diagram's rendered picture is close to zero-sized, which was clamping the
   fit-to-window zoom to its own maximum. An empty diagram now opens at 100% and shows the same kind of "here's

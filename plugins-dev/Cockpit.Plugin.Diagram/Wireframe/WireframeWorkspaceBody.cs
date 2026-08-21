@@ -1072,7 +1072,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
         marker.Tapped += (_, _) => onTap();
 
         var canvas = _CanvasSize;
-        var x = side == _MarkerSide.Right ? bounds.X + bounds.Width - 12 : bounds.X - 4;
+        // AC-979: a left marker sits fully outside the component's bounds so it never covers the component's own
+        // text (which starts at bounds.X); Math.Clamp below only pulls it back onto the canvas at the screen edge.
+        var x = side == _MarkerSide.Right ? bounds.X + bounds.Width - 12 : bounds.X - marker.Width;
         Canvas.SetLeft(marker, Math.Clamp(x, 0, Math.Max(0, canvas.Width - marker.Width)));
         Canvas.SetTop(marker, Math.Clamp(bounds.Y - 4, 0, Math.Max(0, canvas.Height - marker.Height)));
         _overlay.Children.Add(marker);
