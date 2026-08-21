@@ -81,7 +81,7 @@ public class VoiceInjectionTests
         // AC-64: the auto-submit CR is scheduled as its own write a beat after the transcript (so ConPTY does not
         // coalesce them into one read on Windows). Run that schedule inline here so the ordering is assertable
         // without a real timer — the point under test is that the CR is a separate write that follows the text.
-        vm.SetAutoSubmitScheduler(submit => submit());
+        vm.SetAutoSubmitScheduler((_, submit) => submit());
 
         Assert.True(vm.BeginVoiceHold());
         await vm.EndVoiceHoldAsync();

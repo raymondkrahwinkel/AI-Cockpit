@@ -138,7 +138,7 @@ public class TtyPromptReadinessTests
         var viewModel = new TtyViewModel();
         // AC-64 schedules the submit CR a beat after the text; run it inline so delivery is assertable without a
         // real wait, matching TtyInjectedTextTests/AssistantSendGatewayTests.
-        viewModel.SetAutoSubmitScheduler(submit => submit());
+        viewModel.SetAutoSubmitScheduler((_, submit) => submit());
         view.DataContext = viewModel; // Triggers OnDataContextChanged -> WireTerminal(), same as production.
 
         var pty = new FakePty();

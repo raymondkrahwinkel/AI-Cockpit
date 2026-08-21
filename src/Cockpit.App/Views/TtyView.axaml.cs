@@ -346,9 +346,11 @@ public partial class TtyView : UserControl
     // AC-752: claude's CLI treats any stdin chunk >=64 bytes as a paste, swallowing a `\r` inside it as a literal
     // newline instead of Enter. Route the text through bracketed paste (as `_OnPasteTextAsync` already does) and
     // write a trailing CR raw right after.
-    // AC-941: a call carrying both text and a trailing CR defers the CR by AC-64's 60ms beat — landing in the
+    // AC-941: a call carrying both text and a trailing CR defers the CR by AC-64's beat — landing in the
     // same pty read as the paste otherwise folds it into the pasted block instead of Enter, regardless of
     // bracketed paste. A call that is only "\r" stays immediate.
+    // AC-993: that beat scales with the pasted length (`TtyViewModel.AutoSubmitDelay`) — a multi-KB brief takes the
+    // CLI longer to drain than the ~60ms a spoken transcript needed.
     private void _WriteToPty(string text)
     {
         var pty = _pty;
@@ -381,7 +383,7 @@ public partial class TtyView : UserControl
             }
             else
             {
-                DispatcherTimer.RunOnce(() => _WriteToPty(pty, [(byte)'\r']), TimeSpan.FromMilliseconds(60));
+                DispatcherTimer.RunOnce(() => _WriteToPty(pty, [(byte)'\r']), TtyViewModel.AutoSubmitDelay(typed.Length));
             }
         });
     }

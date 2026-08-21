@@ -262,11 +262,16 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     protected override void OnVoiceTextReady(string text)
     {
         var typed = _AsTypedText(text);
+        _lastTypedLength = typed.Length;
         if (typed.Length > 0)
         {
             VoiceTranscriptReady?.Invoke(typed);
         }
     }
+
+    // How much text the CR is about to submit: `OnVoiceSubmitRequested` carries no parameter, and the beat it waits
+    // has to cover the paste that `OnVoiceTextReady` just wrote (AC-993).
+    private int _lastTypedLength;
 
     // Auto-submit: writes a carriage return into the pty, the same byte a physical Enter sends after typing —
     // submits the just-injected transcript to the interactive claude TUI.
@@ -277,9 +282,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // typed but never sent. A ~60 ms gap (well under the perception threshold) puts the CR in its own pty read so it
     // lands as a real Enter on every platform. Scheduled on the UI thread, so it is robust whether the request came
     // from push-to-talk or open-mic.
+    //
+    // AC-993: 60 ms was timed on a spoken transcript. An injected agent brief is kilobytes, the CLI needs longer to
+    // drain and render that paste, and a CR arriving mid-paste is swallowed — leaving the brief sitting in the input
+    // as an unsent `[Pasted Text #N]`. The gap scales with the pasted length instead (`AutoSubmitDelay`).
     protected override void OnVoiceSubmitRequested()
     {
-        _scheduleAutoSubmit(() => VoiceTranscriptReady?.Invoke("\r"));
+        _scheduleAutoSubmit(AutoSubmitDelay(_lastTypedLength), () => VoiceTranscriptReady?.Invoke("\r"));
     }
 
     // A TTY session takes nothing here (AC-86): the text snapshot already reached the agent on the verify tool
@@ -425,14 +434,22 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // gone report success into nothing, which is the one outcome this whole path exists to prevent.
     public Func<string, Task>? PasteTextAsync { get; set; }
 
-    private Action<Action> _scheduleAutoSubmit = _DelayAutoSubmitOnUiThread;
+    private Action<TimeSpan, Action> _scheduleAutoSubmit = _DelayAutoSubmitOnUiThread;
 
-    // Test seam (AC-64): run the auto-submit action inline instead of after the ~60 ms UI-thread gap, so the transcript-then-CR ordering is assertable without a real timer.
-    internal void SetAutoSubmitScheduler(Action<Action> scheduler) => _scheduleAutoSubmit = scheduler;
+    // Test seam (AC-64): run the auto-submit action inline instead of after the UI-thread gap, so the transcript-then-CR ordering — and, since AC-993, the gap chosen for it — is assertable without a real timer.
+    internal void SetAutoSubmitScheduler(Action<TimeSpan, Action> scheduler) => _scheduleAutoSubmit = scheduler;
+
+    // The gap between a pasted text and its submitting CR (AC-64, scaled in AC-993). A timer rather than an ack:
+    // whether the CLI has finished reading the paste is state on the far side of the pty, and neither
+    // Exclr8.Terminal nor ConPTY surfaces it — the control's events (Input/Output/Changed) only say bytes moved.
+    // 60 ms base is AC-64's measured floor; the per-character term covers a multi-KB injected brief, capped so a
+    // pathological paste cannot leave the CR hanging for seconds.
+    internal static TimeSpan AutoSubmitDelay(int pastedLength) =>
+        TimeSpan.FromMilliseconds(Math.Min(1000, 60 + pastedLength / 4));
 
     // The default gap that keeps the CR out of the transcript's ConPTY read (AC-64): a one-shot UI-thread timer.
-    private static void _DelayAutoSubmitOnUiThread(Action submit) =>
-        Dispatcher.UIThread.Post(() => DispatcherTimer.RunOnce(submit, TimeSpan.FromMilliseconds(60)));
+    private static void _DelayAutoSubmitOnUiThread(TimeSpan delay, Action submit) =>
+        Dispatcher.UIThread.Post(() => DispatcherTimer.RunOnce(submit, delay));
 
     // Configures the panel with the profile and start defaults chosen in the New-session dialog, then
     // launches the TUI as soon as the view is ready (#31). Replaces the old in-panel Start button and
