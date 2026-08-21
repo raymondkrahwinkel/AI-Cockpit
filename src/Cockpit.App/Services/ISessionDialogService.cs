@@ -33,9 +33,6 @@ public interface ISessionDialogService
     /// </summary>
     Task ShowWorktreesDialogAsync(WorktreesViewModel worktrees);
 
-    /// <summary>Shows the Manage-profiles dialog on its own (e.g. from the sidebar), over the main window.</summary>
-    Task ShowManageProfilesDialogAsync();
-
     /// <summary>
     /// Shows the assistant's own profile editor (Options → Voice). Its own dialog rather than a row in the profile
     /// list: that record is not a session profile, is not in the list, and cannot be deleted from it.
@@ -91,9 +88,6 @@ public interface ISessionDialogService
     /// its new binding row on a successful publish, or null when the operator cancelled.
     /// </summary>
     Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<ISharedProjectSource> publishSources);
-
-    /// <summary>Shows the MCP-servers dialog (#26), over the main window, for editing the shared MCP-server registry.</summary>
-    Task ShowMcpServersDialogAsync();
 
     /// <summary>Shows the Verify-runners dialog (AC-86), over the main window, for registering the per-project command the visual verify loop may run.</summary>
     Task ShowVerifyRunnersDialogAsync();

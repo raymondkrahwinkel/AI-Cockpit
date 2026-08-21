@@ -5651,9 +5651,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public IAssistantSessionHost? AssistantHost { get; set; }
 
     // Opens Options on the MCP Servers category (AC-1002) from the sidebar menu, independent of creating a
-    // session — the same deep-link split ManageProfilesAsync above uses. Used to open the standalone
-    // McpServersDialog window; that window still exists for Screenshotter's own scenes, but the menu item and
-    // ShortcutAction.McpServers alike now deep-link into Options instead of opening it.
+    // session — the same deep-link split ManageProfilesAsync above uses. The standalone McpServersDialog window
+    // this replaced is gone entirely now (AC-1006): nothing else built it any more.
     [RelayCommand]
     private Task OpenMcpServersAsync() => _ShowOptionsAsync("mcp-servers");
 

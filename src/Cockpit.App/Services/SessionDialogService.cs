@@ -40,11 +40,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IProfileLoginChecker _loginChecker;
     private readonly IProfileLoginStarter _loginStarter;
     private readonly IModelCatalog _modelCatalog;
-    private readonly IMcpServerStore _mcpServerStore;
     private readonly IMcpServerCatalog _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator _tokenEstimator;
     private readonly IMcpOAuthCoordinator _oauthCoordinator;
-    private readonly IReadOnlyList<ICockpitInternalMcpProvider> _internalMcpProviders;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
     private readonly IConversationPickerRegistry _conversationPickers;
@@ -67,11 +65,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         ISessionProfileStore profileStore,
         IProfileLoginChecker loginChecker,
         IModelCatalog modelCatalog,
-        IMcpServerStore mcpServerStore,
         IMcpServerCatalog mcpServerCatalog,
         IMcpToolTokenEstimator tokenEstimator,
         IMcpOAuthCoordinator oauthCoordinator,
-        IEnumerable<ICockpitInternalMcpProvider> internalMcpProviders,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
         IConversationPickerRegistry conversationPickers,
@@ -97,11 +93,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _loginChecker = loginChecker;
         _loginStarter = loginStarter;
         _modelCatalog = modelCatalog;
-        _mcpServerStore = mcpServerStore;
         _mcpServerCatalog = mcpServerCatalog;
         _tokenEstimator = tokenEstimator;
         _oauthCoordinator = oauthCoordinator;
-        _internalMcpProviders = [.. internalMcpProviders];
         _pluginProviderRegistry = pluginProviderRegistry;
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
@@ -253,14 +247,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         };
 
         return await _surfaces.ShowAsync(typeof(NewSessionDialog), dialog, owner, () => chosen);
-    }
-
-    public async Task ShowManageProfilesDialogAsync()
-    {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
-        {
-            await _ShowSurfaceAsync(typeof(ManageProfilesDialog), owner, _BuildManageProfilesAsync);
-        }
     }
 
     public async Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant)
@@ -497,25 +483,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await viewModel.LoadAsync();
 
         return new ManageProfilesDialog { DataContext = viewModel };
-    }
-
-    public async Task ShowMcpServersDialogAsync()
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
-        {
-            return;
-        }
-
-        await _ShowSurfaceAsync(typeof(McpServersDialog), owner, async () =>
-        {
-            var viewModel = new McpServersViewModel(_mcpServerStore, _internalMcpProviders, _oauthCoordinator);
-            await viewModel.LoadAsync();
-
-            var dialog = new McpServersDialog { DataContext = viewModel };
-            viewModel.CloseRequested += dialog.Close;
-
-            return dialog;
-        });
     }
 
     public async Task ShowVerifyRunnersDialogAsync()
