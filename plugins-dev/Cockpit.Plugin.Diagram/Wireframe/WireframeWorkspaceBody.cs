@@ -86,6 +86,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private readonly Button _askButton;
     private readonly ToggleButton _notesToggle;
     private readonly TextBlock _handHint;
+    private readonly TextBlock _hintSeparator;
     private readonly StackPanel _propertiesContent;
     private readonly Border _notesPanel;
     private readonly StackPanel _notesContent;
@@ -165,7 +166,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         (_couplingBar, _couplingLabel, _readChip, _editChip, _coupleButton, _disconnectButton) = _BuildCouplingBar();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _textButton, _deleteButton,
-            _upButton, _downButton, _moveButton, _addScreenButton, _stateStrip, _overviewButton, _viewportButton, _askButton, _notesToggle, _handHint) = _BuildToolbar();
+            _upButton, _downButton, _moveButton, _addScreenButton, _stateStrip, _overviewButton, _viewportButton, _askButton, _notesToggle, _handHint, _hintSeparator) = _BuildToolbar();
         var journal = new WireframeActivityJournal(_registry);
         _activityStrip = new ActivityStrip(host, _surfaceId, journal, onJumpToObject: null);
         _askStrip = new AskStrip(_JumpToComponent);
@@ -1530,6 +1531,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _handHint.Text = _HintFor(target);
         // AC-973: the label trims with an ellipsis at MaxWidth — the tooltip carries the untrimmed text.
         ToolTip.SetTip(_handHint, _handHint.Text);
+        // AC-981: the separator only makes sense between two texts — hide it when the hint is empty.
+        _hintSeparator.IsVisible = _handHint.Text.Length > 0;
         _RefreshPropertiesPanel(target, placement?.Parent.Kind);
         _RefreshStateStrip();
     }
@@ -2077,7 +2080,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     private (Border Toolbar, TextBlock ZoomLabel, Button Save, TextBlock SaveStatus, Button Add, Button Text,
         Button Delete, Button Up, Button Down, Button Move, Button AddScreen, StackPanel StateStrip, Button Overview,
-        Button Viewport, Button Ask, ToggleButton Notes, TextBlock Hint) _BuildToolbar()
+        Button Viewport, Button Ask, ToggleButton Notes, TextBlock Hint, TextBlock HintSeparator) _BuildToolbar()
     {
         // AC-837: zoom in/out + Fit, with the current level always on screen.
         var zoomOut = new Button { Content = "−", Classes = { "Compact" }, MinWidth = 28 };
@@ -2154,6 +2157,15 @@ internal sealed class WireframeWorkspaceBody : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
+        // AC-981: saveStatus (where this file lives) and hint (what to do now) are two different kinds of
+        // information — without a mark between them they read as one nonsense sentence.
+        var hintSeparator = new TextBlock
+        {
+            Text = "·",
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 11,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
 
         // AC-973: a WrapPanel of individual controls, not two DockPanel-docked StackPanels — a group that no
         // longer fits on one line wraps onto the next instead of running off screen. Zoom leads so it is never the
@@ -2166,11 +2178,11 @@ internal sealed class WireframeWorkspaceBody : UserControl
             Children =
             {
                 zoomOut, zoomLabel, zoomIn, fit,
-                overview, add, text, delete, up, down, move, addScreen, stateStrip, viewport, ask, notes, save, saveStatus, hint,
+                overview, add, text, delete, up, down, move, addScreen, stateStrip, viewport, ask, notes, save, saveStatus, hintSeparator, hint,
             },
         };
         return (new Border { Padding = new Thickness(8, 4), Child = bar }, zoomLabel, save, saveStatus,
-            add, text, delete, up, down, move, addScreen, stateStrip, overview, viewport, ask, notes, hint);
+            add, text, delete, up, down, move, addScreen, stateStrip, overview, viewport, ask, notes, hint, hintSeparator);
     }
 
     // AC-915: three names, no free-form size — the same MenuFlyout shape as «Move to…». Landing on the viewport

@@ -222,6 +222,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the diagram and wireframe toolbars no longer run the save status ("No file yet", say) straight into the
+  hint text next to it ("Click a component to edit it.") — the two now read as separate pieces of information,
+  divided by a middle dot.
 - fixed: pressing "Connect" with an empty label in an ER diagram's relationship flyout used to do nothing at all —
   no relationship, no message, the flyout just stayed open. The label is required (Mermaid has no sensible default
   for the line's text), so the field is now marked as such, and "Connect" stays disabled with a tooltip explaining
