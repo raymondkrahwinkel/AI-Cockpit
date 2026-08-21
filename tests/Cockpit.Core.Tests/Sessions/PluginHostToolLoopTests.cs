@@ -227,11 +227,8 @@ public class PluginHostToolLoopTests
         Assert.Null(withoutLoop.Toolset);
     }
 
-    // AC-994, criterion 3 — the defect this ticket exists for: the toolset's ConnectAsync mints the pane's token
-    // (AC-89) and bakes it into its HTTP clients' Authorization header before StartAsync ever returns; that header
-    // is never revisited afterwards. _SpawnEnvironment then used to mint a *second* token for the same pane, which
-    // replaced the first one in the keyring — so the token the toolset is actually presenting on every call stopped
-    // resolving. Proven red before the fix: PaneFor(the toolset's own token) came back null.
+    // AC-994, criterion 3: the token the toolset baked into its own HTTP clients at connect must still resolve to
+    // its pane once StartAsync returns. Proven red before the fix: PaneFor(the toolset's own token) came back null.
     [Fact]
     public async Task StartAsync_TheTokenTheToolsetMinted_StillResolvesToThePane_AfterStartAsyncReturns()
     {

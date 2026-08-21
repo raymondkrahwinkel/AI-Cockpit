@@ -247,10 +247,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // request to the real session rather than trust the id the agent declares. No pane id (or no keyring in a test
         // graph) falls back to the shared key.
         //
-        // AC-994: a provider with a host tool loop already minted this pane's one live token when StartAsync connected
-        // its toolset above — that token is baked into the toolset's HTTP clients and cannot be revised afterwards, so
-        // minting a second one here would invalidate it and turn every subsequent cockpit-hosted call into a 401.
-        // Reuse it instead; only a session with no host toolset mints here.
+        // AC-994: a host toolset already baked its own pane token into its HTTP clients above, and that header is
+        // never revisited — minting a second one here would invalidate it there. Reuse it; mint only otherwise.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
         var mcpKey = _hostToolset is { PaneToken: { } toolsetToken }
             ? toolsetToken
