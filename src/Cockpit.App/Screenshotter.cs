@@ -418,6 +418,11 @@ internal static class Screenshotter
         // the assistant's one and only surface).
         ["assistant-chat-warnings"] = (_, _) => _AssistantChatWithWarnings(),
         ["assistant-chat-question"] = (_, _) => _AssistantChatQuestion(),
+        // AC-1018: the broker route (AssistantAgentGateway.AskStructuredQuestionAsync) builds its row with
+        // Kind = Question, not ToolUse like the scene above — the gap that let the card silently never render
+        // live. Built the same way the gateway builds it, so this screenshot is of the actual bug/fix, not of a
+        // fixture that always worked.
+        ["assistant-chat-question-broker"] = (_, _) => _AssistantChatBrokerQuestion(),
 
         // AC-776 Deel 1: the session-status pill in all six SessionStatus values, and the same pill's "⋯" flyout
         // staged open by the Hovers table below (criterion 12's four scenes: all-statuses, the opened session
@@ -2173,6 +2178,30 @@ internal static class Screenshotter
             Activity = Cockpit.Core.Assistant.AssistantActivity.Ready,
         };
 
+        var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
+        return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    // AC-1018: same card, built the way AssistantAgentGateway.AskStructuredQuestionAsync actually builds it
+    // (Kind = Question, IsPendingBrokerAnswer = true) rather than through ToolUseRequested/PermissionRequested —
+    // the route _BuildAskUserQuestionSession takes, and the one that never fails.
+    private static AssistantChatWindow _AssistantChatBrokerQuestion()
+    {
+        const string input = """
+        {"questions":[{"question":"Which profile should this run under?","header":"Profile","multiSelect":false,
+          "options":[{"label":"Programmer (Opus)"},{"label":"Programmer (Sonnet)"}]}]}
+        """;
+
+        var session = new SessionViewModel { Title = "personal - webshop" };
+        session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "One thing before I start." });
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which profile should this run under?")
+        {
+            InputJson = input,
+            QuestionPrompts = AskUserQuestionViewModel.Parse(input),
+            IsPendingBrokerAnswer = true,
+        });
+
+        var host = new _FakeAssistantSessionHost { Session = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
         var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
         return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
