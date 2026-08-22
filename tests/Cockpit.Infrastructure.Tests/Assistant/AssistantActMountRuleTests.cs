@@ -420,6 +420,12 @@ public sealed class AssistantActMountRuleTests : IDisposable
             return Task.FromResult(WorktreeHandoverResult.HandedOver(path, "cockpit/handed-over", "AC-545 tests"));
         }
 
+        public Task<OpenUrlResult> OpenUrlAsync(string url, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"OpenUrlAsync({url})");
+            return Task.FromResult(OpenUrlResult.Opened(url));
+        }
+
         public Task<AssistantProjectBindResult> BindSharedProjectAsync(
             string sharedProjectId,
             string sourceDirectory,
