@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Plugin.LocalCi.Execution;
 using Cockpit.Plugin.LocalCi.Gate;
 using Cockpit.Plugin.LocalCi.Mcp;
@@ -90,10 +91,12 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         host.RegisterIntentHandler(PullRequestGateIntent.Action, gate.HandleAsync);
 
         // The agent's side: a session can check its own work before it pushes it. Every run goes through the
-        // operator's consent, and the tools take no path — the checkout is the caller's own.
+        // operator's consent, and the checkout is the caller's own — or one it made for itself via worktree_create
+        // (AC-1015), never an arbitrary path.
+        var worktrees = host.Services.GetService(typeof(IWorktreeManager)) as IWorktreeManager;
         _ = host.AddMcpEndpoint(
             "cockpit-local-ci",
-            new LocalCiMcpTools(host, checkouts, runner, tracker, head, settings),
+            new LocalCiMcpTools(host, checkouts, runner, tracker, head, settings, worktrees),
             isEnabled: () => settings.McpEnabled);
 
         // From the session's own header, so the run is about the checkout that session is working in rather than

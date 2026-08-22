@@ -86,11 +86,16 @@ internal sealed class LocalJobRunner(
 
         if (!await _oneAtATime.WaitAsync(0, cancellationToken))
         {
+            // AC-1015: not "wait for it" — that sentence used to be exactly what sent three sessions into a
+            // wait-and-retry loop over one night. The other run is not stuck, so retrying this call will not help;
+            // say that plainly instead of inviting a poll.
             return LocalRunResult.DidNotRun(
                 request.WorkflowPath,
                 request.JobId,
                 LocalRunOutcome.AlreadyRunning,
-                "another local run already has this machine. Wait for it, or stop it from the status bar.");
+                "another local run already has this machine right now, and it is not stuck — retrying this call "
+                + "will not help. Do not wait and retry; come back later, or ask the operator to stop it from the "
+                + "status bar.");
         }
 
         try
