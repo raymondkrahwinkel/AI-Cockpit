@@ -84,7 +84,10 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // sandbox, leaves this false and stays confined in every mode.
             // DeclaredOptions (AC-649): the three option keys this driver reads, stated rather than left for a caller
             // to know — `effort` was a Claude-private key no consumer could discover at all.
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true, DeclaredOptions = ClaudeOptionChoices.DeclaredSessionOptions },
+            // SupportsMidTurnInput (AC-739): same trap — the driver instance's own Capabilities already vouches for
+            // this, but SessionViewModel.SendAsync never sees it unless it is declared here too; left off, a mid-turn
+            // send stays queued instead of writing straight through.
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true, SupportsMidTurnInput = true, DeclaredOptions = ClaudeOptionChoices.DeclaredSessionOptions },
             CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson, host))
         {
             Options =
