@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Media;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.ManagedCli;
@@ -503,6 +504,12 @@ public interface ICockpitHost
     /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched.
     /// </summary>
     Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
+
+    /// <summary>
+    /// Opens a chat channel — a Discord or Slack bot — as a second door onto the assistant's own conversation
+    /// (AC-1023). Null on a host with no assistant; dispose the gateway to close the channel.
+    /// </summary>
+    IAssistantChannelGateway? OpenAssistantChannel(AssistantChannelContribution contribution) => null;
 
     /// <summary>
     /// Binds a plugin surface — a diagram or whiteboard window (AC-832) — to the session already running behind

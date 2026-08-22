@@ -8,7 +8,16 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.26.0: a plugin's settings view no longer persists its own settings (AC-1003) — `IPluginSettingsView`'s
+    <!-- 0.27.0: a plugin can now run a chat channel — a Discord or Slack bot — as a second door onto the
+         assistant's own standing conversation (AC-1023): ICockpitHost.OpenAssistantChannel and the
+         Channels namespace it takes and returns (AssistantChannelContribution, AssistantChannelAccess with its
+         three-level identity gate, AssistantChannelVerbosity, IAssistantChannelGateway and the rows/prompts it
+         raises, AssistantChannelStorage for the settings and the encrypted bot token). Default-implemented and
+         returning null, so an already-compiled plugin loads and behaves exactly as before; the bump is for the
+         other direction. A plugin that calls it sets minHostVersion 0.27.0 — an older host's copy of the SDK has
+         neither the member nor the types it takes, so the call cannot resolve at all. Minor because it is
+         additive; still 0.x.
+         0.26.0: a plugin's settings view no longer persists its own settings (AC-1003) — `IPluginSettingsView`'s
          `bool Save()` became `bool TryStage(out Action? commit, out string? error)`: it validates, hands the host
          the write, and the host decides whether and when to run it. That is what lets the Options dialog's staged
          transaction (AC-999) take a plugin's change back on Cancel, and it finally gives a refused save a reason
@@ -196,7 +205,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.26.0</VersionPrefix>
+    <VersionPrefix>0.27.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
