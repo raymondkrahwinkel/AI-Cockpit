@@ -70,7 +70,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     // Plain rows that are neither the user bubble nor markdown: questions and turn results. An error or
     // failed-turn row is plain text too, but gets its own severity-coloured card instead of this branch.
-    public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow && !ShowsFailureCard;
+    // A broker question (AC-955) renders through ToolBranch's card instead, so it doesn't count as plain text.
+    public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow && !ShowsFailureCard && !HasQuestionPrompts;
 
     // Rows whose arrival timestamp renders at the top of the row (assistant prose, questions/errors/turn
     // results). User and tool-use rows carry their timestamp inline in their own header line instead
@@ -83,7 +84,10 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // branch its kind needs instead of every IsVisible="false" sibling (Avalonia builds those in full). Kind is
     // immutable, so these six never change after construction; QuestionBranch/ToolBlockBranch track mutable
     // flags and are re-raised alongside them (OnQuestionPromptsChanged / _RaiseReadingLevelPresentation).
-    public object? ToolBranch => IsToolUse ? this : null;
+    // AC-955: a broker question (Kind = Question, not ToolUse) rides this same branch for its QuestionBranch
+    // card — the two routes into HasQuestionPrompts (AC-715's permission callback, AC-955's broker) share one
+    // gate rather than each needing its own copy of "is this a card".
+    public object? ToolBranch => IsToolUse || HasQuestionPrompts ? this : null;
     public object? UserBranch => IsUserRow ? this : null;
     public object? AssistantBranch => IsAssistantMarkdown ? this : null;
     public object? ThinkingBranch => IsThinking ? this : null;
@@ -357,6 +361,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(HasQuestionPrompts));
         OnPropertyChanged(nameof(QuestionBranch));
+        OnPropertyChanged(nameof(ToolBranch));
+        OnPropertyChanged(nameof(IsPlainNonMarkdown));
         _RaiseReadingLevelPresentation();
     }
 

@@ -232,6 +232,26 @@ public class SessionViewModelAskUserQuestionTests
     }
 
     /// <summary>
+    /// AC-1018: the tool-call succeeding and the row landing on <c>Transcript</c> is not the same as the card
+    /// actually rendering — <c>TranscriptRowView</c>'s tool-block section (which hosts <c>QuestionBranch</c>)
+    /// only shows when <c>ToolBranch</c> is non-null, and the raw question text falls back to the plain-text
+    /// row whenever <c>IsPlainNonMarkdown</c> is true. A broker question has <c>Kind = Question</c>, not
+    /// <c>ToolUse</c>, so both gates need to key off <c>HasQuestionPrompts</c> too — this is exactly the gap the
+    /// headless screenshot-scenes never covered (they hand-build <c>Kind = ToolUse</c> fixtures).
+    /// </summary>
+    [Fact]
+    public async Task BrokerQuestion_RendersThroughToolBranch_NotAsAPlainTextRow()
+    {
+        var (vm, _) = await _StartedAsync();
+        var entry = _RaiseBrokerQuestion(vm, OneBrokerQuestion);
+
+        Assert.NotNull(entry.ToolBranch);
+        Assert.False(entry.IsPlainNonMarkdown);
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
     /// Criterion 8: an unanswered broker card blocks nothing — the session can still start another turn.
     /// </summary>
     [Fact]

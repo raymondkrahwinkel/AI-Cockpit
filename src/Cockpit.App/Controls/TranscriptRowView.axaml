@@ -253,7 +253,11 @@
                  to the full input plus the coupled result (L14, matched on tool_use_id).
                  A structured/code result renders in a monospace code box with a copy
                  button (T6); a plain result stays inline text. -->
-            <ContentControl Content="{Binding ToolBranch}" IsVisible="{Binding IsToolUse}">
+            <!-- AC-1018: IsVisible reads ToolBranch itself (not IsToolUse) so a broker question (AC-955,
+                 Kind = Question) can't drift out of sync with the one property that already decides whether
+                 this block has anything to show. -->
+            <ContentControl Content="{Binding ToolBranch}"
+                             IsVisible="{Binding ToolBranch, Converter={x:Static ObjectConverters.IsNotNull}}">
               <ContentControl.DataTemplates>
                 <DataTemplate DataType="vm:TranscriptEntryViewModel">
             <StackPanel Spacing="4" Classes="rowIndent">

@@ -999,6 +999,60 @@ public class AssistantAgentGatewayTests
         Dispatcher.UIThread.Invoke(() => Assert.Equal("Release", Assert.Single(cockpit.Workspaces.Settings.Workspaces).Name));
     }
 
+    // --- AC-1018: ask_structured_question's card actually rendering, not just the tool call succeeding ---------
+
+    /// <summary>
+    /// AC-955 built <c>ask_structured_question</c> and verified it only with a headless screenshot scene that
+    /// hand-builds a <c>Kind = ToolUse</c> fixture — never the gateway's own construction path. Live, the card
+    /// never appeared: only the plain question text did (AC-1018). This drives the exact production method an MCP
+    /// call reaches, through a real Avalonia dispatcher, onto a real <see cref="SessionViewModel"/> — the same
+    /// object <c>AssistantChatViewModel</c> binds its transcript from — and checks the same two properties
+    /// <c>TranscriptRowView.axaml</c> actually gates the card on, not just that a row landed on <c>Transcript</c>.
+    /// </summary>
+    [Fact]
+    public async Task AskStructuredQuestion_PutsARow_ThatRendersAsTheCard_NotAsPlainText()
+    {
+        var (gateway, session) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var realSession = new SessionViewModel();
+            var host = Substitute.For<IAssistantSessionHost>();
+            host.Session.Returns(realSession);
+
+            var profiles = Substitute.For<ISessionProfileStore>();
+            profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>([]));
+
+            var built = new AssistantAgentGateway(
+                _Cockpit(),
+                profiles,
+                Substitute.For<IAssistantSpawnAuditLog>(),
+                Substitute.For<IWorkspaceAgentGateway>(),
+                Substitute.For<IAgentMessageInbox>(),
+                Substitute.For<IAgentNotifyAuditLog>(),
+                Substitute.For<IPluginProviderRegistry>(),
+                new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
+                host);
+            return (built, realSession);
+        });
+
+        var result = await gateway.AskStructuredQuestionAsync(
+            "Which profile?",
+            [("Programmer (Opus)", null), ("Programmer (Sonnet)", null)],
+            multiSelect: false,
+            allowOther: true,
+            header: null);
+
+        Assert.True(result.Ok);
+
+        var entry = Dispatcher.UIThread.Invoke(() => session.Transcript.Single(row => row.Kind == TranscriptEntryKind.Question));
+        Assert.True(entry.HasQuestionPrompts);
+        // The two gates TranscriptRowView.axaml actually reads: ToolBranch must carry the row (it hosts the
+        // nested QuestionBranch card), and IsPlainNonMarkdown must be false (else the raw text renders instead).
+        Assert.NotNull(entry.ToolBranch);
+        Assert.False(entry.IsPlainNonMarkdown);
+        // And that it reaches the collection AssistantChatViewModel actually binds — not a copy.
+        Assert.Contains(entry, Dispatcher.UIThread.Invoke(() => session.VisibleTranscript));
+    }
+
     // --- The graph under test -------------------------------------------------------------------------------
 
     /// <summary>
