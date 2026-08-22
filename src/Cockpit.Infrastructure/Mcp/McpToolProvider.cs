@@ -11,13 +11,8 @@ using Cockpit.Core.Sessions.Permissions;
 namespace Cockpit.Infrastructure.Mcp;
 
 // `IMcpToolProvider` that connects to each enabled server in the shared registry via the MCP
-// client (stdio or streamable-HTTP) and collects their tools (#26). A server that fails to start or is
-// unreachable is logged and skipped, so the session runs with whatever connected rather than failing.
-// OAuth-protected HTTP servers go through `IMcpOAuthAuthorizer` (loopback + system browser), so
-// the first tool use pops a browser sign-in and the SDK handles PKCE, discovery and token refresh.
-//
-// Also the app's own `IMcpToolInvoker` (AC-502): the same connect path, called for one tool on one
-// server, on the app's behalf rather than a session's.
+// client (#26), skipping unreachable ones; OAuth servers go through `IMcpOAuthAuthorizer`.
+// Also the app's own `IMcpToolInvoker` (AC-502), same connect path for one tool on one server.
 internal sealed class McpToolProvider(
     IMcpServerCatalog catalog,
     IMcpOAuthAuthorizer oauthAuthorizer,
@@ -30,15 +25,11 @@ internal sealed class McpToolProvider(
 {
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default)
     {
-        // AC-89: when this in-process tool loop belongs to a session with a pane id (a local-model session), mint it
-        // one per-session token — used for every cockpit-hosted endpoint it connects to — so those endpoints can
-        // attribute its requests to this pane and the consent broker scopes on the real session, not the id the model
-        // declares. Minted once here, not per server, so the concurrent connects below all present the same live
-        // token. No pane id falls back to the shared app key.
+        // AC-89: a session with a pane id mints one per-session token here (not per server) so every
+        // cockpit-hosted endpoint it connects to can attribute requests to this pane; no pane id falls back to the shared app key.
         var sessionToken = string.IsNullOrEmpty(paneId) ? null : keyring.TokenFor(paneId);
-        // The effective set — registry plus what active plugins provide (AC-11) — so a local model gets a
-        // plugin's MCP servers too, and the per-session selection can narrow them like any other. Scoped to
-        // projectId (AC-218) so a project's own servers and by-name overrides are seen, not just the unscoped registry.
+        // AC-11/AC-218: registry plus what active plugins provide, scoped to projectId so a local model
+        // sees a plugin's/project's own servers too, not just the unscoped registry.
         var registry = await catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
         // AC-869: cockpit-github-pull-requests is Internal (hidden from every picker); a git-repo working
         // directory names it explicitly here rather than through operator config.
@@ -50,30 +41,21 @@ internal sealed class McpToolProvider(
         var connectedNames = new List<string>();
         var toolClasses = new Dictionary<string, ToolPermissionClass>(StringComparer.Ordinal);
 
-        // Local models host the built-in defaults (filesystem etc.) plus every enabled registry server not
-        // scoped to Claude only (#26). A registry entry overrides the built-in of the same name — including a
-        // disabled one, which removes that default — so defaults are a baseline the user can retarget or drop.
-        // The per-session selection (#44) is applied to the registry above, before this merge, so a built-in
-        // default is never excluded just because it is not part of the registry-derived checklist.
+        // Local models host the built-in defaults (#26) overlaid by the registry (a registry entry, including
+        // a disabled one, overrides the same-named built-in). #44's per-session selection is already applied above.
         var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled).ToList();
 
-        // Confinement (AC-174, Raymond 2026-07-22): when the session is confined to a directory, replace the whole
-        // effective set with a safe one so a local model cannot reach the operator's real checkout — the file-capable
-        // servers become the built-in filesystem preset re-rooted at that directory (never a custom same-named registry
-        // server, which is not trusted to sandbox), plus benign in-process servers, plus the pane-scoped Autopilot report
-        // endpoint the step needs. Every escape channel (a shell/terminal, an orchestrator that spawns unconfined
-        // sessions, worktree tools, any other filesystem) is dropped regardless of what the selection asked for.
+        // AC-174: confined sessions swap the whole effective set for a safe one — filesystem preset
+        // re-rooted at the directory, benign in-process servers, and the Autopilot report endpoint — so a
+        // local model cannot reach the operator's real checkout via any other escape channel.
         if (!string.IsNullOrWhiteSpace(confineFileToolsToDirectory))
         {
             enabledServers = _ConfinedServers(enabledServers, confineFileToolsToDirectory);
         }
 
-        // Connect every enabled server concurrently rather than one-by-one — sequential connect + list-tools
-        // round-trips added up badly once more than one server was configured. Each connect keeps its own
-        // try/catch (in _ConnectServerAsync), so a server that fails or is unreachable is still skipped without
-        // blocking — or now, delaying — the others. Task.WhenAll returns its results in the same order as the
-        // input sequence regardless of which task finishes first, so the resulting tools/connected-names lists
-        // stay in the same (deterministic) order as enabledServers even though the connects race in parallel.
+        // Connect concurrently rather than one-by-one — sequential round-trips added up once more than one
+        // server was configured. Task.WhenAll preserves input order, so results stay deterministic even
+        // though the connects race in parallel; each keeps its own try/catch (_ConnectServerAsync).
         var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, sessionToken, cancellationToken)));
         var serversNeedingSignIn = new List<string>();
         var connectionIssues = new List<McpServerConnectionIssue>();
@@ -107,10 +89,8 @@ internal sealed class McpToolProvider(
             tools.AddRange(connection.Tools.Select(tool => new McpSessionTool(tool, connection.Name, enabledServers[i].AlwaysMounted)));
             connectedNames.Add(connection.Name);
 
-            // Trust for the delegated gate is keyed on the bare tool name (AC-79), so a name exposed by two
-            // enabled servers is ambiguous — the tool list keeps both, and which one the model resolves is not
-            // decided here. Reconcile the class to the *more restrictive* of the collision rather than last-wins,
-            // so a second server cannot shadow a safe name to widen what runs unattended.
+            // AC-79: the delegated gate trusts by bare tool name, so a name shared by two servers is
+            // ambiguous here. Reconcile to the *more restrictive* class on collision, never last-wins.
             foreach (var (toolName, toolClass) in connection.ToolClasses)
             {
                 toolClasses[toolName] = toolClasses.TryGetValue(toolName, out var existing)
@@ -168,12 +148,9 @@ internal sealed class McpToolProvider(
         var server = registry.FirstOrDefault(candidate =>
             candidate.Enabled && string.Equals(candidate.Name, serverName, StringComparison.OrdinalIgnoreCase));
 
-        // AC-499: the catalog only carries a plugin-delivered server once some project points at it (a Memory row
-        // whose stored scheme the catalog can resolve, AC-504). A caller that is itself entitled to that server —
-        // this is scoped by the host to the calling plugin's own contributions before it ever reaches here, see
-        // ICockpitHost.CallMcpToolAsync's own remarks — can still reach it through callerFallbackServers, the exact
-        // asymmetry CockpitHost's acceptance check (_IsKnownMcpServerNameAsync) already tolerated while this
-        // resolution alone stayed strict.
+        // AC-499: the catalog only carries a plugin-delivered server once a project points at it. A caller
+        // entitled to that server (scoped by the host, see ICockpitHost.CallMcpToolAsync) can still reach it via
+        // callerFallbackServers — the same asymmetry CockpitHost's acceptance check already tolerates.
         server ??= callerFallbackServers?.FirstOrDefault(candidate =>
             candidate.Enabled && string.Equals(candidate.Name, serverName, StringComparison.OrdinalIgnoreCase));
 
@@ -227,23 +204,17 @@ internal sealed class McpToolProvider(
     {
         try
         {
-            // AC-505 follow-up: the widened timeout is only worth paying when a sign-in might actually have to
-            // run — GetStateAsync is a local read (no network, no browser; see its own doc comment), so a server
-            // with an already-usable token still connects on the fast default and a merely slow (not down) OAuth
-            // server cannot stall the whole session-connect Task.WhenAll for the widened window on every start.
+            // AC-505 follow-up: the widened timeout is only worth paying when a sign-in might actually run —
+            // GetStateAsync is a local read (no network/browser), so an already-usable token still connects fast.
             var needsInteractiveOAuth = server.Auth == McpServerAuth.OAuth
                 && await oauthCoordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired;
             var clientOptions = needsInteractiveOAuth ? McpInteractiveOAuthClientOptions.Create() : null;
             var client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken), clientOptions, cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            // Classify each tool from its MCP annotations (AC-79) at connect, while we still have the typed
-            // McpClientTool — the delegated gate later reads these by tool name. Annotations are advisory hints,
-            // so an absent readOnlyHint stays Unknown (trusted only via the profile allow-list), not "safe".
-            // Whether this IS the built-in filesystem preset, identified by its npm package rather than by the
-            // server or tool name. The name-based fallback below is only sound for that one first-party server —
-            // whose tools are scoped to a single configured folder — so it must never fire for an arbitrary
-            // server that happens to expose a tool called write_file/read_file (AC-100 security review).
+            // AC-79: classify each tool from its MCP annotations at connect; an absent readOnlyHint stays
+            // Unknown, never "safe". Preset identified by npm package (AC-100): the name-based fallback below
+            // must never fire for an arbitrary server that happens to expose write_file/read_file.
             var isFilesystemPreset = server.Args.Any(arg => arg.Contains(McpServerPresets.FilesystemServerPackage, StringComparison.OrdinalIgnoreCase));
 
             var classes = new Dictionary<string, ToolPermissionClass>(StringComparer.Ordinal);
@@ -252,12 +223,9 @@ internal sealed class McpToolProvider(
                 var annotations = tool.ProtocolTool.Annotations;
                 var annotationClass = DelegatedToolPermissionPolicy.Classify(annotations?.ReadOnlyHint, annotations?.DestructiveHint);
 
-                // The built-in filesystem preset ships no read-only/destructive hints, so its write_file is
-                // Unknown and the delegated gate blocks it at every ceiling below bypassPermissions — a local
-                // coder profile cannot write a file at the default acceptEdits ceiling (AC-100/AC-112). Fall back
-                // to first-party knowledge of the tool by name, but ONLY (a) for that preset, and (b) where the
-                // server gave no readOnlyHint at all (Unknown) — any explicit hint, true or false, is always
-                // honoured and never widened. A rogue server reusing these names gets no such treatment.
+                // AC-100/AC-112: the built-in filesystem preset ships no hints, so its write_file is Unknown
+                // and would get blocked. Fall back to first-party name knowledge, but ONLY for that preset and
+                // ONLY where the hint is Unknown — any explicit hint always wins; a rogue server gets no such treatment.
                 classes[tool.Name] = annotationClass == ToolPermissionClass.Unknown && isFilesystemPreset
                     ? DelegatedToolPermissionPolicy.ClassifyWellKnown(tool.Name) ?? annotationClass
                     : annotationClass;
@@ -306,21 +274,15 @@ internal sealed class McpToolProvider(
         return [.. byName.Values];
     }
 
-    // The pane-scoped Autopilot control endpoints a confined session still needs: a step agent calls autopilot_step_done
-    // on cockpit-autopilot-run, and the CEO validator calls autopilot_validate on cockpit-autopilot-ceo. Both are
-    // cockpit-hosted and control-only — they cannot write files or run commands — so they are safe inside a confined
-    // session. A session only ends up with the one it actually selected (a step selects the run endpoint, not the CEO's),
-    // so allowing both here does not hand a step the CEO's tools. Named as literals to keep Infrastructure independent of
-    // the Autopilot plugin; kept in sync with AutopilotRunTools.EndpointName / AutopilotCeoTools.EndpointName.
+    // Pane-scoped Autopilot control endpoints a confined session still needs (control-only, no file/command
+    // access, so safe). A session only ever selects one of the two. Named as literals to keep
+    // Infrastructure independent of the Autopilot plugin; kept in sync with AutopilotRunTools/AutopilotCeoTools.EndpointName.
     private static readonly HashSet<string> ConfinedControlEndpoints =
         new(StringComparer.OrdinalIgnoreCase) { "cockpit-autopilot-run", "cockpit-autopilot-ceo" };
 
-    // The confined effective set for a session pinned to <paramref name="root"/> (AC-174): the built-in filesystem
-    // preset re-rooted at the worktree (the only file-write path a confined session gets), the built-in in-memory
-    // knowledge server (benign, no disk escape), and the Autopilot report endpoint if this session already had it. Built
-    // from the presets — not from the caller's own file servers — so a custom same-named "filesystem" cannot smuggle in a
-    // different, wider sandbox. Everything else (the home-rooted defaults, git, fetch, a shell/terminal, an orchestrator,
-    // worktree tools) is deliberately left out: none of it can reach the operator's real checkout from here.
+    // AC-174: the confined effective set for a session pinned to <paramref name="root"/> — filesystem preset
+    // re-rooted at the worktree, the in-memory knowledge server, and the Autopilot endpoint if already present.
+    // Built from the presets, not the caller's own servers, so a custom same-named "filesystem" cannot widen the sandbox.
     internal static List<McpServerConfig> _ConfinedServers(IReadOnlyList<McpServerConfig> effective, string root)
     {
         var confined = new List<McpServerConfig>();
@@ -370,12 +332,9 @@ internal sealed class McpToolProvider(
             Name = server.Name,
             Endpoint = new Uri(server.Url ?? string.Empty),
             TransportMode = HttpTransportMode.AutoDetect,
-            // A bearer header carries the auth for a cockpit-hosted endpoint (AC-40) or a user API-key server's own
-            // key; OAuth is negotiated by the SDK via the authorizer. AC-89: a cockpit-hosted endpoint gets this
-            // session's per-session token when it has one (so its requests are attributed to this pane), else the
-            // shared app key.
-            // The operator's own headers first (AC-354), then the auth-derived Authorization on top: a server that has
-            // both configured sends the credential its auth setting names rather than one typed by hand and left behind.
+            // AC-40/AC-89: a bearer header carries the auth for a cockpit-hosted endpoint (this session's
+            // per-session token, else the shared app key) or a user API-key server's own key; OAuth via the authorizer.
+            // AC-354: operator headers first, then the auth-derived Authorization on top.
             AdditionalHeaders = _Headers(server, sessionToken),
             // Interactive: this transport is built for a session the operator started, which is a moment they may be
             // asked to sign in. The pre-flight tool count never reaches here — EnumerateServerToolsAsync returns
@@ -385,10 +344,8 @@ internal sealed class McpToolProvider(
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };
 
-    // The same operator-headers-versus-managed-credential rule the spawn paths use (McpAgentHeaders), with the one
-    // difference that belongs to this route: in-process the cockpit sets the Authorization itself, where a spawned
-    // agent's config has its provider write it. Sharing the rule rather than restating it is the point — this is the
-    // second caller, and a rule stated twice is the one that drifts.
+    // Same operator-headers-vs-managed-credential rule the spawn paths use (McpAgentHeaders); here the cockpit
+    // sets the Authorization itself in-process instead of a spawned agent's provider writing it.
     private Dictionary<string, string> _Headers(McpServerConfig server, string? sessionToken)
     {
         var bearer = server.CockpitHosted && sessionToken is not null

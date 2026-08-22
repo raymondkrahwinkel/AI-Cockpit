@@ -15,23 +15,15 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Infrastructure.Sessions;
 
 // Wraps a plugin's narrow `IPluginSessionDriver` to satisfy the app's real `ISessionDriver`
-// contract (#45) — the seam that lets `SessionDriverFactory` hand a plugin-backed session to the
-// rest of the app unchanged. The Claude-CLI-only live-control members (permission mode / model / thinking-budget
-// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
-// here, gated off in the UI by `Capabilities` reporting them unsupported.
+// contract (#45), the seam `SessionDriverFactory` uses. Claude-CLI-only live-control members
+// (permission mode/model/thinking-budget switch, always-allow persistence) are deliberate no-ops here.
 internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null, IMcpToolProvider? mcpToolProvider = null) : ISessionDriver
 {
-    // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
-    // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
-    // than a flag a plugin could set true with nothing behind it (#45 review finding 3). SupportsVision is
-    // mapped straight through instead of forced false: every built-in example plugin already reports it
-    // false (IPluginSessionDriver.SendUserMessageAsync has no images parameter yet, #64 fase 2), so this
-    // stays honest without another host-side change once that surface can actually carry images.
-    // The permission modes that keep a permission-based provider's file-access guard engaged (AC-190). A provider that
-    // confines to its working directory only through its permission prompts (PluginSessionCapabilities.
-    // ConfinesViaPermissionsOnly) genuinely confines in these; bypassPermissions (--dangerously-skip-permissions)
-    // disables the guard, and any unrecognised mode is treated as not-confining — an allowlist, so a future mode is
-    // refused until reviewed rather than silently trusted (fail closed).
+    // #45 review finding 3: plan mode/thinking budget have no equivalent on the narrow surface, so always
+    // unsupported here. SupportsVision maps straight through (every built-in plugin reports it false today, #64 fase 2).
+
+    // AC-190: permission modes that keep a permission-based provider's file-access guard engaged. An allowlist
+    // (bypassPermissions and any unrecognised mode are not-confining) so a future mode fails closed until reviewed.
     private static readonly IReadOnlySet<string> PermissionEngagedModes =
         new HashSet<string>(StringComparer.Ordinal) { "default", "acceptEdits", "plan" };
 
@@ -39,22 +31,13 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // which keeps the permission system engaged (and so confines).
     private const string DefaultPermissionMode = "default";
 
-    // Whether this session's effective permission mode keeps a permission-based provider's confinement engaged. Null
-    // until StartAsync resolves it; a permission-based provider (ConfinesViaPermissionsOnly) reads null as "not yet
-    // confirmed" and reports unconfined, so it fails closed before start and the isolation gate never proceeds on an
-    // assumption.
+    // Null until StartAsync resolves it; a permission-based provider then reads null as "not yet confirmed"
+    // and reports unconfined, so it fails closed before start rather than on an assumption.
     private bool? _permissionModeConfines;
 
-    // Live model switch and permission-mode switch are now mapped straight through (Fase 4 D4): the narrow surface can
-    // back them via SetLiveOptionAsync, which SetModelAsync/SetPermissionModeAsync below are wired to, so a plugin that
-    // declares it (the Claude provider) drives the host's native model/permission dropdowns. Plan mode and thinking
-    // budget still have no equivalent on the narrow surface and stay false.
-    // ConfinesFileAccessToWorkingDirectory is recomputed on each read rather than fixed at construction (AC-190): for a
-    // provider whose confinement rests on its permission system (ConfinesViaPermissionsOnly), a bypass permission mode
-    // disables that guard, so the static registration capability would vouch a confinement the session does not deliver.
-    // The host reads this instance capability after start, so the value reflects the session's resolved permission mode.
-    // SupportsTools takes the running driver's answer as well as the registration's (AC-964): a provider whose tools
-    // arrive at start knows only then whether it has any. Either saying yes is enough, so no registration loses a vouch.
+    // Fase 4 D4: model/permission-mode switch map through SetLiveOptionAsync below. AC-190:
+    // ConfinesFileAccessToWorkingDirectory recomputes on each read, not at construction, since a bypass
+    // permission mode disables a permission-based provider's guard. AC-964: SupportsTools also takes the running driver's answer.
     public SessionCapabilities Capabilities => new(
         SupportsTools: pluginCapabilities.SupportsTools || inner.Capabilities.SupportsTools,
         SupportsPermissions: pluginCapabilities.SupportsPermissions,
@@ -69,12 +52,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         SupportsContextCompaction = pluginCapabilities.SupportsContextCompaction,
     };
 
-    // The honest per-session confinement (AC-190). A provider that has not vouched confinement at all never confines.
-    // A provider whose confinement is independent of its permission mode (a real OS sandbox — ConfinesViaPermissionsOnly
-    // false) confines unconditionally. A permission-based provider confines only once the session's effective permission
-    // mode is confirmed to keep the permission guard engaged; anything else (a bypass mode, or the mode not yet resolved
-    // before start) reports unconfined, so the fail-closed isolation gate refuses an isolate-in-worktree run it cannot
-    // vouch for.
+    // AC-190: a provider with no confinement vouch never confines; a real-sandbox provider (not
+    // ConfinesViaPermissionsOnly) confines unconditionally; a permission-based one only once its mode is confirmed engaged (fail closed otherwise).
     private bool _EffectiveConfinesFileAccessToWorkingDirectory()
     {
         if (!pluginCapabilities.ConfinesFileAccessToWorkingDirectory)
@@ -100,10 +79,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public IAsyncEnumerable<SessionEvent> Events => _AdaptEventsAsync();
 
-    // The plugin driver reports its status as a provider-neutral snapshot (#45 D7); map it to the core model the
-    // header renders — each window carried through with the label the provider chose, so the host imposes no
-    // window vocabulary. The Claude-CLI-only live-control no-ops above have no state to poll; this one does,
-    // because a plugin provider (Codex) genuinely reports usage the narrow surface can carry.
+    // #45 D7: maps the plugin's provider-neutral status snapshot to the core model the header renders,
+    // each window kept under the label the provider chose (the host imposes no window vocabulary).
     public SessionStatusFeed? CurrentStatus => _MapStatus(inner.Status);
 
     private static SessionStatusFeed? _MapStatus(PluginSessionStatus? status) =>
@@ -113,9 +90,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 [.. status.RateLimits.Select(window => new SessionRateWindow(window.Label, window.UsedPercent, window.ResetsAt))])
             : null;
 
-    // The plugin driver's mid-session controls (#45 D4), mapped to the core form the header's live-control panel
-    // renders. Unlike the Claude-CLI live switches below (no-ops here — the narrow surface has no typed members for
-    // them), a plugin provider genuinely reports these and answers SetLiveOptionAsync, so they carry through.
+    // #45 D4: mid-session controls mapped to the core form the header's live-control panel renders.
+    // Unlike the Claude-CLI switches below (no-ops), a plugin genuinely reports and answers these.
     public IReadOnlyList<SessionLiveOption> LiveOptions =>
         [.. inner.LiveOptions.Select(option => new SessionLiveOption(option.Key, option.Label, option.Choices, option.DefaultValue) { ChoiceLabels = option.ChoiceLabels })];
 
@@ -124,21 +100,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default)
     {
-        // workingDirectory, resume, launchOptions and the session's MCP servers are passed through (#45 D5, #44):
-        // a plugin driver that spawns a CLI (Codex app-server) runs in a cwd, resumes a thread by id, honours the
-        // operator's answers to the options it declared (sandbox, model), and exposes the registry servers the
-        // operator selected. Dropping them here is what made the Codex plugin ask for a working directory the
-        // cockpit already had, left its sandbox/model unreachable per session, and reported "Connected (0 tools)".
-        // A driver with no cwd/history/options/tool source of its own (an HTTP provider) simply ignores them. Only
-        // BySessionId resume crosses the narrow surface; MostRecent needs a provider-side "list newest" step (increment 2).
+        // #45 D5/#44: workingDirectory, resume, launchOptions and MCP servers pass through — dropping them made
+        // the Codex plugin ask for a cwd it already had and report "Connected (0 tools)". Only BySessionId resume
+        // crosses the narrow surface; MostRecent needs a provider-side "list newest" step (increment 2).
         Profile = profile;
         var resumeSessionId = resume is { Mode: SessionResumeMode.BySessionId, SessionId: { Length: > 0 } sessionId } ? sessionId : null;
 
-        // #44/AC-130: a launch that carries no per-session selection (a programmatic open — a plugin/workflow
-        // shortcut, a restored session — rather than the New-session dialog, which builds one from the checklist)
-        // still honours the profile's saved MCP selection instead of silently reaching every enabled server.
-        // Programmatic launches only ever take this SDK route (StartSessionForPluginAsync always starts an SDK
-        // session), so the fallback belongs here rather than on the dialog-only TTY route.
+        // #44/AC-130: a launch with no per-session selection (a programmatic open, not the New-session dialog)
+        // still honours the profile's saved MCP selection rather than silently reaching every enabled server.
         var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
 
         // AC-165: what the plugins give this session, resolved from the pane it is starting in so a contribution
@@ -169,29 +138,21 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             ? SessionResources.Empty
             : await sessionResources.ResolveAsync(paneId, cancellationToken).ConfigureAwait(false);
 
-        // The host carries the operator's permission-mode selection as a typed parameter (a Claude concept older than
-        // the plugin surface, which has no such parameter). Fold it into the options map under the well-known key so a
-        // provider that declared a permission-mode option actually receives the choice — without it, a Claude plugin
-        // session always fell back to the driver's own default (e.g. an operator's launch-time "bypassPermissions"
-        // silently became "default"). The operator's explicit choice in the launch options wins; the typed value only
-        // fills the key when the launch options carry none (see _MergePermissionMode) — folding it over an explicit
-        // choice is what let a profile's stale default run a write tool ungated.
+        // The host's typed permission-mode parameter (older than the plugin surface) folds into the options
+        // map under the well-known key, but only when launch options carry none (see _MergePermissionMode) — else
+        // a Claude session's launch-time "bypassPermissions" silently became "default".
         var options = _StateAttendance(_MergePermissionMode(launchOptions, permissionMode));
 
-        // Resolve, from the same effective options the driver starts with, whether this session's permission mode keeps a
-        // permission-based provider's confinement engaged (AC-190). Read by Capabilities so the host's post-start
-        // isolation gate sees the real per-session confinement rather than the static registration vouch — a Claude
-        // session launched in bypassPermissions then reports unconfined and an isolate-in-worktree run is refused.
+        // AC-190: resolved from the same effective options so Capabilities reports the real per-session
+        // confinement, not the static registration vouch, once the isolation gate checks it post-start.
         _permissionModeConfines = _PermissionModeConfines(options);
 
         var environment = _SpawnEnvironment(profile, launchOptions, contributed);
         await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
     }
 
-    // The host-run tool loop for a provider that asked for one (AC-964), or null for every other provider — which
-    // is every already-published plugin, since the capability defaults to None. Same ConnectAsync call as the
-    // built-in local-model driver, so the per-session token (AC-89), worktree confinement (AC-174) and project
-    // scoping (AC-218) hold identically on this route.
+    // AC-964: the host-run tool loop for a provider that asked for one, null otherwise (the default today).
+    // Same ConnectAsync call as the local-model driver, so AC-89/AC-174/AC-218 hold identically here.
     private async Task<HostPluginToolset?> _ConnectHostToolsetAsync(
         IReadOnlySet<string>? selection,
         string? paneId,
@@ -230,28 +191,17 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // Non-null once StartAsync mounted one for this session.
     private HostPluginToolset? _hostToolset;
 
-    // The environment the plugin driver receives: this run's MCP auth key (AC-40) so a cockpit-hosted server's
-    // config can reference it instead of embedding a literal, plus the profile's own variables (AC-22) scrubbed
-    // host-side — a variable on a host-controlled key (an `ANTHROPIC_*` credential, a nested-agent marker) is
-    // dropped here, the same rule the TTY route applies, so no plugin has to be trusted to apply it. Dropping is
-    // logged by name, never by value.
-    //
-    // What the plugins contribute for this session (AC-165) goes on last, so a project's answer beats the
-    // profile's default — the precedence the rest of the app already follows where a project and a profile answer
-    // the same question. It cannot reach the key above: that one is host-controlled, and a contribution's
-    // host-controlled keys are gone before they arrive here.
+    // AC-40: this run's MCP auth key, plus the profile's own variables (AC-22) scrubbed host-side of
+    // host-controlled keys (dropped by name, never by value, same rule the TTY route applies).
+    // AC-165: plugin contributions go on last so a project's answer beats the profile's default.
     private IReadOnlyDictionary<string, string> _SpawnEnvironment(
         SessionProfile? profile,
         IReadOnlyDictionary<string, string>? launchOptions,
         SessionResources contributed)
     {
-        // AC-89: hand a session that has a pane id (the App passes it as the cockpit.pane-id launch option) its own
-        // per-session token as COCKPIT_MCP_KEY instead of the shared app key, so the consent broker can attribute a
-        // request to the real session rather than trust the id the agent declares. No pane id (or no keyring in a test
-        // graph) falls back to the shared key.
-        //
-        // AC-994: a host toolset already baked its own pane token into its HTTP clients above, and that header is
-        // never revisited — minting a second one here would invalidate it there. Reuse it; mint only otherwise.
+        // AC-89: a session with a pane id gets its own per-session token as COCKPIT_MCP_KEY, so the consent
+        // broker attributes requests to the real session; no pane id falls back to the shared key.
+        // AC-994: reuse a host toolset's already-baked pane token instead of minting a second, invalidating one.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
         var mcpKey = _hostToolset is { PaneToken: { } toolsetToken }
             ? toolsetToken
@@ -303,10 +253,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         return environment;
     }
 
-    // Whether the effective launch options' permission mode keeps a permission-based provider's confinement engaged
-    // (AC-190). No permission-mode key means the driver falls back to its own default (which confines); an explicit
-    // value is confining only when it is on the permission-engaged allowlist — bypassPermissions and any unrecognised
-    // mode are not, so the session reports unconfined (fail closed).
+    // AC-190: no permission-mode key means the driver falls back to its own (confining) default; an
+    // explicit value confines only when on the allowlist — bypassPermissions and unrecognised modes fail closed.
     private static bool _PermissionModeConfines(IReadOnlyDictionary<string, string>? options) =>
         _ModeConfines(options is not null
             && options.TryGetValue(WellKnownPluginSessionOptions.PermissionMode, out var value)
@@ -314,10 +262,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 ? value
                 : null);
 
-    // Whether a permission-mode string keeps a permission-based provider's confinement engaged (AC-190): the mode is on
-    // the engaged allowlist, or absent (the driver's own confining default). bypassPermissions and any unrecognised mode
-    // are not — fail closed. Shared by the start-time resolution and the live-switch recompute so both read the guard
-    // the same way.
+    // AC-190: mode is on the engaged allowlist, or absent (driver's own confining default) — fail closed
+    // otherwise. Shared by the start-time resolution and the live-switch recompute so both agree.
     private static bool _ModeConfines(string? mode) =>
         PermissionEngagedModes.Contains(string.IsNullOrWhiteSpace(mode) ? DefaultPermissionMode : mode);
 
@@ -332,10 +278,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             ? new Dictionary<string, string>()
             : new Dictionary<string, string>(launchOptions);
 
-        // The operator's explicit choice in the provider's own permission-mode launch option wins; the host's typed
-        // fold only supplies one when the options carry none (a route with no permission-mode option of its own). Without
-        // this, a profile's stale typed default silently overrode a launch-time change in the generic dropdown — a
-        // session started with "Ask permissions" ran a write tool ungated because bypass folded over it.
+        // The operator's explicit choice wins; the host's typed fold only supplies one when the options
+        // carry none — else a profile's stale default silently overrode a launch-time dropdown change.
         if (!merged.ContainsKey(WellKnownPluginSessionOptions.PermissionMode))
         {
             merged[WellKnownPluginSessionOptions.PermissionMode] = permissionMode;
@@ -344,16 +288,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         return merged;
     }
 
-    // Says out loud, on every launch, whether an operator is watching this session (AC-378). Only the caller that
-    // created the session knows — `DelegationService` and a self-driving embedded run write `"true"`; every
-    // other launch is a pane someone opened, and gets an explicit `"false"` here rather than silence.
-    //
-    // Explicit, because a driver reading nothing has to assume the safe answer — unattended, so its tool narrowing
-    // binds — and a driver that assumed the other way would hand a delegated agent the operator's own account
-    // connectors the moment it ran on a host too old to state this (`PluginLoadPolicy` only enforces
-    // `minHostVersion` from host major 1, so the manifest gate cannot be relied on to keep that pairing apart).
-    // Stating it here makes the newer host's answer the one that travels, and leaves the older host's silence
-    // meaning exactly what it meant before this split existed.
+    // AC-378: states on every launch whether an operator is watching, explicitly, since a driver reading
+    // nothing must assume the safe (unattended) answer — a driver assuming the other way would hand a
+    // delegated agent the operator's own connectors on a host too old to state this.
     private static IReadOnlyDictionary<string, string>? _StateAttendance(IReadOnlyDictionary<string, string>? options)
     {
         if (options is not null && options.ContainsKey(WellKnownPluginSessionOptions.Unattended))
@@ -368,15 +305,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         return stated;
     }
 
-    // Turns the operator's per-session MCP selection into the concrete endpoints the plugin driver exposes:
-    // the shared per-session narrowing (`McpServerRegistryFilter.ApplySessionSelection`, the same
-    // one `ClaudeCliProcess` and the local-model tool-loop apply) intersected with the agent-eligible
-    // servers (`McpConfigFile.IsAgentEligible`). The registry lives host-side (plugin isolation
-    // keeps it out of the driver), so the adapter resolves names to definitions here. No store (a unit test
-    // that does not wire one) means no fan-out. Best-effort — a transient `cockpit.json` read failure
-    // launches the session without the shared servers rather than failing the whole start, matching how the
-    // Claude fan-out treats the same read. `projectId` (AC-218) scopes the registry read to that
-    // project's own view, so a project's servers and by-name overrides are seen here too.
+    // Turns the operator's per-session MCP selection into concrete endpoints: the shared narrowing
+    // (`McpServerRegistryFilter.ApplySessionSelection`) intersected with agent-eligible servers. Registry lives
+    // host-side (plugin isolation), so the adapter resolves names here. Best-effort on a transient read failure. AC-218 scopes projectId.
     private async Task<IReadOnlyList<PluginMcpServer>> _ResolveMcpServersAsync(IReadOnlySet<string>? enabledServerNames, string? projectId, string? workingDirectory, CancellationToken cancellationToken)
     {
         if (mcpServerCatalog is null)
@@ -405,14 +336,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 var access = await _AcquireCredentialAsync(server, proxyUrl is null, cancellationToken).ConfigureAwait(false);
                 if (access.State == McpAuthState.AuthorizationRequired)
                 {
-                    // Left out rather than handed over bare, and this is the one place where that choice is made.
-                    // Handing it over anyway would not save it: the CLI runs its initialize the moment the session
-                    // starts, that call would meet the same refusal, and the server would be reported as failing
-                    // instead of as absent — a worse answer, because it also asks the operator to distinguish a
-                    // broken server from an unauthorized one. What they get instead is the coordinator's single line
-                    // naming the cause and the action, and the Information line below naming this session. The case
-                    // this ticket exists for — a sign-in that dies while the session runs — is not this one, and is
-                    // handled at the endpoint above, where a call can still be answered.
+                    // Left out rather than handed over bare: the CLI's initialize would meet the same refusal
+                    // and report the server as failing instead of absent — worse, since that asks the operator
+                    // to distinguish broken from unauthorized. The coordinator's own line names the cause.
                     continue;
                 }
 
@@ -422,22 +348,16 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 }
                 else
                 {
-                    // AC-378: the registry advertised this server as agent-eligible (enabled, in scope), but it has
-                    // no transport target this driver can mount (an Http entry with no Url, a Stdio entry with no
-                    // Command — a misconfigured "SQL Explorer" is the concrete case that surfaced this). Silently
-                    // dropping it here is what let a profile/narrowing resolution quietly end up with fewer servers
-                    // than advertised; logging it turns that into a line the operator can see instead of a session
-                    // that mysteriously has fewer tools than the profile listing promised.
+                    // AC-378: agent-eligible but no mountable transport (Http with no Url, Stdio with no
+                    // Command — a misconfigured "SQL Explorer" surfaced this). Logged so this isn't silent.
                     logger?.LogWarning(
                         "MCP server {Name} is agent-eligible but not mountable (no url for Http / no command for Stdio); it was skipped.",
                         server.Name);
                 }
             }
 
-            // Say what the session got and against which selection, so the next "why are my MCP servers missing?"
-            // is a log line, not a bisect (#44). A non-empty selection that resolves to nothing is almost always a
-            // wiring slip (a saved name the registry no longer has, or one filtered out as not agent-eligible), so
-            // surface that case at Warning; the ordinary fan-out stays at Information.
+            // #44: say what the session got and against which selection, so "why are my MCP servers missing?"
+            // is a log line, not a bisect. A non-empty selection resolving to nothing is usually a wiring slip — Warning; ordinary fan-out stays Information.
             var selectionText = enabledServerNames is null ? "(no restriction)" : $"[{string.Join(", ", enabledServerNames)}]";
             if (servers.Count == 0 && enabledServerNames is { Count: > 0 })
             {
@@ -466,16 +386,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         }
     }
 
-    // The credential this session presents to `server`, resolved before the config is written
-    // (AC-353). Asked for non-interactively: starting a session is not the moment to make a browser window appear,
-    // so a token that cannot be renewed silently leaves the server unauthorized — and says so, because the whole
-    // point is that this is known before the first tool call rather than surfacing as a 401 from the depths.
-    //
-    // `theSessionWillHoldIt`:
-    // Whether the credential goes into the config and stays there. It does when nothing stands in front of the
-    // server, and then it has to outlast the session — a token with minutes left is a session that loses this
-    // server minutes in, which is the defect this ticket was opened for. Behind the loopback endpoint the answer is
-    // only ever used to establish that a sign-in exists, because the endpoint asks again on every call.
+    // AC-353: the credential presented to `server`, resolved before the config is written and asked for
+    // non-interactively — a token that cannot be renewed says so up front rather than surfacing as a later 401.
+    // `theSessionWillHoldIt`: true when nothing stands in front of the server, so the token must outlast the session.
     private async Task<McpOAuthAccess> _AcquireCredentialAsync(McpServerConfig server, bool theSessionWillHoldIt, CancellationToken cancellationToken)
     {
         if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
@@ -488,9 +401,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             : await oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
         if (access.State == McpAuthState.AuthorizationRequired)
         {
-            // Information, not a warning: the coordinator raises the operator's line once, on the transition into
-            // this state, and repeating it at every session start is the nagging that made the last one easy to
-            // ignore. This one records which session lost which server, and carries the same advice.
+            // Information, not Warning: the coordinator already raises the operator's line once on the state
+            // transition; repeating it at every session start is the nagging that made the last one easy to ignore.
             logger?.LogInformation(
                 "This session starts without MCP server {Name}: {Guidance}",
                 server.Name,
@@ -500,22 +412,17 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         return access;
     }
 
-    // The loopback address that stands in for an OAuth server (AC-524), or `null` to keep the old
-    // behaviour. Null covers three things on purpose — no proxy wired (a unit test), a server this does not apply
-    // to, and a listener that would not bind — because all three mean the same thing here: write the token.
+    // AC-524: the loopback address standing in for an OAuth server, or `null` (no proxy wired, not
+    // applicable, or a listener that would not bind — all three mean the same thing here: write the token).
     private async Task<string?> _ProxyUrlAsync(McpServerConfig server, CancellationToken cancellationToken) =>
         oauthProxy is null ? null : await oauthProxy.MountAsync(server, cancellationToken).ConfigureAwait(false);
 
-    // HTTP → url with the credential this server needs (a static API key, or the token from the cockpit's own OAuth
-    // sign-in — AC-353), plus a CockpitHosted flag for a cockpit loopback endpoint (whose auth rides the
-    // COCKPIT_MCP_KEY env var, not a literal here — AC-40); stdio → command/args. A server missing its transport
-    // target is dropped.
+    // HTTP → url with the credential (static API key or AC-353 OAuth token), plus CockpitHosted for a
+    // loopback endpoint whose auth rides COCKPIT_MCP_KEY (AC-40); stdio → command/args; no transport → dropped.
     private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken, string? oauthProxyUrl) => server.Transport switch
     {
-        // An OAuth server the cockpit put a loopback endpoint in front of (AC-524) is addressed there instead, and
-        // carries no literal token at all: its auth is the same COCKPIT_MCP_KEY env reference every cockpit-hosted
-        // endpoint uses, and the real credential is put on each request as it passes through. The session's config
-        // file therefore holds no OAuth token to go stale — or to be read by another process on this machine.
+        // AC-524: an OAuth server behind a loopback endpoint is addressed there instead, carrying no
+        // literal token — the session's config file holds no OAuth token to go stale or leak to another process.
         McpTransport.Http when oauthProxyUrl is { Length: > 0 } => new PluginMcpServer
         {
             Name = server.Name,
@@ -579,29 +486,21 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         return Task.CompletedTask;
     }
 
-    // Always-allow is session-scoped on the narrow plugin surface (D4): forward the intent so a driver that can
-    // persist it for the session (Codex's acceptForSession) does, and one that cannot falls back to a one-time
-    // allow via the interface default. The Claude rule args (toolName/input/scope) have no equivalent here — a
-    // cross-restart per-profile rule stays a Claude-CLI concern, which is why they are not passed on.
-    // The host's gate first, for the same reason as RespondToPermissionAsync: it raised the prompt, so only it
-    // can free the call waiting behind it. Passing this straight to the plugin would leave that call hanging on
-    // a decision the operator has already made.
+    // D4: always-allow is session-scoped on the narrow plugin surface — forwarded so Codex's acceptForSession
+    // can persist it, falling back to a one-time allow otherwise. Claude's cross-restart rule args have no
+    // equivalent here. Host's gate goes first, same reason as RespondToPermissionAsync: it raised the prompt.
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) =>
         _hostToolset?.Gate.AllowAlways(toolUseId, toolName) == true
             ? Task.CompletedTask
             : inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
 
-    // No live control channel behind the narrow interface — these Claude-CLI-only operations are deliberate no-ops.
-    // The host's native permission-mode / model dropdowns switch mid-session through these; wire them to the plugin's
-    // generic live-option surface under the well-known keys (Fase 4 D4). A plugin that does not declare the matching
-    // SupportsLiveModelSwitch / SupportsPermissionModeSwitch capability never has the host call these, and one that
-    // declares no such live option no-ops it in SetLiveOptionAsync — so this is safe for every plugin.
+    // Fase 4 D4: no narrow-interface live-control channel, so these Claude-CLI-only ops wire the host's
+    // permission-mode/model dropdowns to the plugin's generic live-option surface under well-known keys —
+    // safe for every plugin, since one without the matching Supports* capability never has these called.
     public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default)
     {
-        // Keep the per-session confinement honest across a live permission-mode switch (AC-190 defense-in-depth):
-        // recompute whether the new mode keeps the guard engaged, so Capabilities never reports a stale "confined" after
-        // a switch. The Claude driver only offers confining live modes today (it hides the bypass switch), but this stops
-        // the guard from resting on that staying true — a mode the host cannot vouch confines now reports unconfined.
+        // AC-190 defense-in-depth: recompute so Capabilities never reports a stale "confined" after a live
+        // switch — the Claude driver hides the bypass switch today, but this stops the guard resting on that fact staying true.
         _permissionModeConfines = _ModeConfines(mode);
         return inner.SetLiveOptionAsync(WellKnownPluginSessionOptions.PermissionMode, mode, cancellationToken);
     }
@@ -625,12 +524,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     private ValueTask _DisposeInnerAsync()
     {
-        // The session is over, so its MCP identity goes with it rather than staying a valid bearer until the app
-        // restarts. Scoped to the token this adapter minted: a restarting pane mints its replacement before the old
-        // driver is disposed, and dropping by pane alone would revoke the live session's token instead of this one.
-        // Taken and cleared in one step: a close can land while StartAsync is still writing the field on another
-        // continuation (the runtime is registered before its start is awaited), and Interlocked gives both the barrier
-        // that makes the write visible and the guarantee that a second dispose cannot revoke a second time.
+        // The session's MCP identity goes with it rather than staying valid until the app restarts. Scoped to the
+        // token this adapter minted, not the pane, since a restarting pane mints its replacement before disposal.
+        // Interlocked takes-and-clears in one step: a close can land while StartAsync is still writing the field.
         if (Interlocked.Exchange(ref _minted, null) is { } minted)
         {
             keyring?.Revoke(minted.PaneId, minted.Token);
