@@ -22,7 +22,7 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
     private readonly TextBox _pickerTerms;
     private readonly TextBox _branchPattern;
 
-    public GitHubIssuesSettingsControl(GitHubIssuesSettings settings)
+    public GitHubIssuesSettingsControl(ICockpitHost host, GitHubIssuesSettings settings)
     {
         _settings = settings;
 
@@ -31,7 +31,11 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
             Content = "Use local GitHub CLI (gh) — lists open issues across all your repos",
             IsChecked = settings.UseGitHubCli,
         };
-        var useGhRow = SettingsHelpRow.Build(_useGh, "Use the installed `gh` CLI (uses your existing gh login, no token) instead of a single-repo HTTP call.");
+        var useGhRow = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Children = { _useGh, host.CreateHelpHint("setup", "connect") },
+        };
 
         _ghOwner = new TextBox { Text = settings.GhOwner, PlaceholderText = "@me (or an org / user)" };
         _inProgressLabel = new TextBox { Text = settings.InProgressLabel, PlaceholderText = "in progress (leave empty for none)" };
@@ -43,25 +47,19 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
             Spacing = 6,
             Children =
             {
-                _Label("Owner (whose repositories to search)"),
-                SettingsHelpRow.Build(_ghOwner, "Owner (user or org, e.g. \"octocat\" or \"@me\" for yourself) whose repositories to search — cross-repo, unlike the single owner/repo below."),
+                _LabelWithHelp(host, "Owner (whose repositories to search)", "owner-repo"),
+                _ghOwner,
                 _Hint("Uses your existing gh login — no token needed."),
 
                 _Label("Which issues the session picker shows (extra search terms, optional)"),
-                SettingsHelpRow.Build(_pickerTerms, "GitHub's own search syntax, added to \"open issues\": \"-label:blocked\", \"label:bug\", \"no:assignee\". Closed issues are never offered — that is work that is over."),
+                _pickerTerms,
+                _Hint("GitHub's own search syntax, added to \"open issues\": \"-label:blocked\", \"label:bug\", \"no:assignee\". Closed issues are never offered."),
 
-                _Label("Branch name pattern"),
-                SettingsHelpRow.Build(_branchPattern,
-                    "How a branch is named for an issue. A separate set from the prompt template below — its own " +
-                    "meaning per placeholder:\n" +
-                    "{number} (also accepted as {issue}) — the issue number, e.g. 42.\n" +
-                    "{title} (also accepted as {summary}) — not the full title like in the prompt template: shortened " +
-                    "to about 60 characters and made git-safe (lowercase, accents stripped, spaces/punctuation " +
-                    "collapsed to '-').\n" +
-                    "Default \"{number}-{title}\" (42-fix-the-login-redirect); \"feature/{number}\" works too."),
+                _LabelWithHelp(host, "Branch name pattern", "branch-pattern"),
+                _branchPattern,
 
-                _Label("Label your repos use for work in progress (optional)"),
-                SettingsHelpRow.Build(_inProgressLabel, "A GitHub issue has no status field. Teams use a label instead, and GitHub enforces no name for it — so name yours here (\"in progress\", \"status: in progress\"). Left empty, nothing offers to label anything."),
+                _LabelWithHelp(host, "Label your repos use for work in progress (optional)", "in-progress-label"),
+                _inProgressLabel,
             },
         };
 
@@ -74,12 +72,12 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
             Spacing = 6,
             Children =
             {
-                _Label("Repository owner"),
-                SettingsHelpRow.Build(_owner, "The account or org name from the repository's URL, e.g. the \"owner\" in github.com/owner/repo."),
+                _LabelWithHelp(host, "Repository owner", "owner-repo"),
+                _owner,
                 _Label("Repository name"),
-                SettingsHelpRow.Build(_repo, "The repository name — the second segment of the repository's URL, e.g. the \"repo\" in github.com/owner/repo."),
-                _Label("Access token (optional — for private repos or a higher rate limit)"),
-                SettingsHelpRow.Build(_token, "Personal access token. Create at github.com/settings/tokens (classic: scope `repo` for private repos; fine-grained: Issues/Pull requests read). Optional for public repos."),
+                _repo,
+                _LabelWithHelp(host, "Access token (optional — for private repos or a higher rate limit)", "token-scope"),
+                _token,
             },
         };
 
@@ -113,14 +111,8 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
                     ghPanel,
                     httpPanel,
                     _Label("Prompt template — placeholders: {number} {title} {url} {owner} {repo} {body}"),
-                    SettingsHelpRow.Build(_template,
-                        "Prompt inserted when you click an issue.\n" +
-                        "{number} — the issue number, e.g. 42.\n" +
-                        "{title} — the issue's title.\n" +
-                        "{url} — link to the issue.\n" +
-                        "{owner} — the repository owner or org.\n" +
-                        "{repo} — the repository name.\n" +
-                        "{body} — the full issue description; \"(no description)\" when empty."),
+                    _template,
+                    _Hint("{number} the issue number. {title} its title. {url} link to the issue. {owner}/{repo} the repository. {body} the full description, \"(no description)\" when empty."),
                 },
             },
         };
@@ -152,4 +144,13 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };
 
     private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+
+    // AC-1033: a label with the SDK-drawn `?` beside it, pointing at this plugin's own setup walkthrough —
+    // replaces the old hand-rolled hover tooltip (SettingsHelpRow) field by field.
+    private static Control _LabelWithHelp(ICockpitHost host, string text, string sectionId) => new StackPanel
+    {
+        Orientation = Avalonia.Layout.Orientation.Horizontal,
+        Margin = new Thickness(0, 6, 0, 0),
+        Children = { new TextBlock { Text = text, FontSize = 11 }, host.CreateHelpHint("setup", sectionId) },
+    };
 }

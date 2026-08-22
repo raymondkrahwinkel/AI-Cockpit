@@ -13,7 +13,7 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
     private readonly CheckBox _allowExec;
     private readonly TextBox _endpoint;
 
-    public DockerSettingsControl(DockerSettings settings)
+    public DockerSettingsControl(ICockpitHost host, DockerSettings settings)
     {
         _settings = settings;
 
@@ -35,6 +35,15 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
             Text = settings.DaemonEndpoint,
         };
 
+        // AC-1033: the `?` beside the heading, pointing at this plugin's own settings page — the endpoint format
+        // and the pitfall of an endpoint that quietly resolves to the wrong daemon.
+        var endpointHeading = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Margin = new(0, 8, 0, 0),
+            Children = { new TextBlock { Text = "Docker daemon endpoint" }, host.CreateHelpHint("docker", "endpoint") },
+        };
+
         Content = new StackPanel
         {
             Spacing = 8,
@@ -42,7 +51,7 @@ internal sealed class DockerSettingsControl : UserControl, IPluginSettingsView
             {
                 _mcpEnabled,
                 _allowExec,
-                new TextBlock { Text = "Docker daemon endpoint", Margin = new(0, 8, 0, 0) },
+                endpointHeading,
                 _endpoint,
                 new TextBlock
                 {

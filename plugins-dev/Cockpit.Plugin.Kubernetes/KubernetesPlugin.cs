@@ -39,7 +39,7 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         var gate = new ClusterAccessGate(host);
         var tools = new KubernetesMcpTools(settings, gate, connections, portForwards);
 
-        host.AddSettings(() => new KubernetesSettingsControl(settings));
+        host.AddSettings(() => new KubernetesSettingsControl(host, settings));
         host.AddToolbarAction(new ToolbarAction("Kubernetes settings", MaterialIconKind.Kubernetes, () => host.ShowSettingsAsync()));
         _ = host.AddMcpEndpoint("cockpit-k8s", tools, isEnabled: () => settings.McpEnabled);
 

@@ -62,7 +62,7 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         // dashboard widget instance, and the side-menu badge (AC-517).
         _refreshSource = new PullRequestRefreshSource(host, settings);
 
-        host.AddSettings(() => new GitHubPullRequestsSettingsControl(settings));
+        host.AddSettings(() => new GitHubPullRequestsSettingsControl(host, settings));
 
         // Replaces the old always-visible AddSideMenuSection (AC-517): a launcher button with a live badge,
         // opening the same dialog the section's "View all" and the widget's "View all" already shared.

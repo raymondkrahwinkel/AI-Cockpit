@@ -66,6 +66,7 @@ public class AutopilotSettingsControlTemplateFitTests
         var storage = new FakeStorage();
         var host = Substitute.For<ICockpitHost>();
         host.RegisteredAutopilotTemplates.Returns([]);
+        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
         var templates = new AutopilotTemplateStore(storage);
         templates.UpsertUserTemplate(AutopilotTemplate.ForUser(
             "user.long", "A template name long enough to run the whole width of the row and then quite a lot further past it, well beyond where the buttons sit", "body"));
@@ -99,6 +100,7 @@ public class AutopilotSettingsControlTemplateFitTests
         var storage = new FakeStorage();
         var host = Substitute.For<ICockpitHost>();
         host.RegisteredAutopilotTemplates.Returns([]);
+        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
 
         return new AutopilotSettingsControl(new AutopilotSettings(storage), host, new AutopilotTemplateStore(storage));
     }

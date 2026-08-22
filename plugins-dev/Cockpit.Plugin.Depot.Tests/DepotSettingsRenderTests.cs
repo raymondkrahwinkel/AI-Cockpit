@@ -29,6 +29,7 @@ public class DepotSettingsRenderTests
             Connections = [new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com")],
         };
         var host = Substitute.For<ICockpitHost>();
+        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
 
         var view = new DepotSettingsControl(host, settings);
         var image = _Render(view, 640, 420, "depot-settings.png");

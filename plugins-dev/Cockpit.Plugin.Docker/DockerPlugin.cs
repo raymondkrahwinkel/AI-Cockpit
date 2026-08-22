@@ -43,7 +43,7 @@ public sealed class DockerPlugin : ICockpitPlugin
         var running = new RunningContainerRegistry(engine, () => DateTimeOffset.UtcNow);
         var tools = new DockerMcpTools(settings, gate, engine, compose, docker, running);
 
-        host.AddSettings(() => new DockerSettingsControl(settings));
+        host.AddSettings(() => new DockerSettingsControl(host, settings));
         host.AddToolbarAction(new ToolbarAction("Docker settings", MaterialIconKind.Docker, () => host.ShowSettingsAsync()));
         _ = host.AddMcpEndpoint("cockpit-docker", tools, isEnabled: () => settings.McpEnabled);
 

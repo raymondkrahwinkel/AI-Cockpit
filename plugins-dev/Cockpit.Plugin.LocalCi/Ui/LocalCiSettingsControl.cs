@@ -25,7 +25,7 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
     private readonly CheckBox _skipConsent;
     private readonly Button _checkAgain;
 
-    public LocalCiSettingsControl(ILocalCiRuntime runtime, LocalCiSettings settings)
+    public LocalCiSettingsControl(ICockpitHost host, ILocalCiRuntime runtime, LocalCiSettings settings)
     {
         _runtime = runtime;
         _settings = settings;
@@ -37,6 +37,15 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
         {
             PlaceholderText = ActRunOptions.DefaultRunnerImage,
             Text = settings.RunnerImage,
+        };
+
+        // AC-1033/AC-1041: the `?` beside the runner-image heading, pointing at this plugin's own page on what
+        // that image is for and why it can differ from GitHub's.
+        var runnerImageHeading = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Margin = new(0, 16, 0, 0),
+            Children = { new TextBlock { Text = "Runner image" }, host.CreateHelpHint("local-ci", "runner-image") },
         };
 
         _mcpEnabled = new CheckBox
@@ -51,6 +60,11 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
             Content = "Run local checks without asking every time (dangerous)",
             IsChecked = settings.SkipConsent,
             Margin = new(0, 16, 0, 0),
+        };
+        var skipConsentRow = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Children = { _skipConsent, host.CreateHelpHint("local-ci", "skip-consent") },
         };
 
         Content = new StackPanel
@@ -71,7 +85,7 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
                 new TextBlock { Text = "act", Margin = new(0, 8, 0, 0) },
                 _actLine,
                 _checkAgain,
-                new TextBlock { Text = "Runner image", Margin = new(0, 16, 0, 0) },
+                runnerImageHeading,
                 _runnerImage,
                 new TextBlock
                 {
@@ -89,7 +103,7 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
                     Opacity = 0.7,
                     TextWrapping = TextWrapping.Wrap,
                 },
-                _skipConsent,
+                skipConsentRow,
                 new TextBlock
                 {
                     Text = "Still runs whatever the project's workflow says, in a container with this machine's "

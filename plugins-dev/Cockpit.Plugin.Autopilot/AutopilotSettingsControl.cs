@@ -158,8 +158,11 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         safety.Children.Add(_Hint("Caps the operator keeps regardless of what the CEO plans."));
         safety.Children.Add(_Row("Max rework attempts per step", _maxAttempts));
         safety.Children.Add(_Row("Runs at once (rest queue up)", _maxConcurrent));
-        safety.Children.Add(_Row("Autonomy (permission mode)", _autonomy));
+        var autonomyRow = new StackPanel { Orientation = Orientation.Horizontal, Children = { _Row("Autonomy (permission mode)", _autonomy), host.CreateHelpHint("settings", "autonomy-mode") } };
+        safety.Children.Add(autonomyRow);
         safety.Children.Add(_Hint("How autonomous a run is on the CLI side; the host still gates shell and egress. bypassPermissions = works without asking before edits."));
+        var executableStageHeading = new StackPanel { Orientation = Orientation.Horizontal, Children = { _Header("Executable stage per tracker"), host.CreateHelpHint("settings", "executable-stage") } };
+        safety.Children.Add(executableStageHeading);
         foreach (var (trackerId, box) in _executableStages)
         {
             safety.Children.Add(_Row($"{trackerId} starts from", box));

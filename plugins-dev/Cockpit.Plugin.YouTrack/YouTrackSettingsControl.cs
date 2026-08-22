@@ -12,6 +12,7 @@ namespace Cockpit.Plugin.YouTrack;
 internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly YouTrackSettings _settings;
+    private readonly ICockpitHost _host;
     private readonly StackPanel _instancesPanel;
     private readonly List<YouTrackInstanceRowControl> _rows = [];
     private readonly TextBox _template;
@@ -19,9 +20,10 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
     private readonly TextBox _branchPattern;
     private readonly CheckBox _autoAttachImages;
 
-    public YouTrackSettingsControl(YouTrackSettings settings)
+    public YouTrackSettingsControl(ICockpitHost host, YouTrackSettings settings)
     {
         _settings = settings;
+        _host = host;
 
         _autoAttachImages = new CheckBox
         {
@@ -73,27 +75,14 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
                     _Label("Images"),
                     _autoAttachImages,
                     _Hint("When on, a screenshot you send with a message is attached to the issue the agent creates or updates in that same turn — no per-session toggle. The agent can also attach explicitly with the attach_message_images_to_issue tool."),
-                    _Label("Which issues the session picker shows (YouTrack query)"),
-                    SettingsHelpRow.Build(_pickerQuery, "Anything YouTrack's own search understands. Default \"#Unresolved\": showing issues that are done is offering work that is over. Examples: \"State: {In Progress}\", \"#Unresolved -State: Review\", \"#Unresolved Priority: Critical\"."),
+                    _LabelRow("Which issues the session picker shows (YouTrack query)", host.CreateHelpHint("setup", "picker-query")),
+                    _pickerQuery,
 
-                    _Label("Branch name pattern"),
-                    SettingsHelpRow.Build(_branchPattern,
-                        "How a branch is named for an issue. A separate set from the prompt template below — its own " +
-                        "meaning per placeholder:\n" +
-                        "{id} (also accepted as {ticket}) — the ticket number, e.g. WEB-14.\n" +
-                        "{summary} — not the full title like in the prompt template: shortened to about 40 characters and " +
-                        "made git-safe (lowercase, accents stripped, spaces/punctuation collapsed to '-').\n" +
-                        "Default \"{id}-{summary}\" (WEB-14-fix-the-login-redirect); \"feature/{id}\" and \"{id}_{summary}\" work too."),
+                    _LabelRow("Branch name pattern", host.CreateHelpHint("setup", "branch-pattern")),
+                    _branchPattern,
 
-                    _Label("Prompt template — placeholders: {id} {idReadable} {summary} {url} {project} {description}"),
-                    SettingsHelpRow.Build(_template,
-                        "Prompt inserted when you click an issue.\n" +
-                        "{idReadable} — the ticket number (e.g. AC-513); use this unless you really need the internal id.\n" +
-                        "{id} — the internal YouTrack id (e.g. 2-478).\n" +
-                        "{summary} — the issue's title.\n" +
-                        "{url} — link to the issue.\n" +
-                        "{project} — the project code (e.g. AC), not its name.\n" +
-                        "{description} — the full description; \"(no description)\" when empty."),
+                    _LabelRow("Prompt template — placeholders: {id} {idReadable} {summary} {url} {project} {description}", host.CreateHelpHint("setup", "prompt-template")),
+                    _template,
                 },
             },
         };
@@ -101,7 +90,7 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
 
     private void _AddRow(YouTrackInstance instance)
     {
-        var row = new YouTrackInstanceRowControl(instance);
+        var row = new YouTrackInstanceRowControl(_host, instance);
         row.RemoveRequested += () =>
         {
             _rows.Remove(row);
@@ -133,4 +122,13 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };
 
     private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+
+    // AC-1033: a label with the SDK-drawn "?" beside it, pointing at the section of this plugin's own setup page
+    // that explains the field below — replaces the old `SettingsHelpRow` hover tooltip.
+    private static StackPanel _LabelRow(string text, Control help) => new()
+    {
+        Orientation = Avalonia.Layout.Orientation.Horizontal,
+        Margin = new Thickness(0, 6, 0, 0),
+        Children = { new TextBlock { Text = text, FontSize = 11 }, help },
+    };
 }
