@@ -5,7 +5,9 @@ namespace Cockpit.Infrastructure.Tests.Wireframe;
 // it was written before anything named it, for the tests about minting.
 internal static class WireframeScreens
 {
-    public const string Settings = """
+    // static readonly, not const: a raw string literal carries the checkout's line endings (core.autocrlf on
+    // Windows), and the writer under test always emits \n — ReplaceLineEndings keeps the comparison checkout-agnostic.
+    public static readonly string Settings = """
         screen "Instellingen" #screen
           row h:1 #row
             column w:1 #left
@@ -19,9 +21,9 @@ internal static class WireframeScreens
               row align:right #buttons
                 button "Annuleren" #cancel
                 button "Opslaan" primary #save
-        """;
+        """.ReplaceLineEndings("\n");
 
-    public const string Plain = """
+    public static readonly string Plain = """
         screen "Instellingen"
           row h:1
             column w:1
@@ -35,11 +37,11 @@ internal static class WireframeScreens
               row align:right
                 button "Annuleren"
                 button "Opslaan" primary
-        """;
+        """.ReplaceLineEndings("\n");
 
     // AC-901: two screens in one document, with the blank line between them the writer puts there. What the
     // per-component tools have to keep apart — and every id is still unique across the whole document.
-    public const string TwoScreens = """
+    public static readonly string TwoScreens = """
         screen "Aanmelden" #login
           input "E-mailadres" #login-email
           button "Aanmelden" primary #login-submit
@@ -47,11 +49,11 @@ internal static class WireframeScreens
         screen "Registreren" #signup
           input "E-mailadres" #signup-email
           button "Registreren" primary #signup-submit
-        """;
+        """.ReplaceLineEndings("\n");
 
     // AC-902: the same two screens, with a flow from the login screen's submit button to the signup screen —
     // what the rename/remove cascade tests edit.
-    public const string TwoScreensWithFlow = """
+    public static readonly string TwoScreensWithFlow = """
         screen "Aanmelden" #login
           input "E-mailadres" #login-email
           button "Aanmelden" primary goto:"Registreren" #login-submit
@@ -59,10 +61,10 @@ internal static class WireframeScreens
         screen "Registreren" #signup
           input "E-mailadres" #signup-email
           button "Registreren" primary #signup-submit
-        """;
+        """.ReplaceLineEndings("\n");
 
     // AC-914: a screen with one state, replacing the `list`'s content — what the state-editing tests work against.
-    public const string WithState = """
+    public static readonly string WithState = """
         screen "Search results" #screen
           main w:4 #main
             list #results
@@ -70,7 +72,7 @@ internal static class WireframeScreens
 
           state "Empty" replaces:#results #empty
             label "No results found" #empty-label
-        """;
+        """.ReplaceLineEndings("\n");
 
     public const string Main = "main";
     public const string Results = "results";

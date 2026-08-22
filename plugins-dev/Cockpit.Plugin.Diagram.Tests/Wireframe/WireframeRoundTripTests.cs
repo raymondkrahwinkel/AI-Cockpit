@@ -44,11 +44,11 @@ public class WireframeRoundTripTests
     [Fact]
     public void AQuoteInsideALabel_SurvivesBothDirections()
     {
-        const string source = """
+        var source = """
             screen "X"
               label "Zeg \"hallo\""
               input "Naam" value:"Raymond"
-            """;
+            """.ReplaceLineEndings("\n");
 
         var root = WireframeParser.Parse(source).Screens.SingleOrDefault();
 
@@ -62,7 +62,7 @@ public class WireframeRoundTripTests
     [Fact]
     public void AScreenWithStates_SurvivesTheTreeUnchanged()
     {
-        const string source = """
+        var source = """
             screen "Search results"
               main w:4
                 list #results
@@ -72,7 +72,7 @@ public class WireframeRoundTripTests
                 button "Clear filters" primary
               state "Loading" replaces:#results
                 space h:3
-            """;
+            """.ReplaceLineEndings("\n");
 
         var result = WireframeParser.Parse(source);
 

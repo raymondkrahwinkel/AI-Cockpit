@@ -319,7 +319,7 @@ public class WireframeParserTests
 
             screen "Dashboard"
               label "Welkom"
-            """;
+            """.ReplaceLineEndings("\n");
 
         var result = WireframeParser.Parse(source);
 
@@ -380,11 +380,11 @@ public class WireframeParserTests
     [Fact]
     public void Note_ParsesOnAnyComponent_IncludingTheScreenLine_AndRoundTrips()
     {
-        const string source = """
+        var source = """
             screen "Aanmelden" note:"desktop only for now"
               input "Wachtwoord" note:"minimaal 12 tekens"
               button "Aanmelden" primary disabled note:"uit tot beide velden gevuld zijn"
-            """;
+            """.ReplaceLineEndings("\n");
 
         var result = WireframeParser.Parse(source);
 
@@ -415,10 +415,10 @@ public class WireframeParserTests
     [Fact]
     public void AQuoteInsideANote_SurvivesBothDirections()
     {
-        const string source = """
+        var source = """
             screen "X"
               button "Opslaan" note:"toon \"opgeslagen\" na klikken"
-            """;
+            """.ReplaceLineEndings("\n");
 
         var result = WireframeParser.Parse(source);
 
@@ -508,7 +508,7 @@ public class WireframeParserTests
                   item "Result 1"
               state "Empty" replaces:#results
                 label "No results found"
-            """;
+            """.ReplaceLineEndings("\n");
 
         var result = WireframeParser.Parse(source);
 

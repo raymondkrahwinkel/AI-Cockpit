@@ -22,8 +22,10 @@ public class DiagramErMcpToolsTests
             }
         """;
 
-    private static (DiagramMcpTools Tools, DiagramAccessRegistry Registry, List<ConsentRequest> Asked) _Build(string source = Source)
+    private static (DiagramMcpTools Tools, DiagramAccessRegistry Registry, List<ConsentRequest> Asked) _Build(string? source = null)
     {
+        // Source is a raw string literal, so it carries the checkout's line endings (core.autocrlf on Windows).
+        source ??= Source.ReplaceLineEndings("\n");
         var registry = new DiagramAccessRegistry();
         var asked = new List<ConsentRequest>();
         var host = Substitute.For<ICockpitHost>();

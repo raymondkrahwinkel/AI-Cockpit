@@ -15,8 +15,9 @@ public class WireframeComponentIdTests
     private const string SurfaceId = "wireframe-1";
     private const string Name = "Instellingen";
 
-    private static WireframeAccessRegistry _Coupled(string source = WireframeScreens.Settings)
+    private static WireframeAccessRegistry _Coupled(string? source = null)
     {
+        source ??= WireframeScreens.Settings;
         var registry = new WireframeAccessRegistry();
         registry.SurfaceOpened(SurfaceId, Name, source);
         registry.Grant(Session, SurfaceId, WireframeCapability.Edit);
