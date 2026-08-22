@@ -10,11 +10,17 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 public interface IProjectFieldRegistry
 {
-    /// <summary>Records a project field. A key that is already registered is refused, first one wins.</summary>
-    /// <returns>False when another plugin already contributes this key — the caller says so; nothing throws.</returns>
+    /// <summary>
+    /// Records a project field. A key that is already registered is refused, first one wins.
+    /// </summary>
+    /// <returns>
+    /// False when another plugin already contributes this key — the caller says so; nothing throws.
+    /// </returns>
     bool Register(ProjectFieldRegistration registration);
 
-    /// <summary>Every field registered so far, in registration order — the order the editor draws them in.</summary>
+    /// <summary>
+    /// Every field registered so far, in registration order — the order the editor draws them in.
+    /// </summary>
     IReadOnlyList<ProjectFieldRegistration> Fields { get; }
 }
 

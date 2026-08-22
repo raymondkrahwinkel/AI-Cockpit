@@ -9,10 +9,14 @@ namespace Cockpit.App.Views.Onboarding;
 /// </summary>
 public interface IFirstRunWizardStep
 {
-    /// <summary>Where this step sits in the step bar and in the Back/Next sequence — lower goes first.</summary>
+    /// <summary>
+    /// Where this step sits in the step bar and in the Back/Next sequence — lower goes first.
+    /// </summary>
     int Order { get; }
 
-    /// <summary>The step bar's own label for this step, e.g. "Your account".</summary>
+    /// <summary>
+    /// The step bar's own label for this step, e.g. "Your account".
+    /// </summary>
     string Title { get; }
 
     /// <summary>
@@ -22,6 +26,8 @@ public interface IFirstRunWizardStep
     /// </summary>
     bool IsSkipped { get; }
 
-    /// <summary>This step's own content, built once when the wizard opens.</summary>
+    /// <summary>
+    /// This step's own content, built once when the wizard opens.
+    /// </summary>
     Control BuildContent();
 }

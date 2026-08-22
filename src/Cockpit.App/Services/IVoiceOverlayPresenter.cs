@@ -7,9 +7,13 @@ namespace Cockpit.App.Services;
 /// </summary>
 public interface IVoiceOverlayPresenter
 {
-    /// <summary>Positions the pill bottom-centre and shows it.</summary>
+    /// <summary>
+    /// Positions the pill bottom-centre and shows it.
+    /// </summary>
     void Show();
 
-    /// <summary>Hides the pill without destroying the window (it is reused for the next hold).</summary>
+    /// <summary>
+    /// Hides the pill without destroying the window (it is reused for the next hold).
+    /// </summary>
     void Hide();
 }

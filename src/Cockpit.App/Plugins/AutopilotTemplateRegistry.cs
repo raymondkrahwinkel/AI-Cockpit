@@ -16,7 +16,9 @@ public interface IAutopilotTemplateRegistry
     /// </summary>
     void Register(string ownerPluginId, PluginAutopilotTemplate template);
 
-    /// <summary>Every registration, each carrying the id of the plugin that contributed it — what the Autopilot plugin reads to build its template picker.</summary>
+    /// <summary>
+    /// Every registration, each carrying the id of the plugin that contributed it — what the Autopilot plugin reads to build its template picker.
+    /// </summary>
     IReadOnlyList<RegisteredAutopilotTemplate> Registrations { get; }
 }
 

@@ -10,11 +10,17 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 public interface ISessionResourceProviderRegistry
 {
-    /// <summary>Records a provider. The same instance registered twice is refused, so a plugin re-initialised in place is not asked twice.</summary>
-    /// <returns>False when this provider is already registered — the caller says so; nothing throws.</returns>
+    /// <summary>
+    /// Records a provider. The same instance registered twice is refused, so a plugin re-initialised in place is not asked twice.
+    /// </summary>
+    /// <returns>
+    /// False when this provider is already registered — the caller says so; nothing throws.
+    /// </returns>
     bool Register(ISessionResourceProvider provider);
 
-    /// <summary>Every provider registered so far, in registration order — the order their contributions claim names in.</summary>
+    /// <summary>
+    /// Every provider registered so far, in registration order — the order their contributions claim names in.
+    /// </summary>
     IReadOnlyList<ISessionResourceProvider> Providers { get; }
 }
 

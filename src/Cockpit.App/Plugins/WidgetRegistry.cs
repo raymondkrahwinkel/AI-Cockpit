@@ -16,10 +16,14 @@ public interface IWidgetRegistry
     /// Records a widget type along with what its owning plugin brought: storage, the observe surface, and the
     /// keys it declared as credentials. A type id that is already registered is refused, first one wins.
     /// </summary>
-    /// <returns>False when another plugin already contributes this type id — the caller says so; nothing throws.</returns>
+    /// <returns>
+    /// False when another plugin already contributes this type id — the caller says so; nothing throws.
+    /// </returns>
     bool Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, IReadOnlyList<string> declaredSecretKeys);
 
-    /// <summary>Every credential key any widget-providing plugin declared — what an export scrubs beyond the name rule.</summary>
+    /// <summary>
+    /// Every credential key any widget-providing plugin declared — what an export scrubs beyond the name rule.
+    /// </summary>
     IReadOnlyList<string> DeclaredSecretKeys { get; }
 
     /// <summary>
@@ -29,7 +33,9 @@ public interface IWidgetRegistry
     /// </summary>
     event EventHandler? Changed;
 
-    /// <summary>Every widget type registered so far, in registration order — what the gallery lists.</summary>
+    /// <summary>
+    /// Every widget type registered so far, in registration order — what the gallery lists.
+    /// </summary>
     IReadOnlyList<WidgetRegistration> Widgets { get; }
 
     /// <summary>
@@ -39,7 +45,9 @@ public interface IWidgetRegistry
     /// </summary>
     (WidgetRegistration Registration, WidgetContext Context)? CreateInstance(string widgetId, string instanceId);
 
-    /// <summary>Whether a plugin here contributes <paramref name="widgetId"/> — what an import asks before placing a pane it may not be able to render.</summary>
+    /// <summary>
+    /// Whether a plugin here contributes <paramref name="widgetId"/> — what an import asks before placing a pane it may not be able to render.
+    /// </summary>
     bool IsInstalled(string widgetId);
 }
 

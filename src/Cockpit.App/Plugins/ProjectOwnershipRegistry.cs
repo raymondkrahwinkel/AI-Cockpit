@@ -10,8 +10,12 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 public interface IProjectOwnershipRegistry
 {
-    /// <summary>Records a project's ownership claim. A project id that is already claimed is refused, first one wins.</summary>
-    /// <returns>False when another plugin already claims this project — the caller says so; nothing throws.</returns>
+    /// <summary>
+    /// Records a project's ownership claim. A project id that is already claimed is refused, first one wins.
+    /// </summary>
+    /// <returns>
+    /// False when another plugin already claims this project — the caller says so; nothing throws.
+    /// </returns>
     bool Register(ProjectOwnershipRegistration registration);
 
     /// <summary>

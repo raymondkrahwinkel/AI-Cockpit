@@ -67,22 +67,34 @@ public interface IPluginContributionSink
     /// </summary>
     void AddPluginSessionBannerItem(Func<IPluginSessionContext, Control> createView);
 
-    /// <summary>Registers an action in every session header's menu — one menu for all plugins, rather than a button each.</summary>
+    /// <summary>
+    /// Registers an action in every session header's menu — one menu for all plugins, rather than a button each.
+    /// </summary>
     void AddPluginSessionHeaderAction(PluginSessionAction action);
 
-    /// <summary>Registers a plugin's source of supervised background activities shown in the status bar (AC-82), with an operator-only Kill per item.</summary>
+    /// <summary>
+    /// Registers a plugin's source of supervised background activities shown in the status bar (AC-82), with an operator-only Kill per item.
+    /// </summary>
     void AddSupervisedActivityProvider(ISupervisedActivitySource source);
 
-    /// <summary>Registers a Sessions-toolbar button (AC-91) — a global quick action shown next to the workspace gear.</summary>
+    /// <summary>
+    /// Registers a Sessions-toolbar button (AC-91) — a global quick action shown next to the workspace gear.
+    /// </summary>
     void AddToolbarAction(string pluginId, ToolbarAction action);
 
-    /// <summary>Registers a plugin-contributed keyboard shortcut (#: shortcuts), dispatched alongside the app-action shortcuts.</summary>
+    /// <summary>
+    /// Registers a plugin-contributed keyboard shortcut (#: shortcuts), dispatched alongside the app-action shortcuts.
+    /// </summary>
     void AddPluginShortcut(PluginShortcut shortcut);
 
-    /// <summary>Registers <paramref name="pluginId"/>'s settings view, titled after <paramref name="pluginName"/> wherever it is opened from.</summary>
+    /// <summary>
+    /// Registers <paramref name="pluginId"/>'s settings view, titled after <paramref name="pluginName"/> wherever it is opened from.
+    /// </summary>
     void AddPluginSettings(string pluginId, string pluginName, Func<Control> createView);
 
-    /// <summary>Whether <paramref name="pluginId"/> registered a settings view — what the gears (left menu, dialog chrome) ask before offering to open one.</summary>
+    /// <summary>
+    /// Whether <paramref name="pluginId"/> registered a settings view — what the gears (left menu, dialog chrome) ask before offering to open one.
+    /// </summary>
     bool HasPluginSettings(string pluginId);
 
     /// <summary>
@@ -92,13 +104,19 @@ public interface IPluginContributionSink
     /// </summary>
     Task OpenPluginSettingsAsync(string pluginId);
 
-    /// <summary>Registers <paramref name="callback"/> to run when <paramref name="pluginId"/>'s settings are next saved (#52) — see <see cref="ICockpitHost.OnSettingsSaved"/>.</summary>
+    /// <summary>
+    /// Registers <paramref name="callback"/> to run when <paramref name="pluginId"/>'s settings are next saved (#52) — see <see cref="ICockpitHost.OnSettingsSaved"/>.
+    /// </summary>
     void AddSettingsSavedHandler(string pluginId, Action callback);
 
-    /// <summary>Runs every callback registered via <see cref="AddSettingsSavedHandler"/> for <paramref name="pluginId"/> (#52) — called once the host has run the write <see cref="IPluginSettingsView.TryStage"/> handed it, never at staging time (AC-1004).</summary>
+    /// <summary>
+    /// Runs every callback registered via <see cref="AddSettingsSavedHandler"/> for <paramref name="pluginId"/> (#52) — called once the host has run the write <see cref="IPluginSettingsView.TryStage"/> handed it, never at staging time (AC-1004).
+    /// </summary>
     void NotifySettingsSaved(string pluginId);
 
-    /// <summary>Applies the left-menu order/visibility the plugin manager just persisted for <paramref name="pluginId"/> (#72), so the sidebar re-renders without a restart.</summary>
+    /// <summary>
+    /// Applies the left-menu order/visibility the plugin manager just persisted for <paramref name="pluginId"/> (#72), so the sidebar re-renders without a restart.
+    /// </summary>
     void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu);
 
     /// <summary>

@@ -10,11 +10,17 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 public interface ITrackerProviderRegistry
 {
-    /// <summary>Records a tracker provider. A tracker id that is already registered is refused, first one wins.</summary>
-    /// <returns>False when another plugin already contributes this tracker id — the caller says so; nothing throws.</returns>
+    /// <summary>
+    /// Records a tracker provider. A tracker id that is already registered is refused, first one wins.
+    /// </summary>
+    /// <returns>
+    /// False when another plugin already contributes this tracker id — the caller says so; nothing throws.
+    /// </returns>
     bool Register(ITrackerProvider provider);
 
-    /// <summary>Every tracker registered so far, in registration order.</summary>
+    /// <summary>
+    /// Every tracker registered so far, in registration order.
+    /// </summary>
     IReadOnlyList<ITrackerProvider> Providers { get; }
 }
 
