@@ -58,9 +58,9 @@ public class DialogChromeTests
     {
         var window = (Window)Activator.CreateInstance(dialogType)!;
 
-        // None is what the chrome swaps the OS caption (and, since AC-678, the OS resize border too) for; a
+        // None (Linux) or BorderOnly (Windows/macOS, AC-678/AC-934) is what the chrome swaps the OS caption for; a
         // dialog that never called it keeps the platform default and so shows two different title bars in one app.
-        Assert.Equal(WindowDecorations.None, window.WindowDecorations);
+        Assert.Equal(_ExpectedDecorations, window.WindowDecorations);
     });
 
     // One entry per dialog excluded above, given the view model it waits for.
@@ -91,7 +91,12 @@ public class DialogChromeTests
     [Theory]
     [MemberData(nameof(DeferredDialogNames))]
     public void TheyWearItOnceTheirViewModelArrives(string name) => HeadlessAvalonia.Run(() =>
-        Assert.Equal(WindowDecorations.None, DeferredDialogs[name]().WindowDecorations));
+        Assert.Equal(_ExpectedDecorations, DeferredDialogs[name]().WindowDecorations));
+
+    // Mirrors WindowResizeGrip.DecorationsFor's own platform split (AC-678/AC-934) rather than a hardcoded
+    // expectation, so this still catches a regression on the platform where DecorationsFor is wrong.
+    private static WindowDecorations _ExpectedDecorations =>
+        WindowResizeGrip.DecorationsFor(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows());
 
     [Fact]
     public void TheExcludedDialogs_AreExactlyTheOnesCheckedWithAViewModel()
