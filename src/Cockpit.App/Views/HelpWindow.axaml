@@ -35,7 +35,7 @@
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
             <DockPanel>
                 <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Margin="10,10,10,6"
-                         Watermark="Search all documentation…"/>
+                         PlaceholderText="Search all documentation…"/>
                 <ScrollViewer HorizontalScrollBarVisibility="Disabled">
                     <StackPanel x:Name="NavHost" Margin="6,0,6,12" Spacing="1"/>
                 </ScrollViewer>
