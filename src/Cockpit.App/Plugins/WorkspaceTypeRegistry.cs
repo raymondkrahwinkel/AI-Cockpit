@@ -8,10 +8,8 @@ namespace Cockpit.App.Plugins;
 
 /// <summary>
 /// Holds the workspace types plugins register (<c>ICockpitHost.AddWorkspaceType</c>), so the tab strip's "+"
-/// menu can offer them and a saved desk of a plugin type can rebuild its body. A registry of its own — the same
-/// shape as <see cref="IWidgetRegistry"/> — rather than a collection on a view model, so the menu reads it
-/// without the two depending on each other. Empty is the normal case until a workspace-providing plugin is
-/// installed.
+/// menu can offer them and a saved desk of a plugin type can rebuild its body. Same shape as
+/// <see cref="IWidgetRegistry"/>, not a view-model collection, so the menu reads it without the two depending on each other.
 /// </summary>
 public interface IWorkspaceTypeRegistry
 {

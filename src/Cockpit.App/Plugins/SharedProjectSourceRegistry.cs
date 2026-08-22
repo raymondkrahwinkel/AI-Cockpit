@@ -5,9 +5,8 @@ namespace Cockpit.App.Plugins;
 
 /// <summary>
 /// Holds the shared-project sources plugins register (<c>ICockpitHost.AddSharedProjectSource</c>, AC-245), so the
-/// Projects workspace can list what they offer without depending on the plugins that contribute them. A registry of
-/// its own, the same shape as <see cref="IProjectMemorySourceRegistry"/>. Empty until a plugin that shares project
-/// definitions elsewhere is installed.
+/// Projects workspace lists what they offer without depending on the contributing plugins. Same shape as
+/// <see cref="IProjectMemorySourceRegistry"/>.
 /// </summary>
 public interface ISharedProjectSourceRegistry
 {

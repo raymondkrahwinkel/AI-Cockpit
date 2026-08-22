@@ -12,13 +12,9 @@ using Cockpit.Core.Assistant;
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// The surface this window needs from the assistant's owning host (AC-543, "Waar de assistent-sessie vandaan
-/// komt"). The lead's <c>AssistantSessionHost</c> (<c>src/Cockpit.App/Services/AssistantSessionHost.cs</c>) already
-/// carries exactly this shape — <c>Session</c>, <c>Activity</c>, <c>UnavailableReason</c>, <c>EnsureStartedAsync</c>,
-/// <c>SendAsync</c> — but as a sealed class with no interface, so it cannot itself be swapped for a test fake and
-/// is heavy to construct directly (it needs a live <c>CockpitViewModel</c>). Extracted as an interface purely for
-/// that: the one remaining integration step is a one-line <c>: IAssistantSessionHost</c> on that class — see the
-/// final report.
+/// The surface this window needs from the assistant's owning host (AC-543). The lead's <c>AssistantSessionHost</c>
+/// already carries exactly this shape but as a sealed class with no interface, heavy to construct directly.
+/// Extracted purely for that; the one remaining step is a one-line <c>: IAssistantSessionHost</c> on that class.
 /// </summary>
 public interface IAssistantSessionHost : INotifyPropertyChanged
 {
@@ -51,9 +47,8 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
 
     /// <summary>
     /// AC-740: the Assistant Profile's own default working directory, once known — read synchronously so the
-    /// @-mention picker's <c>Func&lt;string?&gt;</c> can fall back to it before any session (and so no
-    /// <see cref="Session"/>) exists. Null until the profile has loaded at least once; a read is what lazily
-    /// triggers that load, not construction, so a window that never opens the picker never pays for it.
+    /// @-mention picker can fall back to it before any <see cref="Session"/> exists. Null until the profile has
+    /// loaded at least once; a read lazily triggers that load, so a window that never opens the picker never pays for it.
     /// </summary>
     string? DefaultWorkingDirectory { get; }
 
@@ -65,14 +60,9 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
 
     /// <summary>
     /// The assistant hotkey went down or came back up, so the assistant is (or is no longer) the one listening.
+    /// Told, not inferred — the indicator used to read "who is listening" off the shared voice pill, so holding
+    /// the assistant key lit it up as <em>dictation</em> instead. The coordinator now says so directly.
     /// </summary>
-    /// <remarks>
-    /// Told, not inferred. The indicator used to read "who is listening" off the shared voice pill, which every
-    /// microphone path writes to — so holding the assistant key lit the chip up as <em>dictation</em>, complete
-    /// with "release F9" while F9 was not being touched. That is the single mistake this chip exists to prevent,
-    /// made by the chip itself. The assistant's own coordinator knows when the assistant is listening; it says so
-    /// here instead of leaving the question to be guessed from a signal it shares with two other paths.
-    /// </remarks>
     void ReportHoldListening(bool listening);
 
     /// <summary>

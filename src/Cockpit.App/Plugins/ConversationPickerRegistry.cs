@@ -4,10 +4,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.App.Plugins;
 
 /// <summary>
-/// Holds the conversation pickers plugins register (<c>ICockpitHost.AddConversationPicker</c>), so the
-/// New-session dialog can offer to search for a conversation instead of asking for an id typed by hand. A
-/// registry of its own rather than another collection on the cockpit view model: the dialog service would then
-/// have to depend on the view model that depends on the dialog service.
+/// Holds the conversation pickers plugins register (<c>ICockpitHost.AddConversationPicker</c>), so the New-session
+/// dialog can offer to search for a conversation instead of an id typed by hand. Its own registry, not another
+/// collection on the cockpit view model, to avoid the dialog service depending on the view model depending on it.
 /// </summary>
 public interface IConversationPickerRegistry
 {

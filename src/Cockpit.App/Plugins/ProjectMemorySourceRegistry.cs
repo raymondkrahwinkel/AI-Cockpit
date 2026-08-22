@@ -6,62 +6,32 @@ namespace Cockpit.App.Plugins;
 
 /// <summary>
 /// Holds the memory sources plugins register (<c>ICockpitHost.AddProjectMemorySource</c>, AC-165/166), so the
-/// project editor's picker and a starting session's standing instructions can both read them without depending on
-/// the plugin that contributes one. A registry of its own, the same shape as <see cref="IProjectFieldRegistry"/>:
-/// first registration for a scheme wins, matched case-insensitively because a project's own stored reference is
-/// matched the same way when it is read back (<see cref="Cockpit.Core.Sessions.SessionStartDefaults"/>). Empty
-/// until a plugin that is not a folder-of-notes is installed.
+/// project editor's picker and a session's standing instructions can read them without depending on the plugin.
+/// Same shape as <see cref="IProjectFieldRegistry"/>: first registration for a scheme wins, matched case-insensitively.
 /// </summary>
 public interface IProjectMemorySourceRegistry
 {
     /// <summary>
-    /// Records a memory source. A scheme <see cref="ProjectMemoryRef.IsUsableScheme"/> refuses — blank, a single
-    /// character, containing a colon, or wrapped in whitespace — is refused, because any of those is a scheme the
-    /// parser that reads a stored reference back could never match to this registration: the picker would offer a
-    /// source that then falls silent. A blank title is refused too — it gives the picker nothing to label its entry
-    /// with — and a scheme already registered is refused as well, first one wins.
-    /// <para>
-    /// A blank instruction is refused for a different reason than the other two: it is not a cosmetic gap but the
-    /// whole point of the seam. Naming a place a session cannot be told how to reach leaves it no better off than
-    /// the bare reference it would otherwise have been handed, so such a source is not offered at all rather than
-    /// offered half-working.
-    /// </para>
+    /// Records a memory source. Refused (returns false): an unusable <see cref="ProjectMemoryRef.IsUsableScheme"/>
+    /// scheme, a blank title, a scheme already registered (first wins), or a blank instruction — the point of the seam.
     /// </summary>
-    /// <returns>
-    /// False when the scheme is not one <see cref="ProjectMemoryRef.IsUsableScheme"/> accepts, the title or
-    /// instruction is blank, or another plugin already contributes this scheme.
-    /// </returns>
     bool Register(ProjectMemorySourceRegistration registration);
 
     /// <summary>
-    /// Withdraws the source registered under <paramref name="scheme"/> (AC-501), matched the same case-insensitive
-    /// way <see cref="Register"/> checks for a collision. A no-op, returning false, when nothing is registered under
-    /// it. Removing a source never touches a project's own stored <c>MemoryRef</c> — the same restraint
-    /// <c>Project.PluginFields</c> keeps when the plugin that once linked a project disappears (AC-166): a reference
-    /// this leaves without a matching source just falls back to the unexplained-scheme sentence the next time a
-    /// session reads it, rather than being rewritten out from under the project.
+    /// Withdraws the source under <paramref name="scheme"/> (AC-501), matched case-insensitively like
+    /// <see cref="Register"/>'s collision check; no-op (returns false) when nothing is registered. Never rewrites
+    /// a project's own stored <c>MemoryRef</c> — same restraint as <c>Project.PluginFields</c> (AC-166).
     /// </summary>
-    /// <returns>True when a source was registered under this scheme and is now gone.</returns>
     bool Remove(string scheme);
 
     /// <summary>Every source registered so far, in registration order — the order the editor's picker offers them in.</summary>
     IReadOnlyList<ProjectMemorySourceRegistration> Sources { get; }
 
     /// <summary>
-    /// Declares a family (AC-499) a source can later opt into via <see cref="ProjectMemorySourceRegistration.FamilyKey"/>.
-    /// A blank <see cref="ProjectMemorySourceFamily.Key"/> or <see cref="ProjectMemorySourceFamily.Title"/> is
-    /// refused for the same reason a blank scheme or title is refused by <see cref="Register"/> — nothing to key a
-    /// registration on, or to label the picker's own entry with. A key already declared is refused too, first one
-    /// wins, matched case-insensitively — the same agreement <see cref="Register"/>'s own scheme comparison makes.
-    /// <para>
-    /// No <c>RemoveFamily</c> counterpart to <see cref="Remove"/>: nothing in this codebase yet un-declares a
-    /// family once its plugin has registered it (a Depot connection removed by AC-501's live-refresh removes that
-    /// connection's own scheme, never the "Depot" family itself — the picker keeps offering it, empty-hint and all,
-    /// which is the whole point of declaring a family separately from its instances). Add one only once a caller
-    /// actually needs it.
-    /// </para>
+    /// Declares a family (AC-499) a source can opt into via <see cref="ProjectMemorySourceRegistration.FamilyKey"/>.
+    /// Refused (false): a blank key/title, or a key already declared (first wins). No <c>RemoveFamily</c> yet —
+    /// nothing un-declares a family once registered (AC-501); add one only once a caller needs it.
     /// </summary>
-    /// <returns>False when the key or title is blank, or another plugin already declared this key.</returns>
     bool RegisterFamily(ProjectMemorySourceFamily family);
 
     /// <summary>Every family declared so far, in declaration order — the order the editor's picker offers them in, ahead of any ungrouped source.</summary>

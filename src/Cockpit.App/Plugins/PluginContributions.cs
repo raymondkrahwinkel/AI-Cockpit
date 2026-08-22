@@ -38,10 +38,9 @@ public sealed record PluginMenuEntry(string PluginId, PluginSideButton? Button, 
 public sealed record PluginSettingsRegistration(string PluginId, string PluginName, Func<Control> CreateView);
 
 /// <summary>
-/// Where a plugin's contribution points land in the running UI. Implemented by <c>CockpitViewModel</c>
-/// (the collections/registry the side menu and plugin manager bind to); an interface so <c>CockpitHost</c>
-/// and its tests depend on the sink, not the whole cockpit view model. Settings are keyed by plugin id so
-/// the manager can show a gear for the plugin they belong to.
+/// Where a plugin's contribution points land in the running UI. Implemented by <c>CockpitViewModel</c>; an
+/// interface so <c>CockpitHost</c> and its tests depend on the sink, not the whole view model. Settings are
+/// keyed by plugin id so the manager can show a gear for the plugin they belong to.
 /// </summary>
 public interface IPluginContributionSink
 {
@@ -50,11 +49,9 @@ public interface IPluginContributionSink
     void AddPluginSideButton(string pluginId, string title, Action onInvoke);
 
     /// <summary>
-    /// Same as <see cref="AddPluginSideButton(string, string, Action)"/>, carrying the badge handle (AC-516) the
-    /// plugin got back from <see cref="ICockpitHost.AddSideMenuButtonWithBadge"/>. A default overload — rather than
-    /// widening the mandatory one above — so the many existing <see cref="IPluginContributionSink"/> fakes across
-    /// this repo's tests keep compiling untouched; it forwards to the badge-less member, so a sink that does not
-    /// override this simply renders the button without ever wiring up the badge.
+    /// Same as <see cref="AddPluginSideButton(string, string, Action)"/>, carrying the badge handle (AC-516) from
+    /// <see cref="ICockpitHost.AddSideMenuButtonWithBadge"/>. A default overload, forwarding to the badge-less
+    /// member, so existing <see cref="IPluginContributionSink"/> test fakes keep compiling without wiring the badge.
     /// </summary>
     void AddPluginSideButton(string pluginId, string title, Action onInvoke, SideMenuButtonBadge? badge) =>
         AddPluginSideButton(pluginId, title, onInvoke);
@@ -89,11 +86,9 @@ public interface IPluginContributionSink
     bool HasPluginSettings(string pluginId);
 
     /// <summary>
-    /// Opens <paramref name="pluginId"/>'s settings dialog: the one way in, whether the operator came from the
-    /// plugin manager's gear, the gear on its left-menu button, the gear on one of its dialogs, or the plugin
-    /// asked for it itself (<see cref="ICockpitHost.ShowSettingsAsync"/>). Saving runs the plugin's
-    /// settings-saved handlers, so a settings change lands the same way from all of them. Does nothing when the
-    /// plugin registered no settings view.
+    /// Opens <paramref name="pluginId"/>'s settings dialog: the one way in, whether from the plugin manager's gear,
+    /// a left-menu or dialog gear, or the plugin itself (<see cref="ICockpitHost.ShowSettingsAsync"/>). Saving runs
+    /// the plugin's settings-saved handlers the same way from all of them; does nothing with no settings view.
     /// </summary>
     Task OpenPluginSettingsAsync(string pluginId);
 
@@ -108,10 +103,8 @@ public interface IPluginContributionSink
 
     /// <summary>
     /// Same as <see cref="ApplyPluginMenuPreference(string, int, bool)"/>, also carrying whether the plugin is
-    /// pinned top-level in the sidebar rather than collapsed under "Plugins ›" (AC-937). A default overload —
-    /// forwards to the three-argument member, dropping the pin — so the many existing
-    /// <see cref="IPluginContributionSink"/> fakes across this repo's tests keep compiling untouched; only the
-    /// app's own sink acts on the pin.
+    /// pinned top-level rather than collapsed under "Plugins ›" (AC-937). Forwards to the three-argument member,
+    /// dropping the pin, so existing test fakes keep compiling; only the app's own sink acts on it.
     /// </summary>
     void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu, bool pinnedToSidebar) =>
         ApplyPluginMenuPreference(pluginId, menuOrder, hiddenInMenu);

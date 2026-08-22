@@ -6,11 +6,9 @@ using Cockpit.Plugins.Abstractions.Widgets;
 namespace Cockpit.App.Plugins;
 
 /// <summary>
-/// Holds the widget types plugins register (<c>ICockpitHost.AddWidget</c>), so a Dashboard workspace's
-/// "Add widget" gallery can offer them and a saved dashboard can rebuild its instances. A registry of its own
-/// — the same shape as <see cref="ConversationPickerRegistry"/> and the workflow registries — rather than a
-/// collection on a view model, so the gallery reads it without the two depending on each other. Empty is the
-/// normal case until a widget-providing plugin is installed.
+/// Holds the widget types plugins register (<c>ICockpitHost.AddWidget</c>), so a Dashboard workspace's "Add widget"
+/// gallery can offer them and a saved dashboard can rebuild its instances. Same shape as
+/// <see cref="ConversationPickerRegistry"/>, not a view-model collection.
 /// </summary>
 public interface IWidgetRegistry
 {
@@ -25,10 +23,9 @@ public interface IWidgetRegistry
     IReadOnlyList<string> DeclaredSecretKeys { get; }
 
     /// <summary>
-    /// Raised when a plugin contributes a widget. Plugins initialize after the cockpit's view models are built,
-    /// so anything reading <see cref="Widgets"/> would otherwise read an empty list once, at startup, and never
-    /// hear about the widgets that arrived a moment later — which is exactly how the "Add widget" button stayed
-    /// disabled with two widgets installed.
+    /// Raised when a plugin contributes a widget. Plugins initialize after the view models are built, so anything
+    /// reading <see cref="Widgets"/> would otherwise read an empty list once and never hear about widgets that
+    /// arrived later — exactly how the "Add widget" button stayed disabled with two widgets installed.
     /// </summary>
     event EventHandler? Changed;
 
