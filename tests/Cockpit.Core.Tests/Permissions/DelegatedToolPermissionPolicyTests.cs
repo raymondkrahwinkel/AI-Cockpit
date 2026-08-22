@@ -232,6 +232,8 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData("Edit", ToolPermissionClass.Write)]
     [InlineData("NotebookEdit", ToolPermissionClass.Write)]
     [InlineData("Bash", ToolPermissionClass.Destructive)]
+    [InlineData("shell", ToolPermissionClass.Destructive)]              // Codex's name for the same thing
+    [InlineData("apply_patch", ToolPermissionClass.Write)]
     public void ClassifyAgentBuiltIn_GradesTheToolsAnAgentCliRunsItself(string toolName, ToolPermissionClass expected)
     {
         Assert.Equal(expected, DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn(toolName));

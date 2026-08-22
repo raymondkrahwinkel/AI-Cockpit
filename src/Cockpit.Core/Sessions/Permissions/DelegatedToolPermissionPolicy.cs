@@ -84,7 +84,9 @@ public static class DelegatedToolPermissionPolicy
         "Write" or "Edit" or "MultiEdit" or "NotebookEdit" or "apply_patch"
             => ToolPermissionClass.Write,
 
-        "Bash" or "KillShell" or "KillBash"
+        // Codex names its shell and patch tools differently; same two classes, so it is graded here rather than
+        // falling through to Unknown and being denied even where the operator said a shell may run.
+        "Bash" or "KillShell" or "KillBash" or "shell" or "command_execution"
             => ToolPermissionClass.Destructive,
 
         _ => null,
