@@ -32,7 +32,9 @@ public class AssistantChannelGatewayTests
         await host.Received().SendAsync("how far is the build?", Arg.Any<CancellationToken>());
     });
 
-    /// <summary>Criterion 3, at the door rather than in the plugin: a stranger gets silence, and the plugin is told so rather than being trusted to check first.</summary>
+    /// <summary>
+    /// Criterion 3, at the door rather than in the plugin: a stranger gets silence, and the plugin is told so rather than being trusted to check first.
+    /// </summary>
     [Fact]
     public Task AMessageFromAnyOtherAccount_ReachesNothingAndIsAnsweredWithSilence() => HeadlessAvalonia.RunAsync(async () =>
     {
@@ -44,6 +46,31 @@ public class AssistantChannelGatewayTests
         Assert.True(result.Ignored);
         Assert.Null(result.Error);
         await host.DidNotReceive().SendAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    });
+
+    /// <summary>
+    /// A send is awaited to completion, so a failure inside it is a refusal rather than a <c>Sent()</c> that was
+    /// never true. Guards the unwrapping <c>InvokeAsync</c> overload the dispatched path relies on.
+    /// </summary>
+    [Fact]
+    public Task ASendThatFails_IsRefusedWithItsReason_AndNeverReportedAsSent() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (gateway, host, _, _) = _Gateway();
+        host.SendAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("the assistant is not running")));
+
+        // From the UI thread, where the gateway runs the send inline…
+        var inline = await gateway.SendAsync(Allowed, "how far is the build?");
+
+        Assert.False(inline.Ok);
+        Assert.False(inline.Ignored);
+        Assert.Equal("the assistant is not running", inline.Error);
+
+        // …and from off it, where it goes through the dispatcher and the outer task must not hide the failure.
+        var dispatched = await Task.Run(() => gateway.SendAsync(Allowed, "how far is the build?"));
+
+        Assert.False(dispatched.Ok);
+        Assert.Equal("the assistant is not running", dispatched.Error);
     });
 
     // ── outbound (§4) ──────────────────────────────────────────────────────────────────────────────────────────
@@ -81,7 +108,9 @@ public class AssistantChannelGatewayTests
         Assert.Equal("Build succeeded.", rows[^1].ResultText);
     });
 
-    /// <summary>A channel that connects mid-conversation says what happens next, never replays what was already said.</summary>
+    /// <summary>
+    /// A channel that connects mid-conversation says what happens next, never replays what was already said.
+    /// </summary>
     [Fact]
     public void RowsAlreadyInTheTranscriptWhenAChannelOpens_AreNotReplayed() => HeadlessAvalonia.Run(() =>
     {
@@ -132,7 +161,9 @@ public class AssistantChannelGatewayTests
         broker.Received().Respond(opened.Id, ConsentOutcome.Approved, false);
     });
 
-    /// <summary>A channel is a door onto the assistant's conversation only — another session's prompt is not its to see or to answer.</summary>
+    /// <summary>
+    /// A channel is a door onto the assistant's conversation only — another session's prompt is not its to see or to answer.
+    /// </summary>
     [Fact]
     public void APromptBelongingToAnotherSession_IsNeitherRelayedNorAnswerable() => HeadlessAvalonia.Run(() =>
     {
@@ -196,8 +227,12 @@ public class AssistantChannelGatewayTests
 
     private static AssistantChannelGateway _Open(IAssistantSessionHost host, IConsentBroker broker, List<AssistantChannelRow> rows)
     {
-        var channel = new AssistantChannelContribution(
-            "channel-1", "Test channel", AssistantChannelAccess.ForSingleUser(Allowed).Access!);
+        var channel = new AssistantChannelContribution
+        {
+            Id = "channel-1",
+            Name = "Test channel",
+            Access = AssistantChannelAccess.ForSingleUser(Allowed).Access!,
+        };
         var gateway = new AssistantChannelGateway(channel, host, broker);
         gateway.RowChanged += (_, row) => rows.Add(row);
 

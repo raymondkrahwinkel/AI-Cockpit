@@ -506,15 +506,9 @@ public interface ICockpitHost
     Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 
     /// <summary>
-    /// Opens a chat channel — a Discord or Slack bot — as a second door onto the assistant's own standing
-    /// conversation (AC-1023): the gateway carries messages in, hands transcript rows out, and relays the
-    /// assistant's consent prompts. Opening again under the same <see cref="AssistantChannelContribution.Id"/>
-    /// replaces the channel already open under it. Dispose the gateway to close the channel.
+    /// Opens a chat channel — a Discord or Slack bot — as a second door onto the assistant's own conversation
+    /// (AC-1023). Null on a host with no assistant; dispose the gateway to close the channel.
     /// </summary>
-    /// <remarks>
-    /// Null on a host with no assistant to talk to — a plugin treats that as "not available here", not as an error.
-    /// Default returns null, so existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
-    /// </remarks>
     IAssistantChannelGateway? OpenAssistantChannel(AssistantChannelContribution contribution) => null;
 
     /// <summary>

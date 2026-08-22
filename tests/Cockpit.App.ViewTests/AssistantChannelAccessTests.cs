@@ -31,7 +31,9 @@ public class AssistantChannelAccessTests
         Assert.Null(result.Access);
     }
 
-    /// <summary>Criterion 3: widening to a list without the warning having been acknowledged does not happen at all.</summary>
+    /// <summary>
+    /// Criterion 3: widening to a list without the warning having been acknowledged does not happen at all.
+    /// </summary>
     [Fact]
     public void WideningToAList_WithoutTheWarningAcknowledged_IsRefusedWithThatWarning()
     {
@@ -63,7 +65,9 @@ public class AssistantChannelAccessTests
         Assert.Null(result.Access);
     }
 
-    /// <summary>Criterion 3, the heavier half: clicking through is not enough — the sentence has to be typed over.</summary>
+    /// <summary>
+    /// Criterion 3, the heavier half: clicking through is not enough — the sentence has to be typed over.
+    /// </summary>
     [Fact]
     public void OpeningToEveryone_WithoutTheConfirmationPhrase_IsRefusedWithTheHeavierWarning()
     {
@@ -90,7 +94,9 @@ public class AssistantChannelAccessTests
 
     // ── storage ────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Criterion 4: the bot token is written as a credential, never as a plain setting.</summary>
+    /// <summary>
+    /// Criterion 4: the bot token is written as a credential, never as a plain setting.
+    /// </summary>
     [Fact]
     public void TheBotToken_IsStoredAsASecret_AndNeverAsAPlainValue()
     {
@@ -126,7 +132,9 @@ public class AssistantChannelAccessTests
         Assert.Null(AssistantChannelStorage.LoadBotToken(new FakePluginStorage()));
     }
 
-    /// <summary>A named level whose names went missing must not fall through to letting everyone in.</summary>
+    /// <summary>
+    /// A named level whose names went missing must not fall through to letting everyone in.
+    /// </summary>
     [Fact]
     public void ANamedLevelWithNoNamesLeft_ReadsAsNotConfigured()
     {

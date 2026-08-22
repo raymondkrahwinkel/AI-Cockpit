@@ -9,19 +9,9 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.App.Services;
 
-// The app-level half of `IAssistantChannelGateway` (AC-1023): the one place a chat channel reaches the assistant,
-// and the narrowest surface that can carry a two-way conversation. Sibling of `AssistantAgentGateway` and shaped
-// like it on purpose — same UI-thread marshalling, since a platform's socket callback arrives on its own thread
-// while `SessionViewModel` and its transcript only ever move on the UI thread.
-//
-// *This class is the identity gate, not the plugin.* `SendAsync` checks the channel's own `AssistantChannelAccess`
-// before anything reaches `IAssistantSessionHost.SendAsync`, so a plugin that forgot to check — or was made to skip
-// it — still cannot put a stranger's words into the operator's conversation. §3's silence is a return value here,
-// never a reply the plugin has to remember not to send.
-//
-// *And it is not the consent gate.* Relaying a prompt is not deciding it: what reaches a channel is only the
-// assistant's own prompts, and only a prompt this channel was actually told about can be answered through it. The
-// app's own Allow/Deny card stays exactly where it was — both routes answer the same broker, first one wins.
+// AC-1023: the app-level half of `IAssistantChannelGateway`, shaped like `AssistantAgentGateway` — same UI-thread
+// marshalling, and a refusal is a result rather than an exception. The identity check in `SendAsync` and the
+// prompt filtering further down are the security boundary itself, host-side so a plugin cannot skip them.
 internal sealed class AssistantChannelGateway : IAssistantChannelGateway
 {
     private readonly AssistantChannelContribution _channel;
@@ -75,10 +65,22 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
             return AssistantChannelSendResult.IgnoredSender();
         }
 
-        await Dispatcher.UIThread.InvokeAsync(() => _host.SendAsync(text, cancellationToken)).ConfigureAwait(false);
+        try
+        {
+            await _OnUiThreadAsync(() => _host.SendAsync(text, cancellationToken)).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return AssistantChannelSendResult.Refused(exception.Message);
+        }
 
         return AssistantChannelSendResult.Sent();
     }
+
+    // AC-1023: awaits the send finishing rather than only its start — `InvokeAsync`'s own `Func<Task>` overload
+    // unwraps, and the inline branch spares a caller already on the UI thread a redundant dispatch.
+    private static Task _OnUiThreadAsync(Func<Task> work) =>
+        Dispatcher.UIThread.CheckAccess() ? work() : Dispatcher.UIThread.InvokeAsync(work);
 
     public void RespondToConsent(Guid promptId, ConsentOutcome outcome, bool remember = false)
     {
@@ -198,8 +200,12 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
             return;
         }
 
-        RowChanged?.Invoke(this, new AssistantChannelRow(id, _Kind(entry.Kind), entry.Text, entry.Timestamp)
+        RowChanged?.Invoke(this, new AssistantChannelRow
         {
+            Id = id,
+            Kind = _Kind(entry.Kind),
+            Text = entry.Text,
+            Timestamp = entry.Timestamp,
             ToolName = entry.ToolName,
             ResultText = entry.ResultText,
             IsUpdate = isUpdate,
