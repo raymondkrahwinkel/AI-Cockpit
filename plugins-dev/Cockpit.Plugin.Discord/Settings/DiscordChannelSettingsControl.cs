@@ -1,0 +1,196 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Channels;
+
+namespace Cockpit.Plugin.Discord.Settings;
+
+// The plugin's settings view (opened from the gear in the plugin manager): AC-1023 §3's three-level access
+// model verbatim (the warning texts are AssistantChannelAccess's own constants), the bot token/channel id, and
+// the verbosity picker (AC-669 §1.4). Direction only from the not-yet-reviewed Depot AC-1027 mockup.
+internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettingsView
+{
+    private readonly DiscordChannelSettings _settings;
+
+    private readonly RadioButton _singleUserOption;
+    private readonly RadioButton _specificUsersOption;
+    private readonly RadioButton _everyoneOption;
+
+    private readonly TextBox _singleUserId;
+    private readonly TextBox _specificUserIds;
+    private readonly CheckBox _specificUsersWarningAck;
+    private readonly TextBox _everyoneConfirmation;
+
+    private readonly ComboBox _verbosity;
+    private readonly TextBox _botToken;
+    private readonly TextBox _channelId;
+    private readonly TextBlock _errorText;
+
+    public DiscordChannelSettingsControl(DiscordChannelSettings settings)
+    {
+        _settings = settings;
+        var current = settings.Access;
+
+        _singleUserOption = new RadioButton { GroupName = "audience", Content = "Only this one Discord account" };
+        _specificUsersOption = new RadioButton { GroupName = "audience", Content = "Several specific Discord accounts" };
+        _everyoneOption = new RadioButton { GroupName = "audience", Content = "Everyone in this channel" };
+
+        _singleUserId = new TextBox { PlaceholderText = "Discord user id" };
+        _specificUserIds = new TextBox
+        {
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 60,
+            PlaceholderText = "One Discord user id per line",
+        };
+        var specificUsersWarningText = new TextBlock
+        {
+            Text = AssistantChannelAccess.MultipleUsersWarning,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.8,
+        };
+        _specificUsersWarningAck = new CheckBox { Content = "I understand" };
+
+        var everyoneWarningText = new TextBlock
+        {
+            Text = AssistantChannelAccess.EveryoneWarning,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.8,
+        };
+        _everyoneConfirmation = new TextBox { PlaceholderText = AssistantChannelAccess.EveryoneConfirmationPhrase };
+
+        switch (current?.Access.Audience)
+        {
+            case AssistantChannelAudience.SpecificUsers:
+                _specificUsersOption.IsChecked = true;
+                _specificUserIds.Text = string.Join('\n', current.Value.Access.UserIds);
+                break;
+            case AssistantChannelAudience.Everyone:
+                _everyoneOption.IsChecked = true;
+                break;
+            default:
+                _singleUserOption.IsChecked = true;
+                _singleUserId.Text = current?.Access.UserIds.FirstOrDefault() ?? string.Empty;
+                break;
+        }
+
+        var audiencePanel = new StackPanel
+        {
+            Spacing = 6,
+            Children =
+            {
+                _singleUserOption,
+                _singleUserId,
+                _specificUsersOption,
+                specificUsersWarningText,
+                _specificUserIds,
+                _specificUsersWarningAck,
+                _everyoneOption,
+                everyoneWarningText,
+                _everyoneConfirmation,
+            },
+        };
+
+        _verbosity = new ComboBox
+        {
+            ItemsSource = new[]
+            {
+                "A — the finished answer only",
+                "B — everything, tool use included",
+                "C — short status lines instead of full tool traffic",
+            },
+            SelectedIndex = (int)(current?.Verbosity ?? AssistantChannelVerbosity.FinalAnswerOnly),
+        };
+
+        _botToken = new TextBox { Text = settings.BotToken, PasswordChar = '•', PlaceholderText = "Discord bot token" };
+        _channelId = new TextBox
+        {
+            Text = settings.ChannelId == 0 ? string.Empty : settings.ChannelId.ToString(),
+            PlaceholderText = "Discord text channel id to relay into",
+        };
+
+        _errorText = new TextBlock { Foreground = _Brush("CockpitStatusErrorBrush"), TextWrapping = TextWrapping.Wrap, IsVisible = false };
+
+        Content = new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 10,
+                Children =
+                {
+                    new TextBlock { Text = "Who may talk to the assistant here?", FontWeight = FontWeight.Bold },
+                    audiencePanel,
+                    new TextBlock { Text = "How much of the conversation to relay", FontWeight = FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) },
+                    _verbosity,
+                    new TextBlock { Text = "Bot connection", FontWeight = FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) },
+                    _botToken,
+                    _channelId,
+                    _errorText,
+                },
+            },
+        };
+    }
+
+    public bool TryStage(out Action? commit, out string? error)
+    {
+        commit = null;
+
+        var result = _singleUserOption.IsChecked == true
+            ? AssistantChannelAccess.ForSingleUser(_singleUserId.Text ?? string.Empty)
+            : _specificUsersOption.IsChecked == true
+                ? AssistantChannelAccess.ForUsers(_ParseUserIds(_specificUserIds.Text), _specificUsersWarningAck.IsChecked == true)
+                : AssistantChannelAccess.ForEveryone(_everyoneConfirmation.Text ?? string.Empty);
+
+        if (!result.Ok)
+        {
+            return _Fail(out commit, out error, result.Error!);
+        }
+
+        if (string.IsNullOrWhiteSpace(_botToken.Text))
+        {
+            return _Fail(out commit, out error, "A bot token is required.");
+        }
+
+        if (!ulong.TryParse(_channelId.Text, out var channelId) || channelId == 0)
+        {
+            return _Fail(out commit, out error, "A valid Discord channel id is required.");
+        }
+
+        var access = result.Access!;
+        var verbosity = (AssistantChannelVerbosity)_verbosity.SelectedIndex;
+        var token = _botToken.Text.Trim();
+
+        commit = () =>
+        {
+            _settings.SaveAccess(access, verbosity);
+            _settings.BotToken = token;
+            _settings.ChannelId = channelId;
+        };
+
+        error = null;
+        _errorText.IsVisible = false;
+        return true;
+    }
+
+    private bool _Fail(out Action? commit, out string? error, string message)
+    {
+        commit = null;
+        error = message;
+        _errorText.Text = message;
+        _errorText.IsVisible = true;
+        return false;
+    }
+
+    private static IReadOnlyList<string> _ParseUserIds(string? text) =>
+        [.. (text ?? string.Empty).Split(['\n', '\r', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+    // AC-334/AC-337: a plugin's own theme lookup rather than a hardcoded Brushes.X — a colour lives in
+    // Theme.axaml, and each plugin keeps this tiny copy since Cockpit.Plugins.Abstractions.Theming.ThemeBrush is
+    // internal SDK plumbing, not part of the plugin contract (same pattern as GitStatusHeaderControl._Brush).
+    private static IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+}

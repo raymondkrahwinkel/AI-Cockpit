@@ -1,0 +1,12 @@
+{
+  "id": "discord",
+  "name": "Discord",
+  "version": "1.0.0",
+  "entryAssembly": "Cockpit.Plugin.Discord.dll",
+  "entryType": "Cockpit.Plugin.Discord.DiscordChannelPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "0.1.0",
+  "description": "Talk to your assistant from Discord — a second door onto the same conversation the chat window shows.",
+  "author": "Cockpit",
+  "secretKeys": ["assistantChannel.botToken"]
+}
