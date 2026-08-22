@@ -826,6 +826,42 @@ public class SessionViewModelTests
         Assert.True(nested.IsPendingPermission);
     }
 
+    // AC-996: the needs-attention flag was set unconditionally while the consent card only exists where a row
+    // does, so a permission whose tool-use event never arrived left the session waiting on the operator with
+    // nothing on screen to answer. Neither observation in that ticket was this case, but nothing rules it out.
+    [Fact]
+    public void Apply_PermissionForAToolUseThatWasNeverSeen_StillGetsARowToApprove()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "ghost", ToolName = "Bash", InputJson = """{"command":"ls"}""" });
+
+        var row = Assert.Single(vm.Transcript);
+        Assert.Equal(TranscriptEntryKind.ToolUse, row.Kind);
+        Assert.Equal("ghost", row.ToolUseId);
+        Assert.Equal("Bash", row.ToolName);
+        Assert.True(row.IsPendingPermission);
+        Assert.True(vm.HasPendingPermission);
+        Assert.Equal(SessionStatus.NeedsAttention, vm.SessionStatus);
+    }
+
+    // And the same for a sub-agent's call whose lane this pane never resolved: top-level, because a row nested
+    // under an anchor that may be collapsed is precisely the row the operator cannot reach.
+    [Fact]
+    public void Apply_PermissionForAnUnresolvedSubAgentCall_GetsATopLevelRow()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new PermissionRequested
+        {
+            SessionId = "S1", ToolUseId = "sub-tool-1", ToolName = "Bash", InputJson = "{}", ParentToolUseId = "task-nobody-saw",
+        });
+
+        var row = Assert.Single(vm.Transcript);
+        Assert.True(row.IsPendingPermission);
+        Assert.Empty(row.SubAgentRows);
+    }
+
     // AC-146 AC5: extract-last-assistant-text.js's own choice to exclude sidechain chatter from read-aloud must
     // not get inverted in the app's own read-aloud path — a sub-agent's text must never reach the operator's ears
     // as if the top-level reply said it.
