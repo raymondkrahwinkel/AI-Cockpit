@@ -5,9 +5,8 @@ namespace Cockpit.App.Plugins;
 
 /// <summary>
 /// Holds the project-ownership claims plugins register (<c>ICockpitHost.ClaimProjectOwnership</c>, AC-604), so the
-/// project editor can resolve a project's badges without depending on the plugin that claimed it. A registry of its
-/// own, the same shape as <see cref="IProjectFieldRegistry"/>. Empty until a plugin that shares project definitions
-/// elsewhere is installed.
+/// project editor resolves a project's badges without depending on the claiming plugin. Same shape as
+/// <see cref="IProjectFieldRegistry"/>.
 /// </summary>
 public interface IProjectOwnershipRegistry
 {

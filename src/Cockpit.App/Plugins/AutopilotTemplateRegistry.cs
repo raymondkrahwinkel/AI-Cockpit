@@ -4,11 +4,9 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.App.Plugins;
 
 /// <summary>
-/// The host-owned registry of Autopilot goal/brief templates plugins contribute (AC-189). The host holds them for the
-/// same reason it holds the intent handlers and workflow templates: the plugins involved need not see each other — a
-/// plugin that ships a brief must not reference the Autopilot plugin, and Autopilot need not know that plugin exists.
-/// Both know the host; the host stamps each registration with the contributing plugin's own id. Registrations live
-/// only in memory: a plugin re-registers on every start, so nothing here is persisted.
+/// The host-owned registry of Autopilot goal/brief templates plugins contribute (AC-189) — same reason as the intent
+/// handlers and workflow templates: the plugins involved need not see each other, only the host, which stamps each
+/// registration with the contributing plugin's id. In-memory only; a plugin re-registers on every start.
 /// </summary>
 public interface IAutopilotTemplateRegistry
 {

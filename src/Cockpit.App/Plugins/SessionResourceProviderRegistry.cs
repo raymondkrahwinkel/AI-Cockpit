@@ -5,9 +5,8 @@ namespace Cockpit.App.Plugins;
 
 /// <summary>
 /// Holds the session-resource providers plugins register (<c>ICockpitHost.AddSessionResourceProvider</c>, AC-165),
-/// so the launch routes can ask them without depending on the plugins that contribute them. A registry of its own,
-/// the same shape as <see cref="IProjectFieldRegistry"/>. Empty until a plugin that gives sessions something is
-/// installed, which is the ordinary state.
+/// so the launch routes can ask them without depending on the contributing plugins. Same shape as
+/// <see cref="IProjectFieldRegistry"/>.
 /// </summary>
 public interface ISessionResourceProviderRegistry
 {

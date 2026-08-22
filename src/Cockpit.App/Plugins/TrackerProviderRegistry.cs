@@ -4,10 +4,9 @@ using Cockpit.Plugins.Abstractions.Tracking;
 namespace Cockpit.App.Plugins;
 
 /// <summary>
-/// Holds the trackers plugins register (<c>ICockpitHost.AddTrackerProvider</c>), so a consumer (Autopilot) can find
-/// the one for an issue's tracker id and post back to it. A registry of its own, the same shape as
-/// <see cref="IWorkspaceTypeRegistry"/>, so a consumer reads it without depending on the tracker plugins. Empty until
-/// a tracker plugin is installed.
+/// Holds the trackers plugins register (<c>ICockpitHost.AddTrackerProvider</c>), so a consumer (Autopilot) finds the
+/// one for an issue's tracker id and posts back to it. Same shape as <see cref="IWorkspaceTypeRegistry"/>, read
+/// without depending on the tracker plugins.
 /// </summary>
 public interface ITrackerProviderRegistry
 {

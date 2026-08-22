@@ -3,11 +3,9 @@ using Avalonia.Controls;
 namespace Cockpit.App.Views.Onboarding;
 
 /// <summary>
-/// One page of the first-run wizard (AC-509). The shell walks Back/Next/Skip across whatever steps are
-/// registered (auto-discovered the same way a plugin registers, via <c>ISingletonService</c>), so a step can be
-/// added — <c>AC-510</c>'s provider picker, <c>AC-511</c>'s work-type step — without the shell itself changing.
-/// A step left out entirely, like the Depot step <c>AC-540</c> until it lands, still claims its place in the
-/// step bar (<c>FirstRunWizardViewModel.EpicPlan</c>) — shown dim rather than simply missing.
+/// One page of the first-run wizard (AC-509). The shell walks Back/Next/Skip across registered steps
+/// (auto-discovered like a plugin, via <c>ISingletonService</c>). A step left out entirely, like the Depot step
+/// <c>AC-540</c> until it lands, still claims its place in the step bar — shown dim rather than simply missing.
 /// </summary>
 public interface IFirstRunWizardStep
 {

@@ -12,80 +12,51 @@ namespace Cockpit.App.Services;
 public interface ISessionDialogService
 {
     /// <summary>
-    /// Shows the New-session dialog — SDK vs TTY is chosen inside it (#32) — and returns the confirmed
-    /// choices, or null if cancelled. <paramref name="prefill"/> (#AC-96) seeds the dialog's fields — a profile
-    /// by label, a working directory, a session name, a resume id — so a caller that knows some of them offers
-    /// them ready while the operator still confirms and can change every one; null opens it on its own defaults.
-    /// <paramref name="isolateInWorktree"/> additionally turns worktree isolation on for the pre-filled folder —
-    /// the AC-85 reattach case (starting a session in an existing worktree so starting re-owns it), separate from
-    /// <paramref name="prefill"/> because it is a host reattach concern, not one of the plugin-facing prefill fields.
-    /// <paramref name="project"/> opens the dialog on that project (AC-164), so its folder, profile, worktree default
-    /// and MCP overlay apply exactly as if the operator had picked it there — a host concern too, and not a prefill
-    /// field: a project is a thing the dialog knows, while a prefill is a set of values a plugin hands in.
+    /// Shows the New-session dialog — SDK vs TTY chosen inside it (#32) — returning the confirmed choices, or null
+    /// if cancelled. <paramref name="prefill"/> (#AC-96) seeds fields; <paramref name="isolateInWorktree"/> turns on
+    /// worktree isolation (AC-85 reattach); <paramref name="project"/> opens on that project (AC-164).
     /// </summary>
     Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null);
 
     /// <summary>
-    /// Opens the managed-worktrees dialog (AC-85): the git worktrees the cockpit created, their state and owner, with
-    /// reattach and remove. Takes <paramref name="worktrees"/> as a parameter rather than injecting it (like
-    /// <see cref="ShowOptionsDialogAsync"/>) so the dialog service does not depend on the view model that itself
-    /// depends on the dialog service for the remove-consent prompt.
+    /// Opens the managed-worktrees dialog (AC-85): the git worktrees the cockpit created, with reattach and remove.
+    /// Takes <paramref name="worktrees"/> as a parameter rather than injecting it, avoiding a circular dependency
+    /// with the view model this service serves for the remove-consent prompt.
     /// </summary>
     Task ShowWorktreesDialogAsync(WorktreesViewModel worktrees);
 
     /// <summary>
-    /// Shows the assistant's own profile editor (Options → Voice). Its own dialog rather than a row in the profile
-    /// list: that record is not a session profile, is not in the list, and cannot be deleted from it.
+    /// Shows the assistant's own profile editor (Options → Voice) — its own dialog, since that record is not a
+    /// session profile. <paramref name="assistant"/> backs the restart button; a parameter, not injected, for the
+    /// same reason as <see cref="ShowWorktreesDialogAsync"/>. Null just offers no restart.
     /// </summary>
-    /// <param name="assistant">
-    /// The living assistant, for the dialog's restart button — a permission mode is read at a launch, so the setting
-    /// and the start that applies it belong together. Taken as a parameter rather than injected for the same reason
-    /// <see cref="ShowWorktreesDialogAsync"/> and <see cref="ShowProjectsDialogAsync"/> take theirs: the host is
-    /// built from <c>CockpitViewModel</c>, which depends on this service, so injecting it would be a circle. Null
-    /// leaves the dialog fully usable and simply offers no restart.
-    /// </param>
     Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant);
 
     /// <summary>
-    /// Shows the projects manager (AC-161) in its own window: the saved projects, with add, edit and remove. Its
-    /// own dialog rather than a tab in Options (Raymond, 2026-07-24) — a project is the work the cockpit is pointed
-    /// at, not a setting of it, and where projects come from is about to widen beyond this machine.
-    /// <para>
-    /// Takes <paramref name="projects"/> as a parameter for the same reason <see cref="ShowWorktreesDialogAsync"/>
-    /// does: that view model depends on this service for its editor and its confirmations, so injecting it here
-    /// would be a circle.
-    /// </para>
+    /// Shows the projects manager (AC-161): saved projects, with add, edit and remove. Its own dialog rather than a
+    /// tab in Options (Raymond, 2026-07-24). Takes <paramref name="projects"/> as a parameter for the same reason
+    /// <see cref="ShowWorktreesDialogAsync"/> does: injecting it would be a circle.
     /// </summary>
     Task ShowProjectsDialogAsync(ProjectsViewModel projects);
 
     /// <summary>
-    /// Shows the project editor (AC-160) for <paramref name="project"/>, or for a new project when it is null,
-    /// and returns what the operator saved — null when they cancelled. Persisting is the caller's: this hands
-    /// back an edited value the same way the New-session dialog hands back its choices.
+    /// Shows the project editor (AC-160) for <paramref name="project"/>, or a new one when null; returns what was
+    /// saved, or null if cancelled (persisting is the caller's). <paramref name="sharedSource"/> (AC-247), when
+    /// set, reads a fresh <see cref="SharedProjectBinding"/> first so Save writes a claimed field back correctly.
     /// </summary>
-    /// <param name="sharedSource">
-    /// The <see cref="ISharedProjectSource"/> <paramref name="project"/> is bound to (AC-247), or null for a plain
-    /// local project — the caller's own <c>ProjectsViewModel._ResolveSharedSource</c> already knows this without
-    /// asking again. When set, this reads a fresh <see cref="SharedProjectBinding"/> (for its checksum) before
-    /// opening the editor, so Save has somewhere current to write a claimed field's edit back to.
-    /// </param>
     Task<Project?> ShowProjectDialogAsync(Project? project, ISharedProjectSource? sharedSource = null);
 
     /// <summary>
-    /// Shows the "Finish setting up…" bind step (AC-246) for <paramref name="sharedProject"/>, a project
-    /// <paramref name="source"/> listed that this machine has not bound to a local project yet. Reads the project's
-    /// full definition through <paramref name="source"/> first; returns null both when the operator cancelled and
-    /// when that read failed (an error is shown either way, distinguishable only by which one happened, the same
-    /// as <see cref="ShowProjectDialogAsync"/> hands back null for a cancel). Persisting the result is the caller's,
-    /// same as every other project dialog here.
+    /// Shows the "Finish setting up…" bind step (AC-246) for <paramref name="sharedProject"/>, not yet bound on this
+    /// machine. Reads the full definition through <paramref name="source"/> first; returns null both on cancel and
+    /// on a failed read (shown as an error either way). Persisting the result is the caller's.
     /// </summary>
     Task<Project?> ShowSharedProjectBindingDialogAsync(SharedProject sharedProject, string sourceName, ISharedProjectSource source);
 
     /// <summary>
     /// Shows AC-620's confirmation screen for publishing <paramref name="project"/> — a local project not yet bound
-    /// to any <see cref="ISharedProjectSource"/> — to one of <paramref name="publishSources"/> (every registered
-    /// source whose <see cref="ISharedProjectSource.CanPublish"/> is true). Returns <paramref name="project"/> with
-    /// its new binding row on a successful publish, or null when the operator cancelled.
+    /// — to one of <paramref name="publishSources"/> (registered sources with <see cref="ISharedProjectSource.CanPublish"/>).
+    /// Returns <paramref name="project"/> with its new binding row on success, or null when cancelled.
     /// </summary>
     Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<ISharedProjectSource> publishSources);
 
@@ -93,27 +64,17 @@ public interface ISessionDialogService
     Task ShowVerifyRunnersDialogAsync();
 
     /// <summary>
-    /// Shows the plugin store dialog (#62) over the currently active window (typically the Options dialog
-    /// it was opened from, so it centers over the dialog stack rather than jumping behind it to the main
-    /// window) — a browsing/presentation layer around <paramref name="manager"/>, the same
-    /// <see cref="PluginManagerViewModel"/> instance the Options→Plugins tab uses. Every install/update,
-    /// the consent step and the restart banner go through that shared instance unchanged.
-    /// <paramref name="initialFilter"/> preselects a sidebar scope (#65: a plugin-update toast's action
-    /// opens straight onto <see cref="PluginStoreFilter.UpdatesAvailable"/>); null keeps the default
-    /// Discover page.
+    /// Shows the plugin store dialog (#62) over the currently active window — a browsing layer around
+    /// <paramref name="manager"/>, the same <see cref="PluginManagerViewModel"/> instance Options→Plugins uses.
+    /// <paramref name="initialFilter"/> preselects a sidebar scope (#65); null keeps the default Discover page.
     /// </summary>
     Task ShowPluginStoreDialogAsync(PluginManagerViewModel manager, PluginStoreFilter? initialFilter = null);
 
     /// <summary>
     /// Shows the Options dialog (#13) over the main window, with <paramref name="viewModel"/> as its
-    /// <see cref="Avalonia.Controls.Window.DataContext"/> so its tabs bind straight to the cockpit's
-    /// existing option properties/commands.
+    /// <see cref="Avalonia.Controls.Window.DataContext"/>. <paramref name="category"/> is the nav item's
+    /// <c>Tag</c> to open on, or null for the default — AC-1001's deep-link actions pass this instead of a new window.
     /// </summary>
-    /// <param name="category">
-    /// The nav item's <c>Tag</c> to open on (e.g. <c>"profiles"</c>), or <see langword="null"/> for the dialog's
-    /// own default (Sessions) — AC-1001's deep-link menu items and shortcut actions pass this instead of opening
-    /// their own window.
-    /// </param>
     Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null);
 
     /// <summary>Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.</summary>
@@ -141,9 +102,8 @@ public interface ISessionDialogService
     Task ShowDelegatedTasksDialogAsync();
 
     /// <summary>
-    /// Opens the read-only window on the agent line (AC-397): what the agents on this desk have said to each other,
-    /// which wakes were asked for, what is claimed and what has been refused. Takes its view model like the worktrees
-    /// dialog does, because the caller owns it — it reads the stores the caller was built with.
+    /// Opens the read-only window on the agent line (AC-397): what agents on this desk said, wakes asked for,
+    /// what's claimed and refused. Takes its view model like the worktrees dialog does, since the caller owns it.
     /// </summary>
     Task ShowAgentLineInspectorDialogAsync(AgentLineInspectorViewModel inspector);
 
@@ -154,9 +114,8 @@ public interface ISessionDialogService
     Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove");
 
     /// <summary>
-    /// Shows the Set-status dialog (AC-32) seeded with <paramref name="currentStatusline"/> so the operator can edit a
-    /// session's status line by hand. Returns the new value — an empty string when they clear it — or null when they
-    /// cancel, leaving the status unchanged.
+    /// Shows the Set-status dialog (AC-32) seeded with <paramref name="currentStatusline"/>. Returns the new value
+    /// — empty when cleared — or null when cancelled, leaving the status unchanged.
     /// </summary>
     Task<string?> ShowSetStatusDialogAsync(string currentStatusline);
 

@@ -4,19 +4,16 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.App.Plugins;
 
 /// <summary>
-/// The intent handlers plugins register for actions addressed to them (AC-95), and the lookup a caller goes through
-/// to reach one. The host holds them for the same reason it holds the workflow steps: the two plugins involved cannot
-/// see each other — the tracker that offers "Start in Autopilot" must not reference the Autopilot plugin, and
-/// Autopilot need not know the tracker exists. Both know the host, addressing each other by manifest id and an agreed
-/// action string, and the host knows nothing about either.
+/// The intent handlers plugins register for actions addressed to them (AC-95), and the lookup a caller uses to reach
+/// one. Held by the host for the same reason as the workflow steps: the two plugins involved cannot see each other,
+/// only address each other by manifest id and an agreed action string, with the host knowing neither.
 /// </summary>
 public interface IPluginIntentRegistry
 {
     /// <summary>
-    /// Registers <paramref name="handler"/> as <paramref name="ownerPluginId"/>'s handler for
-    /// <paramref name="action"/>. Throws when that plugin already registered the same action — a second handler for
-    /// one (owner, action) would make which of them runs a question of load order, the same reason
-    /// <see cref="IWorkflowStepRegistry"/> refuses a duplicate type id.
+    /// Registers <paramref name="handler"/> as <paramref name="ownerPluginId"/>'s handler for <paramref name="action"/>.
+    /// Throws when that plugin already registered the same action — a second handler would make which one runs a
+    /// question of load order, the same reason <see cref="IWorkflowStepRegistry"/> refuses a duplicate type id.
     /// </summary>
     void Register(string ownerPluginId, string action, Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>> handler);
 
@@ -28,9 +25,8 @@ public interface IPluginIntentRegistry
 
     /// <summary>
     /// Invokes the handler for <c>(<see cref="PluginIntent.TargetPluginId"/>, <see cref="PluginIntent.Action"/>)</c>
-    /// and returns its result, or <see langword="null"/> when no handler is registered. Absence is normal here — the
-    /// target plugin may simply not be installed — so it is a null return rather than the thrown error the workflow
-    /// <see cref="IWorkflowStepRegistry.Raise"/> uses.
+    /// and returns its result, or <see langword="null"/> when unregistered — absence is normal (the target plugin may
+    /// not be installed), so a null return rather than the thrown error <see cref="IWorkflowStepRegistry.Raise"/> uses.
     /// </summary>
     Task<IReadOnlyDictionary<string, string>?> Dispatch(PluginIntent intent);
 }
