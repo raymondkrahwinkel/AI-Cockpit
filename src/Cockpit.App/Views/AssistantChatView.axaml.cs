@@ -340,6 +340,9 @@ public partial class AssistantChatView : UserControl
         ScrollToBottomButton.IsVisible = false;
     }
 
+    // AC-1022: lets the reply button send focus to the composer after setting its target.
+    internal void FocusInput() => InputBox.Focus();
+
     // AC-935: a reply's citation and a replied-to row's marker both jump here. `_stickToBottom` has to come off
     // first, or the ScrollChanged handler reads "not an operator gesture, still sticky" and follows straight
     // back to the newest row — the jump-to-newest chevron is the way back, same as after a manual scroll.

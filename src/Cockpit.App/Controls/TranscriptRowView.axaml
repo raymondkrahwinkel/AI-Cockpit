@@ -101,6 +101,7 @@
                             IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"
                             Command="{Binding Session.SetReplyTargetCommand}"
                             CommandParameter="{Binding}"
+                            Click="_OnReplyClick"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Reply to this message">
                         <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="13" Height="13"/>
@@ -200,6 +201,7 @@
                                 IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"
                                 Command="{Binding Session.SetReplyTargetCommand}"
                                 CommandParameter="{Binding}"
+                                Click="_OnReplyClick"
                                 Foreground="{StaticResource CockpitTextFaintBrush}"
                                 ToolTip.Tip="Reply to this message">
                             <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="13" Height="13"/>

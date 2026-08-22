@@ -38,8 +38,13 @@ public sealed class AssistantChatWindowReplyButtonTests
             Assert.Same(session.SetReplyTargetCommand, replyButton.Command);
 
             replyButton.Command!.Execute(replyButton.CommandParameter);
+            replyButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
 
             Assert.Same(entry, session.PendingReplyTo);
+
+            // AC-1022: the click has to hand focus to the composer, not leave it on the button itself.
+            Assert.True(window.ChatView.InputBox.IsFocused);
         }
         finally
         {
