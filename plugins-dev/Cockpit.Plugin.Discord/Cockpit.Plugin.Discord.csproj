@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Discord plugin (AC-1024): Discord.NET-backed AssistantChannelContribution (AC-1023) — a bot connection
+       that relays the assistant's own transcript into a Discord channel and consent prompts as Approve/Deny
+       buttons (Components API), with a "type JA/NEE" text fallback. Built OUTSIDE the main solution
+       (plugins-dev/) like the other plugins; package bin/<config>/net10.0 into a .zip and install it via the
+       plugin store. Shared assemblies (Cockpit.Plugins.Abstractions, Avalonia, the DI abstractions) are
+       compile-only so the host's copies load and shared types keep one identity. Discord.Net is this plugin's
+       own runtime dependency (like Docker ships Docker.DotNet), so it and its transitive deps are packaged
+       into the plugin folder. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- The plugin's own runtime dependency: the Discord gateway/REST client. Not compile-only — it and its
+         transitive deps ship in the plugin folder. -->
+    <PackageReference Include="Discord.Net" Version="3.20.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Discord.Tests" />
+  </ItemGroup>
+
+</Project>
