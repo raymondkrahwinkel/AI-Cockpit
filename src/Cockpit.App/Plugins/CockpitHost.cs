@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Docking;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
@@ -15,6 +16,7 @@ using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.ManagedCli;
@@ -81,8 +83,34 @@ internal sealed class CockpitHost(
     // session id the agent named. Null off the verified path (no MCP call in flight).
     public string? CurrentMcpCallerPaneId => McpRequestContext.CurrentPaneId;
 
+    // This plugin's open channels, keyed by the id it named them (AC-1023). Kept so re-opening one replaces it
+    // rather than leaving a second gateway subscribed to the same transcript, doubling every relayed row.
+    private readonly Dictionary<string, IAssistantChannelGateway> _assistantChannels = new(StringComparer.Ordinal);
+
     public void AddSettings(Func<Control> createView) =>
         contributionSink.AddPluginSettings(pluginId, pluginName, createView);
+
+    public IAssistantChannelGateway? OpenAssistantChannel(AssistantChannelContribution contribution)
+    {
+        ArgumentNullException.ThrowIfNull(contribution);
+
+        // GetService, not GetRequiredService: a host built without an assistant (tests, a headless run) has no
+        // channel to offer, which the contract says is a null rather than a throw.
+        if (services.GetService<IAssistantSessionHost>() is not { } assistantHost)
+        {
+            return null;
+        }
+
+        if (_assistantChannels.Remove(contribution.Id, out var previous))
+        {
+            previous.Dispose();
+        }
+
+        var gateway = new AssistantChannelGateway(contribution, assistantHost, services.GetRequiredService<IConsentBroker>());
+        _assistantChannels[contribution.Id] = gateway;
+
+        return gateway;
+    }
 
     public bool HasSettings => contributionSink.HasPluginSettings(pluginId);
 
