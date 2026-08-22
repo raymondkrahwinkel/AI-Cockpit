@@ -5,22 +5,9 @@ JSON-RPC 2.0 over stdio, one persistent subprocess for the whole session. Not a 
 the protocol itself, so it sees the stream, the tool calls and the permission requests rather than a rendered
 terminal.
 
-## What you need
-
-- The **`kimi` CLI** on this machine (`npm i -g @moonshot-ai/kimi-code`, needs Node ≥ 22.19). The plugin
-  resolves it from `PATH`, from a path you pin in its settings, or from a cockpit-managed copy if one is ever
-  installed — it does not install the CLI for you. See *Distribution* below for why.
-- **Authentication**, either an API key (set in the plugin's settings; passed to the child as an environment
-  variable, `KIMI_API_KEY` by default, never as a command-line argument) or the CLI's own cached login. The
-  settings view has a **Login with Kimi account…** button that runs `kimi acp --login` for you.
-
-## Settings
-
-| Field | What it does |
-|---|---|
-| Kimi command / path | `kimi`, or an absolute path when it is not on `PATH`. The view resolves it while you type and shows what will actually run. |
-| API key (optional) | Stored encrypted at rest by the host, like every other plugin secret. Leave it empty to rely on the CLI's cached login instead. |
-| Default model (optional) | Applied once the session exists, best effort — a model Kimi does not offer is skipped rather than failing the start. |
+Setup (installing the CLI, authenticating, choosing a model, and what silently doesn't reach Kimi) is
+documented in [`Docs/setup.md`](Docs/setup.md) — the same page this plugin ships in-app under its own Docs
+tab.
 
 Two further fields exist on the stored config for the rare case you need them, and are edited in
 `cockpit.json` rather than in the dialog: `AuthEnvVar` (which variable the key is set under, `KIMI_API_KEY`

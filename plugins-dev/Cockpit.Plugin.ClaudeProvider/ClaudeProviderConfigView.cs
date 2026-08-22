@@ -46,10 +46,10 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
             Spacing = 8,
             Children =
             {
-                _Label("Config directory (optional)"),
+                _LabelRow("Config directory (optional)", host.CreateHelpHint("setup", "config-dir")),
                 _configDir,
                 _configDirStatus,
-                _Label("Claude executable / path (optional)"),
+                _LabelRow("Claude executable / path (optional)", host.CreateHelpHint("setup", "executable-path")),
                 _executablePath,
                 _executableStatus,
                 _managedCli.View,
@@ -133,5 +133,12 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
         return true;
     }
 
-    private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
+    // AC-1043: a label with the SDK-drawn "?" beside it, pointing at the section of this plugin's own setup
+    // page that explains the field below.
+    private static StackPanel _LabelRow(string text, Control help) => new()
+    {
+        Orientation = Avalonia.Layout.Orientation.Horizontal,
+        Margin = new Thickness(0, 4, 0, 0),
+        Children = { new TextBlock { Text = text, FontSize = 11 }, help },
+    };
 }

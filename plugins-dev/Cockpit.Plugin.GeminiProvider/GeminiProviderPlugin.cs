@@ -41,7 +41,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GeminiDefaultBaseUrl),
+            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GeminiDefaultBaseUrl, host),
             DefaultBaseUrl: GeminiDefaultBaseUrl));
 
         host.AddSessionProvider(new SessionProviderRegistration(
@@ -55,7 +55,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiDefaultBaseUrl),
+            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiDefaultBaseUrl, host),
             DefaultBaseUrl: OpenAiDefaultBaseUrl));
     }
 

@@ -50,12 +50,12 @@ internal sealed class OpencodeProviderConfigView : IPluginProviderConfigView
             Spacing = 8,
             Children =
             {
-                _Label("opencode command / path"),
+                _LabelRow("opencode command / path", host.CreateHelpHint("setup", "install-cli")),
                 _command,
                 _commandStatus,
-                _Label("API key (optional)"),
+                _LabelRow("API key (optional)", host.CreateHelpHint("setup", "authenticate")),
                 _apiKey,
-                _Label("Default model (optional)"),
+                _LabelRow("Default model (optional)", host.CreateHelpHint("setup", "default-model")),
                 _defaultModel,
                 _Hint("opencode routes by provider/model, e.g. anthropic/claude-sonnet-4-5, openai/gpt-5.1 — or leave blank to use opencode's own free-tier default and change it live from the session's model picker."),
                 _Label("Sign in without an API key"),
@@ -148,4 +148,13 @@ internal sealed class OpencodeProviderConfigView : IPluginProviderConfigView
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
 
     private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+
+    // AC-1043: a label with the SDK-drawn "?" beside it, pointing at the section of this plugin's own setup
+    // page that explains the field below.
+    private static StackPanel _LabelRow(string text, Control help) => new()
+    {
+        Orientation = Avalonia.Layout.Orientation.Horizontal,
+        Margin = new Thickness(0, 4, 0, 0),
+        Children = { new TextBlock { Text = text, FontSize = 11 }, help },
+    };
 }

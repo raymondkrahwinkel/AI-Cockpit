@@ -1,7 +1,7 @@
 {
   "id": "fan-out",
   "name": "Fan-out",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "entryAssembly": "Cockpit.Plugin.FanOut.dll",
   "entryType": "Cockpit.Plugin.FanOut.FanOutPlugin",
   "abstractionsVersion": 2,

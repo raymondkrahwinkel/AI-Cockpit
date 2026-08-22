@@ -37,7 +37,7 @@ public sealed class GrokProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GrokDefaultBaseUrl),
+            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GrokDefaultBaseUrl, host),
             DefaultBaseUrl: GrokDefaultBaseUrl));
     }
 

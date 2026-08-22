@@ -42,7 +42,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
         // gathered, so the Workflows-settings toggle takes effect without a restart; the settings view below edits it.
         var settings = new WorkflowsSettings(host.Storage);
         _ = host.AddMcpEndpoint("cockpit-workflows", new WorkflowMcpTools(store, runs, host), isEnabled: () => settings.McpEnabled);
-        host.AddSettings(() => new WorkflowsSettingsControl(settings));
+        host.AddSettings(() => new WorkflowsSettingsControl(host, settings));
 
         // Ask big: a canvas is the one thing that is never too large, and the host clamps the request to the
         // cockpit window anyway.
