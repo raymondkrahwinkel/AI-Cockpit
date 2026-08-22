@@ -44,8 +44,10 @@ public sealed class TranscriptStreamingCostTests
                 rendered.Children.Count < 200,
                 $"a 200-delta burst painted {rendered.Children.Count} paragraphs; the rate limit is not holding");
 
-            // The last delta must still land: the tick after the burst flushes it.
-            await Task.Delay(200);
+            // The last delta must still land: the tick after the burst flushes it. The burst left a rebuild
+            // pending on the timer's next tick, so wait for that real completion rather than guessing a delay
+            // that outlasts it.
+            await view.WaitForPendingRenderAsync();
             Assert.Equal(200, rendered.Children.Count);
         });
     }
@@ -66,9 +68,9 @@ public sealed class TranscriptStreamingCostTests
 
             var rendered = Assert.IsType<StackPanel>(view.Content);
 
+            // The first set on a fresh view renders inline (no rebuild timer running yet to coalesce into).
             var text = "first paragraph, written once.\n\nsecond paragraph.\n\n";
             view.Markdown = text;
-            await Task.Delay(120);
 
             Assert.Equal(2, rendered.Children.Count);
             var first = rendered.Children[0];
@@ -78,7 +80,10 @@ public sealed class TranscriptStreamingCostTests
             {
                 text += $"later paragraph {i}.\n\n";
                 view.Markdown = text;
-                await Task.Delay(50);
+
+                // The first render started the rebuild timer, so every set after it only flags a pending rebuild
+                // and returns; wait for the real tick that applies it instead of guessing it lands within 50ms.
+                await view.WaitForPendingRenderAsync();
             }
 
             Assert.Equal(22, rendered.Children.Count);
@@ -102,12 +107,14 @@ public sealed class TranscriptStreamingCostTests
 
             var rendered = Assert.IsType<StackPanel>(view.Content);
 
+            // First set on a fresh view renders inline — no rebuild timer running yet to coalesce into.
             view.Markdown = "one.\n\ntwo.\n\nthree.\n\nfour.\n\n";
-            await Task.Delay(120);
             Assert.Equal(4, rendered.Children.Count);
 
+            // This set lands while the timer from the first render is still running, so it only flags a pending
+            // rebuild; wait for the tick that actually applies it.
             view.Markdown = "just the one now.\n\n";
-            await Task.Delay(120);
+            await view.WaitForPendingRenderAsync();
             Assert.Single(rendered.Children);
         });
     }
@@ -235,7 +242,10 @@ public sealed class TranscriptStreamingCostTests
 
             producing.Stop();
 
-            await Task.Delay(200);
+            // The test measures how the windowed drain folded deltas over real time, so it must let that drain
+            // run its own course rather than lump everything into one apply — wait for the queue to report itself
+            // idle (HasWork false), then flush whatever a still-open window left behind.
+            await _WaitUntilAsync(() => !queue.HasWork);
             queue.Flush();
 
             // Nothing may be lost, however the folding falls out.
@@ -283,6 +293,16 @@ public sealed class TranscriptStreamingCostTests
         queue.Flush();
 
         Assert.Equal(["one", "two"], applied);
+    }
+
+    private static async Task _WaitUntilAsync(Func<bool> condition)
+    {
+        for (var i = 0; i < 500 && !condition(); i++)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition(), "the condition should become true within the poll window");
     }
 
     // The template binds by reflection, so the grid only needs an object carrying IsPaneVisible; a real
