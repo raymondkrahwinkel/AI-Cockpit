@@ -9,9 +9,11 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Cockpit.App.Controls;
 using Cockpit.App.Converters;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
@@ -191,7 +193,19 @@ public partial class OptionsDialog : Window
     private ScrollViewer _BuildPluginContent(string tag, PluginOptionsRowViewModel row)
     {
         var body = new StackPanel { Margin = new Thickness(24, 20), MaxWidth = 900, Spacing = 8 };
-        body.Children.Add(new TextBlock { Text = row.DisplayName, FontSize = 20, FontWeight = FontWeight.Bold });
+
+        // AC-1033's second door, and the one the question usually comes through: where you are pasting a token
+        // is where you wonder which token it wants. Beside the plugin's name, and only when that plugin ships
+        // documentation — a link to an empty page is worse than no link.
+        var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        heading.Children.Add(new TextBlock { Text = row.DisplayName, FontSize = 20, FontWeight = FontWeight.Bold });
+        if (Program.Services?.GetService<HelpService>() is { } help && help.LandingFor(row.PluginId) is { } landing)
+        {
+            heading.Children.Add(new HelpHint(
+                help, landing, "Documentation", $"the Documentation link on {row.DisplayName}'s settings"));
+        }
+
+        body.Children.Add(heading);
         body.Children.Add(new Border { Height = 1, Background = _Brush("CockpitHairlineBrush"), Margin = new Thickness(0, 4) });
 
         // No footer of its own and no window of its own (criteria 3/5): the view sits flat in the content column,

@@ -22,27 +22,37 @@
              that layer was tried before and cut. The full guide (Help → Guide) covers the rest of the depth. -->
         <StackPanel Margin="20,18" Spacing="14">
             <StackPanel Spacing="2">
-                <TextBlock Text="Session" FontWeight="SemiBold" FontSize="12.5"/>
+                <StackPanel x:Name="SessionHead" Orientation="Horizontal">
+                    <TextBlock Text="Session" FontWeight="SemiBold" FontSize="12.5"/>
+                </StackPanel>
                 <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
                            Text="One running AI conversation, in its own pane — backed by the SDK or a plain TTY."/>
             </StackPanel>
             <StackPanel Spacing="2">
-                <TextBlock Text="Project" FontWeight="SemiBold" FontSize="12.5"/>
+                <StackPanel x:Name="ProjectHead" Orientation="Horizontal">
+                    <TextBlock Text="Project" FontWeight="SemiBold" FontSize="12.5"/>
+                </StackPanel>
                 <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
                            Text="A folder the cockpit remembers, with its own profile, resources and quick-start defaults."/>
             </StackPanel>
             <StackPanel Spacing="2">
-                <TextBlock Text="Profile" FontWeight="SemiBold" FontSize="12.5"/>
+                <StackPanel x:Name="ProfileHead" Orientation="Horizontal">
+                    <TextBlock Text="Profile" FontWeight="SemiBold" FontSize="12.5"/>
+                </StackPanel>
                 <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
                            Text="A saved provider and its configuration — model, permissions, credentials — a session runs under."/>
             </StackPanel>
             <StackPanel Spacing="2">
-                <TextBlock Text="Plugin" FontWeight="SemiBold" FontSize="12.5"/>
+                <StackPanel x:Name="PluginHead" Orientation="Horizontal">
+                    <TextBlock Text="Plugin" FontWeight="SemiBold" FontSize="12.5"/>
+                </StackPanel>
                 <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
                            Text="An installable extension: a provider, a dialog, an MCP server, or a workflow template."/>
             </StackPanel>
             <StackPanel Spacing="2">
-                <TextBlock Text="MCP server" FontWeight="SemiBold" FontSize="12.5"/>
+                <StackPanel x:Name="MCPserverHead" Orientation="Horizontal">
+                    <TextBlock Text="MCP server" FontWeight="SemiBold" FontSize="12.5"/>
+                </StackPanel>
                 <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
                            Text="A Model Context Protocol server a session's provider can call as a tool."/>
             </StackPanel>

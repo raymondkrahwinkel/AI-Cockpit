@@ -1,0 +1,25 @@
+<Project>
+
+  <!-- AC-1033: makes a `Docs` folder beside the project file into shipped documentation, without the author
+       writing anything. Two jobs, and the second is the one that matters.
+
+       It embeds what is there, so "adding a page is adding a file" is literally true — no Include to remember,
+       nothing to keep in step with the folder.
+
+       And it sets WithCulture="false", which is not a nicety. MSBuild's AssignCulture reads `welcome.nl.md` as
+       a culture-specific resource and routes it into an `nl` satellite assembly, where the scanner never looks:
+       the translation vanishes from a build that reports success. A plugin author outside this repository has
+       no way to guess that, and would find out from a reader who could not see the page. Documenting it only
+       helps whoever reads the documentation, so the SDK closes it instead — this file ships in the NuGet
+       package under buildTransitive, and every project in this repository imports it through
+       Directory.Build.targets.
+
+       Remove before Include so declaring the same files by hand stays harmless rather than embedding them
+       twice. Set CockpitHelpDocsEnabled=false to opt a project out entirely. -->
+  <ItemGroup Condition="'$(CockpitHelpDocsEnabled)' != 'false' And Exists('$(MSBuildProjectDirectory)\Docs')">
+    <EmbeddedResource Remove="Docs\**\*.md;Docs\**\*.png;Docs\**\*.jpg;Docs\**\*.jpeg;Docs\**\*.gif;Docs\**\*.webp;Docs\**\*.svg" />
+    <EmbeddedResource Include="Docs\**\*.md;Docs\**\*.png;Docs\**\*.jpg;Docs\**\*.jpeg;Docs\**\*.gif;Docs\**\*.webp;Docs\**\*.svg"
+                      WithCulture="false" />
+  </ItemGroup>
+
+</Project>

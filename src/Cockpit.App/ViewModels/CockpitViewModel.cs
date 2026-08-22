@@ -111,6 +111,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionDialogService? _dialogService;
     // AC-512: "Run setup again" (Help menu) reopens it; null (design-time/tests, or nothing registered) is a no-op.
     private readonly IFirstRunWizard? _firstRunWizard;
+    private readonly HelpService? _help;
     // AC-512: the seam behind OpenGuideCommand — defaults to the real ExternalLink.TryOpen (also covering the
     // parameterless design-time constructor below), replaceable in tests (see ExternalLinkTests' own remark on
     // why a real URL cannot be exercised there directly).
@@ -2695,6 +2696,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-512: the first-run wizard's own strand injects the real implementation; null here (design-time/tests,
         // or a host build that has not registered one yet) leaves "Run setup again" a no-op rather than a crash.
         IFirstRunWizard? firstRunWizard = null,
+        // AC-1033: the knowledge base behind Help ▸ Documentation. Null in the design-time and unit-test graph,
+        // the same as the wizard above, which leaves that menu entry a no-op rather than a crash.
+        HelpService? help = null,
         Func<string, bool>? tryOpenExternalLink = null,
         // AC-790: the network-node master switch and its shared secret, and the mounted-endpoint hosts whose live
         // off-loopback addresses the Security tab reads to show the operator what to type into a second Cockpit.
@@ -2871,6 +2875,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionProfileStore = sessionProfileStore;
         _ttyProviderResolver = ttyProviderResolver;
         _firstRunWizard = firstRunWizard;
+        _help = help;
         if (tryOpenExternalLink is not null)
         {
             _tryOpenExternalLink = tryOpenExternalLink;
@@ -5783,6 +5788,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _dialogService.ShowGlossaryDialogAsync();
     }
+
+    // Opens the knowledge base (AC-1033) — the app's own pages and every installed plugin's, in one window
+    // that stays beside whatever you were doing. The first of the two doors to it; the other one is the
+    // Documentation link on a plugin's own page in Options, where the question tends to actually come up.
+    [RelayCommand]
+    private void ShowDocumentation() => _help?.Open();
 
     // Reopens the first-run wizard (AC-512) from the Help menu — a no-op without one wired up.
     [RelayCommand]

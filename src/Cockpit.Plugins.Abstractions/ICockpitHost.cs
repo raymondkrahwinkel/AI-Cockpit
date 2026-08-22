@@ -1017,4 +1017,29 @@ public interface ICockpitHost
 
     /// <summary>The shared-project sources every plugin has contributed — what the Projects workspace reads to list them. Default empty.</summary>
     IReadOnlyList<Projects.ISharedProjectSource> SharedProjectSources => [];
+
+    /// <summary>
+    /// The app's own "open the help about this" affordance (AC-1033), pointing at one article and — when
+    /// <paramref name="section"/> is given — one of its sections. Pass <paramref name="label"/> for a worded
+    /// link instead of a bare mark, and see Help ▸ Extending Cockpit ▸ Shipping documentation for how the
+    /// article name is resolved and why the returned control hides itself when its target does not exist.
+    /// </summary>
+    Control CreateHelpHint(string article, string? section = null, string? label = null) =>
+        new Panel { IsVisible = false };
+
+    /// <summary>
+    /// Opens the help window on <paramref name="article"/>, or on one of its sections — the jump
+    /// <see cref="CreateHelpHint"/> performs, for a control the plugin drew itself (AC-1033). A target that
+    /// resolves to nothing fails visibly in the window rather than opening the overview.
+    /// </summary>
+    void OpenHelp(string article, string? section = null)
+    {
+    }
+
+    /// <summary>
+    /// Whether <paramref name="article"/> — and <paramref name="section"/>, when given — is there to be opened
+    /// (AC-1033). For deciding whether to word an error message with a link at all; <see cref="CreateHelpHint"/>
+    /// asks this itself.
+    /// </summary>
+    bool HasHelp(string article, string? section = null) => false;
 }

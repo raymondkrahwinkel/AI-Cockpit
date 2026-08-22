@@ -399,7 +399,14 @@
          a field the editor should let the operator link several identifiers under (YouTrack's) can say so; a
          field that leaves it out renders exactly as before. Additions only — a minor; major and
          abstractionsVersion stay 1. -->
-    <Version>1.57.0</Version>
+    <!-- 1.58.0 (AC-1033): added ICockpitHost.CreateHelpHint, OpenHelp and HasHelp — the knowledge base's deep
+         links, and the `?` affordance the SDK draws so every plugin's looks and behaves the same. All three are
+         default-implemented (an invisible control, a no-op, false), so an existing ICockpitHost implementation
+         keeps compiling untouched. Shipping documentation itself needs no API at all: a plugin embeds markdown
+         under a `Docs` folder and the host finds it by scanning, so a plugin that ships none is unchanged in
+         every way — nothing was added to a constructor and nothing became required. Additions only — a minor;
+         major and abstractionsVersion stay put. -->
+    <Version>1.58.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
@@ -421,6 +428,12 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <!-- AC-1033: shipped in the package so referencing the SDK is all an out-of-repo plugin author has to do
+         to have a `Docs` folder become shipped documentation — including the WithCulture="false" that keeps a
+         translated page out of a satellite assembly. buildTransitive so it reaches a project that picks the SDK
+         up indirectly as well; build for the older clients that only look there. -->
+    <None Include="build\Cockpit.Plugins.Abstractions.targets" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="build\Cockpit.Plugins.Abstractions.targets" Pack="true" PackagePath="build\" />
   </ItemGroup>
 
   <ItemGroup>

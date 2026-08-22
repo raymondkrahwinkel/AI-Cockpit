@@ -73,6 +73,16 @@ public sealed class MarkdownView : ContentControl
         set => SetValue(PreserveLineBreaksProperty, value);
     }
 
+    // AC-1033: how a picture on its own line is drawn, set by the knowledge base and by nothing else — null
+    // leaves an image reference rendering as the link it always was, which is what keeps the chat unchanged.
+    // Assign it before `Markdown`: a plain property, so setting it later forces no repaint.
+    public Func<MarkdownBlock, Control>? ImageRenderer { get; set; }
+
+    // First refusal on a clicked link, before the browser or the file preview is offered it. The knowledge
+    // base claims its own `help:` cross-references this way, so following one moves within the window instead
+    // of being handed to the shell. Return true to say the link was handled. Null everywhere else.
+    public Func<string, bool>? LinkHandler { get; set; }
+
     // A streaming reply re-sets Markdown on every delta, and each set rebuilt the whole block tree: at the end of
     // a long answer that is hundreds of controls reparsed and reconstructed, tens of times a second, for text that
     // grew by a few characters. The cost climbs with the reply, so it accelerates rather than settles — the UI
@@ -262,8 +272,17 @@ public sealed class MarkdownView : ContentControl
         MarkdownBlockKind.CodeBlock => _CodeBlock(block),
         MarkdownBlockKind.List => _List(block),
         MarkdownBlockKind.Table => _Table(block),
+        MarkdownBlockKind.Image => _Image(block),
         _ => _Paragraph(block.Inlines, new Thickness(0, 3, 0, 3)),
     };
+
+    // AC-1033: with no renderer, back to the tree this block produced before it had a kind of its own. Not
+    // left to the paragraph fallback, which reads `Inlines` — empty here, so the chat would have gone blank.
+    private Control _Image(MarkdownBlock block) =>
+        ImageRenderer?.Invoke(block)
+        ?? _Paragraph(
+            MarkdownParser.ParseInlines($"![{block.ImageAlt}]({block.ImageSource})", PreserveLineBreaks),
+            new Thickness(0, 3, 0, 3));
 
     // Updates the control a block already has instead of building a new one, for the change a stream actually
     // makes: the block at the end grew. Block-level reuse alone is too coarse for the shapes that arrive as one
@@ -309,6 +328,11 @@ public sealed class MarkdownView : ContentControl
 
             case MarkdownBlockKind.Table:
                 return control is Border { Child: Grid grid } && _UpdateTableRows(grid, was, now);
+
+            // Never updated in place: an image does not stream, and the paragraph fallback below would refill
+            // this control from `Inlines`, which an image block leaves empty — blanking what was drawn.
+            case MarkdownBlockKind.Image:
+                return false;
 
             default:
                 if (control is not InlineTextBlock paragraph)
@@ -677,7 +701,7 @@ public sealed class MarkdownView : ContentControl
         {
             if (block.Links.Count > 0)
             {
-                _OnLinkClick(block, block.Links, e);
+                _OnLinkClick(block, block.Links, e, LinkHandler);
             }
         };
 
@@ -757,7 +781,10 @@ public sealed class MarkdownView : ContentControl
     // is asked of `block` rather than the enclosing `MarkdownView`: both sit in the same window, and this stays
     // usable from a static context without threading `this` through the click handler.
     private static void _OnLinkClick(
-        SelectableTextBlock block, List<(int Start, int Length, string Url, int? Line)> links, PointerReleasedEventArgs e)
+        SelectableTextBlock block,
+        List<(int Start, int Length, string Url, int? Line)> links,
+        PointerReleasedEventArgs e,
+        Func<string, bool>? handler)
     {
         // Selecting text also raises PointerReleased; only treat it as a link click when nothing is selected.
         if (block.SelectionEnd != block.SelectionStart)
@@ -774,7 +801,12 @@ public sealed class MarkdownView : ContentControl
                 continue;
             }
 
-            if (ExternalLink.TryParseWebAddress(link.Url, out var address))
+            if (handler is not null && handler(link.Url))
+            {
+                // Claimed by the surface this view sits in — the knowledge base takes its own `help:`
+                // cross-references so following one stays inside the window instead of reaching the shell.
+            }
+            else if (ExternalLink.TryParseWebAddress(link.Url, out var address))
             {
                 ExternalLink.TryOpen(address);
             }

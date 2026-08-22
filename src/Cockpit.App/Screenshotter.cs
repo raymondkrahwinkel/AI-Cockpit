@@ -71,6 +71,15 @@ internal static class Screenshotter
         // Autopilot and Open PRs pinned (the shipped default), YouTrack and Workflows collapsed — one of the
         // collapsed entries carries a badge, so the flyout also shows what a live counter looks like behind it.
         ["plugins-menu"] = (_, _) => _PluginsMenuScene(),
+        // AC-1033: the knowledge base in the five states that decide whether it works. A plugin's own branch
+        // is not staged here — it would need a plugin assembly this build has not loaded; HelpWindowTests
+        // covers it instead, in both configurations.
+        ["help"] = (_, _) => _Help(null),
+        ["help-article"] = (_, _) => _Help(new Core.Help.HelpAddress("welcome")),
+        ["help-deep-link"] = (_, _) => _Help(
+            new Core.Help.HelpAddress("core-concepts", "profile"), "a “?” beside a session's profile"),
+        ["help-search"] = (_, _) => _HelpSearching("plugin"),
+        ["help-broken-link"] = (_, _) => _Help(new Core.Help.HelpAddress("slack", "interactivity")),
         ["single-instance"] = (_, _) => new SingleInstanceNoticeDialog(),
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
@@ -2446,4 +2455,27 @@ internal static class Screenshotter
             {
                 UseHeadlessDrawing = false,
             });
+
+    // The knowledge base staged over the app's own embedded documentation, with no plugin manager behind it —
+    // the same index the running app builds, minus the plugins this build never loaded.
+    private static Views.HelpWindow _Help(Core.Help.HelpAddress? address, string? arrivedFrom = null)
+    {
+        var help = new Services.HelpService([
+            new Core.Help.HelpDocumentSource(Core.Help.HelpOwner.Core, typeof(Screenshotter).Assembly),
+        ]);
+
+        var window = new Views.HelpWindow(help);
+        window.NavigateTo(address, arrivedFrom);
+
+        return window;
+    }
+
+    private static Views.HelpWindow _HelpSearching(string query)
+    {
+        var window = _Help(null);
+        window.SearchBox.Text = query;
+
+        return window;
+    }
+
 }

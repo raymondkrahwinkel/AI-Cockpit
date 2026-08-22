@@ -1,0 +1,66 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.HelpWindow"
+        Title="Help"
+        Width="820" Height="720" MinWidth="560" MinHeight="380"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <!-- A window of its own, beside the cockpit rather than inside it (AC-1033): the help is something you keep
+         open next to the thing you are setting up, which a page in Options or a workspace tab cannot be. -->
+    <Window.Styles>
+        <Style Selector="TextBlock.navGroup">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+            <Setter Property="Margin" Value="10,12,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.crumb">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.badge">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Left" Width="252"
+                Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Margin="10,10,10,6"
+                         PlaceholderText="Search all documentation…"/>
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="NavHost" Margin="6,0,6,12" Spacing="1"/>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <DockPanel>
+            <!-- Deliberately outside the scroller: arriving mid-article is exactly when you need to be told
+                 where you are, and a banner that scrolls away takes that back the moment you start reading. -->
+            <Border x:Name="JumpBanner" DockPanel.Dock="Top" IsVisible="False"
+                    Background="{StaticResource CockpitInsetBgBrush}"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1"
+                    Padding="16,8">
+                <StackPanel Spacing="2">
+                    <TextBlock x:Name="JumpBannerText" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <Button x:Name="JumpBannerTop" Classes="Subtle" Padding="0" HorizontalAlignment="Left"
+                            Content="Read the whole article from the top ↑" FontSize="12"
+                            Foreground="{StaticResource CockpitAccentBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <ScrollViewer x:Name="ContentScroll" Padding="20,16,20,32">
+                <StackPanel x:Name="ContentHost" Spacing="6" MaxWidth="620" HorizontalAlignment="Left"/>
+            </ScrollViewer>
+        </DockPanel>
+    </DockPanel>
+</Window>

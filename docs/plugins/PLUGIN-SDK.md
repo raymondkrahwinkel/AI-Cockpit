@@ -725,6 +725,47 @@ unlocked, any of you can read any credential the cockpit holds. The boundary is 
 which is why the store asks for consent and pins a checksum, and why this page tells you plainly rather than
 implying an isolation that does not exist.
 
+## Documentation — ship your own pages (AC-1033)
+
+Your plugin can carry its own documentation, and the app shows it in the knowledge base (Help ▸ Documentation)
+under one entry named after your plugin. It travels inside your assembly, so it works with no connection and
+can never describe a version the operator does not have.
+
+**There is no API for this.** Put markdown in a `Docs` folder beside your project file and reference the SDK —
+its MSBuild targets embed everything under that folder:
+
+```
+Cockpit.Plugin.Acme/
+  plugin.json
+  Docs/
+    setup.md
+    images/gateway-intents.png
+```
+
+A plugin that ships none is unaffected in every way. Each file opens with a `---` front-matter block carrying
+`title` (and optionally `order`, `summary`, `icon`); a heading is linkable only when it declares an id, as in
+`## The bot token {#bot-token}`.
+
+To point at one of your pages from your own UI, ask the host for the app's `?` rather than drawing one:
+
+```csharp
+row.Children.Add(host.CreateHelpHint("setup", "bot-token"));
+```
+
+It hides itself when its target does not exist, so it can be handed over unconditionally. `OpenHelp` makes the
+same jump from a control you drew yourself and `HasHelp` answers whether a reference is worth writing; all
+three need `abstractionsVersion` 2 and `minHostVersion` `0.28.0`.
+
+> **The full reference lives in the app**, under **Help ▸ Extending Cockpit ▸ Shipping documentation**: the
+> front-matter keys, why section ids are written by hand, how the article name is resolved, pictures (an
+> `https://` one is refused rather than fetched), and how translations are named. It is kept there rather than
+> repeated here so there is one copy to keep true — the second-source problem AC-495 describes.
+>
+> One thing worth repeating, because it bites before you can read anything: if you embed the files by hand
+> rather than letting the SDK targets do it, you **must** write `WithCulture="false"`. MSBuild reads
+> `setup.nl.md` as a culture-specific resource and routes it into an `nl` satellite assembly where the app
+> never looks, so a translation disappears from a build that reports success.
+
 ## The manifest — `plugin.json`
 
 Ships in the plugin's folder root. Parsed and validated **before** anything is loaded — a malformed or

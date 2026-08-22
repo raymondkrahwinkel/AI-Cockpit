@@ -178,6 +178,11 @@ sealed class Program
 
         services.AddSingleton(pluginManager);
 
+        // AC-1033: the knowledge base reads the loaded plugins' assemblies for the documentation they embed,
+        // so it is registered after the manager it asks. Nothing is scanned until the help is first opened or
+        // a `?` asks whether its target exists.
+        services.AddSingleton<HelpService>();
+
         services.AddSessionPanes();
 
         Services = services.BuildServiceProvider();
