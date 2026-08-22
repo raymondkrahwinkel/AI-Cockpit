@@ -1,17 +1,25 @@
+---
+title: Building a plugin
+category: extending
+order: 5
+summary: Everything a plugin can add to Cockpit, from an empty project to an installed package.
+icon: 🧩
+---
+
 # Cockpit Plugin SDK
 
 Build a plugin that extends the cockpit with its own settings, a left-menu section, dialogs, and actions on
 the active session — without touching the cockpit's own code. This guide is the how-to; the
 **[API reference](API-REFERENCE.md)** documents every method with signatures and examples, and
 [Examples](#examples) below tours the three built-in sample plugins under
-[`plugins-dev/`](../../plugins-dev).
+[`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev).
 
 > **Trust model — read this first.** A plugin is a .NET assembly that runs **in-process, unsandboxed, with
 > your account's permissions**. There is no security boundary (.NET cannot provide one for in-process
 > plugins). The cockpit protects you only by requiring a **manual install** and a **first-load consent**
 > that pins the assembly's SHA-256 — a changed file re-prompts. **Only install plugins you trust.**
 
-## The three layers
+## The three layers {#the-three-layers}
 
 The cockpit is built in three layers, and where new code belongs follows directly from which one it lives
 in: **`Cockpit.Core`** holds the shared contracts every part of the host compiles against — a plugin
@@ -21,7 +29,7 @@ references it, but only **compile-only** (`Private=false`, `ExcludeAssets=runtim
 plugin at all. Everything a single plugin needs — its own UI, its behaviour, the MCP tools it registers — is
 the plugin's own functionality and lives in the plugin (AC-885/AC-886).
 
-## Overview
+## Overview {#overview}
 
 A Cockpit plugin is a small .NET assembly, dropped in its own folder under the config directory's
 `plugins/` folder, that implements one interface (`ICockpitPlugin`) and contributes UI and behaviour through
@@ -47,7 +55,7 @@ system, your network. There is no capability restriction, permission prompt per-
 The only gate is the **manual install + first-load consent** flow (see [Installing](#installing-enabling-disabling-removing)),
 which pins the entry assembly's SHA-256 so a subsequent tampering or update re-prompts for consent.
 
-## Quickstart
+## Quickstart {#quickstart}
 
 The shortest path from nothing to a running plugin:
 
@@ -66,10 +74,10 @@ Compress-Archive -Path plugins-dev/My.Plugin/bin/Debug/net10.0/* -DestinationPat
 ```
 
 That scaffolds a plugin with a left-menu button that opens a dialog (see
-[`templates/cockpit-plugin`](../../templates/cockpit-plugin)); read on for every contribution point, the
+[`templates/cockpit-plugin`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/templates/cockpit-plugin)); read on for every contribution point, the
 manifest fields, and how to publish it to a store.
 
-### The dev loop
+### The dev loop {#the-dev-loop}
 
 That zip round-trip is only needed once, to get the plugin installed at all — a DEBUG cockpit run from a dev
 checkout notices from there on. Every rebuild after that:
@@ -85,9 +93,9 @@ means a quick, one-click restart rather than a hand copy and restart. This only 
 DEBUG build, and it only refreshes a plugin you already installed — it never installs one on its own, and it
 never touches a plugin you disabled or one the store already updated past your source.
 
-### Scaffold a new plugin
+### Scaffold a new plugin {#scaffold-a-new-plugin}
 
-The `dotnet new` template lives in [`templates/cockpit-plugin`](../../templates/cockpit-plugin). Install it
+The `dotnet new` template lives in [`templates/cockpit-plugin`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/templates/cockpit-plugin). Install it
 once per machine (or after the template changes), then instantiate it under `plugins-dev/` so its relative
 `ProjectReference` to `Cockpit.Plugins.Abstractions` resolves:
 
@@ -101,7 +109,7 @@ minimal `ICockpitPlugin` (`SamplePlugin.cs`) that adds a left-menu button, and a
 (`SamplePanelControl.cs`) that reads/writes `host.Storage` and calls `host.Actions`. Rename the generated
 `Cockpit.Plugin.Sample` namespace/class/ids to your own before shipping.
 
-## What a plugin can do
+## What a plugin can do {#what-a-plugin-can-do}
 
 A plugin implements one interface, `ICockpitPlugin`, and contributes through the host (`ICockpitHost`):
 
@@ -112,7 +120,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Dialog | `host.ShowDialogAsync(title, () => control)` | A window beside the cockpit hosting your control — not modal, so the operator keeps every running session reachable while it is open. The host provides the **DataGrid** (control + theme) app-wide, so you can use it. |
 | Left-menu section | `host.AddSideMenuSection(title, () => control)` | An inline accordion under the session list — for small, always-visible content. |
 | Session header item | `host.AddSessionHeaderItem(session => control)` | A small control in **every session's header bar**, built once per session and handed that session's own [`IPluginSessionContext`](API-REFERENCE.md#ipluginsessioncontext) — for status that belongs to one session. See [Session header items](#session-header-items--status-that-belongs-to-one-session). |
-| Supervised activity | `host.AddSupervisedActivityProvider(source)` | A **status-bar counter** for long-running, agent-started background work (an open tunnel, a watch), shown only while something runs, opening a panel with the details and an **operator-only Kill per item**. The host owns the Kill — the agent cannot reach it. See [`AddSupervisedActivityProvider`](API-REFERENCE.md#void-addsupervisedactivityprovideisupervisedactivitysource-source). |
+| Supervised activity | `host.AddSupervisedActivityProvider(source)` | A **status-bar counter** for long-running, agent-started background work (an open tunnel, a watch), shown only while something runs, opening a panel with the details and an **operator-only Kill per item**. The host owns the Kill — the agent cannot reach it. See [`AddSupervisedActivityProvider`](API-REFERENCE.md#void-addsupervisedactivityproviderisupervisedactivitysource-source). |
 | Conversation picker | `host.AddConversationPicker(registration)` | Lends your history-browsing to the **New-session dialog**: it grows a **Search…** button next to "resume by session id", which runs your picker. See [Conversation pickers](#conversation-pickers--let-the-operator-choose-a-conversation-to-resume). |
 | Read the profiles | `host.GetProfilesAsync()` | The configured session profiles (label, provider, config directory) — how you find where a provider keeps its state on disk instead of guessing. |
 | Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
@@ -132,7 +140,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Live-apply settings | `host.OnSettingsSaved(callback)` | Re-run a callback after your settings are saved, without needing an app restart. |
 | Register services | `plugin.ConfigureServices(services)` | Add your own services to the host DI container (phase 1). |
 
-## The contract
+## The contract {#the-contract}
 
 All of these live in `Cockpit.Plugins.Abstractions` (the only assembly you must reference); see the
 **[API reference](API-REFERENCE.md)** for every member with a code example:
@@ -202,7 +210,7 @@ public interface IPluginSettingsView
 public sealed record PluginMetadata(string Id, string DisplayName, string Version = "", string? Author = null, string? Description = null);
 ```
 
-### Two-phase lifecycle
+### Two-phase lifecycle {#two-phase-lifecycle}
 
 1. **`ConfigureServices(IServiceCollection)`** runs **before** the host builds its DI container, so you can
    register your own services. It only runs at startup for an already-enabled plugin — a plugin enabled
@@ -213,7 +221,7 @@ public sealed record PluginMetadata(string Id, string DisplayName, string Versio
 3. **`Dispose()`** runs when the plugin is disabled or the app exits. Note: the assembly is **not** unloaded
    until the process restarts (a loaded plugin cannot be truly unloaded) — "disable" means UI off + Dispose.
 
-### Settings dialog
+### Settings dialog {#settings-dialog}
 
 Register a settings view with `host.AddSettings(() => new MySettingsControl(...))`; it opens from the gear
 next to your plugin in the manager. The host wraps it in a dialog with a **Close** button, and — if your
@@ -251,7 +259,7 @@ that applies changes live can skip the interface and just gets a Close button.
 so say what is wrong and what to do about it ("Two connections are named 'work'. Rename one of them."). The
 host has nothing better to fall back on than telling them a plugin refused without saying why.
 
-#### Migrating from `bool Save()` — contract 1 → 2
+#### Migrating from `bool Save()` — contract 1 → 2 {#migrating-from-bool-save--contract-1--2}
 
 `IPluginSettingsView` was one method, `bool Save()`, which persisted on the spot and answered with a bare
 true/false. It is gone; there is no compatibility shim, and a plugin built against contract 1 is refused by the
@@ -296,11 +304,11 @@ draws the same navigation rail its own Options dialog uses, with one shared Save
 control keeps its own lifetime and swaps its own content, so nothing else about it changes. Needs
 `minHostVersion` `0.7.0`.
 
-## Provider plugins — registering a session driver
+## Provider plugins — registering a session driver {#provider-plugins--registering-a-session-driver}
 
 A plugin can add a whole new **session provider** — the same picker slot as the built-in Claude CLI / Ollama
 / LM Studio choices — by implementing a small driver and handing it to `host.AddSessionProvider(...)`. Two
-shapes exist in [`plugins-dev/`](../../plugins-dev):
+shapes exist in [`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev):
 
 - **Persistent chat client** (Gemini/OpenAI Provider, GitHub Models): one long-lived `IChatClient` per
   session, talking an OpenAI-compatible endpoint via `Microsoft.Extensions.AI` — the same stack the host uses
@@ -350,7 +358,7 @@ directory that exists — the SDK offers `ProviderConfigStatus` (`CreateLine()` 
 message, isOk)` fills it), so every provider's config view shows the same status affordance instead of
 hand-rolling its own brushes and prefixes. The Codex and Claude provider config views are the worked examples.
 
-## Widget plugins — a pane on a Dashboard workspace
+## Widget plugins — a pane on a Dashboard workspace {#widget-plugins--a-pane-on-a-dashboard-workspace}
 
 A **Dashboard** workspace hosts widget panes the way a Sessions workspace hosts sessions and terminals. Every
 widget comes from a plugin: the core owns the grid and the pane chrome, and stays as unaware of what a widget
@@ -359,8 +367,8 @@ that workspace's **Add widget** gallery; picking it places an instance.
 
 There is no separate widget package and no second installer — a widget plugin is an ordinary plugin whose
 contribution happens to be `AddWidget`, so it ships, installs and is trusted like any other. The worked
-references are [`plugins-dev/Cockpit.Plugin.Clock`](../../plugins-dev/Cockpit.Plugin.Clock) (no settings, ships
-with the app) and [`plugins-dev/Cockpit.Plugin.SystemMonitor`](../../plugins-dev/Cockpit.Plugin.SystemMonitor)
+references are [`plugins-dev/Cockpit.Plugin.Clock`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.Clock) (no settings, ships
+with the app) and [`plugins-dev/Cockpit.Plugin.SystemMonitor`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.SystemMonitor)
 (settings, from the store) — together they prove the ⚙ is really gated, and separately they show why one plugin
 per widget is worth it: wanting a clock is not also wanting a CPU meter.
 
@@ -387,7 +395,7 @@ public void Initialize(ICockpitHost host)
 | `CreateConfigView` | The instance's settings form, or **null when there is nothing to configure**. |
 | `HasConfig` | Derived from `CreateConfigView`, not declared — read-only. |
 
-### Per-instance, not per-plugin
+### Per-instance, not per-plugin {#per-instance-not-per-plugin}
 
 Each placed widget gets its own `IWidgetContext`, which is what lets two "System Monitor" widgets sit on one
 dashboard without fighting:
@@ -406,7 +414,7 @@ public interface IWidgetContext
 restart and never collides with a sibling. `Sessions` is there so a widget can follow what the cockpit is
 doing (a git widget tracking the active session's working directory) without the core knowing what it is.
 
-### Settings, and the gear that is never dead
+### Settings, and the gear that is never dead {#settings-and-the-gear-that-is-never-dead}
 
 `CreateConfigView` is not just "a form" — it is what puts the ⚙ on the pane header. Leave it null and there is
 no gear, so a widget can never offer one that opens an empty dialog:
@@ -424,13 +432,13 @@ of its own and has no transaction to wait for, so it stages and commits on the s
 difference between the two hosts. Saving raises
 `RefreshRequested` on that instance, which is how the view picks up new config without watching its own storage.
 
-### Publishing a widget plugin to a store
+### Publishing a widget plugin to a store {#publishing-a-widget-plugin-to-a-store}
 
 Set the store entry's **`"category": "Widgets"`** and it lands in the store's own Widgets section. That is the
 whole of it — the store builds its sidebar from `PluginStoreEntry.Category`, so there is no widget-specific
 publishing path, no extra field, and no code involved. See [The index — `index.json`](#the-index--indexjson).
 
-## Workspace plugins — a whole workspace surface
+## Workspace plugins — a whole workspace surface {#workspace-plugins--a-whole-workspace-surface}
 
 A plugin can own an **entire workspace**, not just a pane in one. Where `AddWidget` fills one cell of a
 Dashboard's grid, `host.AddWorkspaceType(...)` registers a type whose **whole body** the plugin draws: the core
@@ -438,7 +446,7 @@ draws the tab and the frame and persists the workspace's namespaced type id, and
 everything inside. It appears in the tab strip's **"+"** menu beside Sessions and Dashboard; choosing it creates
 a workspace of that type. Like a widget, it ships inside an ordinary plugin — no separate package, no second
 installer. The worked reference is
-[`plugins-dev/Cockpit.Plugin.ExampleWorkspace`](../../plugins-dev/Cockpit.Plugin.ExampleWorkspace), which draws a
+[`plugins-dev/Cockpit.Plugin.ExampleWorkspace`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.ExampleWorkspace), which draws a
 header and embeds a live session under it — proof of the surface end to end from outside the host.
 
 ```csharp
@@ -460,7 +468,7 @@ public void Initialize(ICockpitHost host)
 | `Icon` / `IconKind` | The "+" menu and tab icon; `IconKind` (a bundled vector icon) wins over the `Icon` emoji when set. Defaults: `🧩` / none. |
 | `Description` | One line for the "+" menu. |
 
-### Embedding a live session
+### Embedding a live session {#embedding-a-live-session}
 
 The reason a workspace type is more than a widget: `IWorkspaceContext.EmbedSession(...)` starts a **real host
 session** and hands you a `Control` to drop into your own layout, plus its `PaneId` to act on it (set its
@@ -487,7 +495,7 @@ captured the `ICockpitHost`, and the theme is app resources any control binds wi
 are not repeated on the context. `EmbeddedSessionRequest` takes a `ProfileId` (matched by the profile's Label;
 null starts the first configured profile) and an optional `WorkingDirectory`.
 
-## Session header items — status that belongs to one session
+## Session header items — status that belongs to one session {#session-header-items--status-that-belongs-to-one-session}
 
 `host.AddSessionHeaderItem(session => control)` puts a small control in **every session's header bar**. It is
 built once per session panel and handed that session's own `IPluginSessionContext`, so it shows the state of the
@@ -516,7 +524,7 @@ the worked example — a coloured dot and the branch, the counts on hover, re-re
 runs a git command (it substring-scans `OutputProduced` for one) and clicking drops the summary into that
 session. The same control renders in both session kinds (SDK chat and TTY terminal), so you write it once.
 
-## Conversation pickers — let the operator choose a conversation to resume
+## Conversation pickers — let the operator choose a conversation to resume {#conversation-pickers--let-the-operator-choose-a-conversation-to-resume}
 
 The New-session dialog can resume an earlier conversation by id, and typing an id by hand is a poor way to find
 one. But the cockpit cannot browse a provider's history itself: a transcript is one provider's own format, which
@@ -542,7 +550,7 @@ wherever the operator last was. See the API reference for the full shape.
 No plugin registers one → no button, and the id can still be typed. The core stays ignorant of transcripts and
 of Claude; it only knows that *someone* offers a picker. The transcript-search plugin is the worked example.
 
-## MCP server registration
+## MCP server registration {#mcp-server-registration}
 
 A plugin that talks to a service with its own remote MCP server (JetBrains YouTrack's is the shipping
 example) can register it into the **shared MCP registry** with `host.AddMcpServer(...)`, so both session
@@ -563,7 +571,7 @@ pattern, referenced in full in the [API reference](API-REFERENCE.md#the-mcp-name
 It's a fire-and-forget `Task` (the upsert persists to disk); the registration never overrides a state the user
 already changed by hand (enabled/disabled, rescoped, or deleted).
 
-## Project fields — link a project to your side of the world
+## Project fields — link a project to your side of the world {#project-fields--link-a-project-to-your-side-of-the-world}
 
 A cockpit **project** says what a session works on. Your plugin knows that same thing under a different name: a
 YouTrack project short-name, an `owner/repo`. `host.AddProjectField(...)` puts a field in the project editor so the
@@ -609,7 +617,7 @@ What is worth knowing before you add one:
 - **A link outlives your plugin.** A value under a key nothing currently claims is stored and rewritten untouched, so
   uninstalling a plugin does not unlink every project that used it.
 
-## Project memory sources — somewhere other than a folder
+## Project memory sources — somewhere other than a folder {#project-memory-sources--somewhere-other-than-a-folder}
 
 A project already carries free-text memory: `Project.MemoryRef`, told to a starting session as "this project's
 memory lives at …". That is fine for a folder of notes, but some plugins keep a project's memory somewhere a path
@@ -656,7 +664,7 @@ instead of the plain, unexplained sentence a bare path gets. Worth knowing befor
   is still typed into a free-text box — this extension point changes how that value is *explained* once typed
   and saved, not how it is looked up or validated.
 
-## Consent — gate a risky action
+## Consent — gate a risky action {#consent--gate-a-risky-action}
 
 Before your plugin (or a workflow step) does something that acts with the operator's rights — a shell command, a
 session hand-off, egress to an arbitrary URL — ask first:
@@ -695,7 +703,7 @@ approval. Full type list in the [API reference](API-REFERENCE.md#taskconsentdeci
 operator started themselves is not made to approve their own action. See
 [`AddWorkflowStep`](API-REFERENCE.md#void-addworkflowstepiworkflowstep-step).
 
-## Credentials — say what holds one
+## Credentials — say what holds one {#credentials--say-what-holds-one}
 
 The operator can encrypt the credentials in `cockpit.json` with a password (Options → Security). The host does
 that for **every** plugin, without asking the plugin anything: it recognises the usual field names — `token`,
@@ -725,7 +733,7 @@ unlocked, any of you can read any credential the cockpit holds. The boundary is 
 which is why the store asks for consent and pins a checksum, and why this page tells you plainly rather than
 implying an isolation that does not exist.
 
-## Documentation — ship your own pages (AC-1033)
+## Documentation — ship your own pages (AC-1033) {#documentation--ship-your-own-pages-ac-1033}
 
 Your plugin can carry its own documentation, and the app shows it in the knowledge base (Help ▸ Documentation)
 under one entry named after your plugin. It travels inside your assembly, so it works with no connection and
@@ -766,7 +774,7 @@ three need `abstractionsVersion` 2 and `minHostVersion` `0.28.0`.
 > `setup.nl.md` as a culture-specific resource and routes it into an `nl` satellite assembly where the app
 > never looks, so a translation disappears from a build that reports success.
 
-## The manifest — `plugin.json`
+## The manifest — `plugin.json` {#the-manifest--pluginjson}
 
 Ships in the plugin's folder root. Parsed and validated **before** anything is loaded — a malformed or
 version-mismatched manifest is rejected with a message rather than crashing mid-load.
@@ -797,7 +805,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `minHostVersion` | no | The oldest cockpit your plugin actually works against. **Enforced from host 1.0 onwards**: an older host refuses to load you, and the Plugins manager says "Needs a newer cockpit". Ignored entirely while the host is 0.x — enforcing it there would refuse every plugin in existence, because they all claim `1.0.0` and none of them meant it. That is exactly why the 0.x window is when to make it honest: name the first version carrying the contribution points you call, not the number the template happened to ship. This covers a host **theme resource or control style class** your plugin looks up by name too, not just an SDK member — see "Theme tokens and control classes" below; that dependency has no compiler to catch you if you forget it. |
 | `description`, `author` | no | Shown in the Plugins manager and any store catalogue. |
 
-## Project setup
+## Project setup {#project-setup}
 
 The one rule that matters: **the shared assemblies must not ship in your plugin folder.** The host provides
 `Cockpit.Plugins.Abstractions`, Avalonia and the DI abstractions; if your folder carried its own copies,
@@ -843,7 +851,7 @@ your plugin (the type-identity pitfall — see [Overview](#overview)). Reference
 Your **own** dependencies (a NuGet the host doesn't provide) are referenced normally — they ship in your
 folder and the loader resolves them from there via the `.deps.json`.
 
-### Match the host's versions
+### Match the host's versions {#match-the-hosts-versions}
 
 A plugin is bound to the host's Avalonia major (and the abstractions major). Reference the **same Avalonia
 version the host uses** (12.0.5 today). A mismatch fails at load, not compile, and — unlike the
@@ -860,7 +868,7 @@ banner and against the plugin's row in the manager — rather than letting it fa
 auto-derived `minHostVersion`; keep the manifest's `minHostVersion` honest too, since that one *refuses* rather
 than warns.
 
-### Theme tokens and control classes: declare them, nothing derives them for you
+### Theme tokens and control classes: declare them, nothing derives them for you {#theme-tokens-and-control-classes-declare-them-nothing-derives-them-for-you}
 
 The auto-derivation above only covers `Cockpit.Plugins.Abstractions` — a compiled reference the host can
 inspect. A theme resource key (`{DynamicResource CockpitTextOnStatusBrush}`, `TryFindResource("Border.tag")`)
@@ -894,7 +902,7 @@ said to postdate all of it). A plugin whose code names any of these needs `minHo
 A plugin depending on a token or class added *after* that point needs whatever later floor covers it, derived
 the same way.
 
-### Building views: prefer code over XAML
+### Building views: prefer code over XAML {#building-views-prefer-code-over-xaml}
 
 Contribution points hand back a `Func<Control>`. You can build that control however you like, but
 **compiled XAML is pinned to the exact Avalonia build** and is the most fragile part of a plugin. The
@@ -902,7 +910,7 @@ sturdiest approach — used by all three example plugins — is to **build contr
 Your controls inherit the host's theme because they live in the host's visual tree. Do **not** ship
 app-wide styles or `ResourceDictionary` merges; scope any styling to your own root control.
 
-## Storage and actions
+## Storage and actions {#storage-and-actions}
 
 ```csharp
 public void Initialize(ICockpitHost host)
@@ -919,7 +927,7 @@ public void Initialize(ICockpitHost host)
 }
 ```
 
-## Build, package, install
+## Build, package, install {#build-package-install}
 
 > **Bump the version only when you publish.** A plugin's `version` — which lives in `plugin.json` and nowhere
 > else — names a *released* build, not a work-in-progress. Leave it on the last published number while you iterate in
@@ -950,7 +958,7 @@ public void Initialize(ICockpitHost host)
    **"Restart cockpit now"** button (#53) appears right there once one is pending, so you don't have to close
    and relaunch the app by hand.
 
-## Installing, enabling, disabling, removing
+## Installing, enabling, disabling, removing {#installing-enabling-disabling-removing}
 
 What actually happens under the hood, so you can reason about the "restart to apply" behaviour:
 
@@ -993,7 +1001,7 @@ What actually happens under the hood, so you can reason about the "restart to ap
   the app's own restart action) — the restart always drops `--safe-mode` again, so it is a one-shot recovery
   switch, never a state you have to remember to turn off by hand.
 
-## Getting the SDK outside the repo
+## Getting the SDK outside the repo {#getting-the-sdk-outside-the-repo}
 
 A plugin under `plugins-dev/` reaches the abstractions through a `ProjectReference`. Outside the repo you need
 the package, and it comes **off the release page, not nuget.org**: the product name is not settled, and a
@@ -1017,7 +1025,7 @@ neither):
   versioned `<version>-nightly.<run>`. Take it only when you need a contribution point that no release carries
   yet, and expect it to move.
 
-### Point your plugin at the .nupkg
+### Point your plugin at the .nupkg {#point-your-plugin-at-the-nupkg}
 
 Put the file in a folder beside your plugin — say `packages/` — and add a `nuget.config` next to your `.csproj`
 so anyone who clones your plugin restores it without first running a command:
@@ -1048,7 +1056,7 @@ the `nuget.config` is the form that survives a clone.
 > nightly's package carries a `-nightly.<run>` suffix rather than being republished as plain `1.27.0`. If you hit
 > it anyway: `dotnet nuget locals global-packages --clear`.
 
-### Or reference the DLL from the zip
+### Or reference the DLL from the zip {#or-reference-the-dll-from-the-zip}
 
 Unzip it into `lib/` beside your `.csproj` and reference the assembly directly. `Private=false` is what keeps it
 out of your output folder — without it you ship a second copy of the abstractions and the host silently ignores
@@ -1065,7 +1073,7 @@ The XML docs beside it give you IntelliSense. What the zip does *not* give you i
 add `Avalonia`, `Microsoft.Extensions.DependencyInjection.Abstractions` and `Material.Icons` yourself, at the
 host's versions, each with `<ExcludeAssets>runtime</ExcludeAssets>`.
 
-### The whole out-of-repo `.csproj`
+### The whole out-of-repo `.csproj` {#the-whole-out-of-repo-csproj}
 
 Identical to the in-repo one in [Project setup](#project-setup) except for the first item — the
 `ProjectReference` becomes a `PackageReference`:
@@ -1103,12 +1111,12 @@ Set `abstractionsVersion` in your `plugin.json` to this package's **major** (`2`
 first host release that carries the contribution points you call — see [the manifest](#the-manifest--pluginjson)
 and [Match the host's versions](#match-the-hosts-versions).
 
-### Building the assets yourself
+### Building the assets yourself {#building-the-assets-yourself}
 
 `scripts/pack-sdk.sh <output-dir> [version-suffix]` produces both from a clone — the same script the release and
 nightly workflows run, so what you build locally is what the release page hands out.
 
-## Gotchas
+## Gotchas {#gotchas}
 
 - **Type-identity (the big one):** never ship `Cockpit.Plugins.Abstractions`, Avalonia or the DI
   abstractions in your folder — reference them `Private=false` / `ExcludeAssets=runtime`. Otherwise the host
@@ -1126,7 +1134,7 @@ nightly workflows run, so what you build locally is what the release page hands 
   `AddSideMenuButton`/`AddSideMenuSection` the same way — call them from `Initialize`, not from anywhere that
   could run twice.
 
-## Publishing a plugin store
+## Publishing a plugin store {#publishing-a-plugin-store}
 
 A **store** is any public location serving an `index.json` catalogue plus the plugin zips it lists. The
 cockpit adds a store under **Options → Plugins → Plugin stores**, **Browse**s it, and installs or updates
@@ -1140,7 +1148,7 @@ on a genuine first run (no stores configured yet) it is seeded automatically so 
 the box. If you remove it, it is not silently re-added. Anyone can add their own store alongside or instead
 of it, and can publish plugins there via a PR if they want them listed alongside the official ones.
 
-### Point the cockpit at a store
+### Point the cockpit at a store {#point-the-cockpit-at-a-store}
 
 Any of these work — the cockpit auto-detects the shape:
 
@@ -1149,10 +1157,10 @@ Any of these work — the cockpit auto-detects the shape:
 - **A direct index URL:** `https://…/index.json`.
 - **A base directory:** `https://…/store` → it appends `index.json`.
 
-### The index — `index.json`
+### The index — `index.json` {#the-index--indexjson}
 
 Zip paths are **relative to the index's location**. See
-[example-store-index.json](example-store-index.json) — a real excerpt from the official store — for a
+[example-store-index.json](https://github.com/raymondkrahwinkel/AI-Cockpit/blob/main/docs/plugins/example-store-index.json) — a real excerpt from the official store — for a
 complete file using every field below.
 
 ```json
@@ -1204,7 +1212,7 @@ complete file using every field below.
 | `plugins` | yes | Array of plugin entries, described below. |
 | `templates` | no | Array of workflow templates the store offers — flows somebody already drew. Described below; omit it and the store simply offers none. |
 
-### Workflow templates — `templates[]`
+### Workflow templates — `templates[]` {#workflow-templates--templates}
 
 A template is a **flow as text**: the same JSON the flow editor exports a flow to. Unlike a plugin there is no
 assembly, nothing is loaded and no code runs at install time — the cockpit writes the file, and the flow appears in
@@ -1291,17 +1299,17 @@ youtrack/youtrack-1.2.0.zip
 Note that the catalogue is advertising only: the zip's own `plugin.json` remains the source of truth at
 install time, and consent + hash pinning still apply exactly as for a manual zip install. The cockpit's
 plugin-store dialog (categories sidebar, cards, detail panel, search/sort), the pre-seeded default store, and
-the periodic update check all read this same file — see the [README](../../README.md#plugins--plugin-store)
+the periodic update check all read this same file — see the [README](https://github.com/raymondkrahwinkel/AI-Cockpit/blob/main/README.md#plugins--plugin-store)
 for how they fit into the app.
 
-### The official store, as a worked reference
+### The official store, as a worked reference {#the-official-store-as-a-worked-reference}
 
 **[github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins)**
 is a real store you can use as a template: its `index.json` lists the `plugins-dev/` plugins with every field
 above filled in, laid out exactly as `<plugin-id>/<plugin-id>-<version>.zip`. Clone its layout for your own
 store, or open a PR against it to list your plugin alongside the official ones.
 
-## Plugins that ship with the app
+## Plugins that ship with the app {#plugins-that-ship-with-the-app}
 
 Three plugins are **bundled**: they are built with the cockpit, copied into its `bundled-plugins/` output, and
 installed into the operator's plugins directory on startup — enabled, and without the consent dialog (it asks
@@ -1324,35 +1332,35 @@ they updated past ours from the store is not rolled back — only a newer bundle
 installed one, keeping it enabled and keeping its settings. Nothing about this is special to first-party code:
 it is the ordinary plugin loader, with the files put in place beforehand.
 
-## Examples
+## Examples {#examples}
 
-The example plugins under [`plugins-dev/`](../../plugins-dev) — nineteen and counting — are each built exactly as
+The example plugins under [`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev) — nineteen and counting — are each built exactly as
 described above (compile-only shared refs, code-built views, settings persisted via `host.Storage`). Between them
 they exercise the main contribution points:
 
 **UI contribution plugins:**
 
-- **[GitHub Issues](../../plugins-dev/Cockpit.Plugin.GitHubIssues)** — a settings view (GitHub CLI vs.
+- **[GitHub Issues](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GitHubIssues)** — a settings view (GitHub CLI vs.
   single-repo HTTP mode, editable prompt template) plus a left-menu **button** that opens a searchable,
   sortable **dialog** (using the host's DataGrid) listing open issues across your repos (via `gh`) or one
   repo; clicking an issue injects a rendered prompt template into the active session.
-- **[GitHub Pull Requests](../../plugins-dev/Cockpit.Plugin.GitHubPullRequests)** — the same settings
+- **[GitHub Pull Requests](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GitHubPullRequests)** — the same settings
   pattern, but contributes an inline **side-menu section** (always visible under the session list, showing up
   to 5 open PRs) instead of a launcher button, plus a "view all" dialog. Demonstrates
   `AddSideMenuSection` end-to-end.
-- **[YouTrack](../../plugins-dev/Cockpit.Plugin.YouTrack)** — a left-menu button + dialog like GitHub Issues,
+- **[YouTrack](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.YouTrack)** — a left-menu button + dialog like GitHub Issues,
   but **HTTP-only** (a permanent token per configured instance — YouTrack has no local CLI equivalent to
   `gh`), with instance/project/state filters. Also the reference implementation for **MCP server
   registration**: it registers each fully-configured instance's JetBrains remote MCP endpoint via
   `host.AddMcpServer(...)` on `Initialize` and again on every settings save (`OnSettingsSaved`), so a session
   gets YouTrack tools without the user adding the server by hand.
 
-- **[Git status](../../plugins-dev/Cockpit.Plugin.GitStatus)** — the reference for a **session header item**:
+- **[Git status](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GitStatus)** — the reference for a **session header item**:
   a coloured dot and the branch of the repo *that session* works in, counts on hover, clicking asks the Session
   Review plugin — over `host.SendIntent`, gated on `CanSendIntent` — to open that session's diff. Re-reads itself
   when the session runs a git command (it substring-scans the session's own `OutputProduced`, debounced so a
   command printing progress over several lines does not trigger five reads). **Bundled with the app.**
-- **[Claude Transcript Search](../../plugins-dev/Cockpit.Plugin.TranscriptSearch)** — the reference for a
+- **[Claude Transcript Search](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.TranscriptSearch)** — the reference for a
   **conversation picker** and for `GetProfilesAsync`: it finds Claude's transcripts through the profiles the
   operator actually configured rather than guessing at the well-known directories, opens on your ten most
   recent conversations, and lends its search to the New-session dialog so resuming one is a click instead of a
@@ -1360,34 +1368,34 @@ they exercise the main contribution points:
 
 **Provider plugins (`host.AddSessionProvider`, #45):**
 
-- **[Gemini / OpenAI Provider](../../plugins-dev/Cockpit.Plugin.GeminiProvider)** — registers **two**
+- **[Gemini / OpenAI Provider](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GeminiProvider)** — registers **two**
   providers (Gemini and OpenAI) from one `Initialize`, both backed by the same persistent-`IChatClient` driver
   factory over an OpenAI-compatible chat-completions endpoint, differing only in default base URL. Chat-only
   capabilities (no tools/permissions). Experimental (0.x).
-- **[GitHub Models](../../plugins-dev/Cockpit.Plugin.GitHubModelsProvider)** — the same OpenAI-compatible
+- **[GitHub Models](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GitHubModelsProvider)** — the same OpenAI-compatible
   driver against GitHub's own Models endpoint (`models.github.ai/inference`), configured with a GitHub PAT
   (`models:read` scope) instead of a raw API key. Experimental (0.x).
-- **[OpenRouter](../../plugins-dev/Cockpit.Plugin.OpenRouterProvider)** — the same OpenAI-compatible driver
+- **[OpenRouter](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.OpenRouterProvider)** — the same OpenAI-compatible driver
   against OpenRouter's endpoint (`openrouter.ai/api/v1`), model id in OpenRouter's `vendor/model` notation
   (e.g. `anthropic/claude-sonnet-4.5`). Chat-only, same as the other two; declares no usage signals since the
   endpoint reports none this driver can read. Experimental (0.x).
-- **[Grok](../../plugins-dev/Cockpit.Plugin.GrokProvider)** — the same OpenAI-compatible driver against
+- **[Grok](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GrokProvider)** — the same OpenAI-compatible driver against
   xAI's legacy chat-completions endpoint (`api.x.ai/v1`), deliberately not xAI's newer Responses API (see
   the plugin's own header comment). No default model — xAI has deprecated several model names in the last
   few months, so the profile always names one explicitly. Declares no usage signals. Experimental (0.x).
-- **[CLI Agent Provider](../../plugins-dev/Cockpit.Plugin.CliAgentProvider)** — registers Codex CLI as a
+- **[CLI Agent Provider](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.CliAgentProvider)** — registers Codex CLI as a
   provider driven as a **subprocess per turn** (`codex exec --json`, resumed via `codex exec resume
   <threadId>` for follow-up turns) instead of a persistent chat client — the reference implementation for a
   non-HTTP driver. `SupportsTools: true`, `SupportsPermissions: false` (no in-band tool-permission channel;
   the sandbox/approval mode is fixed per profile). Experimental (0.x).
-- **[Kimi Code Provider (ACP)](../../plugins-dev/Cockpit.Plugin.KimiProvider)** — Kimi Code driven over the
+- **[Kimi Code Provider (ACP)](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.KimiProvider)** — Kimi Code driven over the
   **Agent Client Protocol** (`kimi acp`, JSON-RPC 2.0 over stdio): one persistent subprocess for the whole
   session rather than one per turn, and the reference for a driver that answers **reverse-requests** — the
   agent calls back into the cockpit for tool permission and blocks until it gets an answer, so
   `SupportsPermissions: true` here means real Allow/Deny cards. Also shows how a plugin hands its
   cockpit-hosted MCP servers to the child and how a context percentage can come from a provider that reports
   no usage on the wire. Experimental (0.x).
-- **[opencode Provider (ACP)](../../plugins-dev/Cockpit.Plugin.OpencodeProvider)** — a second Agent Client
+- **[opencode Provider (ACP)](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.OpencodeProvider)** — a second Agent Client
   Protocol driver (`opencode acp`), same architecture as Kimi's but independently measured against a real
   process rather than assumed to behave the same — several things differ: opencode reports live usage/cost
   per turn over a dedicated `usage_update` notification (Kimi has no such signal at all), it does not ask

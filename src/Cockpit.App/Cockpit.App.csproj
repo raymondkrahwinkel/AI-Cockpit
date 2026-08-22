@@ -27,6 +27,17 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
+  <!-- AC-1042: the plugin guides stay in `docs/plugins/`, where GitHub, the published SDK package's README and
+       eleven store manifests already point at them, and ship from there — one file, two readers. The scanner
+       (AC-1033) matches on the resource name, so LogicalName is all it takes; WithCulture keeps a future
+       `PLUGIN-SDK.nl.md` out of a satellite assembly the scanner never reads. -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\docs\plugins\*.md"
+                      Exclude="$(MSBuildThisFileDirectory)..\..\docs\plugins\README.md"
+                      LogicalName="Cockpit.App.Docs.%(Filename)%(Extension)"
+                      WithCulture="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.1" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />

@@ -239,13 +239,38 @@ internal partial class HelpWindow : Window
     // what the renderer does with a link on its own.
     private bool _FollowLink(string url)
     {
-        if (!url.StartsWith("help:", StringComparison.OrdinalIgnoreCase))
+        if (url.StartsWith("help:", StringComparison.OrdinalIgnoreCase))
+        {
+            // Unconditionally, including at a page that is not there: a reference that breaks has to say so.
+            NavigateTo(HelpAddress.Parse(url["help:".Length..]));
+            return true;
+        }
+
+        var address = _Sibling(url);
+        if (address is null || !_help.Index.Contains(address))
         {
             return false;
         }
 
-        NavigateTo(HelpAddress.Parse(url["help:".Length..]));
+        NavigateTo(address);
         return true;
+    }
+
+    // AC-1042: the plain markdown a page writes for its GitHub reader — `API-REFERENCE.md#icockpithost`, or a
+    // bare `#section` — read as a page shipped beside this one, so one spelling serves both readers. Only when
+    // it names something actually shipped; anything else is somebody's URL and stays the browser's business.
+    private HelpAddress? _Sibling(string url)
+    {
+        if (url.StartsWith('#'))
+        {
+            return _article is null ? null : new HelpAddress(_article.Id, url[1..]);
+        }
+
+        // Resolved the way a plugin's own reference is, so a page beside this one wins over one of the app's
+        // that happens to share its name.
+        return HelpAddress.FromSiblingLink(url) is { } link
+            ? _help.Resolve(_article?.Owner is { IsCore: false } owner ? owner.Id : null, link.Article, link.Section)
+            : null;
     }
 
     private Control _Image(HelpArticle article, MarkdownBlock block)

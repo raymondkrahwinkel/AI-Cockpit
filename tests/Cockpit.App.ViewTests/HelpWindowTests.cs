@@ -82,6 +82,21 @@ public sealed class HelpWindowTests
             Assert.Contains(_Text(content), text => text.Contains("Fixtures", StringComparison.Ordinal));
         }));
 
+    // AC-1042: the three plugin guides ship from `docs/plugins/` rather than from a `Docs` folder of the app's
+    // own, which is one line of MSBuild away from silently shipping nothing at all.
+    [Theory]
+    [InlineData("PLUGIN-SDK")]
+    [InlineData("API-REFERENCE")]
+    [InlineData("AUTOMATED-PUBLISH")]
+    public void TheGuidesInDocsPluginsShipInsideTheApp(string key)
+    {
+        var articles = HelpDocumentScanner.Scan(typeof(HelpWindow).Assembly, HelpOwner.Core);
+        var article = Assert.Single(articles, candidate => candidate.Key == key);
+
+        Assert.Equal(HelpCategory.ExtendingCockpit, article.Category);
+        Assert.NotEmpty(article.Sections);
+    }
+
     private static void _Assert(string article, Action<Control> assert)
     {
         var window = new HelpWindow(_Help());

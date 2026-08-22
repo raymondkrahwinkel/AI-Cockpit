@@ -1,3 +1,11 @@
+---
+title: API reference
+category: extending
+order: 20
+summary: Every type and method in Cockpit.Plugins.Abstractions, with signatures and examples.
+icon: 📐
+---
+
 # Cockpit Plugin API Reference
 
 Every type and method a plugin can call, from the one assembly you reference:
@@ -15,7 +23,7 @@ see the [Plugin SDK guide](PLUGIN-SDK.md); this page is the method-by-method ref
 
 ---
 
-## `AbstractionsContract`
+## `AbstractionsContract` {#abstractionscontract}
 
 ```csharp
 public static class AbstractionsContract
@@ -34,7 +42,7 @@ only reason a contract-`1` plugin is refused.
 
 ---
 
-## `ICockpitPlugin`
+## `ICockpitPlugin` {#icockpitplugin}
 
 The entry point your plugin implements (`: IDisposable`). The host discovers it in your entry assembly.
 
@@ -47,30 +55,30 @@ public interface ICockpitPlugin : IDisposable
 }
 ```
 
-### `PluginMetadata Metadata { get; }`
+### `PluginMetadata Metadata { get; }` {#pluginmetadata-metadata--get}
 Identity shown in the Plugins manager. Return a `PluginMetadata` (see below). Read early — keep it a plain
 property with no side effects.
 
-### `void ConfigureServices(IServiceCollection services)`
+### `void ConfigureServices(IServiceCollection services)` {#void-configureservicesiservicecollection-services}
 **Phase 1**, *before* the host builds its DI container — register your own services here.
 - **Parameter** `services` — the host's service collection (from `Microsoft.Extensions.DependencyInjection.Abstractions`).
 - **Note:** only runs at startup for an *already-enabled* plugin. A plugin enabled *this* session contributes
   its **UI** immediately (via `Initialize`) but its **services only after the next restart** (the container is
   already built). Keep this optional where you can. Leave the body empty if you register nothing.
 
-### `void Initialize(ICockpitHost host)`
+### `void Initialize(ICockpitHost host)` {#void-initializeicockpithost-host}
 **Phase 2**, once the host and UI exist — register your contribution points through `host` (below). This is
 where the plugin actually wires itself into the cockpit.
 - **Parameter** `host` — the facade described next.
 
-### `void Dispose()` *(from `IDisposable`)*
+### `void Dispose()` *(from `IDisposable`)* {#void-dispose-from-idisposable}
 Runs when the plugin is **disabled** or the app exits — release timers, `HttpClient`s, subscriptions, etc.
 The assembly is **not** unloaded until the process restarts (a loaded plugin cannot be truly unloaded), so
 "disable" means *UI removed + `Dispose` called*.
 
 ---
 
-## `ICockpitHost`
+## `ICockpitHost` {#icockpithost}
 
 Handed to you in `Initialize`. The contract's only intended growth surface.
 
@@ -126,18 +134,18 @@ public interface ICockpitHost
 }
 ```
 
-### `IServiceProvider Services { get; }`
+### `IServiceProvider Services { get; }` {#iserviceprovider-services--get}
 The built host container. Resolve services you (or the host) registered:
 `host.Services.GetRequiredService<MyService>()`. Prefer resolving your own registered services over
 reaching into host internals.
 
-### `ICockpitActions Actions { get; }`
+### `ICockpitActions Actions { get; }` {#icockpitactions-actions--get}
 Actions on the cockpit/session — see [`ICockpitActions`](#icockpitactions).
 
-### `IPluginStorage Storage { get; }`
+### `IPluginStorage Storage { get; }` {#ipluginstorage-storage--get}
 Your per-plugin key/value store — see [`IPluginStorage`](#ipluginstorage).
 
-### `void AddSettings(Func<Control> createView)`
+### `void AddSettings(Func<Control> createView)` {#void-addsettingsfunccontrol-createview}
 Registers your **settings view**, opened from the **gear** next to your plugin in the Plugins manager (there
 is no top-level Options tab per plugin).
 - **Parameter** `createView` — a factory returning your settings `Control`, invoked on the UI thread when the
@@ -150,7 +158,7 @@ is no top-level Options tab per plugin).
 host.AddSettings(() => new MySettingsControl(host.Storage));
 ```
 
-### `void AddSideMenuButton(string title, Action onInvoke)`
+### `void AddSideMenuButton(string title, Action onInvoke)` {#void-addsidemenubuttonstring-title-action-oninvoke}
 Adds a **launcher button** to the left sidebar.
 - **Parameters:** `title` — the button label; `onInvoke` — runs (UI thread) when clicked, typically to open a
   dialog via `ShowDialogAsync`.
@@ -158,12 +166,12 @@ Adds a **launcher button** to the left sidebar.
 host.AddSideMenuButton("GitHub Issues", () => _ = host.ShowDialogAsync("Issues", () => BuildIssuesView()));
 ```
 
-### `void AddSideMenuSection(string title, Func<Control> createView)`
+### `void AddSideMenuSection(string title, Func<Control> createView)` {#void-addsidemenusectionstring-title-funccontrol-createview}
 Adds an **inline accordion section** under the session list — for small, always-visible content (not a heavy
 panel).
 - **Parameters:** `title` — the section header; `createView` — factory for the section's `Control`.
 
-### `Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560)`
+### `Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560)` {#task-showdialogasyncstring-title-funccontrol-createcontent-double-width--720-double-height--560}
 Opens a **window beside the cockpit** hosting your content; you own the content control. It is not modal:
 the operator can keep working in a running session while it is open, and can open a second one — each call
 builds its content afresh, because a title is not enough for the host to tell two of them apart.
@@ -178,7 +186,7 @@ the operator may have moved on.
 await host.ShowDialogAsync("Issues", () => BuildIssuesView(), width: 900, height: 600);
 ```
 
-### `void OnSettingsSaved(Action callback)`
+### `void OnSettingsSaved(Action callback)` {#void-onsettingssavedaction-callback}
 Registers `callback` to run (UI thread) after **this plugin's own** settings are saved from the manager's
 gear (#52) — i.e. the host committed what your `IPluginSettingsView.TryStage()` handed it. Enabling/disabling/installing a plugin
 still needs a restart (its assembly can't be unloaded/loaded live), but a settings change doesn't have to.
@@ -203,11 +211,11 @@ internal sealed class MySideSectionControl : UserControl
 }
 ```
 
-### `void AddSessionProvider(SessionProviderRegistration registration)`
+### `void AddSessionProvider(SessionProviderRegistration registration)` {#void-addsessionprovidersessionproviderregistration-registration}
 Registers a new **session provider** (#45) — the plugin equivalent of the built-in Claude-CLI/Ollama/LM-Studio
 providers. Once registered, it appears in the New-session/Manage-profiles provider picker, backed by the
 plugin's own driver and config view. See [`SessionProviderRegistration`](#sessionproviderregistration) and the
-[Sessions namespace](#the-sessions-namespace---provider-plugins) below for the full contract.
+[Sessions namespace](#the-sessions-namespace--provider-plugins) below for the full contract.
 - **Parameter** `registration` — the provider's id, display name, driver factory, capabilities and config-view
   factory.
 - Default no-op, so existing `ICockpitHost` implementations (test fakes, older plugin builds) keep compiling
@@ -221,7 +229,7 @@ host.AddSessionProvider(new SessionProviderRegistration(
     CreateConfigView: existingConfigJson => new MyProviderConfigView(existingConfigJson)));
 ```
 
-### `void AddWidget(WidgetRegistration registration)`
+### `void AddWidget(WidgetRegistration registration)` {#void-addwidgetwidgetregistration-registration}
 Registers a **dashboard widget type** — the widget equivalent of `AddSessionProvider`. It becomes available in
 a Dashboard workspace's "Add widget" gallery, and each placed instance is built by the registration's own view
 factory. The core hosts the grid and the pane chrome; what a widget shows is the plugin's business. See
@@ -241,11 +249,11 @@ host.AddWidget(new WidgetRegistration("my-plugin.cpu", "CPU", context => new Cpu
 });
 ```
 
-### `IReadOnlyList<WidgetRegistration> Widgets { get; }`
+### `IReadOnlyList<WidgetRegistration> Widgets { get; }` {#ireadonlylistwidgetregistration-widgets--get}
 Every widget type all plugins have contributed — what a Dashboard workspace's "Add widget" gallery reads. A
 plugin that is not building that gallery has no reason to touch it. Default empty.
 
-### `WidgetRegistration`
+### `WidgetRegistration` {#widgetregistration}
 ```csharp
 public sealed record WidgetRegistration(string Id, string Title, Func<IWidgetContext, Control> CreateView)
 {
@@ -273,7 +281,7 @@ public sealed record WidgetRegistration(string Id, string Title, Func<IWidgetCon
 - `HasConfig` — derived from `CreateConfigView` rather than declared next to it, so no flag can claim settings
   the widget cannot build.
 
-### `IWidgetContext`
+### `IWidgetContext` {#iwidgetcontext}
 Handed to one placed instance's view and config-view factories — everything that instance needs and nothing
 it does not.
 ```csharp
@@ -293,7 +301,7 @@ public interface IWidgetContext
 - `RefreshRequested` — raised when the host asks this instance to refresh, including after its settings are
   saved. A widget polling on its own timer can ignore it; one showing a snapshot should re-read.
 
-### `void AddWorkspaceType(WorkspaceTypeRegistration registration)`
+### `void AddWorkspaceType(WorkspaceTypeRegistration registration)` {#void-addworkspacetypeworkspacetyperegistration-registration}
 Registers a **full-surface workspace type** — the workspace equivalent of `AddWidget`, one level up. Where a
 widget fills one cell of a Dashboard's grid, a workspace type owns its **whole body**: the host draws the tab
 and the frame and persists the workspace's namespaced type id, and your `CreateBody` draws everything inside.
@@ -311,11 +319,11 @@ host.AddWorkspaceType(new WorkspaceTypeRegistration("my-plugin.pipeline", "Pipel
 });
 ```
 
-### `IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; }`
+### `IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; }` {#ireadonlylistworkspacetyperegistration-workspacetypes--get}
 Every workspace type all plugins have contributed — what the tab strip's "+" menu reads. A plugin not building
 that menu has no reason to touch it. Default empty.
 
-### `WorkspaceTypeRegistration`
+### `WorkspaceTypeRegistration` {#workspacetyperegistration}
 In `Cockpit.Plugins.Abstractions.Workspaces`.
 ```csharp
 public sealed record WorkspaceTypeRegistration(string Id, string Title, Func<IWorkspaceContext, Control> CreateBody)
@@ -336,7 +344,7 @@ public sealed record WorkspaceTypeRegistration(string Id, string Title, Func<IWo
   as part of the theme; `Icon` is the emoji fallback.
 - `Description` — one line for the "+" menu.
 
-### `IWorkspaceContext`
+### `IWorkspaceContext` {#iworkspacecontext}
 Handed to a workspace's body factory — what one full-surface workspace needs that its plugin cannot reach on
 its own.
 ```csharp
@@ -362,7 +370,7 @@ public interface IWorkspaceContext
   the `ICockpitHost`, and the theme is app resources any control binds with `DynamicResource` — so they are not
   repeated here.
 
-### `IEmbeddedSession`
+### `IEmbeddedSession` {#iembeddedsession}
 ```csharp
 public interface IEmbeddedSession
 {
@@ -372,7 +380,7 @@ public interface IEmbeddedSession
 ```
 The host owns the session, so there is nothing here to dispose — you hold the place, not the lifetime.
 
-### `EmbeddedSessionRequest`
+### `EmbeddedSessionRequest` {#embeddedsessionrequest}
 ```csharp
 public sealed record EmbeddedSessionRequest
 {
@@ -381,7 +389,7 @@ public sealed record EmbeddedSessionRequest
 }
 ```
 
-### `Task AddMcpServer(McpServerContribution contribution)`
+### `Task AddMcpServer(McpServerContribution contribution)` {#task-addmcpservermcpservercontribution-contribution}
 Registers (or updates) an HTTP MCP server in the **shared registry** (#60) — e.g. a remote MCP endpoint your
 plugin knows how to build a URL/token for — so both session worlds (the local tool-loop and the Claude
 fan-out) can use its tools without the user adding it by hand in the MCP-servers dialog. See
@@ -400,7 +408,7 @@ _ = host.AddMcpServer(new McpServerContribution(
     BearerToken: myToken));
 ```
 
-### `void AddSupervisedActivityProvider(ISupervisedActivitySource source)`
+### `void AddSupervisedActivityProvider(ISupervisedActivitySource source)` {#void-addsupervisedactivityproviderisupervisedactivitysource-source}
 Registers a source of long-running, agent-started background activities shown in the **app status bar** (a counter
 next to "Delegated tasks"). The counter appears only while something is running and opens a panel listing each
 activity with its details and a **Kill button per item**. The host owns the Kill — an agent has no path to start or
@@ -415,7 +423,7 @@ or any other supervised background work needs to be safe.
 host.AddSupervisedActivityProvider(myPortForwardManager);
 ```
 
-### `void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView)`
+### `void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView)` {#void-addsessionheaderitemfuncipluginsessioncontext-control-createview}
 Adds a small control to **every session's header bar**, built once per session and handed that session's own
 [`IPluginSessionContext`](#ipluginsessioncontext) — for status that belongs to the session it describes (the git
 state of the repo it is working in, say) rather than to the cockpit as a whole.
@@ -429,7 +437,7 @@ state of the repo it is working in, say) rather than to the cockpit as a whole.
 host.AddSessionHeaderItem(session => new MyIndicator(host, session));
 ```
 
-#### `IPluginSessionContext`
+#### `IPluginSessionContext` {#ipluginsessioncontext}
 One session, for as long as its panel exists — where [`ICockpitSessionObserver`](#the-sessions-namespace--provider-plugins)
 follows whichever session is *selected*, this is bound to the one your control sits in.
 
@@ -447,7 +455,7 @@ A dialog belongs to no session, so an action it takes "for the current session" 
 it up. That is how the YouTrack plugin starts an issue from its dialog and has it appear in the right session's
 header — with four panes open, "the session" is not obvious, and guessing would put the ticket on the wrong one.
 
-### `void AddWorkflowStep(IWorkflowStep step)`
+### `void AddWorkflowStep(IWorkflowStep step)` {#void-addworkflowstepiworkflowstep-step}
 Contributes a **step to the workflow editor** (#69) — "Start a ticket", "Comment on a pull request". It appears in
 the step picker under your own category, is wired on the canvas like any other step, and runs as part of the flow.
 
@@ -522,11 +530,11 @@ Triggers (`IsTrigger => true`) are fired, never run, so their value is ignored �
 `TypeId` must be unique across all plugins — prefix it with your plugin's id. Registering a duplicate throws at
 startup rather than letting load order decide which of two steps a stored flow means.
 
-### `IReadOnlyList<IWorkflowStep> WorkflowSteps { get; }`
+### `IReadOnlyList<IWorkflowStep> WorkflowSteps { get; }` {#ireadonlylistiworkflowstep-workflowsteps--get}
 Every step all plugins contributed. Only the workflows plugin has a reason to read this; it does so when its editor
 opens, not at startup, because plugins initialise in an order nobody controls.
 
-### `void AddConversationPicker(ConversationPickerRegistration picker)`
+### `void AddConversationPicker(ConversationPickerRegistration picker)` {#void-addconversationpickerconversationpickerregistration-picker}
 Registers a way to **pick an earlier conversation to resume**. The New-session dialog can resume a conversation
 by id; with a picker registered it also shows a **Search…** button that runs yours, so the operator chooses a
 conversation instead of typing an id by hand.
@@ -579,7 +587,7 @@ host.AddConversationPicker(new ConversationPickerRegistration(
 });
 ```
 
-### `Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()`
+### `Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()` {#taskireadonlylistpluginprofileinfo-getprofilesasync}
 The cockpit's configured **session profiles**: which identities exist and where each keeps its provider state
 on disk. For a plugin that reads a provider's on-disk artefacts — the Claude CLI's transcripts, say — this is
 how you find the directories the operator actually configured instead of guessing at the well-known ones.
@@ -604,7 +612,7 @@ var claudeConfigDirs = profiles
     .Select(profile => profile.ConfigDirectory);
 ```
 
-### `void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction)`
+### `void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction)` {#void-showtoaststring-message-plugintoastseverity-severity-string-actionlabel-action-onaction}
 A transient **in-app notification** in the cockpit — how you tell the operator that something happened while
 they were working somewhere else in the app. `actionLabel` and `onAction` are supplied together to give the
 toast one button.
@@ -622,7 +630,7 @@ host.ShowToast(
     () => OpenInBrowser(pullRequest.Url));
 ```
 
-### `Task<ConsentDecision> RequestConsentAsync(ConsentRequest request)`
+### `Task<ConsentDecision> RequestConsentAsync(ConsentRequest request)` {#taskconsentdecision-requestconsentasyncconsentrequest-request}
 Ask the operator to **approve a single action before you perform it** — the shared consent gate for anything
 your plugin does with the operator's rights on an agent's say-so: a workflow's shell or egress step, taking over
 a terminal pane. The host shows an Approve/Deny banner on the session it belongs to and returns what the operator
@@ -681,43 +689,43 @@ public sealed record ConsentDecision(ConsentOutcome Outcome, bool Remembered = f
 
 ---
 
-### `void AddSessionHeaderAction(PluginSessionAction action)`
+### `void AddSessionHeaderAction(PluginSessionAction action)` {#void-addsessionheaderactionpluginsessionaction-action}
 
 A quick action button on a session's header bar (AC-37) — hides itself when it has nothing to show. Used by the Session Review plugin. Default no-op.
 
-### `void AddToolbarAction(ToolbarAction action)`
+### `void AddToolbarAction(ToolbarAction action)` {#void-addtoolbaractiontoolbaraction-action}
 
 Drops a quick action onto the app toolbar, provider-neutral — any plugin adds one the same way. Used by the Docker and Kubernetes plugins. Default no-op.
 
-### `void AddShortcut(PluginShortcut shortcut)`
+### `void AddShortcut(PluginShortcut shortcut)` {#void-addshortcutpluginshortcut-shortcut}
 
 Registers a keyboard shortcut, shown alongside the built-in ones in Options and rebindable there. Only fires when the operator is not typing into a text field or the terminal. Default no-op.
 
-### `void AddWorkflowTemplate(WorkflowTemplate template)`
+### `void AddWorkflowTemplate(WorkflowTemplate template)` {#void-addworkflowtemplateworkflowtemplate-template}
 
 Offers a prebuilt flow — a template — in the Workflows plugin's "New flow" picker under this plugin's name, instead of an empty canvas. Default no-op.
 
-### `void AddTtyProvider(TtyProviderRegistration registration)`
+### `void AddTtyProvider(TtyProviderRegistration registration)` {#void-addttyproviderttyproviderregistration-registration}
 
 Registers a terminal (TTY) provider, so a plugin can back a terminal pane with its own process or shell. Default no-op.
 
-### `void AddManagedCli(ManagedCliDescriptor descriptor)`
+### `void AddManagedCli(ManagedCliDescriptor descriptor)` {#void-addmanagedclimanagedclidescriptor-descriptor}
 
 Registers a CLI the host downloads and unpacks on demand; a machine with no managed copy falls back to the one on `PATH`. Default no-op.
 
-### `Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default)`
+### `Task<bool> GetManagedCliAutoUpdateAsync(string cliName, CancellationToken cancellationToken = default)` {#taskbool-getmanagedcliautoupdateasyncstring-cliname-cancellationtoken-cancellationtoken--default}
 
 Whether the host's background update check installs a newer version of `cliName` itself rather than only toasting that one exists (AC-767) — what the shared `ManagedCliConfigSection`'s "Update automatically" checkbox reads. Default `true`.
 
-### `Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default)`
+### `Task SetManagedCliAutoUpdateAsync(string cliName, bool enabled, CancellationToken cancellationToken = default)` {#task-setmanagedcliautoupdateasyncstring-cliname-bool-enabled-cancellationtoken-cancellationtoken--default}
 
 Turns auto-update for `cliName` on or off — what the checkbox writes. Default no-op.
 
-### `Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null)`
+### `Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null)` {#task-addmcpendpointstring-servername-object-tools-funcbool-isenabled--null}
 
 Registers an **in-process** MCP server (AC-12) exposing the methods on `tools` — distinct from `AddMcpServer`, which points the cockpit at an external MCP process. `isEnabled` gates it live on the plugin's own setting (read each time servers are gathered, so a toggle takes effect at once; `null` = always on). Call it fire-and-forget from `Initialize`. Used by the Docker and Kubernetes plugins. Default no-op.
 
-### `void AddProjectField(ProjectFieldRegistration registration)`
+### `void AddProjectField(ProjectFieldRegistration registration)` {#void-addprojectfieldprojectfieldregistration-registration}
 
 Adds a field to the **project editor** (AC-317) — "which YouTrack project is this project", "which repository" — so a
 project carries the identifier your plugin resolves, picked from a list you supply instead of typed into a free-text
@@ -752,7 +760,7 @@ Two plugins may register the **same key**: that is agreement, not a clash (a rep
 first registration wins, so either plugin alone still offers the field. Different keys that differ only in case are
 different fields, because a link is read back case-sensitively.
 
-### `void AddProjectMemorySource(ProjectMemorySourceRegistration registration)`
+### `void AddProjectMemorySource(ProjectMemorySourceRegistration registration)` {#void-addprojectmemorysourceprojectmemorysourceregistration-registration}
 
 Names a place a project's memory can live **other than a folder** (AC-165/166) — a Depot project, say. The project
 editor's memory picker offers your source beside "Folder", and a session started on a project whose `MemoryRef` is
@@ -795,12 +803,12 @@ back).
   here to fetch — the operator picks your source by `Title` from the editor's small dropdown, but still types the
   bare identifier (`cockpit` in `depot:cockpit`) into a free-text box themselves.
 
-### `IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources { get; }`
+### `IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources { get; }` {#ireadonlylistprojectmemorysourceregistration-projectmemorysources--get}
 
 Every memory source plugins have contributed, in registration order — what the project editor's picker and a
 starting session's standing instructions both read. A plugin that is neither has no reason to call this. Default `[]`.
 
-### `void AddSessionResourceProvider(ISessionResourceProvider provider)`
+### `void AddSessionResourceProvider(ISessionResourceProvider provider)` {#void-addsessionresourceproviderisessionresourceprovider-provider}
 
 Registers something your plugin gives a session **as it starts** (AC-165) — today, environment variables its process
 runs with. The host asks every registered provider once per launch, merges the answers, and hands the result to
@@ -866,12 +874,12 @@ Rules worth knowing before you rely on it:
   commands at the linked repository. That is the point of the field — but the run's worktree bounds its files, not its
   reach, so contribute what a project genuinely decides and nothing more.
 
-### `IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }`
+### `IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }` {#ireadonlylistprojectfieldregistration-projectfields--get}
 
 Every field plugins have contributed — what the project editor reads to draw them. A plugin that is not the project
 editor has no reason to call this. Default `[]`.
 
-### `Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null, CancellationToken cancellationToken = default)`
+### `Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null, CancellationToken cancellationToken = default)` {#taskstring-getprojectfieldvalueasyncstring-key-string-paneid--null-cancellationtoken-cancellationtoken--default}
 
 The reading half: what the operator picked for `key` on the project a session belongs to, or `null` when that session
 has no project, the project is not linked, or `paneId` matches nothing. A plugin may read a key it did not register —
@@ -886,7 +894,7 @@ on which pane happens to be selected. Default `null`.
 var linked = await host.GetProjectFieldValueAsync("youtrack.project");
 ```
 
-### `Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default)`
+### `Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default)` {#taskireadonlylistprojectmemoryrow-getprojectmemoryrowsasyncstring-paneid--null-cancellationtoken-cancellationtoken--default}
 
 The project's own `ProjectResourceRole.Memory` rows (AC-483/AC-827) — 0, 1 or several, read-only. The missing read
 half of `AddProjectMemorySource`/`ProjectMemorySources` below: those register where a *scheme* resolves to, this
@@ -901,7 +909,7 @@ the same rule applies to what it is about to do with them.
 var rows = await host.GetProjectMemoryRowsAsync();
 ```
 
-### `Task SetSessionStatusline(string paneId, string statusline)` / `Task SetSessionName(string paneId, string name)` / `Task SuggestSessionName(string paneId, string name)`
+### `Task SetSessionStatusline(string paneId, string statusline)` / `Task SetSessionName(string paneId, string name)` / `Task SuggestSessionName(string paneId, string name)` {#task-setsessionstatuslinestring-paneid-string-statusline--task-setsessionnamestring-paneid-string-name--task-suggestsessionnamestring-paneid-string-name}
 
 How a plugin labels a session it just gave work to (AC-13, AC-310). The statusline is the accented line under a
 session's title in its header and the sidebar; an empty string clears it. All three take a pane id — the session's own
@@ -921,7 +929,7 @@ _ = host.SetSessionStatusline(paneId, $"{issue.IdReadable} — {issue.Summary}")
 _ = host.SuggestSessionName(paneId, issue.IdReadable);
 ```
 
-## `ICockpitActions`
+## `ICockpitActions` {#icockpitactions}
 
 Act on the cockpit and the running session.
 
@@ -943,7 +951,7 @@ public interface ICockpitActions
 }
 ```
 
-### `Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null)`
+### `Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null)` {#taskstring-delegateasyncstring-profilelabel-string-prompt-string-workingdirectory--null-timespan-timeout--null}
 Hands work to another profile as a **background task** and waits for what it produces (#67) — the cockpit's own
 delegation, done for a plugin. Returns the profile's answer.
 
@@ -960,7 +968,7 @@ change something. Anything above the target profile's own ceiling is put to the 
 rather than granted. A plugin compiled against the older four-argument overload keeps working and gets the read-only
 default, which is the safe end of that choice.
 
-### `Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null)`
+### `Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null)` {#taskstring-startsessionasyncstring-profilelabel-string-prompt--null-string-workingdirectory--null}
 Opens a session on the profile with that label and hands it `prompt` as its first input — the New-session dialog's act,
 without the dialog. The profile's own defaults decide model, permissions and effort: naming a profile means "the way I
 set that one up". `workingDirectory` overrides the profile's, for the flow that has just cut a branch in one repo.
@@ -970,7 +978,7 @@ between profiles would run someone's work on the wrong model, in the wrong direc
 the caller would never learn that it had guessed. The default implementation throws `NotSupportedException`, so a
 plugin on a host too old to start sessions finds out rather than silently getting none.
 
-### `Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName)`
+### `Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName)` {#taskstring-startsessionasyncstring-profilelabel-string-prompt-string-workingdirectory-string-sessionname}
 The same act, with the session's name said up front — what the New-session dialog's name field does, for a caller that
 has no dialog. A flow opening a session on a ticket can call it `AC-312` from the start instead of opening
 `Claude — 14:22` and renaming it a step later.
@@ -987,10 +995,10 @@ and bind to the host's copy, so a host older than this member loads an SDK that 
 before any default body runs. **A plugin calling this overload must raise its manifest's `minHostVersion`** — no
 interface default can stand in for that.
 
-### `Task SetClipboardTextAsync(string text)`
+### `Task SetClipboardTextAsync(string text)` {#task-setclipboardtextasyncstring-text}
 Puts `text` on the system clipboard. Use as a fallback when there is no active session to inject into.
 
-### `Task InjectIntoActiveSessionAsync(string text)`
+### `Task InjectIntoActiveSessionAsync(string text)` {#task-injectintoactivesessionasyncstring-text}
 Injects `text` into the **currently selected** session — appended to the input box for an SDK/local session,
 written to the pty for a TTY session. **No-op when `HasActiveSession` is false.**
 ```csharp
@@ -1000,12 +1008,12 @@ else
     await host.Actions.SetClipboardTextAsync(prompt);
 ```
 
-### `bool HasActiveSession { get; }`
+### `bool HasActiveSession { get; }` {#bool-hasactivesession--get}
 True when a session is selected (so `InjectIntoActiveSessionAsync` will land). Check it before injecting.
 
 ---
 
-## `IPluginStorage`
+## `IPluginStorage` {#ipluginstorage}
 
 Per-plugin key/value storage, persisted in a plugin-scoped slice of the host's `cockpit.json`. Values are
 JSON-serialized.
@@ -1021,18 +1029,18 @@ public interface IPluginStorage
 }
 ```
 
-### `T? Get<T>(string key)`
+### `T? Get<T>(string key)` {#t-gettstring-key}
 Reads and deserializes the value for `key`, or `default(T)` (e.g. `null`) if unset. Provide a fallback:
 `host.Storage.Get<string>("repo") ?? ""`.
 
-### `void Set<T>(string key, T value)`
+### `void Set<T>(string key, T value)` {#void-settstring-key-t-value}
 Serializes and persists `value` under `key`. Works for primitives and your own DTO types.
 ```csharp
 host.Storage.Set("repo", "owner/name");
 host.Storage.Set("options", new MyOptions { Token = "…", Filter = "open" });
 ```
 
-### `void SetSecret(string key, string value)` / `string? GetSecret(string key)`
+### `void SetSecret(string key, string value)` / `string? GetSecret(string key)` {#void-setsecretstring-key-string-value--string-getsecretstring-key}
 
 Stores a credential: a token, an API key, a webhook URL — anything that would be a problem in someone else's
 hands. What is stored this way is **encrypted at rest** whenever the operator has turned that on (Options →
@@ -1064,7 +1072,7 @@ the runtime.
 
 ---
 
-## `IPluginSettingsView`
+## `IPluginSettingsView` {#ipluginsettingsview}
 
 Optional interface your **settings control** (the one passed to `AddSettings`) implements to get a standard
 **Save** button in the host's settings screen.
@@ -1076,7 +1084,7 @@ public interface IPluginSettingsView
 }
 ```
 
-### `bool TryStage(out Action? commit, out string? error)`
+### `bool TryStage(out Action? commit, out string? error)` {#bool-trystageout-action-commit-out-string-error}
 Validate the current field values **without writing anything**, and hand the host the write to perform.
 
 | Member | Meaning |
@@ -1115,7 +1123,7 @@ Migrating from `bool Save()`? See [the migration steps](PLUGIN-SDK.md#migrating-
 
 ---
 
-## `IPluginSettingsSections`
+## `IPluginSettingsSections` {#ipluginsettingssections}
 
 Optional interface your **settings control** implements when it has grown past one screenful: name your
 sections and the host draws the same left navigation rail the cockpit's own Options dialog uses, instead of
@@ -1180,7 +1188,7 @@ its opening section in its constructor (as above) is asked for that one twice.
 
 ---
 
-## `PluginMetadata`
+## `PluginMetadata` {#pluginmetadata}
 
 The identity you return from `ICockpitPlugin.Metadata`.
 
@@ -1203,11 +1211,11 @@ public PluginMetadata Metadata { get; } =
 
 ---
 
-## The `Sessions` namespace — provider plugins
+## The `Sessions` namespace — provider plugins {#the-sessions-namespace--provider-plugins}
 
 Everything under `Cockpit.Plugins.Abstractions.Sessions`, used with `ICockpitHost.AddSessionProvider` (#45) to
 register a plugin as a **new selectable session provider** — the same picker slot as the built-in Claude
-CLI / Ollama / LM Studio providers. Three real plugins in [`plugins-dev/`](../../plugins-dev) exercise this:
+CLI / Ollama / LM Studio providers. Three real plugins in [`plugins-dev/`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev) exercise this:
 **Gemini/OpenAI Provider** and **GitHub Models** (both a persistent `IChatClient` over an OpenAI-compatible
 endpoint) and **CLI Agent Provider** (a subprocess-per-turn driver around the `codex` CLI).
 
@@ -1217,7 +1225,7 @@ Claude-CLI-only live model switch, plan mode, thinking-budget control, or always
 host's own adapter (`PluginSessionDriverAdapter`, internal to the app) wraps your driver to satisfy the real
 `ISessionDriver` contract and no-ops the members this interface has no equivalent for.
 
-### `SessionProviderRegistration`
+### `SessionProviderRegistration` {#sessionproviderregistration}
 
 ```csharp
 public sealed record SessionProviderRegistration(
@@ -1257,7 +1265,7 @@ public void Initialize(ICockpitHost host)
 }
 ```
 
-### `IPluginSessionDriverFactory`
+### `IPluginSessionDriverFactory` {#ipluginsessiondriverfactory}
 
 ```csharp
 public interface IPluginSessionDriverFactory
@@ -1270,7 +1278,7 @@ Creates the driver for one profile. `configJson` is the profile's opaque config 
 shape**, serialized by your `IPluginProviderConfigView.TryGetConfigJson` and deserialized back here; the host
 never inspects it.
 
-### `IPluginSessionDriver`
+### `IPluginSessionDriver` {#ipluginsessiondriver}
 
 ```csharp
 public interface IPluginSessionDriver : IAsyncDisposable
@@ -1300,7 +1308,7 @@ Drives a single, persistent, multi-turn conversation and exposes it as a typed e
 | `SetAutoApproveToolsAsync` | Toggles per-tool-call approval prompts on/off. Default no-op — a driver with no tool source of its own has nothing to gate. |
 | `DisposeAsync` *(`IAsyncDisposable`)* | Tears down the subprocess/HTTP client/etc. |
 
-### `PluginSessionCapabilities`
+### `PluginSessionCapabilities` {#pluginsessioncapabilities}
 
 ```csharp
 public sealed record PluginSessionCapabilities(bool SupportsTools, bool SupportsPermissions, bool SupportsVision = false);
@@ -1332,7 +1340,7 @@ Capabilities = new PluginSessionCapabilities(SupportsTools: true, SupportsPermis
 Declare only what your driver actually reads. `PluginSessionLaunchOption` (on the registration) asks the
 New-session dialog to render a control; this one renders nothing and only states what exists.
 
-### `IPluginProviderConfigView`
+### `IPluginProviderConfigView` {#ipluginproviderconfigview}
 
 ```csharp
 public interface IPluginProviderConfigView
@@ -1375,7 +1383,7 @@ internal sealed class MyProviderConfigView : IPluginProviderConfigView
 }
 ```
 
-### The event vocabulary — `PluginSessionEvent` and its subtypes
+### The event vocabulary — `PluginSessionEvent` and its subtypes {#the-event-vocabulary--pluginsessionevent-and-its-subtypes}
 
 Every event `IPluginSessionDriver.Events` can yield derives from the abstract `PluginSessionEvent`
 (`SessionId` on the base type, so every event carries it once known):
@@ -1395,14 +1403,14 @@ the app sees one event vocabulary regardless of which driver produced it.
 
 ---
 
-## The `Mcp` namespace — MCP server registration
+## The `Mcp` namespace — MCP server registration {#the-mcp-namespace--mcp-server-registration}
 
 Everything under `Cockpit.Plugins.Abstractions.Mcp`, used with `ICockpitHost.AddMcpServer` (#60) to register
 an **HTTP MCP server** into the shared registry — e.g. the YouTrack plugin registering each configured
 instance's JetBrains remote MCP endpoint so sessions get YouTrack tools without the user adding the server by
 hand.
 
-### `McpServerContribution`
+### `McpServerContribution` {#mcpservercontribution}
 
 ```csharp
 public sealed record McpServerContribution(
@@ -1419,7 +1427,7 @@ public sealed record McpServerContribution(
 | `BearerToken` | Static bearer token sent as `Authorization: Bearer …`, or `null`/empty for no auth. |
 | `Scope` | Which session worlds this server fans out to **on first registration** — see below. |
 
-### `McpContributionScope`
+### `McpContributionScope` {#mcpcontributionscope}
 
 ```csharp
 public enum McpContributionScope
@@ -1431,7 +1439,7 @@ public enum McpContributionScope
 ```
 
 The YouTrack plugin's own registration helper (real code from
-[`plugins-dev/Cockpit.Plugin.YouTrack/YouTrackMcpRegistration.cs`](../../plugins-dev/Cockpit.Plugin.YouTrack/YouTrackMcpRegistration.cs)),
+[`plugins-dev/Cockpit.Plugin.YouTrack/YouTrackMcpRegistration.cs`](https://github.com/raymondkrahwinkel/AI-Cockpit/blob/main/plugins-dev/Cockpit.Plugin.YouTrack/YouTrackMcpRegistration.cs)),
 building one contribution per fully-configured instance and re-registering on every settings save via
 `OnSettingsSaved`:
 
@@ -1458,7 +1466,7 @@ private static void _RegisterMcpServers(ICockpitHost host, YouTrackSettings sett
 
 ---
 
-## Minimal plugin
+## Minimal plugin {#minimal-plugin}
 
 ```csharp
 using Avalonia.Controls;
@@ -1482,4 +1490,4 @@ public sealed class MyPlugin : ICockpitPlugin
 ```
 
 See the [Plugin SDK guide](PLUGIN-SDK.md) for the project file, manifest, packaging and install steps, and the
-[GitHub Issues plugin](../../plugins-dev/Cockpit.Plugin.GitHubIssues) for a full example.
+[GitHub Issues plugin](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.GitHubIssues) for a full example.
