@@ -761,6 +761,22 @@ internal sealed class AssistantAgentGateway(
             return WorktreeHandoverResult.HandedOver(reattached.Path, reattached.Branch, session.Title);
         });
 
+    // AC-587: the assistant's own door onto `ExternalLink` — the one shell-out for a web address in
+    // `Cockpit.App` (`ExternalLinkSingleSourceTests`). No UI-thread hop: `Process.Start` touches no view-model
+    // state, unlike every other member on this class.
+    public Task<OpenUrlResult> OpenUrlAsync(string url, CancellationToken cancellationToken = default)
+    {
+        if (!ExternalLink.TryParseWebAddress(url, out var address))
+        {
+            return Task.FromResult(OpenUrlResult.Refused(
+                $"'{url}' is not an absolute http(s) address, so there is nothing to open."));
+        }
+
+        return Task.FromResult(ExternalLink.TryOpen(address)
+            ? OpenUrlResult.Opened(address.AbsoluteUri)
+            : OpenUrlResult.Refused($"The browser would not open '{address.AbsoluteUri}'."));
+    }
+
     private async Task<WorktreeHandoverResult> _RefuseHandoverAsync(
         string path, string paneId, string reason, CancellationToken cancellationToken)
     {

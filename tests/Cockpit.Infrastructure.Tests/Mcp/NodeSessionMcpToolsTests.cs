@@ -392,6 +392,9 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         public Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<OpenUrlResult> OpenUrlAsync(string url, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<AssistantProjectBindResult> BindSharedProjectAsync(
             string sourceName,
             string sharedProjectId,

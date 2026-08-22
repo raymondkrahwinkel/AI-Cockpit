@@ -241,6 +241,9 @@ public sealed class AssistantBindSharedProjectConsentTests : IDisposable
 
         public Task<WorktreeHandoverResult> HandoverWorktreeAsync(string path, string paneId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<OpenUrlResult> OpenUrlAsync(string url, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     public void Dispose() => McpRequestContext.Set(null);

@@ -469,6 +469,32 @@ public class AssistantAgentGatewayTests
         Assert.Null(entry.Refusal);
     }
 
+    // ── AC-587: open_url's own door onto ExternalLink ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Criterion 4: a non-web scheme is refused through <c>ExternalLink.TryParseWebAddress</c> — the same guard
+    /// every other web address in <c>Cockpit.App</c> is held to — and never through
+    /// <c>ExternalLink.TryOpenWithSystemApp</c>, which opens a filesystem path with a program rather than a page.
+    /// A value this refuses starts nothing, so this stays safe to run in CI unlike the accepted case (which would
+    /// start a real browser on the machine running the test — the same reason <c>ExternalLinkTests</c> never
+    /// exercises that branch either).
+    /// </summary>
+    [Theory]
+    [InlineData("file:///C:/Windows/System32/calc.exe")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("not a url")]
+    public async Task OpenUrl_ANonWebScheme_IsRefused_AndStartsNothing(string url)
+    {
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions))));
+
+        var result = await gateway.OpenUrlAsync(url);
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Url);
+        Assert.Contains("not an absolute http(s) address", result.Error);
+    }
+
     [Fact]
     public async Task ASpawnOntoANamedDesk_LandsThere_AndLeavesTheOperatorOnTheDeskTheyWereLookingAt()
     {

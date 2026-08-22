@@ -297,6 +297,20 @@ public interface IAssistantAgentGateway
         bool allowOther,
         string? header,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Opens <paramref name="url"/> in the operator's default browser (AC-587) — this door exists only because
+    /// <c>Cockpit.Infrastructure</c>, where the <c>open_url</c> tool lives, cannot reference <c>Cockpit.App</c> and
+    /// so cannot reach <c>ExternalLink</c> itself.
+    /// </summary>
+    /// <remarks>
+    /// Refuses outright, never starting anything, when <paramref name="url"/> is not an absolute <c>http</c>/
+    /// <c>https</c> address — the same rule <c>ExternalLink.TryParseWebAddress</c> enforces for every other web
+    /// address in <c>Cockpit.App</c>, applied here rather than re-decided. This never reaches
+    /// <c>ExternalLink.TryOpenWithSystemApp</c>, which opens a filesystem path with the operator's default
+    /// program rather than a page.
+    /// </remarks>
+    Task<OpenUrlResult> OpenUrlAsync(string url, CancellationToken cancellationToken = default);
 }
 
 // What came of binding a shared project (AC-798). Same shape and same reason as `AgentStopResult` — a refusal is a
@@ -341,6 +355,18 @@ public sealed record WorktreeHandoverResult(bool Ok, string? Path, string? Branc
         new(true, path, branch, sessionName, null);
 
     public static WorktreeHandoverResult Refused(string error) => new(false, null, null, null, error);
+}
+
+// What came of opening a web address (AC-587). Same shape and same reason as `AgentStopResult` — a refusal is
+// a sentence the assistant says, not an exception it fails on.
+//
+// `Url`: the address that was opened, echoed back so the assistant can say which one it was rather than
+// assuming its own argument survived unchanged.
+public sealed record OpenUrlResult(bool Ok, string? Url, string? Error)
+{
+    public static OpenUrlResult Opened(string url) => new(true, url, null);
+
+    public static OpenUrlResult Refused(string error) => new(false, null, error);
 }
 
 // What came of arming a watch. Same shape and same reason as `AgentStopResult`: a refusal is a sentence the
