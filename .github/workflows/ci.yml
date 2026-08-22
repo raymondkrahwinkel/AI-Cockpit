@@ -149,8 +149,18 @@ jobs:
 
       - name: Every changed plugin carries a newer version
         env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.before }}
         run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # AC-983: re-fetch main's tip instead of trusting the base.sha frozen at PR-open, so the check
+            # compares against what main carries right now, not what it carried when the PR was opened.
+            git fetch origin "$BASE_REF"
+            BASE="$(git rev-parse "origin/$BASE_REF")"
+          else
+            BASE="$BASE_SHA"
+          fi
           # A branch's first push reports an all-zero "before"; there is no range to compare and nothing to check.
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             echo "No base commit to compare against; skipping."
