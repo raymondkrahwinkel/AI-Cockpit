@@ -71,6 +71,9 @@ public class OptionsSubNavigationViewTests
 
     // Proves the Tag-based content switch actually wires up at runtime (CategoryTagEqualsConverter), not just that
     // the markup for both category pages exists.
+    // AC-1019: a category page's root used to always be a ScrollViewer — Profiles now roots on a Grid instead,
+    // so its list and detail columns can scroll independently rather than sharing one page-wide scroller. Matched
+    // by Control rather than ScrollViewer so the switch itself, not one particular root element type, is pinned.
     [Fact]
     public void SelectingACategory_ShowsItsPage_AndHidesTheOthers() => HeadlessAvalonia.Run(() =>
     {
@@ -79,9 +82,13 @@ public class OptionsSubNavigationViewTests
         dialog.UpdateLayout();
 
         var nav = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "CategoryNav");
-        var pages = dialog.GetVisualDescendants().OfType<ScrollViewer>()
-            .Where(sv => sv.Tag is string tag && ExpectedCategoryTags.Contains(tag))
-            .ToDictionary(sv => (string)sv.Tag!);
+        var content = dialog.GetVisualDescendants().OfType<Panel>().Single(panel => panel.Name == "CategoryContent");
+
+        // Scoped to CategoryContent's direct children rather than every dialog descendant: the sidebar's own
+        // ListBoxItems carry the same Tag values, and matching by Control anywhere would collide with them.
+        var pages = content.Children.OfType<Control>()
+            .Where(control => control.Tag is string tag && ExpectedCategoryTags.Contains(tag))
+            .ToDictionary(control => (string)control.Tag!);
 
         Assert.Equal(ExpectedCategoryTags.ToHashSet(), pages.Keys.ToHashSet());
 

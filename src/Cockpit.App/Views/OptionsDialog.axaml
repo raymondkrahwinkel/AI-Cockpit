@@ -369,9 +369,12 @@
                 <!-- AC-1001: replaces the standalone ManageProfilesDialog window. Flat on the page background —
                      no card, no filled list-column background, no rounded border — the only structure is the
                      Border.hairline divider between the list and detail columns and the ListBox's own selection
-                     highlight (criterion 2). The whole page is one ScrollViewer, same as every other category, so
-                     the (short) profile list simply sits at the top of its column while the detail column beside
-                     it keeps going — it does not scroll independently.
+                     highlight (criterion 2).
+                     AC-1019: list and detail used to share one page-wide ScrollViewer, so Add/Remove (docked to
+                     the bottom of the list column) sat below however long the selected profile's detail form
+                     was — sometimes off-screen. The header (title/hint/hairline) is now a non-scrolling Grid.Row
+                     above the columns, and each column gets its own ScrollViewer, so the list (and its Add/Remove)
+                     scrolls independently of the detail form beside it.
                      Field checklist against ManageProfilesDialog.axaml (criterion 1 — every one must be here):
                      IDENTITY: Label / Provider / Purpose / Default working directory / System prompt / Memory cap.
                      Claude: Config directory / Executable. Local (Ollama/LM Studio): Server base URL / Model+Fetch /
@@ -383,44 +386,48 @@
                      Auto-runnable tools, Tasks at once, Stop a task after, may-delegate-further toggle. MCP
                      SERVERS: pre-select toggle + checklist + token estimate. ENVIRONMENT VARIABLES: NAME/value/
                      Secret rows + Add variable. -->
-                <ScrollViewer Tag="profiles"
-                              IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=profiles}">
-                    <StackPanel Margin="24,20" Spacing="8">
+                <Grid Tag="profiles" RowDefinitions="Auto,*"
+                      IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=profiles}">
+                    <StackPanel Grid.Row="0" Margin="24,20,24,0" Spacing="8">
                         <TextBlock Text="Profiles" FontSize="20" FontWeight="Bold"/>
                         <TextBlock Text="The profiles sessions start under: provider, session defaults, delegation and environment." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                    </StackPanel>
 
-                        <Grid ColumnDefinitions="180,1,*" Margin="0,4,0,0" IsVisible="{Binding Profiles, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <Grid Grid.Row="1" ColumnDefinitions="180,1,*" Margin="24,4,24,20" IsVisible="{Binding Profiles, Converter={x:Static ObjectConverters.IsNotNull}}">
 
-                            <!-- Profile list + Add/Remove. Remove stays a button beside the list (not the shared
-                                 footer): removing a profile is a staged edit like any other field, undone by
-                                 Cancel and written by Apply and Close — see ManageProfilesDialogViewModel.ConfirmRemove. -->
-                            <DockPanel Grid.Column="0">
-                                <StackPanel DockPanel.Dock="Bottom" Margin="0,8,12,0" Spacing="6">
-                                    <Button Content="+ Add profile" Classes="Subtle" HorizontalAlignment="Left"
-                                            Foreground="{StaticResource CockpitAccentBrush}"
-                                            Command="{Binding Profiles.AddProfileCommand}"/>
+                        <!-- Profile list + Add/Remove. Remove stays a button beside the list (not the shared
+                             footer): removing a profile is a staged edit like any other field, undone by
+                             Cancel and written by Apply and Close — see ManageProfilesDialogViewModel.ConfirmRemove.
+                             Add/Remove are docked to the column's bottom, outside the ListBox's own ScrollViewer,
+                             so they stay reachable regardless of list length. -->
+                        <DockPanel Grid.Column="0">
+                            <StackPanel DockPanel.Dock="Bottom" Margin="0,8,12,0" Spacing="6">
+                                <Button Content="+ Add profile" Classes="Subtle" HorizontalAlignment="Left"
+                                        Foreground="{StaticResource CockpitAccentBrush}"
+                                        Command="{Binding Profiles.AddProfileCommand}"/>
 
-                                    <StackPanel Spacing="6" IsVisible="{Binding Profiles.SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
-                                        <Button Content="Remove" Classes="Subtle" HorizontalAlignment="Left"
-                                                Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                                Command="{Binding Profiles.RemoveProfileCommand}"
-                                                IsVisible="{Binding !Profiles.IsConfirmingRemove}"/>
-                                        <StackPanel Spacing="4" IsVisible="{Binding Profiles.IsConfirmingRemove}">
-                                            <TextBlock Text="{Binding Profiles.PendingRemovalLabel, StringFormat='Remove ‘{0}’?'}"
-                                                       TextWrapping="Wrap" FontSize="11"
-                                                       Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <Button Content="No" Classes="Compact" Command="{Binding Profiles.CancelRemoveCommand}"/>
-                                                <Button Content="Yes" Classes="Compact Accent" Command="{Binding Profiles.ConfirmRemoveCommand}"/>
-                                            </StackPanel>
+                                <StackPanel Spacing="6" IsVisible="{Binding Profiles.SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                    <Button Content="Remove" Classes="Subtle" HorizontalAlignment="Left"
+                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                            Command="{Binding Profiles.RemoveProfileCommand}"
+                                            IsVisible="{Binding !Profiles.IsConfirmingRemove}"/>
+                                    <StackPanel Spacing="4" IsVisible="{Binding Profiles.IsConfirmingRemove}">
+                                        <TextBlock Text="{Binding Profiles.PendingRemovalLabel, StringFormat='Remove ‘{0}’?'}"
+                                                   TextWrapping="Wrap" FontSize="11"
+                                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Button Content="No" Classes="Compact" Command="{Binding Profiles.CancelRemoveCommand}"/>
+                                            <Button Content="Yes" Classes="Compact Accent" Command="{Binding Profiles.ConfirmRemoveCommand}"/>
                                         </StackPanel>
-                                        <TextBlock Text="{Binding Profiles.StatusMessage}" FontSize="11" TextWrapping="Wrap"
-                                                   IsVisible="{Binding Profiles.StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
                                     </StackPanel>
+                                    <TextBlock Text="{Binding Profiles.StatusMessage}" FontSize="11" TextWrapping="Wrap"
+                                               IsVisible="{Binding Profiles.StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
                                 </StackPanel>
+                            </StackPanel>
 
+                            <ScrollViewer>
                                 <ListBox ItemsSource="{Binding Profiles.Profiles}" SelectedItem="{Binding Profiles.SelectedProfile}"
                                          Background="Transparent" Padding="0" Margin="0,0,12,0">
                                     <ListBox.ItemTemplate>
@@ -433,14 +440,16 @@
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
                                 </ListBox>
-                            </DockPanel>
+                            </ScrollViewer>
+                        </DockPanel>
 
-                            <!-- The one functional divider criterion 2 allows: no border/card anywhere else on this page. -->
-                            <Border Grid.Column="1" Width="1" Background="{StaticResource CockpitHairlineBrush}" HorizontalAlignment="Center"/>
+                        <!-- The one functional divider criterion 2 allows: no border/card anywhere else on this page. -->
+                        <Border Grid.Column="1" Width="1" Background="{StaticResource CockpitHairlineBrush}" HorizontalAlignment="Center"/>
 
-                            <!-- Detail: the selected profile's fields. -->
-                            <StackPanel Grid.Column="2" Margin="16,0,0,0" Spacing="11"
-                                        IsVisible="{Binding Profiles.SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <!-- Detail: the selected profile's fields, scrolling independently of the list column. -->
+                        <ScrollViewer Grid.Column="2"
+                                      IsVisible="{Binding Profiles.SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <StackPanel Margin="16,0,0,0" Spacing="11">
                                 <StackPanel Spacing="11" DataContext="{Binding Profiles.SelectedProfile}" x:DataType="vm:EditableProfileViewModel">
 
                                     <TextBlock Text="IDENTITY" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
@@ -829,9 +838,9 @@
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>
-                        </Grid>
-                    </StackPanel>
-                </ScrollViewer>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
 
                 <!-- ================= APPEARANCE ================= -->
                 <ScrollViewer Tag="appearance"

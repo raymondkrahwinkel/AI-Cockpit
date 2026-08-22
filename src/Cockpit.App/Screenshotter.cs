@@ -92,6 +92,10 @@ internal static class Screenshotter
         // "security" scene, since nothing else needs that seeded ConsentBypassSources state.
         ["security-consent-bypass"] = (_, _) => _OptionsSecurityConsentBypassPage(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
+        // AC-1019: Options → Profiles at a resting height much shorter than the selected profile's detail form, so
+        // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
+        // sharing one page-wide ScrollViewer.
+        ["options-profiles"] = (_, _) => _OptionsProfilesPage(),
         // The assistant's own profile editor. Its own scene rather than a state of "profiles": it is a different
         // window with a different, shorter set of blocks, and the one control this ticket moved — the restart, which
         // only shows with a living assistant behind it — renders nowhere else. Taller than it opens, the way the
@@ -1169,6 +1173,20 @@ internal static class Screenshotter
         // section sits below the fold of a default-sized editor, and a scene that renders only the part above the
         // fold proves nothing about the part this change actually touched.
         return new ManageProfilesDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    // AC-1019: Options dialog on the Profiles category, at a resting height (700) well short of the selected
+    // profile's detail form — the same design-time sample ManageProfilesDialogViewModel's own constructor seeds,
+    // so the list has one entry and the detail column is the full IDENTITY..ENVIRONMENT VARIABLES form.
+    private static OptionsDialog _OptionsProfilesPage()
+    {
+        var cockpit = new ViewModels.CockpitViewModel { Profiles = new ViewModels.ManageProfilesDialogViewModel() };
+        var dialog = new OptionsDialog { DataContext = cockpit, Height = 700 };
+        var nav = dialog.FindControl<ListBox>("CategoryNav")
+            ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
+        nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "profiles");
+
+        return dialog;
     }
 
     // A main window with one session running, so `ShowSessionGrid` shows the toolbar the workspace ⚙ lives in.
