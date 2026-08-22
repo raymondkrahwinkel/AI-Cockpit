@@ -218,7 +218,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             try
             {
-                await _ShowManageProfilesOverAsync(dialog);
+                await _ShowManageProfilesOverAsync();
                 await viewModel.LoadAsync();
             }
             catch
@@ -470,19 +470,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await dialog.ShowDialog<string?>(owner);
     }
 
-    // Modal over the form it was opened from, unlike the Manage-profiles the cockpit opens itself (AC-367). It is
-    // not the cockpit this holds — that form is already a surface, so sessions stay reachable behind it — it is
-    // the form underneath, which owns it. As a surface it could be left open while its owner closes, and Avalonia
-    // takes an owned window down with its owner: a profile being edited would vanish without being asked.
-    private async Task _ShowManageProfilesOverAsync(Window owner) =>
-        await (await _BuildManageProfilesAsync()).ShowDialog(owner);
-
-    private async Task<Window> _BuildManageProfilesAsync()
+    // Deep-links to Options → Profiles (AC-1012), the same as the sidebar's ManageProfilesAsync — this was the
+    // last path still opening the standalone ManageProfilesDialog directly.
+    private async Task _ShowManageProfilesOverAsync()
     {
-        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _loginStarter);
-        await viewModel.LoadAsync();
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow.DataContext: CockpitViewModel viewModel })
+        {
+            return;
+        }
 
-        return new ManageProfilesDialog { DataContext = viewModel };
+        await ShowOptionsDialogAsync(viewModel, "profiles");
     }
 
     public async Task ShowVerifyRunnersDialogAsync()

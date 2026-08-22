@@ -36,7 +36,6 @@ public sealed partial class DialogModalitySplitTests
     [
         "_CloneIntoProjectAsync",
         "ShowCloneFromGitUrlAsync",
-        "_ShowManageProfilesOverAsync",
         "ShowScheduleResumeDialogAsync",
         "ShowPluginConsentAsync",
         "ShowCommandPaletteDialogAsync",
