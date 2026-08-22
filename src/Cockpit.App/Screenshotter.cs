@@ -71,18 +71,15 @@ internal static class Screenshotter
         // Autopilot and Open PRs pinned (the shipped default), YouTrack and Workflows collapsed — one of the
         // collapsed entries carries a badge, so the flyout also shows what a live counter looks like behind it.
         ["plugins-menu"] = (_, _) => _PluginsMenuScene(),
-        // AC-1033: the knowledge base in the five states that decide whether it works, over the app's own
-        // pages — a plugin's arrive through `help-plugins` below.
+        // AC-1033: the knowledge base in the five states that decide whether it works. A plugin's own branch
+        // is not staged here — it would need a plugin assembly this build has not loaded; HelpWindowTests
+        // covers it instead, in both configurations.
         ["help"] = (_, _) => _Help(null),
         ["help-article"] = (_, _) => _Help(new Core.Help.HelpAddress("welcome")),
         ["help-deep-link"] = (_, _) => _Help(
             new Core.Help.HelpAddress("core-concepts", "profile"), "a “?” beside a session's profile"),
         ["help-search"] = (_, _) => _HelpSearching("plugin"),
         ["help-broken-link"] = (_, _) => _Help(new Core.Help.HelpAddress("slack", "interactivity")),
-        // The one branch the core does not fill, over the plugins this run actually loaded — the whole point of
-        // the mechanism is that a plugin's own pages arrive the same way the app's do, and a scene that faked
-        // that would be the one place it was never tried.
-        ["help-plugins"] = (_, _) => _HelpAsInstalled(new Core.Help.HelpAddress("git-status/git-status")),
         ["single-instance"] = (_, _) => new SingleInstanceNoticeDialog(),
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
@@ -2472,77 +2469,6 @@ internal static class Screenshotter
 
         return window;
     }
-
-    // AC-1033: the plugin branch, read from freshly built output through the same dev-checkout seam
-    // DevPluginInstaller uses — the installed copy on a dev machine lags the source being worked on.
-    private static Views.HelpWindow _HelpAsInstalled(Core.Help.HelpAddress? address)
-    {
-        var sources = new List<Core.Help.HelpDocumentSource>
-        {
-            new(Core.Help.HelpOwner.Core, typeof(Screenshotter).Assembly),
-        };
-
-#if DEBUG
-        sources.AddRange(_DevPluginSources());
-#endif
-
-        var window = new Views.HelpWindow(new Services.HelpService(sources));
-        window.NavigateTo(address);
-
-        return window;
-    }
-
-#if DEBUG
-    private static IEnumerable<Core.Help.HelpDocumentSource> _DevPluginSources()
-    {
-        var root = Infrastructure.Plugins.DevPluginInstaller.FindPluginsDevRoot();
-        if (root is null)
-        {
-            yield break;
-        }
-
-        // One level down only: a plugin.json is also copied into every bin folder, and walking the tree would
-        // register the same plugin several times over.
-        var appDir = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
-        foreach (var folder in Directory.EnumerateDirectories(root))
-        {
-            var manifest = Path.Combine(folder, "plugin.json");
-            var built = Path.Combine(folder, "bin", appDir.Parent?.Name ?? "Debug", appDir.Name,
-                Path.GetFileName(folder) + ".dll");
-
-            if (!File.Exists(manifest))
-            {
-                continue;
-            }
-
-            if (!File.Exists(built) || !Core.Plugins.PluginManifest.TryParse(File.ReadAllText(manifest), out var parsed, out _) || parsed is null)
-            {
-                continue;
-            }
-
-            var assembly = _TryLoadPlugin(built);
-            if (assembly is not null)
-            {
-                yield return new Core.Help.HelpDocumentSource(
-                    new Core.Help.HelpOwner(parsed.Id, parsed.Name, parsed.Author), assembly);
-            }
-        }
-    }
-
-    private static System.Reflection.Assembly? _TryLoadPlugin(string path)
-    {
-        try
-        {
-            return System.Reflection.Assembly.LoadFrom(path);
-        }
-        catch (Exception)
-        {
-            // A plugin whose own dependencies are not beside this executable cannot be loaded here, and a scene
-            // is not worth failing a render over — it simply contributes no pages.
-            return null;
-        }
-    }
-#endif
 
     private static Views.HelpWindow _HelpSearching(string query)
     {

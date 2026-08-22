@@ -71,6 +71,17 @@ public sealed class HelpWindowTests
             Assert.Contains(_Text(content), text => text.Contains("Someone Else", StringComparison.Ordinal));
         }));
 
+    // The branch the core does not fill: one entry named after the plugin, with its pages under it. Asserted
+    // here rather than in a screenshot scene, because a scene would need a plugin assembly the Release build
+    // never loads — which is how a green local run and a red CI run came apart once already.
+    [Fact]
+    public void APluginGetsItsOwnBranchNamedAfterIt() => HeadlessAvalonia.Run(() =>
+        _Assert("fixtures/pictures", content =>
+        {
+            Assert.Contains(_Text(content), text => text.Contains("PLUGINS", StringComparison.Ordinal));
+            Assert.Contains(_Text(content), text => text.Contains("Fixtures", StringComparison.Ordinal));
+        }));
+
     private static void _Assert(string article, Action<Control> assert)
     {
         var window = new HelpWindow(_Help());
