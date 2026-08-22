@@ -93,7 +93,7 @@ public static partial class HelpDocumentScanner
 
         using var reader = new StreamReader(stream, Encoding.UTF8);
         var front = HelpFrontMatter.Parse(reader.ReadToEnd(), out var body);
-        var blocks = MarkdownParser.Parse(body);
+        var (lead, sections) = _Split(body);
 
         return new HelpArticle
         {
@@ -106,8 +106,9 @@ public static partial class HelpDocumentScanner
             Order = front.Order,
             Icon = front.Icon,
             Markdown = body,
-            Sections = _Sections(blocks),
-            PlainText = string.Join('\n', blocks.Select(_PlainText)),
+            Lead = lead,
+            Sections = sections,
+            PlainText = _PlainText(body),
             Language = file.Language,
             IsTranslationMissing = !string.Equals(file.Language, wanted, StringComparison.OrdinalIgnoreCase),
             ResourcePrefix = file.ResourcePrefix,
@@ -132,42 +133,66 @@ public static partial class HelpDocumentScanner
         };
     }
 
-    // Every heading carrying an explicit `{#id}` opens a section that runs until the next one. A heading
-    // without an id is ordinary prose that belongs to the section it sits in: it reads the same, it just
-    // cannot be linked to, which is the author's decision rather than a generated anchor that silently
-    // moves the next time the wording changes.
-    private static IReadOnlyList<HelpSection> _Sections(IReadOnlyList<MarkdownBlock> blocks)
+    // Every heading carrying an explicit `{#id}` opens a section that runs until the next one; what comes
+    // before the first of them is the article's lead. A heading without an id is ordinary prose belonging to
+    // the section it sits in: it reads the same, it just cannot be linked to, which is the author's decision
+    // rather than a generated anchor that silently moves the next time the wording changes.
+    //
+    // Split over the source lines rather than the parsed blocks, because the window renders one control per
+    // section and needs each one's markdown back, not only its words. Fences are tracked so a `##` line inside
+    // a code sample — which the plugin-writing pages are full of — does not open a section of its own.
+    private static (string Lead, IReadOnlyList<HelpSection> Sections) _Split(string body)
     {
         var sections = new List<HelpSection>();
+        var lead = new StringBuilder();
+        var current = new StringBuilder();
         string? id = null;
         var title = string.Empty;
-        var text = new StringBuilder();
+        var fenced = false;
 
         void Flush()
         {
             if (id is not null)
             {
-                sections.Add(new HelpSection(id, title, text.ToString().Trim()));
+                var markdown = current.ToString().TrimEnd();
+
+                // The plain text leaves the heading line out while the markdown keeps it: the heading is
+                // already the hit's title on screen, and repeating it as the first words of every snippet
+                // wastes the one line a result gets to say something the title did not.
+                var newline = markdown.IndexOf('\n');
+                var withoutHeading = newline < 0 ? string.Empty : markdown[(newline + 1)..];
+
+                sections.Add(new HelpSection(id, title, _PlainText(withoutHeading), markdown));
             }
         }
 
-        foreach (var block in blocks)
+        foreach (var line in body.Split('\n'))
         {
-            if (block is { Kind: MarkdownBlockKind.Heading, HeadingId: not null })
+            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+            {
+                fenced = !fenced;
+            }
+
+            var heading = fenced ? System.Text.RegularExpressions.Match.Empty : SectionHeadingRegex().Match(line);
+            if (heading.Success)
             {
                 Flush();
-                id = block.HeadingId;
-                title = _PlainText(block);
-                text.Clear();
+                id = heading.Groups[2].Value;
+                title = heading.Groups[1].Value.Trim();
+                current.Clear();
+                current.AppendLine(line);
                 continue;
             }
 
-            text.AppendLine(_PlainText(block));
+            (id is null ? lead : current).AppendLine(line);
         }
 
         Flush();
-        return sections;
+        return (lead.ToString().Trim(), sections);
     }
+
+    private static string _PlainText(string markdown) =>
+        string.Join('\n', MarkdownParser.Parse(markdown).Select(_PlainText));
 
     private static string _PlainText(MarkdownBlock block) => block.Kind switch
     {
@@ -188,6 +213,10 @@ public static partial class HelpDocumentScanner
     // "ref" and hides the page from everyone.
     [GeneratedRegex(@"^[A-Za-z]{2}(-[A-Za-z0-9]{2,8})?$")]
     private static partial Regex LanguageTagRegex();
+
+    // A heading that declares an anchor, which is the only kind that opens an addressable section.
+    [GeneratedRegex(@"^#{1,6}\s+(.*?)\s*\{#([A-Za-z0-9._-]+)\}\s*$")]
+    private static partial Regex SectionHeadingRegex();
 
     private sealed record _DocFile(string Key, string Language, string ResourceName, string ResourcePrefix);
 }

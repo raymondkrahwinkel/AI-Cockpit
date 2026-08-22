@@ -71,6 +71,20 @@ internal static class Screenshotter
         // Autopilot and Open PRs pinned (the shipped default), YouTrack and Workflows collapsed — one of the
         // collapsed entries carries a badge, so the flyout also shows what a live counter looks like behind it.
         ["plugins-menu"] = (_, _) => _PluginsMenuScene(),
+        // AC-1033: the knowledge base, in the five states that decide whether it works — the overview, a page,
+        // the mid-article landing a `?` drops you into, a search across everything, and a reference that leads
+        // nowhere. Staged over the app's own documentation only: a plugin's pages come from a plugin assembly
+        // this build has not loaded, and inventing one would render a screen nobody will ever see.
+        ["help"] = (_, _) => _Help(null),
+        ["help-article"] = (_, _) => _Help(new Core.Help.HelpAddress("welcome")),
+        ["help-deep-link"] = (_, _) => _Help(
+            new Core.Help.HelpAddress("core-concepts", "profile"), "a “?” beside a session's profile"),
+        ["help-search"] = (_, _) => _HelpSearching("plugin"),
+        ["help-broken-link"] = (_, _) => _Help(new Core.Help.HelpAddress("slack", "interactivity")),
+        // The one branch the core does not fill, over the plugins this run actually loaded — the whole point of
+        // the mechanism is that a plugin's own pages arrive the same way the app's do, and a scene that faked
+        // that would be the one place it was never tried.
+        ["help-plugins"] = (_, _) => _HelpAsInstalled(new Core.Help.HelpAddress("git-status/git-status")),
         ["single-instance"] = (_, _) => new SingleInstanceNoticeDialog(),
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
@@ -2446,4 +2460,100 @@ internal static class Screenshotter
             {
                 UseHeadlessDrawing = false,
             });
+
+    // The knowledge base staged over the app's own embedded documentation, with no plugin manager behind it —
+    // the same index the running app builds, minus the plugins this build never loaded.
+    private static Views.HelpWindow _Help(Core.Help.HelpAddress? address, string? arrivedFrom = null)
+    {
+        var help = new Services.HelpService([
+            new Core.Help.HelpDocumentSource(Core.Help.HelpOwner.Core, typeof(Screenshotter).Assembly),
+        ]);
+
+        var window = new Views.HelpWindow(help);
+        window.NavigateTo(address, arrivedFrom);
+
+        return window;
+    }
+
+    // The knowledge base with a plugin's own branch in it. The installed copy of a first-party plugin on a dev
+    // machine is whatever was last provisioned, which is older than the source being worked on — so this reads
+    // the freshly built output through the same dev-checkout seam DevPluginInstaller already uses to keep those
+    // two in step. DEBUG only, like that installer: a shipped build has no plugins-dev to find.
+    private static Views.HelpWindow _HelpAsInstalled(Core.Help.HelpAddress? address)
+    {
+        var sources = new List<Core.Help.HelpDocumentSource>
+        {
+            new(Core.Help.HelpOwner.Core, typeof(Screenshotter).Assembly),
+        };
+
+#if DEBUG
+        sources.AddRange(_DevPluginSources());
+#endif
+
+        var window = new Views.HelpWindow(new Services.HelpService(sources));
+        window.NavigateTo(address);
+
+        return window;
+    }
+
+#if DEBUG
+    private static IEnumerable<Core.Help.HelpDocumentSource> _DevPluginSources()
+    {
+        var root = Infrastructure.Plugins.DevPluginInstaller.FindPluginsDevRoot();
+        if (root is null)
+        {
+            yield break;
+        }
+
+        // One level down only: a plugin.json is also copied into every bin folder, and walking the tree would
+        // register the same plugin several times over.
+        var appDir = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+        foreach (var folder in Directory.EnumerateDirectories(root))
+        {
+            var manifest = Path.Combine(folder, "plugin.json");
+            var built = Path.Combine(folder, "bin", appDir.Parent?.Name ?? "Debug", appDir.Name,
+                Path.GetFileName(folder) + ".dll");
+
+            if (!File.Exists(manifest))
+            {
+                continue;
+            }
+
+            if (!File.Exists(built) || !Core.Plugins.PluginManifest.TryParse(File.ReadAllText(manifest), out var parsed, out _) || parsed is null)
+            {
+                continue;
+            }
+
+            var assembly = _TryLoadPlugin(built);
+            if (assembly is not null)
+            {
+                yield return new Core.Help.HelpDocumentSource(
+                    new Core.Help.HelpOwner(parsed.Id, parsed.Name, parsed.Author), assembly);
+            }
+        }
+    }
+
+    private static System.Reflection.Assembly? _TryLoadPlugin(string path)
+    {
+        try
+        {
+            return System.Reflection.Assembly.LoadFrom(path);
+        }
+        catch (Exception)
+        {
+            // A plugin whose own dependencies are not beside this executable cannot be loaded here, and a scene
+            // is not worth failing a render over — it simply contributes no pages.
+            return null;
+        }
+    }
+#endif
+
+    private static Views.HelpWindow _HelpSearching(string query)
+    {
+        var window = _Help(null);
+        window.SearchBox.Text = query;
+
+        return window;
+    }
+
 }

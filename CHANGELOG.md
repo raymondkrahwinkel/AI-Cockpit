@@ -32,6 +32,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an in-app knowledge base — Help ▸ Documentation opens a window of its own, beside whatever you were
+  working on, holding the app's own pages and every installed plugin's. It works with no connection and never
+  describes a version you do not have: documentation travels inside the thing it documents. Search covers
+  everything at once and lands on the section that answers, not the top of the page. A `?` next to a setting
+  opens exactly the paragraph about it, with a banner saying where you came from when you arrive mid-article,
+  and a reference that leads nowhere fails where you can see it instead of quietly opening something else.
+  Documentation from a plugin is treated as text and nothing else: no markup is executed, and a picture asked
+  for from an address on the internet is refused rather than fetched, so opening a page is never the moment a
+  stranger's server learns you exist. Plugin authors ship pages by putting markdown in a `Docs` folder — there
+  is no API to call, and a plugin that ships none behaves exactly as before. (AC-1033)
+
 - added: sessions on the Gemini, OpenAI, Grok, OpenRouter and GitHub Models providers can now use their MCP
   tools. Those providers ran chat-only until now: however many servers the session header showed as connected,
   the model could not call a single tool. Every call is approved the same way a local-model session's is, shows

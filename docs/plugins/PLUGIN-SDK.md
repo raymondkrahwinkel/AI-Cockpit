@@ -725,6 +725,121 @@ unlocked, any of you can read any credential the cockpit holds. The boundary is 
 which is why the store asks for consent and pins a checksum, and why this page tells you plainly rather than
 implying an isolation that does not exist.
 
+## Documentation — ship your own pages (AC-1033)
+
+Your plugin can carry its own documentation, and the app shows it in the knowledge base (Help ▸ Documentation)
+under one entry named after your plugin. It travels inside your assembly, so it works with no connection and can
+never describe a version the operator does not have.
+
+**There is no API for this.** Put markdown in a `Docs` folder beside your project file:
+
+```
+Cockpit.Plugin.Acme/
+  plugin.json
+  Docs/
+    setup.md
+    troubleshooting.md
+    images/
+      gateway-intents.png
+```
+
+Referencing the SDK is all it takes — its MSBuild targets embed everything under `Docs`. A plugin that ships no
+documentation is unaffected in every way; nothing became required.
+
+> If you reference the SDK as a project rather than the NuGet package (in-repo plugins), the targets come from
+> the repository's own `Directory.Build.targets`. If you embed the files by hand for some other reason, you
+> **must** write `WithCulture="false"`: MSBuild reads `setup.nl.md` as a culture-specific resource and routes it
+> into an `nl` satellite assembly where the app never looks, so the translation disappears from a build that
+> reports success.
+
+### Front matter
+
+Every file opens with a `---` block. `title` is the only one worth always writing:
+
+```markdown
+---
+title: Setting up the bot
+order: 10
+summary: Creating the application, the token, and the one intent everyone misses.
+icon: 🎮
+---
+```
+
+| Key | Meaning |
+| --- | --- |
+| `title` | What the navigation and the page header show. Defaults to the file name. |
+| `order` | Position within your own branch, ascending. Equal values fall back to the title. |
+| `summary` | One line on the overview card. Optional. |
+| `icon` | A single emoji beside the title. Optional. |
+| `category` | **Ignored for a plugin.** Your pages always land under `Plugins`; the four top-level categories belong to the app. |
+
+Unknown keys are ignored, so a future addition will not break a file written today.
+
+### Section ids, and why you write them by hand
+
+A heading is only linkable when it declares an id:
+
+```markdown
+## The Message Content Intent {#message-content-intent}
+```
+
+Ids are deliberately not derived from the heading text. An anchor that follows the wording breaks the moment
+somebody rewrites the heading — silently, in every place that linked to it — and it would break again in each
+translation. Write the id once and the heading can be reworded freely.
+
+### The `?` — pointing at a page from your own UI
+
+Ask the host for one rather than drawing your own, so every plugin's looks and behaves the same:
+
+```csharp
+// Behind a field label, in a section heading — a bare mark.
+row.Children.Add(host.CreateHelpHint("setup", "bot-token"));
+
+// In a sentence or an error message, where a floating mark has nothing to sit beside.
+panel.Children.Add(host.CreateHelpHint("setup", "bot-token", "Why is this needed?"));
+```
+
+The article is resolved against your own pages first and then as written, so `"setup"` is yours and
+`"core-concepts#plugin"` reaches one of the app's. The control **hides itself when its target does not exist**,
+so you can hand one over unconditionally — a question mark that opens nothing is worse than no question mark.
+
+`host.OpenHelp("setup", "bot-token")` does the same jump from a control you drew yourself, and
+`host.HasHelp(...)` answers whether it is worth offering at all.
+
+All three need `abstractionsVersion` 2 and `minHostVersion` `0.28.0`. Shipping documentation on its own needs
+neither — an older host simply does not read it.
+
+### Pictures
+
+Reference them with a relative path; they resolve to a resource shipped beside the page:
+
+```markdown
+![The switch is at the bottom of the Bot page](images/gateway-intents.png)
+```
+
+An `https://` reference is **refused, not fetched**, and the reader is shown that it was: a picture pulled from
+your server would tell you the operator's address the moment they opened the page. Ship it in the package or do
+not use it.
+
+A `foo.dark.png` beside `foo.png` is used in the dark theme when it exists. Optional — one image is the ordinary
+case.
+
+**Watch the size.** Documentation is downloaded and stored with every install of your plugin, so a screenshot
+budget is a real one. Keep pictures to what a reader cannot do without: crop to the control being described
+rather than the whole window, and prefer PNG at the size it will be shown. See
+[`docs/binary-size-and-on-demand-runtimes.md`](../binary-size-and-on-demand-runtimes.md) for why this is a cost
+worth minding.
+
+### Translations
+
+`setup.md` is the default language and stays valid forever. A translation sits beside it as `setup.nl.md` — the
+language code is its own dot-separated segment, because article names contain dashes of their own and
+`getting-started-en.md` would be ambiguous. The article id stays `setup` in every language, and so do the
+section ids, which is what lets one link land in the same place whichever language is shown. A page with no
+translation falls back to the default one and says so on the page.
+
+Most plugins ship one language and never think about any of this.
+
 ## The manifest — `plugin.json`
 
 Ships in the plugin's folder root. Parsed and validated **before** anything is loaded — a malformed or

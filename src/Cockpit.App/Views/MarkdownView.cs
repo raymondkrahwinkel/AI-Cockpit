@@ -82,6 +82,11 @@ public sealed class MarkdownView : ContentControl
     // Assign it before `Markdown`: this is a plain property, so setting it later does not force a repaint.
     public Func<MarkdownBlock, Control>? ImageRenderer { get; set; }
 
+    // First refusal on a clicked link, before the browser or the file preview is offered it. The knowledge
+    // base claims its own `help:` cross-references this way, so following one moves within the window instead
+    // of being handed to the shell. Return true to say the link was handled. Null everywhere else.
+    public Func<string, bool>? LinkHandler { get; set; }
+
     // A streaming reply re-sets Markdown on every delta, and each set rebuilt the whole block tree: at the end of
     // a long answer that is hundreds of controls reparsed and reconstructed, tens of times a second, for text that
     // grew by a few characters. The cost climbs with the reply, so it accelerates rather than settles — the UI
@@ -702,7 +707,7 @@ public sealed class MarkdownView : ContentControl
         {
             if (block.Links.Count > 0)
             {
-                _OnLinkClick(block, block.Links, e);
+                _OnLinkClick(block, block.Links, e, LinkHandler);
             }
         };
 
@@ -782,7 +787,10 @@ public sealed class MarkdownView : ContentControl
     // is asked of `block` rather than the enclosing `MarkdownView`: both sit in the same window, and this stays
     // usable from a static context without threading `this` through the click handler.
     private static void _OnLinkClick(
-        SelectableTextBlock block, List<(int Start, int Length, string Url, int? Line)> links, PointerReleasedEventArgs e)
+        SelectableTextBlock block,
+        List<(int Start, int Length, string Url, int? Line)> links,
+        PointerReleasedEventArgs e,
+        Func<string, bool>? handler)
     {
         // Selecting text also raises PointerReleased; only treat it as a link click when nothing is selected.
         if (block.SelectionEnd != block.SelectionStart)
@@ -799,7 +807,12 @@ public sealed class MarkdownView : ContentControl
                 continue;
             }
 
-            if (ExternalLink.TryParseWebAddress(link.Url, out var address))
+            if (handler is not null && handler(link.Url))
+            {
+                // Claimed by the surface this view sits in — the knowledge base takes its own `help:`
+                // cross-references so following one stays inside the window instead of reaching the shell.
+            }
+            else if (ExternalLink.TryParseWebAddress(link.Url, out var address))
             {
                 ExternalLink.TryOpen(address);
             }

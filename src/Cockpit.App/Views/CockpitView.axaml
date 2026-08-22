@@ -431,6 +431,13 @@
                         <Button.Flyout>
                             <Flyout Placement="Right">
                                 <StackPanel Spacing="0" MinWidth="200">
+                                    <!-- AC-1033: first, because it is the one that answers without a browser and
+                                         covers the app and every installed plugin at once. -->
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,8" CornerRadius="0" Content="Documentation"
+                                            Command="{Binding ShowDocumentationCommand}"
+                                            ToolTip.Tip="Everything Cockpit and its plugins ship documentation for — a window of its own, no connection needed"/>
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,8" CornerRadius="0" Content="Guide"
                                             Command="{Binding OpenGuideCommand}"

@@ -26,7 +26,7 @@ public sealed class GitStatusPlugin : ICockpitPlugin
     public void Initialize(ICockpitHost host)
     {
         var settings = new GitStatusSettings(host.Storage);
-        host.AddSettings(() => new GitStatusSettingsControl(settings));
+        host.AddSettings(() => new GitStatusSettingsControl(host, settings));
         // In each session's own header rather than in the sidebar: the git state describes the repo that one
         // session works in, and a sidebar section following "whichever session is selected" says nothing about
         // the other panes on screen.

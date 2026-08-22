@@ -32,6 +32,10 @@ public sealed record HelpArticle
     // The body with the front matter stripped, as the renderer receives it.
     public required string Markdown { get; init; }
 
+    // What stands above the first anchored heading. Rendered as the page's opening, and kept apart from the
+    // sections so the window can draw one control per section and land a deep link on the right one.
+    public required string Lead { get; init; }
+
     public required IReadOnlyList<HelpSection> Sections { get; init; }
 
     // The whole page as plain words, so a search can match text that sits above the first anchored heading —

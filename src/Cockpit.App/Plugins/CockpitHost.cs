@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Controls;
 using Cockpit.App.Docking;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -1065,6 +1066,22 @@ internal sealed class CockpitHost(
 
         return Dispatcher.UIThread.InvokeAsync(Apply).GetTask();
     }
+
+    // AC-1033. `article` is resolved against this plugin's own branch first, then as written, so a plugin
+    // names its own page with the id it gave the file and can still point at one of ours — without repeating
+    // its own id, which would be a second place its name is written down.
+    public Control CreateHelpHint(string article, string? section = null, string? label = null) =>
+        _Help() is { } help
+            ? new HelpHint(help, help.Resolve(pluginId, article, section), label, $"a “?” in {pluginName}")
+            : new Panel { IsVisible = false };
+
+    public void OpenHelp(string article, string? section = null) =>
+        _Help()?.Open(_Help()!.Resolve(pluginId, article, section), $"a link in {pluginName}");
+
+    public bool HasHelp(string article, string? section = null) =>
+        _Help() is { } help && help.Contains(help.Resolve(pluginId, article, section));
+
+    private HelpService? _Help() => services.GetService<HelpService>();
 
     // Maps by name, not ordinal — same reasoning as _ToServerScope below.
     private static ToastSeverity _ToToastSeverity(PluginToastSeverity severity) => severity switch

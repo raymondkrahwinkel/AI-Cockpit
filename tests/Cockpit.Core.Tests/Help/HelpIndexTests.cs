@@ -123,7 +123,7 @@ public class HelpIndexTests
         var dark = index.LoadImage(article, "images/shot.png", dark: true);
 
         Assert.Equal(HelpImageOutcome.Embedded, dark.Outcome);
-        Assert.NotEqual(light.Bytes!.Length, dark.Bytes!.Length);
+        Assert.NotEqual(light.Bytes!, dark.Bytes!);
     }
 
     // One image has to stay the ordinary case: a light/dark pair is allowed, never demanded.

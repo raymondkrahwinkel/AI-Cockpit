@@ -42,6 +42,13 @@ public sealed class PluginManager(
     // The plugins that actually loaded — their manifests, for the host to read what they declared (e.g. which storage keys hold a credential).
     public IReadOnlyList<DiscoveredPlugin> Loaded => [.. _loaded.Select(entry => entry.Discovered)];
 
+    // The assembly each loaded plugin actually came out of, beside its manifest — what the knowledge base
+    // scans for embedded documentation (AC-1033). The assembly rather than the folder on purpose: docs are
+    // embedded resources of the same artefact as the code, so they cannot drift from the version installed
+    // and cannot be edited without replacing the plugin.
+    public IReadOnlyList<(DiscoveredPlugin Discovered, System.Reflection.Assembly Assembly)> LoadedWithAssemblies =>
+        [.. _loaded.Select(entry => (entry.Discovered, entry.Plugin.GetType().Assembly))];
+
     // Phase 1 — before `BuildServiceProvider`: instantiate each `PluginLoadDecision.Load`
     // plugin via `activate` and run its `ICockpitPlugin.ConfigureServices`
     // against the still-open `services`. Plugins that fail to instantiate or configure

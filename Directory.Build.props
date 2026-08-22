@@ -8,7 +8,15 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.27.0: a plugin can now run a chat channel — a Discord or Slack bot — as a second door onto the
+    <!-- 0.28.0: an in-app knowledge base (AC-1033) — new host-provided functionality a plugin contributes to
+         and calls: documentation embedded under a `Docs` folder is found by scanning, which needs no API at
+         all, plus ICockpitHost.CreateHelpHint / OpenHelp / HasHelp for the `?` the SDK draws and the deep links
+         behind it. All three are default-implemented (an invisible control, a no-op, false), so an
+         already-compiled plugin loads and behaves exactly as before; the bump is for the other direction. A
+         plugin that calls one sets minHostVersion 0.28.0 — an older host's copy of the SDK has no such member,
+         so the call cannot resolve at all. Shipping documentation alone needs no bump: an older host simply
+         does not read it. Minor because it is additive; still 0.x.
+         0.27.0: a plugin can now run a chat channel — a Discord or Slack bot — as a second door onto the
          assistant's own standing conversation (AC-1023): ICockpitHost.OpenAssistantChannel and the
          Channels namespace it takes and returns (AssistantChannelContribution, AssistantChannelAccess with its
          three-level identity gate, AssistantChannelVerbosity, IAssistantChannelGateway and the rows/prompts it
@@ -205,7 +213,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.27.0</VersionPrefix>
+    <VersionPrefix>0.28.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
