@@ -17,7 +17,9 @@ public interface IWorkspaceTypeRegistry
     /// Records a workspace type along with what its owning plugin brought: its storage and the observe surface. A
     /// type id that is already registered is refused, first one wins.
     /// </summary>
-    /// <returns>False when another plugin already contributes this type id — the caller says so; nothing throws.</returns>
+    /// <returns>
+    /// False when another plugin already contributes this type id — the caller says so; nothing throws.
+    /// </returns>
     bool Register(WorkspaceTypeRegistration registration, IPluginStorage pluginStorage, ICockpitSessionObserver sessions);
 
     /// <summary>
@@ -27,7 +29,9 @@ public interface IWorkspaceTypeRegistry
     /// </summary>
     event EventHandler? Changed;
 
-    /// <summary>Every workspace type registered so far, in registration order — what the "+" menu lists.</summary>
+    /// <summary>
+    /// Every workspace type registered so far, in registration order — what the "+" menu lists.
+    /// </summary>
     IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; }
 
     /// <summary>
@@ -37,7 +41,9 @@ public interface IWorkspaceTypeRegistry
     /// </summary>
     (WorkspaceTypeRegistration Registration, IWorkspaceContext Context)? CreateBody(string typeId, string workspaceId);
 
-    /// <summary>Whether a plugin here contributes <paramref name="typeId"/>.</summary>
+    /// <summary>
+    /// Whether a plugin here contributes <paramref name="typeId"/>.
+    /// </summary>
     bool IsRegistered(string typeId);
 }
 

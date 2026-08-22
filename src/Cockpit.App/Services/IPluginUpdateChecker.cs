@@ -7,6 +7,8 @@ namespace Cockpit.App.Services;
 /// </summary>
 public interface IPluginUpdateChecker
 {
-    /// <summary>Runs one check pass. Called once at startup (after plugin phase-2) and every 15 minutes by <see cref="App"/>.</summary>
+    /// <summary>
+    /// Runs one check pass. Called once at startup (after plugin phase-2) and every 15 minutes by <see cref="App"/>.
+    /// </summary>
     Task CheckNowAsync(CancellationToken cancellationToken = default);
 }

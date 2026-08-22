@@ -60,7 +60,9 @@ public interface ISessionDialogService
     /// </summary>
     Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<ISharedProjectSource> publishSources);
 
-    /// <summary>Shows the Verify-runners dialog (AC-86), over the main window, for registering the per-project command the visual verify loop may run.</summary>
+    /// <summary>
+    /// Shows the Verify-runners dialog (AC-86), over the main window, for registering the per-project command the visual verify loop may run.
+    /// </summary>
     Task ShowVerifyRunnersDialogAsync();
 
     /// <summary>
@@ -77,28 +79,44 @@ public interface ISessionDialogService
     /// </summary>
     Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null);
 
-    /// <summary>Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.</summary>
+    /// <summary>
+    /// Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.
+    /// </summary>
     Task<string?> PickPluginZipAsync();
 
-    /// <summary>Opens a folder picker for choosing a local plugin store's folder (AC-7); returns the chosen path or null if cancelled.</summary>
+    /// <summary>
+    /// Opens a folder picker for choosing a local plugin store's folder (AC-7); returns the chosen path or null if cancelled.
+    /// </summary>
     Task<string?> PickPluginStoreFolderAsync();
 
-    /// <summary>Picks a dashboard file to import; returns the chosen path or null if cancelled.</summary>
+    /// <summary>
+    /// Picks a dashboard file to import; returns the chosen path or null if cancelled.
+    /// </summary>
     Task<string?> PickDashboardToImportAsync();
 
-    /// <summary>Picks where to write a dashboard, offering <paramref name="suggestedName"/> as the file name; returns the chosen path or null if cancelled.</summary>
+    /// <summary>
+    /// Picks where to write a dashboard, offering <paramref name="suggestedName"/> as the file name; returns the chosen path or null if cancelled.
+    /// </summary>
     Task<string?> PickDashboardExportPathAsync(string suggestedName);
 
-    /// <summary>Shows the first-load plugin consent dialog (#14); returns true only when the operator explicitly enables the plugin.</summary>
+    /// <summary>
+    /// Shows the first-load plugin consent dialog (#14); returns true only when the operator explicitly enables the plugin.
+    /// </summary>
     Task<bool> ShowPluginConsentAsync(PluginConsentInfo info);
 
-    /// <summary>Shows the About dialog (#46) over the main window: app name, version, description and links.</summary>
+    /// <summary>
+    /// Shows the About dialog (#46) over the main window: app name, version, description and links.
+    /// </summary>
     Task ShowAboutDialogAsync();
 
-    /// <summary>Shows the in-app glossary (AC-512) over the main window: the five primitives, explained without a browser.</summary>
+    /// <summary>
+    /// Shows the in-app glossary (AC-512) over the main window: the five primitives, explained without a browser.
+    /// </summary>
     Task ShowGlossaryDialogAsync();
 
-    /// <summary>Opens the delegated-tasks view (#67), so work another session handed to a profile stays visible and stoppable.</summary>
+    /// <summary>
+    /// Opens the delegated-tasks view (#67), so work another session handed to a profile stays visible and stoppable.
+    /// </summary>
     Task ShowDelegatedTasksDialogAsync();
 
     /// <summary>
@@ -107,10 +125,14 @@ public interface ISessionDialogService
     /// </summary>
     Task ShowAgentLineInspectorDialogAsync(AgentLineInspectorViewModel inspector);
 
-    /// <summary>Shows the command palette (#: command palette) over the given commands; runs the chosen one after the palette closes.</summary>
+    /// <summary>
+    /// Shows the command palette (#: command palette) over the given commands; runs the chosen one after the palette closes.
+    /// </summary>
     Task ShowCommandPaletteDialogAsync(IReadOnlyList<PaletteCommand> commands);
 
-    /// <summary>Asks the operator to confirm a destructive action (remove a store/profile/plugin/…). Returns true only when they confirm; Cancel/✕/Esc return false. Shown over the topmost window.</summary>
+    /// <summary>
+    /// Asks the operator to confirm a destructive action (remove a store/profile/plugin/…). Returns true only when they confirm; Cancel/✕/Esc return false. Shown over the topmost window.
+    /// </summary>
     Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove");
 
     /// <summary>

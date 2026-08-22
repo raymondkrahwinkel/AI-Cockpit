@@ -10,14 +10,22 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 public interface ISharedProjectSourceRegistry
 {
-    /// <summary>Records a source. A key that is already registered is refused, first one wins.</summary>
-    /// <returns>False when another plugin already contributes this key — the caller says so; nothing throws.</returns>
+    /// <summary>
+    /// Records a source. A key that is already registered is refused, first one wins.
+    /// </summary>
+    /// <returns>
+    /// False when another plugin already contributes this key — the caller says so; nothing throws.
+    /// </returns>
     bool Register(ISharedProjectSource source);
 
-    /// <summary>Withdraws the source registered under <paramref name="key"/>. A no-op when nothing is registered under it.</summary>
+    /// <summary>
+    /// Withdraws the source registered under <paramref name="key"/>. A no-op when nothing is registered under it.
+    /// </summary>
     void Remove(string key);
 
-    /// <summary>Every source registered so far, in registration order.</summary>
+    /// <summary>
+    /// Every source registered so far, in registration order.
+    /// </summary>
     IReadOnlyList<ISharedProjectSource> Sources { get; }
 
     /// <summary>

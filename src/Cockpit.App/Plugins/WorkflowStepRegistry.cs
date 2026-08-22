@@ -14,7 +14,9 @@ public interface IWorkflowStepRegistry
 
     void Register(IWorkflowStep step);
 
-    /// <summary>A plugin fired one of its triggers. The workflows plugin listens; nobody else has a reason to.</summary>
+    /// <summary>
+    /// A plugin fired one of its triggers. The workflows plugin listens; nobody else has a reason to.
+    /// </summary>
     event EventHandler<WorkflowTriggerFired>? Fired;
 
     void Raise(string typeId, IReadOnlyDictionary<string, string> data);

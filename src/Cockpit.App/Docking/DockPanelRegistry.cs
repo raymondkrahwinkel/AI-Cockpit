@@ -7,17 +7,27 @@ namespace Cockpit.App.Docking;
 // `Cockpit.Plugins.Abstractions.Docking` (AC-960, plugin-facing via `ICockpitHost.AddDockPanel`), but this
 // registry itself stays a standalone type here — deliberately not derived from `IWidgetRegistry`.
 
-/// <summary>Holds the panels the dock rail offers — the Assistant since AC-953, registered by <c>AssistantIndicatorCoordinator</c>.</summary>
+/// <summary>
+/// Holds the panels the dock rail offers — the Assistant since AC-953, registered by <c>AssistantIndicatorCoordinator</c>.
+/// </summary>
 public interface IDockPanelRegistry
 {
-    /// <returns>False when another registration already claims this id — first one wins.</returns>
+    /// <returns>
+    /// False when another registration already claims this id — first one wins.
+    /// </returns>
     bool Register(DockPanelRegistration panel);
 
-    /// <summary>Withdraws a panel the rail can no longer show — an undocked Assistant lives in its own window, and a tab for it there would open a second one.</summary>
-    /// <returns>False when no panel of that id was registered.</returns>
+    /// <summary>
+    /// Withdraws a panel the rail can no longer show — an undocked Assistant lives in its own window, and a tab for it there would open a second one.
+    /// </summary>
+    /// <returns>
+    /// False when no panel of that id was registered.
+    /// </returns>
     bool Unregister(string id);
 
-    /// <summary>Every panel registered so far, in registration order — what the rail's tab strip lists.</summary>
+    /// <summary>
+    /// Every panel registered so far, in registration order — what the rail's tab strip lists.
+    /// </summary>
     IReadOnlyList<DockPanelRegistration> Panels { get; }
 
     event EventHandler? Changed;

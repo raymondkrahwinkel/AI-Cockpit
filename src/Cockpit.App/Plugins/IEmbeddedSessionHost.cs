@@ -16,6 +16,8 @@ internal interface IEmbeddedSessionHost
     /// </summary>
     IEmbeddedSession Embed(string workspaceId, EmbeddedSessionRequest request);
 
-    /// <summary>Closes and disposes every session embedded in <paramref name="workspaceId"/> — the workspace is going away.</summary>
+    /// <summary>
+    /// Closes and disposes every session embedded in <paramref name="workspaceId"/> — the workspace is going away.
+    /// </summary>
     void CloseForWorkspace(string workspaceId);
 }

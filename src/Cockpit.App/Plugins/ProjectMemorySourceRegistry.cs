@@ -24,7 +24,9 @@ public interface IProjectMemorySourceRegistry
     /// </summary>
     bool Remove(string scheme);
 
-    /// <summary>Every source registered so far, in registration order — the order the editor's picker offers them in.</summary>
+    /// <summary>
+    /// Every source registered so far, in registration order — the order the editor's picker offers them in.
+    /// </summary>
     IReadOnlyList<ProjectMemorySourceRegistration> Sources { get; }
 
     /// <summary>
@@ -34,7 +36,9 @@ public interface IProjectMemorySourceRegistry
     /// </summary>
     bool RegisterFamily(ProjectMemorySourceFamily family);
 
-    /// <summary>Every family declared so far, in declaration order — the order the editor's picker offers them in, ahead of any ungrouped source.</summary>
+    /// <summary>
+    /// Every family declared so far, in declaration order — the order the editor's picker offers them in, ahead of any ungrouped source.
+    /// </summary>
     IReadOnlyList<ProjectMemorySourceFamily> Families { get; }
 }
 

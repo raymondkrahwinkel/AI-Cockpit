@@ -12,7 +12,9 @@ public interface IConversationPickerRegistry
 {
     void Register(ConversationPickerRegistration picker);
 
-    /// <summary>Every picker registered so far, in registration order. Empty is the normal case — no plugin that browses a provider's history is installed.</summary>
+    /// <summary>
+    /// Every picker registered so far, in registration order. Empty is the normal case — no plugin that browses a provider's history is installed.
+    /// </summary>
     IReadOnlyList<ConversationPickerRegistration> Pickers { get; }
 }
 

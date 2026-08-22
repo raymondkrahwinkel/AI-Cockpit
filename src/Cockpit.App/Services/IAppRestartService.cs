@@ -7,6 +7,8 @@ namespace Cockpit.App.Services;
 /// </summary>
 public interface IAppRestartService
 {
-    /// <summary>Launches a fresh instance of the app, then cleanly shuts this one down through its existing exit path.</summary>
+    /// <summary>
+    /// Launches a fresh instance of the app, then cleanly shuts this one down through its existing exit path.
+    /// </summary>
     void Restart();
 }

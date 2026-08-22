@@ -18,7 +18,9 @@ namespace Cockpit.App.ViewModels;
 /// </summary>
 public interface IAssistantSessionHost : INotifyPropertyChanged
 {
-    /// <summary>The assistant's own long-running session, or null while it has not been lazily started yet.</summary>
+    /// <summary>
+    /// The assistant's own long-running session, or null while it has not been lazily started yet.
+    /// </summary>
     SessionViewModel? Session { get; }
 
     /// <summary>
@@ -27,13 +29,19 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     /// </summary>
     void SetSpeakReplies(bool speak);
 
-    /// <summary>What the indicator shows; pairs with <see cref="UnavailableReason"/> when it is <see cref="AssistantActivity.Unavailable"/>.</summary>
+    /// <summary>
+    /// What the indicator shows; pairs with <see cref="UnavailableReason"/> when it is <see cref="AssistantActivity.Unavailable"/>.
+    /// </summary>
     AssistantActivity Activity { get; }
 
-    /// <summary>Why the assistant cannot be reached right now (feature off, no profile, failed start) — null otherwise.</summary>
+    /// <summary>
+    /// Why the assistant cannot be reached right now (feature off, no profile, failed start) — null otherwise.
+    /// </summary>
     string? UnavailableReason { get; }
 
-    /// <summary>Idempotent lazy start: returns the running session if there is one, restarts it if it fell over, and no-ops (leaving <see cref="Activity"/> at Unavailable) if the feature is off or the slot is empty.</summary>
+    /// <summary>
+    /// Idempotent lazy start: returns the running session if there is one, restarts it if it fell over, and no-ops (leaving <see cref="Activity"/> at Unavailable) if the feature is off or the slot is empty.
+    /// </summary>
     Task<SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -42,7 +50,9 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     /// </summary>
     Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Sends typed or spoken text to the assistant, starting it lazily first if it has not run yet.</summary>
+    /// <summary>
+    /// Sends typed or spoken text to the assistant, starting it lazily first if it has not run yet.
+    /// </summary>
     Task SendAsync(string text, CancellationToken cancellationToken = default);
 
     /// <summary>
