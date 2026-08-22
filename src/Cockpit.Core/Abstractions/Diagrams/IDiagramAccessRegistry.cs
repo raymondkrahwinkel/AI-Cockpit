@@ -223,11 +223,9 @@ public interface IDiagramAccessRegistry
     bool WriteCoupled(string sessionId, string surfaceId, string text);
 
     /// <summary>
-    /// Applies a per-object edit (AC-852) under the registry's own lock: <paramref name="edit"/> gets the text as it
-    /// stands then and returns the new text plus a readable summary, or a null text to change nothing — so two edits
-    /// naming different objects both land, and <paramref name="kind"/>/<paramref name="objectKey"/> journal it for a
-    /// later targeted <see cref="Revert"/> (AC-853). Raises <see cref="TextChanged"/>, <see cref="ObjectEdited"/> and
-    /// <see cref="HistoryChanged"/>; false without <see cref="DiagramCapability.Edit"/> or when nothing changed.
+    /// Applies a per-object edit (AC-852) under the registry's lock: <paramref name="edit"/> gets the current text,
+    /// returns new text plus a summary (null text = no change), journalled by <paramref name="kind"/>/
+    /// <paramref name="objectKey"/> for later targeted <see cref="Revert"/> (AC-853); false when nothing changed.
     /// </summary>
     bool EditCoupled(string sessionId, string surfaceId, DiagramHandEditKind kind, string objectKey, Func<string, (string? Text, string Summary)> edit);
 
@@ -238,9 +236,8 @@ public interface IDiagramAccessRegistry
 
     /// <summary>
     /// Applies one hand-edit the operator made on the surface itself (AC-841), under the same lock as
-    /// <see cref="EditCoupled"/>: one change, never a series of half states, never overwriting an agent edit to a
-    /// different object. Null when it landed, or the reason it was refused — unknown surface, a change the
-    /// per-object grammar cannot make, or one that would not leave valid Mermaid behind.
+    /// <see cref="EditCoupled"/>: one change at a time, never overwriting an agent edit to a different object. Null
+    /// when it landed, or the refusal reason — unknown surface, a change the grammar can't make, or invalid Mermaid.
     /// </summary>
     string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit);
 

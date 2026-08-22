@@ -1,34 +1,24 @@
 namespace Cockpit.Core.Abstractions.Assistant;
 
 /// <summary>
-/// The host-side spawn service (AC-545): the one place a session is started, stopped or a desk created on an
-/// agent's behalf. Executes but does not scope — every method takes a <see cref="SpawnTarget"/>, buildable only
-/// through its two named doors, never deriving/defaulting a workspace. Never throws for a tellable outcome (refused
-/// spawn, closed workspace, missing profile): comes back as a result with a reason, since "tool failed" helps nobody.
+/// The host-side spawn service (AC-545): the one place a session is started, stopped or a desk created on an agent's
+/// behalf. Every method takes a <see cref="SpawnTarget"/>, buildable only through its two named doors, never deriving/
+/// defaulting a workspace, and never throws for a tellable outcome — comes back as a result with a reason instead.
 /// </summary>
 public interface IAssistantAgentGateway
 {
     /// <summary>
     /// Starts a session on <paramref name="request"/>'s profile and places it on the target's desk as an ordinary
-    /// pane — visible in the grid and sidebar, with its own consents and transcript. The desk is <em>not</em>
-    /// activated: a spawn elsewhere must leave the operator where they are, since work is often set up on another
-    /// desk precisely so it does not interrupt what is on screen.
+    /// pane, with its own consents and transcript. The desk is <em>not</em> activated: a spawn elsewhere must leave
+    /// the operator where they are, since work is often set up on another desk precisely so it does not interrupt.
     /// </summary>
     Task<AgentSpawnResult> SpawnAsync(AgentSpawnRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Closes the session on <paramref name="paneId"/>, whichever desk it is on. Refuses a pane that is not an
-    /// agent session, one that does not exist, and the assistant's own — the assistant does not get to end itself
-    /// mid-sentence, and a pane id it happens to know is not a licence to.
+    /// Closes the session on <paramref name="paneId"/>, whichever desk it is on. Refuses a pane that is not an agent
+    /// session, one that does not exist, and the assistant's own. <paramref name="caller"/> defaults to the assistant
+    /// (only caller until AC-795 gave a paired controller its own tools) — logging a stop from elsewhere as the assistant reads plausibly and is wrong.
     /// </summary>
-    /// <param name="paneId">The session to close.</param>
-    /// <param name="caller">
-    /// Who is closing it, for the audit trail. Defaults to the assistant, which was the only caller until AC-795
-    /// gave a paired controller its own tools — a stop that arrived from another machine and is written down as
-    /// this cockpit's own assistant is a trail that reads plausibly and is wrong.
-    /// </param>
-    /// <param name="callerPaneId">The caller's verified pane, where it has one. Null for the assistant, which does not.</param>
-    /// <param name="cancellationToken">Cancels the call.</param>
     Task<AgentStopResult> StopAsync(
         string paneId,
         SpawnCaller caller = SpawnCaller.Assistant,
@@ -36,10 +26,9 @@ public interface IAssistantAgentGateway
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Renames the session on <paramref name="paneId"/> — the title in its header and its sidebar row — exactly as
-    /// an inline rename does, so it counts as a name somebody chose rather than one a later suggestion may replace.
-    /// Refuses the same three things <see cref="StopAsync"/> does: a pane that is not there, one that runs inside a
-    /// workspace's own surface rather than as a pane, and the assistant's own.
+    /// Renames the session on <paramref name="paneId"/> — the title in its header and sidebar row — exactly as an
+    /// inline rename does, so it counts as a name somebody chose rather than one a later suggestion may replace.
+    /// Refuses what <see cref="StopAsync"/> refuses: a pane not there, one inside a workspace's own surface, the assistant's own.
     /// </summary>
     Task<AssistantRenameResult> RenameSessionAsync(string paneId, string name, CancellationToken cancellationToken = default);
 
@@ -56,10 +45,9 @@ public interface IAssistantAgentGateway
     Task<IReadOnlyList<AssistantWorkspaceRow>> ListWorkspacesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The profiles a spawn may name, with the provider and model each one runs on. A spawn's profile is required
-    /// and never defaulted, which left the assistant with one way to discover the labels: guess one and read them
-    /// off the refusal. Asking "which profile?" is right; asking while unable to say what the choices are — or
-    /// while reciting all of them when the operator already said "a Claude one" — makes them do the work instead.
+    /// The profiles a spawn may name, with the provider and model each runs on. A spawn's profile is required and
+    /// never defaulted, so without this the assistant's only way to learn the labels was guessing and reading the
+    /// refusal. Asking "which profile?" is right; reciting all of them when the operator already said "a Claude one" is not.
     /// </summary>
     Task<IReadOnlyList<AssistantProfileRow>> ListProfilesAsync(CancellationToken cancellationToken = default);
 
@@ -86,23 +74,16 @@ public interface IAssistantAgentGateway
 
     /// <summary>
     /// Submits <paramref name="prompt"/> as a turn on <paramref name="paneId"/> — goes in <em>and</em> is sent,
-    /// unlike a message. Refuses what <see cref="StopAsync"/> refuses: the assistant's own session, a non-agent
-    /// pane, one that does not exist or runs inside a workspace's own surface. A just-started session holds the
-    /// turn instead of dropping it — <see cref="AgentPromptResult.Delivered"/> says which happened, never true for a still-waiting turn.
+    /// unlike a message. Refuses what <see cref="StopAsync"/> refuses. A just-started session holds the turn
+    /// instead of dropping it — <see cref="AgentPromptResult.Delivered"/> says which happened, never true for a wait.
     /// </summary>
     Task<AgentPromptResult> SendPromptAsync(string paneId, string prompt, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Arms the host-side session watcher (AC-640) on <paramref name="paneId"/> for one or more of the five event
-    /// kinds, so the assistant is told when that session finishes, stalls, disappears or prints something it asked
-    /// about — instead of polling <c>list_sessions</c>. Per pane rather than automatic: <c>CiWatcher</c> watches
-    /// every live checkout, but a session's status is not always worth reporting on. Refuses rather than throws: a
-    /// pane id that resolves to nothing, <c>stuck</c>/<c>pattern</c> with no transcript, or an invalid regex — the last checked at arm time, not on the first tick.
+    /// Arms the host-side session watcher (AC-640) on <paramref name="paneId"/> for one or more of the five event kinds,
+    /// so the assistant is told when a session finishes, stalls, disappears or prints something it asked about, instead
+    /// of polling <c>list_sessions</c>. Per pane, not automatic like <c>CiWatcher</c>. Refuses a dead pane, <c>stuck</c>/<c>pattern</c> with no transcript, or an invalid regex.
     /// </summary>
-    /// <param name="paneId">The session to watch, as <c>list_sessions</c> reports it.</param>
-    /// <param name="events">Which of the five kinds to watch for; an unknown one is refused.</param>
-    /// <param name="afterMinutes">How long without a new transcript row counts as stuck, or null for the default.</param>
-    /// <param name="pattern">The regular expression the <c>pattern</c> event matches new transcript rows against.</param>
     Task<AssistantWatchResult> WatchSessionAsync(
         string paneId,
         IReadOnlyList<string>? events,
@@ -126,15 +107,9 @@ public interface IAssistantAgentGateway
 
     /// <summary>
     /// Turns a shared project <c>list_shared_projects</c> offered into an ordinary local project (AC-798), through
-    /// the same route the "Add to my projects…" dialog runs — never a write straight to the project store, which
-    /// would duplicate its validation and could race the dialog. Three things never default here: the folder on
-    /// this machine, the profile to run under, and one local reference per machine-specific resource row; a missing
-    /// one is refused with the question in it. It does not clone — the folder named must already exist.
+    /// the same route the "Add to my projects…" dialog runs, never a direct write to the project store. Three things
+    /// never default — local folder, profile, one local reference per resource row — refused with the question when missing. Does not clone; the folder must exist.
     /// </summary>
-    /// <param name="sharedProjectId">A <c>list_shared_projects</c> id, whose <c>{scheme}:</c> prefix names the source it came from.</param>
-    /// <param name="sourceDirectory">The folder on this machine the project's sessions run in. Must exist.</param>
-    /// <param name="profileLabel">The profile its sessions default to, by label — the dialog's one required field.</param>
-    /// <param name="resourceReferences">One local reference per machine-specific resource row, in the order the definition lists them.</param>
     Task<AssistantProjectBindResult> BindSharedProjectAsync(
         string sharedProjectId,
         string sourceDirectory,
@@ -143,43 +118,10 @@ public interface IAssistantAgentGateway
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates a brand-new local project (AC-799) — not bound to any shared definition, unlike
-    /// <see cref="BindSharedProjectAsync"/> — through the same route "New project" runs. A name matching a project
-    /// a connection already shares is refused rather than duplicated — <see cref="BindSharedProjectAsync"/> is
-    /// likely the right door instead. Four parameters decide how every session runs, not merely how it is
-    /// labelled: <paramref name="sourceDirectory"/>, <paramref name="enabledMcpServerNames"/>, <paramref name="isolateInWorktreeByDefault"/>, <paramref name="behaviorPrompt"/>.
+    /// Creates a brand-new local project (AC-799), not bound to any shared definition unlike <see cref="BindSharedProjectAsync"/>.
+    /// A name matching one a connection already shares is refused (use that door instead). Null leaves each optional field
+    /// to its default (no folder/profile/prompt/category, MCP servers all ticked, no worktree isolation); <paramref name="sourceDirectory"/> must exist when given.
     /// </summary>
-    /// <param name="name">
-    /// The project's display name — the dialog's one required field. Free to collide with another project's name.
-    /// </param>
-    /// <param name="description">
-    /// Free-text note on what this project is. Null for none.
-    /// </param>
-    /// <param name="sourceDirectory">
-    /// The folder its sessions start in. Must exist when given; null/blank for an administrative project with no
-    /// folder of its own.
-    /// </param>
-    /// <param name="defaultProfileLabel">
-    /// The profile its sessions start under, by label. Null leaves every session to name its own.
-    /// </param>
-    /// <param name="behaviorPrompt">
-    /// Appended to every session's system prompt on top of its profile's own. Null appends nothing.
-    /// </param>
-    /// <param name="isolateInWorktreeByDefault">
-    /// Whether new sessions here isolate in their own git worktree by default.
-    /// </param>
-    /// <param name="enabledMcpServerNames">
-    /// Names of MCP servers this project's sessions start ticked. Null means no opinion — every offered server
-    /// starts ticked, following the registry.
-    /// </param>
-    /// <param name="category">
-    /// Which group this project sits under in the manager's list. Null/blank groups it under "Uncategorized".
-    /// </param>
-    /// <param name="pluginFields">
-    /// What this project is called elsewhere, keyed by the field a plugin registered — e.g.
-    /// <c>{"youtrack.project": "AC"}</c>, the same shape <c>list_projects</c> reports. A key no installed plugin
-    /// registered is refused.
-    /// </param>
     Task<AssistantProjectCreateResult> CreateProjectAsync(
         string name,
         string? description = null,
@@ -193,17 +135,10 @@ public interface IAssistantAgentGateway
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Puts a clarifying question to the operator as a card in the assistant's own chat window (AC-955) — radio
-    /// buttons for one pick, checkboxes for several, an optional "Other, namely…" free-text row. Returns as soon as
-    /// shown; does not wait for an answer, and nothing here decides whether or when the operator answers — the card
-    /// sits in the transcript until <c>SubmitQuestionAnswersCommand</c> resolves it, a UI gesture this method
-    /// cannot await. Refused only when there is nowhere to put the card, e.g. the assistant's own session is not running.
+    /// Puts a clarifying question to the operator as a card in the assistant's own chat window (AC-955): radio
+    /// buttons (<paramref name="multiSelect"/> false) or checkboxes, plus an optional "Other, namely…" row. Returns
+    /// as soon as shown — the card sits until the UI's <c>SubmitQuestionAnswersCommand</c> resolves it, which this cannot await.
     /// </summary>
-    /// <param name="question">The question, shown above the options.</param>
-    /// <param name="options">2 to 6 choices, each a label and an optional one-line description.</param>
-    /// <param name="multiSelect">False shows radio buttons (one pick); true shows checkboxes (several).</param>
-    /// <param name="allowOther">Whether an "Other, namely…" row with a text field is offered.</param>
-    /// <param name="header">A short chip shown above the question. Null for none.</param>
     Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
         string question,
         IReadOnlyList<(string Label, string? Description)> options,
@@ -213,11 +148,9 @@ public interface IAssistantAgentGateway
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Opens <paramref name="url"/> in the operator's default browser (AC-587) — this door exists only because
-    /// <c>Cockpit.Infrastructure</c>, where the <c>open_url</c> tool lives, cannot reference <c>Cockpit.App</c> and
-    /// so cannot reach <c>ExternalLink</c> itself. Refuses outright when <paramref name="url"/> is not an absolute
-    /// <c>http</c>/<c>https</c> address — the same rule <c>ExternalLink.TryParseWebAddress</c> enforces elsewhere,
-    /// applied here rather than re-decided. Never reaches <c>TryOpenWithSystemApp</c>, which opens a filesystem path rather than a page.
+    /// Opens <paramref name="url"/> in the operator's default browser (AC-587) — exists only because
+    /// <c>Cockpit.Infrastructure</c>, where <c>open_url</c> lives, cannot reference <c>Cockpit.App</c> to reach
+    /// <c>ExternalLink</c>. Refuses a non-absolute <c>http</c>/<c>https</c> address, same rule as <c>ExternalLink.TryParseWebAddress</c>.
     /// </summary>
     Task<OpenUrlResult> OpenUrlAsync(string url, CancellationToken cancellationToken = default);
 }

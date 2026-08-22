@@ -5,8 +5,7 @@ namespace Cockpit.Core.Abstractions.Plugins;
 /// <summary>
 /// Installs and removes plugins on disk (#14). Installation validates and safely unpacks a <c>.zip</c> into the
 /// plugins root; an update over a loaded plugin and a removal are both deferred to the next startup, since a
-/// loaded assembly's file stays locked (on Windows) until the process exits. Enable/consent state itself lives
-/// in <see cref="IPluginRegistrationStore"/>.
+/// loaded assembly's file stays locked (on Windows) until the process exits. Enable/consent state lives in <see cref="IPluginRegistrationStore"/>.
 /// </summary>
 public interface IPluginInstaller
 {

@@ -13,9 +13,7 @@ public interface IAttentionNotifier
     Task NotifyAttentionAsync(AttentionNotification notification, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// A session finished its turn. Delivered only when you would otherwise miss it — see
-    /// <see cref="FinishedNotificationDecision"/>: a selected session in a focused window already showed you
-    /// the answer arriving.
+    /// A session finished its turn — delivered only when you'd miss it; see <see cref="FinishedNotificationDecision"/>.
     /// </summary>
     /// <param name="isSelected">The finished session is the one currently selected.</param>
     /// <param name="isWindowActive">The cockpit window is the focused window.</param>

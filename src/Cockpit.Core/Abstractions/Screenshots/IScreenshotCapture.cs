@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Abstractions.Screenshots;
 
 /// <summary>
-/// Reads the screen — every display, no UI of its own — and hands back the pixels with the layout they came off
-/// (AC-333), one implementation per OS. The desktop's own picker used to do this (a bare PNG), until AC-220's live
-/// test showed a portal hands back whatever backend UI the machine runs (a KDE dialog, not a crosshair); the
-/// selection is the cockpit's own from here on (AC-329), distinct from <c>Screenshotter</c> (the cockpit's own
-/// Avalonia tree). Never wait on this synchronously from the UI thread: interim implementations hand control to the desktop's picker, and on Windows that picker needs the thread a sync wait would hold.
+/// Reads the screen — every display, no UI of its own — and hands back the pixels with their layout (AC-333), one
+/// implementation per OS. The desktop's own picker did this until AC-220 showed a portal hands back whatever backend
+/// UI the machine runs; selection is the cockpit's own since (AC-329). Never wait on this synchronously — Windows' picker needs the UI thread.
 /// </summary>
 public interface IScreenshotCapture
 {
@@ -17,18 +15,16 @@ public interface IScreenshotCapture
     bool IsSupported { get; }
 
     /// <summary>
-    /// Completes once <see cref="IsSupported"/> has settled — immediately on a platform that knows the answer
-    /// outright, and after a round trip to the desktop on Linux, where only the session bus can say whether a
-    /// screenshot portal is served (AC-326). A caller reading <see cref="IsSupported"/> before this completes gets
-    /// "no" from a machine that may well capture, so the cockpit wires its button both from whatever is known now, and again from here — never once at startup only.
+    /// Completes once <see cref="IsSupported"/> has settled — immediately where the answer is known outright, and after
+    /// a round trip to the desktop on Linux, where only the session bus can say (AC-326). Reading <see cref="IsSupported"/>
+    /// before this completes can read "no" for a machine that may well capture, so the button wires from both.
     /// </summary>
     Task SupportSettled { get; }
 
     /// <summary>
-    /// Reads every display and returns the composed image with the layout behind it, or <see langword="null"/>
-    /// when there was nothing to capture. A capture that genuinely breaks — portal refuses, helper process won't
-    /// start, no implementation at all — throws, so the caller can say which; null is for a read that simply
-    /// produced no image, which the interim picker-backed implementations still use for a cancelled selection until AC-326, AC-327 and AC-328 take the picker out of the path.
+    /// Reads every display and returns the composed image with its layout, or <see langword="null"/> when there was
+    /// nothing to capture. A capture that genuinely breaks throws, so the caller can say which; null is for a plain no-image
+    /// read, which interim picker-backed implementations use for a cancelled selection until AC-326/327/328 land.
     /// </summary>
     Task<ScreenCapture?> CaptureAsync(CancellationToken cancellationToken = default);
 }

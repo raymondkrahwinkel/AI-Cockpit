@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Secrets;
 
 /// <summary>
-/// Watches the operating system's own screen lock, so AI-Cockpit can lock itself when the desktop locks (AC-5) —
-/// puts the unlock screen in front and asks for the encryption password again, leaving the key in memory so any
-/// agent already running keeps working. One event-source, three OS-specific implementations chosen at runtime
-/// (Windows session notifications, macOS's distributed <c>screenIsLocked</c>, Linux systemd-logind's
-/// <c>LockedHint</c>), plus <see cref="NullScreenLockMonitor"/> elsewhere; deliberately just a trigger, never touching the key or UI, so the coordinator decides per event and the gate stays in one testable place. <see cref="StartAsync"/> registers, <see cref="IDisposable.Dispose"/> unregisters; a monitor that cannot register fails safe, never raising <see cref="Locked"/>.
+/// Watches the OS's own screen lock, so AI-Cockpit can lock itself when the desktop locks (AC-5) — the unlock
+/// screen re-asks the encryption password, keeping the key in memory so a running agent keeps working. Just a
+/// trigger, never touching the key or UI; a monitor that can't register fails safe, never raising <see cref="Locked"/>.
 /// </summary>
 public interface IScreenLockMonitor : IDisposable
 {

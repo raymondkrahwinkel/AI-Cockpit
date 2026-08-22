@@ -36,11 +36,9 @@ public sealed record TerminalCapturedOutput(string Text, bool Truncated);
 public sealed record TerminalCouplingChange(string PaneId, TerminalCouplingMode? Coupling, string? AgentSession);
 
 /// <summary>
-/// The source of truth for terminal-pane access (AC-34). The TTY layer registers the panes that exist and feeds their
-/// rendered output; the <c>cockpit-terminal</c> MCP tools read through the consumer side. Coupling is exclusive (one
-/// agent per pane) and captured output starts at the coupling, never before, so an earlier <c>cat .env</c> in the
-/// scrollback cannot leak into an agent's context (Iron Law #8). Closing a pane or ending a session decouples it
-/// automatically; the concrete registry is a singleton so both sides see the same live state.
+/// The source of truth for terminal-pane access (AC-34): the TTY layer registers panes and feeds output; the
+/// <c>cockpit-terminal</c> MCP tools read the consumer side. Coupling is exclusive and capture starts only at the
+/// coupling, so an earlier <c>cat .env</c> cannot leak into an agent's context (Iron Law #8).
 /// </summary>
 public interface ITerminalAccessRegistry
 {
@@ -48,11 +46,8 @@ public interface ITerminalAccessRegistry
 
     /// <summary>
     /// Records that a terminal pane is open. Idempotent — re-registering updates the name. <paramref name="plainShell"/>
-    /// says the cockpit started this pane as a shell, not as an agent session; only those are offered to an agent, so
-    /// an agent can neither list nor name another agent's session pane — driving one would be agent-to-agent puppeting
-    /// behind the operator's terminal consent, and reading one would pull that session's transcript into this agent's
-    /// context. It describes how the pane was launched, not what runs in the pty now: an operator who starts an agent
-    /// CLI by hand inside a shell they opened still has a shell they opened, and still approves each agent that asks for it.
+    /// says the pane was started as a shell, not an agent session; only those are offered to an agent, so it can neither
+    /// list nor drive another agent's session pane — puppeting, or leaking that session's transcript, into its context.
     /// </summary>
     void PaneOpened(string paneId, string name, bool plainShell);
 
@@ -89,10 +84,9 @@ public interface ITerminalAccessRegistry
     bool IsCoupledByAnother(string sessionId, string paneId);
 
     /// <summary>
-    /// Commits the coupling of a pane to a session (after the operator approved) and starts its output capture.
-    /// Idempotent for the same session; widening from <see cref="TerminalCouplingMode.Watch"/> to
-    /// <see cref="TerminalCouplingMode.Drive"/> keeps the captured output, and a coupling never narrows on its own.
-    /// Throws for a pane that is not an open plain shell — the plain-shell rule is enforced here, not trusted to each caller.
+    /// Commits the coupling of a pane to a session (after operator approval) and starts capture. Idempotent; widening
+    /// <see cref="TerminalCouplingMode.Watch"/> to <see cref="TerminalCouplingMode.Drive"/> keeps captured output, and a
+    /// coupling never narrows on its own. Throws for a non-open-plain-shell pane — enforced here, not trusted to callers.
     /// </summary>
     void Couple(string sessionId, string paneId, TerminalCouplingMode mode);
 

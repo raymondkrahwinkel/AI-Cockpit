@@ -50,10 +50,8 @@ public sealed record AgentLineBudgetUsage(
 
 /// <summary>
 /// The rate at which one agent session may use the line (AC-396), keeping polite replies from becoming a loop that
-/// spends a desk's turns. A rate over a window, not a session total (Raymond: catching a runaway, not thrift),
-/// charged to the sender alone, unlike the old per-recipient <c>MaxWaitingPerPane</c> which let a looping neighbour
-/// get every sender refused (AC-119 S10). Keyed on pane id only, like <see cref="IAgentMessageInbox"/>, since a
-/// pane's workspace can drift; runtime-only, refusals go to the notify trail (<see cref="IAgentNotifyAuditLog"/>).
+/// spends a desk's turns. A rate over a window, not a session total (Raymond: catching a runaway, not thrift), charged
+/// to the sender alone, unlike the old per-recipient <c>MaxWaitingPerPane</c> that let a looping neighbour get every sender refused (AC-119 S10). Keyed on pane id only; runtime-only, refusals go to the notify trail.
 /// </summary>
 public interface IAgentLineBudget
 {

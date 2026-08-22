@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Abstractions.Screenshots;
 
 /// <summary>
-/// What the desktop says its displays are (AC-326) — asked of the UI framework, which is the only thing in the
-/// process that already tracks them, and answered for a capture that cannot work it out for itself. Lives here
-/// rather than in Infrastructure because the answer comes from Avalonia, hung off the app's own window, and
-/// Infrastructure does not reference a UI framework. The Linux capture is the caller — Windows and macOS enumerate
-/// displays through the same API that reads their pixels, a stronger guarantee, and are preferred there.
+/// What the desktop says its displays are (AC-326) — asked of the UI framework, the only thing in-process that already
+/// tracks them. Lives here rather than Infrastructure because the answer comes from Avalonia, and Infrastructure
+/// references no UI framework. Windows/macOS prefer enumerating displays through the same API that reads their pixels.
 /// </summary>
 public interface IDesktopDisplays
 {

@@ -2,12 +2,7 @@ namespace Cockpit.Core.Abstractions.Hotkeys;
 
 /// <summary>
 /// Registers the cockpit's desktop-wide hotkeys — keys that fire while the window has no focus. One implementation
-/// per OS (the XDG <c>GlobalShortcuts</c> portal on Wayland, a low-level keyboard hook on Windows and X11, nothing
-/// on macOS), selected in <c>Cockpit.Infrastructure.DependencyInjection</c> like <c>IPtyHostFactory</c>. Takes a
-/// <em>set</em> of bindings rather than the one it used to (#34 shipped only push-to-talk) — a second key (AC-220
-/// screenshot capture) would otherwise need a second keyboard hook and portal session, showing the cockpit twice in
-/// the desktop's shortcut settings on Wayland. Threading: <see cref="Pressed"/>/<see cref="Released"/> fire on
-/// whatever thread the backend's own event loop uses, never the UI thread — callers must marshal themselves.
+/// per OS (the XDG <c>GlobalShortcuts</c> portal on Wayland, a low-level keyboard hook on Windows and X11, nothing on macOS), selected in <c>Cockpit.Infrastructure.DependencyInjection</c> like <c>IPtyHostFactory</c>. Takes a <em>set</em> of bindings rather than the one it used to (#34 shipped only push-to-talk) — a second key (AC-220 screenshot capture) would otherwise need a second keyboard hook/portal session, doubling the cockpit's Wayland shortcut entry. Threading: <see cref="Pressed"/>/<see cref="Released"/> fire on the backend's own event-loop thread, never the UI thread — callers must marshal themselves.
 /// </summary>
 public interface IGlobalHotkeyService
 {
@@ -20,10 +15,7 @@ public interface IGlobalHotkeyService
     /// <summary>
     /// How the given hotkey is actually triggered, in words to show the operator — or null when nothing is armed
     /// for it. Reported rather than assumed: a Windows hook is simply armed with the settings key, but the XDG
-    /// portal takes it only as a <em>preferred_trigger</em> hint, and the actual binding then belongs to the
-    /// desktop's own shortcut settings, changeable without the cockpit hearing except via
-    /// <see cref="TriggerDescriptionsChanged"/>; macOS has no implementation, hence null. (The settings field used
-    /// to look like it decided all three — it did not, and on Linux was not even read.)
+    /// portal takes it only as a <em>preferred_trigger</em> hint, and the binding then belongs to the desktop's own shortcut settings, changeable without the cockpit hearing except via <see cref="TriggerDescriptionsChanged"/>; macOS has no implementation, hence null.
     /// </summary>
     string? TriggerDescriptionFor(string hotkeyId);
 

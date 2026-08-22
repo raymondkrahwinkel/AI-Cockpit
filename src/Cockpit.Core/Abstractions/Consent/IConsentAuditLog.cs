@@ -2,9 +2,8 @@ namespace Cockpit.Core.Abstractions.Consent;
 
 /// <summary>
 /// Records every consent decision — what was asked, by whom, approved or denied (#AC-47) — so "what did I approve
-/// while it was running" is answerable from something more durable than the app's memory. Append-only by contract:
-/// no clear or delete, so a plugin (or an agent through it) can't erase its own trail. Denials are recorded too,
-/// including fail-closed ones where nothing could ask.
+/// while it was running" is answerable from something more durable than the app's memory. Append-only by
+/// contract: no clear or delete, so a plugin (or an agent through it) can't erase its own trail. Denials, including fail-closed ones where nothing could ask, are recorded too.
 /// </summary>
 public interface IConsentAuditLog
 {

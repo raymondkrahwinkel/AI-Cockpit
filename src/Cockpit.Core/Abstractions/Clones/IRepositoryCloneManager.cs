@@ -3,21 +3,16 @@ using Cockpit.Core.Clones;
 namespace Cockpit.Core.Abstractions.Clones;
 
 /// <summary>
-/// Clones a git repository from a URL into a managed area and hands back the local path a session starts in (AC-90),
-/// so an agent can be put on a repository not yet on this machine. Composes with worktree isolation (AC-85): the
-/// clone is the repository root, each session worktrees off it. Host-first, not per-provider. Authentication is left
-/// to the host's own git credential helper (GCM, <c>gh</c>) with terminal prompting disabled, so a missing helper
-/// fails with a message rather than hanging, and a token is never put in the URL, where it would land in
-/// <c>.git/config</c>, the process arguments and the logs.
+/// Clones a git repository from a URL into a managed area and hands back the local path a session starts in
+/// (AC-90); composes with worktree isolation (AC-85), each session worktreeing off the clone. Authenticates via
+/// the host's own git credential helper (GCM, <c>gh</c>) with prompting disabled, so a token never lands in the URL.
 /// </summary>
 public interface IRepositoryCloneManager
 {
     /// <summary>
     /// Clones <paramref name="url"/> into <paramref name="targetPath"/> — or, when null/blank, the managed
-    /// <c>host/org/repo</c> folder under the clones root (<see cref="BuildClonePath"/>) — and returns its record,
-    /// reusing (fetching up to date) an existing checkout of the same repository rather than re-cloning it. Throws
-    /// with what git said when the clone fails, or when the target folder already holds a <em>different</em>
-    /// repository, which is never silently clobbered.
+    /// <c>host/org/repo</c> folder (<see cref="BuildClonePath"/>) — reusing an existing checkout rather than
+    /// re-cloning. Throws with what git said on failure, or when the target folder holds a different repository.
     /// </summary>
     Task<RepositoryClone> CloneAsync(string url, string? targetPath = null, CancellationToken cancellationToken = default);
 

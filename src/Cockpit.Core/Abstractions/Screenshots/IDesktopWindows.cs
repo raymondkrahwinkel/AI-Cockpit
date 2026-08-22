@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Abstractions.Screenshots;
 
 /// <summary>
-/// The windows on the desktop, front to back (AC-330) — what the selection surface needs to highlight the one
-/// under the pointer and crop it out of the capture it already has. The one mode that cannot be built the same
-/// way everywhere: Windows, macOS and a real X11 session all publish window geometry and stacking order; Wayland
-/// deliberately does not, and this app runs there as an XWayland client seeing only other XWayland windows — a
-/// picker built on that would offer a fraction of the operator's windows, worse than none. Hence <see cref="IsSupported"/>: present and working, or absent and saying so.
+/// The windows on the desktop, front to back (AC-330) — what the selection surface needs to highlight and crop the one
+/// under the pointer. Cannot be built everywhere: Windows/macOS/X11 publish stacking order; Wayland doesn't, and this
+/// app runs there as an XWayland client seeing only XWayland windows. Hence <see cref="IsSupported"/>: present, or absent and saying so.
 /// </summary>
 public interface IDesktopWindows
 {

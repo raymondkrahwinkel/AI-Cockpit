@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Abstractions;
 
 /// <summary>
-/// Shows the first-run wizard on demand (AC-508). It runs once on a fresh install, but the screen explaining what
-/// this is has to be reachable again afterwards — a one-off screen gone after a single click is content never
-/// delivered (AC-509 criterion 3). The Help menu is where the operator looks for it (AC-512), living in the main
-/// view while the wizard owns its own window and completion flag; this interface is the seam so neither has to
-/// know how the other is built.
+/// Shows the first-run wizard on demand (AC-508). It runs once on a fresh install, but the explanatory screen must
+/// stay reachable afterwards — a one-off screen gone after a click is content never delivered (AC-509 criterion 3).
+/// The Help menu is where the operator looks for it (AC-512); this interface is the seam so the main view and the wizard's own window/completion flag don't need to know how the other is built.
 /// </summary>
 public interface IFirstRunWizard
 {

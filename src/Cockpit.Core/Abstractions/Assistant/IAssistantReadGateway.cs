@@ -15,20 +15,15 @@ public interface IAssistantReadGateway
 
     /// <summary>
     /// The tail of one named session's transcript, raw — in the order it happened, nothing rewritten. Null when no
-    /// AI session runs on that pane. Unlike <see cref="ListSessionsAsync"/>'s bare call, the pane id here decides
-    /// nothing about authority — the caller is already the assistant, allowed every workspace by design (AC-544) —
-    /// so it is a lookup, not a scope; do not derive the pane from the request instead. Bounded here rather than at
-    /// the tool, so a ten-thousand-row session is never copied out of the UI thread's collection to discard most of it.
+    /// AI session runs on <paramref name="paneId"/>, which here is a lookup, not a scope: the caller is already the
+    /// assistant, allowed every workspace (AC-544). <paramref name="count"/> bounds it here, not at the tool, so a ten-thousand-row session is never copied out to discard most of it.
     /// </summary>
-    /// <param name="paneId">The session to read, as <see cref="AssistantSessionRow.PaneId"/> reports it.</param>
-    /// <param name="count">How many of the most recent entries to return; already clamped by the caller.</param>
     Task<AssistantTranscript?> ReadTranscriptAsync(string paneId, int count);
 
     /// <summary>
     /// The projects this cockpit knows — the operator's own list, not a folder scan. A project is not a workspace
     /// and not a session, and it was the one first-class thing the assistant could not see: asked "which projects
-    /// do we have", it answered with the desks, the nearest thing it had a tool for, and wrong. Added from the live
-    /// test rather than designed in — what a model reaches for with no tool for a question is how you find the gap.
+    /// do we have", it answered with the desks, the nearest thing it had a tool for, and wrong.
     /// </summary>
     Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync();
 

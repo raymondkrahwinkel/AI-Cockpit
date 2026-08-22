@@ -11,11 +11,9 @@ public interface IOpenMicListener
     event EventHandler<string>? UtteranceTranscribed;
 
     /// <summary>
-    /// Raised on the capture thread the moment the VAD decides you have started speaking, and again when the
-    /// utterance ends — the boundaries this listener already finds to know what to transcribe. They are here so the
-    /// voice overlay can appear when there is something to show and not a second before (Raymond, 2026-07-15): the
-    /// alternative was thresholding <see cref="AudioLevelSampled"/> in the UI, a second worse VAD guessing at what
-    /// this one already knows, which would light the pill for a door closing. <see cref="UtteranceTranscribed"/> is far too late.
+    /// Raised the moment the VAD decides you started speaking, and again when the utterance ends — boundaries this
+    /// listener already finds, so the voice overlay can appear the instant there's something to show (Raymond, 2026-07-15),
+    /// instead of a second worse VAD thresholding <see cref="AudioLevelSampled"/>. <see cref="UtteranceTranscribed"/> is too late.
     /// </summary>
     event EventHandler? SpeechStarted;
 

@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Abstractions.Assistant;
 
 /// <summary>
-/// The append-only trail of every session an agent asked the host to start or stop (AC-545, criterion 5). Same
-/// contract shape as the consent and delegation trails (<c>IConsentAuditLog</c>, <c>IDelegationAuditLog</c>) so it
-/// inherits the shared <c>JsonlAuditLog&lt;T&gt;</c> machinery rather than growing a fourth implementation. Needed
-/// alongside the chat window because the transcript shows only <em>this</em> conversation; the trail answers "what
-/// has this thing ever started" across restarts and scrolled-past conversations — a refused spawn is recorded too, since a gate that logs only what it let through cannot show what it stopped.
+/// The append-only trail of every session an agent asked the host to start or stop (AC-545, criterion 5), on the shared
+/// <c>JsonlAuditLog&lt;T&gt;</c> machinery like <c>IConsentAuditLog</c>/<c>IDelegationAuditLog</c>. Answers "what has this
+/// ever started" across restarts, unlike the transcript's single conversation — a refused spawn is recorded too, so the gate shows what it stopped, not only what it let through.
 /// </summary>
 public interface IAssistantSpawnAuditLog
 {

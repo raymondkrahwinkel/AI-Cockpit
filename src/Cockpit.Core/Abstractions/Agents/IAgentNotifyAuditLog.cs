@@ -1,15 +1,10 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
 /// <summary>
-/// Records every <c>notify</c> attempt one agent session makes at another (AC-392) — delivered ones and, just as
-/// importantly, the ones the host turned down. An agent can put text into another agent's context; "who tried to
-/// say what to whom, and what did the cockpit do about it" must be answerable from something more durable than memory.
+/// Records every <c>notify</c> attempt one agent session makes at another (AC-392), delivered and refused alike, so
+/// "who tried to say what to whom" stays answerable from more than memory. Append-only like the consent trail (#AC-47)
+/// — no clear or delete; refusals are kept too, since attempts to reach panes on other desks are exactly what you want findable later, invisible if only successes were kept.
 /// </summary>
-/// <remarks>
-/// Append-only by contract, like the consent trail (#AC-47): there is no clear or delete here, so an agent cannot
-/// erase the record of what it sent. Refusals are recorded too — a stream of attempts to reach panes on other
-/// desks is exactly the thing you want to be able to find later, and it is invisible if only successes are kept.
-/// </remarks>
 public interface IAgentNotifyAuditLog
 {
     /// <summary>Appends an entry. Never throws: a broken audit log must not take the notify down with it, so a write failure is a logged warning rather than a lost line.</summary>

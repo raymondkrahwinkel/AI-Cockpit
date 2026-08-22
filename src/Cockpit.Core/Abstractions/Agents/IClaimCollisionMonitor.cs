@@ -1,10 +1,9 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
 /// <summary>
-/// Operator-facing signal for AC-439: which panes hold a claim on the same <em>physical</em> resource as a pane on
-/// a different workspace. AC-393 partitions claims per desk on purpose, leaving even the operator unable to see a
-/// cross-desk collision; this reads across every desk (via <see cref="IAgentResourceClaimsAudit"/>, never given to
-/// agent-facing tools) to the cockpit UI only. Not distinguished by severity (Raymond, AC-439): a pane either has a collision or not.
+/// Operator-facing signal for AC-439: which panes hold a claim on the same <em>physical</em> resource as a pane on a
+/// different workspace. AC-393 partitions claims per desk on purpose, leaving even the operator unable to see a
+/// cross-desk collision; this reads across every desk (via <see cref="IAgentResourceClaimsAudit"/>, never agent-facing) to the UI only — not by severity (Raymond, AC-439): a pane either has a collision or not.
 /// </summary>
 public interface IClaimCollisionMonitor
 {

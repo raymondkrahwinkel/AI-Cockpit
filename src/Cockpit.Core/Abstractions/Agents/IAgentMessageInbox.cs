@@ -53,9 +53,8 @@ public sealed record AgentInboxBatch(IReadOnlyList<AgentMessage> Messages, int R
 
 /// <summary>
 /// The pending messages agent sessions have addressed to each other (AC-392): what <c>notify</c> writes into and
-/// <c>read_inbox</c> drains. Runtime, not durable — the append-only notify trail (<see cref="IAgentNotifyAuditLog"/>)
-/// is that record. Keyed on the recipient's pane id alone, not (workspace, pane), because a pane's derived workspace
-/// drifts, and because the workspace boundary is enforced upstream in <c>AgentsMcpTools</c> anyway.
+/// <c>read_inbox</c> drains. Runtime, not durable — the notify trail (<see cref="IAgentNotifyAuditLog"/>) is that
+/// record. Keyed on the recipient's pane id alone, not (workspace, pane), since the workspace boundary is enforced upstream in <c>AgentsMcpTools</c> anyway.
 /// </summary>
 public interface IAgentMessageInbox
 {

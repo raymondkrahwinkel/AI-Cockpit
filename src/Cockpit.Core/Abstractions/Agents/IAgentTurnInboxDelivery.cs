@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
 /// <summary>
-/// Turn-start delivery (AC-394): the seam that lets a session's outgoing turn carry messages waiting for it, so a
-/// peer's message arrives without the agent calling <c>read_inbox</c> first. A three-step handshake, not one call,
-/// because taking a batch and the turn actually going out are two moments a send can fail between — collapsing them
-/// would silently lose messages the sender was already told had arrived. Only panes the host drives through a typed
-/// runtime can offer this (a CLI in a pty has no real turn boundary to hang it on); <c>list_agents</c> reports per pane which do.
+/// Turn-start delivery (AC-394): lets a session's outgoing turn carry messages waiting for it, so a peer's message
+/// arrives without calling <c>read_inbox</c> first. A three-step handshake, not one call, since taking a batch and the
+/// turn going out can fail between the two — collapsing them would silently lose messages the sender was told arrived. Only panes on a typed runtime offer this; <c>list_agents</c> reports which do.
 /// </summary>
 public interface IAgentTurnInboxDelivery
 {

@@ -3,11 +3,9 @@ using Cockpit.Core.Plugins;
 namespace Cockpit.Core.Abstractions.Plugins;
 
 /// <summary>
-/// Talks to a plugin store (#14, AC-7): fetches and parses its <c>index.json</c>, and downloads a specific
-/// version's zip to a temp file (verifying the store's checksum when one is published). A store is a
-/// <see cref="PluginStoreConfig"/> — a public remote, a private remote reached with a bearer token, or a local
-/// folder — resolved each the right way; the zip is then handed to the normal <see cref="IPluginInstaller"/>,
-/// so the store never bypasses install validation or the consent/hash-pin.
+/// Talks to a plugin store (#14, AC-7): fetches its <c>index.json</c>, and downloads a version's zip to a temp
+/// file (verifying the checksum when published) from a public, token-authed private, or local
+/// <see cref="PluginStoreConfig"/>. The zip then goes to <see cref="IPluginInstaller"/>, never bypassing consent.
 /// </summary>
 public interface IPluginStoreClient
 {

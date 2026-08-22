@@ -22,8 +22,7 @@ public interface IVoicePlaybackQueue
     /// <summary>
     /// Marks read-aloud as active before anything is queued, so the overlay shows it is working during the gap the
     /// operator otherwise sees as silence — the first synthesis, including the one-time model download, which runs
-    /// before any audio plays. Raises <see cref="PlaybackActiveChanged"/> the same as real playback; the batch that
-    /// follows clears it when it finishes, and <see cref="StopAll"/> clears it if nothing ends up queued.
+    /// before any audio plays. Raises <see cref="PlaybackActiveChanged"/> like real playback; the batch that follows clears it when it finishes, and <see cref="StopAll"/> clears it if nothing ends up queued.
     /// </summary>
     void NotifyPreparing(VoicePlaybackSource source = VoicePlaybackSource.Session);
 
@@ -46,9 +45,7 @@ public interface IVoicePlaybackQueue
 
     /// <summary>
     /// A counter bumped by every <see cref="StopAll"/>. A caller preparing a batch reads it before
-    /// <see cref="NotifyPreparing"/> and again before <see cref="Enqueue(IReadOnlyList{string}, int, string)"/>: if it
-    /// changed, a barge-in (or a newer turn) cancelled read-aloud in between — <see cref="StopAll"/> is called from
-    /// the push-to-talk hold's own thread and from <see cref="PlaybackActiveChanged"/> subscribers, so the now-stale batch must be dropped instead of spoken over the interrupt.
+    /// <see cref="NotifyPreparing"/> and again before <see cref="Enqueue(IReadOnlyList{string}, int, string)"/>: if changed, a barge-in (or newer turn) cancelled read-aloud in between — <see cref="StopAll"/> is called from the hold's own thread and from <see cref="PlaybackActiveChanged"/> subscribers, so the stale batch must be dropped instead of spoken over the interrupt.
     /// </summary>
     int Generation { get; }
 

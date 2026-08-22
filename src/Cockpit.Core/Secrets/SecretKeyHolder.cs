@@ -2,9 +2,8 @@ namespace Cockpit.Core.Secrets;
 
 /// <summary>
 /// Holds the key for as long as the app runs, and nowhere else. Whether the cockpit is unlocked is a fact about
-/// the process, not about one object graph: every settings store builds its own file access, and they must all
-/// agree. Hence <see cref="Shared"/> — one instance the container hands out and non-DI callers reach directly,
-/// rather than a key that exists in one branch of the graph and not another. A test builds its own holder and leaves the shared one alone.
+/// the process, not one object graph — every settings store must agree. Hence <see cref="Shared"/>: one instance
+/// the container hands out and non-DI callers reach directly. A test builds its own holder and leaves this alone.
 /// </summary>
 public interface ISecretKeyHolder
 {

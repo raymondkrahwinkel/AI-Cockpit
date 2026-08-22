@@ -4,13 +4,9 @@ using Cockpit.Core.Sessions;
 namespace Cockpit.Core.Abstractions.Delegation;
 
 /// <summary>
-/// The engine behind the orchestrator (#67): a running session asks it to hand a task to another profile, and it
-/// enforces what that profile allows before a process is ever spawned. The MCP tool surface is a thin shell over
-/// this — the rules live here, not in the tool definitions, so they hold however the engine is reached.
-/// Task-addressed calls take a <c>callerPaneId</c>, the transport-verified pane behind the request (AC-128); when
-/// set, a task is only reachable by the pane that created it, so an agent cannot read, continue, stop, or list
-/// another session's task by naming its id (confused deputy). A null caller — operator/UI, or the off-path
-/// in-process loop with no verified pane — is unscoped and sees every task.
+/// The engine behind the orchestrator (#67): a running session hands it a task for another profile, enforcing what
+/// that profile allows before a process is spawned. The MCP tool surface is a thin shell — the rules live here.
+/// A <c>callerPaneId</c> (AC-128), when set, scopes calls to its own task (confused deputy); null is unscoped.
 /// </summary>
 public interface IDelegationService
 {
@@ -28,11 +24,9 @@ public interface IDelegationService
     Task<IReadOnlyList<DelegationTargetView>> ListTargetsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Records what a target profile turned out to be good for: its purpose, tags, and the kinds of work it
-    /// accepts — knowledge an orchestrator learns by using a profile and that is lost if not written down.
-    /// Deliberately the <em>only</em> thing a caller may change about a profile: what a delegated session can do
-    /// (whether it's a target, its permission ceiling, working directories, concurrency, credentials) stays with
-    /// the operator, or every guard here would be a suggestion. Refused for a non-target profile.
+    /// Records what a target profile turned out to be good for: purpose, tags, kinds of work accepted — knowledge an
+    /// orchestrator learns by using it, lost if not written down. Deliberately the <em>only</em> thing a caller may
+    /// change; capability (target status, permissions, dirs, concurrency, creds) stays the operator's; refused otherwise.
     /// </summary>
     Task<DelegationTargetView> DescribeTargetAsync(
         string profileLabel,
@@ -42,12 +36,9 @@ public interface IDelegationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Scaffolds a new local-model profile (Ollama or LM Studio) and persists it (#67, AC-6), so a session can run
-    /// under it and the operator can later enrol it as a delegation target. Created deliberately <em>not</em> as a
-    /// target — <see cref="DelegationPolicy.AllowedAsTarget"/> stays false, since what a delegated session may do
-    /// is the operator's to set — so a caller can add a local model but never make itself a delegation target. Only
-    /// local providers may be added this way; a logged-in provider carries credentials and is the operator's to
-    /// create. Rejects a blank label, a label already taken, an unknown provider, or a blank model.
+    /// Scaffolds a new local-model profile (Ollama/LM Studio) and persists it (#67, AC-6), so a session can run under
+    /// it and the operator can later enrol it as a delegation target. Created deliberately <em>not</em> as a target
+    /// (<see cref="DelegationPolicy.AllowedAsTarget"/> false); rejects a blank/taken label, unknown provider, blank model.
     /// </summary>
     Task<ScaffoldedProfileView> AddLocalModelProfileAsync(
         string label,
@@ -59,18 +50,16 @@ public interface IDelegationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The providers a session can run under: the local ones a caller may scaffold with
-    /// <see cref="AddLocalModelProfileAsync"/> (Ollama, LM Studio) plus every provider a plugin registered. Each
-    /// says whether it is addable this way, so a caller knows which it can set up itself versus which (a plugin
-    /// provider may carry a login) are the operator's to create.
+    /// The providers a session can run under: local ones scaffoldable with <see cref="AddLocalModelProfileAsync"/>
+    /// (Ollama, LM Studio) plus every plugin-registered provider. Each says whether it's addable this way, so a caller
+    /// knows what it can set up itself versus what (a plugin provider may carry a login) is the operator's to create.
     /// </summary>
     IReadOnlyList<AvailableProviderView> ListProviders();
 
     /// <summary>
-    /// Starts a task on <paramref name="profileLabel"/>. Rejects rather than spawns when the profile is unknown,
-    /// is not a target, does not accept the declared task type, or was handed a disallowed working directory. At
-    /// the profile's (or the cockpit's) concurrency cap the task is accepted as
-    /// <see cref="DelegatedTaskStatus.Queued"/> and started when a slot frees — never dropped, never left hanging.
+    /// Starts a task on <paramref name="profileLabel"/>. Rejects rather than spawns when the profile is unknown, not
+    /// a target, doesn't accept the task type, or was handed a disallowed working directory. At the concurrency cap
+    /// the task is accepted as <see cref="DelegatedTaskStatus.Queued"/> and started when a slot frees — never dropped.
     /// </summary>
     Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, string? callerPaneId = null, CancellationToken cancellationToken = default);
 

@@ -9,10 +9,9 @@ public interface IOpenMicState
     bool IsListening { get; }
 
     /// <summary>
-    /// Pauses open-mic until the handle is disposed, dropping the utterance it was half-way through and anything
-    /// transcribed but not yet sent. A handle that does nothing when open-mic is not listening. Pausing alone leaks:
-    /// an utterance closed as the key went down is already being transcribed and arrives afterwards, which is why
-    /// this is one call rather than the listener's own Pause/Resume (AC-627).
+    /// Pauses open-mic until the handle is disposed, dropping the half-formed utterance and anything transcribed but
+    /// not yet sent (a no-op when not listening). Pausing alone leaks: an utterance closed as the key went down is
+    /// already transcribing and arrives afterwards, why this is one call rather than the listener's own Pause/Resume (AC-627).
     /// </summary>
     IDisposable SuspendForHold();
 }

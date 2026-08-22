@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
 /// <summary>
-/// Host-side answer to "which workspace is every live agent-session pane on", across the whole cockpit rather than
-/// one caller's desk — contrast <see cref="IWorkspaceAgentGateway"/>, whose <c>GetWorkspaceSnapshotAsync</c> only
-/// answers for panes sharing one caller's workspace, the boundary every agent-facing tool must respect. AC-439's
-/// collision monitor is the one consumer: deciding whether two claims on the same physical resource belong to
-/// different desks needs every claim owner's workspace at once, a question no agent-facing tool may answer.
+/// Host-side answer to "which workspace is every live agent-session pane on", across the whole cockpit rather than one
+/// caller's desk — contrast <see cref="IWorkspaceAgentGateway"/>, whose <c>GetWorkspaceSnapshotAsync</c> only answers
+/// for panes sharing one caller's workspace, the boundary every agent-facing tool must respect. AC-439's collision monitor is the one consumer, needing every claim owner's workspace at once, a question no agent-facing tool may answer.
 /// </summary>
 public interface IPaneWorkspaceDirectory
 {

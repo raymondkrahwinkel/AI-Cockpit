@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
 /// <summary>
-/// Host-side runtime state for agent-to-agent presence (AC-391): the roster, wake consent, and last contact with the
+/// Host-side runtime state for agent-to-agent presence (AC-391): roster, wake consent, and last contact with the
 /// <c>cockpit-agents</c> server. Enrollment and contact are two different facts (AC-613) — used to be one, wrongly
-/// reporting an all-night-active pane as absent; <see cref="Enroll"/> notes a known pane, <see cref="RecordContact"/>
-/// is the pane reaching in itself, the gap between them being AC-156's silent MCP failure. Keyed on pane id alone
-/// since a resolved workspace drifts; wake opt-in (AC-395) lives here too, torn down together by <see cref="Forget"/>.
+/// reporting an all-night-active pane as absent; <see cref="Enroll"/> notes a known pane, <see cref="RecordContact"/> is the pane reaching in itself, the gap being AC-156's silent MCP failure. Wake opt-in (AC-395) lives here too, torn down by <see cref="Forget"/>.
 /// </summary>
 public interface IWorkspaceAgentCoordinator
 {
@@ -39,10 +37,9 @@ public interface IWorkspaceAgentCoordinator
     void RecordInboxRead(string paneId);
 
     /// <summary>
-    /// When <paramref name="paneId"/> last collected mail, or null when it never has (AC-614). Reported to
-    /// neighbours because it tells a sender whether to wait: "delivered" to a pane that never empties its inbox and
-    /// cannot be woken looks just like "delivered" to one that will read it next turn, leaving the sender waiting on
-    /// an answer that was never coming. Distinct from <see cref="LastContactUtc"/> — calling <c>list_agents</c> or <c>claim</c> is not collecting mail.
+    /// When <paramref name="paneId"/> last collected mail, or null when never (AC-614). Reported to neighbours since
+    /// it tells a sender whether to wait: "delivered" to a pane that never empties its inbox looks just like
+    /// "delivered" to one reading it next turn. Distinct from <see cref="LastContactUtc"/> — <c>list_agents</c> or <c>claim</c> isn't collecting mail.
     /// </summary>
     DateTimeOffset? LastInboxReadUtc(string paneId);
 
@@ -55,16 +52,14 @@ public interface IWorkspaceAgentCoordinator
 
     /// <summary>
     /// Records this session's own answer about being woken (AC-395), overriding the operator's default for the
-    /// session's life; enrolls the pane, leaves contact time alone. No longer where consent lives by default
-    /// (AC-615) — a pane used to be unwakeable until it opted in, but an agent will not spend its operator's money on
-    /// its own say-so, so nobody ever did. Consent now defaults from <see cref="SetDefaultWakeConsent"/>; this is the per-session override, either direction.
+    /// session's life; enrolls the pane, leaves contact time alone. No longer where consent lives by default (AC-615)
+    /// — an agent won't spend its operator's money on its own say-so, so consent now defaults from <see cref="SetDefaultWakeConsent"/>; this is the per-session override, either direction.
     /// </summary>
     void SetWakeConsent(string paneId, bool consents);
 
     /// <summary>
     /// Sets what a session that has not answered for itself is taken to have agreed to — the operator's setting
-    /// (AC-615). Applies to every pane that has not called <see cref="SetWakeConsent"/>, at once and live, so
-    /// turning it off stops wakes for panes that are already running rather than only for ones started afterwards.
+    /// (AC-615). Applies at once and live to every pane that has not called <see cref="SetWakeConsent"/>, so turning it off stops wakes for panes already running, not just ones started afterwards.
     /// </summary>
     void SetDefaultWakeConsent(bool consents);
 
