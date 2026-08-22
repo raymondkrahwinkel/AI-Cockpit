@@ -256,6 +256,30 @@ public sealed class SurfaceWindowsTests
         });
     }
 
+    // AC-1017. Window.Activate() is a no-op under the headless backend (see the ⚠️ note above), so this watches
+    // the swappable ActivateOwner seam instead of the real platform call.
+    [Fact]
+    public async Task ShowAsync_ClosingTheSurface_ReactivatesItsOwner()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var surfaces = new SurfaceWindows();
+            var reactivated = new List<Window>();
+            surfaces.ActivateOwner = reactivated.Add;
+
+            var owner = _ShownOwner();
+            var surface = new Window();
+
+            var pending = surfaces.ShowAsync("key", surface, owner);
+            surface.Close();
+            await pending;
+
+            Assert.Equal([owner], reactivated);
+
+            owner.Close();
+        });
+    }
+
     private static Window _ShownOwner()
     {
         var owner = new Window { Width = 400, Height = 300 };
