@@ -26,6 +26,11 @@ public partial class HelpDeepLinkSweepTests
     [GeneratedRegex(@"""id""\s*:\s*""([^""]+)""")]
     private static partial Regex ManifestIdRegex();
 
+    // Any link a page writes, and not a picture: an image reference resolves against the assembly rather than
+    // against the set of pages, and has its own rules.
+    [GeneratedRegex(@"(?<!!)\[[^\]]*\]\(([^)]+)\)")]
+    private static partial Regex PageLinkRegex();
+
     [Fact]
     public void EveryDeepLinkInTheCodebaseResolves()
     {
@@ -97,6 +102,48 @@ public partial class HelpDeepLinkSweepTests
         Assert.True(swept > 0, "no page cross-references anything — the sweep is not reading the documentation");
     }
 
+    /// <summary>
+    /// AC-1042: the plain markdown links the pages write to each other, checked the way the window resolves
+    /// them. A guide that ships from `docs/` writes ordinary markdown so GitHub can follow it too — this is
+    /// what keeps that one spelling honest in the app.
+    /// </summary>
+    [Fact]
+    public void EveryLinkBetweenShippedPagesResolves()
+    {
+        // Both spellings: these arrive at `HelpService.Resolve`, which reads a plugin's link as its own page
+        // first and as written second.
+        var known = _ShippedAddresses(includeOwnerRelative: true);
+        var broken = new List<string>();
+        var swept = 0;
+
+        foreach (var file in _Sources("*.md").Where(_IsDocumentation))
+        {
+            foreach (Match match in PageLinkRegex().Matches(File.ReadAllText(file)))
+            {
+                var target = match.Groups[1].Value.Trim();
+
+                // A colon is a scheme — `https:`, `mailto:`, and the `help:` links the sweep above owns.
+                if (target.Length == 0 || target.Contains(':'))
+                {
+                    continue;
+                }
+
+                var address = target.StartsWith('#')
+                    ? new HelpAddress(_Key(file), target[1..])
+                    : HelpAddress.FromSiblingLink(target) ?? new HelpAddress(target);
+
+                swept++;
+                if (!known.Contains(address.ToString()))
+                {
+                    broken.Add($"{Path.GetFileName(file)} → {target}");
+                }
+            }
+        }
+
+        Assert.Empty(broken);
+        Assert.True(swept > 0, "no links between pages were checked — the sweep is not reading the pages");
+    }
+
     // Every address the documentation in this repository answers to. `includeOwnerRelative` adds the bare
     // spelling a plugin uses for its own page, which the host prefixes on the way in — true for the call sites
     // that go through that resolution, false for a link written in a page, which is taken as it stands.
@@ -128,8 +175,11 @@ public partial class HelpDeepLinkSweepTests
         return known;
     }
 
+    // The `README.md` beside the guides in `docs/plugins` is navigation for whoever opens that folder on
+    // GitHub, and is the one file there the app does not ship — see Cockpit.App.csproj.
     private static bool _IsDocumentation(string file) =>
-        file.Contains($"{Path.DirectorySeparatorChar}Docs{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
+        file.Contains($"{Path.DirectorySeparatorChar}Docs{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(Path.GetFileName(file), "README.md", StringComparison.OrdinalIgnoreCase);
 
     // `welcome.md` and `welcome.nl.md` are both the article `welcome`: ids come from the file name and do not
     // translate, which is the rule that lets one deep link land in the same place in every language.
@@ -167,7 +217,9 @@ public partial class HelpDeepLinkSweepTests
 
         return root is null
             ? []
-            : new[] { "src", "plugins-dev" }
+            // AC-1042: `docs/plugins` ships from where it lies rather than being copied into a `Docs` folder,
+            // so the sweep has to look there too — `_IsDocumentation` matches its lower-case name already.
+            : new[] { "src", "plugins-dev", Path.Combine("docs", "plugins") }
                 .Select(folder => Path.Combine(root, folder))
                 .Where(Directory.Exists)
                 .SelectMany(folder => Directory.EnumerateFiles(folder, pattern, SearchOption.AllDirectories))

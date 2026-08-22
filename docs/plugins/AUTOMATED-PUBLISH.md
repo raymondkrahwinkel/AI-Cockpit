@@ -1,3 +1,11 @@
+---
+title: Publishing a plugin
+category: extending
+order: 30
+summary: Maintainer note: the one-click workflow that pushes a plugin from this repo to the official store.
+icon: 🚀
+---
+
 # Publishing a store plugin from the Actions tab
 
 Maintainer note. This is about pushing a plugin from this repo to the **official store**
@@ -6,7 +14,7 @@ repo. It replaces the manual chore — build Release, zip, hash, copy the zip ac
 commit — with one click. If you are an out-of-repo author running your own store, that is
 [PLUGIN-SDK.md → Publishing a plugin store](PLUGIN-SDK.md#publishing-a-plugin-store), not this.
 
-## What it does
+## What it does {#what-it-does}
 
 The **Publish plugin to store** workflow (`.github/workflows/publish-plugin.yml`) is a manual
 `workflow_dispatch`. You pick a plugin id and run it; it then:
@@ -38,7 +46,7 @@ The **Publish plugin to store** workflow (`.github/workflows/publish-plugin.yml`
 
 Tick **dry_run** to do everything except open the PR — useful to see the diff and the hash first.
 
-## One-time setup: the `STORE_PUBLISH_TOKEN` secret
+## One-time setup: the `STORE_PUBLISH_TOKEN` secret {#one-time-setup-the-store_publish_token-secret}
 
 The workflow runs in this repo but has to write to the *store* repo, which the default `GITHUB_TOKEN`
 cannot reach. Create a repository secret named **`STORE_PUBLISH_TOKEN`**:
@@ -50,7 +58,7 @@ cannot reach. Create a repository secret named **`STORE_PUBLISH_TOKEN`**:
 Add it under *Settings → Secrets and variables → Actions → New repository secret*. Without it, the
 "Check out the store repo" step fails.
 
-## Editorial metadata: optional `store.json`
+## Editorial metadata: optional `store.json` {#editorial-metadata-optional-storejson}
 
 `plugin.json` carries what the app enforces (id, name, version, `minHostVersion`, …) but not the store's
 presentation fields — `category`, `icon`, `logoAsset`, `homepage`, `repository`, `featured`. The publish
@@ -74,7 +82,7 @@ resolves for plugins this host ships with; it is meaningless (and harmlessly ign
 Any field `store.json` sets overrides the manifest/preserved value; `name`, `description` and `author` may be
 overridden there too, but default to the manifest.
 
-## Why manual, and what comes next
+## Why manual, and what comes next {#why-manual-and-what-comes-next}
 
 A plugin and the host change it depends on often land together, and a human is the right judge of "is the
 host out yet". The gate + steps above would make an **auto-on-merge** trigger (publish when a plugin's
