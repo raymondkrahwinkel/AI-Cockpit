@@ -71,10 +71,8 @@ internal static class Screenshotter
         // Autopilot and Open PRs pinned (the shipped default), YouTrack and Workflows collapsed — one of the
         // collapsed entries carries a badge, so the flyout also shows what a live counter looks like behind it.
         ["plugins-menu"] = (_, _) => _PluginsMenuScene(),
-        // AC-1033: the knowledge base, in the five states that decide whether it works — the overview, a page,
-        // the mid-article landing a `?` drops you into, a search across everything, and a reference that leads
-        // nowhere. Staged over the app's own documentation only: a plugin's pages come from a plugin assembly
-        // this build has not loaded, and inventing one would render a screen nobody will ever see.
+        // AC-1033: the knowledge base in the five states that decide whether it works, over the app's own
+        // pages — a plugin's arrive through `help-plugins` below.
         ["help"] = (_, _) => _Help(null),
         ["help-article"] = (_, _) => _Help(new Core.Help.HelpAddress("welcome")),
         ["help-deep-link"] = (_, _) => _Help(
@@ -2475,10 +2473,8 @@ internal static class Screenshotter
         return window;
     }
 
-    // The knowledge base with a plugin's own branch in it. The installed copy of a first-party plugin on a dev
-    // machine is whatever was last provisioned, which is older than the source being worked on — so this reads
-    // the freshly built output through the same dev-checkout seam DevPluginInstaller already uses to keep those
-    // two in step. DEBUG only, like that installer: a shipped build has no plugins-dev to find.
+    // AC-1033: the plugin branch, read from freshly built output through the same dev-checkout seam
+    // DevPluginInstaller uses — the installed copy on a dev machine lags the source being worked on.
     private static Views.HelpWindow _HelpAsInstalled(Core.Help.HelpAddress? address)
     {
         var sources = new List<Core.Help.HelpDocumentSource>

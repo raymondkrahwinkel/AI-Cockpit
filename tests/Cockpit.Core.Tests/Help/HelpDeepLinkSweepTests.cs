@@ -5,9 +5,7 @@ namespace Cockpit.Core.Tests.Help;
 
 /// <summary>
 /// AC-1033, criterion 5: every deep link written anywhere in the codebase, checked against the documentation
-/// actually in it. A <c>?</c> that opens nothing is worse than no <c>?</c>, and a page renamed without its
-/// references being updated is exactly the silent break the explicit section ids exist to prevent — so this
-/// sweep turns "that link went stale" from something a reader finds out into something the build says.
+/// actually in it. Turns a link gone stale from something a reader finds out into something the build says.
 /// </summary>
 public partial class HelpDeepLinkSweepTests
 {
@@ -54,10 +52,9 @@ public partial class HelpDeepLinkSweepTests
         Assert.True(swept > 0, "the sweep matched no deep links at all — it is not reading the source tree");
     }
 
-    // The satellite-assembly trap, guarded rather than only documented: a project spelling its own
-    // EmbeddedResource line without WithCulture="false" sends `welcome.nl.md` into an `nl` satellite assembly
-    // where the scanner never looks — a translation missing from a build that reported success. The SDK's own
-    // targets do this for everyone, so this catches the project that decided to do it by hand instead.
+    // AC-1033: a project spelling its own EmbeddedResource line without WithCulture="false" sends a
+    // translation into a satellite assembly the scanner never reads, silently. The SDK's targets cover the
+    // projects that do not hand-roll it.
     [Fact]
     public void EveryProjectThatEmbedsDocumentationKeepsItOutOfASatelliteAssembly()
     {

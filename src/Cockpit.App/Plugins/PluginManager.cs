@@ -42,10 +42,8 @@ public sealed class PluginManager(
     // The plugins that actually loaded — their manifests, for the host to read what they declared (e.g. which storage keys hold a credential).
     public IReadOnlyList<DiscoveredPlugin> Loaded => [.. _loaded.Select(entry => entry.Discovered)];
 
-    // The assembly each loaded plugin actually came out of, beside its manifest — what the knowledge base
-    // scans for embedded documentation (AC-1033). The assembly rather than the folder on purpose: docs are
-    // embedded resources of the same artefact as the code, so they cannot drift from the version installed
-    // and cannot be edited without replacing the plugin.
+    // AC-1033: the assembly each loaded plugin came out of, which is where the knowledge base reads its
+    // embedded documentation — the same artefact as the code, so the two cannot drift apart.
     public IReadOnlyList<(DiscoveredPlugin Discovered, System.Reflection.Assembly Assembly)> LoadedWithAssemblies =>
         [.. _loaded.Select(entry => (entry.Discovered, entry.Plugin.GetType().Assembly))];
 

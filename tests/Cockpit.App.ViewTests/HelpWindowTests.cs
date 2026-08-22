@@ -6,10 +6,8 @@ using Cockpit.Core.Help;
 
 namespace Cockpit.App.ViewTests;
 
-// AC-1033's rendering rules, on the window itself: a picture that shipped with the page is shown, one asked
-// for from an address on the internet is refused out loud and never fetched, and a reference that resolves to
-// nothing fails where the reader can see it. The fixtures under this project's own `Docs` folder are embedded
-// by the same SDK targets a plugin's are, so this exercises the real path end to end.
+// AC-1033's rendering rules on the window itself. The fixtures under this project's own `Docs` folder are
+// embedded by the same SDK targets a plugin's are, so this runs the real path rather than a stand-in.
 [Collection("avalonia")]
 public sealed class HelpWindowTests
 {

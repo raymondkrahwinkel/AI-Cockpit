@@ -5,11 +5,8 @@ using Cockpit.Core.Help;
 
 namespace Cockpit.App.Services;
 
-// The knowledge base, from the app's side (AC-1033): what is in it, and the one window that shows it.
-//
-// The index is built from assemblies — the app's own and every loaded plugin's — so it says what is actually
-// installed rather than what was once written down. It is built on first use and dropped on `Invalidate`,
-// which is how a plugin that arrives or leaves is in or out of the search without anything being patched.
+// AC-1033: the knowledge base from the app's side — one index over every loaded assembly, and the one window
+// that shows it. Built on first use and dropped on `Invalidate`, so an arriving plugin is simply in it.
 public sealed class HelpService
 {
     private readonly Func<IEnumerable<HelpDocumentSource>> _sources;

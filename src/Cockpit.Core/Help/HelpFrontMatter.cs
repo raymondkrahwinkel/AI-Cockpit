@@ -1,9 +1,7 @@
 namespace Cockpit.Core.Help;
 
-// The `---`-fenced block of `key: value` lines at the top of every documentation file. Deliberately not a
-// YAML parser and deliberately not a separate manifest: a manifest is a second source that drifts from the
-// files it describes (AC-495), and the handful of keys here — title, order, summary, category, icon — need
-// nothing that a colon and a trimmed value cannot express.
+// AC-1033: the `---`-fenced `key: value` block each documentation file opens with. Deliberately not a YAML
+// parser — a colon and a trimmed value carry every key this needs.
 public sealed record HelpFrontMatter
 {
     public string? Title { get; init; }

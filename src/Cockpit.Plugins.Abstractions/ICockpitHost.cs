@@ -1019,46 +1019,27 @@ public interface ICockpitHost
     IReadOnlyList<Projects.ISharedProjectSource> SharedProjectSources => [];
 
     /// <summary>
-    /// The standard "open the help about this" affordance (AC-1033): a small <c>?</c> the operator recognises
-    /// wherever it appears, pointing at one article and — when <paramref name="section"/> is given — one of its
-    /// sections.
-    /// <para>
-    /// The SDK draws it so a plugin does not. Twenty-seven plugins each drawing their own question mark is
-    /// twenty-seven icons, sizes and behaviours; here an author writes the target and gets the app's. Hovering
-    /// says where it goes, clicking opens the help window on that section with the "you arrived here" landing.
-    /// </para>
-    /// <para>
-    /// <paramref name="article"/> is resolved against the calling plugin's own documentation first, then as
-    /// written — so <c>"setup"</c> means the plugin's own page and <c>"security#consent"</c> can still reach a
-    /// core one. Give <paramref name="label"/> to get a worded link instead of a bare mark, for a sentence or an
-    /// error message where a floating <c>?</c> would have nothing to sit beside.
-    /// </para>
-    /// <para>
-    /// The returned control hides itself when the target does not exist, because a question mark that opens
-    /// nothing is worse than no question mark: a plugin can hand over a target unconditionally and the operator
-    /// only ever sees marks that lead somewhere. Default returns an empty, invisible control, so a host that
-    /// does not offer help (a test fake) yields a plugin UI with no gaps in it.
-    /// </para>
+    /// The app's own "open the help about this" affordance (AC-1033), pointing at one article and — when
+    /// <paramref name="section"/> is given — one of its sections. Pass <paramref name="label"/> for a worded
+    /// link instead of a bare mark, and see Help ▸ Extending Cockpit ▸ Shipping documentation for how the
+    /// article name is resolved and why the returned control hides itself when its target does not exist.
     /// </summary>
     Control CreateHelpHint(string article, string? section = null, string? label = null) =>
         new Panel { IsVisible = false };
 
     /// <summary>
-    /// Opens the help window on <paramref name="article"/>, or on one of its sections — the same jump
-    /// <see cref="CreateHelpHint"/> performs, for a plugin that already has a control of its own to hang it on
-    /// (a link inside an error message, a button in its settings view). A target that resolves to nothing fails
-    /// visibly in the window rather than opening the overview as if nothing were wrong. Default no-op.
+    /// Opens the help window on <paramref name="article"/>, or on one of its sections — the jump
+    /// <see cref="CreateHelpHint"/> performs, for a control the plugin drew itself (AC-1033). A target that
+    /// resolves to nothing fails visibly in the window rather than opening the overview.
     /// </summary>
     void OpenHelp(string article, string? section = null)
     {
     }
 
     /// <summary>
-    /// Whether <paramref name="article"/> — and <paramref name="section"/>, when given — is actually there to be
-    /// opened. <see cref="CreateHelpHint"/> asks this itself, so this is for the cases it cannot cover: deciding
-    /// whether to word an error message with a link to the explanation at all. Default <see langword="false"/>,
-    /// which leaves a plugin on a host without help offering no dead links. Resolves
-    /// <paramref name="article"/> the same way <see cref="CreateHelpHint"/> does.
+    /// Whether <paramref name="article"/> — and <paramref name="section"/>, when given — is there to be opened
+    /// (AC-1033). For deciding whether to word an error message with a link at all; <see cref="CreateHelpHint"/>
+    /// asks this itself.
     /// </summary>
     bool HasHelp(string article, string? section = null) => false;
 }

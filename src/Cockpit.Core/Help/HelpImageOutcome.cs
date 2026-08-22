@@ -1,9 +1,7 @@
 namespace Cockpit.Core.Help;
 
-// Why a picture in a documentation page is, or is not, on screen. `BlockedExternal` is deliberately its own
-// answer rather than a flavour of `Missing`: the reader is owed the difference between "the author forgot to
-// ship this" and "this page asked to fetch something from a stranger's server the moment you opened it, and
-// the app refused" (AC-1033).
+// AC-1033: why a picture is, or is not, on screen. `BlockedExternal` is its own answer because the reader is
+// owed the difference between a forgotten file and a request the app refused to make.
 public enum HelpImageOutcome
 {
     Embedded,

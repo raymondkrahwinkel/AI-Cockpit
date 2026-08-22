@@ -73,13 +73,9 @@ public sealed class MarkdownView : ContentControl
         set => SetValue(PreserveLineBreaksProperty, value);
     }
 
-    // How a picture on a line of its own is drawn — set by the knowledge base and by nothing else (AC-1033).
-    // Left null, an image reference renders exactly as it always did: the text of the reference, with its
-    // clickable link. That fallback is the point. A transcript has no way to turn a reference into bytes
-    // without reaching the network, so it must not try, and a chat message that pastes an image link has to
-    // keep showing the link rather than quietly becoming an empty line.
-    //
-    // Assign it before `Markdown`: this is a plain property, so setting it later does not force a repaint.
+    // AC-1033: how a picture on its own line is drawn, set by the knowledge base and by nothing else — null
+    // leaves an image reference rendering as the link it always was, which is what keeps the chat unchanged.
+    // Assign it before `Markdown`: a plain property, so setting it later forces no repaint.
     public Func<MarkdownBlock, Control>? ImageRenderer { get; set; }
 
     // First refusal on a clicked link, before the browser or the file preview is offered it. The knowledge
@@ -280,10 +276,8 @@ public sealed class MarkdownView : ContentControl
         _ => _Paragraph(block.Inlines, new Thickness(0, 3, 0, 3)),
     };
 
-    // With no renderer this reconstructs the reference and parses it back into inlines, which lands on the
-    // exact tree this block used to produce before it had a kind of its own — the `!` as text and the rest as
-    // a clickable link. Spelled out rather than left to the paragraph fallback, because that one reads
-    // `Inlines`, which an image block does not have: it would have rendered a blank line into the chat.
+    // AC-1033: with no renderer, back to the tree this block produced before it had a kind of its own. Not
+    // left to the paragraph fallback, which reads `Inlines` — empty here, so the chat would have gone blank.
     private Control _Image(MarkdownBlock block) =>
         ImageRenderer?.Invoke(block)
         ?? _Paragraph(

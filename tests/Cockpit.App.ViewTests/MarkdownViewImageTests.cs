@@ -5,10 +5,8 @@ using Cockpit.Core.Markdown;
 
 namespace Cockpit.App.ViewTests;
 
-// AC-1033 gave the shared parser an image block for the knowledge base, and a shared parser is used by a
-// surface that knows nothing about it: the chat. These pin the transcript's side of that change — a message
-// that pastes an image link keeps rendering the link it always rendered, and does not become an empty line
-// because a block kind arrived that this renderer had no case for.
+// AC-1033 gave the shared parser an image block, and the chat uses that parser knowing nothing about it.
+// These pin the transcript's side: a pasted image link keeps rendering as the link it always was.
 [Collection("avalonia")]
 public sealed class MarkdownViewImageTests
 {

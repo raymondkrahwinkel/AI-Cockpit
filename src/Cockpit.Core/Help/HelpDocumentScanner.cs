@@ -5,14 +5,8 @@ using Cockpit.Core.Markdown;
 
 namespace Cockpit.Core.Help;
 
-// Turns an assembly's embedded resources into documentation pages. Discovery is by convention — everything
-// under a `Docs` folder that made it into the assembly — and never by a list, because a list is a second
-// source that drifts from the files it names and has to be remembered on every edit. Adding a page is
-// adding a file; fixing a typo is editing that file (AC-1033).
-//
-// The same scanner runs for the app's own assembly and for a plugin's. That is the whole point: if the core
-// documentation took a different path, this would be a plugin feature with an exception beside it rather
-// than a documentation system.
+// AC-1033: turns an assembly's embedded resources into pages, found by convention rather than from a list,
+// so adding a page is adding a file. The same scanner runs for the app's own assembly and for a plugin's.
 public static partial class HelpDocumentScanner
 {
     // MSBuild flattens `Docs\welcome.md` into `<RootNamespace>.Docs.welcome.md`, so this segment is what
@@ -133,14 +127,9 @@ public static partial class HelpDocumentScanner
         };
     }
 
-    // Every heading carrying an explicit `{#id}` opens a section that runs until the next one; what comes
-    // before the first of them is the article's lead. A heading without an id is ordinary prose belonging to
-    // the section it sits in: it reads the same, it just cannot be linked to, which is the author's decision
-    // rather than a generated anchor that silently moves the next time the wording changes.
-    //
-    // Split over the source lines rather than the parsed blocks, because the window renders one control per
-    // section and needs each one's markdown back, not only its words. Fences are tracked so a `##` line inside
-    // a code sample — which the plugin-writing pages are full of — does not open a section of its own.
+    // AC-1033: every heading with an explicit `{#id}` opens a section; anything before the first is the lead.
+    // Split over source lines rather than parsed blocks because the window needs each section's markdown back,
+    // and fences are tracked so a `##` inside a code sample opens nothing.
     private static (string Lead, IReadOnlyList<HelpSection> Sections) _Split(string body)
     {
         var sections = new List<HelpSection>();

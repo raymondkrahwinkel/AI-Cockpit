@@ -28,10 +28,8 @@ public sealed record MarkdownBlock
     // Table body rows, each a list of cells, each cell a run of inlines (`MarkdownBlockKind.Table`).
     public IReadOnlyList<IReadOnlyList<IReadOnlyList<MarkdownInline>>> Rows { get; init; } = [];
 
-    // The `{#id}` written after a heading's text (`MarkdownBlockKind.Heading`), which is what a deep link and
-    // a search hit address. Null for a heading that declares none — such a heading still reads normally, it
-    // just cannot be linked to, and that is the author's choice rather than a silently generated anchor that
-    // moves the next time the heading is reworded (AC-1033).
+    // AC-1033: the `{#id}` after a heading's text (`MarkdownBlockKind.Heading`), which a deep link addresses.
+    // Null for a heading that declares none — it reads the same, it just cannot be linked to.
     public string? HeadingId { get; init; }
 
     // The reference as written (`MarkdownBlockKind.Image`), left exactly as the author typed it. Whether it

@@ -2,13 +2,8 @@ using System.Reflection;
 
 namespace Cockpit.Core.Help;
 
-// Everything the knowledge base knows, in one object: every page the app and the installed plugins shipped,
-// what each of them can be linked to, and what a search over all of it together turns up. One index rather
-// than one per component — a search that only looked inside the component you already had open would be no
-// help at the moment you do not know which component the answer belongs to (AC-1033).
-//
-// Built from assemblies, so it holds no state that can outlive the plugins it describes: a plugin that is
-// installed or removed changes the index by being rebuilt, not by being patched.
+// AC-1033: every page the app and its plugins shipped, in one index rather than one per component — you do
+// not know which component holds the answer at the moment you need it. Rebuilt, never patched.
 public sealed class HelpIndex
 {
     private readonly Dictionary<string, HelpArticle> _byId;
