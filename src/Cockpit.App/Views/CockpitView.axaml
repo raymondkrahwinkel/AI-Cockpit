@@ -759,6 +759,11 @@
                         </Button.Flyout>
                     </Button>
 
+                    <!-- AC-1040: the `?` for the strip itself — what a workspace is, and why its kind was asked
+                         before it was made. Empty, and so invisible, until the code-behind fills it. -->
+                    <StackPanel x:Name="WorkspacesHelp" DockPanel.Dock="Right" Orientation="Horizontal"
+                                VerticalAlignment="Center" Margin="0,0,6,0"/>
+
                     <!-- The quick actions (AC-772). Here rather than in the session grid's own header, which is
                          where they used to sit: that header only exists on a Sessions workspace that already has a
                          session in it, so Depot's servers were unreachable from the Projects page the operator

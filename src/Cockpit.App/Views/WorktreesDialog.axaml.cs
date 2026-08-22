@@ -2,7 +2,10 @@ using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Cockpit.App.Controls;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Help;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Views;
 
@@ -14,6 +17,13 @@ public partial class WorktreesDialog : Window
     {
         InitializeComponent();
         CockpitWindowChrome.Apply(this);
+
+        // AC-1040: the page that explains what a row's state means, from the panel showing the states. Hides
+        // itself when the documentation is not there.
+        if (Program.Services?.GetService<HelpService>() is { } help)
+        {
+            IntroHelp.Children.Add(new HelpHint(help, new HelpAddress("worktrees", "the-panel"), origin: "a “?” in Managed worktrees"));
+        }
     }
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();

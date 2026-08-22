@@ -13,6 +13,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Help;
 using Microsoft.Extensions.DependencyInjection;
 using Material.Icons;
 using Material.Icons.Avalonia;
@@ -27,10 +28,33 @@ namespace Cockpit.App.Views;
 // known-at-compile-time list the other 12 categories are.
 public partial class OptionsDialog : Window
 {
+    // AC-1040: a `?` beside each page's title, landing on the section of the knowledge base that describes that
+    // page — not on the top of a long article. Two of them leave this dialog on purpose: the assistant is a
+    // feature with a page of its own, and where isolated sessions put their work is the worktrees page's subject.
+    private static readonly (string Slot, HelpAddress Target)[] Help =
+    [
+        ("SessionsHelp", new HelpAddress("settings", "sessions")),
+        ("WhereWorkLandsHelp", new HelpAddress("worktrees", "where-they-live")),
+        ("ProfilesHelp", new HelpAddress("settings", "profiles")),
+        ("AppearanceHelp", new HelpAddress("settings", "appearance")),
+        ("TerminalHelp", new HelpAddress("settings", "terminal")),
+        ("NotificationsHelp", new HelpAddress("settings", "notifications")),
+        ("ShortcutsHelp", new HelpAddress("settings", "shortcuts")),
+        ("VoiceHelp", new HelpAddress("settings", "voice")),
+        ("AssistantHelp", new HelpAddress("assistant", "turning-it-on")),
+        ("SecurityHelp", new HelpAddress("settings", "security")),
+        ("McpServersHelp", new HelpAddress("settings", "mcp-servers")),
+        ("NodesHelp", new HelpAddress("settings", "nodes")),
+        ("BackupHelp", new HelpAddress("settings", "backup")),
+        ("UpdatesHelp", new HelpAddress("settings", "updates")),
+        ("DebugHelp", new HelpAddress("settings", "debug")),
+    ];
+
     public OptionsDialog()
     {
         InitializeComponent();
         CockpitWindowChrome.Apply(this);
+        _AddHelpHints();
 
         // The plugin list is built when the dialog opens rather than when the app started: a plugin installed since
         // then should not be missing from its own backup. The diagnostics panel is read the same way — once, on
@@ -54,6 +78,21 @@ public partial class OptionsDialog : Window
     // Set by the two paths that have already decided what happens to the edits, so the handler below lets that
     // close through instead of asking a second time.
     private bool _closeSettled;
+
+    // Each hint hides itself when its page is not there, so a build without the documentation reads exactly as
+    // this dialog did before.
+    private void _AddHelpHints()
+    {
+        if (Program.Services?.GetService<HelpService>() is not { } help)
+        {
+            return;
+        }
+
+        foreach (var (slot, target) in Help)
+        {
+            this.FindControl<StackPanel>(slot)?.Children.Add(new HelpHint(help, target, origin: "a “?” in Options"));
+        }
+    }
 
     private async void OnApplyAndClose(object? sender, RoutedEventArgs e)
     {

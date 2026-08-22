@@ -48,8 +48,12 @@
                                                     Foreground="{StaticResource CockpitAccentBrush}"/>
                     </Border>
                     <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
-                        <TextBlock Text="Assistant" FontSize="13.5" FontWeight="SemiBold"
-                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                        <!-- AC-1040: the assistant's own page, from the window it is read in. The row is the
+                             title's; the `?` is added to it in the code-behind and is absent when the page is. -->
+                        <StackPanel x:Name="TitleRow" Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="Assistant" FontSize="13.5" FontWeight="SemiBold"
+                                       Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                        </StackPanel>
                         <TextBlock Text="{Binding Session.ActiveProfileLabel}" FontSize="11"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding Session.ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>

@@ -11,8 +11,10 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Cockpit.App.Controls;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Help;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Views;
@@ -148,6 +150,15 @@ public partial class AssistantChatView : UserControl
 #if DEBUG
         Cockpit.App.Diagnostics.LeakTracker.Register(this);
 #endif
+
+        // AC-1040: the assistant's page, beside the title. Absent rather than dead when the page is not shipped.
+        if (Program.Services?.GetService<HelpService>() is { } help)
+        {
+            TitleRow.Children.Add(new HelpHint(
+                help,
+                new HelpAddress("assistant", "what-it-can-do"),
+                origin: "a “?” in the assistant window"));
+        }
 
         // Enter sends; Shift+Enter inserts a newline — the same convention as the main session composer
         // (SessionView._OnInputKeyDown). Tunnel so this pre-empts the TextBox's own Enter handling.

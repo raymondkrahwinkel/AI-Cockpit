@@ -12,8 +12,11 @@ using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.Core.Shortcuts;
 using Cockpit.App.Plugins;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Help;
 using Cockpit.Core.Layout;
+using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Workspaces;
 using Exclr8.Terminal;
@@ -50,6 +53,13 @@ public partial class CockpitView : UserControl
     public CockpitView()
     {
         InitializeComponent();
+
+        // AC-1040: the workspace strip's own `?`, next to the + that makes one. Hides itself when the page is
+        // not there, so a build without the documentation shows the strip exactly as it was.
+        if (Program.Services?.GetService<HelpService>() is { } help)
+        {
+            WorkspacesHelp.Children.Add(new HelpHint(help, new HelpAddress("workspaces", "kinds"), origin: "a “?” on the workspace strip"));
+        }
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

@@ -245,7 +245,9 @@
                 <ScrollViewer Tag="sessions"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=sessions}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Sessions" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="SessionsHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Sessions" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="How sessions behave and where their worktrees and clones live." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -342,7 +344,9 @@
                             </ItemsControl>
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="3. WHERE WORK LANDS"/>
+                        <StackPanel x:Name="WhereWorkLandsHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Classes="optionsSectionHeader" Text="3. WHERE WORK LANDS"/>
+                        </StackPanel>
                         <!-- Worktree isolation location (AC-85): where new isolated-session worktrees are created. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='worktree location'}">
@@ -389,7 +393,9 @@
                 <Grid Tag="profiles" RowDefinitions="Auto,*"
                       IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=profiles}">
                     <StackPanel Grid.Row="0" Margin="24,20,24,0" Spacing="8">
-                        <TextBlock Text="Profiles" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="ProfilesHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Profiles" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="The profiles sessions start under: provider, session defaults, delegation and environment." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
                     </StackPanel>
@@ -846,7 +852,9 @@
                 <ScrollViewer Tag="appearance"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=appearance}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Appearance" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="AppearanceHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Appearance" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="How sessions lay out on screen, and what the transcript and usage pill show." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -922,7 +930,9 @@
                 <ScrollViewer Tag="terminal"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=terminal}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Terminal" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="TerminalHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Terminal" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="The shell and font every TTY session opens with." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -993,7 +1003,9 @@
                 <ScrollViewer Tag="notifications"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=notifications}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Notifications" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="NotificationsHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Notifications" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="When the cockpit tells you a session needs you, locally or on Discord." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -1059,7 +1071,9 @@
                 <ScrollViewer Tag="shortcuts"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=shortcuts}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Shortcuts" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="ShortcutsHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Shortcuts" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="Every key the cockpit captures — screenshot, push-to-talk, and the shortcut list." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -1197,7 +1211,9 @@
                 <ScrollViewer Tag="voice"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=voice}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Voice" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="VoiceHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Voice" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="Push-to-talk dictation and its transcription model, plus mic behaviour while the assistant talks." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -1466,7 +1482,9 @@
                 <ScrollViewer Tag="assistant"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=assistant}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Assistant" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="AssistantHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Assistant" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="Talk to the assistant and let it answer — its own profile, replies and speech." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -1609,7 +1627,9 @@
                 <ScrollViewer Tag="security"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=security}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Security" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="SecurityHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Security" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="Encryption, screen lock, terminal access, and the assistant's consent bypass." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -1751,7 +1771,9 @@
                 <ScrollViewer Tag="mcp-servers"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=mcp-servers}">
                     <StackPanel Margin="24,20" Spacing="8">
-                        <TextBlock Text="MCP Servers" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="McpServersHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="MCP Servers" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="Shared MCP servers: which ones exist, who may use them, and how they sign in." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -1946,7 +1968,9 @@
                 <ScrollViewer Tag="nodes"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=nodes}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Nodes" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="NodesHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Nodes" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="Pair with another Cockpit to share MCP access, and run sessions on its machine." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -2174,7 +2198,9 @@
                 <ScrollViewer Tag="backup"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=backup}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Backup" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="BackupHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Backup" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="One archive with your settings, profiles and plugins — and the assistant's memory on its own." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -2246,7 +2272,9 @@
                 <ScrollViewer Tag="updates"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=updates}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Updates" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="UpdatesHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Updates" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="Whether the cockpit checks for a newer build, and how to get one." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -2318,7 +2346,9 @@
                 <ScrollViewer Tag="debug"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=debug}">
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
-                        <TextBlock Text="Debug" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel x:Name="DebugHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Debug" FontSize="20" FontWeight="Bold"/>
+                        </StackPanel>
                         <TextBlock Text="Controls for investigating the cockpit itself, not for doing the work." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 

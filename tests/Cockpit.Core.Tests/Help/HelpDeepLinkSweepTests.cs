@@ -13,6 +13,10 @@ public partial class HelpDeepLinkSweepTests
     [GeneratedRegex(@"(?:CreateHelpHint|OpenHelp|HasHelp|new HelpAddress)\(\s*""([^""]+)""\s*(?:,\s*""([^""]*)"")?")]
     private static partial Regex TargetRegex();
 
+    // A cross-reference inside a page: `[the panel](help:worktrees#the-panel)`.
+    [GeneratedRegex(@"\]\(\s*help:([^)\s]+)\s*\)", RegexOptions.IgnoreCase)]
+    private static partial Regex MarkdownLinkRegex();
+
     [GeneratedRegex(@"^\s*<EmbeddedResource\s+(?:Include|Update)=""[^""]*Docs[^""]*""(?![^>]*WithCulture)", RegexOptions.Multiline)]
     private static partial Regex UnguardedDocsResourceRegex();
 
@@ -25,7 +29,7 @@ public partial class HelpDeepLinkSweepTests
     [Fact]
     public void EveryDeepLinkInTheCodebaseResolves()
     {
-        var known = _ShippedAddresses();
+        var known = _ShippedAddresses(includeOwnerRelative: true);
         var broken = new List<string>();
         var swept = 0;
 
@@ -66,9 +70,40 @@ public partial class HelpDeepLinkSweepTests
         Assert.Empty(offenders);
     }
 
-    // Every address the documentation in this repository answers to, in both spellings: the bare one a plugin
-    // uses for its own page (the host prefixes it) and the qualified one anyone else has to write.
-    private static HashSet<string> _ShippedAddresses()
+    // AC-1040: the same sweep over the pages themselves. A `help:` link inside a page is a deep link with no
+    // call site, so nothing above sees it — and a page that cross-references four others is four more ways for
+    // a renamed section to break quietly. Checked as written, without the owner-relative spelling: the window
+    // parses these addresses literally, so a plugin linking its own page by the bare name resolves at build and
+    // not at runtime, which is the one failure a test that passes is worst at.
+    [Fact]
+    public void EveryCrossReferenceInsideAPageResolves()
+    {
+        var known = _ShippedAddresses(includeOwnerRelative: false);
+        var broken = new List<string>();
+        var swept = 0;
+
+        foreach (var file in _Sources("*.md").Where(_IsDocumentation))
+        {
+            foreach (Match match in MarkdownLinkRegex().Matches(File.ReadAllText(file)))
+            {
+                var address = HelpAddress.Parse(match.Groups[1].Value).ToString();
+                swept++;
+
+                if (!known.Contains(address))
+                {
+                    broken.Add($"{Path.GetFileName(file)}: {address}");
+                }
+            }
+        }
+
+        Assert.Empty(broken);
+        Assert.True(swept > 0, "no page cross-references anything — the sweep is not reading the documentation");
+    }
+
+    // Every address the documentation in this repository answers to. `includeOwnerRelative` adds the bare
+    // spelling a plugin uses for its own page, which the host prefixes on the way in — true for the call sites
+    // that go through that resolution, false for a link written in a page, which is taken as it stands.
+    private static HashSet<string> _ShippedAddresses(bool includeOwnerRelative)
     {
         var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -79,7 +114,11 @@ public partial class HelpDeepLinkSweepTests
             var owner = _OwnerId(file);
             var sections = SectionIdRegex().Matches(text).Select(match => match.Groups[1].Value).ToList();
 
-            foreach (var article in owner is null ? [key] : new[] { key, $"{owner}/{key}" })
+            string[] spellings = owner is null ? [key]
+                : includeOwnerRelative ? [key, $"{owner}/{key}"]
+                : [$"{owner}/{key}"];
+
+            foreach (var article in spellings)
             {
                 known.Add(article);
                 foreach (var section in sections)
