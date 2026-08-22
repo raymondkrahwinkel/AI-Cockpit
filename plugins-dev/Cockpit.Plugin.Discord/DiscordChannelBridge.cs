@@ -12,8 +12,17 @@ internal sealed class DiscordChannelBridge : IDisposable
 {
     private readonly IAssistantChannelGateway _gateway;
     private readonly IDiscordChannelSink _sink;
+
+    // Fixed for this bridge's lifetime, unlike _verbosity: an access change only reaches storage via the
+    // settings dialog's save, which DiscordChannelPlugin's OnSettingsSaved answers by disposing this bridge and
+    // building a fresh one — a live Func<> here would never see anything _Reconnect had not already rebuilt.
     private readonly AssistantChannelAccess _access;
     private readonly Func<AssistantChannelVerbosity> _verbosity;
+
+    // Guards the three collections below: RowChanged/ConsentPromptOpened/ConsentPromptClosed arrive on the
+    // gateway's own thread (the UI thread), while HandleInboundMessageAsync/HandleButtonAsync are called from
+    // Discord.NET's socket threads — the same reason AssistantChannelGateway locks around _relayedPrompts.
+    private readonly object _gate = new();
 
     private readonly Dictionary<Guid, ulong> _rowMessageIds = new();
     private readonly Dictionary<Guid, ulong> _promptMessageIds = new();
@@ -48,14 +57,23 @@ internal sealed class DiscordChannelBridge : IDisposable
     /// </summary>
     public async Task HandleInboundMessageAsync(string senderId, string text, ulong messageId, CancellationToken cancellationToken = default)
     {
-        if (_openPromptOrder.Count > 0 && DiscordConsentReplyParser.TryParse(text, out var outcome))
+        if (DiscordConsentReplyParser.TryParse(text, out var outcome))
         {
-            if (_access.IsAllowed(senderId))
+            Guid? promptId;
+            lock (_gate)
             {
-                _gateway.RespondToConsent(_openPromptOrder[0], outcome);
+                promptId = _openPromptOrder.Count > 0 ? _openPromptOrder[0] : null;
             }
 
-            return;
+            if (promptId is { } openPromptId)
+            {
+                if (_access.IsAllowed(senderId))
+                {
+                    _gateway.RespondToConsent(openPromptId, outcome);
+                }
+
+                return;
+            }
         }
 
         var result = await _gateway.SendAsync(senderId, text, cancellationToken).ConfigureAwait(false);
@@ -78,9 +96,15 @@ internal sealed class DiscordChannelBridge : IDisposable
 
         _gateway.RespondToConsent(promptId, approve ? ConsentOutcome.Approved : ConsentOutcome.Denied);
 
-        if (_promptMessageIds.TryGetValue(promptId, out var messageId))
+        ulong? messageId;
+        lock (_gate)
         {
-            await _sink.EditAsync(messageId, approve ? "✅ Approved." : "🚫 Denied.", keepButtons: false, cancellationToken).ConfigureAwait(false);
+            messageId = _promptMessageIds.TryGetValue(promptId, out var id) ? id : null;
+        }
+
+        if (messageId is { } editMessageId)
+        {
+            await _sink.EditAsync(editMessageId, approve ? "✅ Approved." : "🚫 Denied.", keepButtons: false, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -93,15 +117,25 @@ internal sealed class DiscordChannelBridge : IDisposable
 
         var text = DiscordVerbosityFilter.Render(row, _verbosity());
 
+        ulong? existing;
+        lock (_gate)
+        {
+            existing = row.IsUpdate && _rowMessageIds.TryGetValue(row.Id, out var id) ? id : null;
+        }
+
         try
         {
-            if (row.IsUpdate && _rowMessageIds.TryGetValue(row.Id, out var existing))
+            if (existing is { } existingMessageId)
             {
-                await _sink.EditAsync(existing, text).ConfigureAwait(false);
+                await _sink.EditAsync(existingMessageId, text).ConfigureAwait(false);
             }
             else
             {
-                _rowMessageIds[row.Id] = await _sink.PostAsync(text).ConfigureAwait(false);
+                var posted = await _sink.PostAsync(text).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    _rowMessageIds[row.Id] = posted;
+                }
             }
         }
         catch (Exception)
@@ -118,21 +152,32 @@ internal sealed class DiscordChannelBridge : IDisposable
             return;
         }
 
-        _openPromptOrder.Add(prompt.Id);
-
+        ulong messageId;
         try
         {
-            _promptMessageIds[prompt.Id] = await _sink.PostAsync(prompt.Request.Action, prompt.Id).ConfigureAwait(false);
+            messageId = await _sink.PostAsync(prompt.Request.Action, prompt.Id).ConfigureAwait(false);
         }
         catch (Exception)
         {
+            // Not registered as open when the post itself failed — otherwise a "JA" typed for an unrelated
+            // reason would answer a prompt nobody in the channel ever actually saw.
+            return;
+        }
+
+        lock (_gate)
+        {
+            _openPromptOrder.Add(prompt.Id);
+            _promptMessageIds[prompt.Id] = messageId;
         }
     }
 
     private void _OnPromptClosed(object? sender, Guid promptId)
     {
-        _openPromptOrder.Remove(promptId);
-        _promptMessageIds.Remove(promptId);
+        lock (_gate)
+        {
+            _openPromptOrder.Remove(promptId);
+            _promptMessageIds.Remove(promptId);
+        }
     }
 
     public void Dispose()

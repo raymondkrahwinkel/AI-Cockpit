@@ -8,7 +8,9 @@ namespace Cockpit.Plugin.Discord;
 /// </summary>
 internal static class DiscordVerbosityFilter
 {
-    /// <summary>Whether <paramref name="kind"/> is relayed at all under <paramref name="verbosity"/>.</summary>
+    /// <summary>
+    /// Whether <paramref name="kind"/> is relayed at all under <paramref name="verbosity"/>.
+    /// </summary>
     public static bool ShouldRelay(AssistantChannelRowKind kind, AssistantChannelVerbosity verbosity) => verbosity switch
     {
         // A — the finished answer only. An error is part of that answer, not tool traffic, so it still shows.
@@ -19,7 +21,9 @@ internal static class DiscordVerbosityFilter
         _ => false,
     };
 
-    /// <summary>What to send for a row that already passed <see cref="ShouldRelay"/>.</summary>
+    /// <summary>
+    /// What to send for a row that already passed <see cref="ShouldRelay"/>.
+    /// </summary>
     public static string Render(AssistantChannelRow row, AssistantChannelVerbosity verbosity)
     {
         if (verbosity != AssistantChannelVerbosity.StatusLines)

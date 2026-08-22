@@ -163,6 +163,50 @@ public class DiscordChannelBridgeTests
         Assert.Empty(gateway.SentMessages);
     }
 
+    // Review point 2: a failed post must not register the prompt as open — otherwise a "JA" typed for an
+    // unrelated reason later would answer a prompt nobody in the channel ever actually saw.
+    [Fact]
+    public async Task ConsentPromptOpened_WhenThePostFails_NeverRegistersAsOpen()
+    {
+        var (bridge, gateway, sink) = _Build();
+        sink.FailNextPost = true;
+        var prompt = _ConsentPrompt("do the thing");
+
+        gateway.RaisePromptOpened(prompt);
+        await bridge.HandleInboundMessageAsync(_AllowedUserId, "JA", messageId: 1);
+
+        Assert.Empty(gateway.Responses);
+        Assert.Contains((_AllowedUserId, "JA"), gateway.SentMessages);
+    }
+
+    // Review point 1: RowChanged/ConsentPromptOpened/ConsentPromptClosed arrive on the gateway's own thread
+    // while HandleInboundMessageAsync/HandleButtonAsync arrive from Discord.NET's socket threads — this hammers
+    // the shared row/prompt tracking from both sides at once and only asserts that nothing throws.
+    [Fact]
+    public async Task ConcurrentRowAndPromptActivity_AcrossThreads_NeverThrows()
+    {
+        var (bridge, gateway, _) = _Build();
+        var tasks = new List<Task>();
+
+        for (var i = 0; i < 200; i++)
+        {
+            var row = new AssistantChannelRow { Id = Guid.NewGuid(), Kind = AssistantChannelRowKind.AssistantText, Text = $"row {i}", Timestamp = DateTimeOffset.UtcNow };
+            tasks.Add(Task.Run(() => gateway.RaiseRowChanged(row)));
+
+            var prompt = _ConsentPrompt($"action {i}");
+            tasks.Add(Task.Run(() =>
+            {
+                gateway.RaisePromptOpened(prompt);
+                gateway.RaisePromptClosed(prompt.Id);
+            }));
+
+            var messageId = (ulong)i;
+            tasks.Add(Task.Run(() => bridge.HandleInboundMessageAsync(_AllowedUserId, "JA", messageId)));
+        }
+
+        await Task.WhenAll(tasks);
+    }
+
     private static AssistantChannelConsentPrompt _ConsentPrompt(string action) => new(
         Guid.NewGuid(),
         new ConsentRequest("Approve this?", action, new ConsentSource(null, "discord", "Discord"), "discord.test", ConsentRisk.Dangerous),

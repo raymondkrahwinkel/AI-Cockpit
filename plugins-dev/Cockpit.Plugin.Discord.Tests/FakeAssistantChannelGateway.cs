@@ -3,9 +3,14 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Plugin.Discord.Tests;
 
-/// <summary>Hand-written test double for <see cref="IAssistantChannelGateway"/> — records what the plugin asked of the host seam and lets a test raise its events on demand.</summary>
+/// <summary>
+/// Hand-written test double for <see cref="IAssistantChannelGateway"/> — records what the plugin asked of the
+/// host seam and lets a test raise its events on demand.
+/// </summary>
 internal sealed class FakeAssistantChannelGateway : IAssistantChannelGateway
 {
+    private readonly object _gate = new();
+
     public List<(string SenderId, string Text)> SentMessages { get; } = [];
 
     public List<(Guid PromptId, ConsentOutcome Outcome, bool Remember)> Responses { get; } = [];
@@ -20,12 +25,21 @@ internal sealed class FakeAssistantChannelGateway : IAssistantChannelGateway
 
     public Task<AssistantChannelSendResult> SendAsync(string senderUserId, string text, CancellationToken cancellationToken = default)
     {
-        SentMessages.Add((senderUserId, text));
+        lock (_gate)
+        {
+            SentMessages.Add((senderUserId, text));
+        }
+
         return Task.FromResult(NextResult);
     }
 
-    public void RespondToConsent(Guid promptId, ConsentOutcome outcome, bool remember = false) =>
-        Responses.Add((promptId, outcome, remember));
+    public void RespondToConsent(Guid promptId, ConsentOutcome outcome, bool remember = false)
+    {
+        lock (_gate)
+        {
+            Responses.Add((promptId, outcome, remember));
+        }
+    }
 
     public void RaiseRowChanged(AssistantChannelRow row) => RowChanged?.Invoke(this, row);
 
