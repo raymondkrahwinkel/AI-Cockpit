@@ -53,7 +53,14 @@ public sealed class AssistantChatViewLifecycleTests
                 second.Content = view;
                 second.Show();
                 second.UpdateLayout();
-                await Task.Delay(200);
+
+                // The re-attach re-wires TranscriptScroll.ScrollChanged and the transcript's CollectionChanged
+                // handler, but both follow the tail off Dispatcher.UIThread.Post (AssistantChatView._transcriptHandler)
+                // rather than inline — pump the dispatcher to run the queued follow and let the layout it drives
+                // settle, instead of hoping a fixed sleep outlasted the post (same pattern as
+                // AssistantChatWindowTallReplyFollowTests).
+                Dispatcher.UIThread.RunJobs();
+                second.UpdateLayout();
 
                 // Nothing about the conversation belongs to a host: leaving one must not dispose the view model
                 // or drop the session (AssistantChatWindow.OnClosed still owns that, the view never does).
@@ -64,8 +71,8 @@ public sealed class AssistantChatViewLifecycleTests
                 var before = view.TranscriptScroll.Offset.Y;
                 session.Transcript.Add(new TranscriptEntryViewModel(
                     TranscriptEntryKind.AssistantText, "a reply that arrives in the second host"));
+                Dispatcher.UIThread.RunJobs();
                 second.UpdateLayout();
-                await Task.Delay(200);
 
                 Assert.True(followedInTheFirstHost > 0, "the first host has to have been following, or this proves nothing");
                 Assert.True(

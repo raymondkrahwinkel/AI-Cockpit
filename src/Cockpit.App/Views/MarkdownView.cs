@@ -83,6 +83,13 @@ public sealed class MarkdownView : ContentControl
 
     private DispatcherTimer? _rebuildTimer;
     private bool _pendingRebuild;
+    private TaskCompletionSource? _pendingRebuildSignal;
+
+    // Exposed for tests only (AC-1014): a change coalesced into the rebuild timer renders on its next tick rather
+    // than inline, so a test needs the real completion rather than a fixed sleep it hopes outlasted the 33 ms tick.
+    // Already-rendered (no timer running yet, or nothing pending) returns a completed task.
+    internal Task WaitForPendingRenderAsync() =>
+        _pendingRebuild ? (_pendingRebuildSignal ??= new TaskCompletionSource()).Task : Task.CompletedTask;
 
     // The rendered tree is kept and reconciled rather than thrown away, so the rate limit caps how OFTEN a repaint
     // happens and this caps how MUCH each one costs. A delta only ever changes the last block or adds one after
@@ -198,6 +205,8 @@ public sealed class MarkdownView : ContentControl
             {
                 _pendingRebuild = false;
                 _Render(Markdown ?? string.Empty);
+                _pendingRebuildSignal?.SetResult();
+                _pendingRebuildSignal = null;
                 return;
             }
 
