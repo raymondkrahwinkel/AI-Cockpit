@@ -61,10 +61,15 @@ public sealed class PluginActions(
     // the cockpit's own delegation service, so it is refused by the same rules an agent's delegation is refused by,
     // and it shows up in the delegated-tasks view — a plugin does not get a quieter way to run an agent than an agent
     // has.
-    public async Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null)
+    public Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null) =>
+        DelegateAsync(profileLabel, prompt, workingDirectory, timeout, permission: null);
+
+    // AC-971: `permission` left null runs the task read-only, whatever the target profile would allow — a plugin
+    // that wants a task to change files says so, the same as an agent does on delegate_task.
+    public async Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission)
     {
         var task = await delegation
-            .DelegateAsync(new DelegationRequest(profileLabel, prompt, WorkingDirectory: workingDirectory))
+            .DelegateAsync(new DelegationRequest(profileLabel, prompt, WorkingDirectory: workingDirectory, RequestedPermission: permission))
             .ConfigureAwait(false);
 
         var deadline = DateTimeOffset.UtcNow + (timeout ?? DefaultPatience);

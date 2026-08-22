@@ -133,6 +133,16 @@ public interface IPluginSessionDriver : IAsyncDisposable
         RespondToPermissionAsync(toolUseId, allow, cancellationToken);
 
     /// <summary>
+    /// Resolves the decision with the reason for a refusal (AC-971) — what the host's own gate must say when it
+    /// denies a tool call for an unattended, delegated session. Nobody clicked anything there, so a driver's stock
+    /// "denied by the operator" is untrue, and a model told that retries instead of reporting that its task was
+    /// scoped read-only. <paramref name="denyReason"/> is ignored on an allow, and the default drops it and falls
+    /// back to the overload above, so an already-compiled plugin is unaffected.
+    /// </summary>
+    Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, string? denyReason, CancellationToken cancellationToken) =>
+        RespondToPermissionAsync(toolUseId, allow, answersJson, cancellationToken);
+
+    /// <summary>
     /// Allows the outstanding decision for <paramref name="toolUseId"/> <em>and</em> stops prompting for the like
     /// of it for the rest of this session (D4) — the operator's "allow always". A provider that can say this to
     /// its agent (Codex's <c>acceptForSession</c>) overrides this; the default falls back to a one-time allow, so

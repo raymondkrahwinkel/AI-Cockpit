@@ -280,7 +280,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
         RespondToPermissionAsync(toolUseId, allow, answersJson: null, cancellationToken);
 
-    public async Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken)
+    public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
+        RespondToPermissionAsync(toolUseId, allow, answersJson, denyReason: null, cancellationToken);
+
+    public async Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, string? denyReason, CancellationToken cancellationToken)
     {
         if (!_pendingApprovals.TryRemove(toolUseId, out var pending))
         {
@@ -291,7 +294,13 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
         // The original input rides back as updatedInput on an allow — dropping it would run the tool with no
         // arguments. AC-715: the operator's answers to an AskUserQuestion are merged into it there.
-        var line = ClaudeControlProtocol.BuildDecisionResponse(pending.RequestId, allow, pending.InputJson, denyMessage: "Denied by the cockpit operator.", answersJson);
+        // AC-971: the host's delegated gate passes its own reason, since no operator denied anything there.
+        var line = ClaudeControlProtocol.BuildDecisionResponse(
+            pending.RequestId,
+            allow,
+            pending.InputJson,
+            denyMessage: denyReason is { Length: > 0 } reason ? reason : "Denied by the cockpit operator.",
+            answersJson);
         await _RequireSubprocess().WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
     }
 

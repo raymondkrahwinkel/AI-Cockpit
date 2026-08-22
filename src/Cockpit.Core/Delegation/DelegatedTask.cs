@@ -37,4 +37,11 @@ public sealed record DelegatedTaskView(
     // The verified pane that created the task, or null off the verified path. Carried so an unscoped read
     // (AC-641's list_delegated_tasks) can attribute background work to the session that started it; a scoped
     // caller only ever sees its own pane here.
-    string? OwnerPaneId = null);
+    string? OwnerPaneId = null,
+    // The ceiling this task actually ran under (AC-971) — read-only unless its caller asked for more. Reported, not
+    // assumed: a caller that cannot see it cannot tell a refusal to write from a decision not to.
+    string? Permission = null,
+    // The paths the host itself found changed in the task's workspace, never the task's own account of them
+    // (AC-971). Null means it could not be established, which is deliberately not the empty list that means
+    // "changed nothing".
+    IReadOnlyList<string>? ChangedPaths = null);

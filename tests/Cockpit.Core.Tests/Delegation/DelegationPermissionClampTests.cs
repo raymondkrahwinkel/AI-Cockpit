@@ -48,15 +48,31 @@ public class DelegationPermissionClampTests
     }
 
     [Fact]
-    public async Task NoRequest_GatesAtTheProfileCeiling()
+    public async Task NoRequest_GatesReadOnly_NotAtTheProfileCeiling()
     {
+        // AC-971: asking for nothing gets read-only, whatever the profile would have allowed. A research task
+        // used to inherit a coder profile's write rights purely because its caller never mentioned permissions.
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_EmptyStream());
         var service = _ServiceWith(driver, ceiling: "acceptEdits");
 
         await service.DelegateAsync(new DelegationRequest("local", "work"));
 
-        await driver.Received().SetDelegatedToolGateAsync("acceptEdits", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
+        await driver.Received().SetDelegatedToolGateAsync("default", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task NoRequest_OnAProfilePinnedBelowReadOnly_StaysAtTheProfileCeiling()
+    {
+        // The read-only default is a cap, not a grant: a profile the operator pinned lower than read-only keeps
+        // its own ceiling rather than being widened to the default by a caller that asked for nothing.
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var service = _ServiceWith(driver, ceiling: string.Empty);
+
+        await service.DelegateAsync(new DelegationRequest("local", "work"));
+
+        await driver.Received().SetDelegatedToolGateAsync(string.Empty, Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

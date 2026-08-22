@@ -6,6 +6,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
@@ -163,10 +164,10 @@ public class DelegationGuardTests
     }
 
     [Fact]
-    public async Task StartedTask_WithoutAutoApprove_UsesTheProfilesDefaultCeiling()
+    public async Task StartedTask_WithoutAutoApprove_UsesTheReadOnlyDefault_NotTheProfileCeiling()
     {
-        // The default target carries the default ceiling (acceptEdits) and no allow-list; the gate must be armed
-        // with exactly that, so the common no-config case grades tool calls rather than hanging or allowing all.
+        // AC-971: the default target's ceiling (acceptEdits) is what it MAY allow, not what a task gets for free.
+        // A task whose caller asked for no permission is gated read-only, and no allow-list widens that.
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_EmptyStream());
         var service = _ServiceWith(driver, _Target("local"));
@@ -174,7 +175,7 @@ public class DelegationGuardTests
         await service.DelegateAsync(new DelegationRequest("local", "call a tool"));
 
         await driver.Received(1).SetDelegatedToolGateAsync(
-            DelegationPolicy.DefaultPermissionCeiling,
+            DelegatedToolPermissionPolicy.ReadOnlyCeiling,
             Arg.Is<IReadOnlyList<string>>(list => list.Count == 0),
             Arg.Any<CancellationToken>());
     }

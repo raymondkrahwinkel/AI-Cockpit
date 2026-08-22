@@ -480,10 +480,53 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     // AC-79: a delegated session has no operator to prompt, so its ceiling has to reach the gate that decides.
     // Without this the host-run loop would raise a prompt nobody answers — and the ceiling would bind nothing.
+    //
+    // AC-971: and the same for the driver's OWN permission stream. A CLI-backed provider runs its built-in
+    // Write/Edit/Bash itself and only asks over its control protocol, so the ceiling used to bind the host's tools
+    // and nothing the agent actually writes files with.
     public Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default)
     {
         _hostToolset?.Gate.SetDelegatedGate(ceiling, allowedTools);
+
+        // Allow-list before ceiling, same ordering rule as SessionToolApprovalGate.SetDelegatedGate: the ceiling
+        // arms the gate, and a null one coerces to empty (armed, most restrictive) rather than to "unarmed".
+        _delegatedAllowList = new HashSet<string>(allowedTools, StringComparer.Ordinal);
+        _delegatedCeiling = ceiling ?? string.Empty;
         return Task.CompletedTask;
+    }
+
+    // The delegated ceiling and allow-list for this session's own (driver-raised) permission requests, or null for
+    // an ordinary interactive session, where the operator answers them.
+    private volatile string? _delegatedCeiling;
+    private volatile IReadOnlySet<string>? _delegatedAllowList;
+
+    // Answers one permission request for a delegated session (AC-971) — never a prompt, never a hang. A CLI built-in
+    // is graded by name; an `mcp__` tool is allowed, since the host never connected that server and cannot grade it,
+    // and what bounds it is the enabled-server set the profile resolved (AC-136/AC-378); anything else fails closed.
+    //
+    // ponytail: a writing MCP tool (a terminal server) is therefore a way past a read-only ceiling — which is why a
+    // read-only task's workspace is read afterwards too (DelegatedWorkspaceChanges) and a change fails the task.
+    // Close it by carrying the CLI's own MCP annotations to the host, as SessionToolApprovalGate already grades its own.
+    private async Task _DecideDelegatedPermissionAsync(string ceiling, PluginPermissionRequested permission, CancellationToken cancellationToken)
+    {
+        var onAllowList = _delegatedAllowList?.Contains(permission.ToolName) == true;
+        var decision = DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn(permission.ToolName) is { } builtInClass
+            ? DelegatedToolPermissionPolicy.Decide(ceiling, builtInClass, permission.ToolName, onAllowList)
+            : permission.ToolName.StartsWith("mcp__", StringComparison.Ordinal)
+                ? PermissionDecision.Allow()
+                : DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.Unknown, permission.ToolName, onAllowList);
+
+        try
+        {
+            await inner.RespondToPermissionAsync(permission.ToolUseId, decision.IsAllowed, answersJson: null, decision.DenyMessage, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            // A driver that cannot take the answer leaves the CLI waiting on a request nobody will resolve; log it
+            // rather than tear the event stream down, since the turn's own timeout is what ends that.
+            logger?.LogWarning(exception, "Could not answer the delegated permission request for tool {Tool}.", permission.ToolName);
+        }
     }
 
     // D4: always-allow is session-scoped on the narrow plugin surface — forwarded so Codex's acceptForSession
@@ -556,6 +599,15 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         await foreach (var pluginEvent in _PluginEventsAsync(cancellationToken).ConfigureAwait(false))
         {
             _ReportConversationIfChanged();
+
+            // AC-971: a delegated session's permission requests are decided here, never published as a prompt with
+            // nobody to answer it. The tool row and its (error) result still flow, so a denial stays visible.
+            if (pluginEvent is PluginPermissionRequested permission && _delegatedCeiling is { } ceiling)
+            {
+                await _DecideDelegatedPermissionAsync(ceiling, permission, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
             yield return _Adapt(pluginEvent);
         }
     }
