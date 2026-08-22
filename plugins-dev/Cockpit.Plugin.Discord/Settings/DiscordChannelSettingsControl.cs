@@ -112,7 +112,7 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
             PlaceholderText = "Discord text channel id to relay into",
         };
 
-        _errorText = new TextBlock { Foreground = Brushes.IndianRed, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+        _errorText = new TextBlock { Foreground = _Brush("CockpitStatusErrorBrush"), TextWrapping = TextWrapping.Wrap, IsVisible = false };
 
         Content = new ScrollViewer
         {
@@ -187,4 +187,10 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
 
     private static IReadOnlyList<string> _ParseUserIds(string? text) =>
         [.. (text ?? string.Empty).Split(['\n', '\r', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+    // AC-334/AC-337: a plugin's own theme lookup rather than a hardcoded Brushes.X — a colour lives in
+    // Theme.axaml, and each plugin keeps this tiny copy since Cockpit.Plugins.Abstractions.Theming.ThemeBrush is
+    // internal SDK plumbing, not part of the plugin contract (same pattern as GitStatusHeaderControl._Brush).
+    private static IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
 }
