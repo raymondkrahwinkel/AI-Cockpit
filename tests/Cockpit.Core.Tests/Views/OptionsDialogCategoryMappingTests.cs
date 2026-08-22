@@ -13,10 +13,11 @@ public class OptionsDialogCategoryMappingTests
     private static readonly string DialogMarkup =
         File.ReadAllText(Path.Combine(RepositoryPaths.Root, "src", "Cockpit.App", "Views", "OptionsDialog.axaml"));
 
-    // Category key -> the exact markup of that category's content page, from its own
-    // `<ScrollViewer Tag="key">` up to (not including) the next category's ScrollViewer, or the end of the
-    // sidebar/content Panel for the last one. The sidebar's ListBoxItems also carry a matching Tag, but they
-    // sit before every one of these matches, so they never split a span.
+    // Category key -> the exact markup of that category's content page, from its own root element's
+    // `Tag="key"` (a `ScrollViewer` for every category except Profiles, which AC-1019 rooted on a `Grid` instead
+    // so its list and detail columns can scroll independently) up to (not including) the next category's root,
+    // or the end of the sidebar/content Panel for the last one. The sidebar's ListBoxItems also carry a matching
+    // Tag, but they sit before every one of these matches, so they never split a span.
     private static readonly Dictionary<string, string> CategorySpans = _SplitIntoCategorySpans();
 
     [Theory]
@@ -70,7 +71,7 @@ public class OptionsDialogCategoryMappingTests
 
     private static Dictionary<string, string> _SplitIntoCategorySpans()
     {
-        var matches = Regex.Matches(DialogMarkup, @"<ScrollViewer\s+Tag=""(?<key>\w+)""").ToList();
+        var matches = Regex.Matches(DialogMarkup, @"<(?:ScrollViewer|Grid)\s+Tag=""(?<key>\w+)""").ToList();
         var spans = new Dictionary<string, string>(StringComparer.Ordinal);
 
         for (var i = 0; i < matches.Count; i++)
