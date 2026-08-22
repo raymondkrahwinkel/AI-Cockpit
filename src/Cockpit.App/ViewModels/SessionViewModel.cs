@@ -478,6 +478,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // (AC-728) can resend exactly what was sent — the operator does not have to retype it.
     private (string Text, IReadOnlyList<Core.Sessions.ImageAttachment> Images)? _lastDispatchedUserTurn;
 
+    // AC-1031: set right after StopAsync's own InterruptAsync call succeeds, consumed by the next TurnCompleted —
+    // the CLI reports an interrupted turn the same way as a real driver failure, and this is the only place that
+    // knows the operator asked for the stop.
+    private bool _interruptRequested;
+
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
 
     // AC-800: the rows the reading level shows, in transcript order — what the transcript views bind to. A hidden
@@ -1571,6 +1576,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             await _runtime.InterruptAsync();
             Status = "Interrupted.";
+            _interruptRequested = true;
 
             // AC-943: a turn parked on a permission prompt is answered on the wire by the driver where it can be
             // (Claude, Codex); this sweep is the driver-agnostic half, clearing the row for every driver alike.
@@ -1907,6 +1913,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _lastDispatchedUserTurn = (text, images);
+        // AC-1031: a stale flag from a Stop whose own TurnCompleted never arrived (crash, or the interrupt
+        // landing after that turn's TurnCompleted already ran) must not paint this new turn's failure as one.
+        _interruptRequested = false;
         _currentAssistantEntry = null;
         _CloseThinkingRow();
         IsBusy = true;
@@ -2644,9 +2653,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case TurnCompleted turn:
+                // AC-1031: consumed once, right here — a turn's own IsError below must not keep reading this
+                // as "interrupted" once we've reported it, or a later genuine failure would render as one too.
+                var wasInterrupted = _interruptRequested;
+                _interruptRequested = false;
+
                 // Only surface a turn row when it failed — a plain "Turn completed (success)" row is
                 // noise in the transcript (T4). The Done status still fires below.
-                if (turn.IsError)
+                if (turn.IsError && wasInterrupted)
+                {
+                    // AC-1031: the operator asked for this stop — it is not a driver failure, so it gets none of
+                    // the failure card's severity styling, reason text, or Retry action (AC-720's "Signing in
+                    // again…" status row is the existing precedent for a plain TurnCompleted row like this).
+                    Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnCompleted, "Interrupted."));
+                }
+                else if (turn.IsError)
                 {
                     // AC-720: the subtype alone ("error_during_execution") names nothing actionable — show
                     // the provider's own reason (AC-410's Errors) when the event carries one.
@@ -2697,7 +2718,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 if (_restoredOfferSnapshot is { } restoredOffer)
                 {
                     _restoredOfferSnapshot = null;
-                    if (turn.IsError)
+                    // AC-1031: an interrupted first turn is not a refused resume — leave the offer alone rather
+                    // than degrading it to Gone over a stop the operator asked for.
+                    if (turn.IsError && !wasInterrupted)
                     {
                         RestoreOffer = restoredOffer with
                         {
