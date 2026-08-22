@@ -57,6 +57,8 @@ public class GitHubModelsProviderPluginLoadTests
             var driverFactory = registration.CreateDriverFactory(host.Services);
             var driver = driverFactory.Create("""{"ApiKey":"test-key","Model":"openai/gpt-4.1","BaseUrl":"https://models.github.ai/inference"}""");
             Assert.NotNull(driver);
+            // AC-1029: registration vs. driver-instance capability parity — see PluginCapabilityParityAssert.
+            PluginCapabilityParityAssert.AssertMatches(registration.Capabilities, driver.Capabilities);
         }
 
         plugin.Dispose();

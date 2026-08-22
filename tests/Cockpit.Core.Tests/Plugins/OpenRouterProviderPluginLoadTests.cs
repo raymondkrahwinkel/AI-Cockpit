@@ -50,6 +50,8 @@ public class OpenRouterProviderPluginLoadTests
             var driverFactory = registration.CreateDriverFactory(host.Services);
             var driver = driverFactory.Create("""{"ApiKey":"test-key","Model":"anthropic/claude-sonnet-4.5","BaseUrl":"https://openrouter.ai/api/v1"}""");
             Assert.NotNull(driver);
+            // AC-1029: registration vs. driver-instance capability parity — see PluginCapabilityParityAssert.
+            PluginCapabilityParityAssert.AssertMatches(registration.Capabilities, driver.Capabilities);
         }
 
         plugin.Dispose();

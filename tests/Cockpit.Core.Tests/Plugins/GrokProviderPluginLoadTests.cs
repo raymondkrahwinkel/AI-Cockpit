@@ -50,6 +50,8 @@ public class GrokProviderPluginLoadTests
             var driverFactory = registration.CreateDriverFactory(host.Services);
             var driver = driverFactory.Create("""{"ApiKey":"test-key","Model":"grok-4.6","BaseUrl":"https://api.x.ai/v1"}""");
             Assert.NotNull(driver);
+            // AC-1029: registration vs. driver-instance capability parity — see PluginCapabilityParityAssert.
+            PluginCapabilityParityAssert.AssertMatches(registration.Capabilities, driver.Capabilities);
         }
 
         plugin.Dispose();

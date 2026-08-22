@@ -91,6 +91,10 @@
          (tools/permissions) capabilities. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.OpencodeProvider\Cockpit.Plugin.OpencodeProvider.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- AC-1029: Kimi (AC-267/AC-268) had no loader integration test at all — the same ACP shape as opencode
+         above, missing here since that plugin was added. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.KimiProvider\Cockpit.Plugin.KimiProvider.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>
