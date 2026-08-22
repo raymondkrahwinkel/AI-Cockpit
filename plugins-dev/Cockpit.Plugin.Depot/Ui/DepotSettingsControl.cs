@@ -58,6 +58,12 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         var addConnection = new Button { Content = "+ Add connection" };
         addConnection.Click += (_, _) => _AddRow(existing: null);
 
+        var connectionsHeading = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Children = { _Label("Depot connections"), host.CreateHelpHint("connections", "instance-url") },
+        };
+
         // No ScrollViewer here: the host dialog already wraps every settings view in one — see
         // KubernetesSettingsControl's identical note.
         Content = new StackPanel
@@ -65,7 +71,7 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
             Spacing = 8,
             Children =
             {
-                _Label("Depot connections"),
+                connectionsHeading,
                 _Hint("Each connection is offered to a session on the project whose memory it holds, as \"Depot: <name>\", using Depot's own OAuth sign-in — the plugin never holds a token."),
                 _connectionsPanel,
                 addConnection,

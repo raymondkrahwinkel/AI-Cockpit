@@ -5,57 +5,73 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-// AC-521: a placeholder documented in the settings view that `PromptTemplate.Render` or
-// `BranchName.From` does not actually replace (or the reverse — one they replace that stays
-// undocumented) is exactly the gap this ticket closes. Both sides are read from the real thing rather than
-// repeated by hand: the "documented" set comes off the actual rendered control (its visible label plus its "?"
-// tooltip), and the "replaced" set is parsed out of the corresponding source file's own `.Replace("{...}", ...)`
-// calls — a hardcoded list here could carry the same mistake the production code does.
+// AC-521, migrated for AC-1033: the placeholder documentation that used to live in a `SettingsHelpRow` hover
+// tooltip on the settings control now lives in this plugin's own Docs/setup.md page — the control points at it
+// with host.CreateHelpHint("setup", section) instead of drawing its own "?". Still reads both sides from the
+// real thing rather than repeating them by hand: the "documented" set comes off the control's own field label
+// plus the matching section of the shipped documentation, and the "replaced" set is parsed out of the
+// corresponding source file's own `.Replace("{...}", ...)` calls — a hardcoded list here could carry the same
+// mistake the production code does.
 [Collection("avalonia")]
-public class SettingsControlPlaceholderHelpTests
+public partial class SettingsControlPlaceholderHelpTests
 {
     [Fact]
     public void PromptTemplateHelp_DocumentsExactlyThePlaceholdersRenderReplaces() => HeadlessAvalonia.Run(() =>
     {
-        var (label, tooltip) = _HelpFor(marker => new YouTrackSettings(new InMemoryPluginStorage()) { Template = marker });
+        var label = _LabelFor(marker => new YouTrackSettings(new InMemoryPluginStorage()) { Template = marker });
 
-        Assert.Equal(_ReplacedPlaceholders("PromptTemplate.cs"), _DocumentedPlaceholders(label, tooltip));
+        Assert.Equal(_ReplacedPlaceholders("PromptTemplate.cs"), _DocumentedPlaceholders(label, "prompt-template"));
     });
 
     [Fact]
     public void BranchPatternHelp_DocumentsExactlyThePlaceholdersBranchNameReplaces() => HeadlessAvalonia.Run(() =>
     {
-        var (label, tooltip) = _HelpFor(marker => new YouTrackSettings(new InMemoryPluginStorage()) { BranchPattern = marker });
+        var label = _LabelFor(marker => new YouTrackSettings(new InMemoryPluginStorage()) { BranchPattern = marker });
 
-        Assert.Equal(_ReplacedPlaceholders("BranchName.cs"), _DocumentedPlaceholders(label, tooltip));
+        Assert.Equal(_ReplacedPlaceholders("BranchName.cs"), _DocumentedPlaceholders(label, "branch-pattern"));
     });
 
     // Builds the control with a unique marker in whichever field the caller sets on the settings object, then reads
-    // back that field's own label + "?" tooltip — so the template's help is never mistaken for the branch pattern's.
-    private static (string Label, string Tooltip) _HelpFor(Func<string, YouTrackSettings> buildSettingsWithMarker)
+    // back that field's own label row — so the template's help is never mistaken for the branch pattern's.
+    private static string _LabelFor(Func<string, YouTrackSettings> buildSettingsWithMarker)
     {
         const string marker = "AC-521-MARKER";
         var settings = buildSettingsWithMarker(marker);
-        var view = new YouTrackSettingsControl(settings);
+        var view = new YouTrackSettingsControl(new FakeCockpitHost(), settings);
         var window = new Window { Content = view };
         window.Show();
         window.UpdateLayout();
 
         var box = view.GetVisualDescendants().OfType<TextBox>().Single(t => t.Text == marker);
-        var grid = (Grid)box.Parent!;
-        var help = grid.Children.OfType<TextBlock>().Single();
-        var tooltip = ToolTip.GetTip(help) as string ?? string.Empty;
-
-        var panel = (StackPanel)grid.Parent!;
-        var labelIndex = panel.Children.IndexOf(grid) - 1;
-        var label = ((TextBlock)panel.Children[labelIndex]).Text ?? string.Empty;
+        var panel = (StackPanel)box.Parent!;
+        var labelRow = (StackPanel)panel.Children[panel.Children.IndexOf(box) - 1];
+        var label = ((TextBlock)labelRow.Children[0]).Text ?? string.Empty;
 
         window.Close();
-        return (label, tooltip);
+        return label;
     }
 
-    private static HashSet<string> _DocumentedPlaceholders(string label, string tooltip) =>
-        Regex.Matches($"{label} {tooltip}", @"\{[A-Za-z]+\}").Select(m => m.Value).ToHashSet(StringComparer.Ordinal);
+    // The set of placeholders documented for `section` — the control's own label plus the matching section body
+    // of this plugin's shipped Docs/setup.md, which is what host.CreateHelpHint("setup", section) points at.
+    private static HashSet<string> _DocumentedPlaceholders(string label, string section)
+    {
+        var docsPath = Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.YouTrack", "Docs", "setup.md");
+        var body = _SectionBody(File.ReadAllText(docsPath), section);
+
+        return PlaceholderRegex().Matches($"{label} {body}").Select(m => m.Value).ToHashSet(StringComparer.Ordinal);
+    }
+
+    // Everything between the heading carrying `{#section}` and the next heading (or end of file).
+    private static string _SectionBody(string markdown, string section)
+    {
+        var headings = HeadingRegex().Matches(markdown).Cast<Match>().ToList();
+        var start = headings.FindIndex(heading => heading.Value.Contains($"{{#{section}}}", StringComparison.Ordinal));
+        Assert.True(start >= 0, $"Docs/setup.md has no heading for section '{section}'");
+
+        var bodyStart = headings[start].Index + headings[start].Length;
+        var bodyEnd = start + 1 < headings.Count ? headings[start + 1].Index : markdown.Length;
+        return markdown[bodyStart..bodyEnd];
+    }
 
     private static HashSet<string> _ReplacedPlaceholders(string fileName)
     {
@@ -65,4 +81,10 @@ public class SettingsControlPlaceholderHelpTests
             .Select(m => m.Groups[1].Value)
             .ToHashSet(StringComparer.Ordinal);
     }
+
+    [GeneratedRegex(@"\{[A-Za-z]+\}")]
+    private static partial Regex PlaceholderRegex();
+
+    [GeneratedRegex(@"^#{1,6}\s.*$", RegexOptions.Multiline)]
+    private static partial Regex HeadingRegex();
 }

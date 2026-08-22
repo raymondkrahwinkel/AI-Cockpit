@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using Cockpit.Plugin.LocalCi.Execution;
 using Cockpit.Plugin.LocalCi.Gate;
 using Cockpit.Plugin.LocalCi.Workflows;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.LocalCi.Ui;
 
@@ -36,6 +37,7 @@ internal sealed class LocalCiRunView : UserControl
     private CancellationTokenSource? _inFlight;
 
     public LocalCiRunView(
+        ICockpitHost host,
         string projectRoot,
         ILocalJobRunner runner,
         LocalRunTracker tracker,
@@ -55,6 +57,14 @@ internal sealed class LocalCiRunView : UserControl
         };
         _holdBackPullRequests.IsCheckedChanged += (_, _) =>
             gate.Set(projectRoot, _holdBackPullRequests.IsChecked ?? false);
+
+        // AC-1033/AC-1041: the `?` beside the gate checkbox, pointing at what "a local run has passed" actually
+        // checks (this exact commit, not just "recently") and where the bypass goes when it hasn't.
+        var holdBackRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { _holdBackPullRequests, host.CreateHelpHint("local-ci", "pull-request-gate") },
+        };
 
         _stop = new Button { Content = "Stop", IsEnabled = false };
         _stop.Click += (_, _) =>
@@ -90,7 +100,7 @@ internal sealed class LocalCiRunView : UserControl
                     Children = { _stop, _headline },
                 },
                 _logScroll,
-                _holdBackPullRequests,
+                holdBackRow,
             },
         };
 

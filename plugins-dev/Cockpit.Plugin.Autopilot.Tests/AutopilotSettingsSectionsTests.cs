@@ -60,6 +60,7 @@ public class AutopilotSettingsSectionsTests
         var storage = new FakeStorage();
         var host = Substitute.For<ICockpitHost>();
         host.RegisteredAutopilotTemplates.Returns([]);
+        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
 
         return new AutopilotSettingsControl(new AutopilotSettings(storage), host, new AutopilotTemplateStore(storage));
     }

@@ -48,7 +48,7 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
         // And one bus for the moves themselves, shared by the two places a ticket can be moved from — see IssueStateChanges.
         var stateChanges = new IssueStateChanges();
 
-        host.AddSettings(() => new YouTrackSettingsControl(settings));
+        host.AddSettings(() => new YouTrackSettingsControl(host, settings));
 
         // The writing half (AC-154): a consumer (Autopilot) posts evidence and moves an issue's stage back to YouTrack
         // through this, tracker-neutrally.

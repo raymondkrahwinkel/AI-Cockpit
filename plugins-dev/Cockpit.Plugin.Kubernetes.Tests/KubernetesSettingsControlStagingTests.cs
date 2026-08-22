@@ -19,7 +19,7 @@ public class KubernetesSettingsControlStagingTests
         var settings = _Settings(
             new ClusterRegistration("cluster-1", "prod", string.Empty, [], KubeconfigPath: "~/.kube/config"),
             new ClusterRegistration("cluster-2", string.Empty, string.Empty, [], KubeconfigPath: "~/.kube/other"));
-        var view = new KubernetesSettingsControl(settings);
+        var view = new KubernetesSettingsControl(new FakeCockpitHost(), settings);
 
         var staged = view.TryStage(out var commit, out var error);
 
@@ -33,7 +33,7 @@ public class KubernetesSettingsControlStagingTests
     public void EveryClusterLabelled_Stages_AndOnlyTheCommitWrites()
     {
         var settings = _Settings(new ClusterRegistration("cluster-1", "prod", string.Empty, [], KubeconfigPath: "~/.kube/config"));
-        var view = new KubernetesSettingsControl(settings);
+        var view = new KubernetesSettingsControl(new FakeCockpitHost(), settings);
 
         // Changed behind the view's back, so the value it holds (read when it was built) differs from the stored
         // one: staging must leave this at false and only the commit put the view's own answer back.

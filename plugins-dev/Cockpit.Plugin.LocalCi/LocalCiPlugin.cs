@@ -57,7 +57,7 @@ public sealed class LocalCiPlugin : ICockpitPlugin
             () => Guid.NewGuid().ToString("n"));
         _runner = runner;
 
-        host.AddSettings(() => new LocalCiSettingsControl(runtime, settings));
+        host.AddSettings(() => new LocalCiSettingsControl(host, runtime, settings));
 
         // Docker Desktop may well have been started while the dialog was open; a save is the cheapest honest moment
         // to stop trusting a stale answer.
@@ -134,7 +134,7 @@ public sealed class LocalCiPlugin : ICockpitPlugin
 
         return host.ShowDialogAsync(
             "Local CI",
-            () => new LocalCiRunView(projectRoot, runner, tracker, head.ReadAsync, gate),
+            () => new LocalCiRunView(host, projectRoot, runner, tracker, head.ReadAsync, gate),
             singleInstanceKey: $"run.{session.PaneId}",
             width: 900,
             height: 640);

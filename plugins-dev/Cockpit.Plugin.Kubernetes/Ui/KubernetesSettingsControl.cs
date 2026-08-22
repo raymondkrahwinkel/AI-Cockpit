@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugin.Kubernetes.Cluster;
@@ -21,7 +22,7 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
     private readonly CheckBox _mcpEnabled;
     private readonly IReadOnlyList<string> _originalClusterIds;
 
-    public KubernetesSettingsControl(KubernetesSettings settings)
+    public KubernetesSettingsControl(ICockpitHost host, KubernetesSettings settings)
     {
         _settings = settings;
         _clustersPanel = new StackPanel { Spacing = 4 };
@@ -45,6 +46,14 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
 
         _mcpEnabled = new CheckBox { Content = "Let sessions use the Kubernetes MCP tools", IsChecked = settings.McpEnabled };
 
+        // AC-1033: the `?` beside the heading, pointing at this plugin's own settings page — adding a cluster,
+        // the file-vs-pasted kubeconfig, and the pitfall of a context left on "(current-context)".
+        var clustersHeading = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { _Label("Kubernetes clusters"), host.CreateHelpHint("kubernetes", "adding-a-cluster") },
+        };
+
         // No ScrollViewer here: the host dialog already wraps every settings view in one (with the window inset).
         // A ScrollViewer nested inside that one is measured with unbounded height and never scrolls, so its tail —
         // the MCP toggle — rendered under the Save/Close footer. The host owns the scroll; the view is just content.
@@ -53,7 +62,7 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
             Spacing = 8,
             Children =
             {
-                _Label("Kubernetes clusters"),
+                clustersHeading,
                 _Hint("Each cluster is a kubeconfig kept under the secret layer. An agent never gets the kubeconfig — it reaches the cluster only through the gated MCP tools. Namespaces you list here are free to read; anything outside asks each session, and every change asks each time."),
                 _clustersPanel,
                 addCluster,

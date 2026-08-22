@@ -23,7 +23,7 @@ public class SettingsControlTemplateFitTests
     {
         const string marker = "AC-521-FIT-MARKER";
         var settings = new YouTrackSettings(new InMemoryPluginStorage()) { Template = marker };
-        var view = new YouTrackSettingsControl(settings);
+        var view = new YouTrackSettingsControl(new FakeCockpitHost(), settings);
 
         // The window a real plugin-settings dialog opens at (CockpitViewModel.OpenPluginSettingsAsync: 640x560).
         // The view itself is the whole dialog body here — no chrome/footer subtracted — so this is the most

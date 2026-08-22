@@ -23,7 +23,7 @@ public class SettingsControlTemplateFitTests
     {
         const string marker = "AC-521-FIT-MARKER";
         var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage()) { Template = marker };
-        var view = new GitHubPullRequestsSettingsControl(settings);
+        var view = new GitHubPullRequestsSettingsControl(new TestBadgeHost(), settings);
 
         // The window a real plugin-settings dialog opens at (CockpitViewModel.OpenPluginSettingsAsync: 640x560).
         // The view itself is the whole dialog body here — no chrome/footer subtracted — so this is the most

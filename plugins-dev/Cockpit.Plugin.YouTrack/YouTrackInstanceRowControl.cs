@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.Plugins.Abstractions;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
@@ -22,7 +23,7 @@ internal sealed class YouTrackInstanceRowControl : UserControl
 
     public event Action? RemoveRequested;
 
-    public YouTrackInstanceRowControl(YouTrackInstance instance)
+    public YouTrackInstanceRowControl(ICockpitHost host, YouTrackInstance instance)
     {
         _label = new TextBox { Text = instance.Label, PlaceholderText = "e.g. Team A" };
         _instanceUrl = new TextBox { Text = instance.InstanceUrl, PlaceholderText = "https://<instance>.youtrack.cloud/api" };
@@ -66,12 +67,12 @@ internal sealed class YouTrackInstanceRowControl : UserControl
                 {
                     header,
                     _label,
-                    _Label("Instance base URL"),
-                    SettingsHelpRow.Build(_instanceUrl, "Your YouTrack REST API base, e.g. https://<instance>.youtrack.cloud/api (self-hosted: https://<host>/youtrack/api)."),
-                    _Label("Permanent token"),
-                    SettingsHelpRow.Build(_token, "Permanent token. In YouTrack: profile -> Account Security -> New token (scope: YouTrack)."),
-                    _Label("Default project short-name (optional — preselected in the issues dialog)"),
-                    SettingsHelpRow.Build(_defaultProjectTag, "Optional project short name (e.g. the prefix in issue IDs like PROJ-123), preselected in the issues dialog's project filter when this instance is picked. Leave empty to default to \"All\"."),
+                    _LabelRow("Instance base URL", host.CreateHelpHint("setup", "base-url")),
+                    _instanceUrl,
+                    _LabelRow("Permanent token", host.CreateHelpHint("setup", "permanent-token")),
+                    _token,
+                    _LabelRow("Default project short-name (optional — preselected in the issues dialog)", host.CreateHelpHint("setup", "project-short-name")),
+                    _defaultProjectTag,
                     _addMcp,
                     new TextBlock
                     {
@@ -98,7 +99,14 @@ internal sealed class YouTrackInstanceRowControl : UserControl
         _defaultProjectTag.Text?.Trim() ?? string.Empty,
         _addMcp.IsChecked ?? true);
 
-    private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
+    // AC-1033: a label with the SDK-drawn "?" beside it instead of the old `SettingsHelpRow` tooltip, pointing at
+    // the section of this plugin's own setup page that explains the field below.
+    private static StackPanel _LabelRow(string text, Control help) => new()
+    {
+        Orientation = Orientation.Horizontal,
+        Margin = new Thickness(0, 4, 0, 0),
+        Children = { new TextBlock { Text = text, FontSize = 11 }, help },
+    };
 
     // The host's geometry token, so a plugin's box rounds like the app's other boxes.
     private static CornerRadius _Radius(string key, double fallback) =>

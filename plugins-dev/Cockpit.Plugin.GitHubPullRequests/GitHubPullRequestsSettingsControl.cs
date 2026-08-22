@@ -24,7 +24,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
     private readonly CheckBox _notifyOnReviewRequests;
     private readonly CheckBox _mcpEnabled;
 
-    public GitHubPullRequestsSettingsControl(GitHubPullRequestsSettings settings)
+    public GitHubPullRequestsSettingsControl(ICockpitHost host, GitHubPullRequestsSettings settings)
     {
         _settings = settings;
 
@@ -33,7 +33,11 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
             Content = "Use local GitHub CLI (gh) — lists open pull requests across all your repos",
             IsChecked = settings.UseGitHubCli,
         };
-        var useGhRow = SettingsHelpRow.Build(_useGh, "Use the installed `gh` CLI (uses your existing gh login, no token) instead of a single-repo HTTP call.");
+        var useGhRow = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Children = { _useGh, host.CreateHelpHint("setup", "connect") },
+        };
 
         _ghOwner = new TextBox { Text = settings.GhOwner, PlaceholderText = "@me (or an org / user)" };
         _notifyOnReviewRequests = new CheckBox
@@ -46,10 +50,11 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
             Spacing = 6,
             Children =
             {
-                _Label("Owner (whose repositories to search)"),
-                SettingsHelpRow.Build(_ghOwner, "Owner (user or org, e.g. \"octocat\" or \"@me\" for yourself) whose repositories to search — cross-repo, unlike the single owner/repo below."),
+                _LabelWithHelp(host, "Owner (whose repositories to search)", "owner-repo"),
+                _ghOwner,
                 _Hint("Uses your existing gh login — no token needed."),
-                SettingsHelpRow.Build(_notifyOnReviewRequests, "Shows a toast with an \"Open in browser\" button the moment a pull request is assigned to you for review. The requests themselves are always listed under \"Review requested\" in the section, whether this is on or not."),
+                _notifyOnReviewRequests,
+                _Hint("Shows a toast with an \"Open in browser\" button the moment a pull request is assigned to you for review. The requests themselves are always listed under \"Review requested\", whether this is on or not."),
             },
         };
 
@@ -61,12 +66,12 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
             Spacing = 6,
             Children =
             {
-                _Label("Repository owner"),
-                SettingsHelpRow.Build(_owner, "The account or org name from the repository's URL, e.g. the \"owner\" in github.com/owner/repo."),
+                _LabelWithHelp(host, "Repository owner", "owner-repo"),
+                _owner,
                 _Label("Repository name"),
-                SettingsHelpRow.Build(_repo, "The repository name — the second segment of the repository's URL, e.g. the \"repo\" in github.com/owner/repo."),
-                _Label("Access token (optional — for private repos or a higher rate limit)"),
-                SettingsHelpRow.Build(_token, "Personal access token. Create at github.com/settings/tokens (classic: scope `repo` for private repos; fine-grained: Issues/Pull requests read). Optional for public repos."),
+                _repo,
+                _LabelWithHelp(host, "Access token (optional — for private repos or a higher rate limit)", "token-scope"),
+                _token,
             },
         };
 
@@ -129,25 +134,21 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
                     useGhRow,
                     ghPanel,
                     httpPanel,
-                    _Label("Beyond your own pull requests"),
-                    SettingsHelpRow.Build(_watchInvolved, "Every open pull request in every repository you own, collaborate on, or reach through one of your organisations — whoever opened it. gh works out which repositories those are, so there is no list to keep up to date. Off by default: it is a wider net than \"what is mine\"."),
+                    _LabelWithHelp(host, "Beyond your own pull requests", "watching"),
+                    _watchInvolved,
                     _Hint("The rest of this list answers \"which pull requests are mine\" — authored by you, assigned to you, waiting on your review. A project you are responsible for asks a different question: what is open here, whoever opened it."),
                     _Label("Watch these repositories as well (optional)"),
-                    SettingsHelpRow.Build(_watchedRepos, "For repositories you are NOT involved with. One owner (acme: every repo of that user or org) or owner/repo (just the one) per line. Unnecessary when the box above is ticked."),
+                    _watchedRepos,
+                    _Hint("For repositories you are NOT involved with. One owner (acme: every repo of that user or org) or owner/repo (just the one) per line. Unnecessary when the box above is ticked."),
                     _Label("Only these repositories (optional)"),
-                    SettingsHelpRow.Build(_repoFilter, "Limit the list to specific repositories — one owner/repo per line (or comma-separated), e.g. octocat/hello-world. Leave blank to show pull requests from all your repositories."),
+                    _repoFilter,
+                    _Hint("Limit the list to specific repositories — one owner/repo per line (or comma-separated), e.g. octocat/hello-world. Leave blank to show pull requests from all your repositories."),
                     _Label("Prompt template — placeholders: {number} {title} {url} {owner} {repo} {body} {author}"),
-                    SettingsHelpRow.Build(_template,
-                        "Prompt inserted when you click a pull request.\n" +
-                        "{number} — the pull request number, e.g. 42.\n" +
-                        "{title} — the pull request's title.\n" +
-                        "{url} — link to the pull request.\n" +
-                        "{owner} — the repository owner or org.\n" +
-                        "{repo} — the repository name.\n" +
-                        "{body} — the full pull request description; \"(no description)\" when empty.\n" +
-                        "{author} — who opened it; \"(unknown)\" when GitHub does not give one."),
+                    _template,
+                    _Hint("{number} the pull request number. {title} its title. {url} link to it. {owner}/{repo} the repository. {body} the full description, \"(no description)\" when empty. {author} who opened it, \"(unknown)\" when GitHub does not give one."),
                     _Label("Agent tools"),
-                    SettingsHelpRow.Build(_mcpEnabled, "Exposes get_pr_status over MCP so an agent session or the assistant can ask for a pull request's checks, mergeable state, review decision and title — cached briefly so several sessions watching the same PR share one lookup."),
+                    _mcpEnabled,
+                    _Hint("Exposes get_pr_status over MCP so an agent session or the assistant can ask for a pull request's checks, mergeable state, review decision and title — cached briefly so several sessions watching the same PR share one lookup."),
                 },
             },
         };
@@ -182,4 +183,13 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };
 
     private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+
+    // AC-1033: a label with the SDK-drawn `?` beside it, pointing at this plugin's own setup walkthrough —
+    // replaces the old hand-rolled hover tooltip (SettingsHelpRow) field by field.
+    private static Control _LabelWithHelp(ICockpitHost host, string text, string sectionId) => new StackPanel
+    {
+        Orientation = Avalonia.Layout.Orientation.Horizontal,
+        Margin = new Thickness(0, 6, 0, 0),
+        Children = { new TextBlock { Text = text, FontSize = 11 }, host.CreateHelpHint("setup", sectionId) },
+    };
 }
