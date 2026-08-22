@@ -213,6 +213,11 @@ public class LocalJobRunnerTests : IDisposable
         Assert.Equal(LocalRunOutcome.AlreadyRunning, second.Outcome);
         Assert.Single(act.Calls);
 
+        // AC-1015: this sentence sent three sessions into a wait-and-retry loop in one night. It must never again
+        // read as "wait for it" — a caller (often an LLM agent) treats that as an instruction to poll.
+        Assert.DoesNotContain("wait for it", second.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not stuck", second.Reason);
+
         await stopping.CancelAsync();
         await first;
     }

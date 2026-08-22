@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.LocalCi\Cockpit.Plugin.LocalCi.csproj" />
+    <!-- The plugin references this compile-only; the test host has no host app to fall through to, so
+         IWorktreeManager's real assembly is needed here at run time too (AC-1015). -->
+    <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

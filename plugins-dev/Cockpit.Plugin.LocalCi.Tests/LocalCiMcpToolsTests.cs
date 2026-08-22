@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using Cockpit.Core.Worktrees;
 using Cockpit.Plugin.LocalCi.Execution;
 using Cockpit.Plugin.LocalCi.Mcp;
 using Cockpit.Plugin.LocalCi.Sessions;
@@ -55,6 +56,48 @@ public class LocalCiMcpToolsTests : IDisposable
         await _Tools(act).RunLocalChecks();
 
         Assert.Equal(_caller.Root, act.Calls.Single().WorkingDirectory);
+    }
+
+    [Fact]
+    public async Task ACheckoutTheCallerRegisteredForItselfViaWorktreeCreateCanBeTested()
+    {
+        // AC-1015: a subtask worktree an agent made for itself never gets its own pane, so it can only be reached
+        // by naming it — but only because it is registered to this same caller.
+        _host.CallerPaneId = "pane-caller";
+        var worktrees = new FakeWorktreeManager();
+        worktrees.Records.Add(new WorktreeRecord("pane-caller", _caller.Root, _neighbour.Root, "cockpit/subtask", "abc123", DateTimeOffset.UtcNow));
+        var act = FakeStreamingCliRunner.Exiting(0);
+
+        await _Tools(act, worktrees: worktrees).RunLocalChecks(checkout: _neighbour.Root);
+
+        Assert.Equal(_neighbour.Root, act.Calls.Single().WorkingDirectory);
+    }
+
+    [Fact]
+    public async Task ACheckoutTheCallerDoesNotOwnIsRefused()
+    {
+        _host.CallerPaneId = "pane-caller";
+        // Registered to a different pane — the exact confused-deputy case worktree_remove already guards against.
+        var worktrees = new FakeWorktreeManager();
+        worktrees.Records.Add(new WorktreeRecord("pane-neighbour", _neighbour.Root, _neighbour.Root, "cockpit/other", "abc123", DateTimeOffset.UtcNow));
+        var act = FakeStreamingCliRunner.Exiting(0);
+
+        var answer = await _Tools(act, worktrees: worktrees).RunLocalChecks(checkout: _neighbour.Root);
+
+        Assert.False(_Read(answer).GetProperty("ok").GetBoolean());
+        Assert.Empty(act.Calls);
+    }
+
+    [Fact]
+    public async Task ACheckoutThatIsNotAnyRegisteredWorktreeIsRefused()
+    {
+        _host.CallerPaneId = "pane-caller";
+        var act = FakeStreamingCliRunner.Exiting(0);
+
+        var answer = await _Tools(act, worktrees: new FakeWorktreeManager()).RunLocalChecks(checkout: _neighbour.Root);
+
+        Assert.False(_Read(answer).GetProperty("ok").GetBoolean());
+        Assert.Empty(act.Calls);
     }
 
     [Fact]
@@ -208,13 +251,13 @@ public class LocalCiMcpToolsTests : IDisposable
         Assert.Equal("build", status.GetProperty("lastRun").GetProperty("job").GetString());
     }
 
-    private LocalCiMcpTools _Tools(IStreamingCliRunner act, bool skipConsent = false)
+    private LocalCiMcpTools _Tools(IStreamingCliRunner act, bool skipConsent = false, FakeWorktreeManager? worktrees = null)
     {
         var runner = new LocalJobRunner(
             FakeLocalCiRuntime.Ready(), act, new FakeRunContainerCleanup(), () => ActRunOptions.For(8), () => "run-1");
         var settings = new LocalCiSettings(_host.Storage) { SkipConsent = skipConsent };
 
-        return new LocalCiMcpTools(_host, _checkouts, runner, _tracker, new GitHead(new FakeCliRunner()), settings);
+        return new LocalCiMcpTools(_host, _checkouts, runner, _tracker, new GitHead(new FakeCliRunner()), settings, worktrees);
     }
 
     private static JsonElement _Read(string json) => JsonDocument.Parse(json).RootElement;

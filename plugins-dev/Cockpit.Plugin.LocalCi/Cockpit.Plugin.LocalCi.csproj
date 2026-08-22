@@ -20,6 +20,12 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
+    <!-- IWorktreeManager only, to resolve the worktrees a calling pane owns (AC-1015) — the host already loads
+         Cockpit.Core, so this stays compile-only like the Diagram plugin's own reference to it. -->
+    <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>

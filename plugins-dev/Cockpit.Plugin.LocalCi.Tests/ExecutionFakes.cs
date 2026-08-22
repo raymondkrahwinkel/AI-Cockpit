@@ -1,7 +1,54 @@
+using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Worktrees;
 using Cockpit.Plugin.LocalCi.Execution;
 using Cockpit.Plugin.LocalCi.Runtime;
 
 namespace Cockpit.Plugin.LocalCi.Tests;
+
+// Only what run_local_checks's checkout resolution reads: the registered worktrees. Every other member of
+// IWorktreeManager is unreached from the MCP tools and throws if a test ever exercises it by mistake.
+internal sealed class FakeWorktreeManager : IWorktreeManager
+{
+    public List<WorktreeRecord> Records { get; } = [];
+
+    public event Action<WorktreeSourceRefresh>? SourceRefreshed { add { } remove { } }
+
+    public Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<WorktreeRecord>>(Records);
+
+    public Task<GitRepositoryInfo?> DetectRepositoryAsync(string directory, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task<WorktreeRecord> CreateAsync(string sessionId, string branch, string directory, WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate, bool isAgentCreated = false, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task<WorktreeRecord> CreateForSessionAsync(string sessionId, string? sessionLabel, string directory, WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate, bool isAgentCreated = false, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task<IReadOnlyList<WorktreeStatus>> GetStatusesAsync(CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task<bool> IsCleanAsync(WorktreeRecord record, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task<bool> HasUncommittedChangesAsync(WorktreeRecord record, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task<string?> RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task<WorktreeRecord?> ReattachAsync(string worktreePath, string newSessionId, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task ReleaseOwnershipAsync(string worktreePath, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task ReleaseAsync(string sessionId, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public Task ReconcileAsync(IReadOnlyCollection<string> liveSessionIds, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+}
 
 // Stands in for act. The endings that matter — a tool that is not there, a job that fails, a run that is stopped
 // halfway — are exactly the ones a real act on a real Docker will not produce on request.

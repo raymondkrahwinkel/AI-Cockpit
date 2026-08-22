@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Plugin.LocalCi.Execution;
 using Cockpit.Plugin.LocalCi.Sessions;
 using Cockpit.Plugin.LocalCi.Workflows;
@@ -11,29 +12,37 @@ namespace Cockpit.Plugin.LocalCi.Mcp;
 
 // The `cockpit-local-ci` tool surface: how a session checks its own work before pushing it.
 //
-// Neither tool takes a project or a path. Which checkout is acted on comes from
-// `ICockpitHost.CurrentMcpCallerPaneId` — the pane the transport says made the call — so a session
-// cannot ask for a run in somebody else's tree, and a prompt-injected one cannot be talked into it. That is the
-// whole reason the signatures look narrower than they could be.
+// Neither tool takes a project or an arbitrary path — `checkout` only picks among worktrees the caller's own pane
+// already owns (AC-1015). Which checkout is acted on by default comes from `ICockpitHost.CurrentMcpCallerPaneId` —
+// the pane the transport says made the call — so a prompt-injected one cannot be talked into somebody else's tree.
 internal sealed class LocalCiMcpTools(
     ICockpitHost host,
     SessionCheckouts checkouts,
     ILocalJobRunner runner,
     LocalRunTracker tracker,
     GitHead head,
-    LocalCiSettings settings)
+    LocalCiSettings settings,
+    IWorktreeManager? worktrees = null)
 {
     [McpServerTool(Name = "run_local_checks")]
     [Description(
         "Runs one of this project's GitHub workflow jobs in a container on this machine, using this session's own "
-        + "checkout, and returns the verdict. The project is the calling session's — this tool takes no path and "
-        + "will not run anywhere else. A job that cannot run locally (a matrix, a non-Linux runner, artifacts "
-        + "exchanged with another job) is refused with the reason rather than partly run. The operator is asked to "
-        + "approve the exact command before anything starts. The verdict is about this machine: act's images are "
-        + "not GitHub's, so it predicts the pull-request check and does not replace it.")]
+        + "checkout, and returns the verdict. The project is the calling session's — this tool takes no arbitrary "
+        + "path and will not run anywhere else, but see `checkout` below for the one exception. A job that cannot "
+        + "run locally (a matrix, a non-Linux runner, artifacts exchanged with another job) is refused with the "
+        + "reason rather than partly run. The operator is asked to approve the exact command before anything "
+        + "starts. The verdict is about this machine: act's images are not GitHub's, so it predicts the "
+        + "pull-request check and does not replace it. `AlreadyRunning` is a verdict, not something to retry: "
+        + "another local run already has this machine, it is not stuck, and calling this again will not change "
+        + "that — try again later, or ask the operator to stop it.")]
     public async Task<string> RunLocalChecks(
         [Description("The job to run, named as it is in the workflow (e.g. \"build\"). Leave it out to run the first job in this project that can run here.")]
         string? job = null,
+        [Description(
+            "The worktree to test, when it is not this session's own checkout — for example one this session made "
+            + "for a subtask with worktree_create. Must be a path from worktree_list that this session owns; "
+            + "anything else is refused. Leave it out to test this session's own checkout.")]
+        string? checkout = null,
         CancellationToken cancellationToken = default)
     {
         if (_CheckoutOfCaller() is not { } caller)
@@ -41,9 +50,13 @@ internal sealed class LocalCiMcpTools(
             return _CannotIdentifyCaller();
         }
 
-        var (paneId, checkout) = caller;
+        var (paneId, ownCheckout) = caller;
+        if (await _ResolveCheckoutAsync(paneId, ownCheckout, checkout, cancellationToken) is not { } resolved)
+        {
+            return _CannotUseThatCheckout();
+        }
 
-        if (_Choose(checkout, job) is not { } chosen)
+        if (_Choose(resolved, job) is not { } chosen)
         {
             return McpJson.Error(job is { Length: > 0 }
                 ? $"No job called {job} in this project can run on this machine. Ask for local_check_status to see what can."
@@ -51,10 +64,10 @@ internal sealed class LocalCiMcpTools(
         }
 
         var startedAt = DateTimeOffset.UtcNow;
-        var commit = await head.ReadAsync(checkout, cancellationToken);
+        var commit = await head.ReadAsync(resolved, cancellationToken);
         using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        tracker.Begin(checkout, chosen.JobId, startedAt, () =>
+        tracker.Begin(resolved, chosen.JobId, startedAt, () =>
         {
             stopping.Cancel();
             return Task.CompletedTask;
@@ -65,10 +78,10 @@ internal sealed class LocalCiMcpTools(
             var result = await runner.RunAsync(
                 chosen,
                 _ => { },
-                command => _AskOperatorAsync(command, checkout, paneId),
+                command => _AskOperatorAsync(command, resolved, paneId),
                 stopping.Token);
 
-            tracker.Complete(checkout, result, commit, DateTimeOffset.UtcNow);
+            tracker.Complete(resolved, result, commit, DateTimeOffset.UtcNow);
             return McpJson.Of(_Report(result));
         }
         catch (Exception exception)
@@ -82,7 +95,7 @@ internal sealed class LocalCiMcpTools(
                 : (LocalRunOutcome.CouldNotRun, $"the run ended in an error: {exception.Message}");
 
             tracker.Complete(
-                checkout,
+                resolved,
                 LocalRunResult.DidNotRun(chosen.WorkflowPath, chosen.JobId, outcome, reason),
                 commit,
                 DateTimeOffset.UtcNow);
@@ -93,17 +106,28 @@ internal sealed class LocalCiMcpTools(
     [McpServerTool(Name = "local_check_status")]
     [Description(
         "Reports what this project's workflow jobs are — which of them can run on this machine and, for each that "
-        + "cannot, why — plus the last local run in this session's checkout and whether it was on the commit that "
-        + "is checked out now. The project is the calling session's.")]
-    public Task<string> LocalCheckStatus(CancellationToken cancellationToken = default)
+        + "cannot, why — plus the last local run in that checkout and whether it was on the commit that is checked "
+        + "out now. The project is the calling session's own checkout by default; pass `checkout` for a worktree "
+        + "this session made for itself with worktree_create instead.")]
+    public async Task<string> LocalCheckStatus(
+        [Description(
+            "The worktree to report on, when it is not this session's own checkout. Must be a path from "
+            + "worktree_list that this session owns; anything else is refused. Leave it out for this session's own checkout.")]
+        string? checkout = null,
+        CancellationToken cancellationToken = default)
     {
         if (_CheckoutOfCaller() is not { } caller)
         {
-            return Task.FromResult(_CannotIdentifyCaller());
+            return _CannotIdentifyCaller();
         }
 
-        var (_, checkout) = caller;
-        var jobs = _JobsIn(checkout)
+        var (paneId, ownCheckout) = caller;
+        if (await _ResolveCheckoutAsync(paneId, ownCheckout, checkout, cancellationToken) is not { } resolved)
+        {
+            return _CannotUseThatCheckout();
+        }
+
+        var jobs = _JobsIn(resolved)
             .Select(entry => new
             {
                 workflow = Path.GetFileName(entry.WorkflowPath),
@@ -113,11 +137,11 @@ internal sealed class LocalCiMcpTools(
             })
             .ToList();
 
-        var last = tracker.LastFor(checkout);
-        return Task.FromResult(McpJson.Of(new
+        var last = tracker.LastFor(resolved);
+        return McpJson.Of(new
         {
             ok = true,
-            checkout,
+            checkout = resolved,
             jobs,
             lastRun = last is null
                 ? null
@@ -129,7 +153,7 @@ internal sealed class LocalCiMcpTools(
                     commit = last.Commit,
                     at = last.FinishedAt,
                 },
-        }));
+        });
     }
 
     private (string PaneId, string Checkout)? _CheckoutOfCaller() =>
@@ -142,6 +166,38 @@ internal sealed class LocalCiMcpTools(
             "This tool runs the checks of the session that calls it, and the cockpit could not say which session "
             + "that is — or that session has not said which directory it is working in yet. There is no way to "
             + "name a project instead: that is deliberate.");
+
+    private static string _CannotUseThatCheckout() =>
+        McpJson.Error(
+            "That is not a worktree this session owns — call worktree_list to see the paths it may use, or leave "
+            + "checkout out to use this session's own.");
+
+    // AC-1015: the only path a caller may name is a worktree `worktree_create` already registered to this same
+    // pane — a subtask worktree has no pane of its own to be reached through otherwise. Anything else is refused:
+    // naming a path is not the same as owning it.
+    private async Task<string?> _ResolveCheckoutAsync(
+        string paneId, string ownCheckout, string? requested, CancellationToken cancellationToken)
+    {
+        if (requested is not { Length: > 0 })
+        {
+            return ownCheckout;
+        }
+
+        if (worktrees is null)
+        {
+            return null;
+        }
+
+        var full = Path.GetFullPath(requested);
+        var owned = (await worktrees.ListAsync(cancellationToken))
+            .Any(record => string.Equals(record.SessionId, paneId, StringComparison.Ordinal)
+                && string.Equals(Path.GetFullPath(record.Path), full, _PathComparison));
+
+        return owned ? full : null;
+    }
+
+    private static readonly StringComparison _PathComparison =
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     private async Task<bool> _AskOperatorAsync(string command, string checkout, string paneId)
     {
