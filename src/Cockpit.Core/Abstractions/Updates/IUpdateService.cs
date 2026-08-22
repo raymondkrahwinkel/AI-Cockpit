@@ -17,28 +17,20 @@ public interface IUpdateService
 
     /// <summary>
     /// Fetches the build now on offer on <paramref name="channel"/> (AC-388) — the half of updating that runs before
-    /// anything is applied. Never throws: a download that fails leaves the app exactly as it was, and the failure is
-    /// reported rather than swallowed, the same discipline <see cref="CheckAsync"/> already holds.
-    /// <para>
-    /// <paramref name="progress"/> is 0-100 and, for the real implementation, arrives from whatever thread Velopack's
-    /// own transfer runs on — not necessarily the UI thread (AC-368). A caller that touches view-model-bound state
-    /// from it must marshal onto the UI thread itself; this service makes no assumption that one exists.
-    /// </para>
-    /// <para>
-    /// A successful download is remembered by the service so a later <see cref="ApplyDownloadedUpdateAndRestart"/> or
-    /// <see cref="RequestUpdateOnNextStart"/> has something to act on — there is deliberately no
-    /// "apply this specific release" overload, because there is only ever one build worth applying: the one just
-    /// fetched.
-    /// </para>
+    /// anything is applied. Never throws: a failed download leaves the app exactly as it was, and the failure is
+    /// reported rather than swallowed, the same discipline <see cref="CheckAsync"/> holds. <paramref name="progress"/>
+    /// is 0-100 and, for the real implementation, arrives from whatever thread Velopack's own transfer runs on, not
+    /// necessarily the UI thread (AC-368), so a caller touching view-model-bound state must marshal itself. A successful
+    /// download is remembered so a later <see cref="ApplyDownloadedUpdateAndRestart"/> or <see cref="RequestUpdateOnNextStart"/>
+    /// has something to act on — deliberately no "apply this release" overload, since only the one just fetched is ever applied.
     /// </summary>
     Task<UpdateDownloadResult> DownloadAsync(UpdateChannel channel, Action<int>? progress = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Applies the build fetched by the most recent successful <see cref="DownloadAsync"/> and restarts into it now.
-    /// Only ever call this from an explicit, operator-confirmed click (AC-388) — there is no undo once the process
-    /// has exited into the new build, unlike the generic app-restart service, which relaunches the same executable
-    /// path and would restart into a discarded AppImage mount after an update. A no-op when nothing has been
-    /// downloaded.
+    /// Only ever call this from an explicit, operator-confirmed click (AC-388) — there is no undo once the process has
+    /// exited into the new build, unlike the generic app-restart service, which relaunches the same executable path and
+    /// would restart into a discarded AppImage mount after an update. A no-op when nothing has been downloaded.
     /// </summary>
     void ApplyDownloadedUpdateAndRestart();
 

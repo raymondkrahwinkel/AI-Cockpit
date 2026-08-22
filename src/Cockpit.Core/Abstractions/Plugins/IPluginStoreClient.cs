@@ -6,8 +6,8 @@ namespace Cockpit.Core.Abstractions.Plugins;
 /// Talks to a plugin store (#14, AC-7): fetches and parses its <c>index.json</c>, and downloads a specific
 /// version's zip to a temp file (verifying the store's checksum when one is published). A store is a
 /// <see cref="PluginStoreConfig"/> — a public remote, a private remote reached with a bearer token, or a local
-/// folder — and the client resolves each the right way. The downloaded zip is then handed to the normal
-/// <see cref="IPluginInstaller"/>: the store never bypasses install validation or the consent/hash-pin.
+/// folder — resolved each the right way; the zip is then handed to the normal <see cref="IPluginInstaller"/>,
+/// so the store never bypasses install validation or the consent/hash-pin.
 /// </summary>
 public interface IPluginStoreClient
 {
@@ -17,9 +17,8 @@ public interface IPluginStoreClient
 
     /// <summary>
     /// Fetches a store's logo image (#62) — the <c>iconUrl</c> its <c>index.json</c> advertises, absolute or
-    /// relative to the store — as raw bytes for the Manage-stores dialog to show. Http(s) or, for a local store, a
-    /// file; capped in size and time. There is no code and nothing to consent to, and a failure is non-fatal: the
-    /// store simply keeps its emoji/default glyph.
+    /// relative to the store — as raw bytes for the Manage-stores dialog. Http(s) or, for a local store, a file;
+    /// capped in size and time. No code and nothing to consent to; a failure is non-fatal, the store simply keeps its emoji/default glyph.
     /// </summary>
     Task<PluginStoreImageResult> DownloadImageAsync(PluginStoreConfig store, string iconUrl, CancellationToken cancellationToken = default);
 

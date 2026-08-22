@@ -8,11 +8,9 @@ namespace Cockpit.Core.Abstractions.Sessions;
 public interface IPtyHostFactory
 {
     /// <summary>
-    /// Starts <paramref name="executablePath"/> inside a fresh pseudo console/pty of the given size,
-    /// in <paramref name="workingDirectory"/>, with exactly <paramref name="environment"/> as its
-    /// environment. <paramref name="arguments"/> carries the launch-only start defaults the provider
-    /// composed (see <see cref="ITtySessionProvider"/>); TTY mode never adds the headless/stream-json
-    /// flags, so the genuine interactive TUI still runs.
+    /// Starts <paramref name="executablePath"/> in a fresh pseudo console/pty of the given size, in <paramref
+    /// name="workingDirectory"/> with exactly <paramref name="environment"/>. <paramref name="arguments"/> is
+    /// the provider's launch-only start defaults; TTY mode never adds headless/stream-json flags, so the real TUI runs.
     /// </summary>
     IConPtyProcess Start(
         string executablePath,

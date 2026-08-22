@@ -1,26 +1,16 @@
 namespace Cockpit.Core.Abstractions.Mcp;
 
 /// <summary>
-/// Hosts cockpit MCP endpoints (#AC-13, #AC-12). Besides the endpoints registered up front (see
-/// <see cref="CockpitMcpEndpoint"/>), a plugin can mount one at runtime — it loads after the host has started, so
-/// <see cref="MountAsync"/> is how its <c>ICockpitHost.AddMcpEndpoint</c> gets a working, key-guarded loopback MCP
-/// server for its tools — the cockpit's own, answered live to the session fan-out rather than written to the
-/// operator's registry (AC-40). The host reference is what lets the App's <c>ICockpitHost</c> reach the
-/// Infrastructure host.
+/// Hosts cockpit MCP endpoints (#AC-13, #AC-12). A plugin can also mount one at runtime via
+/// <see cref="MountAsync"/> for a key-guarded loopback MCP server answered live to the fan-out, not the registry
+/// (AC-40) — this reference is how the App's <c>ICockpitHost</c> reaches the Infrastructure host.
 /// </summary>
 public interface ICockpitMcpEndpointHost
 {
     /// <summary>
-    /// Mounts an MCP endpoint for the already-built <paramref name="tools"/> instance (a class with
-    /// <c>[McpServerTool]</c> methods, constructed by the caller with its own dependencies) on a loopback address
-    /// under <paramref name="serverName"/>. The endpoint is the cockpit's own, not written to the operator's registry
-    /// (AC-40): the session fan-out sees it live. Idempotent per name: mounting a name that is already up is a no-op.
-    /// <paramref name="isEnabled"/> lets a plugin gate its endpoint on its own setting — read each time the servers
-    /// are gathered; <see langword="null"/> means always on. <paramref name="isInternal"/> marks it internal-only
-    /// (AC-204): hidden from every user-facing MCP selection and the no-selection fan-out, yet still mountable when a
-    /// launch names it explicitly — for an endpoint only a specific spawn should mount (the Autopilot CEO/step tools).
-    /// <paramref name="alwaysMounted"/> is the opposite arrangement: hidden from the pickers too, but mounted into
-    /// every session whatever was selected — for cockpit plumbing that is not a choice (<c>cockpit-session</c>).
+    /// Mounts an MCP endpoint for <paramref name="tools"/> on a loopback address under <paramref name="serverName"/>
+    /// — the cockpit's own, not the registry (AC-40), idempotent per name. <paramref name="isEnabled"/> gates it on
+    /// the plugin's setting (null = always on); <paramref name="isInternal"/> (AC-204) hides it but keeps it explicitly mountable; <paramref name="alwaysMounted"/> mounts into every session regardless.
     /// </summary>
     Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default);
 }

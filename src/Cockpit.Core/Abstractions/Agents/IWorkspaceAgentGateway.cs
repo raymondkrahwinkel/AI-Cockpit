@@ -24,56 +24,37 @@ public sealed record WorkspaceAgentPane(string PaneId, string Name, string? Prof
 public sealed record WorkspaceAgentSnapshot(string WorkspaceId, IReadOnlyList<WorkspaceAgentPane> Panes);
 
 /// <summary>
-/// Resolves the workspace a pane belongs to, host-side over the running workspaces (AC-391). There is no
-/// pre-existing "find the workspace for this pane id" — the live workspaces are an App-layer concept
-/// (<c>WorkspacesViewModel</c>/<c>CockpitViewModel</c>), which Infrastructure cannot reference — so this gateway is
-/// the seam, the same way <c>IVerifySessionGateway</c> (AC-86) is the seam for a session's working directory.
-/// <para>
-/// The workspace is always derived from the pane, never accepted as a parameter: an agent names itself only by the
-/// pane id the transport already verified it as, and gets back whichever workspace that pane actually sits in — it
-/// cannot ask to see another workspace by naming one.
-/// </para>
+/// Resolves the workspace a pane belongs to, host-side over the running workspaces (AC-391); the live workspaces
+/// are an App-layer concept Infrastructure cannot reference, so this gateway is the seam, the same way
+/// <c>IVerifySessionGateway</c> (AC-86) is the seam for a working directory. Always derived from the pane, never
+/// accepted as a parameter: an agent cannot ask to see another workspace by naming one.
 /// </summary>
 public interface IWorkspaceAgentGateway
 {
     /// <summary>
     /// The workspace <paramref name="paneId"/> belongs to, and every AI-session pane in it — or null when
-    /// <paramref name="paneId"/> names no live session (it closed, or never existed), when that pane is not
-    /// itself an agent session (a plain terminal pane also carries a pane id and an MCP key, but has no CLI on
-    /// the other end to read a tool result — it must not be able to enroll itself or pollute a workspace's
-    /// roster), or when the pane resolves to no workspace at all (no explicit one, and no Sessions workspace
-    /// exists to fall back to) — reporting an invented empty workspace there would describe a desk that does not
-    /// exist.
+    /// <paramref name="paneId"/> names no live session, when that pane is not itself an agent session (a plain
+    /// terminal pane also carries a pane id and an MCP key but has no CLI to read a tool result — it must not
+    /// enroll itself or pollute a workspace's roster), or when the pane resolves to no workspace at all — reporting
+    /// an invented empty workspace there would describe a desk that does not exist.
     /// </summary>
     Task<WorkspaceAgentSnapshot?> GetWorkspaceSnapshotAsync(string paneId);
 
     /// <summary>
     /// Starts a turn on <paramref name="targetPaneId"/> carrying a labelled notice that
-    /// <paramref name="callerPaneId"/> marked a message to it as urgent (AC-395), and says what became of the
-    /// attempt.
-    /// <para>
-    /// Every reason a wake can be refused is decided <em>here</em>, on the UI thread, against the panes as they
-    /// are at that moment — not against the snapshot the sending tool checked a few instructions earlier. The
-    /// recipient can go busy, open a consent banner or leave the desk in that window, and each of those turns a
-    /// permitted wake into one of the three things a wake must never be: an interruption, a question pushed off
-    /// the screen, or a turn on a pane in another workspace.
-    /// </para>
-    /// <para>
-    /// Consent is the one check that is <em>not</em> here. It is a fact about the pane rather than about the
-    /// moment, it costs no dispatch to read, and deciding it before this call keeps a session that never opted in
-    /// from having a turn composed for it at all.
-    /// </para>
+    /// <paramref name="callerPaneId"/> marked a message urgent (AC-395), and says what became of it. Every refusal
+    /// is decided <em>here</em>, against the panes as they are right now rather than an earlier snapshot, so a
+    /// recipient that goes busy, opens a consent banner or leaves the desk never gets an interruption. Consent is
+    /// the one check <em>not</em> here — deciding it before this call keeps a never-opted-in session untouched.
     /// </summary>
     Task<AgentWakeOutcome> TryWakeAsync(string callerPaneId, string targetPaneId, string kind);
 
     /// <summary>
     /// Starts a turn on <paramref name="targetPaneId"/> because mail from <paramref name="fromPaneId"/> is waiting
-    /// in its inbox (AC-656) — the host delivering a pane's own already-accepted mail, not a peer asking to
-    /// interrupt it. Checks everything <see cref="TryWakeAsync"/> checks about the target at the moment of waking
-    /// (busy, a question open for its operator, unable to take a turn at all) except the desk boundary: that was
-    /// already enforced when the mail was delivered, and re-checking it here would refuse delivering a pane's own
-    /// mail because the sender happened to have since left. Consent-free by design — see the ticket for why this is
-    /// not <see cref="TryWakeAsync"/> with the check skipped by a flag.
+    /// in its inbox (AC-656) — the host delivering a pane's own already-accepted mail, not a peer interrupting it.
+    /// Checks everything <see cref="TryWakeAsync"/> checks except the desk boundary, already enforced at delivery
+    /// time (re-checking it here would refuse a pane's own mail because the sender since left). Consent-free by
+    /// design — see the ticket for why this is not <see cref="TryWakeAsync"/> with the check skipped by a flag.
     /// </summary>
     Task<AgentWakeOutcome> TryWakeForWaitingMailAsync(string fromPaneId, string targetPaneId, string kind);
 }

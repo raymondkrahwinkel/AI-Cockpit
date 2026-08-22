@@ -11,9 +11,8 @@ public interface IUpdateSupportProbe
 {
     /// <summary>
     /// What this copy can do about its own updates. Never throws — a probe that fails to establish anything reports
-    /// <see cref="UpdateSupport.NotPackaged"/>, because a property that throws inside a binding fails silently and
-    /// leaves the control on whatever its default visibility was (the AC-379 shape: an offer behind an invisible
-    /// banner is not an offer).
+    /// <see cref="UpdateSupport.NotPackaged"/>, since a property throwing inside a binding fails silently and leaves
+    /// the control on its default visibility (the AC-379 shape: an offer behind an invisible banner is not an offer).
     /// </summary>
     UpdateSupport Detect();
 }

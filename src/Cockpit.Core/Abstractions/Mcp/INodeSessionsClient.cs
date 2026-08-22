@@ -3,23 +3,10 @@ using Cockpit.Core.Mcp;
 namespace Cockpit.Core.Abstractions.Mcp;
 
 /// <summary>
-/// The controller's side of AC-795: what runs on a paired node, and starting or stopping one of those sessions
-/// from here. The mirror of <c>NodeSessionMcpTools</c>, which is what this talks to — one call per tool, over the
-/// same pinned, shared-secret connection the pairing left in the MCP registry.
+/// The controller's side of AC-795: what runs on a paired node, starting or stopping sessions there. Mirrors
+/// <c>NodeSessionMcpTools</c> over the same pinned, shared-secret connection the pairing left in the MCP registry —
+/// the same four tools the assistant reaches, giving the operator's screen the same reach and no wider (criterion 5). Nothing here is cached — a node is another machine, and a stale list is how a stop lands on the wrong row.
 /// </summary>
-/// <remarks>
-/// <para>
-/// <b>It reaches the same four tools the assistant does, and no more.</b> The assistant on this cockpit gets at a
-/// node through the registry row the pairing wrote, so its whole reach is that node's <c>cockpit-node</c> server.
-/// This interface exists so the operator's own screen has that same reach and not a wider one — criterion 5 of
-/// AC-795 is a statement about both directions, and the cheapest way to hold it is for the UI to have no private
-/// route of its own.
-/// </para>
-/// <para>
-/// <b>Nothing here is cached.</b> A node is another machine: what it was running a minute ago is not what it is
-/// running now, and a stale list is how a stop lands on the wrong row. Every read is a call.
-/// </para>
-/// </remarks>
 public interface INodeSessionsClient
 {
     /// <summary>The nodes this cockpit is paired with, by name, as the MCP registry records them.</summary>

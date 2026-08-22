@@ -24,9 +24,8 @@ public interface IPluginRegistrationStore
     /// <summary>
     /// Same as <see cref="SaveMenuPreferenceAsync(string, int, bool, CancellationToken)"/>, also persisting whether
     /// the plugin is pinned top-level in the sidebar rather than collapsed under "Plugins ›" (AC-937). A default
-    /// overload — forwards to the three-argument member, dropping the pin — rather than widening the mandatory
-    /// signature, so the many existing <see cref="IPluginRegistrationStore"/> fakes across this repo's tests keep
-    /// compiling untouched; only the real store persists the pin.
+    /// overload — forwarding to the three-argument member, dropping the pin — rather than widening the mandatory
+    /// signature, so the many existing <see cref="IPluginRegistrationStore"/> fakes across this repo's tests keep compiling untouched; only the real store persists the pin.
     /// </summary>
     Task SaveMenuPreferenceAsync(string folderId, int menuOrder, bool hiddenInMenu, bool pinnedToSidebar, CancellationToken cancellationToken = default) =>
         SaveMenuPreferenceAsync(folderId, menuOrder, hiddenInMenu, cancellationToken);

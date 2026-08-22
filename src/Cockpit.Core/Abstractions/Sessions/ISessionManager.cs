@@ -3,14 +3,10 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.Core.Abstractions.Sessions;
 
 /// <summary>
-/// The register of every live driver-backed session, and the one place their lifetime is owned. An
-/// interactive panel and a delegated task (#67) both get their runtime from here and both stop it here, so
-/// there is a single stop path and a single answer to "what is running right now".
+/// The register of every live driver-backed session, and the one place their lifetime is owned. An interactive
+/// panel and a delegated task (#67) both get and stop their runtime here, one stop path, one answer to "what is
+/// running now". TTY sessions are absent: they are pty-backed with no <see cref="ISessionDriver"/> to register.
 /// </summary>
-/// <remarks>
-/// TTY sessions are deliberately absent: they are pty-backed and have no <see cref="ISessionDriver"/>, and
-/// nothing that consumes this register (delegation targets, the headless surface) can drive one.
-/// </remarks>
 public interface ISessionManager
 {
     /// <summary>Every session currently registered, in creation order.</summary>

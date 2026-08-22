@@ -225,10 +225,9 @@ public interface IDiagramAccessRegistry
     /// <summary>
     /// Applies a per-object edit (AC-852) under the registry's own lock: <paramref name="edit"/> gets the text as it
     /// stands then and returns the new text plus a readable summary, or a null text to change nothing — so two edits
-    /// naming different objects both land, neither overwriting the whole of the other, and <paramref name="kind"/>/
-    /// <paramref name="objectKey"/> journal it for a later targeted <see cref="Revert"/> (AC-853).
-    /// Raises <see cref="TextChanged"/>, <see cref="ObjectEdited"/> and <see cref="HistoryChanged"/>; false without
-    /// <see cref="DiagramCapability.Edit"/> or when nothing changed.
+    /// naming different objects both land, and <paramref name="kind"/>/<paramref name="objectKey"/> journal it for a
+    /// later targeted <see cref="Revert"/> (AC-853). Raises <see cref="TextChanged"/>, <see cref="ObjectEdited"/> and
+    /// <see cref="HistoryChanged"/>; false without <see cref="DiagramCapability.Edit"/> or when nothing changed.
     /// </summary>
     bool EditCoupled(string sessionId, string surfaceId, DiagramHandEditKind kind, string objectKey, Func<string, (string? Text, string Summary)> edit);
 
@@ -239,8 +238,8 @@ public interface IDiagramAccessRegistry
 
     /// <summary>
     /// Applies one hand-edit the operator made on the surface itself (AC-841), under the same lock as
-    /// <see cref="EditCoupled"/>: one change, never a series of half states, and never overwriting an agent edit to a
-    /// different object. Returns null when it landed, or the reason it was refused — an unknown surface, a change the
+    /// <see cref="EditCoupled"/>: one change, never a series of half states, never overwriting an agent edit to a
+    /// different object. Null when it landed, or the reason it was refused — unknown surface, a change the
     /// per-object grammar cannot make, or one that would not leave valid Mermaid behind.
     /// </summary>
     string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit);

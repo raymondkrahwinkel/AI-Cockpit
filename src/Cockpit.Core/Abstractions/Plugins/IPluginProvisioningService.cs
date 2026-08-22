@@ -5,9 +5,9 @@ namespace Cockpit.Core.Abstractions.Plugins;
 /// <summary>
 /// The provisioning seam (AC-510[b]): fetch a store version → verify its checksum → install it → report which of
 /// the four outcomes it landed on (<see cref="PluginProvisionOutcome"/>), without any UI of its own. Wraps
-/// <see cref="IPluginStoreClient"/> and <see cref="IPluginInstaller"/> — both already free of UI dependencies — so
-/// this is the one place their glue lives; the store dialog's install/update/rollback commands and any future
-/// installer that never shows a store screen at all (AC-541) both call the same instance.
+/// <see cref="IPluginStoreClient"/> and <see cref="IPluginInstaller"/> — both already UI-free — so this is the
+/// one place their glue lives; the store dialog's install/update/rollback commands and any future installer that
+/// never shows a store screen at all (AC-541) both call the same instance.
 /// </summary>
 public interface IPluginProvisioningService
 {

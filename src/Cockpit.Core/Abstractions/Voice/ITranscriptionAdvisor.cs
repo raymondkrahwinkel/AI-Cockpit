@@ -15,9 +15,9 @@ public sealed record TranscriptionCapabilities(bool CudaUsable, bool VulkanUsabl
 
 /// <summary>
 /// Detects what this host can do for speech-to-text, so the Options → Voice → Transcribe page offers only
-/// host-relevant choices (no CUDA on a non-NVIDIA machine), names the hardware, and can recommend a model +
-/// backend with a reason. Slice 1 was capability detection; slice 2 adds the GPU brand / display-adapter facts
-/// and the recommendation. A later slice measures a first-use calibration on top of the recommendation.
+/// host-relevant choices (no CUDA on a non-NVIDIA machine), names the hardware, and can recommend a model + backend
+/// with a reason. Slice 1 was capability detection; slice 2 adds the GPU brand / display-adapter facts and the
+/// recommendation. A later slice measures a first-use calibration on top of the recommendation.
 /// </summary>
 public interface ITranscriptionAdvisor
 {

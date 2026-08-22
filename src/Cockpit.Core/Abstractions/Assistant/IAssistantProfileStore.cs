@@ -4,26 +4,12 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.Core.Abstractions.Assistant;
 
 /// <summary>
-/// Loads the <see cref="AssistantProfileSlot"/> and repoints it at another record (AC-543).
+/// Loads the <see cref="AssistantProfileSlot"/> and repoints it at another record (AC-543). There is no delete: no
+/// method is offered for it, since an absent method cannot be forgotten or bypassed the way a guard can — the slot
+/// lives in its own <c>assistantProfile</c> section for the same reason. There is also no way to change a record's
+/// provider: <see cref="RepointAsync"/> takes a whole <see cref="SessionProfile"/>, so switching means minting a
+/// new record; a failed switch leaves the old one untouched, and one that must give up says so via <see cref="UnsetAsync"/> (blank reasons rejected) — neither path leaves an unexplained empty slot.
 /// </summary>
-/// <remarks>
-/// <b>There is no delete.</b> The slot cannot be removed, and the laziest way to enforce that is to offer no
-/// method for it: a guard can be forgotten, bypassed by a second call site, or dropped in a refactor, while an
-/// absent method cannot be called at all. The slot lives in its own <c>assistantProfile</c> section rather than
-/// in the profile list for the same reason — see <see cref="AssistantProfileSlot"/>.
-/// <para>
-/// <b>There is no way to change a record's provider either.</b> <see cref="RepointAsync"/> takes a whole
-/// <see cref="SessionProfile"/>, never a provider config to apply to the one already stored, so the
-/// <c>with { ProviderConfig = … }</c> that <see cref="SessionProfile.ProviderConfig"/>'s own doc-comment forbids
-/// has nothing to attach to here. Switching provider means minting a new record and handing it over.
-/// </para>
-/// <para>
-/// <b>The two writes are the whole of criterion 4.</b> A provider switch that fails simply never reaches
-/// <see cref="RepointAsync"/>, so the old record stays exactly where it was; a switch that has to give up says so
-/// through <see cref="UnsetAsync"/>, which will not accept a blank reason. Neither path can leave the operator
-/// with an empty slot and no explanation, because neither path can express one.
-/// </para>
-/// </remarks>
 public interface IAssistantProfileStore
 {
     /// <summary>

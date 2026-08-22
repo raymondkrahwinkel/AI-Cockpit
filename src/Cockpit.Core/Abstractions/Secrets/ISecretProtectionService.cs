@@ -17,11 +17,9 @@ public readonly record struct SecretProtectionStatus(bool Enabled, bool Unlocked
 public readonly record struct SecretMigrationProgress(int Completed, int Total);
 
 /// <summary>
-/// Turning credential encryption on and off, and unlocking it at startup.
-/// <para>
-/// Every operation that rewrites the config does so atomically and keeps a backup: a migration interrupted
-/// halfway — a crash, the power going — must leave the operator with their credentials, not with half a file.
-/// </para>
+/// Turning credential encryption on and off, and unlocking it at startup. Every operation that rewrites the
+/// config does so atomically and keeps a backup: a migration interrupted halfway — a crash, the power going —
+/// must leave the operator with their credentials, not with half a file.
 /// </summary>
 public interface ISecretProtectionService
 {
@@ -30,8 +28,7 @@ public interface ISecretProtectionService
     /// <summary>
     /// Remembers that the operator dismissed the awareness banner (AC-41) for the credentials now in the file, so
     /// it does not nag again until a new credential is added. Bound to a fingerprint of the credential field paths
-    /// — not their values — so rotating a key on an existing field does not bring the banner back, but adding a
-    /// new one does. A no-op once encryption is on, since there is then nothing to warn about.
+    /// — not their values — so rotating a key does not bring the banner back, but a new field does. A no-op once encryption is on, since there is then nothing to warn about.
     /// </summary>
     Task DismissUnprotectedWarningAsync(CancellationToken cancellationToken = default);
 
@@ -49,8 +46,7 @@ public interface ISecretProtectionService
 
     /// <summary>
     /// Empties every credential and turns encryption off: the way back in for an operator who forgot their
-    /// password. Their profiles, layout and shortcuts survive; the tokens have to be typed again. Without this
-    /// a forgotten password would brick the app, and a promise with no way out is one people route around.
+    /// password. Profiles, layout and shortcuts survive; tokens must be typed again. Without this a forgotten password would brick the app, and a promise with no way out is one people route around.
     /// </summary>
     Task ResetForgottenPasswordAsync(CancellationToken cancellationToken = default);
 }

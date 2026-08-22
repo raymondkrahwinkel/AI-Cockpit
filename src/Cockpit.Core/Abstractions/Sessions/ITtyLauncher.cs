@@ -11,36 +11,9 @@ namespace Cockpit.Core.Abstractions.Sessions;
 public interface ITtyLauncher
 {
     /// <summary>
-    /// Spawns <paramref name="provider"/>'s CLI in a pseudo console sized
-    /// <paramref name="columns"/>×<paramref name="rows"/>, under <paramref name="profile"/> (or the host's own
-    /// configuration when null), with <paramref name="options"/> as its launch-only start defaults in that
-    /// provider's vocabulary. <paramref name="workingDirectory"/> overrides the global working-directory option
-    /// for this one session when non-blank.
-    /// <para>
-    /// The returned process owns the files the launch wrote: disposing it deletes them.
-    /// </para>
-    /// <para>
-    /// <paramref name="paneId"/> is this session pane's id (#AC-13); when non-blank it is handed to the CLI as the
-    /// <c>COCKPIT_PANE_ID</c> environment variable, so the agent can name its own session to the cockpit-session
-    /// MCP server's <c>set_status</c> tool.
-    /// </para>
-    /// <para>
-    /// <paramref name="enabledMcpServerNames"/> is the per-session MCP-server selection (#44): the enabled server
-    /// names to narrow the shared registry to, or <see langword="null"/> for no narrowing. Carried onto the
-    /// <see cref="TtyLaunchContext"/> so a provider that fans the registry into its config honours the operator's
-    /// checklist instead of loading every eligible server.
-    /// </para>
-    /// <para>
-    /// <paramref name="contributed"/> is what the plugins give this session (AC-165), applied after the profile's
-    /// own variables and before the host identity and the provider's overlay — the same precedence the SDK route
-    /// applies.
-    /// </para>
-    /// <para>
-    /// <paramref name="projectId"/> (AC-218) is the project this session was started under, carried onto the
-    /// <see cref="TtyLaunchContext"/> so a provider that fans the registry into its config resolves it against
-    /// that project's own registry view instead of the unscoped registry. <see langword="null"/> for a session
-    /// with no project.
-    /// </para>
+    /// Spawns <paramref name="provider"/>'s CLI in a sized pseudo console under <paramref name="profile"/>; owns
+    /// and deletes its launch files on dispose. Carries <paramref name="paneId"/> as <c>COCKPIT_PANE_ID</c>
+    /// (#AC-13) for self-labelling, an MCP narrowing (#44), plugin <paramref name="contributed"/> (AC-165), and <paramref name="projectId"/> (AC-218).
     /// </summary>
     IConPtyProcess Launch(
         ITtySessionProvider provider,

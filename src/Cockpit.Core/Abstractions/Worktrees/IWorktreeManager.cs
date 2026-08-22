@@ -11,10 +11,9 @@ public interface IWorktreeManager
 {
     /// <summary>
     /// Raised once the source branch has been dealt with, before the worktree itself is made (AC-349) — the moment
-    /// the operator's own checkout may have moved. Deliberately not the returned record: a start that is cancelled
-    /// or fails after this point never hands that record to anyone, and a branch that moved without a word is the
-    /// thing this feature exists to prevent. Fires for every creation, including one an agent asked for, and may
-    /// arrive on any thread.
+    /// the operator's own checkout may have moved. Deliberately not the returned record: a start that is cancelled or
+    /// fails after this point never hands that record to anyone, and a branch that moved without a word is the thing
+    /// this feature exists to prevent. Fires for every creation, including one an agent asked for, on any thread.
     /// </summary>
     event Action<WorktreeSourceRefresh>? SourceRefreshed;
 
@@ -26,24 +25,18 @@ public interface IWorktreeManager
     Task<GitRepositoryInfo?> DetectRepositoryAsync(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates a worktree for <paramref name="sessionId"/> on a new branch <paramref name="branch"/>, forked from
-    /// the repository behind <paramref name="directory"/>, and records it. The source branch is fetched and — only
-    /// when it is clean, has nothing of its own and nothing on disk in the way — fast-forwarded first, so the
-    /// session starts on the latest state of that branch rather than on whatever was last pulled (AC-349); where
-    /// that cannot be done the fork is from the local HEAD and <see cref="WorktreeRecord.SourceRefresh"/> says so.
-    /// Throws when <paramref name="directory"/> is not a repository or <paramref name="branch"/> already exists — a
-    /// session is never quietly given a branch that is not its own.
-    /// <para>
-    /// <paramref name="handling"/> decides whether that update may move the source branch. It may for a session the
-    /// operator started — their checkout comes along — and may not for one an agent asked for against a folder it
-    /// merely named, which forks from the upstream tip instead (AC-376).
-    /// </para>
-    /// <para>
-    /// <paramref name="isAgentCreated"/> marks a worktree an agent made for its own subtask through the
-    /// <c>worktree_create</c> MCP tool (AC-520 fix 5), as opposed to the one a session runs in — the default,
-    /// <see langword="false"/>, which the UI's own session-start/reattach path leaves alone. See
+    /// Creates a worktree for <paramref name="sessionId"/> on a new branch <paramref name="branch"/>, forked from the
+    /// repository behind <paramref name="directory"/>, and records it. The source branch is fetched and — only when
+    /// clean, with nothing of its own and nothing on disk in the way — fast-forwarded first, so the session starts on
+    /// the latest state of that branch rather than whatever was last pulled (AC-349); where that cannot be done the
+    /// fork is from the local HEAD and <see cref="WorktreeRecord.SourceRefresh"/> says so. Throws when
+    /// <paramref name="directory"/> is not a repository or <paramref name="branch"/> already exists. <paramref name="handling"/>
+    /// decides whether that update may move the source branch: it may for a session the operator started — their
+    /// checkout comes along — and may not for one an agent asked for against a folder it merely named, which forks
+    /// from the upstream tip instead (AC-376). <paramref name="isAgentCreated"/> marks a worktree an agent made for
+    /// its own subtask through the <c>worktree_create</c> MCP tool (AC-520 fix 5), as opposed to the one a session
+    /// runs in — the default, <see langword="false"/>, left alone by the UI's own session-start/reattach path; see
     /// <see cref="WorktreeRecord.IsAgentCreated"/> for what this changes about removing it.
-    /// </para>
     /// </summary>
     Task<WorktreeRecord> CreateAsync(
         string sessionId,
@@ -56,8 +49,7 @@ public interface IWorktreeManager
     /// <summary>
     /// Creates a worktree for a session, generating a collision-free branch name from <paramref name="sessionLabel"/>
     /// and <paramref name="sessionId"/> (AC-85) — the convenience both the SDK/headless start path and the TTY launch
-    /// path use, so branch naming lives in one place rather than each caller inventing its own. <paramref name="isAgentCreated"/>
-    /// carries the same meaning as on <see cref="CreateAsync"/>.
+    /// path use, so branch naming lives in one place. <paramref name="isAgentCreated"/> carries the same meaning as on <see cref="CreateAsync"/>.
     /// </summary>
     Task<WorktreeRecord> CreateForSessionAsync(
         string sessionId,
@@ -87,28 +79,21 @@ public interface IWorktreeManager
     /// Whether the worktree still holds uncommitted changes or untracked files right now (a non-empty
     /// <c>git status --porcelain</c>) — the exact content a force-remove would discard; committed history stays on the
     /// branch. The agent-facing remove tool gates a dirty removal behind operator consent on this, not on
-    /// <see cref="IsCleanAsync"/>: a worktree that only carries commits — which a force-remove keeps on the branch —
-    /// is not prompted for. Untracked files count deliberately: a force-remove deletes them too, and they may be work
-    /// the agent has not committed, so their loss is the operator's call, not a silent one.
+    /// <see cref="IsCleanAsync"/>: a worktree that only carries commits — kept on the branch by a force-remove — is not
+    /// prompted for. Untracked files count deliberately: a force-remove deletes them too, and they may be uncommitted work, so their loss is the operator's call, not a silent one.
     /// </summary>
     Task<bool> HasUncommittedChangesAsync(WorktreeRecord record, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Removes the worktree and its registry entry. Without <paramref name="force"/> git itself refuses a worktree
-    /// with uncommitted work, which is the safety net; <paramref name="force"/> is the operator's explicit override.
-    /// <para>
-    /// A worktree whose folder is already gone is removed by dropping its registry entry alone, even when git refuses
-    /// the path or cannot be run for it at all: there is nothing left on disk to lose, and the branch survives either
-    /// way. Without that, an entry git no longer knows about could never be removed (AC-342). Every other refusal
-    /// throws with what git said.
-    /// </para>
-    /// <para>
-    /// A worktree whose <em>repository</em> is gone (AC-507) is removed the same way — dropping the entry is the only
-    /// possible removal, because there is no repository left to ask git to do it — but that folder is never touched:
-    /// it may still hold uncommitted work with nowhere else to be. Returns a message to surface when that happened,
-    /// so "removed" is never mistaken for "discarded"; <c>null</c> on a plain removal with nothing left behind to
-    /// mention.
-    /// </para>
+    /// with uncommitted work, which is the safety net; <paramref name="force"/> is the operator's explicit override. A
+    /// worktree whose folder is already gone is removed by dropping its registry entry alone, even when git refuses
+    /// the path or cannot be run for it: nothing is left on disk to lose, the branch survives either way, and without
+    /// this an entry git no longer knows about could never be removed (AC-342) — every other refusal throws with what
+    /// git said. A worktree whose <em>repository</em> is gone (AC-507) is removed the same way, since dropping the
+    /// entry is the only possible removal, but its folder is never touched — it may still hold uncommitted work with
+    /// nowhere else to be. Returns a message to surface when that happened, so "removed" is never mistaken for
+    /// "discarded"; <c>null</c> on a plain removal with nothing left behind to mention.
     /// </summary>
     Task<string?> RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default);
 
@@ -116,18 +101,16 @@ public interface IWorktreeManager
     /// Re-owns an existing worktree for a new session (AC-85 reattach): after a crash a worktree's owning session is
     /// gone, and starting a new session "here" hands the same worktree and branch to the new session instead of
     /// orphaning the work — the registry owner is updated and the worktree re-locked. Returns the updated record, or
-    /// <c>null</c> when no registered worktree matches <paramref name="worktreePath"/>. The caller enforces that the
-    /// old owner is gone (reattaching a live worktree would put two sessions on one tree).
+    /// <c>null</c> when no registered worktree matches <paramref name="worktreePath"/>. The caller enforces the old owner is gone (reattaching a live worktree would put two sessions on one tree).
     /// </summary>
     Task<WorktreeRecord?> ReattachAsync(string worktreePath, string newSessionId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Strips a worktree's registry record of its owning session (AC-520 fix 6) — the operator's explicit "release"
-    /// on a row that only counts as live because of an open restore offer (AC-410) with nothing actually running
-    /// behind it. Turns the record into an ordinary orphan: the next <see cref="ReconcileAsync"/> sweep picks it up
-    /// like any other (clean removed, work retained for review), and the agent-facing remove guard admits it because
-    /// its owner is no longer in <c>LiveSessionIds</c>. Nothing is removed here — only ownership is given up; Remove
-    /// and Reattach on the row do the rest. A no-op when no registered worktree matches <paramref name="worktreePath"/>.
+    /// Strips a worktree's registry record of its owning session (AC-520 fix 6) — the operator's explicit "release" on
+    /// a row that only counts as live because of an open restore offer (AC-410) with nothing actually running behind
+    /// it. Turns the record into an ordinary orphan: the next <see cref="ReconcileAsync"/> sweep picks it up like any
+    /// other (clean removed, work retained), and the agent-facing remove guard admits it since its owner is no longer
+    /// in <c>LiveSessionIds</c>. Nothing is removed here, only ownership given up; Remove and Reattach do the rest. A no-op when no registered worktree matches <paramref name="worktreePath"/>.
     /// </summary>
     Task ReleaseOwnershipAsync(string worktreePath, CancellationToken cancellationToken = default);
 

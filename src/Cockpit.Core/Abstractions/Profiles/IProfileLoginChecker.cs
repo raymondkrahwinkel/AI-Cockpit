@@ -6,8 +6,7 @@ namespace Cockpit.Core.Abstractions.Profiles;
 /// Checks whether a <see cref="SessionProfile"/> is logged in, generically: the host gates a session start and
 /// shows the login prompt without knowing what "logged in" means for any provider. Dispatches to the profile's
 /// provider plugin, which answers from its own config (existence-only by contract — never reading a credential's
-/// contents, Iron Law #8). A provider with no login concept, or a profile whose provider declares none, is
-/// treated as always ready.
+/// contents, Iron Law #8). No login concept, or none declared, means always ready.
 /// </summary>
 public interface IProfileLoginChecker
 {

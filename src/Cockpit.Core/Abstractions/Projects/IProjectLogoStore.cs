@@ -10,8 +10,7 @@ public interface IProjectLogoStore
     /// <summary>
     /// Stores the image at <paramref name="source"/> — a local path or an <c>http(s)</c> URL — as
     /// <paramref name="projectId"/>'s logo, replacing any it already had, and returns the stored path.
-    /// <see langword="null"/> when there is nothing to store or it could not be read: a logo is decoration, so a
-    /// broken source costs the picture and nothing else.
+    /// <see langword="null"/> when there is nothing to store or it could not be read: a logo is decoration, so a broken source costs only the picture.
     /// </summary>
     Task<string?> SaveAsync(string projectId, string source, CancellationToken cancellationToken = default);
 

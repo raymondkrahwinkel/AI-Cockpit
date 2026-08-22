@@ -45,7 +45,7 @@ public sealed record WhiteboardHistoryEntry(string Id, string Origin, Whiteboard
 /// The source of truth for whiteboard-surface access (AC-823) — the whiteboard counterpart to
 /// <c>IDiagramAccessRegistry</c> (AC-810); read that one first. Deviations: what a surface holds is a rendered PNG
 /// snapshot (AC-821's <c>IWhiteboardSnapshotRenderer</c> output), not text, and the write path adds objects one at a
-/// time (AC-854) rather than replacing the board — an agent never removes or overwrites the operator's own work.
+/// time (AC-854) rather than replacing the board, so an agent never removes or overwrites the operator's own work.
 /// </summary>
 public interface IWhiteboardAccessRegistry
 {

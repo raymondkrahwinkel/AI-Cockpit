@@ -17,10 +17,9 @@ public interface IPermissionRuleStore
     Task<IReadOnlyList<PermissionRule>> LoadAsync(string? profileLabel, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Persists <paramref name="rule"/> for the profile identified by <paramref name="profileLabel"/>,
-    /// merging with (not replacing) that profile's existing rules and leaving every other section of
-    /// the config — and every other profile's rules — untouched. A null <paramref name="profileLabel"/>
-    /// is a no-op: there is no stable key to persist against.
+    /// Persists <paramref name="rule"/> for the profile identified by <paramref name="profileLabel"/>, merging
+    /// with (not replacing) that profile's existing rules and leaving every other section — and every other
+    /// profile's rules — untouched. A null <paramref name="profileLabel"/> is a no-op: no stable key to persist against.
     /// </summary>
     Task AddAsync(string? profileLabel, PermissionRule rule, CancellationToken cancellationToken = default);
 }

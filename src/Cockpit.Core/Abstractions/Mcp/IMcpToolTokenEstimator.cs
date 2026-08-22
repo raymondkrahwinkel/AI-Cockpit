@@ -11,11 +11,9 @@ public sealed record McpServerToolEstimate(string ServerName, int ToolCount, int
 }
 
 /// <summary>
-/// Estimates, per MCP server, the prompt tokens its tool definitions cost — so the New-session dialog and the
-/// profile editor can show a running total for the ticked servers before a session starts, instead of the
-/// operator only finding out at an <c>exceed_context_size_error</c> (AC-134). Deriving the number means
-/// connecting the server and reading its <c>tools/list</c> (a config alone has no tool schemas), which is the
-/// cost — so results are cached per server and only recomputed on an explicit refresh.
+/// Estimates, per MCP server, the prompt tokens its tools cost — so the New-session dialog and profile editor show
+/// a running total before start, instead of the operator hitting <c>exceed_context_size_error</c> (AC-134). Deriving
+/// it means connecting and reading <c>tools/list</c>, the cost — so results are cached and recomputed only on refresh.
 /// </summary>
 public interface IMcpToolTokenEstimator
 {

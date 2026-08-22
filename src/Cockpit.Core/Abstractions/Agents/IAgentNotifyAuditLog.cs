@@ -1,10 +1,9 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
 /// <summary>
-/// Records every <c>notify</c> attempt one agent session makes at another (AC-392) — the ones that were delivered
-/// and, just as importantly, the ones the host turned down. An agent can put text into another agent's context;
-/// "who tried to say what to whom, and what did the cockpit do about it" has to be answerable afterwards from
-/// something more durable than the app's memory.
+/// Records every <c>notify</c> attempt one agent session makes at another (AC-392) — delivered ones and, just as
+/// importantly, the ones the host turned down. An agent can put text into another agent's context; "who tried to
+/// say what to whom, and what did the cockpit do about it" must be answerable from something more durable than memory.
 /// </summary>
 /// <remarks>
 /// Append-only by contract, like the consent trail (#AC-47): there is no clear or delete here, so an agent cannot

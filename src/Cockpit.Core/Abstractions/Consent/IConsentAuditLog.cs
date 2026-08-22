@@ -1,15 +1,11 @@
 namespace Cockpit.Core.Abstractions.Consent;
 
 /// <summary>
-/// Records every consent decision — what was asked, by whom, and whether it was approved or denied (#AC-47).
-/// Consent lets an agent act with the operator's rights, so "what did I approve while it was running" has to be
-/// answerable from something more durable than the app's memory.
+/// Records every consent decision — what was asked, by whom, approved or denied (#AC-47) — so "what did I approve
+/// while it was running" is answerable from something more durable than the app's memory. Append-only by contract:
+/// no clear or delete, so a plugin (or an agent through it) can't erase its own trail. Denials are recorded too,
+/// including fail-closed ones where nothing could ask.
 /// </summary>
-/// <remarks>
-/// Append-only by contract: there is no clear or delete here. A plugin — or an agent through it — must not be able
-/// to erase its own consent trail, which is exactly the record you want when something went wrong. Denials are
-/// recorded too, including the fail-closed ones where nothing could ask.
-/// </remarks>
 public interface IConsentAuditLog
 {
     /// <summary>Appends an entry. Never throws: a broken audit log must not take the action down with it, so a write failure is a logged warning rather than a lost decision.</summary>

@@ -2,13 +2,10 @@ namespace Cockpit.Core.Abstractions.Assistant;
 
 /// <summary>
 /// What the voice assistant was told to hold on to across sessions (AC-595) — a name, a house rule, which desk
-/// "prod" means. Read at every start and appended to while it is talking.
+/// "prod" means. Read at every start and appended to while it is talking. Append, never rewrite: a memory that
+/// replaces itself would quietly lose what was said an hour earlier. Pruning is the operator opening the file —
+/// no forget tool, no UI, a known ceiling rather than an oversight (see the <c>ponytail:</c> note on the implementation).
 /// </summary>
-/// <remarks>
-/// <b>Append, never rewrite.</b> Two things said an hour apart are two things, and a memory that replaces itself
-/// would quietly lose the first one. Pruning is the operator opening the file: there is no forget tool and no UI,
-/// which is a known ceiling rather than an oversight — see the <c>ponytail:</c> note on the implementation.
-/// </remarks>
 public interface IAssistantMemory
 {
     /// <summary>What has been remembered, ready to go into the launch instruction. Empty when nothing ever was.</summary>
