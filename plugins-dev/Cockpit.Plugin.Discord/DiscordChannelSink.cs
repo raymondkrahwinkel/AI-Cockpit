@@ -2,11 +2,9 @@ using global::Discord;
 
 namespace Cockpit.Plugin.Discord;
 
-/// <summary>
-/// The real <see cref="IDiscordChannelSink"/>: posts/edits/reacts against one Discord text channel over Discord.NET's
-/// REST surface. <paramref name="resolveChannel"/> is asked fresh on every call rather than resolved once — the
-/// gateway may not have the channel cached yet the moment the bridge tries to use it.
-/// </summary>
+// The real `IDiscordChannelSink`: posts/edits/reacts against one Discord text channel over Discord.NET's
+// REST surface. `resolveChannel` is asked fresh on every call rather than resolved once — the
+// gateway may not have the channel cached yet the moment the bridge tries to use it.
 internal sealed class DiscordChannelSink(Func<Task<ITextChannel?>> resolveChannel) : IDiscordChannelSink
 {
     // Discord's own hard cap on a message body.

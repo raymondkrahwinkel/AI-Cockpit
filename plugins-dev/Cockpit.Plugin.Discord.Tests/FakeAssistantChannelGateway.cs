@@ -3,10 +3,8 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Plugin.Discord.Tests;
 
-/// <summary>
-/// Hand-written test double for <see cref="IAssistantChannelGateway"/> — records what the plugin asked of the
-/// host seam and lets a test raise its events on demand.
-/// </summary>
+// Hand-written test double for `IAssistantChannelGateway` — records what the plugin asked of the
+// host seam and lets a test raise its events on demand.
 internal sealed class FakeAssistantChannelGateway : IAssistantChannelGateway
 {
     private readonly object _gate = new();

@@ -3,11 +3,9 @@ using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.Plugin.Discord.Settings;
 
-/// <summary>
-/// Discord-specific settings layered on the shared AC-1023 storage (<see cref="AssistantChannelStorage"/>): the
-/// bot token and which Discord text channel to relay into. Read fresh from <see cref="IPluginStorage"/> on every
-/// access, so a settings save takes effect without a restart.
-/// </summary>
+// Discord-specific settings layered on the shared AC-1023 storage (`AssistantChannelStorage`): the
+// bot token and which Discord text channel to relay into. Read fresh from `IPluginStorage` on every
+// access, so a settings save takes effect without a restart.
 internal sealed class DiscordChannelSettings(IPluginStorage storage)
 {
     public string? BotToken

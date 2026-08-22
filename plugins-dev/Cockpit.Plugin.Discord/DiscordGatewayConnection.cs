@@ -4,11 +4,9 @@ using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.Plugin.Discord;
 
-/// <summary>
-/// Owns the Discord.NET socket connection for one open assistant channel (AC-1024), wiring inbound messages and
-/// button clicks into a <see cref="DiscordChannelBridge"/>. A bad token fails at <c>LoginAsync</c>, before
-/// <c>StartAsync</c> runs, so it is reported once with no reconnect loop; Discord.NET itself then owns reconnects.
-/// </summary>
+// Owns the Discord.NET socket connection for one open assistant channel (AC-1024), wiring inbound messages and
+// button clicks into a `DiscordChannelBridge`. A bad token fails at `LoginAsync`, before
+// `StartAsync` runs, so it is reported once with no reconnect loop; Discord.NET itself then owns reconnects.
 internal sealed class DiscordGatewayConnection : IDisposable
 {
     private readonly DiscordSocketClient _client;

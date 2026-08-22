@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.Discord.Tests;
 
-/// <summary>
-/// Hand-written test double for <see cref="IDiscordChannelSink"/> — records every post/edit/reaction the
-/// bridge asked for, without a live socket.
-/// </summary>
+// Hand-written test double for `IDiscordChannelSink` — records every post/edit/reaction the
+// bridge asked for, without a live socket.
 internal sealed class FakeDiscordChannelSink : IDiscordChannelSink
 {
     private readonly object _gate = new();

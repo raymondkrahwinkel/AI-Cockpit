@@ -3,11 +3,9 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Plugin.Discord;
 
-/// <summary>
-/// Routes between one open <see cref="IAssistantChannelGateway"/> and a Discord channel via
-/// <see cref="IDiscordChannelSink"/> (AC-1024), testable without a live socket. Unlike ordinary chat (checked
-/// host-side, AC-1023 §3), a button click or "JA/NEE" reply reaches here directly, so it re-checks <see cref="_access"/> first.
-/// </summary>
+// Routes between one open `IAssistantChannelGateway` and a Discord channel via
+// `IDiscordChannelSink` (AC-1024), testable without a live socket. Unlike ordinary chat (checked
+// host-side, AC-1023 §3), a button click or "JA/NEE" reply reaches here directly, so it re-checks `_access` first.
 internal sealed class DiscordChannelBridge : IDisposable
 {
     private readonly IAssistantChannelGateway _gateway;
@@ -50,11 +48,9 @@ internal sealed class DiscordChannelBridge : IDisposable
         _gateway.ConsentPromptClosed += _OnPromptClosed;
     }
 
-    /// <summary>
-    /// A message arrived in the Discord channel. Answers an open consent prompt when the text is JA/NEE and one
-    /// is waiting; otherwise forwards it as a chat turn. A real failure (never an ignored sender) gets a ⚠️
-    /// reaction — the only sender-visible sign anything happened.
-    /// </summary>
+    // A message arrived in the Discord channel. Answers an open consent prompt when the text is JA/NEE and one
+    // is waiting; otherwise forwards it as a chat turn. A real failure (never an ignored sender) gets a ⚠️
+    // reaction — the only sender-visible sign anything happened.
     public async Task HandleInboundMessageAsync(string senderId, string text, ulong messageId, CancellationToken cancellationToken = default)
     {
         if (DiscordConsentReplyParser.TryParse(text, out var outcome))
@@ -83,10 +79,8 @@ internal sealed class DiscordChannelBridge : IDisposable
         }
     }
 
-    /// <summary>
-    /// An Approve/Deny button was clicked. The caller acknowledges Discord's 3-second interaction deadline
-    /// before calling this — this only decides and edits.
-    /// </summary>
+    // An Approve/Deny button was clicked. The caller acknowledges Discord's 3-second interaction deadline
+    // before calling this — this only decides and edits.
     public async Task HandleButtonAsync(string customId, string senderId, CancellationToken cancellationToken = default)
     {
         if (!DiscordConsentButtonId.TryParse(customId, out var promptId, out var approve) || !_access.IsAllowed(senderId))

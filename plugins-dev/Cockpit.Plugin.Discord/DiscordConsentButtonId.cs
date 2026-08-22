@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.Discord;
 
-/// <summary>
-/// Encodes/decodes the Approve/Deny button custom ids for one relayed consent prompt (AC-1024) — the prompt's
-/// own id round-tripped through Discord's Components API, so a click needs no server-side lookup table.
-/// </summary>
+// Encodes/decodes the Approve/Deny button custom ids for one relayed consent prompt (AC-1024) — the prompt's
+// own id round-tripped through Discord's Components API, so a click needs no server-side lookup table.
 internal static class DiscordConsentButtonId
 {
     private const string _Prefix = "cockpit-consent";
