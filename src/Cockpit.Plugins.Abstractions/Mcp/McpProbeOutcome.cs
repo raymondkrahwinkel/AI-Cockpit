@@ -7,10 +7,9 @@ namespace Cockpit.Plugins.Abstractions.Mcp;
 /// </summary>
 public enum McpProbeOutcome
 {
-    // Failed is deliberately the zero value — the same reasoning as PluginMcpSignInOutcome.Unavailable: an
-    // unstubbed Substitute.For<ICockpitHost>() (or any other unconfigured Task<T> fake) must never read as
-    // "confirmed", nor even as the more specific "not found". A default that lands here says only "nothing was
-    // confirmed", which is the one claim that is always true of a call that never actually ran.
+    // Failed is deliberately the zero value — same as PluginMcpSignInOutcome.Unavailable: an unstubbed fake must
+    // never read as "confirmed" or "not found". A default here says only "nothing was confirmed", the one claim
+    // always true of a call that never ran.
 
     /// <summary>
     /// The call could not be completed and nothing about the value itself was learned — a timeout, a network
