@@ -4,10 +4,8 @@ namespace Cockpit.Infrastructure.Sessions;
 
 /// <summary>
 /// Collects <see cref="SessionProviderRegistration"/>s a plugin registers via <c>ICockpitHost.AddSessionProvider</c>
-/// (#45) and resolves one by its provider id — the "closed world" of built-in providers (#26) replaced by an
-/// open registry for plugin-backed ones. Public (not internal) so <c>Cockpit.App.Plugins.CockpitHost</c> and
-/// the profile-editor view models can resolve it from the container without an <c>InternalsVisibleTo</c> grant,
-/// mirroring the existing <c>PluginBootstrap</c> precedent for a cross-project-visible Infrastructure type.
+/// (#45) and resolves one by provider id — the "closed world" of built-in providers (#26) replaced by an open
+/// registry for plugin-backed ones. Public so <c>CockpitHost</c>/profile-editor view models resolve it without an <c>InternalsVisibleTo</c> grant.
 /// </summary>
 public interface IPluginProviderRegistry
 {

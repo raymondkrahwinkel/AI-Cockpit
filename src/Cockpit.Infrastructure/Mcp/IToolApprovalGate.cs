@@ -1,18 +1,16 @@
 namespace Cockpit.Infrastructure.Mcp;
 
 /// <summary>
-/// The approval seam a <see cref="GatedTool"/> asks before running an MCP tool call (#26). The session
-/// driver implements it by raising the cockpit's <c>PermissionRequested</c> event and awaiting the
-/// operator's Allow/Deny — the same human-in-the-loop flow Claude tool calls use — so local-model tool
-/// use is never executed without consent.
+/// The approval seam a <see cref="GatedTool"/> asks before running an MCP tool call (#26). The session driver
+/// raises the cockpit's <c>PermissionRequested</c> event and awaits Allow/Deny — the same human-in-the-loop
+/// flow Claude tool calls use — so local-model tool use is never executed without consent.
 /// </summary>
 internal interface IToolApprovalGate
 {
     /// <summary>
-    /// Surfaces the pending tool call (a ToolUse + PermissionRequested on the session) and resolves to allow it
-    /// or refuse it with a reason — after consulting any always-allow rule and otherwise awaiting the decision, or,
-    /// for a delegated session, deciding it non-interactively against the ceiling + allow-list (AC-79). The reason
-    /// on a refusal is the tool result fed back to the model, so it can adapt rather than blindly retry.
+    /// Surfaces the pending tool call (a ToolUse + PermissionRequested) and resolves to allow or refuse it with a
+    /// reason — after consulting any always-allow rule, or for a delegated session deciding non-interactively
+    /// against the ceiling + allow-list (AC-79). The refusal reason feeds back to the model so it can adapt.
     /// </summary>
     Task<ToolApprovalResult> RequestApprovalAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken);
 

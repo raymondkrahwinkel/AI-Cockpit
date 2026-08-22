@@ -11,10 +11,9 @@ namespace Cockpit.Infrastructure.Screenshots;
 public interface IScreenshotPortal : IDBusObject
 {
     /// <summary>
-    /// Asks the desktop for a screenshot. With <c>interactive: false</c> in the options the compositor reads
-    /// every display itself and hands back one image, with no UI of its own in the way (AC-326) — the desktop
-    /// prompts once for consent and remembers it. Returns a Request path; the image's <c>uri</c> arrives on that
-    /// Request's Response signal.
+    /// Asks the desktop for a screenshot. With <c>interactive: false</c> the compositor reads every display
+    /// itself and hands back one image with no UI in the way (AC-326) — the desktop prompts once for consent
+    /// and remembers it. Returns a Request path; the image's <c>uri</c> arrives on that Request's Response signal.
     /// </summary>
     Task<ObjectPath> ScreenshotAsync(string parentWindow, IDictionary<string, object> options);
 

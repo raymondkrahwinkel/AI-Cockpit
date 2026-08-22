@@ -23,11 +23,9 @@ public interface IManagedCliService
     string? ResolveInstalledPath(string cliName);
 
     /// <summary>
-    /// Ensures the latest version of <paramref name="cliName"/> is installed and returns where it landed. Resolves the
-    /// latest version through the descriptor, and if that version is not already on disk downloads it, verifies its
-    /// checksum, unpacks it and places it atomically under <c>&lt;StateRoot&gt;/cli/&lt;name&gt;/&lt;version&gt;/</c>.
-    /// A checksum mismatch, a missing descriptor or a network failure is returned as an unsuccessful result rather than
-    /// thrown — the caller (a config view, an update check) reports it; the app is never taken down by a managed CLI.
+    /// Ensures the latest version of <paramref name="cliName"/> is installed and returns where it landed. Resolves
+    /// the latest version, and if not already on disk downloads, verifies its checksum, unpacks and places it
+    /// atomically under <c>&lt;StateRoot&gt;/cli/&lt;name&gt;/&lt;version&gt;/</c>. Failures return unsuccessful, never thrown — a managed CLI never takes the app down.
     /// </summary>
     Task<ManagedCliInstallResult> EnsureInstalledAsync(string cliName, CancellationToken cancellationToken = default);
 
