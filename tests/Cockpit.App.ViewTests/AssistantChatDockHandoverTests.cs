@@ -86,8 +86,12 @@ public sealed class AssistantChatDockHandoverTests
                 for (var tick = 0; tick < 8; tick++)
                 {
                     floating.MouseWheel(new Point(floating.Width / 2, floating.Height / 3), new Vector(0, 1));
+
+                    // The wheel's own flag clear (_wheelTurned) and the ScrollChanged it drives both run off the
+                    // dispatcher queue, not inline — pump it before arranging, same pattern as
+                    // AssistantChatWindowTallReplyFollowTests.
+                    Dispatcher.UIThread.RunJobs();
                     floating.UpdateLayout();
-                    await Task.Delay(30);
                 }
 
                 var readingFrom = _TopVisibleRow(before);
@@ -101,7 +105,11 @@ public sealed class AssistantChatDockHandoverTests
                 var after = new AssistantChatView { DataContext = chat };
                 floating.Content = after;
                 floating.UpdateLayout();
-                await Task.Delay(200);
+
+                // The restore runs off Dispatcher.UIThread.Post (queued from OnAttachedToVisualTree, since the
+                // transcript is not yet arranged when attach fires) — pump it, then arrange the offset it wrote.
+                Dispatcher.UIThread.RunJobs();
+                floating.UpdateLayout();
 
                 Assert.Equal(readingFrom, _TopVisibleRow(after));
             }
@@ -136,7 +144,11 @@ public sealed class AssistantChatDockHandoverTests
                 var after = new AssistantChatView { DataContext = chat };
                 floating.Content = after;
                 floating.UpdateLayout();
-                await Task.Delay(200);
+
+                // Same posted restore/follow as the other test — nothing to restore here, but the attach still
+                // queues the stick-to-bottom follow the same way.
+                Dispatcher.UIThread.RunJobs();
+                floating.UpdateLayout();
 
                 var chevron = after.GetVisualDescendants().OfType<Button>()
                     .First(button => button.Name == "ScrollToBottomButton");

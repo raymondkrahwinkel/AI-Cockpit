@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -64,8 +65,11 @@ public sealed class AssistantChatWindowStickToBottomTests
                 for (var tick = 0; tick < 3; tick++)
                 {
                     window.MouseWheel(new Point(window.Width / 2, window.Height / 3), new Vector(0, 1));
+
+                    // The wheel's own flag clear and the ScrollChanged it drives both run off the dispatcher
+                    // queue, not inline — pump it before arranging (AssistantChatDockHandoverTests' own fix).
+                    Dispatcher.UIThread.RunJobs();
                     window.UpdateLayout();
-                    await Task.Delay(30);
                 }
 
                 Assert.True(chevron.IsVisible, "wheeling up must stop the follow and offer the jump-to-newest chevron");
@@ -76,17 +80,22 @@ public sealed class AssistantChatWindowStickToBottomTests
                 {
                     session.Transcript.Add(new TranscriptEntryViewModel(
                         TranscriptEntryKind.AssistantText, $"streamed row {streamed}"));
+
+                    // The added row's CollectionChanged handler posts its follow-check (a no-op here, since
+                    // _stickToBottom is false) — pump it before asserting nothing moved, or the assertion proves
+                    // nothing about that handler at all.
+                    Dispatcher.UIThread.RunJobs();
                     window.UpdateLayout();
-                    await Task.Delay(30);
                 }
 
                 Assert.Equal(resting, scroll.Offset.Y);
                 Assert.True(chevron.IsVisible, "content arriving is not the operator returning to the tail");
 
                 // The chevron jumps back to the newest row and resumes the follow, hiding itself.
+                // _OnScrollToBottomClick sets ScrollToBottomButton.IsVisible = false unconditionally at the end of
+                // its own handler — RaiseEvent runs it inline, so the property is already flipped by the time this
+                // returns; no wait needed.
                 chevron.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.UpdateLayout();
-                await Task.Delay(100);
 
                 Assert.False(chevron.IsVisible, "the chevron resumes following and hides itself");
             }
