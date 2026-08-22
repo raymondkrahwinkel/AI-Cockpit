@@ -61,10 +61,9 @@ public sealed class PluginSessionEventPublisher
             return false;
         }
 
-        // Only once a real event has got through, so the notice never takes the slot an event could have used. Writing
-        // it first meant that while the host stayed at capacity every freed slot went to a notice and the event behind
-        // it was dropped again — a stream of complaints instead of a transcript. It therefore arrives just after the
-        // event that proved the host is keeping up, reading as "the stretch before this is missing".
+        // Only once a real event got through, so the notice never takes a slot an event could use — writing it first
+        // meant every freed slot at capacity went to a notice and the event behind it dropped again, a stream of
+        // complaints instead of a transcript.
         _ReportAnyGap(sessionEvent.SessionId);
         return true;
     }

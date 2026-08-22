@@ -21,10 +21,8 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 public enum ProjectMemorySourceReachability
 {
     // NotSignedIn at 0 for the same reason PluginMcpSignInOutcome.Unavailable and McpProbeOutcome.Failed are: an
-    // unstubbed test fake, or a plugin's own check delegate throwing before it decides anything, must never read as
-    // a specific claim about the value — neither "confirmed" (the best case) nor "not found" (a definite, and
-    // potentially wrong, negative). Landing on the vaguest state — "cannot tell right now, might need action" — is
-    // the one thing that is always honestly true of an unanswered check.
+    // unstubbed fake, or a check delegate throwing before it decides anything, must never read as a specific claim
+    // ("confirmed" or "not found"). The vaguest state is the one thing always honestly true of an unanswered check.
 
     /// <summary>
     /// The source needs a sign-in (or reauthorization) that has not happened — the one state that actually means

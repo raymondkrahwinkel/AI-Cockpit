@@ -27,10 +27,9 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// </param>
 public sealed record ProjectMemorySourceRegistration(string Scheme, string Title, string Instruction)
 {
-    // AC-502/AC-503/AC-499: trailing optional members rather than widening the primary constructor further — a
-    // plugin prebuilt against an older Cockpit.Plugins.Abstractions.dll still calls this record's original
-    // 3-parameter constructor by its exact IL signature, the same binary-compat reasoning McpServerContribution's
-    // own remark gives for its init-only properties.
+    // AC-502/AC-503/AC-499: trailing optional members rather than widening the primary constructor — a plugin
+    // prebuilt against an older assembly still calls the original 3-parameter ctor by its exact IL signature,
+    // the same binary-compat reasoning McpServerContribution's own remark gives.
 
     /// <summary>
     /// Optionally lists the locations this source can point at (AC-502) — a Depot connection's own projects, say —

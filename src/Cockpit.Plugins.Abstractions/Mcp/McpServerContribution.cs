@@ -21,11 +21,9 @@ public sealed record McpServerContribution(
     string? BearerToken = null,
     McpContributionScope Scope = McpContributionScope.All)
 {
-    // AC-500: init-only properties rather than more positional-record parameters — a plugin prebuilt against an
-    // older Cockpit.Plugins.Abstractions.dll still calls this record's original 4-parameter constructor by its
-    // exact IL signature; widening the primary constructor itself would throw MissingMethodException the moment
-    // such a plugin ran against a host carrying the newer assembly, even though AbstractionsContract.Version never
-    // changed. This is the record equivalent of a default interface method: additive without touching the ctor.
+    // AC-500: init-only properties rather than widening the primary constructor — a plugin prebuilt against an
+    // older assembly still calls the original 4-parameter ctor by its exact IL signature; widening it would throw
+    // MissingMethodException. This is additive without touching the ctor, like a default interface method.
 
     /// <summary>
     /// Set this instead of <see cref="BearerToken"/> when the server requires an OAuth 2.1 sign-in rather than a
