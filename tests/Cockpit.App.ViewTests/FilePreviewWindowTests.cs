@@ -6,6 +6,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
@@ -35,7 +36,7 @@ public sealed class FilePreviewWindowTests : IDisposable
         await HeadlessAvalonia.RunAsync(async () =>
         {
             var window = FilePreviewWindow.Build(Path.Combine(_dir, "ghost.txt"), null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             Assert.Equal("niet gevonden", _KindText(window));
             Assert.False(_OpenButtonVisible(window));
@@ -51,7 +52,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllTextAsync(path, "line one\nline two\nline three");
 
             var window = FilePreviewWindow.Build(path, 2);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             Assert.Equal("code · regel 2", _KindText(window));
             Assert.True(_OpenButtonVisible(window));
@@ -67,7 +68,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllBytesAsync(path, _TinyPng());
 
             var window = FilePreviewWindow.Build(path, null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             Assert.Equal("afbeelding", _KindText(window));
             var border = Assert.IsType<Border>(_Body(window));
@@ -86,7 +87,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllBytesAsync(path, [0x00, 0x01, 0x02, 0x03]);
 
             var window = FilePreviewWindow.Build(path, null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             Assert.Equal("bestand", _KindText(window));
             var text = Assert.IsType<TextBlock>(_Body(window));
@@ -105,7 +106,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllBytesAsync(path, _MinimalOnePagePdf());
 
             var window = FilePreviewWindow.Build(path, null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             Assert.Equal("pdf", _KindText(window));
             var meta = window.GetLogicalDescendants().OfType<TextBlock>().First(t => t.Name == "MetaText").Text ?? string.Empty;
@@ -126,7 +127,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllBytesAsync(path, [0x25, 0x50, 0x44, 0x46, 0x00, 0x01, 0x02, 0x03]);
 
             var window = FilePreviewWindow.Build(path, null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             Assert.Equal("pdf", _KindText(window));
             var meta = window.GetLogicalDescendants().OfType<TextBlock>().First(t => t.Name == "MetaText").Text ?? string.Empty;
@@ -145,7 +146,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllTextAsync(path, "<html><body>hi</body></html>");
 
             var window = FilePreviewWindow.Build(path, null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             Assert.Equal("code", _KindText(window));
             Assert.IsType<Grid>(_Body(window));
@@ -163,7 +164,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllTextAsync(path, "line one");
 
             var window = FilePreviewWindow.Build(path, null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             var openInBrowser = window.GetLogicalDescendants().OfType<Button>().First(b => b.Name == "OpenInBrowserButton");
             Assert.False(openInBrowser.IsVisible);
@@ -179,7 +180,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllTextAsync(path, """{"a":1,"b":[2,3]}""");
 
             var window = FilePreviewWindow.Build(path, null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             Assert.Equal("json", _KindText(window));
             var grid = Assert.IsType<Grid>(_Body(window));
@@ -198,7 +199,7 @@ public sealed class FilePreviewWindowTests : IDisposable
 
             var window = FilePreviewWindow.Build(_dir, null);
             window.Show();
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             Assert.Equal("map", _KindText(window));
             var panel = Assert.IsType<StackPanel>(_Body(window));
@@ -211,7 +212,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             var point = firstRow.TranslatePoint(new Point(firstRow.Bounds.Width / 2, firstRow.Bounds.Height / 2), window)
                 ?? throw new InvalidOperationException("the row must be laid out inside the window to be clicked");
             window.MouseDown(point, MouseButton.Left);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             Assert.Equal("map", _KindText(window)); // navigated into zzz-sub, itself an empty directory
             window.Close();
@@ -228,13 +229,14 @@ public sealed class FilePreviewWindowTests : IDisposable
 
             var window = FilePreviewWindow.Build(path, null);
             window.Show();
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             var bodyHost = window.GetLogicalDescendants().OfType<ContentControl>().First(c => c.Name == "BodyHost");
             var before = bodyHost.Bounds.Width;
 
             window.Width += 300;
-            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
 
             Assert.True(bodyHost.Bounds.Width > before);
             window.Close();
@@ -253,7 +255,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllBytesAsync(path, _TinyPng());
 
             var window = FilePreviewWindow.Build(path, null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             var applyZoom = typeof(FilePreviewWindow).GetMethod("_ApplyZoom", BindingFlags.NonPublic | BindingFlags.Instance)!;
             var image = (Image)((Border)_Body(window)).Child!;
@@ -276,7 +278,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllBytesAsync(path, _TinyPng());
 
             var window = FilePreviewWindow.Build(path, null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             var applyZoom = typeof(FilePreviewWindow).GetMethod("_ApplyZoom", BindingFlags.NonPublic | BindingFlags.Instance)!;
             var doubleTap = typeof(FilePreviewWindow).GetMethod("_OnImageDoubleTapped", BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -305,7 +307,7 @@ public sealed class FilePreviewWindowTests : IDisposable
             await File.WriteAllTextAsync(path, "line one");
 
             var window = FilePreviewWindow.Build(path, null);
-            await Task.Delay(200);
+            await window.WaitForIdleAsync();
 
             var applyZoom = typeof(FilePreviewWindow).GetMethod("_ApplyZoom", BindingFlags.NonPublic | BindingFlags.Instance)!;
             applyZoom.Invoke(window, [4.0]); // must not throw
