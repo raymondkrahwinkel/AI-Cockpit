@@ -50,6 +50,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         SupportsEnvVars = pluginCapabilities.SupportsEnvVars,
         ConfinesFileAccessToWorkingDirectory = _EffectiveConfinesFileAccessToWorkingDirectory(),
         SupportsContextCompaction = pluginCapabilities.SupportsContextCompaction,
+        SupportsMidTurnInput = pluginCapabilities.SupportsMidTurnInput,
     };
 
     // AC-190: a provider with no confinement vouch never confines; a real-sandbox provider (not

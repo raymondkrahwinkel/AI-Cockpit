@@ -125,7 +125,21 @@ internal static class ClaudeStreamJson
             }
         }
 
-        yield return new PluginSessionInitialized { SessionId = sessionId, Cwd = cwd, Tools = tools, Model = model };
+        // AC-739: the CLI's own advertised feature set (e.g. "interrupt_cancel_queued_v1", 2.1.231+), so a caller can
+        // feature-detect a control-protocol field before sending it to a CLI that has never heard of it.
+        var capabilities = new List<string>();
+        if (root.TryGetProperty("capabilities", out var capabilitiesProp) && capabilitiesProp.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var c in capabilitiesProp.EnumerateArray())
+            {
+                if (c.ValueKind == JsonValueKind.String)
+                {
+                    capabilities.Add(c.GetString() ?? string.Empty);
+                }
+            }
+        }
+
+        yield return new PluginSessionInitialized { SessionId = sessionId, Cwd = cwd, Tools = tools, Model = model, Capabilities = capabilities };
     }
 
     // The assistant snapshot carries complete blocks; both text and thinking are already streamed by the
