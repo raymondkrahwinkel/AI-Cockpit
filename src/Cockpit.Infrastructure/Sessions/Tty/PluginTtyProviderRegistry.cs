@@ -5,9 +5,8 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 
 /// <summary>
 /// Collects the <see cref="TtyProviderRegistration"/>s plugins register via <c>ICockpitHost.AddTtyProvider</c>
-/// and resolves one by provider id. The TTY counterpart of <see cref="IPluginProviderRegistry"/>, and a separate
-/// registry for the same reason the registration is separate: a provider offers a headless driver, a TUI, or
-/// both, and which of the two it has is not a property of the other.
+/// and resolves one by provider id. The TTY counterpart of <see cref="IPluginProviderRegistry"/>, separate for
+/// the same reason the registration is: a provider offers a headless driver, a TUI, or both — independently.
 /// </summary>
 public interface IPluginTtyProviderRegistry
 {

@@ -11,28 +11,16 @@ using Cockpit.Core.Mcp;
 namespace Cockpit.Infrastructure.Mcp;
 
 /// <summary>
-/// Builds the <see cref="ClientOAuthOptions"/> for an OAuth-protected remote MCP server (#26). The MCP
-/// client's built-in <c>ClientOAuthProvider</c> drives discovery, PKCE (S256), optional Dynamic Client
-/// Registration and token refresh once a 401 is intercepted; all this class supplies is the desktop
-/// authorization step — a loopback <see cref="HttpListener"/> that catches the redirect while the system
-/// browser handles the user's login, mirroring the official ProtectedMcpClient sample.
+/// Builds the <see cref="ClientOAuthOptions"/> for an OAuth-protected remote MCP server (#26). The MCP client's
+/// built-in <c>ClientOAuthProvider</c> drives discovery, PKCE and token refresh; this class only supplies the
+/// desktop step — a loopback <see cref="HttpListener"/> catching the redirect while the system browser handles login.
 /// </summary>
 internal interface IMcpOAuthAuthorizer
 {
     /// <summary>
-    /// The OAuth options for <paramref name="server"/>. When <paramref name="interactive"/> is
-    /// <see langword="false"/> the authorization step refuses instead of opening a browser, so a caller that is not
-    /// the operator — starting a session, renewing a stale token — can get as far as the refresh grant and no
-    /// further (AC-353).
-    /// <para>
-    /// A caller that has to report the outcome to the operator passes a <paramref name="stageRecorder"/> and is told
-    /// how far the authorization got (AC-457); one that only needs the credential leaves it out.
-    /// </para>
-    /// <para>
-    /// <paramref name="renewalMargin"/> is how much life the caller needs the token to still have (AC-771). The SDK
-    /// renews a token only once it is expired to the second, so a caller that keeps a margin has to say so here or
-    /// its renewal is a connect that changes nothing. Left at zero by a caller that will use whatever is stored.
-    /// </para>
+    /// The OAuth options for <paramref name="server"/>. <paramref name="interactive"/> false refuses instead of
+    /// opening a browser (AC-353). A caller reporting to the operator passes <paramref name="stageRecorder"/>
+    /// (AC-457); <paramref name="renewalMargin"/> (AC-771) is how much life the token must still have, since the SDK only renews once expired to the second.
     /// </summary>
     ClientOAuthOptions CreateOptions(
         McpServerConfig server,

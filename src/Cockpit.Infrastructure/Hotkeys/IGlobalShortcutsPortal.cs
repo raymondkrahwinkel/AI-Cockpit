@@ -3,10 +3,9 @@ using Tmds.DBus;
 namespace Cockpit.Infrastructure.Hotkeys;
 
 /// <summary>
-/// Tmds.DBus proxy contract for <c>org.freedesktop.portal.GlobalShortcuts</c>. Method/watch names map
-/// 1:1 onto the D-Bus interface (Tmds.DBus generates the proxy from this shape at runtime) — see the
-/// spike this ports, <c>spike1_portal_hotkey.py</c>, for the exact same CreateSession/BindShortcuts/
-/// Activated/Deactivated sequence via Gio's lower-level D-Bus API.
+/// Tmds.DBus proxy contract for <c>org.freedesktop.portal.GlobalShortcuts</c>. Method/watch names map 1:1 onto
+/// the D-Bus interface (Tmds.DBus generates the proxy at runtime) — ports the spike's CreateSession/BindShortcuts/
+/// Activated/Deactivated sequence (<c>spike1_portal_hotkey.py</c>, via Gio's lower-level D-Bus API).
 /// </summary>
 [DBusInterface("org.freedesktop.portal.GlobalShortcuts")]
 public interface IGlobalShortcutsPortal : IDBusObject

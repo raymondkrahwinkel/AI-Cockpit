@@ -10,42 +10,16 @@ namespace Cockpit.Infrastructure.Mcp;
 internal interface IMcpToolProvider
 {
     /// <summary>
-    /// <paramref name="enabledServerNames"/> is the per-session MCP selection from the New-session dialog
-    /// (#44): when non-null, only registry servers named in it are connected, on top of the registry's own
-    /// enabled/scope filtering. <see langword="null"/> keeps the pre-#44 behaviour of using every eligible
-    /// registry server.
-    /// <para>
-    /// <paramref name="confineFileToolsToDirectory"/> (AC-174, Raymond 2026-07-22): when set, the session is confined
-    /// to that directory — the file-capable servers are the built-in filesystem preset re-rooted there (a custom
-    /// same-named registry server is <em>not</em> trusted to sandbox), plus benign in-process servers and the Autopilot
-    /// report endpoint, and every server that could write or execute outside the directory (a shell/terminal, an
-    /// orchestrator that spawns unconfined sessions, worktree tools, a second filesystem) is dropped regardless of the
-    /// selection. This is how a local model can safely run an isolated Autopilot step in its worktree. <see langword="null"/>
-    /// keeps the unconfined behaviour (the home-rooted defaults).
-    /// </para>
-    /// <para>
-    /// <paramref name="projectId"/> (AC-218): the project this session was started under, so the registry read below
-    /// is <see cref="IMcpServerCatalog.GetServersForProjectAsync"/> rather than the unscoped
-    /// <see cref="IMcpServerCatalog.GetServersAsync"/> — a project's own servers and its by-name overrides are seen
-    /// here, not just the servers it turned off. <see langword="null"/> for a session with no project.
-    /// </para>
-    /// <para>
-    /// <paramref name="workingDirectory"/> (AC-869): the session's working directory, used only to decide whether
-    /// an internal endpoint whose own mount rule is "the working directory is a git repository" (currently
-    /// cockpit-github-pull-requests) should be named for this session even though nothing in
-    /// <paramref name="enabledServerNames"/> asked for it. <see langword="null"/> means that rule never fires.
-    /// </para>
+    /// <paramref name="enabledServerNames"/> (#44): non-null restricts to those registry servers. <paramref name="confineFileToolsToDirectory"/>
+    /// (AC-174) re-roots file-capable servers there for an isolated Autopilot step's worktree. <paramref name="projectId"/>
+    /// (AC-218) scopes the registry read; <paramref name="workingDirectory"/> (AC-869) only gates cockpit-github-pull-requests' git-repo mount rule.
     /// </summary>
     Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Connects a single named catalog server on its own, just to read its tool list for the pre-flight token
-    /// estimate (AC-134). Unlike <see cref="ConnectAsync"/> it does NOT merge the built-in local-default servers
-    /// (filesystem/fetch/git/…) — a count must estimate only the server the operator ticked, not spawn processes
-    /// they never chose — and it skips an OAuth server rather than driving its interactive browser sign-in. Returns
-    /// null when the server is unknown, disabled, OAuth-gated, or could not be enumerated, so the caller shows it as
-    /// "unknown" rather than a false zero. <paramref name="projectId"/> (AC-218) scopes the lookup to that project's
-    /// registry view, same as <see cref="ConnectAsync"/>; <see langword="null"/> for the unscoped registry.
+    /// Connects a single named catalog server on its own, to read its tool list for the pre-flight token estimate
+    /// (AC-134). Unlike <see cref="ConnectAsync"/> it does NOT merge the built-in local-default servers — a count must estimate only the ticked server — and skips an OAuth server rather than driving sign-in.
+    /// Returns null when unknown/disabled/OAuth-gated/unenumerable, so the caller shows "unknown" not a false zero.
     /// </summary>
     Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, string? projectId = null, CancellationToken cancellationToken = default);
 }

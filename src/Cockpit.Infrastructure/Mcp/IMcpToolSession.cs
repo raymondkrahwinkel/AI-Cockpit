@@ -17,9 +17,8 @@ internal interface IMcpToolSession : IAsyncDisposable
 
     /// <summary>
     /// Enabled servers whose connect failed while <see cref="Cockpit.Core.Mcp.McpServerAuth.OAuth"/> was set (AC-500)
-    /// — a named outcome distinct from a plain unreachable/misconfigured server, which only ever shows up as an
-    /// absence from <see cref="ConnectedServerNames"/> and a log line. This is what a caller can read to tell the two
-    /// apart without inspecting the log: "no tools from this server" versus "this server is waiting on a sign-in".
+    /// — a named outcome distinct from a plain unreachable/misconfigured server (only an absence from
+    /// <see cref="ConnectedServerNames"/> plus a log line). Lets a caller tell "no tools" from "waiting on sign-in".
     /// </summary>
     IReadOnlyList<string> ServersNeedingSignIn { get; }
 
