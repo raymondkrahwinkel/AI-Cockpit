@@ -74,6 +74,8 @@ public class CliAgentProviderPluginLoadTests
         var driverFactory = registration.CreateDriverFactory(host.Services);
         var driver = driverFactory.Create("""{"Command":"codex","WorkingDirectory":"."}""");
         Assert.NotNull(driver);
+        // AC-1029: registration vs. driver-instance capability parity — see PluginCapabilityParityAssert.
+        PluginCapabilityParityAssert.AssertMatches(registration.Capabilities, driver.Capabilities);
 
         // The plugin also offers Codex's real interactive TUI (#45 fase B2), under the same provider id as
         // the session provider above — a profile names a provider, and what that provider can do is what it

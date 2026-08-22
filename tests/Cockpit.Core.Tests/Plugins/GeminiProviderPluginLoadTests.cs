@@ -57,6 +57,8 @@ public class GeminiProviderPluginLoadTests
             var driverFactory = registration.CreateDriverFactory(host.Services);
             var driver = driverFactory.Create("""{"ApiKey":"test-key","Model":"test-model","BaseUrl":"https://example.invalid/v1"}""");
             Assert.NotNull(driver);
+            // AC-1029: registration vs. driver-instance capability parity — see PluginCapabilityParityAssert.
+            PluginCapabilityParityAssert.AssertMatches(registration.Capabilities, driver.Capabilities);
         }
 
         plugin.Dispose();

@@ -87,7 +87,12 @@ public class ClaudeProviderPluginLoadTests
         Assert.Equal("medium", effort.CurrentValueHint);
         Assert.Contains(sessionRegistration.Capabilities.DeclaredOptions, option => option.Key == "permission-mode");
         Assert.Contains(sessionRegistration.Capabilities.DeclaredOptions, option => option.Key == "model");
-        Assert.NotNull(sessionRegistration.CreateDriverFactory(host.Services));
+        var driver = sessionRegistration.CreateDriverFactory(host.Services).Create("{}");
+        Assert.NotNull(driver);
+        // AC-1029: registration vs. driver-instance capability parity — the shape that let SupportsMidTurnInput
+        // and the three flags above go silently missing until AC-739 caught them by hand. ConfinesViaPermissionsOnly
+        // is registration-only (AC-190): the driver instance never sets it, only the adapter reads it.
+        PluginCapabilityParityAssert.AssertMatches(sessionRegistration.Capabilities, driver.Capabilities, nameof(PluginSessionCapabilities.ConfinesViaPermissionsOnly));
         // CreateConfigView is not exercised here — it builds a real Avalonia Control (see CliAgentProviderPluginLoadTests).
 
         plugin.Dispose();

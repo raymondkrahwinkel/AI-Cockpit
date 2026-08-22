@@ -9,10 +9,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// End-to-end loader proof for the opencode ACP provider plugin (AC-783): loads it through <see cref="PluginActivator"/>
-/// and asserts it registers its session provider with real-agent (tools/permissions) capabilities.
+/// End-to-end loader proof for the Kimi Code ACP provider plugin (AC-267/AC-268): loads it through
+/// <see cref="PluginActivator"/> and asserts it registers its session provider — the plugin had no loader
+/// integration test at all before AC-1029, unlike every sibling ACP/OpenAiCompat provider plugin. Mirrors
+/// <see cref="OpencodeProviderPluginLoadTests"/>, the same ACP shape.
 /// </summary>
-public class OpencodeProviderPluginLoadTests
+public class KimiProviderPluginLoadTests
 {
     [Fact]
     public void ActivatesAndRegistersTheSessionProvider_WhenBuilt()
@@ -25,14 +27,14 @@ public class OpencodeProviderPluginLoadTests
         Assert.NotNull(manifest);
 
         var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly)));
-        var discovered = new DiscoveredPlugin(folder, "opencode-provider", manifest, hash, PluginLoadDecision.Load);
+        var discovered = new DiscoveredPlugin(folder, "kimi-provider", manifest, hash, PluginLoadDecision.Load);
 
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
         var plugin = activator.Activate(discovered);
 
         // A non-null cast to the host's ICockpitPlugin is itself the type-identity proof.
         Assert.NotNull(plugin);
-        Assert.Equal("opencode-provider", plugin!.Metadata.Id);
+        Assert.Equal("kimi-provider", plugin!.Metadata.Id);
 
         plugin.ConfigureServices(new ServiceCollection());
 
@@ -41,11 +43,9 @@ public class OpencodeProviderPluginLoadTests
 
         Assert.Single(host.SessionProviders);
         var registration = host.SessionProviders[0];
-        Assert.Equal("opencode-provider.acp", registration.ProviderId);
-        Assert.Equal("opencode (ACP)", registration.DisplayName);
+        Assert.Equal("kimi-provider.acp", registration.ProviderId);
+        Assert.Equal("Kimi Code (ACP)", registration.DisplayName);
 
-        // Real-agent capabilities, unlike the chat-only OpenAiCompat provider plugins (AC-806/AC-724) —
-        // this is the one criterion that actually distinguishes this ticket from those two.
         Assert.True(registration.Capabilities.SupportsTools);
         Assert.True(registration.Capabilities.SupportsPermissions);
         Assert.True(registration.Capabilities.SupportsLiveModelSwitch);
@@ -54,7 +54,7 @@ public class OpencodeProviderPluginLoadTests
         // needs a running Avalonia application; this headless xunit process has none, same reason the sibling
         // plugin load tests never invoke their own config-view factories either.
         var driverFactory = registration.CreateDriverFactory(host.Services);
-        var driver = driverFactory.Create("""{"Command":"opencode","ApiKey":"test-key"}""");
+        var driver = driverFactory.Create("""{"Command":"kimi","ApiKey":"test-key"}""");
         Assert.NotNull(driver);
         // AC-1029: registration vs. driver-instance capability parity — see PluginCapabilityParityAssert.
         PluginCapabilityParityAssert.AssertMatches(registration.Capabilities, driver.Capabilities);
@@ -68,11 +68,11 @@ public class OpencodeProviderPluginLoadTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidateRoot = Path.Combine(directory.FullName, "plugins-dev", "Cockpit.Plugin.OpencodeProvider", "bin");
+            var candidateRoot = Path.Combine(directory.FullName, "plugins-dev", "Cockpit.Plugin.KimiProvider", "bin");
             if (Directory.Exists(candidateRoot))
             {
                 var dll = Directory
-                    .EnumerateFiles(candidateRoot, "Cockpit.Plugin.OpencodeProvider.dll", SearchOption.AllDirectories)
+                    .EnumerateFiles(candidateRoot, "Cockpit.Plugin.KimiProvider.dll", SearchOption.AllDirectories)
                     .FirstOrDefault();
                 return dll is null ? null : Path.GetDirectoryName(dll);
             }
