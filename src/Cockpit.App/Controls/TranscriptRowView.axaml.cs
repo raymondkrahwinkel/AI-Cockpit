@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -69,6 +70,15 @@ public partial class TranscriptRowView : UserControl
             && TopLevel.GetTopLevel(this) is Window owner)
         {
             ImagePreviewWindow.Show(images, 0, owner);
+        }
+    }
+
+    // AC-1022: the reply button sets the target via Command but left focus on itself — jump it to the composer.
+    private void _OnReplyClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.FindAncestorOfType<AssistantChatView>() is { } chat)
+        {
+            Dispatcher.UIThread.Post(chat.FocusInput);
         }
     }
 
