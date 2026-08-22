@@ -72,6 +72,12 @@ public class ClaudeProviderPluginLoadTests
         // AC-739: same trap as SupportsVision above — SessionDriverFactory reads registration.Capabilities, not the
         // driver instance's own Capabilities, so the flag must be declared here too or a mid-turn send stays queued.
         Assert.True(sessionRegistration.Capabilities.SupportsMidTurnInput);
+        // Same trap, caught auditing AC-739: these three were true on the driver instance and absent from the
+        // registration, so the header's live model/permission-mode switches and the AC-664 compact button were
+        // silently dead once a session started and overwrote the SessionCapabilities.ClaudeCli startup default.
+        Assert.True(sessionRegistration.Capabilities.SupportsLiveModelSwitch);
+        Assert.True(sessionRegistration.Capabilities.SupportsPermissionModeSwitch);
+        Assert.True(sessionRegistration.Capabilities.SupportsContextCompaction);
         Assert.Contains(sessionRegistration.Options, option => option.Key == "permission-mode");
         Assert.Contains(sessionRegistration.Options, option => option.Key == "model");
         // AC-649: the option schema the host can read. `effort` is the one that mattered — a Claude-private key with

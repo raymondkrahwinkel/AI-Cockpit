@@ -104,8 +104,7 @@ public sealed record PluginSessionCapabilities(
     /// <summary>
     /// Whether this driver actually delivers a message sent while a turn is in flight to the model, instead of
     /// dropping it or leaving it unread (AC-739). Init-only for the same back-compat reason as
-    /// <see cref="SupportsLiveModelSwitch"/>; defaults to <see langword="false"/>, so an unaware driver keeps the
-    /// host's local send queue.
+    /// <see cref="SupportsLiveModelSwitch"/>; defaults to <see langword="false"/>, keeping the local send queue.
     /// </summary>
     public bool SupportsMidTurnInput { get; init; }
 

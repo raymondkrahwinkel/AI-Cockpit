@@ -87,7 +87,10 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // SupportsMidTurnInput (AC-739): same trap — the driver instance's own Capabilities already vouches for
             // this, but SessionViewModel.SendAsync never sees it unless it is declared here too; left off, a mid-turn
             // send stays queued instead of writing straight through.
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true, SupportsMidTurnInput = true, DeclaredOptions = ClaudeOptionChoices.DeclaredSessionOptions },
+            // SupportsLiveModelSwitch/SupportsPermissionModeSwitch/SupportsContextCompaction: same trap, caught
+            // auditing AC-739 — all three were true on the driver instance and absent here, so the header's live
+            // model/permission-mode controls and the AC-664 compact button were silently dead in the running app.
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true, SupportsMidTurnInput = true, SupportsLiveModelSwitch = true, SupportsPermissionModeSwitch = true, SupportsContextCompaction = true, DeclaredOptions = ClaudeOptionChoices.DeclaredSessionOptions },
             CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson, host))
         {
             Options =
