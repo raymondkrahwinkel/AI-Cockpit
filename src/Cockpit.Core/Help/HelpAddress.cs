@@ -15,10 +15,8 @@ public sealed record HelpAddress(string Article, string? Section = null)
             : new HelpAddress(text[..hash].Trim(), _Trimmed(text[(hash + 1)..]));
     }
 
-    /// <summary>
-    /// AC-1042: the plain link a page writes for its GitHub reader — <c>API-REFERENCE.md#icockpithost</c> —
-    /// read as the page shipped beside it. Null for anything else, which is then somebody's URL.
-    /// </summary>
+    // AC-1042: the plain link a page writes for its GitHub reader — `API-REFERENCE.md#icockpithost` — read as
+    // the page shipped beside it. Null for anything else, which is then somebody's URL.
     public static HelpAddress? FromSiblingLink(string? link)
     {
         var text = (link ?? string.Empty).Trim().Replace('\\', '/');
