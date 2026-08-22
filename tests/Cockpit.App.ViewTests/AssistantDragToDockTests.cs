@@ -90,8 +90,9 @@ public sealed class AssistantDragToDockTests
                 Assert.True(cockpit.IsAssistantDropZoneActive, "the zone lights up while the pointer is inside");
 
                 chat.MouseUp(InsideTheZone, MouseButton.Left);
-                await Task.Delay(100);
 
+                // The header's release handler runs the whole dock chain inline: with no _layoutSettingsStore in
+                // this harness, SetAssistantDockedAsync never truly awaits, so it is all done before MouseUp returns.
                 Assert.True(cockpit.AssistantDocked);
                 Assert.Null(coordinator.OpenChatWindow);
                 Assert.False(cockpit.IsAssistantDropZoneVisible, "nothing of the zone is left once the drag ends");
@@ -120,8 +121,9 @@ public sealed class AssistantDragToDockTests
                 Assert.False(cockpit.IsAssistantDropZoneActive);
 
                 chat.MouseUp(OutsideTheZone, MouseButton.Left);
-                await Task.Delay(100);
 
+                // A release outside the zone never reaches ToggleDockCommand — _EndDrag() runs synchronously in
+                // the release handler itself, so nothing here is left pending.
                 Assert.False(cockpit.AssistantDocked);
                 Assert.Same(chat, coordinator.OpenChatWindow);
                 Assert.NotEqual(start, chat.Position);
@@ -151,8 +153,8 @@ public sealed class AssistantDragToDockTests
                 Assert.NotEqual(start, chat.Position);
 
                 chat.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
-                await Task.Delay(100);
 
+                // The tunnelled key-down handler runs _EndDrag() and resets Position inline — nothing pending.
                 Assert.Equal(start, chat.Position);
                 Assert.False(cockpit.AssistantDocked);
                 Assert.Same(chat, coordinator.OpenChatWindow);
@@ -161,8 +163,9 @@ public sealed class AssistantDragToDockTests
                 // And the release that follows the operator letting go of the button docks nothing either: Escape
                 // ended the drag, so what is left is an ordinary click on the header.
                 chat.MouseUp(InsideTheZone, MouseButton.Left);
-                await Task.Delay(100);
 
+                // _dragStartPosition is already null, so the release handler returns at its first line — again,
+                // nothing pending to wait for.
                 Assert.False(cockpit.AssistantDocked);
                 Assert.Equal(start, chat.Position);
             }
@@ -194,8 +197,8 @@ public sealed class AssistantDragToDockTests
 
                 // What a backend withdrawing the capture does — no release follows it.
                 pointer!.Capture(null);
-                await Task.Delay(100);
 
+                // Capture(null) raises PointerCaptureLost synchronously, and that handler is _EndDrag() itself.
                 Assert.Equal(0, cockpit.AssistantDropZoneWidth);
                 Assert.False(cockpit.IsAssistantDropZoneVisible);
                 Assert.False(cockpit.IsAssistantDropZoneActive);
@@ -238,8 +241,9 @@ public sealed class AssistantDragToDockTests
 
                 chat.MouseMove(InsideTheZone, RawInputModifiers.LeftMouseButton);
                 chat.MouseUp(InsideTheZone, MouseButton.Left);
-                await Task.Delay(100);
 
+                // No zone means _dropZone stays null, so the release handler sees dropped = false and never
+                // reaches ToggleDockCommand — again, all inline.
                 Assert.False(cockpit.AssistantDocked);
                 Assert.Same(chat, coordinator.OpenChatWindow);
             }
