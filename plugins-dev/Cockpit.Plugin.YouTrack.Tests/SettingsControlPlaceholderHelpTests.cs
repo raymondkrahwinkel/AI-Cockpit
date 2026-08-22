@@ -5,13 +5,7 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
-// AC-521, migrated for AC-1033: the placeholder documentation that used to live in a `SettingsHelpRow` hover
-// tooltip on the settings control now lives in this plugin's own Docs/setup.md page — the control points at it
-// with host.CreateHelpHint("setup", section) instead of drawing its own "?". Still reads both sides from the
-// real thing rather than repeating them by hand: the "documented" set comes off the control's own field label
-// plus the matching section of the shipped documentation, and the "replaced" set is parsed out of the
-// corresponding source file's own `.Replace("{...}", ...)` calls — a hardcoded list here could carry the same
-// mistake the production code does.
+// AC-521, migrated for AC-1041: placeholder help now lives in Docs/setup.md via host.CreateHelpHint.
 [Collection("avalonia")]
 public partial class SettingsControlPlaceholderHelpTests
 {

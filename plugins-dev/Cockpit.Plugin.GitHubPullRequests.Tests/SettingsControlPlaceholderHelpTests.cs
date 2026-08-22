@@ -5,14 +5,7 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
-// AC-521, migrated for AC-1033: this field's help used to live in a `SettingsHelpRow` hover tooltip; the
-// control never grew a host.CreateHelpHint for it (only the other settings did), so the placeholder
-// documentation still lives in the control's own inline hint text below the field. Both sides are read from the
-// real thing rather than repeated by hand: the "documented" set comes off the actual rendered control (its
-// visible label plus its inline hint), and the "replaced" set is parsed out of `PromptTemplate`'s own
-// `.Replace("{...}", ...)` calls — a hardcoded list here could carry the same mistake the production code does.
-// This plugin has no branch-pattern field (a pull request is already a branch), so unlike the
-// YouTrack/GitHub-Issues counterparts there is only the one placeholder set to pin.
+// AC-521, migrated for AC-1041: this field kept its inline hint text rather than growing a CreateHelpHint.
 [Collection("avalonia")]
 public class SettingsControlPlaceholderHelpTests
 {

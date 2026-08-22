@@ -5,13 +5,7 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
-// AC-521, migrated for AC-1033: the branch-pattern documentation that used to live in a `SettingsHelpRow` hover
-// tooltip now lives in this plugin's own Docs/setup.md page, reached via host.CreateHelpHint("setup", section);
-// the prompt-template placeholders were never migrated there — they stay in the control's own inline hint text
-// (there's no per-field "?" on that one). Both sides are read from the real thing rather than repeated by hand:
-// the "documented" set comes off the control's own rendered text, and the "replaced" set is parsed out of the
-// corresponding source file's own `.Replace("{...}", ...)` calls — a hardcoded list here could carry the same
-// mistake the production code does.
+// AC-521, migrated for AC-1041: branch-pattern help now lives in Docs/setup.md via host.CreateHelpHint.
 [Collection("avalonia")]
 public partial class SettingsControlPlaceholderHelpTests
 {
