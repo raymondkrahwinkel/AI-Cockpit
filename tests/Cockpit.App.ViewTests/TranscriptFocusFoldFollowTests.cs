@@ -73,7 +73,14 @@ public sealed class TranscriptFocusFoldFollowTests
             }
 
             vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
-            await Task.Delay(120);
+
+            // Pace every turn but the last: vm.Apply mutates Transcript synchronously, so nothing downstream of the
+            // final turn needs time to catch up before the count below is read — only the streaming cadence
+            // in between turns (what the fold-group/ScrollIntoView reentrancy this test guards needs to see) does.
+            if (turn < 5)
+            {
+                await Task.Delay(120);
+            }
         }
 
         Assert.Equal(42, vm.Transcript.Count);
