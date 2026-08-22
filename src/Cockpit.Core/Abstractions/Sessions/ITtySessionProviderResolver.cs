@@ -3,13 +3,9 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.Core.Abstractions.Sessions;
 
 /// <summary>
-/// Finds the TUI a profile runs, if it has one.
-/// <para>
-/// Which is a question the cockpit could not previously ask: TTY mode meant <c>claude</c>, and a session started
-/// as a TTY under any other profile would have launched Claude's CLI regardless of what the profile said. The
-/// answer is allowed to be "none" — a local model has no TUI to host — and the New-session dialog is expected to
-/// take that for an answer rather than offering a mode that cannot start.
-/// </para>
+/// Finds the TUI a profile runs, if it has one — previously unaskable: TTY mode meant <c>claude</c> regardless
+/// of profile. "None" is a valid answer — a local model has no TUI — and the New-session dialog is expected to
+/// accept that rather than offer a mode that cannot start.
 /// </summary>
 public interface ITtySessionProviderResolver
 {

@@ -1,12 +1,9 @@
 namespace Cockpit.Core.Abstractions.Sessions;
 
 /// <summary>
-/// Sets what a session is called and what it says it is doing, from outside the UI layer (#AC-13, #AC-312) — the seam
-/// the first-party <c>cockpit-session</c> MCP server uses to let an agent label its own session, without the
-/// Infrastructure layer referencing the App view-models. Core declares it, Infrastructure calls it, the App implements
-/// it over its session view-models and marshals to the UI thread — the same direction as
-/// <see cref="Delegation.IDelegationService.TasksChanged"/>. Kept off the plugin-facing <c>ICockpitHost</c> surface
-/// because this is a host-internal service, not a plugin capability.
+/// Sets what a session is called and what it says it is doing, from outside the UI layer (#AC-13, #AC-312) —
+/// the seam the <c>cockpit-session</c> MCP server uses to let an agent label its own session without
+/// Infrastructure referencing App view-models. Off <c>ICockpitHost</c>: host-internal, not a plugin capability.
 /// </summary>
 public interface ISessionLabelSink
 {
@@ -19,11 +16,8 @@ public interface ISessionLabelSink
 
     /// <summary>
     /// Proposes <paramref name="name"/> as the title of the session identified by <paramref name="paneId"/>, and
-    /// stands down when that session already carries a name somebody chose (#AC-310). Returns whether it was
-    /// renamed, so <see langword="false"/> covers "no such session", "blank name" and "it has a name of its own"
-    /// alike — none of the three is an error. Proposing rather than setting is the whole point on this seam: an
-    /// agent labelling itself after the ticket it picked up is useful, an agent overwriting the name its operator
-    /// typed is not.
+    /// stands down when it already carries a name somebody chose (#AC-310). Returns whether it was renamed — <see
+    /// langword="false"/> covers "no such session", "blank name" and "already named" alike, none an error.
     /// </summary>
     Task<bool> SuggestNameAsync(string paneId, string name);
 }

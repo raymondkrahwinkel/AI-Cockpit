@@ -201,13 +201,10 @@ public interface IWireframeAccessRegistry
     void Grant(string sessionId, string surfaceId, WireframeCapability capability);
 
     /// <summary>
-    /// The surface's current source, or null when this session does not hold
-    /// <see cref="WireframeCapability.Read"/> on it.
+    /// The surface's current source, or null when this session does not hold <see cref="WireframeCapability.Read"/>
+    /// on it. Stamps a stable id on every component that carries none before handing the source over (AC-906): a read
+    /// is what an agent names components from, so this is the moment they get names. Raises <see cref="TextChanged"/>.
     /// </summary>
-    /// <remarks>
-    /// Stamps a stable id on every component that carries none before handing the source over (AC-906): a read is
-    /// what an agent names components from, so this is the moment they get names. Raises <see cref="TextChanged"/>.
-    /// </remarks>
     string? ReadCoupled(string sessionId, string surfaceId);
 
     /// <summary>
@@ -226,8 +223,7 @@ public interface IWireframeAccessRegistry
     /// <summary>
     /// Applies one per-component edit under the registry's own lock, so the hold check, the line surgery and the
     /// "does this still parse" check all see one source and nothing is written unless all three pass — two edits
-    /// naming different components therefore both land. Raises <see cref="TextChanged"/>,
-    /// <see cref="ComponentEdited"/> and <see cref="HistoryChanged"/> when it lands.
+    /// naming different components therefore both land. Raises <see cref="TextChanged"/>, <see cref="ComponentEdited"/> and <see cref="HistoryChanged"/> when it lands.
     /// </summary>
     WireframeEditResult EditCoupled(string sessionId, string surfaceId, WireframeComponentEdit edit);
 
@@ -240,8 +236,7 @@ public interface IWireframeAccessRegistry
     /// <summary>
     /// Applies one hand-edit the operator made on the surface itself (AC-875), through the same lock and the same
     /// per-component grammar as <see cref="EditCoupled"/>: one change, never a series of half states, so an agent
-    /// reading in between never sees half a handling. No hold check — the hold being checked is the operator's own.
-    /// Null when it landed, else the reason it was refused.
+    /// reading in between never sees half a handling. No hold check — the hold being checked is the operator's own. Null when it landed, else the reason it was refused.
     /// </summary>
     string? ApplyHandEdit(string surfaceId, WireframeComponentEdit edit);
 
@@ -274,12 +269,9 @@ public interface IWireframeAccessRegistry
 
     /// <summary>
     /// The stable id of the component on <paramref name="line"/>, minting ids for the whole surface first when it
-    /// carries none yet (AC-906). Null when no component sits on that line, or the surface is not open.
+    /// carries none yet (AC-906). Null when no component sits on that line, or the surface is not open. This is the
+    /// operator's side of minting: taking a component under their hand is naming it. Raises <see cref="TextChanged"/> when the source gained ids.
     /// </summary>
-    /// <remarks>
-    /// This is the operator's side of minting: taking a component under their hand is naming it. Raises
-    /// <see cref="TextChanged"/> when the source gained ids.
-    /// </remarks>
     string? EnsureComponentId(string surfaceId, int line);
 
     /// <summary>

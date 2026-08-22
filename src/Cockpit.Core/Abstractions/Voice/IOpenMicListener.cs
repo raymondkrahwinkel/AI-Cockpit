@@ -1,10 +1,9 @@
 namespace Cockpit.Core.Abstractions.Voice;
 
 /// <summary>
-/// Open-mic dictation: listens to the microphone continuously and detects utterance boundaries itself
-/// (VAD endpointing) rather than requiring a push-to-talk hold. Each finished utterance is transcribed
-/// and surfaced via <see cref="UtteranceTranscribed"/>; the coordinator decides which session receives
-/// it. A single shared instance for the whole (single-user) cockpit.
+/// Open-mic dictation: listens to the microphone continuously and detects utterance boundaries itself (VAD
+/// endpointing) rather than requiring a push-to-talk hold. Each finished utterance is transcribed and surfaced via
+/// <see cref="UtteranceTranscribed"/>; the coordinator decides which session receives it. A single shared instance for the whole (single-user) cockpit.
 /// </summary>
 public interface IOpenMicListener
 {
@@ -12,15 +11,10 @@ public interface IOpenMicListener
     event EventHandler<string>? UtteranceTranscribed;
 
     /// <summary>
-    /// Raised on the capture thread the moment the VAD decides you have started speaking, and again when the
-    /// utterance ends — the boundaries this listener already finds to know what to transcribe.
+    /// Raised the moment the VAD decides you started speaking, and again when the utterance ends — boundaries this
+    /// listener already finds, so the voice overlay can appear the instant there's something to show (Raymond, 2026-07-15),
+    /// instead of a second worse VAD thresholding <see cref="AudioLevelSampled"/>. <see cref="UtteranceTranscribed"/> is too late.
     /// </summary>
-    /// <remarks>
-    /// They are here so the voice overlay can appear when there is something to show and not a second before
-    /// (Raymond, 2026-07-15). The alternative was thresholding <see cref="AudioLevelSampled"/> in the UI, which
-    /// is a second, worse VAD guessing at what this one already knows — and it would light the pill for a door
-    /// closing. <see cref="UtteranceTranscribed"/> is far too late: by then the speaking is over.
-    /// </remarks>
     event EventHandler? SpeechStarted;
 
     /// <inheritdoc cref="SpeechStarted"/>

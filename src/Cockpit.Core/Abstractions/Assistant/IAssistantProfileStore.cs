@@ -4,26 +4,10 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.Core.Abstractions.Assistant;
 
 /// <summary>
-/// Loads the <see cref="AssistantProfileSlot"/> and repoints it at another record (AC-543).
+/// Loads the <see cref="AssistantProfileSlot"/> and repoints it at another record (AC-543). No delete method is
+/// offered — an absent method cannot be forgotten or bypassed the way a guard can. No changing a record's provider
+/// either: <see cref="RepointAsync"/> takes a whole <see cref="SessionProfile"/>, so switching mints a new record; giving up goes through <see cref="UnsetAsync"/> (blank reasons rejected) — neither path leaves an unexplained empty slot.
 /// </summary>
-/// <remarks>
-/// <b>There is no delete.</b> The slot cannot be removed, and the laziest way to enforce that is to offer no
-/// method for it: a guard can be forgotten, bypassed by a second call site, or dropped in a refactor, while an
-/// absent method cannot be called at all. The slot lives in its own <c>assistantProfile</c> section rather than
-/// in the profile list for the same reason — see <see cref="AssistantProfileSlot"/>.
-/// <para>
-/// <b>There is no way to change a record's provider either.</b> <see cref="RepointAsync"/> takes a whole
-/// <see cref="SessionProfile"/>, never a provider config to apply to the one already stored, so the
-/// <c>with { ProviderConfig = … }</c> that <see cref="SessionProfile.ProviderConfig"/>'s own doc-comment forbids
-/// has nothing to attach to here. Switching provider means minting a new record and handing it over.
-/// </para>
-/// <para>
-/// <b>The two writes are the whole of criterion 4.</b> A provider switch that fails simply never reaches
-/// <see cref="RepointAsync"/>, so the old record stays exactly where it was; a switch that has to give up says so
-/// through <see cref="UnsetAsync"/>, which will not accept a blank reason. Neither path can leave the operator
-/// with an empty slot and no explanation, because neither path can express one.
-/// </para>
-/// </remarks>
 public interface IAssistantProfileStore
 {
     /// <summary>
@@ -34,27 +18,19 @@ public interface IAssistantProfileStore
     Task<AssistantProfileSlot> LoadAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Points the slot at <paramref name="record"/> and persists it, returning the slot that resulted.
+    /// Points the slot at <paramref name="record"/> and persists it, returning the slot that resulted. A
+    /// <em>new</em> record when the provider changed — the previous one is never edited into shape.
+    /// <paramref name="replacesStandingInstruction"/> (AC-594) is required, not defaulted: forgetting it would silently switch the assistant back to adding, a setting changing itself behind the operator's back.
     /// </summary>
-    /// <param name="record">
-    /// The record the slot should resolve to from now on. A <em>new</em> record when the provider changed: the
-    /// previous one is simply no longer referenced, never edited into shape.
-    /// </param>
-    /// <param name="replacesStandingInstruction">
-    /// Whether <paramref name="record"/>'s system prompt replaces the built-in standing instruction rather than
-    /// adding to it (AC-594). Required rather than defaulted: a caller that forgot it would silently switch the
-    /// assistant back to adding, which is a setting changing itself behind the operator's back.
-    /// </param>
     Task<AssistantProfileSlot> RepointAsync(
         SessionProfile record,
         bool replacesStandingInstruction,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lands the slot explicitly on "not set up", with <paramref name="reason"/> saying why. For the switch that
-    /// could not be completed and has no old record worth keeping — the alternative the operator is owed instead
-    /// of a slot that is merely empty.
+    /// Lands the slot explicitly on "not set up", with <paramref name="reason"/> saying why — for the switch that
+    /// could not be completed and left no old record worth keeping. Blank <paramref name="reason"/> is rejected: a
+    /// reason nobody can read is the failure mode this method exists to avoid.
     /// </summary>
-    /// <param name="reason">Why the slot has no record, in words for the operator. Blank is rejected: a reason nobody can read is the failure mode this method exists to avoid.</param>
     Task<AssistantProfileSlot> UnsetAsync(string reason, CancellationToken cancellationToken = default);
 }

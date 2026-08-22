@@ -1,11 +1,9 @@
 namespace Cockpit.Core.Abstractions.Worktrees;
 
 /// <summary>
-/// Lets a session-pane restore (AC-410) wait for the startup worktree reconcile before touching the worktree
-/// registry. <c>Program.cs</c> starts <see cref="IWorktreeManager.ReconcileAsync"/> fire-and-forget so it never
-/// delays the window — but a restore that races ahead of it could offer to resume a pane whose worktree the
-/// reconcile is mid-way removing as an orphan. A singleton service rather than a static field, so the graph stays
-/// swappable in tests.
+/// Lets a session-pane restore (AC-410) wait for the startup worktree reconcile before touching the registry.
+/// <c>Program.cs</c> starts <see cref="IWorktreeManager.ReconcileAsync"/> fire-and-forget so it never delays the
+/// window, but a racing restore could resume a pane mid-orphan-removal. Singleton, not static, for test swapping.
 /// </summary>
 public interface IWorktreeReconcileGate
 {

@@ -3,26 +3,16 @@ using Cockpit.Core.Mcp;
 namespace Cockpit.Core.Abstractions.Mcp;
 
 /// <summary>
-/// Makes one MCP tool call outside any running session (AC-503) — what a plugin's <c>ICockpitHost.ProbeMcpToolAsync</c>
-/// call actually runs against, via the app layer (<c>CockpitHost</c>), which maps this interface's Core-level
-/// <see cref="McpToolProbeResult"/> onto the plugin-facing one. See <see cref="IMcpOAuthCoordinator"/>'s own remarks
-/// on <em>interactive</em>: this never asks interactively — a server that needs a sign-in reports
-/// <see cref="McpToolProbeOutcome.NotSignedIn"/> without ever opening a browser.
+/// Makes one MCP tool call outside any running session (AC-503) — what a plugin's
+/// <c>ICockpitHost.ProbeMcpToolAsync</c> runs against via the app layer, mapping this interface's
+/// <see cref="McpToolProbeResult"/> onto the plugin-facing one. Never asks interactively: a server needing a sign-in reports <see cref="McpToolProbeOutcome.NotSignedIn"/> without opening a browser.
 /// </summary>
 public interface IMcpToolProbe
 {
     /// <summary>
-    /// Calls <paramref name="toolName"/> on the server named <paramref name="serverName"/>, short-lived and
-    /// disposed immediately after. Resolved first against the shared registry and, only when that has no entry
-    /// under the name, against <paramref name="callerFallbackServers"/> (AC-499) — servers the caller is entitled
-    /// to reach even though the registry does not carry them, e.g. a plugin whose servers are delivered per-project
-    /// rather than pushed into the registry (Depot, AC-504): this call takes no project id at all, so without this
-    /// fallback such a plugin's own server could never be probed, project row saved or not. A name neither side knows answers
-    /// <see cref="McpToolProbeOutcome.Failed"/> without attempting anything (a caller passed a name nothing was ever
-    /// registered under — not a claim about the value it was checking). A server whose auth is OAuth and not
-    /// currently signed in answers <see cref="McpToolProbeOutcome.NotSignedIn"/>, also without attempting a
-    /// connection. See <see cref="McpToolProbeResult"/>'s own remarks on why a network/timeout failure answers
-    /// <see cref="McpToolProbeOutcome.Failed"/> rather than <see cref="McpToolProbeOutcome.NotFound"/>.
+    /// Calls <paramref name="toolName"/> on server <paramref name="serverName"/>, short-lived, resolved against the
+    /// registry and, only if nothing is found, against <paramref name="callerFallbackServers"/> (AC-499) — servers
+    /// delivered per-project (Depot, AC-504), since this call takes no project id. An unknown name or unsigned-in OAuth server answers <see cref="McpToolProbeOutcome.Failed"/> / <see cref="McpToolProbeOutcome.NotSignedIn"/> untried.
     /// </summary>
     Task<McpToolProbeResult> ProbeAsync(
         string serverName,

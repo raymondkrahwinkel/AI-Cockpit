@@ -3,20 +3,16 @@ using Cockpit.Core.Plugins;
 namespace Cockpit.Core.Abstractions.Plugins;
 
 /// <summary>
-/// Installs and removes plugins on disk (#14). Installation validates and safely unpacks a <c>.zip</c>
-/// into the plugins root; both an update over a loaded plugin and a removal are deferred to the next startup,
-/// since a loaded assembly's file stays locked (on Windows) until the process exits. The enable/consent state
-/// itself lives in <see cref="IPluginRegistrationStore"/>.
+/// Installs and removes plugins on disk (#14). Installation validates and safely unpacks a <c>.zip</c> into the
+/// plugins root; an update over a loaded plugin and a removal are both deferred to the next startup, since a
+/// loaded assembly's file stays locked (on Windows) until the process exits. Enable/consent state lives in <see cref="IPluginRegistrationStore"/>.
 /// </summary>
 public interface IPluginInstaller
 {
     /// <summary>
-    /// Validates and unpacks the archive into its own folder under the plugins root; returns the folder id on
-    /// success or a reason it was rejected — including a <c>minHostVersion</c> newer than this cockpit (AC-181),
-    /// checked here rather than only at load so a too-new plugin never lands on disk pretending to be installed.
-    /// Updating an existing install stages the new version and applies it at the next startup (see
-    /// <see cref="SweepPendingUpdatesAsync"/>). <paramref name="hostVersion"/> defaults to the running cockpit's
-    /// own version (<see cref="HostVersionInfo"/>) when omitted; a caller only ever passes it explicitly in a test.
+    /// Validates and unpacks the archive; returns the folder id on success or a reason it was rejected — including
+    /// a <c>minHostVersion</c> newer than this cockpit (AC-181), checked here rather than only at load. Updating
+    /// an existing install stages the new version for <see cref="SweepPendingUpdatesAsync"/>; <paramref name="hostVersion"/> defaults to <see cref="HostVersionInfo"/>, only overridden explicitly in a test.
     /// </summary>
     Task<PluginInstallResult> InstallFromZipAsync(
         string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default);

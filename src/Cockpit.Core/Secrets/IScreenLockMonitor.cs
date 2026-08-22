@@ -1,22 +1,9 @@
 namespace Cockpit.Core.Secrets;
 
 /// <summary>
-/// Watches the operating system's own screen lock, so AI-Cockpit can lock itself when the desktop locks (AC-5) —
-/// it puts the unlock screen in front and asks for the encryption password again, while leaving the key in memory so
-/// any agent already running keeps working.
-/// <para>
-/// One event-source, three OS-specific implementations chosen at runtime (Windows session notifications, the macOS
-/// distributed <c>screenIsLocked</c> notification, Linux systemd-logind's <c>LockedHint</c> property), plus a
-/// <see cref="NullScreenLockMonitor"/> for anything else. Deliberately just a trigger: it does not touch the key or
-/// the UI — the coordinator above it decides, per event, whether the feature applies and reuses the existing unlock
-/// flow. That keeps the untestable native layer as thin as it can be, and keeps the gate (encryption on, option on)
-/// in one testable place rather than smeared across three platform files.
-/// </para>
-/// <para>
-/// <see cref="StartAsync"/> registers with the OS; <see cref="IDisposable.Dispose"/> unregisters. A monitor that
-/// cannot register (no logind, an unsupported desktop) fails safe — it simply never raises <see cref="Locked"/>, so
-/// the app behaves as if the feature were off rather than crashing the launch over a missing OS facility.
-/// </para>
+/// Watches the OS's own screen lock, so AI-Cockpit can lock itself when the desktop locks (AC-5) — the unlock
+/// screen re-asks the encryption password, keeping the key in memory so a running agent keeps working. Just a
+/// trigger, never touching the key or UI; a monitor that can't register fails safe, never raising <see cref="Locked"/>.
 /// </summary>
 public interface IScreenLockMonitor : IDisposable
 {

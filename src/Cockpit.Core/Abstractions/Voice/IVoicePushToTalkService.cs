@@ -18,9 +18,8 @@ public interface IVoicePushToTalkService
 
     /// <summary>
     /// Forwarded from <see cref="ISpeechToTextService.Preparing"/>: what a hold is waiting on before it can
-    /// transcribe, which on first use is a download of gigabytes. It sits beside
-    /// <see cref="AudioLevelSampled"/> because the views and view models that show hold status already hold
-    /// this interface and nothing else new. Fires off the UI thread — subscribers marshal themselves.
+    /// transcribe, which on first use is a download of gigabytes. It sits beside <see cref="AudioLevelSampled"/>
+    /// because the views/view models that show hold status already hold this interface and nothing else new. Fires off the UI thread — subscribers marshal themselves.
     /// </summary>
     event EventHandler<VoicePreparationProgress>? Preparing;
 

@@ -42,10 +42,9 @@ public enum WhiteboardHistoryKind
 public sealed record WhiteboardHistoryEntry(string Id, string Origin, WhiteboardHistoryKind Kind, string ObjectId, string Summary, DateTime When, bool Reverted);
 
 /// <summary>
-/// The source of truth for whiteboard-surface access (AC-823) — the whiteboard counterpart to
-/// <c>IDiagramAccessRegistry</c> (AC-810); read that one first. Deviations: what a surface holds is a rendered PNG
-/// snapshot (AC-821's <c>IWhiteboardSnapshotRenderer</c> output), not text, and the write path adds objects one at a
-/// time (AC-854) rather than replacing the board — an agent never removes or overwrites the operator's own work.
+/// The source of truth for whiteboard-surface access (AC-823) — the counterpart to <c>IDiagramAccessRegistry</c>
+/// (AC-810); read that one first. Deviations: a surface holds a rendered PNG snapshot, not text, and writes add
+/// objects one at a time (AC-854) rather than replace the board, so an agent never overwrites the operator's work.
 /// </summary>
 public interface IWhiteboardAccessRegistry
 {

@@ -5,12 +5,9 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.Core.Abstractions.Sessions;
 
 /// <summary>
-/// A live session: owns its <see cref="ISessionDriver"/>, pumps the driver's event stream, and keeps the
-/// state a consumer needs (status, capabilities, the events so far, the last assistant reply) — all without
-/// touching a UI thread. It is the one place a session's lifetime lives, whichever kind of consumer is
-/// watching it: the interactive panel subscribes to <see cref="EventAppended"/> and marshals to the UI
-/// thread itself, while a headless consumer (a delegated task, #67) reads <see cref="EventsSince"/> and
-/// <see cref="LastAssistantText"/> and never marshals anything.
+/// A live session: owns its <see cref="ISessionDriver"/>, pumps its events, and keeps state without touching a
+/// UI thread. One lifetime owner regardless of consumer: the panel subscribes to <see cref="EventAppended"/>
+/// and marshals itself; a headless consumer (a delegated task, #67) reads <see cref="EventsSince"/> instead.
 /// </summary>
 public interface ISessionRuntime : IAsyncDisposable
 {
@@ -22,9 +19,8 @@ public interface ISessionRuntime : IAsyncDisposable
 
     /// <summary>
     /// What the running driver supports, so a consumer only offers controls the provider can back. Meaningful
-    /// only after <see cref="StartAsync"/>: a driver settles its capabilities while connecting (a local
-    /// provider's tool support flips on only once its MCP tool session is up), so reading them before start
-    /// would always see the pre-start defaults.
+    /// only after <see cref="StartAsync"/>: a driver settles capabilities while connecting (a local provider's
+    /// tool support flips on only once its MCP tool session is up), so reading them before start always sees defaults.
     /// </summary>
     SessionCapabilities? Capabilities { get; }
 
@@ -39,10 +35,9 @@ public interface ISessionRuntime : IAsyncDisposable
     SessionStatusFeed? CurrentStatus => null;
 
     /// <summary>
-    /// The generic mid-session controls the running driver reports (#45 D4) — a plugin provider's model and effort,
-    /// passed straight through so a consumer renders them without host-side vocabulary. Empty for a driver the host
-    /// drives through its own typed members (Claude) or one with nothing to switch. Meaningful only after start,
-    /// like <see cref="Capabilities"/>.
+    /// The generic mid-session controls the running driver reports (#45 D4) — a plugin's model/effort, passed
+    /// through without host-side vocabulary. Empty for a driver the host drives via typed members (Claude) or
+    /// with nothing to switch. Meaningful only after start, like <see cref="Capabilities"/>.
     /// </summary>
     IReadOnlyList<SessionLiveOption> LiveOptions => [];
 
@@ -59,21 +54,16 @@ public interface ISessionRuntime : IAsyncDisposable
     event Action<SessionEvent>? EventAppended;
 
     /// <summary>
-    /// The events produced from <paramref name="cursor"/> onwards, plus the cursor to pass next time. Lets a
-    /// consumer that attached late (or that polls, as the orchestrator's <c>get_task_output</c> does) catch up
-    /// without missing what happened before it subscribed. The log is bounded, so a very long session drops its
-    /// oldest events — <see cref="LastAssistantText"/> and <see cref="Capabilities"/> stay correct regardless.
+    /// The events from <paramref name="cursor"/> onwards, plus the cursor for next time — lets a late-attached
+    /// or polling consumer (the orchestrator's <c>get_task_output</c>) catch up. Bounded log: a long session
+    /// drops its oldest events, but <see cref="LastAssistantText"/>/<see cref="Capabilities"/> stay correct.
     /// </summary>
     (IReadOnlyList<SessionEvent> Events, int NextCursor) EventsSince(int cursor);
 
     /// <summary>
-    /// Creates the driver for <paramref name="profile"/>'s provider, starts it, and begins pumping its events.
-    /// Throws if the driver cannot be created or started — the caller decides how to surface that.
-    /// Worktree isolation (AC-85) is resolved by the cockpit before start and handed in through
-    /// <paramref name="workingDirectory"/>, so the runtime launches in whatever directory it is given.
-    /// <paramref name="projectId"/> (AC-218) is the project this session was started under, passed straight to the
-    /// driver so its MCP fan-out resolves against that project's own registry view; <see langword="null"/> for a
-    /// session with no project.
+    /// Creates the driver for <paramref name="profile"/>'s provider, starts it, and pumps its events. Throws on
+    /// failure. Worktree isolation (AC-85) is handed in via <paramref name="workingDirectory"/>; <paramref
+    /// name="projectId"/> (AC-218) scopes the driver's MCP fan-out to that project's registry view.
     /// </summary>
     Task StartAsync(
         SessionProfile? profile,

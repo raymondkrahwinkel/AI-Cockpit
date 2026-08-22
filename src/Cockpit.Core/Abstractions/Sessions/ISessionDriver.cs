@@ -5,12 +5,9 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.Core.Abstractions.Sessions;
 
 /// <summary>
-/// Drives a single, persistent, multi-turn conversation with one provider and exposes it as a typed
-/// event stream (#26) — the seam every provider sits behind: the Claude CLI (headless "stream-json"
-/// mode), the built-in local-model drivers (Ollama, LM Studio), and any provider a plugin registers
-/// (#45). <see cref="Capabilities"/> tells the UI which of the control operations below a given driver
-/// actually supports, so it renders no dead controls for providers that lack (say) live permission
-/// switching.
+/// Drives a single, persistent, multi-turn conversation with one provider and exposes it as a typed event
+/// stream (#26) — the seam every provider sits behind: the Claude CLI, built-in local-model drivers, and any
+/// plugin provider (#45). <see cref="Capabilities"/> tells the UI which operations a driver actually supports.
 /// </summary>
 public interface ISessionDriver : IAsyncDisposable
 {
@@ -37,37 +34,23 @@ public interface ISessionDriver : IAsyncDisposable
     SessionProfile? Profile { get; }
 
     /// <summary>
-    /// Starts the underlying <c>claude</c> process under the given profile — spawning with
-    /// <c>CLAUDE_CONFIG_DIR</c> set to <paramref name="profile"/>'s config directory (real
-    /// user env, e.g. HOME/USERPROFILE, still inherited) and that profile's working directory
-    /// pre-marked as trusted. Pass <see langword="null"/> to start without a profile (uses
-    /// whatever the host process's own environment/config already provides). Must be called
-    /// once before <see cref="SendUserMessageAsync"/> or <see cref="Events"/> produce anything.
-    /// <paramref name="model"/>, when non-null/whitespace, is passed as <c>--model &lt;value&gt;</c>
-    /// at launch (e.g. <c>"opus"</c>, <c>"sonnet"</c>, <c>"haiku"</c>). <paramref name="enabledMcpServerNames"/>
-    /// is the per-session MCP-server selection from the New-session dialog (#44): when non-null, it narrows
-    /// the shared MCP registry to just those names for this session, on top of the registry's own
-    /// enabled/scope filtering; <see langword="null"/> keeps the pre-#44 behaviour of using the full registry.
-    /// <paramref name="projectId"/> (AC-218) is the project this session was started under, so the MCP fan-out
-    /// resolves the selection against that project's own registry view (its servers, its by-name overrides)
-    /// instead of the unscoped registry; <see langword="null"/> for a session with no project.
+    /// Starts the underlying <c>claude</c> process under the profile (config dir, trusted working directory);
+    /// <see langword="null"/> starts profile-less. Must precede <see cref="SendUserMessageAsync"/>/<see
+    /// cref="Events"/>; <paramref name="enabledMcpServerNames"/> narrows the MCP registry (#44), <paramref name="projectId"/> (AC-218) scopes it per-project.
     /// </summary>
     Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Sends a user message as a single stream-json line on the CLI's stdin.
-    /// The session stays open for further turns afterwards. When <paramref name="images"/> is
-    /// non-empty, the message content becomes an array of blocks (one <c>text</c> block plus one
-    /// <c>image</c> block per attachment) instead of a plain string — the shape verified against
-    /// claude.exe 2.1.197. Text-only messages keep the plain-string content shape.
+    /// Sends a user message as a single stream-json line on stdin; the session stays open for further turns.
+    /// When <paramref name="images"/> is non-empty, content becomes an array of blocks (verified against
+    /// claude.exe 2.1.197) instead of a plain string; text-only messages keep the plain-string shape.
     /// </summary>
     Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Asks the provider to compact this conversation in place (AC-664) — summarise what has been said so far and
-    /// carry on as the same conversation, instead of the caller starting a fresh one and losing the transcript.
-    /// Only meaningful on a driver reporting <see cref="SessionCapabilities.SupportsContextCompaction"/>; the default
-    /// is a no-op.
+    /// Asks the provider to compact this conversation in place (AC-664) — summarise what has been said so far
+    /// and carry on as the same conversation, instead of starting a fresh one and losing the transcript. Only
+    /// meaningful when <see cref="SessionCapabilities.SupportsContextCompaction"/>; default is a no-op.
     /// </summary>
     Task CompactContextAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -85,13 +68,9 @@ public interface ISessionDriver : IAsyncDisposable
     Task SetModelAsync(string? model, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Live-switches the running session's thinking budget via a
-    /// <c>control_request</c>/<c>set_max_thinking_tokens</c> request, carrying the budget as
-    /// <c>maxThinkingTokens</c>. This is the live surface behind the per-session effort control:
-    /// "effort" maps to a thinking-token budget because that is the only budget the control
-    /// protocol can set mid-session. Verified against claude.exe 2.1.197 — the sibling subtypes
-    /// <c>set_thinking</c>/<c>set_thinking_tokens</c>/<c>set_effort</c> are rejected as
-    /// "Unsupported control request subtype".
+    /// Live-switches the thinking budget via <c>control_request</c>/<c>set_max_thinking_tokens</c> — the surface
+    /// behind per-session effort, since a thinking-token budget is the only one the control protocol can set
+    /// mid-session. Verified against claude.exe 2.1.197 — sibling subtypes <c>set_thinking</c>/<c>set_effort</c> are rejected.
     /// </summary>
     Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default);
 
@@ -109,22 +88,17 @@ public interface ISessionDriver : IAsyncDisposable
     Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Resolves the decision carrying the operator's answers as well (AC-715) — what a clarifying-question tool
-    /// such as Claude's <c>AskUserQuestion</c> asks for, where allow/deny alone leaves the agent approved but
-    /// unanswered. <paramref name="answersJson"/> is a JSON object keyed by question text; the default drops it
-    /// and falls back to the plain allow above.
+    /// Resolves the decision carrying the operator's answers too (AC-715) — for a clarifying-question tool like
+    /// <c>AskUserQuestion</c>, where allow/deny alone leaves it unanswered. Default drops <paramref
+    /// name="answersJson"/> and falls back to the plain allow above.
     /// </summary>
     Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
         RespondToPermissionAsync(toolUseId, allow, cancellationToken);
 
     /// <summary>
-    /// Allows the outstanding decision for <paramref name="toolUseId"/> and persists an always-allow
-    /// rule for the session's profile so this tool call is auto-allowed from now on — both for the
-    /// rest of this session (the coordinator short-circuits future prompts) and across restarts
-    /// (the rule is saved per profile). <paramref name="scope"/> chooses whether the rule matches
-    /// only the same input (<see cref="PermissionRuleScope.Exact"/>, keyed on the
-    /// canonical form of <paramref name="proposedInputJson"/>) or every call to
-    /// <paramref name="toolName"/> (<see cref="PermissionRuleScope.Wildcard"/>).
+    /// Allows the outstanding decision for <paramref name="toolUseId"/> and persists an always-allow rule for
+    /// the profile, auto-allowing it this session and across restarts. <paramref name="scope"/> matches only
+    /// this input (<see cref="PermissionRuleScope.Exact"/>) or every <paramref name="toolName"/> call (<see cref="PermissionRuleScope.Wildcard"/>).
     /// </summary>
     Task AllowPermissionAlwaysAsync(
         string toolUseId,
@@ -134,23 +108,16 @@ public interface ISessionDriver : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The session's latest status, when the provider reports it (#45 D7) — how full the context window is and the
-    /// usage windows it reports, each self-labelled. The host polls this and renders the header's bars from it, so
-    /// a provider that can report limits fills them without the host owning any provider-specific status code or
-    /// window vocabulary. Null for a driver whose provider reports none: the Claude CLI reports its limits through
-    /// the TTY statusline relay instead of this seam, and a local model (Ollama, LM Studio) has no such windows —
-    /// a header shows nothing rather than a made-up zero. A default property, so a driver with no status feed need
-    /// not implement it.
+    /// The session's latest status, when the provider reports it (#45 D7) — context fullness and self-labelled
+    /// usage windows, polled to render the header's bars without host-owned status code. Null when the provider
+    /// reports none (Claude uses the TTY statusline relay instead) — nothing shown, never a made-up zero.
     /// </summary>
     SessionStatusFeed? CurrentStatus => null;
 
     /// <summary>
-    /// The controls this session can switch mid-conversation that the host renders generically (#45 D4) — a plugin
-    /// provider's model and reasoning effort, each a per-turn override. Empty for a driver whose live controls the
-    /// host already knows by name (the Claude CLI drives model/permission/effort through its own typed members
-    /// above) or that has none (a local model). A driver reports these once its session is up, since the values can
-    /// depend on what the provider listed at start. A default property, so a driver without a generic live surface
-    /// need not implement it.
+    /// The controls this session can switch mid-conversation that the host renders generically (#45 D4) — a
+    /// plugin's model/effort overrides. Empty for a driver the host knows by name (Claude, via typed members
+    /// above) or with nothing to switch. Reported once the session is up, since values depend on provider start.
     /// </summary>
     IReadOnlyList<SessionLiveOption> LiveOptions => [];
 
@@ -162,28 +129,23 @@ public interface ISessionDriver : IAsyncDisposable
     IAsyncEnumerable<SessionEvent> Events { get; }
 
     /// <summary>
-    /// Turns per-tool-call approval prompts on or off for this session. When enabled, tool calls run without
-    /// prompting (still surfaced as tool rows) — the "allow all tools" convenience for local models, whose
-    /// every MCP call would otherwise need an Allow click. Default no-op: the Claude-CLI driver gates through
-    /// its own permission modes instead, so only the local (OpenAI-compatible) driver honours this.
+    /// Turns per-tool-call approval prompts on or off for this session — the "allow all tools" convenience for
+    /// local models, whose every MCP call would otherwise need a click. Default no-op; only the local
+    /// (OpenAI-compatible) driver honours this, the Claude-CLI driver uses its own permission modes instead.
     /// </summary>
     Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
-    /// Puts this session into non-interactive delegated tool-gating (AC-79): a delegated session has no human to
-    /// answer a permission prompt, so every MCP tool call is decided against <paramref name="ceiling"/> and
-    /// <paramref name="allowedTools"/> instead of being put to anyone — a tool above the ceiling and not on the
-    /// allow-list is denied with a reason (as its tool result), never left hanging. Default no-op: only the local
-    /// (OpenAI-compatible) driver, whose tool calls would otherwise prompt, honours this; the Claude/Codex CLIs
-    /// run non-interactively under their own permission mode. Not called for a profile whose "Auto-Approve tool
-    /// calls" is on — that uses <see cref="SetAutoApproveToolsAsync"/> to allow everything.
+    /// Puts this session into non-interactive delegated tool-gating (AC-79): a call is decided against
+    /// <paramref name="ceiling"/>/<paramref name="allowedTools"/>, denied with a reason, never left hanging.
+    /// Default no-op: only the local driver honours this; Claude/Codex gate under their own permission mode.
     /// </summary>
     Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
-    /// Switches one of the generic <see cref="LiveOptions"/> for the rest of this session (#45 D4) — the operator
-    /// picked a new value in the live-control panel, keyed by the option's <see cref="SessionLiveOption.Key"/>. The
-    /// driver applies it to its next turn. Default no-op: a driver with no generic live options has none to switch.
+    /// Switches one of the generic <see cref="LiveOptions"/> for the rest of this session (#45 D4) — the
+    /// operator picked a value in the live-control panel, keyed by <see cref="SessionLiveOption.Key"/>, applied
+    /// on the driver's next turn. Default no-op: a driver with no generic live options has none to switch.
     /// </summary>
     Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

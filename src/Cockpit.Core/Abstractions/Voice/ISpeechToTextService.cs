@@ -20,10 +20,9 @@ public interface ISpeechToTextService
     Task WarmUpAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Raised while a <see cref="TranscribeAsync"/> call is still getting ready — the model or a GPU runtime
-    /// coming down, or the model being loaded. Initializing lazily is what keeps voice free when it is off, but
-    /// it also means the first dictation waits on gigabytes, and a wait nobody narrates is indistinguishable
-    /// from a hang. Fires on whichever thread the work runs on — subscribers marshal to the UI themselves.
+    /// Raised while a <see cref="TranscribeAsync"/> call is still getting ready — a GPU runtime coming down, or the
+    /// model being loaded. Lazy init keeps voice free when off, but means the first dictation waits on gigabytes, and
+    /// a wait nobody narrates is indistinguishable from a hang. Fires on whichever thread the work runs on — subscribers marshal to the UI themselves.
     /// </summary>
     event EventHandler<VoicePreparationProgress>? Preparing;
 

@@ -2,13 +2,9 @@ namespace Cockpit.Core.Abstractions.Delegation;
 
 /// <summary>
 /// Records what was delegated, to which profile, and how it ended (#67). Delegation runs work under someone's
-/// login on a model's say-so, so "what did the agents actually do while I was away" has to be answerable from
-/// something more durable than the task list, which lives only as long as the app does.
+/// login on a model's say-so, so "what did the agents do while I was away" must outlive the task list. Refusals
+/// are recorded too: a log that only holds successes tells you nothing about what was attempted.
 /// </summary>
-/// <remarks>
-/// Refusals are recorded too, not just what ran: a guard that turned something away is exactly what you want to
-/// see afterwards, and a log that only holds successes tells you nothing about what was attempted.
-/// </remarks>
 public interface IDelegationAuditLog
 {
     /// <summary>Appends an entry. Never throws: an audit failure must not take a delegation down with it, so a broken log is a logged warning rather than a lost task.</summary>

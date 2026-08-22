@@ -25,9 +25,8 @@ public interface INodePairingBroker
     Task EnsureLoadedAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Takes on a pairing request. Refuses with <see cref="NodePairingError.AlreadyPaired"/> when this node
-    /// already has a controller, and with <see cref="NodePairingError.PairingInProgress"/> while another request
-    /// is still waiting for the operator.
+    /// Takes on a pairing request. Refuses with <see cref="NodePairingError.AlreadyPaired"/> when already
+    /// controlled, and with <see cref="NodePairingError.PairingInProgress"/> while another request still waits.
     /// </summary>
     /// <exception cref="NodePairingException">The request is refused; <c>Problem</c> says why.</exception>
     Task<NodePairingOffer> RequestAsync(string controllerName, string controllerAddress, CancellationToken cancellationToken = default);
@@ -63,10 +62,9 @@ public interface INodePairingBroker
     bool IsProjectAllowed(string projectId);
 
     /// <summary>
-    /// Replaces which profiles and projects the current pairing may use. A no-op while unpaired — there is no
-    /// pairing to attach a grant to. Takes effect on the running listener at once, the same as
-    /// <see cref="ConfirmAsync"/> and <see cref="UnpairAsync"/>: a scope narrowed here must stop covering the next
-    /// call, not the next restart.
+    /// Replaces which profiles and projects the current pairing may use. A no-op while unpaired. Takes effect on
+    /// the running listener at once, the same as <see cref="ConfirmAsync"/> and <see cref="UnpairAsync"/>: a scope
+    /// narrowed here must stop covering the next call, not the next restart.
     /// </summary>
     Task SetScopeAsync(IReadOnlyList<string> allowedProfileLabels, IReadOnlyList<string> allowedProjectIds, CancellationToken cancellationToken = default);
 }

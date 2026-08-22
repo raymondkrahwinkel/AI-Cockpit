@@ -1,17 +1,10 @@
 namespace Cockpit.Core.Abstractions.Sessions;
 
 /// <summary>
-/// A CLI that can run as the real interactive TUI in one of the cockpit's panes (#9). It answers exactly one
-/// question — <em>how do I start this program?</em> — and knows nothing about pseudo consoles, panes or
-/// terminals: <see cref="ITtyLauncher"/> owns all of that.
+/// A CLI that can run as the real interactive TUI in one of the cockpit's panes (#9). Answers one question —
+/// <em>how do I start this program?</em> — knowing nothing of consoles or terminals (<see cref="ITtyLauncher"/>
+/// owns that). Smaller than <see cref="ISessionDriver"/>: hosting it as a <em>driver</em> would inflate that rich contract; a TTY provider costs four fields.
 /// </summary>
-/// <remarks>
-/// This is deliberately far smaller than <see cref="ISessionDriver"/>, and that is the whole point. A pty has
-/// no approvals, no model switching, no events and no thinking budget — it has a program, arguments, an
-/// environment and a window size. Claude needs the rich driver contract, which is why hosting it as a session
-/// <em>driver</em> plugin would inflate that contract until nobody else could implement it; hosting it as a TTY
-/// provider costs four fields.
-/// </remarks>
 public interface ITtySessionProvider
 {
     /// <summary>Stable id of the provider this launches (<c>claude</c>, <c>codex</c>, …).</summary>

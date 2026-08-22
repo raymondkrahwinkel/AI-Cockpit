@@ -2,11 +2,8 @@ namespace Cockpit.Core.Abstractions.Sessions;
 
 /// <summary>
 /// A TTY session that reports where its statusline snapshots land — the file the cockpit reads a session's
-/// context and rate-limit percentages from (written by the provider plugin that owns the statusline).
-/// <para>
-/// A capability of the launched process rather than a wider launch contract: only a session started with the
-/// relay has one, the callers that do not care never see it, and the ones that do ask the thing that knows.
-/// </para>
+/// context/rate-limit percentages from (written by the provider plugin owning the statusline). A capability of
+/// the launched process, not a wider launch contract: only a session started with the relay has one.
 /// </summary>
 public interface ITtyStatusFile
 {

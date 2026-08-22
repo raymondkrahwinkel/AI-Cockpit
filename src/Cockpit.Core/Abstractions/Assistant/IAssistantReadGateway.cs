@@ -14,37 +14,17 @@ public interface IAssistantReadGateway
     Task<IReadOnlyList<AssistantSessionRow>> ListSessionsAsync();
 
     /// <summary>
-    /// The tail of one named session's transcript, raw — the rows the operator is looking at, in the order they
-    /// happened, with nothing rewritten. Null when no AI session is running on that pane.
+    /// The tail of one named session's transcript, raw — in the order it happened, nothing rewritten. Null when no
+    /// AI session runs on <paramref name="paneId"/>, which here is a lookup, not a scope: the caller is already the
+    /// assistant, allowed every workspace (AC-544). <paramref name="count"/> bounds it here, not at the tool, so a ten-thousand-row session is never copied out to discard most of it.
     /// </summary>
-    /// <remarks>
-    /// <b>Why this one takes an argument when <see cref="ListSessionsAsync"/> takes none.</b> Everywhere else in the
-    /// cockpit a pane id on a tool would be the hole — <c>read_inbox</c> deliberately has no such parameter, because
-    /// "whose inbox" must be the pane the transport verified rather than a pane the caller typed. Here it is not a
-    /// hole, and the reason is that it decides nothing about <em>authority</em>: the caller has already been
-    /// established as the assistant by the pane guard before this is reached, and the assistant is allowed every
-    /// workspace by design — that is the whole of AC-544. So the argument selects among things the caller may
-    /// already read, which is a lookup, not a scope. Do not "fix" it by deriving the pane from the request: the
-    /// assistant is asking about somebody else's session, always, and deriving it would leave the tool able only to
-    /// read the assistant's own.
-    /// <para>
-    /// <b>Bounded here rather than at the tool</b> so a session with ten thousand rows is never copied out of the UI
-    /// thread's collection to have all but thirty of them thrown away.
-    /// </para>
-    /// </remarks>
-    /// <param name="paneId">The session to read, as <see cref="AssistantSessionRow.PaneId"/> reports it.</param>
-    /// <param name="count">How many of the most recent entries to return; already clamped by the caller.</param>
     Task<AssistantTranscript?> ReadTranscriptAsync(string paneId, int count);
 
     /// <summary>
-    /// The projects this cockpit knows — the operator's own list, not a folder scan.
+    /// The projects this cockpit knows — the operator's own list, not a folder scan. A project is not a workspace
+    /// and not a session, and it was the one first-class thing the assistant could not see: asked "which projects
+    /// do we have", it answered with the desks, the nearest thing it had a tool for, and wrong.
     /// </summary>
-    /// <remarks>
-    /// A project is not a workspace and not a session, and it was the one first-class thing in the cockpit the
-    /// assistant could not see. Asked "which projects do we have", it answered with the desks — the nearest thing
-    /// it had a tool for, and wrong. Added from the live test rather than designed in: what a model reaches for
-    /// when it has no tool for the question is the most reliable way to find out which tool is missing.
-    /// </remarks>
     Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync();
 
     /// <summary>

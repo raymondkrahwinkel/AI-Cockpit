@@ -1,10 +1,9 @@
 namespace Cockpit.Core.Abstractions.Sessions;
 
 /// <summary>
-/// Answers whether a proposed tool call is already covered by an always-allow rule. A session
-/// registers its owning profile's checker with the <see cref="IPermissionCoordinator"/> per
-/// <c>tool_use_id</c>, so the coordinator can short-circuit a prompt the operator already opted out
-/// of — without the app-wide coordinator needing to know which profile owns which session.
+/// Answers whether a proposed tool call is already covered by an always-allow rule. A session registers its
+/// owning profile's checker with the <see cref="IPermissionCoordinator"/> per <c>tool_use_id</c>, so it can
+/// short-circuit a prompt the operator already opted out of without knowing which profile owns which session.
 /// </summary>
 public interface IPermissionRuleChecker
 {

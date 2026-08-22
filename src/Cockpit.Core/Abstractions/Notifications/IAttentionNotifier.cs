@@ -3,10 +3,9 @@ using Cockpit.Core.Notifications;
 namespace Cockpit.Core.Abstractions.Notifications;
 
 /// <summary>
-/// Entry point for every "something in a session wants you to know" signal: decides presence, routes to toast
-/// or webhook, and delivers. The cockpit calls these on edge-triggered transitions — into <c>NeedsAttention</c>,
-/// into <c>Done</c>, into idle — and everything downstream (presence, routing, channel, the operator's toggles)
-/// is handled here, so a caller never has to know which channel a message ends up taking.
+/// Entry point for every "something in a session wants you to know" signal: decides presence, routes to toast or
+/// webhook, and delivers. Called on edge-triggered transitions — into <c>NeedsAttention</c>, <c>Done</c>, idle —
+/// so a caller never has to know which channel a message ends up taking.
 /// </summary>
 public interface IAttentionNotifier
 {
@@ -14,9 +13,7 @@ public interface IAttentionNotifier
     Task NotifyAttentionAsync(AttentionNotification notification, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// A session finished its turn. Delivered only when you would otherwise miss it — see
-    /// <see cref="FinishedNotificationDecision"/>: a selected session in a focused window already showed you
-    /// the answer arriving.
+    /// A session finished its turn — delivered only when you'd miss it; see <see cref="FinishedNotificationDecision"/>.
     /// </summary>
     /// <param name="isSelected">The finished session is the one currently selected.</param>
     /// <param name="isWindowActive">The cockpit window is the focused window.</param>

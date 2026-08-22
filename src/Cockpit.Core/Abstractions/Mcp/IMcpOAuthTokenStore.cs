@@ -3,15 +3,9 @@ using Cockpit.Core.Mcp;
 namespace Cockpit.Core.Abstractions.Mcp;
 
 /// <summary>
-/// Persists the OAuth tokens the cockpit obtained for MCP servers (AC-353), in the <c>mcpOAuthTokens</c> section of
-/// <c>cockpit.json</c>. One place, so that a single sign-in serves every session route and a token that has to be
-/// withdrawn is withdrawn once rather than hunted across four agents' own credential stores.
-/// <para>
-/// Keyed by <see cref="McpServerConfig.IdentityKey"/> rather than the server's name (AC-403). A name is something
-/// the operator edits; a token filed under one is left behind by the rename that follows, unreachable and still
-/// carrying a refresh token — and, for two servers on the same host that swap names, offered to the endpoint it
-/// was never issued for.
-/// </para>
+/// Persists the OAuth tokens the cockpit obtained for MCP servers (AC-353), in <c>cockpit.json</c>'s
+/// <c>mcpOAuthTokens</c> section — one place, so a sign-in serves every route and a withdrawn token is withdrawn
+/// once, not hunted across stores. Keyed by <see cref="McpServerConfig.IdentityKey"/>, not the name (AC-403): a renamed server otherwise leaves a token behind, unreachable, and two servers swapping names would swap tokens.
 /// </summary>
 public interface IMcpOAuthTokenStore
 {
@@ -28,16 +22,8 @@ public interface IMcpOAuthTokenStore
     Task RemoveAsync(string serverId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Re-keys tokens an older build filed under a server's name onto the id that server carries now (AC-403), for
-    /// the servers whose id cannot be derived back from their name — a plugin that mints its own, where the name is
-    /// something else entirely. A server the derivation already covers needs nothing, and a token already carrying
-    /// an id is left alone.
-    /// <para>
-    /// ⚠️ Run this <em>before</em> the operator has any way to rename something, and only then. It is the one place
-    /// that matches a token against a server's <em>current</em> name, which is safe exactly once: at startup, on a
-    /// file whose names still say what they said when the tokens were written. Run it later and two servers that
-    /// swapped names in the meantime would swap tokens — the defect this whole ticket exists to remove.
-    /// </para>
+    /// Re-keys tokens an older build filed under a server's name onto its current id (AC-403), for servers whose id
+    /// can't be derived from the name. Already-covered entries are left alone. ⚠️ Run only before the operator can rename anything — safe exactly once at startup, or renamed servers would swap tokens.
     /// </summary>
     /// <param name="idsByServerName">Every known server's current name mapped to the id it should be filed under.</param>
     Task AdoptLegacyEntriesAsync(IReadOnlyDictionary<string, string> idsByServerName, CancellationToken cancellationToken = default);
