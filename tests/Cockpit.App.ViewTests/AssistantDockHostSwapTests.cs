@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Docking;
 using Cockpit.App.Services;
@@ -83,7 +84,7 @@ public sealed class AssistantDockHostSwapTests
 
             // The operator opens the chat the ordinary way: the sidebar chip, undocked, so a window.
             coordinator.Indicator.ClickCommand.Execute(null);
-            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
 
             var floating = coordinator.OpenChatWindow;
             Assert.NotNull(floating);
@@ -92,7 +93,7 @@ public sealed class AssistantDockHostSwapTests
             // The header's Dock button.
             var chat = (AssistantChatViewModel)floating!.DataContext!;
             chat.ToggleDockCommand.Execute(null);
-            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
 
             Assert.Null(coordinator.OpenChatWindow);
             Assert.True(cockpit.AssistantDocked, "a dock the operator can see has to be the dock that is remembered");
@@ -113,7 +114,7 @@ public sealed class AssistantDockHostSwapTests
             await cockpit.SetAssistantDockedAsync(true, AssistantIndicatorCoordinator.DockPanelId);
 
             coordinator.Indicator.ClickCommand.Execute(null);
-            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
 
             Assert.Null(coordinator.OpenChatWindow);
             Assert.Equal(AssistantIndicatorCoordinator.DockPanelId, cockpit.OpenDockPanelId);
@@ -134,7 +135,7 @@ public sealed class AssistantDockHostSwapTests
 
             // The header's Undock button.
             chat.ToggleDockCommand.Execute(null);
-            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
 
             Assert.False(chat.IsDocked);
             Assert.False(cockpit.AssistantDocked);
@@ -164,15 +165,15 @@ public sealed class AssistantDockHostSwapTests
             {
                 // Docked, so the rail carries the tab and its panel is open — the state a restart restores into.
                 await cockpit.SetAssistantDockedAsync(true, AssistantIndicatorCoordinator.DockPanelId);
+                Dispatcher.UIThread.RunJobs();
                 main.UpdateLayout();
-                await Task.Delay(100);
 
                 var docked = main.GetVisualDescendants().OfType<AssistantChatView>().SingleOrDefault();
                 Assert.NotNull(docked);
 
                 ((AssistantChatViewModel)docked!.DataContext!).ToggleDockCommand.Execute(null);
+                Dispatcher.UIThread.RunJobs();
                 main.UpdateLayout();
-                await Task.Delay(100);
 
                 Assert.Empty(main.GetVisualDescendants().OfType<AssistantChatView>());
                 Assert.NotNull(coordinator.OpenChatWindow);
