@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 
@@ -36,7 +37,11 @@ public sealed class TranscriptTallReplyFollowTests
                 await Task.Delay(20);
             }
 
-            await Task.Delay(400);
+            // The follow itself runs off ScrollChanged via Dispatcher.UIThread.Post (SessionView's
+            // _transcriptHandler), so it is queued rather than applied inline — pump the dispatcher to run it and
+            // let the layout it drives settle, instead of hoping a fixed sleep outlasted the post.
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
 
             var scroll = view.TranscriptScroll;
             var newest = view.TranscriptItems.ContainerFromIndex(view.TranscriptItems.ItemCount - 1);

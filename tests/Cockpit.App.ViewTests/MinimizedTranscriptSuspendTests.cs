@@ -16,33 +16,32 @@ namespace Cockpit.App.ViewTests;
 public sealed class MinimizedTranscriptSuspendTests
 {
     [Fact]
-    public async Task Minimize_SuspendsTranscript_And_Restore_ResumesIt()
+    public void Minimize_SuspendsTranscript_And_Restore_ResumesIt() => HeadlessAvalonia.Run(() =>
     {
-        await HeadlessAvalonia.RunAsync(async () =>
+        var vm = new SessionViewModel { ReadingLevel = ReadingLevel.Focus };
+        for (var i = 0; i < 5; i++)
         {
-            var vm = new SessionViewModel { ReadingLevel = ReadingLevel.Focus };
-            for (var i = 0; i < 5; i++)
-            {
-                vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, $"row {i}"));
-            }
+            vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, $"row {i}"));
+        }
 
-            var view = new SessionView { DataContext = vm };
-            var window = new Window { Content = view, Width = 820, Height = 640 };
-            window.Show();
-            window.UpdateLayout();
-            await Task.Delay(1);
+        var view = new SessionView { DataContext = vm };
+        var window = new Window { Content = view, Width = 820, Height = 640 };
+        window.Show();
+        window.UpdateLayout();
 
-            var scroll = view.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "TranscriptScroll");
-            Assert.True(scroll.IsVisible, "transcript is realised while the window is shown");
+        // Minimize/restore below react to WindowStateProperty synchronously (SessionView's
+        // _OnHostWindowPropertyChanged) and are asserted right after UpdateLayout with no wait at all — this
+        // initial realisation is exactly as synchronous, so no delay belongs here either.
+        var scroll = view.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "TranscriptScroll");
+        Assert.True(scroll.IsVisible, "transcript is realised while the window is shown");
 
-            window.WindowState = WindowState.Minimized;
-            window.UpdateLayout();
-            Assert.False(scroll.IsVisible, "transcript is suspended while the window is minimised");
+        window.WindowState = WindowState.Minimized;
+        window.UpdateLayout();
+        Assert.False(scroll.IsVisible, "transcript is suspended while the window is minimised");
 
-            window.WindowState = WindowState.Normal;
-            window.UpdateLayout();
-            Assert.True(scroll.IsVisible, "transcript is resumed once the window is restored");
-        });
-    }
+        window.WindowState = WindowState.Normal;
+        window.UpdateLayout();
+        Assert.True(scroll.IsVisible, "transcript is resumed once the window is restored");
+    });
 }
 #endif

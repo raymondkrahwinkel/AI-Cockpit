@@ -139,12 +139,18 @@ public sealed class TranscriptLeakHuntTests
 
             // Pump the dispatcher so the fix's fire-and-forget RequestCommitAsync runs — no explicit commit and no
             // UpdateLayout of our own, so the SessionView is released purely by what OnDetachedFromVisualTree did.
+            // CompositorTeardown.Flush is deliberately fire-and-forget (no task the test could await), so poll for
+            // the release instead of guessing how long its commit takes.
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            await Task.Delay(120);
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            var afterPump = LeakTracker.AliveCount(nameof(SessionView));
+            var afterPump = beforePump;
+            for (var wait = 0; wait < 20 && afterPump != 0; wait++)
+            {
+                await Task.Delay(20);
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                afterPump = LeakTracker.AliveCount(nameof(SessionView));
+            }
 
             Assert.True(
                 afterPump == 0,

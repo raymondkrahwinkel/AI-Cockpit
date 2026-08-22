@@ -59,9 +59,16 @@ public sealed class MarkdownViewLifetimeTests(ITestOutputHelper output)
             var immediately = AliveAfterCollect(refs);
             output.WriteLine($"alive right after being dropped: {immediately}/40");
 
-            // Give the dispatcher every chance to run the ticks that would stop those timers.
-            await Task.Delay(400);
-            var afterTicks = AliveAfterCollect(refs);
+            // Give the dispatcher every chance to run the ticks that would stop those timers — poll for it rather
+            // than sleep a fixed span, so a slow run still gets to see the timers stop instead of reporting
+            // whatever count a single guessed delay happened to catch.
+            var afterTicks = immediately;
+            for (var wait = 0; wait < 20 && afterTicks > 0; wait++)
+            {
+                await Task.Delay(20);
+                afterTicks = AliveAfterCollect(refs);
+            }
+
             output.WriteLine($"alive after the dispatcher ran: {afterTicks}/40");
 
             Assert.Equal(0, immediately);

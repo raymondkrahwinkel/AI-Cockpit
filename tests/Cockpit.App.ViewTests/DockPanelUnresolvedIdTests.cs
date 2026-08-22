@@ -64,9 +64,11 @@ public sealed class DockPanelUnresolvedIdTests
                 var rail = main.GetVisualDescendants().OfType<Grid>().First(g => g.Name == "RootGrid").ColumnDefinitions[4];
                 Assert.Equal(40, rail.Width.Value);
 
+                // DockPanelRegistry.Changed fires OnPropertyChanged(DockPanels)/(HasDockPanels) synchronously off
+                // Register, and the bound rail width reacts to that on the same call stack — UpdateLayout alone
+                // already arranges against the new value, so there is nothing async here to wait out.
                 panels.Register(_Panel("later"));
                 main.UpdateLayout();
-                await Task.Delay(50);
 
                 Assert.Equal(400, rail.Width.Value);
                 var content = main.GetVisualDescendants().OfType<ContentControl>().First(c => c.Name == "DockPanelContent");

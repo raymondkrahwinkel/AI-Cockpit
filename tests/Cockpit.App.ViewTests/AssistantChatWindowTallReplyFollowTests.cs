@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
@@ -50,7 +51,11 @@ public sealed class AssistantChatWindowTallReplyFollowTests
                     await Task.Delay(20);
                 }
 
-                await Task.Delay(400);
+                // The follow itself runs off ScrollChanged via Dispatcher.UIThread.Post (AssistantChatView's
+                // _transcriptHandler), so it is queued rather than applied inline — pump the dispatcher to run it
+                // and let the layout it drives settle, instead of hoping a fixed sleep outlasted the post.
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
 
                 var scroll = window.ChatView.TranscriptScroll;
                 var newest = window.ChatView.TranscriptItems.ContainerFromIndex(window.ChatView.TranscriptItems.ItemCount - 1);
