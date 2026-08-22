@@ -36,11 +36,27 @@ public static partial class MarkdownParser
             var heading = HeadingRegex().Match(line);
             if (heading.Success)
             {
+                var text = heading.Groups[2].Value;
+                var anchor = HeadingAnchorRegex().Match(text);
                 blocks.Add(new MarkdownBlock
                 {
                     Kind = MarkdownBlockKind.Heading,
                     HeadingLevel = heading.Groups[1].Value.Length,
-                    Inlines = ParseInlines(heading.Groups[2].Value),
+                    HeadingId = anchor.Success ? anchor.Groups[1].Value : null,
+                    Inlines = ParseInlines(anchor.Success ? text[..anchor.Index].TrimEnd() : text),
+                });
+                i++;
+                continue;
+            }
+
+            var image = ImageRegex().Match(line);
+            if (image.Success)
+            {
+                blocks.Add(new MarkdownBlock
+                {
+                    Kind = MarkdownBlockKind.Image,
+                    ImageAlt = image.Groups[1].Value.Trim(),
+                    ImageSource = image.Groups[2].Value.Trim(),
                 });
                 i++;
                 continue;
@@ -167,6 +183,7 @@ public static partial class MarkdownParser
                && !string.IsNullOrWhiteSpace(lines[i])
                && !lines[i].TrimStart().StartsWith("```", StringComparison.Ordinal)
                && !HeadingRegex().IsMatch(lines[i])
+               && !ImageRegex().IsMatch(lines[i])
                && !ListItemRegex().IsMatch(lines[i])
                && !_IsTableHeader(lines, i))
         {
@@ -363,6 +380,17 @@ public static partial class MarkdownParser
 
     [GeneratedRegex(@"^(#{1,6})\s+(.*)$")]
     private static partial Regex HeadingRegex();
+
+    // The explicit anchor a knowledge-base heading ends with: `## Bot token {#bot-token}`. Only ever applied
+    // to a line that already parsed as a heading, so ordinary prose mentioning braces is untouched.
+    [GeneratedRegex(@"\{#([A-Za-z0-9._-]+)\}\s*$")]
+    private static partial Regex HeadingAnchorRegex();
+
+    // A picture on a line by itself. Inline images inside a sentence stay out of this on purpose: the block
+    // list has no room for one, and a paragraph interrupted by a picture is not a shape the documentation
+    // needs. Anything else keeps parsing exactly as it did before this kind existed.
+    [GeneratedRegex(@"^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$")]
+    private static partial Regex ImageRegex();
 
     [GeneratedRegex(@"^\s*(?:[-*+]|\d+\.)\s+(.*)$")]
     private static partial Regex ListItemRegex();

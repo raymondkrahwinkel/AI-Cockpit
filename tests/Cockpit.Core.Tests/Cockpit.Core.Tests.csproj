@@ -27,6 +27,17 @@
     <AdditionalFiles Include="BannedSymbols.Avalonia.txt" />
   </ItemGroup>
 
+  <!-- AC-1033: documentation fixtures embedded the same way a real component embeds its own — the scanner's
+       whole contract is "whatever landed under a Docs folder", so a test that handed it a string instead of
+       an assembly would prove the parsing and none of the convention. -->
+  <!-- WithCulture=false is not optional: MSBuild's AssignCulture reads `welcome.nl.md` as a culture-specific
+       resource and routes it to an `nl` satellite assembly, where the scanner never sees it — the translation
+       silently disappears from a build that reports success. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Help\Docs\**\*.md" WithCulture="false" />
+    <EmbeddedResource Include="Help\Docs\**\*.png" WithCulture="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
