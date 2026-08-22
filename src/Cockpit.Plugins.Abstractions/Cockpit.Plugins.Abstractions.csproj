@@ -428,6 +428,12 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <!-- AC-1033: shipped in the package so referencing the SDK is all an out-of-repo plugin author has to do
+         to have a `Docs` folder become shipped documentation — including the WithCulture="false" that keeps a
+         translated page out of a satellite assembly. buildTransitive so it reaches a project that picks the SDK
+         up indirectly as well; build for the older clients that only look there. -->
+    <None Include="build\Cockpit.Plugins.Abstractions.targets" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="build\Cockpit.Plugins.Abstractions.targets" Pack="true" PackagePath="build\" />
   </ItemGroup>
 
   <ItemGroup>

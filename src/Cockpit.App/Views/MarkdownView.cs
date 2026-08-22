@@ -73,6 +73,15 @@ public sealed class MarkdownView : ContentControl
         set => SetValue(PreserveLineBreaksProperty, value);
     }
 
+    // How a picture on a line of its own is drawn — set by the knowledge base and by nothing else (AC-1033).
+    // Left null, an image reference renders exactly as it always did: the text of the reference, with its
+    // clickable link. That fallback is the point. A transcript has no way to turn a reference into bytes
+    // without reaching the network, so it must not try, and a chat message that pastes an image link has to
+    // keep showing the link rather than quietly becoming an empty line.
+    //
+    // Assign it before `Markdown`: this is a plain property, so setting it later does not force a repaint.
+    public Func<MarkdownBlock, Control>? ImageRenderer { get; set; }
+
     // A streaming reply re-sets Markdown on every delta, and each set rebuilt the whole block tree: at the end of
     // a long answer that is hundreds of controls reparsed and reconstructed, tens of times a second, for text that
     // grew by a few characters. The cost climbs with the reply, so it accelerates rather than settles — the UI
@@ -262,8 +271,19 @@ public sealed class MarkdownView : ContentControl
         MarkdownBlockKind.CodeBlock => _CodeBlock(block),
         MarkdownBlockKind.List => _List(block),
         MarkdownBlockKind.Table => _Table(block),
+        MarkdownBlockKind.Image => _Image(block),
         _ => _Paragraph(block.Inlines, new Thickness(0, 3, 0, 3)),
     };
+
+    // With no renderer this reconstructs the reference and parses it back into inlines, which lands on the
+    // exact tree this block used to produce before it had a kind of its own — the `!` as text and the rest as
+    // a clickable link. Spelled out rather than left to the paragraph fallback, because that one reads
+    // `Inlines`, which an image block does not have: it would have rendered a blank line into the chat.
+    private Control _Image(MarkdownBlock block) =>
+        ImageRenderer?.Invoke(block)
+        ?? _Paragraph(
+            MarkdownParser.ParseInlines($"![{block.ImageAlt}]({block.ImageSource})", PreserveLineBreaks),
+            new Thickness(0, 3, 0, 3));
 
     // Updates the control a block already has instead of building a new one, for the change a stream actually
     // makes: the block at the end grew. Block-level reuse alone is too coarse for the shapes that arrive as one
@@ -309,6 +329,11 @@ public sealed class MarkdownView : ContentControl
 
             case MarkdownBlockKind.Table:
                 return control is Border { Child: Grid grid } && _UpdateTableRows(grid, was, now);
+
+            // Never updated in place: an image does not stream, and the paragraph fallback below would refill
+            // this control from `Inlines`, which an image block leaves empty — blanking what was drawn.
+            case MarkdownBlockKind.Image:
+                return false;
 
             default:
                 if (control is not InlineTextBlock paragraph)

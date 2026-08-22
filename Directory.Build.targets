@@ -1,0 +1,10 @@
+<Project>
+
+  <!-- The SDK's own targets, imported for every project in this repository. An out-of-repo plugin gets this
+       file from the NuGet package (buildTransitive); a plugin here references the SDK as a ProjectReference,
+       which carries no such import, so without this line the two would differ in exactly the place a
+       difference is most expensive — the app's own documentation would work while a plugin author's did not,
+       or the reverse. One file, both ways in. -->
+  <Import Project="$(MSBuildThisFileDirectory)src\Cockpit.Plugins.Abstractions\build\Cockpit.Plugins.Abstractions.targets" />
+
+</Project>
