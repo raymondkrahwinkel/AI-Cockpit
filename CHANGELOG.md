@@ -254,6 +254,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session could go to "needs attention" for a tool waiting on your approval while the approval card was
+  nowhere to be seen — it sits in the transcript, so scrolling up to read history left it below the fold with
+  nothing on screen pointing at it. The round button in the corner of the transcript now says when something is
+  waiting to be approved and takes you straight to it in one click, wherever the transcript happens to be
+  scrolled. Scrolling up still pauses the follow the way it did; being asked something no longer moves the page
+  out from under you. And a permission that arrives without the tool call it belongs to now gets a row of its own
+  to approve, instead of leaving the session waiting on you with nothing to click.
 - fixed: `read_whiteboard` handed the agent a screenshot as a base64 field inside its JSON reply — a quarter
   million characters for a board with real content on it, which a client with a token limit on tool results
   refused outright, even though the call itself reported success. The image now travels as its own picture

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -8,6 +9,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Views;
@@ -64,6 +66,9 @@ public partial class SessionView : UserControl
     private DispatcherTimer? _activityAgeTicker;
 
     private ScrollViewer? _transcriptScroll;
+
+    // The session this pane's affordances follow, kept so the unsubscribe can find the same one again.
+    private SessionViewModel? _watchedSession;
 
     // The transcript's scroll owner. It lives inside TranscriptItems' own template since AC-686, so the virtualising
     // panel measures against the viewport rather than the infinite height an enclosing ScrollViewer hands it — and a
@@ -139,6 +144,11 @@ public partial class SessionView : UserControl
         // Land on the newest row if the panel re-attaches with an existing transcript.
         Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
 
+        // AC-996: a pane re-attaching onto a session that is already waiting on a permission — reselected in the
+        // sidebar because it went to needs-attention, most likely — must show the way to it straight away.
+        _WatchSession(DataContext as SessionViewModel);
+        Dispatcher.UIThread.Post(_UpdateJumpAffordance, DispatcherPriority.Background);
+
         _activityAgeTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _activityAgeTicker.Tick += _OnActivityAgeTick;
         _activityAgeTicker.Start();
@@ -170,6 +180,8 @@ public partial class SessionView : UserControl
 
         _activityAgeTicker?.Stop();
         _activityAgeTicker = null;
+
+        _WatchSession(null);
 
         if (_hostWindow is { } hostWindow)
         {
@@ -238,6 +250,9 @@ public partial class SessionView : UserControl
         {
             Dispatcher.UIThread.Post(_FollowNewest);
         }
+
+        // Rows dematerialise while paused, so what is reachable changed even though nothing scrolled (AC-996).
+        Dispatcher.UIThread.Post(_UpdateJumpAffordance, DispatcherPriority.Background);
     }
 
     private void _OnActivityAgeTick(object? sender, EventArgs e)
@@ -281,8 +296,101 @@ public partial class SessionView : UserControl
             _FollowNewest();
         }
 
-        // Offer the jump-to-newest button only while scrolled up (i.e. not following the tail).
-        ScrollToBottomButton.IsVisible = !_stickToBottom;
+        _UpdateJumpAffordance();
+    }
+
+    // The corner button, which offers whichever of the two destinations is out of reach: the tail while the
+    // operator is scrolled up (#21), or — ahead of it — a consent card waiting off-screen.
+    //
+    // AC-996: needs-attention pointed nowhere. A permission that lands while the operator is reading history puts
+    // the session on needs-attention and leaves its card below the fold, and the only affordance was a chevron
+    // that says "newest message" and means nothing about being asked something. Measured: parked at the bottom
+    // the card is in view; twelve wheel clicks up and it is not, with the status identical either way. Deliberate
+    // that this does not scroll the card in by itself — scrolling up is the operator reading, and a question is
+    // not a reason to take the page away from them.
+    private void _UpdateJumpAffordance()
+    {
+        var awaiting = _PendingPermissionIndex() is var pending && pending >= 0 && !_RowTopIsInView(pending);
+
+        ScrollToBottomIcon.Kind = awaiting ? MaterialIconKind.ShieldAlertOutline : MaterialIconKind.ChevronDown;
+        ToolTip.SetTip(ScrollToBottomButton, awaiting
+            ? "A tool is waiting for your approval — jump to it"
+            : "Jump to the newest message");
+        ScrollToBottomButton.IsVisible = awaiting || !_stickToBottom;
+    }
+
+    // The newest row still waiting on the operator, as an index into what the transcript is showing. -1 for none.
+    // Read off the status rather than off the pending flag alone: this exists to give needs-attention somewhere to
+    // point, and the two move together — `PermissionRequested` sets both, and whatever clears one clears the other.
+    private int _PendingPermissionIndex()
+    {
+        if (DataContext is not SessionViewModel { SessionStatus: SessionStatus.NeedsAttention } session)
+        {
+            return -1;
+        }
+
+        for (var index = session.VisibleTranscript.Count - 1; index >= 0; index--)
+        {
+            if (session.VisibleTranscript[index].IsPendingPermission)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    // Whether this row's top edge is on screen — enough to see a consent card and reach for it. Not
+    // _NewestRowIsFullyVisible: that one must keep answering "yes" for a row taller than the viewport or the
+    // follow can never terminate (AC-528), and it is only ever asked about the last row.
+    private bool _RowTopIsInView(int index)
+    {
+        if (!TranscriptScroll.IsVisible || TranscriptItems.ContainerFromIndex(index) is not { } row)
+        {
+            return false;
+        }
+
+        var top = row.TranslatePoint(new Point(0, 0), TranscriptScroll);
+        return top is { } point && point.Y >= -1 && point.Y < TranscriptScroll.Viewport.Height;
+    }
+
+    // A permission arrives without scrolling anything, so no ScrollChanged comes to re-evaluate the button —
+    // this is the only notice the view gets that there is now something to point at.
+    private void _OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // The status as well as the flag: whatever takes the session off needs-attention has to take the alarm
+        // off the button with it, and that can happen without the pending flag itself moving.
+        if (e.PropertyName is nameof(SessionViewModel.HasPendingPermission) or nameof(SessionViewModel.SessionStatus))
+        {
+            // After the row it added has been laid out, otherwise its container is not there to be measured yet.
+            Dispatcher.UIThread.Post(_UpdateJumpAffordance, DispatcherPriority.Background);
+        }
+    }
+
+    private void _WatchSession(SessionViewModel? session)
+    {
+        if (ReferenceEquals(_watchedSession, session))
+        {
+            return;
+        }
+
+        // The view model outlives the pane, so a missed unsubscribe here holds this whole view tree alive.
+        if (_watchedSession is { } previous)
+        {
+            previous.PropertyChanged -= _OnSessionPropertyChanged;
+        }
+
+        _watchedSession = session;
+        if (session is not null)
+        {
+            session.PropertyChanged += _OnSessionPropertyChanged;
+        }
+    }
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        _WatchSession(DataContext as SessionViewModel);
     }
 
     // A wheel turn at the bottom of the transcript moves nothing, so it raises no ScrollChanged at all — and the
@@ -305,9 +413,19 @@ public partial class SessionView : UserControl
 
     private void _OnScrollToBottomClick(object? sender, RoutedEventArgs e)
     {
+        // AC-996: when something is waiting to be approved, that card is the destination — and it is the newest
+        // row in all but the rare case of an older prompt still open, which is the only reason for the branch.
+        var pending = _PendingPermissionIndex();
+        if (pending >= 0 && pending != _NewestVisibleIndex())
+        {
+            TranscriptItems.ScrollIntoView(pending);
+            _UpdateJumpAffordance();
+            return;
+        }
+
         _stickToBottom = true;
         _FollowNewest();
-        ScrollToBottomButton.IsVisible = false;
+        _UpdateJumpAffordance();
     }
 
     // Puts the viewport on the newest row. It asks for the row rather than for an offset, because the offset

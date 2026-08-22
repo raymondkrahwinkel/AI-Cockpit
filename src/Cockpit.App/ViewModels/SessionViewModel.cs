@@ -403,6 +403,25 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // and never raises the output-text signal, since it cannot be vouched as the session's own answer.
     private TranscriptEntryViewModel? _currentOrphanedSubAgentTextEntry;
 
+    // The transcript row for a tool call — the same shape wherever one is built, top-level or in a sub-agent lane.
+    private static TranscriptEntryViewModel _ToolUseRow(string toolUseId, string toolName, string inputJson) =>
+        new(TranscriptEntryKind.ToolUse, $"Tool: {toolName}({inputJson})")
+        {
+            ToolUseId = toolUseId,
+            ToolName = toolName,
+            InputJson = inputJson,
+        };
+
+    // AC-996: the row a permission asks about, when no tool-use event ever brought one. Top-level even for a
+    // sub-agent's call: a row nested under a collapsed anchor is exactly the kind the operator cannot reach, and
+    // being asked is the whole reason this row exists.
+    private TranscriptEntryViewModel _AddOrphanPermissionRow(PermissionRequested permission)
+    {
+        var row = _ToolUseRow(permission.ToolUseId, permission.ToolName, permission.InputJson);
+        Transcript.Add(row);
+        return row;
+    }
+
     // Resolves the sub-agent lane an event with this parent id belongs to (AC-146), lazily creating one the
     // first time an event names a parent whose anchor tool-use row is already in the top-level transcript. Null
     // for a top-level event (no parent id) or one naming a parent this pane never saw the tool-use row for — a
@@ -2461,14 +2480,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 {
                     toolUseLane.CurrentAssistantEntry = null;
                     toolUseLane.CurrentThinkingEntry = null;
-                    toolUseLane.Anchor.SubAgentRows.Add(new TranscriptEntryViewModel(
-                        TranscriptEntryKind.ToolUse,
-                        $"Tool: {toolUse.ToolName}({toolUse.InputJson})")
-                    {
-                        ToolUseId = toolUse.ToolUseId,
-                        ToolName = toolUse.ToolName,
-                        InputJson = toolUse.InputJson,
-                    });
+                    toolUseLane.Anchor.SubAgentRows.Add(
+                        _ToolUseRow(toolUse.ToolUseId, toolUse.ToolName, toolUse.InputJson));
                     break;
                 }
 
@@ -2477,14 +2490,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // onto the pre-tool row and the whole reply collapses above the tools it actually followed.
                 _currentAssistantEntry = null;
                 _CloseThinkingRow();
-                var toolUseRow = new TranscriptEntryViewModel(
-                    TranscriptEntryKind.ToolUse,
-                    $"Tool: {toolUse.ToolName}({toolUse.InputJson})")
-                {
-                    ToolUseId = toolUse.ToolUseId,
-                    ToolName = toolUse.ToolName,
-                    InputJson = toolUse.InputJson,
-                };
+                var toolUseRow = _ToolUseRow(toolUse.ToolUseId, toolUse.ToolName, toolUse.InputJson);
                 Transcript.Add(toolUseRow);
 
                 // AC-532: this top-level call is now outstanding — reuses the row's own ToolHeader ("Bash  ·
@@ -2609,20 +2615,22 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     break;
                 }
 
-                if (entry is not null)
-                {
-                    // AC-715: an AskUserQuestion rides this same callback but asks for an answer, not consent —
-                    // parse its questions here so the row renders them as choices instead of Allow/Deny over raw
-                    // JSON. Any other tool parses to nothing and keeps the ordinary consent card.
-                    entry.QuestionPrompts = permission.ToolName == AskUserQuestionToolName
-                        ? AskUserQuestionViewModel.Parse(permission.InputJson)
-                        : null;
-                    entry.IsPendingPermission = true;
-                    // AC-532: a top-level call stalling on this prompt is why the turn looks idle right now —
-                    // flip the composer's activity band from "running" to "waiting for permission" so that reads
-                    // as waiting on the operator rather than as the tool quietly still working.
-                    _RaiseActiveToolActivityChanged();
-                }
+                // AC-996: `_needsAttention` below is unconditional, while the consent card only exists where a row
+                // does — so a permission whose tool-use row never arrived parked the session on needs-attention
+                // with nothing to click. Give it a row of its own; the event carries all a row needs.
+                entry ??= _AddOrphanPermissionRow(permission);
+
+                // AC-715: an AskUserQuestion rides this same callback but asks for an answer, not consent —
+                // parse its questions here so the row renders them as choices instead of Allow/Deny over raw
+                // JSON. Any other tool parses to nothing and keeps the ordinary consent card.
+                entry.QuestionPrompts = permission.ToolName == AskUserQuestionToolName
+                    ? AskUserQuestionViewModel.Parse(permission.InputJson)
+                    : null;
+                entry.IsPendingPermission = true;
+                // AC-532: a top-level call stalling on this prompt is why the turn looks idle right now —
+                // flip the composer's activity band from "running" to "waiting for permission" so that reads
+                // as waiting on the operator rather than as the tool quietly still working.
+                _RaiseActiveToolActivityChanged();
 
                 _needsAttention = true;
                 // Speak the lead-in the reply gave before this tool needs approval, rather than holding it back

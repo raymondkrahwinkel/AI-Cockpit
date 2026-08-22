@@ -599,7 +599,9 @@
             </ItemsControl>
 
         <!-- Scroll-to-bottom affordance: shown only when scrolled up (#21), jumps back to the newest
-             row and resumes following. On top of the transcript (last Grid child), bottom-right. -->
+             row and resumes following. On top of the transcript (last Grid child), bottom-right.
+             AC-996: also the one path from needs-attention to a waiting consent card that does not depend on
+             where the transcript is scrolled — icon, tooltip and visibility all switch in _UpdateJumpAffordance. -->
         <Button x:Name="ScrollToBottomButton" IsVisible="False"
                 Classes="Accent" Click="_OnScrollToBottomClick"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -607,7 +609,7 @@
                 Width="32" Height="32" Padding="0" Margin="0,0,10,10"
                 CornerRadius="16"
                 ToolTip.Tip="Jump to the newest message">
-            <materialIcons:MaterialIcon Kind="ChevronDown" Width="16" Height="16"/>
+            <materialIcons:MaterialIcon x:Name="ScrollToBottomIcon" Kind="ChevronDown" Width="16" Height="16"/>
         </Button>
         </Grid>
 
