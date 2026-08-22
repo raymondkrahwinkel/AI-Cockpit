@@ -3,9 +3,8 @@ using SlackNet;
 namespace Cockpit.Plugin.Slack;
 
 // A handful of connection failures trace back to a switch in the Slack app config rather than a typo in a
-// token; those get a one-line fix alongside the raw code (still worth keeping — the operator may go googling
-// it). Everything else falls through to SlackNet's own message unchanged rather than growing a translation
-// table for every code Slack could ever return.
+// token; those get a one-line fix alongside the raw code. Everything else falls through to SlackNet's own
+// message unchanged rather than growing a translation table for every code Slack could ever return.
 internal static class SlackConnectionErrorFormatter
 {
     public static string Explain(Exception exception)

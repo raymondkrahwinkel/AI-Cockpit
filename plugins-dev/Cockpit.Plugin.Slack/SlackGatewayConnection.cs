@@ -7,9 +7,8 @@ using Cockpit.Plugins.Abstractions.Channels;
 namespace Cockpit.Plugin.Slack;
 
 // Owns the SlackNet Socket Mode connection for one open assistant channel (AC-1025), wiring inbound messages
-// and button clicks into a `SlackChannelBridge`. A bad app-level token fails inside `Connect()` — Slack's
-// apps.connections.open call — before any socket opens, so it is reported once with no reconnect loop (the
-// same shape as Discord's bad-token LoginAsync failure, AC-1024).
+// and button clicks into a `SlackChannelBridge`. A bad app-level token fails inside `Connect()` before any
+// socket opens, so it is reported once with no reconnect loop — the same shape as Discord's bad-token failure.
 internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<MessageEvent>, IBlockActionHandler<ButtonAction>
 {
     private readonly ISlackSocketModeClient _client;

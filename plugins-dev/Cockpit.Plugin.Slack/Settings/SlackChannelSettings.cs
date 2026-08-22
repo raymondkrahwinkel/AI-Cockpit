@@ -3,10 +3,9 @@ using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.Plugin.Slack.Settings;
 
-// Slack-specific settings layered on the shared AC-1023 storage (`AssistantChannelStorage`): the bot token
-// (shared key), the app-level token Socket Mode needs (this plugin's own secret — Slack Socket Mode needs both,
-// unlike Discord's single bot token), and which Slack channel to relay into. Read fresh from `IPluginStorage`
-// on every access, so a settings save takes effect without a restart.
+// Slack-specific settings on top of the shared AC-1023 storage: the bot token (shared key), the app-level
+// token Socket Mode needs (this plugin's own secret — Slack needs both, unlike Discord's single bot token),
+// and which Slack channel to relay into. Read fresh from `IPluginStorage`, so a save takes effect without a restart.
 internal sealed class SlackChannelSettings(IPluginStorage storage)
 {
     private const string _AppLevelTokenKey = "slack.appLevelToken";

@@ -3,8 +3,7 @@ namespace Cockpit.Plugin.Slack;
 /// <summary>
 /// The Slack-agnostic seam a real gateway connection posts/edits/reacts through (AC-1025). Kept separate from
 /// <see cref="Cockpit.Plugins.Abstractions.Channels.IAssistantChannelGateway"/> so <see cref="SlackChannelBridge"/>'s
-/// routing logic is testable without a live socket. Message identity is Slack's own <c>ts</c> string rather than
-/// Discord's numeric snowflake — Slack has no equivalent numeric id.
+/// routing logic is testable without a live socket.
 /// </summary>
 internal interface ISlackChannelSink
 {
