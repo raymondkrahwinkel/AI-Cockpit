@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Slack plugin (AC-1025): SlackNet-backed AssistantChannelContribution (AC-1023) — a Socket Mode bot
+       connection that relays the assistant's own transcript into a Slack channel and consent prompts as Block
+       Kit Approve/Deny buttons, with a "type JA/NEE" text fallback. Built OUTSIDE the main solution
+       (plugins-dev/) like the other plugins; package bin/<config>/net10.0 into a .zip and install it via the
+       plugin store. Shared assemblies (Cockpit.Plugins.Abstractions, Avalonia, the DI abstractions) are
+       compile-only so the host's copies load and shared types keep one identity. SlackNet is this plugin's own
+       runtime dependency (like Discord.Net is Cockpit.Plugin.Discord's), so it and its transitive deps are
+       packaged into the plugin folder. Pinned to an exact version (AC-1025 criterion 6): Slack has no official
+       .NET SDK, so a breaking change in this community library must not reach the build unnoticed via a
+       floating range. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- The plugin's own runtime dependency: the Slack Socket Mode/Web API client. Not compile-only — it and
+         its transitive deps ship in the plugin folder. Pinned exact version, not a floating range (criterion 6). -->
+    <PackageReference Include="SlackNet" Version="0.17.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Slack.Tests" />
+  </ItemGroup>
+
+</Project>
