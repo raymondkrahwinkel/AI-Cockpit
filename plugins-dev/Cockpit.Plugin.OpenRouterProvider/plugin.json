@@ -1,7 +1,7 @@
 {
   "id": "openrouter-provider",
   "name": "OpenRouter",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "entryAssembly": "Cockpit.Plugin.OpenRouterProvider.dll",
   "entryType": "Cockpit.Plugin.OpenRouterProvider.OpenRouterProviderPlugin",
   "abstractionsVersion": 2,

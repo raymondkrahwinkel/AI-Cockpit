@@ -60,19 +60,19 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
             Spacing = 8,
             Children =
             {
-                _Label("Codex command / path"),
-                SettingsHelpRow.Build(_command, "Bare \"codex\" is resolved against PATH (including a Windows .cmd npm shim); or paste an absolute path to the executable."),
+                _LabelRow("Codex command / path", host.CreateHelpHint("setup", "codex-command")),
+                _command,
                 _commandStatus,
                 _managedCli.View,
-                _Label("Working directory (optional — SDK sessions only)"),
-                SettingsHelpRow.Build(_workingDirectory, "A TTY session runs where the New-session dialog says, so it ignores this. An SDK session cannot be told where it runs — the plugin contract carries no working directory — so it uses this, and falls back to the cockpit's own directory when it is empty."),
+                _LabelRow("Working directory (optional — SDK sessions only)", host.CreateHelpHint("setup", "working-directory")),
+                _workingDirectory,
                 _workingDirectoryStatus,
-                _Label("Sandbox mode"),
-                SettingsHelpRow.Build(_sandboxMode, "read-only is Codex's safe default. workspace-write allows edits inside the working directory; danger-full-access runs Codex with no sandboxing at all — only on a machine/workdir you fully trust."),
+                _LabelRow("Sandbox mode", host.CreateHelpHint("setup", "sandbox-mode")),
+                _sandboxMode,
                 _Label("Model (optional)"),
                 _model,
-                _Label("API key (optional)"),
-                SettingsHelpRow.Build(_apiKey, "Only needed if this machine is not already logged in via \"codex login\". Set via CODEX_API_KEY for this spawn only — never passed as a CLI argument, never logged."),
+                _LabelRow("API key (optional)", host.CreateHelpHint("setup", "api-key")),
+                _apiKey,
             },
         };
 
@@ -192,4 +192,13 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
+
+    // AC-1043: a label with the SDK-drawn "?" beside it, pointing at the section of this plugin's own setup
+    // page that explains the field below — replaces the old `SettingsHelpRow` hover tooltip.
+    private static StackPanel _LabelRow(string text, Control help) => new()
+    {
+        Orientation = Avalonia.Layout.Orientation.Horizontal,
+        Margin = new Thickness(0, 4, 0, 0),
+        Children = { new TextBlock { Text = text, FontSize = 11 }, help },
+    };
 }

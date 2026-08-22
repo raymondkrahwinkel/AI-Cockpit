@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GeminiProvider;
@@ -18,7 +19,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
     public Control View { get; }
 
-    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl)
+    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitHost host)
     {
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null
@@ -47,8 +48,8 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             Spacing = 8,
             Children =
             {
-                _Label("API key"),
-                SettingsHelpRow.Build(_apiKey, "Google AI Studio -> API key (for Gemini), or platform.openai.com -> API keys (for OpenAI)."),
+                _LabelRow("API key", host.CreateHelpHint("setup", "api-key")),
+                _apiKey,
                 _Label("Model"),
                 _ModelRow(),
                 _modelStatus,
@@ -118,4 +119,13 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
+
+    // AC-1043: a label with the SDK-drawn "?" beside it, pointing at the section of this plugin's own setup
+    // page that explains the field below — replaces the old `SettingsHelpRow` hover tooltip.
+    private static StackPanel _LabelRow(string text, Control help) => new()
+    {
+        Orientation = Avalonia.Layout.Orientation.Horizontal,
+        Margin = new Thickness(0, 4, 0, 0),
+        Children = { new TextBlock { Text = text, FontSize = 11 }, help },
+    };
 }

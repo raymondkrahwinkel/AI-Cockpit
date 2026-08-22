@@ -1,7 +1,7 @@
 {
   "id": "grok-provider",
   "name": "Grok",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "entryAssembly": "Cockpit.Plugin.GrokProvider.dll",
   "entryType": "Cockpit.Plugin.GrokProvider.GrokProviderPlugin",
   "abstractionsVersion": 2,
