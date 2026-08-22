@@ -70,11 +70,8 @@ public partial class HelpDeepLinkSweepTests
         Assert.Empty(offenders);
     }
 
-    // AC-1040: the same sweep over the pages themselves. A `help:` link inside a page is a deep link with no
-    // call site, so nothing above sees it — and a page that cross-references four others is four more ways for
-    // a renamed section to break quietly. Checked as written, without the owner-relative spelling: the window
-    // parses these addresses literally, so a plugin linking its own page by the bare name resolves at build and
-    // not at runtime, which is the one failure a test that passes is worst at.
+    // AC-1040: the same sweep over the `help:` links inside the pages, which have no call site for the one
+    // above to find, and checked as written because the window resolves them literally.
     [Fact]
     public void EveryCrossReferenceInsideAPageResolves()
     {

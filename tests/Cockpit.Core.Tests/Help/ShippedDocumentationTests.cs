@@ -1,10 +1,9 @@
 using Cockpit.App.Services;
 using Cockpit.Core.Help;
 
-namespace Cockpit.App.ViewTests;
+namespace Cockpit.Core.Tests.Help;
 
-// AC-1040: the app's own pages, read out of the built assembly the way the window reads them. Here rather than
-// in Core's suite because only this project references the assembly that carries them.
+// AC-1040: the app's own pages, read out of the built assembly the way the window reads them.
 public sealed class ShippedDocumentationTests
 {
     // A category with no page in it is hidden, so a branch the navigation promises can go missing without
