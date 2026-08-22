@@ -251,7 +251,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
 
     private Control _TemplateRow(AutopilotTemplate template)
     {
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, [DockPanel.DockProperty] = Dock.Right };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
 
         var edit = new Button { Content = "Edit", Padding = new Thickness(9, 3), FontSize = 11 };
         edit.Click += (_, _) => _EditTemplate(template);
@@ -278,31 +278,35 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             actions.Children.Add(reset);
         }
 
-        var name = new StackPanel
+        var badge = _OriginBadge(template.Origin);
+        Grid.SetColumn(badge, 0);
+
+        // A Grid star column, unlike the horizontal StackPanel this replaced, actually constrains this TextBlock's
+        // width during layout — the StackPanel measured it with infinite available width regardless of how little
+        // room the row had left, so TextTrimming never triggered and a long name rendered straight over Edit/Reset.
+        var nameText = new TextBlock
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
+            Text = template.Name,
+            FontSize = 12.5,
             VerticalAlignment = VerticalAlignment.Center,
-            Children =
-            {
-                _OriginBadge(template.Origin),
-                new TextBlock
-                {
-                    Text = template.Name,
-                    FontSize = 12.5,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    Foreground = _Brush("CockpitTextPrimaryBrush"),
-                },
-            },
+            Margin = new Thickness(8, 0, 8, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = _Brush("CockpitTextPrimaryBrush"),
         };
+        Grid.SetColumn(nameText, 1);
+        Grid.SetColumn(actions, 2);
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        row.Children.Add(badge);
+        row.Children.Add(nameText);
+        row.Children.Add(actions);
 
         return new Border
         {
             Padding = new Thickness(0, 6),
             BorderThickness = new Thickness(0, 0, 0, 1),
             BorderBrush = _Brush("CockpitHairlineBrush"),
-            Child = new DockPanel { LastChildFill = true, Children = { actions, name } },
+            Child = row,
         };
     }
 

@@ -23,6 +23,10 @@ public sealed class SurfaceWindows : ISingletonService
 {
     private readonly Dictionary<object, Surface> _open = [];
 
+    // Swappable so a test can watch which window gets reactivated: Window.Activate() is a silent no-op under the
+    // headless backend (SurfaceWindowsTests), so nothing about a real focus change is otherwise observable.
+    internal Action<Window> ActivateOwner = window => window.Activate();
+
     // Brings an already-open surface forward and hands back the task its first caller is waiting on, or
     // null when there is none. Callers ask before building a view model: most surfaces read a store to
     // populate themselves, and doing that for a window that will not be shown is work for nothing.
@@ -70,7 +74,7 @@ public sealed class SurfaceWindows : ISingletonService
         }
 
         var completion = new TaskCompletionSource();
-        _Track(key, surface, completion.Task, () => completion.TrySetResult());
+        _Track(key, surface, owner, completion.Task, () => completion.TrySetResult());
         surface.Show(owner);
 
         return completion.Task;
@@ -86,7 +90,7 @@ public sealed class SurfaceWindows : ISingletonService
         }
 
         var completion = new TaskCompletionSource<TResult?>();
-        _Track(key, surface, completion.Task, () => completion.TrySetResult(readResult()));
+        _Track(key, surface, owner, completion.Task, () => completion.TrySetResult(readResult()));
         surface.Show(owner);
 
         return completion.Task;
@@ -94,7 +98,7 @@ public sealed class SurfaceWindows : ISingletonService
 
     // One window per key: two of the same surface edit the same store, and the one saved last wins without
     // saying so. Asking again brings the open one forward, so a second click focuses rather than duplicates.
-    private void _Track(object key, Window window, Task pending, Action complete)
+    private void _Track(object key, Window window, Window owner, Task pending, Action complete)
     {
         _open[key] = new Surface(window, pending);
         window.Closed += OnClosed;
@@ -108,6 +112,10 @@ public sealed class SurfaceWindows : ISingletonService
             // window that has just closed.
             _open.Remove(key);
             complete();
+
+            // AC-1017: a modeless owned window does not hand focus back to its owner on its own — without this,
+            // the owner's next click only reactivates it instead of doing what was clicked.
+            ActivateOwner(owner);
         }
     }
 

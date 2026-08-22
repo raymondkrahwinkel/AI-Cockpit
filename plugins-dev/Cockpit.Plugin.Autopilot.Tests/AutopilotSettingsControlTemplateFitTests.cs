@@ -60,6 +60,40 @@ public class AutopilotSettingsControlTemplateFitTests
         Assert.True(help.Bounds.Height > 0, "the placeholder help collapsed to zero height");
     }
 
+    [Fact]
+    public void TemplateRow_ALongNameDoesNotOverlapTheEditAndResetButtons()
+    {
+        var storage = new FakeStorage();
+        var host = Substitute.For<ICockpitHost>();
+        host.RegisteredAutopilotTemplates.Returns([]);
+        var templates = new AutopilotTemplateStore(storage);
+        templates.UpsertUserTemplate(AutopilotTemplate.ForUser(
+            "user.long", "A template name long enough to run the whole width of the row and then quite a lot further past it, well beyond where the buttons sit", "body"));
+
+        var control = new AutopilotSettingsControl(new AutopilotSettings(storage), host, templates);
+        control.ShowSection(3); // "Templates"
+
+        const double width = 640;
+        const double height = 560;
+        var window = new Window { Width = width, Height = height, Content = control };
+        window.Show();
+        window.UpdateLayout();
+
+        var edit = control.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Edit"));
+        var name = control.GetVisualDescendants().OfType<TextBlock>()
+            .Single(block => block.Text != null && block.Text.StartsWith("A template name long enough"));
+
+        var nameRight = (name.TranslatePoint(new Point(name.Bounds.Width, 0), window) ?? default).X;
+        var editLeft = (edit.TranslatePoint(default, window) ?? default).X;
+
+        _out.WriteLine($"name right={nameRight:0.#} edit left={editLeft:0.#} in a {width}-wide window");
+
+        window.Close();
+
+        Assert.True(nameRight <= editLeft + 1,
+            $"the long template name (ending at {nameRight:0.#}) must not overlap the Edit button (starting at {editLeft:0.#})");
+    }
+
     private static AutopilotSettingsControl _Control()
     {
         var storage = new FakeStorage();
