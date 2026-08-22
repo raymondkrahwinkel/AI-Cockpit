@@ -2,6 +2,7 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.OpenRouterProvider;
@@ -19,7 +20,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
 
     public Control View { get; }
 
-    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl)
+    public OpenAiCompatProviderConfigView(string? existingConfigJson, string defaultBaseUrl, ICockpitHost host)
     {
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null
@@ -49,9 +50,9 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             Spacing = 8,
             Children =
             {
-                _Label("API key"),
+                _LabelRow("API key", host.CreateHelpHint("setup", "api-key")),
                 SettingsHelpRow.Build(_apiKey, "openrouter.ai/settings/keys — create a key there."),
-                _Label("Model"),
+                _LabelRow("Model", host.CreateHelpHint("setup", "model")),
                 _ModelRow(),
                 _modelStatus,
                 _Hint("OpenRouter routes by vendor/model, e.g. anthropic/claude-sonnet-4.5, openai/gpt-5.1 — see the catalog at openrouter.ai/models."),
@@ -123,4 +124,13 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
 
     private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+
+    // AC-1043: a label with the SDK-drawn "?" beside it, pointing at the section of this plugin's own setup
+    // page that explains the field below — additive to the existing hover-tooltip `SettingsHelpRow`.
+    private static StackPanel _LabelRow(string text, Control help) => new()
+    {
+        Orientation = Avalonia.Layout.Orientation.Horizontal,
+        Margin = new Thickness(0, 4, 0, 0),
+        Children = { new TextBlock { Text = text, FontSize = 11 }, help },
+    };
 }

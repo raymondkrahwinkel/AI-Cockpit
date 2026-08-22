@@ -13,7 +13,7 @@ internal sealed class DiagramSettingsControl : UserControl, IPluginSettingsView
     private readonly CheckBox _skipWhiteboard;
     private readonly CheckBox _skipWireframe;
 
-    public DiagramSettingsControl(DiagramSettings settings)
+    public DiagramSettingsControl(ICockpitHost host, DiagramSettings settings)
     {
         _settings = settings;
 
@@ -26,6 +26,13 @@ internal sealed class DiagramSettingsControl : UserControl, IPluginSettingsView
             Spacing = 8,
             Children =
             {
+                // AC-1043: the SDK-drawn "?" beside the consent checkboxes, pointing at this plugin's own
+                // Docs page section that explains them in full.
+                new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal,
+                    Children = { new TextBlock { Text = "Agent consent" }, host.CreateHelpHint("collaboration", "consent-toggle") },
+                },
                 _skipDiagram,
                 _skipWhiteboard,
                 _skipWireframe,

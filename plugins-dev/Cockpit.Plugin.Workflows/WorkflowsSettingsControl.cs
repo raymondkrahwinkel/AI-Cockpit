@@ -13,7 +13,7 @@ internal sealed class WorkflowsSettingsControl : UserControl, IPluginSettingsVie
     private readonly WorkflowsSettings _settings;
     private readonly CheckBox _mcpEnabled;
 
-    public WorkflowsSettingsControl(WorkflowsSettings settings)
+    public WorkflowsSettingsControl(ICockpitHost host, WorkflowsSettings settings)
     {
         _settings = settings;
 
@@ -32,11 +32,19 @@ internal sealed class WorkflowsSettingsControl : UserControl, IPluginSettingsVie
             Opacity = 0.7,
         };
 
+        // AC-1043: the SDK-drawn "?" beside the MCP toggle, pointing at this plugin's own Docs page section
+        // on what a workflow step's MCP surface can (and cannot) do without the operator's say-so.
+        var mcpRow = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Children = { _mcpEnabled, host.CreateHelpHint("how-it-works", "consent-tiers") },
+        };
+
         Content = new StackPanel
         {
             Spacing = 8,
             Margin = new Thickness(4),
-            Children = { _mcpEnabled, description },
+            Children = { mcpRow, description },
         };
     }
 

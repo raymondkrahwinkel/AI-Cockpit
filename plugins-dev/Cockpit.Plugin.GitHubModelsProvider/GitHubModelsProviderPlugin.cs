@@ -42,7 +42,7 @@ public sealed class GitHubModelsProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GitHubModelsDefaultBaseUrl),
+            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GitHubModelsDefaultBaseUrl, host),
             DefaultBaseUrl: GitHubModelsDefaultBaseUrl));
     }
 

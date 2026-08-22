@@ -48,7 +48,7 @@ public sealed class DiagramPlugin : ICockpitPlugin
             () => host.ShowDialogAsync("Wireframes", () => new WireframeListDialogBody(host), WireframeListDialogKey, width: 520, height: 600)));
 
         var settings = new DiagramSettings(host.Storage);
-        host.AddSettings(() => new DiagramSettingsControl(settings));
+        host.AddSettings(() => new DiagramSettingsControl(host, settings));
 
         // AC-889/AC-890: mounted here rather than the host, so an install without this plugin does not offer
         // cockpit-diagram/-whiteboard/-wireframe at all. No isEnabled (AC-830 dropped the master switch) and no

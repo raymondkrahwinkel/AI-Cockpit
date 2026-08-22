@@ -37,7 +37,7 @@ public sealed class OpenRouterProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenRouterDefaultBaseUrl),
+            CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenRouterDefaultBaseUrl, host),
             DefaultBaseUrl: OpenRouterDefaultBaseUrl));
     }
 
