@@ -5,7 +5,9 @@ namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 // of three screens. Between them they use every container, widget and modifier.
 internal static class WireframeScreens
 {
-    public const string Settings = """
+    // static readonly, not const: a raw string literal carries the checkout's line endings (core.autocrlf on
+    // Windows), and the writer under test always emits \n — ReplaceLineEndings keeps the comparison checkout-agnostic.
+    public static readonly string Settings = """
         screen "Instellingen"
           row h:1
             column w:1
@@ -30,9 +32,9 @@ internal static class WireframeScreens
               row align:right
                 button "Annuleren"
                 button "Opslaan" primary
-        """;
+        """.ReplaceLineEndings("\n");
 
-    public const string ListDetail = """
+    public static readonly string ListDetail = """
         screen "Sessies"
           row h:1
             column w:2
@@ -65,11 +67,11 @@ internal static class WireframeScreens
               row align:right
                 button "Verwijderen" disabled
                 button "Openen" primary
-        """;
+        """.ReplaceLineEndings("\n");
 
     // AC-903's measure: the product overview from the ticket — header, breadcrumb, filter sidebar, a card grid,
     // pagination, a footer and a modal over it — written entirely in the vocabulary.
-    public const string Catalogue = """
+    public static readonly string Catalogue = """
         screen "Catalogue"
           header "Northwind"
             search "Search products" w:3
@@ -126,13 +128,13 @@ internal static class WireframeScreens
             row align:right
               button "Cancel"
               button "Continue" primary
-        """;
+        """.ReplaceLineEndings("\n");
 
-    public const string Empty = """
+    public static readonly string Empty = """
         screen "Nieuw scherm"
-        """;
+        """.ReplaceLineEndings("\n");
 
-    public const string Identified = """
+    public static readonly string Identified = """
         screen "Aanmelden" #login
           column w:1 #form
             input "E-mailadres" #email
@@ -140,11 +142,11 @@ internal static class WireframeScreens
             row align:right #actions
               button "Annuleren" #cancel
               button "Aanmelden" primary #submit
-        """;
+        """.ReplaceLineEndings("\n");
 
     // AC-901: the three screens of one sign-in flow in one document — what a wireframe of a *site* looks like,
     // rather than of a single page. One blank line between screens is the canonical form.
-    public const string SignInFlow = """
+    public static readonly string SignInFlow = """
         screen "Aanmelden"
           column w:1
             input "E-mailadres"
@@ -167,7 +169,7 @@ internal static class WireframeScreens
           list "Sessies" h:1
             item "AC-901 · meerdere schermen" selected
             item "AC-903 · vocabulaire"
-        """;
+        """.ReplaceLineEndings("\n");
 
     public static TheoryData<string> Names => new()
     {
