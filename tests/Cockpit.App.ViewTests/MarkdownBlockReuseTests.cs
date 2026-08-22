@@ -22,13 +22,17 @@ public sealed class MarkdownBlockReuseTests
         var window = new Window { Content = view, Width = 900, Height = 600 };
         window.Show();
 
+        // The first set on a fresh view renders inline: OnPropertyChanged calls _Render synchronously because no
+        // rebuild timer is running yet (nothing to coalesce). No wait needed.
         view.Markdown = first;
-        await Task.Delay(150);
         var rendered = Assert.IsType<StackPanel>(view.Content);
         var built = Assert.IsAssignableFrom<Control>(Assert.Single(rendered.Children));
 
+        // The first render started the 33 ms rebuild timer (MarkdownView.OnPropertyChanged), so this second set
+        // only flags a pending rebuild and returns — the actual _Render runs off that timer's next tick. Await
+        // the real completion instead of a fixed sleep guessing the tick landed.
         view.Markdown = then;
-        await Task.Delay(150);
+        await view.WaitForPendingRenderAsync();
         return (built, rendered);
     }
 
@@ -90,8 +94,8 @@ public sealed class MarkdownBlockReuseTests
             var window = new Window { Content = view, Width = 900, Height = 600 };
             window.Show();
 
+            // First set on a fresh view renders synchronously — see _Stream's own comment.
             view.Markdown = "```csharp\nvar x = 1;\n```\n";
-            await Task.Delay(150);
 
             var border = Assert.IsAssignableFrom<Border>(
                 Assert.Single(Assert.IsType<StackPanel>(view.Content).Children));
