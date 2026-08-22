@@ -14,7 +14,7 @@ describes a version you do not have: every page travels inside the thing it docu
 The four groups on the left belong to the app.
 
 - **General** — what Cockpit is and the words it uses.
-- **System** — the parts of the app itself: settings, worktrees, the assistant, backups.
+- **System** — the parts of the app itself: settings, worktrees, workspaces, the assistant.
 - **Extending Cockpit** — how to write a plugin of your own.
 - **Plugins** — one entry per installed plugin that ships documentation. What sits under it is that plugin's
   own doing.
