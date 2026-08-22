@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -27,7 +28,7 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
     private readonly TextBox _channelId;
     private readonly TextBlock _errorText;
 
-    public DiscordChannelSettingsControl(DiscordChannelSettings settings)
+    public DiscordChannelSettingsControl(ICockpitHost host, DiscordChannelSettings settings)
     {
         _settings = settings;
         var current = settings.Access;
@@ -114,6 +115,19 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
 
         _errorText = new TextBlock { Foreground = _Brush("CockpitStatusErrorBrush"), TextWrapping = TextWrapping.Wrap, IsVisible = false };
 
+        // AC-1032/AC-1033: the `?` beside the heading, pointing at this plugin's own setup walkthrough —
+        // creating the application, the Message Content Intent, inviting the bot, finding the channel id.
+        var botConnectionHeading = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 8, 0, 0),
+            Children =
+            {
+                new TextBlock { Text = "Bot connection", FontWeight = FontWeight.Bold },
+                host.CreateHelpHint("setup", "create-application"),
+            },
+        };
+
         Content = new ScrollViewer
         {
             Content = new StackPanel
@@ -126,7 +140,7 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
                     audiencePanel,
                     new TextBlock { Text = "How much of the conversation to relay", FontWeight = FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) },
                     _verbosity,
-                    new TextBlock { Text = "Bot connection", FontWeight = FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) },
+                    botConnectionHeading,
                     _botToken,
                     _channelId,
                     _errorText,

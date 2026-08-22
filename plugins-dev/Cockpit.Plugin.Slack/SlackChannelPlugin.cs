@@ -32,7 +32,7 @@ public sealed class SlackChannelPlugin : ICockpitPlugin
         _host = host;
         _settings = new SlackChannelSettings(host.Storage);
 
-        host.AddSettings(() => new SlackChannelSettingsControl(_settings));
+        host.AddSettings(() => new SlackChannelSettingsControl(host, _settings));
         host.OnSettingsSaved(_Reconnect);
 
         _Reconnect();
