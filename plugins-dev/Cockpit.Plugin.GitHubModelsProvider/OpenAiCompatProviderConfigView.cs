@@ -54,7 +54,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             Children =
             {
                 _LabelRow("API key", host.CreateHelpHint("setup", "api-key")),
-                SettingsHelpRow.Build(_apiKey, "GitHub personal access token with the models:read scope — create at github.com/settings/tokens."),
+                _apiKey,
                 _LabelRow("Model", host.CreateHelpHint("setup", "model")),
                 _ModelRow(),
                 _modelStatus,
@@ -129,8 +129,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
     private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
 
     // AC-1043: a label with the SDK-drawn "?" beside it, pointing at the section of this plugin's own setup
-    // page that explains the field below — an additional route to the same info as `SettingsHelpRow`'s
-    // hover tooltip beside the input, which stays as-is.
+    // page that explains the field below — replaces the old `SettingsHelpRow` hover tooltip.
     private static StackPanel _LabelRow(string text, Control help) => new()
     {
         Orientation = Avalonia.Layout.Orientation.Horizontal,
