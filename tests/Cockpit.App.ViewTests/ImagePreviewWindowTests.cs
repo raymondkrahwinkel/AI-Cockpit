@@ -48,55 +48,44 @@ public sealed class ImagePreviewWindowTests
         window.MouseUp(to, MouseButton.Left);
     }
 
+    // `Build` (and the button click handlers below) call straight into `_ShowImage`, which sets every property
+    // these tests read — CountText, NavigationRow — synchronously and with no dispatcher hop, so there is
+    // nothing here to await: the state is already final the instant the call returns.
     [Fact]
-    public async Task ASingleImage_ShowsNoNavigation()
+    public void ASingleImage_ShowsNoNavigation() => HeadlessAvalonia.Run(() =>
     {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = ImagePreviewWindow.Build([Image], 0);
-            await Task.Delay(200);
+        var window = ImagePreviewWindow.Build([Image], 0);
 
-            Assert.Equal("Image", _CountText(window).Text);
-            Assert.False(_NavigationRow(window).IsVisible);
-        });
-    }
-
-    [Fact]
-    public async Task MultipleImages_ShowsPositionAndNavigatesBothWays()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = ImagePreviewWindow.Build([Image, Image, Image], 0);
-            await Task.Delay(200);
-
-            Assert.Equal("Image 1 of 3", _CountText(window).Text);
-            Assert.True(_NavigationRow(window).IsVisible);
-
-            var next = window.GetLogicalDescendants().OfType<Button>().First(b => b.Name == "NextButton");
-            next.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            await Task.Delay(50);
-
-            Assert.Equal("Image 2 of 3", _CountText(window).Text);
-
-            var previous = window.GetLogicalDescendants().OfType<Button>().First(b => b.Name == "PreviousButton");
-            previous.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            await Task.Delay(50);
-
-            Assert.Equal("Image 1 of 3", _CountText(window).Text);
-        });
-    }
+        Assert.Equal("Image", _CountText(window).Text);
+        Assert.False(_NavigationRow(window).IsVisible);
+    });
 
     [Fact]
-    public async Task StartIndex_OpensOnThatImage()
+    public void MultipleImages_ShowsPositionAndNavigatesBothWays() => HeadlessAvalonia.Run(() =>
     {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = ImagePreviewWindow.Build([Image, Image], 1);
-            await Task.Delay(200);
+        var window = ImagePreviewWindow.Build([Image, Image, Image], 0);
 
-            Assert.Equal("Image 2 of 2", _CountText(window).Text);
-        });
-    }
+        Assert.Equal("Image 1 of 3", _CountText(window).Text);
+        Assert.True(_NavigationRow(window).IsVisible);
+
+        var next = window.GetLogicalDescendants().OfType<Button>().First(b => b.Name == "NextButton");
+        next.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Equal("Image 2 of 3", _CountText(window).Text);
+
+        var previous = window.GetLogicalDescendants().OfType<Button>().First(b => b.Name == "PreviousButton");
+        previous.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Equal("Image 1 of 3", _CountText(window).Text);
+    });
+
+    [Fact]
+    public void StartIndex_OpensOnThatImage() => HeadlessAvalonia.Run(() =>
+    {
+        var window = ImagePreviewWindow.Build([Image, Image], 1);
+
+        Assert.Equal("Image 2 of 2", _CountText(window).Text);
+    });
 
     // AC-778 follow-up: Ctrl+scroll zoom's only branchy logic is the clamp — invoked directly since Avalonia's
     // headless input harness has no way to raise a wheel event carrying `KeyModifiers.Control`.
@@ -187,27 +176,25 @@ public sealed class ImagePreviewWindowTests
 
     // AC-804: Fit at zoom 1 is the AC-778 baseline this ticket must not regress — no scrollbars, and a drag
     // across the image leaves the ScrollViewer's offset untouched because there is nothing to pan to.
+    // The explicit `UpdateLayout()` below already forces the real layout pass synchronously (the same pattern
+    // `RenderedScene.Show` uses throughout the suite) — a delay before it was waiting for nothing.
     [Fact]
-    public async Task FitMode_AtZoomOne_HasNoScrollbarsAndCannotBePanned()
+    public void FitMode_AtZoomOne_HasNoScrollbarsAndCannotBePanned() => HeadlessAvalonia.Run(() =>
     {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = ImagePreviewWindow.Build([_Png(1200, 900)], 0);
-            window.Show();
-            await Task.Delay(200);
-            window.UpdateLayout();
+        var window = ImagePreviewWindow.Build([_Png(1200, 900)], 0);
+        window.Show();
+        window.UpdateLayout();
 
-            var scroller = _Scroller(window);
-            Assert.Equal(ScrollBarVisibility.Disabled, scroller.HorizontalScrollBarVisibility);
-            Assert.Equal(ScrollBarVisibility.Disabled, scroller.VerticalScrollBarVisibility);
+        var scroller = _Scroller(window);
+        Assert.Equal(ScrollBarVisibility.Disabled, scroller.HorizontalScrollBarVisibility);
+        Assert.Equal(ScrollBarVisibility.Disabled, scroller.VerticalScrollBarVisibility);
 
-            var start = _Centre(window, scroller);
-            _Drag(window, start, start + new Vector(-80, -60));
-            window.UpdateLayout();
+        var start = _Centre(window, scroller);
+        _Drag(window, start, start + new Vector(-80, -60));
+        window.UpdateLayout();
 
-            Assert.Equal(default, scroller.Offset);
-        });
-    }
+        Assert.Equal(default, scroller.Offset);
+    });
 
     // AC-804: growth shows on the transform box, not the Image (LayoutTransformControl keeps its child at the
     // pre-transform size) — and by exactly the zoom factor, since a looser bound also passes a missing freeze.
@@ -358,30 +345,28 @@ public sealed class ImagePreviewWindowTests
         });
     }
 
+    // `Cursor` is set directly in `_ApplyZoom`/`_OnBodyPointer*`, with no layout dependency — the pre-`Show`
+    // read below needs nothing to wait for, and every later read follows its own synchronous state change.
     [Fact]
-    public async Task Panning_ShowsAGrabCursorWhilePannableAndAGrabbingCursorWhileDragging()
+    public void Panning_ShowsAGrabCursorWhilePannableAndAGrabbingCursorWhileDragging() => HeadlessAvalonia.Run(() =>
     {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var window = ImagePreviewWindow.Build([_Png(1200, 900)], 0);
-            window.Show();
-            await Task.Delay(200);
+        var window = ImagePreviewWindow.Build([_Png(1200, 900)], 0);
+        window.Show();
 
-            var scroller = _Scroller(window);
-            Assert.Equal("Arrow", scroller.Cursor?.ToString());
+        var scroller = _Scroller(window);
+        Assert.Equal("Arrow", scroller.Cursor?.ToString());
 
-            _Click(window, "ActualSizeButton");
-            window.UpdateLayout();
-            Assert.Equal("Hand", scroller.Cursor?.ToString());
+        _Click(window, "ActualSizeButton");
+        window.UpdateLayout();
+        Assert.Equal("Hand", scroller.Cursor?.ToString());
 
-            var start = _Centre(window, scroller);
-            window.MouseDown(start, MouseButton.Left);
-            Assert.Equal("SizeAll", scroller.Cursor?.ToString());
+        var start = _Centre(window, scroller);
+        window.MouseDown(start, MouseButton.Left);
+        Assert.Equal("SizeAll", scroller.Cursor?.ToString());
 
-            window.MouseUp(start, MouseButton.Left);
-            Assert.Equal("Hand", scroller.Cursor?.ToString());
-        });
-    }
+        window.MouseUp(start, MouseButton.Left);
+        Assert.Equal("Hand", scroller.Cursor?.ToString());
+    });
 
     private static void _Zoom(Window window, double zoom) =>
         typeof(ImagePreviewWindow).GetMethod("_ApplyZoom", BindingFlags.NonPublic | BindingFlags.Instance)!
