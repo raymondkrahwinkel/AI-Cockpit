@@ -49,6 +49,14 @@ public partial class FilePreviewWindow : Window
     private Image? _previewImage;
     private double _zoom = 1.0;
 
+    // The in-flight (or last completed) navigation — every fire-and-forget call site below assigns it, so a
+    // test can await the real condition ("this navigation landed") instead of a fixed sleep it hopes is long
+    // enough (AC-991).
+    private Task _navigationTask = Task.CompletedTask;
+
+    // Exposed for tests only: awaiting the window itself would need a public event, this is the same fact.
+    internal Task WaitForIdleAsync() => _navigationTask;
+
     public FilePreviewWindow()
     {
         InitializeComponent();
@@ -75,7 +83,7 @@ public partial class FilePreviewWindow : Window
             window.Height = size.Height;
         }
 
-        _ = window._NavigateAsync(path, line);
+        window._navigationTask = window._NavigateAsync(path, line);
         return window;
     }
 
@@ -90,7 +98,7 @@ public partial class FilePreviewWindow : Window
     {
         if (_history.Count > 0)
         {
-            _ = _NavigateAsync(_history.Pop(), null, recordHistory: false);
+            _navigationTask = _NavigateAsync(_history.Pop(), null, recordHistory: false);
         }
     }
 
@@ -98,7 +106,7 @@ public partial class FilePreviewWindow : Window
     {
         if (Path.GetDirectoryName(_path) is { Length: > 0 } parent)
         {
-            _ = _NavigateAsync(parent, null);
+            _navigationTask = _NavigateAsync(parent, null);
         }
     }
 
@@ -584,7 +592,7 @@ public partial class FilePreviewWindow : Window
             grid.Children.Add(dateText);
 
             row.Child = grid;
-            row.PointerPressed += (_, _) => _ = _NavigateAsync(fullPath, null);
+            row.PointerPressed += (_, _) => _navigationTask = _NavigateAsync(fullPath, null);
             panel.Children.Add(row);
         }
 
