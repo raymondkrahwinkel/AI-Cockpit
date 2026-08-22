@@ -20,16 +20,23 @@ internal sealed class SessionStatusTools(ISessionLabelSink labels)
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
     [McpServerTool(Name = "set_status")]
-    [Description("Sets your session's statusline — the short line shown under the session's name in the cockpit (its header and the sidebar), saying what you are working on right now: a ticket you picked up ('AC-13'), a phase, whatever the operator would want to see at a glance across their sessions. Pass the value of the COCKPIT_PANE_ID environment variable in this session as `session`, so the status lands on your own session and not another. An empty status clears the line. Optionally propose a `name` for the session too. Set it when you pick up a piece of work, and update or clear it as you move on.")]
+    [Description("Sets your session's statusline — the short line shown under the session's name in the cockpit (its header and the sidebar), saying what you are working on right now: a ticket you picked up ('AC-13'), a phase, whatever the operator would want to see at a glance across their sessions. `session` is optional — over the normal MCP transport your session is identified automatically; pass the COCKPIT_PANE_ID environment variable only if you are told the automatic identification failed. An empty status clears the line. Optionally propose a `name` for the session too. Set it when you pick up a piece of work, and update or clear it as you move on.")]
     public async Task<string> SetStatusAsync(
-        [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
         [Description("The status to show, e.g. 'AC-13' or 'reviewing the diff'. An empty string clears it — including when you are calling only to propose a name, so pass the status you want left standing rather than an empty one.")] string status,
+        [Description("Optional. Your session id — the value of the COCKPIT_PANE_ID environment variable in this session. Only needed as a fallback when automatic session identification is unavailable.")] string? session = null,
         [Description("Optional. A name to propose for this session — the ticket you just picked up, say. It is taken only while the session still carries a name the cockpit made up for it; a name the operator gave it stays, and the reply says so with `renamed: false`. Leave it out to keep the current name.")] string? name = null)
     {
         // Key on the transport-verified pane (AC-89/AC-128), not the agent-declared `session`: an agent must not be
         // able to spoof or clear another session's statusline by naming its id (confused deputy). Falls back to
         // `session` off the verified path (the in-process tool loop / tests), where there is no middleware to trust.
         var caller = McpRequestContext.CurrentPaneId ?? session;
+        if (string.IsNullOrEmpty(caller))
+        {
+            return JsonSerializer.Serialize(
+                new { ok = false, error = "Could not identify your session and no `session` was given — pass the COCKPIT_PANE_ID environment variable as `session`." },
+                SerializerOptions);
+        }
+
         var applied = await labels.SetStatuslineAsync(caller, status ?? string.Empty);
         if (!applied)
         {

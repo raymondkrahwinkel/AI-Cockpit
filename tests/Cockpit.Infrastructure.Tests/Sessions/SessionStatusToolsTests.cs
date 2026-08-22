@@ -23,7 +23,7 @@ public class SessionStatusToolsTests
         try
         {
             // The agent spoofs another session's id in the tool argument.
-            await tools.SetStatusAsync("victim-pane", "pwned");
+            await tools.SetStatusAsync("pwned", "victim-pane");
 
             // The status lands on the verified caller, never the spoofed id.
             await sink.Received(1).SetStatuslineAsync("verified-pane", "pwned");
@@ -48,7 +48,7 @@ public class SessionStatusToolsTests
         McpRequestContext.Set("verified-pane");
         try
         {
-            await tools.SetStatusAsync("victim-pane", "pwned", "pwned-name");
+            await tools.SetStatusAsync("pwned", "victim-pane", "pwned-name");
 
             await sink.Received(1).SuggestNameAsync("verified-pane", "pwned-name");
             await sink.DidNotReceive().SuggestNameAsync("victim-pane", Arg.Any<string>());
@@ -57,5 +57,41 @@ public class SessionStatusToolsTests
         {
             McpRequestContext.Set(null);
         }
+    }
+
+    // AC-1028: `session` is only a fallback for the unverified in-process path — on the transport-verified path it
+    // is not needed at all, so omitting it must succeed rather than throw a marshalling error.
+    [Fact]
+    public async Task SetStatus_SucceedsWithoutSession_OnTheVerifiedPath()
+    {
+        var sink = Substitute.For<ISessionLabelSink>();
+        sink.SetStatuslineAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+        var tools = new SessionStatusTools(sink);
+
+        McpRequestContext.Set("verified-pane");
+        try
+        {
+            await tools.SetStatusAsync("AC-1028");
+
+            await sink.Received(1).SetStatuslineAsync("verified-pane", "AC-1028");
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
+    // Off the verified path (the in-process tool loop / tests) there is no middleware to trust, so a caller that
+    // gives no `session` either gets a readable error, not an exception or a silently ignored call.
+    [Fact]
+    public async Task SetStatus_ReturnsAReadableError_WhenUnverifiedAndNoSessionGiven()
+    {
+        var sink = Substitute.For<ISessionLabelSink>();
+        var tools = new SessionStatusTools(sink);
+
+        var result = await tools.SetStatusAsync("AC-1028");
+
+        Assert.Contains("session", result, StringComparison.OrdinalIgnoreCase);
+        await sink.DidNotReceiveWithAnyArgs().SetStatuslineAsync(default!, default!);
     }
 }

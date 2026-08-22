@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -6,6 +7,8 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Mcp;
@@ -130,10 +133,24 @@ internal sealed class CockpitMcpEndpointHost
             // The delivery service is resolved from the application's services, not this endpoint's slim container —
             // the same reason WithTools takes a pre-built instance here rather than a type.
             mcpBuilder.WithRequestFilters(filters => filters.AddCallToolFilter(next => async (context, cancellationToken) =>
-                McpInboxPiggyback.Attach(
-                    await next(context, cancellationToken).ConfigureAwait(false),
-                    _services.GetService<IAgentTurnInboxDelivery>(),
-                    _logger)));
+            {
+                CallToolResult result;
+                try
+                {
+                    result = await next(context, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is ArgumentException or JsonException)
+                {
+                    // AC-1028: the AIFunctionFactory marshaller throws straight out of the call for a missing or
+                    // malformed argument instead of reporting it as a tool error — surfaced here as a readable
+                    // result naming the bad parameter and the tool's full parameter list, so the calling agent can
+                    // self-correct instead of reading this as "the tool is broken" (it was, 16 times, on 2026-08-22).
+                    _logger.LogWarning(exception, "Tool {Tool} was called with an invalid argument.", context.Params.Name);
+                    result = _ToolArgumentErrorResult(context, exception);
+                }
+
+                return McpInboxPiggyback.Attach(result, _services.GetService<IAgentTurnInboxDelivery>(), _logger);
+            }));
 
             var nodeSettings = _nodeSettings ??= await _nodeEndpointSettings.LoadAsync(cancellationToken).ConfigureAwait(false);
 
@@ -282,6 +299,27 @@ internal sealed class CockpitMcpEndpointHost
 
     private static void _WithToolsInstance(IMcpServerBuilder mcpBuilder, object tools) =>
         _WithToolsGeneric.MakeGenericMethod(tools.GetType()).Invoke(null, [mcpBuilder, tools, null]);
+
+    // Turns a marshalling failure (a missing required argument, or one that will not deserialize) into a tool
+    // result the calling agent can read and act on, instead of the generic transport-level failure it saw before
+    // (AC-1028). The parameter list comes from the tool's own advertised schema, not a hand-maintained list, so it
+    // can never drift from what the tool actually accepts.
+    private static CallToolResult _ToolArgumentErrorResult(RequestContext<CallToolRequestParams> context, Exception exception)
+    {
+        var parameters = _ExpectedParameterNames(context.MatchedPrimitive);
+        var message = parameters.Count > 0
+            ? $"{context.Params.Name}: {exception.Message} Expected parameters: {string.Join(", ", parameters)}."
+            : $"{context.Params.Name}: {exception.Message}";
+
+        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = message }] };
+    }
+
+    private static IReadOnlyList<string> _ExpectedParameterNames(IMcpServerPrimitive? primitive) =>
+        primitive is McpServerTool tool
+            && tool.ProtocolTool.InputSchema.TryGetProperty("properties", out var properties)
+            && properties.ValueKind == JsonValueKind.Object
+            ? [.. properties.EnumerateObject().Select(property => property.Name)]
+            : [];
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
