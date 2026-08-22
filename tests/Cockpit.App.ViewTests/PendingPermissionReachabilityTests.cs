@@ -13,16 +13,11 @@ using Material.Icons.Avalonia;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-996. A session that goes to needs-attention on a tool permission used to point nowhere: the consent card is a
-/// transcript row, and a row is only on screen if the transcript happens to be scrolled there. Measured on
-/// <c>f5bbf9c9</c>, same permission, same tool, only the scroll position differing — parked at the newest row the
-/// card is in view; twelve wheel clicks up it is not, while <c>SessionStatus</c> reads <c>NeedsAttention</c> either
-/// way and the only affordance is a chevron whose tooltip says "Jump to the newest message". That is the reported
-/// symptom: the operator is told the session wants something and is shown nothing to answer.
-/// <para>
-/// Deliberately not solved by scrolling the card in: scrolled up is the operator reading history, and AC-459/AC-621
-/// bought that distinction over four rounds. The corner button gets a second destination instead.
-/// </para>
+/// AC-996. The consent card is a transcript row, so needs-attention pointed at nothing whenever the transcript was
+/// scrolled somewhere else: same permission, same status, and the card either in view or not depending only on where
+/// the operator had scrolled. Not solved by scrolling the card in — scrolled up is the operator reading history, a
+/// distinction AC-459/AC-621 bought over four rounds — so the corner button gains a second destination, and these
+/// cases hold it to naming what waits and reaching it from anywhere.
 /// </summary>
 [Collection("avalonia")]
 public class PendingPermissionReachabilityTests

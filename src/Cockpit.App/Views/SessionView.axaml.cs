@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -65,6 +66,9 @@ public partial class SessionView : UserControl
     private DispatcherTimer? _activityAgeTicker;
 
     private ScrollViewer? _transcriptScroll;
+
+    // The session this pane's affordances follow, kept so the unsubscribe can find the same one again.
+    private SessionViewModel? _watchedSession;
 
     // The transcript's scroll owner. It lives inside TranscriptItems' own template since AC-686, so the virtualising
     // panel measures against the viewport rather than the infinite height an enclosing ScrollViewer hands it — and a
@@ -352,9 +356,11 @@ public partial class SessionView : UserControl
 
     // A permission arrives without scrolling anything, so no ScrollChanged comes to re-evaluate the button —
     // this is the only notice the view gets that there is now something to point at.
-    private void _OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void _OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(SessionViewModel.HasPendingPermission))
+        // The status as well as the flag: whatever takes the session off needs-attention has to take the alarm
+        // off the button with it, and that can happen without the pending flag itself moving.
+        if (e.PropertyName is nameof(SessionViewModel.HasPendingPermission) or nameof(SessionViewModel.SessionStatus))
         {
             // After the row it added has been laid out, otherwise its container is not there to be measured yet.
             Dispatcher.UIThread.Post(_UpdateJumpAffordance, DispatcherPriority.Background);
@@ -380,8 +386,6 @@ public partial class SessionView : UserControl
             session.PropertyChanged += _OnSessionPropertyChanged;
         }
     }
-
-    private SessionViewModel? _watchedSession;
 
     protected override void OnDataContextChanged(EventArgs e)
     {
