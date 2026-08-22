@@ -92,14 +92,14 @@ internal sealed class OrchestratorTools
     }
 
     [McpServerTool(Name = "delegate_task")]
-    [Description("Hands a task to another profile, which runs it as a separate session. Returns a task id immediately; the task then runs in the background. A status of 'Queued' means the task is accepted and waiting for a free slot on that profile — it will start by itself, so poll get_task_status rather than delegating the same work again.")]
+    [Description("Hands a task to another profile, which runs it as a separate session. Returns a task id immediately; the task then runs in the background. A status of 'Queued' means the task is accepted and waiting for a free slot on that profile — it will start by itself, so poll get_task_status rather than delegating the same work again. IMPORTANT: a task runs READ-ONLY unless you pass requested_permission — telling it in the prompt not to change anything is not what stops it, and asking it to change something without that permission makes it fail. When it finishes, the task reports the paths the cockpit itself saw change in its working directory, not the ones the task chose to mention.")]
     public async Task<string> DelegateTaskAsync(
         [Description("The label of the profile to delegate to, as returned by list_profiles.")] string profile,
         [Description("The prompt for the delegated session.")] string prompt,
         [Description("The category of work, when the target profile restricts what it accepts (e.g. 'summarize').")] string? task_type,
         [Description("A short human-readable label for this task, shown in the cockpit.")] string? label,
         [Description("The working directory for the task; must be one the target profile allows.")] string? working_directory,
-        [Description("Optional permission for this one task: 'plan'/'default' (read-only), 'acceptEdits' (also file writes), or 'bypassPermissions'. A value at or below the profile's own ceiling is honoured outright. A value ABOVE the ceiling is not granted automatically — it asks the operator for a one-time approval, asked fresh for every such task and never remembered; if nobody is there to answer, or they decline, the task runs clamped to the profile's ceiling instead. Omit to run at the profile's own ceiling.")] string? requested_permission,
+        [Description("What this one task may do: OMIT for read-only, which is the default — the task may read, search and report, and every attempt to write a file or run a shell command is refused by the cockpit itself. Pass 'acceptEdits' for a task that is meant to change files, or 'bypassPermissions' to also let it run shell commands (builds, tests, git). A value at or below the profile's own ceiling is honoured outright; a value ABOVE it is not granted automatically — it asks the operator for a one-time approval, asked fresh for every such task and never remembered, and if nobody answers or they decline the task runs clamped to the profile's ceiling instead.")] string? requested_permission,
         [Description("Optional narrowing of which MCP servers this one task gets: the server names to keep, as they appear in this profile's 'mcpServers' from list_profiles. It can only restrict within what the profile already allows, never grant — naming a server the profile does not have refuses the whole call, so read list_profiles first. Omit to run with the profile's full set.")] string[]? mcp_servers,
         CancellationToken cancellationToken)
     {
@@ -159,8 +159,18 @@ internal sealed class OrchestratorTools
             return JsonSerializer.Serialize(new { error = $"No task '{task_id}'." }, SerializerOptions);
         }
 
+        // AC-971: the changed paths ride with the answer, composed by the cockpit rather than by the task. A task
+        // that oversteps writes a summary that says nothing about it; this is the line that does. Null means the
+        // cockpit could not establish it (no working directory, or not a git work tree) — not "nothing changed".
         return JsonSerializer.Serialize(
-            new { status = task.Status.ToString(), result = task.Result, error = task.Error },
+            new
+            {
+                status = task.Status.ToString(),
+                result = task.Result,
+                error = task.Error,
+                permission = task.Permission,
+                changedPaths = task.ChangedPaths,
+            },
             SerializerOptions);
     }
 

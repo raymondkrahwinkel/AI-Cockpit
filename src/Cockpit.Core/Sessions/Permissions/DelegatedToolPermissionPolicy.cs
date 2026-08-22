@@ -14,6 +14,11 @@ namespace Cockpit.Core.Sessions.Permissions;
 // upstream; this only decides among tools that already reached the session.
 public static class DelegatedToolPermissionPolicy
 {
+    // The ceiling a delegated task runs at when its caller asked for nothing more (AC-971): read-only. `default`
+    // rather than `plan`, though the two rank the same — plan mode tells a CLI to draft a plan and ask to act on
+    // it, and there is nobody to ask.
+    public const string ReadOnlyCeiling = "default";
+
     // The permission ceiling that also allows a non-destructive write, not only read-only tools.
     private const string AcceptEditsCeiling = "acceptEdits";
 
@@ -66,6 +71,31 @@ public static class DelegatedToolPermissionPolicy
 
         _ => null,
     };
+
+    // A class for the tools an agent CLI runs itself (AC-971). They never reach the host as annotated MCP tools —
+    // the CLI owns them and only asks by name — so without this a delegated session's file writes were decided by
+    // the CLI's permission mode alone. `Bash` is Destructive because the host cannot see what a command will do.
+    public static ToolPermissionClass? ClassifyAgentBuiltIn(string toolName) => toolName switch
+    {
+        "Read" or "Glob" or "Grep" or "LS" or "NotebookRead" or "WebFetch" or "WebSearch"
+            or "TodoWrite" or "Task" or "ExitPlanMode" or "BashOutput"
+            => ToolPermissionClass.ReadOnly,
+
+        "Write" or "Edit" or "MultiEdit" or "NotebookEdit" or "apply_patch"
+            => ToolPermissionClass.Write,
+
+        // Codex names its shell and patch tools differently; same two classes, so it is graded here rather than
+        // falling through to Unknown and being denied even where the operator said a shell may run.
+        "Bash" or "KillShell" or "KillBash" or "shell" or "command_execution"
+            => ToolPermissionClass.Destructive,
+
+        _ => null,
+    };
+
+    // Whether `ceiling` lets a delegated session change anything at all (AC-971) — false for `plan`/`default` and for
+    // anything unrecognised. Read when judging a finished task's changed-path report: a read-only task that changed
+    // files got past a boundary, and that is a failure rather than a result.
+    public static bool AllowsChanges(string? ceiling) => _CeilingRank(ceiling) >= 2;
 
     // Decides whether a delegated session may run `toolName` unattended. An allow-listed tool is
     // always allowed; otherwise the `toolClass` is graded against `ceiling`. An

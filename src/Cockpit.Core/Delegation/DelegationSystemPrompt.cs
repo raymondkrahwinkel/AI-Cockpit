@@ -15,5 +15,7 @@ public static class DelegationSystemPrompt
         "for work that fits one of them — bulk, repetitive or cheap tasks are usually better delegated to a local " +
         "model than done yourself, so you keep your own context for the work that needs you. A delegated task runs " +
         "as its own session: delegate_task returns immediately, and you collect the answer with get_task_result. " +
+        "A delegated task is read-only unless you say otherwise — pass requested_permission when the task is meant " +
+        "to change files, and expect it to fail rather than write when you do not. " +
         "Only delegate when a profile actually suits the job; otherwise just do it yourself.";
 }

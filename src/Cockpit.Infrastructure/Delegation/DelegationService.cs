@@ -509,6 +509,15 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             await _sessionManager.StopAsync(entry.Runtime.Id);
         }
 
+        // AC-971: a task cut short still leaves whatever it had already written, so the reading is taken here too —
+        // before the worktree goes back and there is nothing left to read.
+        if (entry.WorkspaceBaseline is not null)
+        {
+            entry.ChangedPaths = DelegatedWorkspaceChanges.Added(
+                entry.WorkspaceBaseline,
+                await DelegatedWorkspaceChanges.SnapshotAsync(entry.WorkingDirectory));
+        }
+
         entry.Finish(DelegatedTaskStatus.Stopped, result: entry.Result, error: null);
         await _ReleaseWorktreesAsync(entry);
         TasksChanged?.Invoke();
@@ -643,6 +652,11 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             // from this method's own view, and a task sitting at Running with no session yet would occupy this
             // profile's concurrency slot and confuse a follow-up sent while nobody has answered yet.
             var effectiveCeiling = await _EffectiveCeilingAsync(entry);
+            entry.EffectiveCeiling = effectiveCeiling;
+
+            // AC-971: what the working directory already had lying around, so the report at the end names what this
+            // task changed rather than what the delegating session left dirty. Taken before the session exists.
+            entry.WorkspaceBaseline = await DelegatedWorkspaceChanges.SnapshotAsync(entry.WorkingDirectory);
 
             var runtime = _sessionManager.Create(entry.Profile);
             entry.Attach(runtime);
@@ -737,9 +751,13 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     {
         var requested = entry.RequestedPermission;
         var profileCeiling = entry.Profile.DelegationPolicy.PermissionCeiling;
+
+        // AC-971: a task whose caller asked for nothing runs READ-ONLY, not at whatever the profile allows — which
+        // for a coder profile is bypassPermissions, so a task told to "only read and report" was handed the right to
+        // rewrite the repository because nobody said otherwise. Still clamped by the profile's own ceiling.
         if (string.IsNullOrWhiteSpace(requested))
         {
-            return profileCeiling;
+            return DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(profileCeiling, DelegatedToolPermissionPolicy.ReadOnlyCeiling);
         }
 
         var clamped = DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(profileCeiling, requested);
@@ -1002,19 +1020,18 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 entry.ToolCallsSucceeded = 0;
                 entry.ToolCallsErrored = 0;
 
-                // The task is answered, but the session stays up for a while: a caller can send a follow-up turn.
-                // It is torn down on stop — and, when nobody stops it, once the idle window closes.
-                entry.Finish(
-                    isFailure ? DelegatedTaskStatus.Failed : DelegatedTaskStatus.Completed,
-                    result: entry.Runtime?.LastAssistantText,
-                    error: diagnostic,
-                    keepSessionAlive: true);
-                _ArmIdleReap(entry);
-                TasksChanged?.Invoke();
-                _ = _Audit(
-                    isFailure ? DelegationAuditAction.Failed : DelegationAuditAction.Completed,
-                    entry.Profile.Label, entry.TaskId, request: null, diagnostic, entry);
-                _ = _StartNextQueuedAsync(entry.Profile);
+                // AC-971: with a workspace to read, the host takes stock before it reports the task done — the report
+                // has to be in hand when the caller first sees a finished task. Without one there is nothing to wait
+                // for, and the task is reported from this handler exactly as it always was.
+                if (entry.WorkspaceBaseline is null)
+                {
+                    _FinishTurn(entry, isFailure, diagnostic);
+                }
+                else
+                {
+                    _ = _FinishTurnWithChangeReportAsync(entry, isFailure, diagnostic);
+                }
+
                 break;
 
             // Deliberately no worktree release here, unlike every other path that ends a task. A SessionError is not
@@ -1030,6 +1047,51 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 _ = _StartNextQueuedAsync(entry.Profile);
                 break;
         }
+    }
+
+    // Reports a finished turn: the task keeps its session for a follow-up, the queue moves on, and the audit line
+    // says how it ended. Split out of `_OnTaskEvent` so the changed-path report can be awaited first (AC-971)
+    // without the no-workspace case paying for a round trip it has nothing to read.
+    private void _FinishTurn(DelegatedTaskEntry entry, bool isFailure, string? diagnostic)
+    {
+        // The task is answered, but the session stays up for a while: a caller can send a follow-up turn.
+        // It is torn down on stop — and, when nobody stops it, once the idle window closes.
+        entry.Finish(
+            isFailure ? DelegatedTaskStatus.Failed : DelegatedTaskStatus.Completed,
+            result: entry.Runtime?.LastAssistantText,
+            error: diagnostic,
+            keepSessionAlive: true);
+        _ArmIdleReap(entry);
+        TasksChanged?.Invoke();
+        _ = _Audit(
+            isFailure ? DelegationAuditAction.Failed : DelegationAuditAction.Completed,
+            entry.Profile.Label, entry.TaskId, request: null, diagnostic, entry);
+        _ = _StartNextQueuedAsync(entry.Profile);
+    }
+
+    // The same, with the host's own account of what the task changed attached first (AC-971). A read-only task that
+    // changed files is failed on that ground whatever it said about itself: something got past the gate, and a
+    // delegating session told "done" while its checkout has quietly moved is the failure this exists to end.
+    private async Task _FinishTurnWithChangeReportAsync(DelegatedTaskEntry entry, bool isFailure, string? diagnostic)
+    {
+        // The reading is evidence, not a gate: SnapshotAsync answers null for anything it could not read, so a task
+        // that answered is still reported as finished — with "could not be established" rather than a lost result.
+        var after = await DelegatedWorkspaceChanges.SnapshotAsync(entry.WorkingDirectory);
+        entry.ChangedPaths = DelegatedWorkspaceChanges.Added(entry.WorkspaceBaseline, after);
+
+        if (entry.ChangedPaths is { Count: > 0 } changed && !DelegatedToolPermissionPolicy.AllowsChanges(entry.EffectiveCeiling))
+        {
+            isFailure = true;
+            diagnostic =
+                $"Out of scope: this task ran read-only (permission '{entry.EffectiveCeiling}'), but " +
+                $"{changed.Count} path(s) in its working directory changed while it ran: " +
+                $"{string.Join(", ", changed.Take(20))}{(changed.Count > 20 ? ", …" : string.Empty)}. " +
+                "Review those changes before trusting this task's answer, and delegate with a write permission if " +
+                "the work was meant to change files." +
+                (diagnostic is { Length: > 0 } ? $" (Also: {diagnostic})" : string.Empty);
+        }
+
+        _FinishTurn(entry, isFailure, diagnostic);
     }
 
     private async Task _StartNextQueuedAsync(SessionProfile profile)

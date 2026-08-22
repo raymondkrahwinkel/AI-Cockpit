@@ -224,6 +224,20 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: **a delegated task now runs read-only unless the session that started it asked for more.** Until now a
+  task inherited whatever its target profile allowed, so a task handed a "read this and report back" prompt was
+  given the right to rewrite the repository — and one did: it read for a while, decided on its own to start
+  building, wrote 68 files, and its closing summary mentioned none of them. Telling a task in its prompt not to
+  change anything is not what stops it; the cockpit is. An agent that wants a task to change files now says so
+  (`requested_permission` on `delegate_task`), and a task that was not given that permission has its file writes
+  and shell commands refused by the cockpit itself, with the reason handed back to the model. **This can break an
+  existing delegation** that relied on inheriting the profile's ceiling: such a task now fails visibly, naming the
+  calls that were refused, instead of quietly writing.
+- changed: a delegated task now reports the paths that changed in its working directory as the cockpit itself
+  found them, not as the task chose to describe them — visible on `get_task_status`, `get_task_result` and in the
+  task list. A read-only task whose workspace changed anyway is reported as failed with those paths named, so a
+  boundary that was got past is loud rather than invisible. Where the working directory is not a git checkout the
+  report says it could not be established, which is deliberately not the same answer as "changed nothing".
 - changed: a session whose provider has no tool loop at all now says so when you hover its MCP servers, rather
   than listing servers none of whose tools it can reach.
 

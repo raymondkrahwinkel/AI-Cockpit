@@ -34,10 +34,16 @@ internal sealed class DelegateRunner(ICockpitHost host) : IStepRunner
 
         var directory = context.Resolve(context.Node.Parameters.GetValueOrDefault("Working directory")).Text.Trim();
 
+        // AC-971: unset means read-only. A flow that hands out work meant to change files says so here, rather than
+        // inheriting whatever the target profile happens to allow and finding out afterwards.
+        var permission = context.Resolve(context.Node.Parameters.GetValueOrDefault("Permission")).Text.Trim();
+
         var answer = await host.Actions.DelegateAsync(
             profile,
             prompt,
-            directory.Length == 0 ? null : directory);
+            directory.Length == 0 ? null : directory,
+            timeout: null,
+            permission.Length == 0 ? null : permission);
 
         return new StepOutcome(
             [

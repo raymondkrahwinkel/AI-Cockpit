@@ -221,4 +221,61 @@ public class DelegatedToolPermissionPolicyTests
         Assert.False(DelegatedToolPermissionPolicy.Decide(effective, ToolPermissionClass.Write, "write_file", onAllowList: false)
             .IsAllowed);
     }
+
+    // --- ClassifyAgentBuiltIn / AllowsChanges: the tools a CLI runs itself (AC-971) ---
+
+    [Theory]
+    [InlineData("Read", ToolPermissionClass.ReadOnly)]
+    [InlineData("Grep", ToolPermissionClass.ReadOnly)]
+    [InlineData("WebFetch", ToolPermissionClass.ReadOnly)]
+    [InlineData("Write", ToolPermissionClass.Write)]
+    [InlineData("Edit", ToolPermissionClass.Write)]
+    [InlineData("NotebookEdit", ToolPermissionClass.Write)]
+    [InlineData("Bash", ToolPermissionClass.Destructive)]
+    [InlineData("shell", ToolPermissionClass.Destructive)]              // Codex's name for the same thing
+    [InlineData("apply_patch", ToolPermissionClass.Write)]
+    public void ClassifyAgentBuiltIn_GradesTheToolsAnAgentCliRunsItself(string toolName, ToolPermissionClass expected)
+    {
+        Assert.Equal(expected, DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn(toolName));
+    }
+
+    [Fact]
+    public void ClassifyAgentBuiltIn_AToolWeDoNotKnow_HasNoClass()
+    {
+        // Null, not a guess: the caller decides what an unclassifiable name means in its own context, and an MCP
+        // tool must not be graded here by a name that happens to collide with a built-in.
+        Assert.Null(DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn("mcp__depot__write"));
+        Assert.Null(DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn("SomeFutureTool"));
+    }
+
+    [Fact]
+    public void ClassifyAgentBuiltIn_AtTheReadOnlyDefault_ReadRuns_AndWriteAndBashDoNot()
+    {
+        // The whole point of the read-only default: a research task can still read the repository, and cannot
+        // change it — not by a file write, and not by a shell command either.
+        var ceiling = DelegatedToolPermissionPolicy.ReadOnlyCeiling;
+
+        Assert.True(_Decide(ceiling, "Read").IsAllowed);
+        Assert.False(_Decide(ceiling, "Write").IsAllowed);
+        Assert.False(_Decide(ceiling, "Bash").IsAllowed);
+    }
+
+    [Theory]
+    [InlineData("bypassPermissions", true)]
+    [InlineData("acceptEdits", true)]
+    [InlineData("default", false)]
+    [InlineData("plan", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void AllowsChanges_IsTrueOnlyWhereATaskMayChangeSomething(string? ceiling, bool expected)
+    {
+        Assert.Equal(expected, DelegatedToolPermissionPolicy.AllowsChanges(ceiling));
+    }
+
+    private static PermissionDecision _Decide(string ceiling, string toolName) =>
+        DelegatedToolPermissionPolicy.Decide(
+            ceiling,
+            DelegatedToolPermissionPolicy.ClassifyAgentBuiltIn(toolName) ?? ToolPermissionClass.Unknown,
+            toolName,
+            onAllowList: false);
 }

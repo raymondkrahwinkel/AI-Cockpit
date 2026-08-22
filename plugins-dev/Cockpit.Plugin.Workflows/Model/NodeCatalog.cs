@@ -143,12 +143,12 @@ public static class NodeCatalog
         new(
             "cockpit.delegate",
             "Delegate",
-            "Hand the work to another profile as a background task, and wait for what it produces. It runs where you can see it, in the delegated tasks view.",
+            "Hand the work to another profile as a background task, and wait for what it produces. It runs where you can see it, in the delegated tasks view. It may only read unless you set Permission — 'acceptEdits' to let it change files, 'bypassPermissions' to also let it run commands.",
             "",
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
-            ["Profile", "Prompt", "Working directory"],
+            ["Profile", "Prompt", "Working directory", "Permission"],
             new Dictionary<string, string> { ["result"] = "Done — 3 files changed", ["profile"] = "reviewer" })
         {
             IconKind = MaterialIconKind.HandshakeOutline,

@@ -85,4 +85,17 @@ public interface ICockpitActions
     /// <param name="timeout">How long to wait for an answer. Null waits as long as the host's own default.</param>
     Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null) =>
         throw new NotSupportedException("This host cannot delegate work.");
+
+    /// <summary>
+    /// The same, saying what the task may do (AC-971). Left out — the overload above — a delegated task runs
+    /// READ-ONLY: it may read and report, and its file writes and shell commands are refused by the host itself.
+    /// Pass <c>"acceptEdits"</c> for a task meant to change files, or <c>"bypassPermissions"</c> to also let it run
+    /// commands; anything above the target profile's own ceiling is put to the operator rather than granted.
+    /// <para>
+    /// A separate overload rather than another optional parameter: an already-compiled plugin keeps binding to the
+    /// one above, and gets the read-only default with it — the safe end, which is the point of the default.
+    /// </para>
+    /// </summary>
+    Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission) =>
+        DelegateAsync(profileLabel, prompt, workingDirectory, timeout);
 }

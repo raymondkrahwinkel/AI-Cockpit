@@ -49,6 +49,17 @@ internal sealed class DelegatedTaskEntry
     // looking it up again would mean the UI thread from a thread that is waiting on the answer (AC-218).
     public string? ProjectId { get; init; }
 
+    // The ceiling this task's session was actually started under (AC-971) — read back to judge the changed-path
+    // report, since files changed under a read-only ceiling are a boundary that was got past.
+    public string? EffectiveCeiling { get; set; }
+
+    // What git already called dirty when this task started (AC-971), so the report at the end names what this task
+    // did rather than what the delegating session had lying around. Null when there was nothing to read.
+    public IReadOnlySet<string>? WorkspaceBaseline { get; set; }
+
+    // The host's own reading of what the task changed. Null until it has been taken, and null forever when it cannot be.
+    public IReadOnlyList<string>? ChangedPaths { get; set; }
+
     public ISessionRuntime? Runtime { get; private set; }
 
     // Fires when the task outlives what its profile allows; cancelled the moment the task ends, so a finished task is never stopped after the fact.
@@ -164,5 +175,7 @@ internal sealed class DelegatedTaskEntry
         TurnCount,
         Result,
         Error,
-        OwnerPaneId);
+        OwnerPaneId,
+        EffectiveCeiling,
+        ChangedPaths);
 }

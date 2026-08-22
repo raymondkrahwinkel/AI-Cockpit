@@ -938,6 +938,8 @@ public interface ICockpitActions
                                    string? workingDirectory, string? sessionName);           // default throws
     Task<string> DelegateAsync(string profileLabel, string prompt,
                                string? workingDirectory = null, TimeSpan? timeout = null);   // default throws
+    Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory,
+                               TimeSpan? timeout, string? permission);                       // default: the above
 }
 ```
 
@@ -950,6 +952,13 @@ rules and it appears in the delegated-tasks view: a plugin does not get a quiete
 has. Throws when the profile refused the work, when it failed, and when the timeout passes — a caller that got no
 answer must not be handed an empty string and left to treat it as one. On timeout the task keeps running; it is real
 work, and discarding it because the caller grew impatient would throw away whatever it had done.
+
+**The task runs read-only.** It may read and report; its file writes and shell commands are refused by the host, and
+the refusal reaches the model as the tool's result. Use the five-argument overload with `permission:` —
+`"acceptEdits"` to let it change files, `"bypassPermissions"` to also let it run commands — for work that is meant to
+change something. Anything above the target profile's own ceiling is put to the operator as a one-time approval
+rather than granted. A plugin compiled against the older four-argument overload keeps working and gets the read-only
+default, which is the safe end of that choice.
 
 ### `Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null)`
 Opens a session on the profile with that label and hands it `prompt` as its first input — the New-session dialog's act,
@@ -1286,7 +1295,7 @@ Drives a single, persistent, multi-turn conversation and exposes it as a typed e
 | `StartAsync` | Starts the underlying session. Call once before `SendUserMessageAsync`/`Events` produce anything. `model`, when set, selects the model for this session. |
 | `SendUserMessageAsync` | Sends a user message; the session stays open for further turns. |
 | `InterruptAsync` | Interrupts the current in-flight turn, if any. |
-| `RespondToPermissionAsync` | Resolves an outstanding `PluginPermissionRequested` — the operator's allow/deny, correlated on `toolUseId`. Only relevant if `Capabilities.SupportsPermissions`. |
+| `RespondToPermissionAsync` | Resolves an outstanding `PluginPermissionRequested` — the operator's allow/deny, correlated on `toolUseId`. Only relevant if `Capabilities.SupportsPermissions`. An overload also carries a `denyReason`: on a delegated session the host answers these itself against the task's permission ceiling, and no operator denied anything, so a driver that can pass a reason to its agent should implement it. The default drops it. |
 | `Events` | The live, ordered stream of typed events — see below. |
 | `SetAutoApproveToolsAsync` | Toggles per-tool-call approval prompts on/off. Default no-op — a driver with no tool source of its own has nothing to gate. |
 | `DisposeAsync` *(`IAsyncDisposable`)* | Tears down the subprocess/HTTP client/etc. |
