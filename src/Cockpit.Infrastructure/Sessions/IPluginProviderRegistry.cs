@@ -9,12 +9,18 @@ namespace Cockpit.Infrastructure.Sessions;
 /// </summary>
 public interface IPluginProviderRegistry
 {
-    /// <summary>Registers <paramref name="registration"/>; a later registration with the same <see cref="SessionProviderRegistration.ProviderId"/> replaces the earlier one.</summary>
+    /// <summary>
+    /// Registers <paramref name="registration"/>; a later registration with the same <see cref="SessionProviderRegistration.ProviderId"/> replaces the earlier one.
+    /// </summary>
     void Register(SessionProviderRegistration registration);
 
-    /// <summary>Every provider registered so far, in registration order.</summary>
+    /// <summary>
+    /// Every provider registered so far, in registration order.
+    /// </summary>
     IReadOnlyList<SessionProviderRegistration> Registrations { get; }
 
-    /// <summary>The registration for <paramref name="providerId"/>, or <see langword="null"/> when nothing is registered under that id.</summary>
+    /// <summary>
+    /// The registration for <paramref name="providerId"/>, or <see langword="null"/> when nothing is registered under that id.
+    /// </summary>
     SessionProviderRegistration? Resolve(string providerId);
 }

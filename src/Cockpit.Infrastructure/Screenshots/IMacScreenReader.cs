@@ -7,7 +7,9 @@ namespace Cockpit.Infrastructure.Screenshots;
 /// </summary>
 internal interface IMacScreenReader
 {
-    /// <summary>Every display macOS currently reports, in <c>CGGetActiveDisplayList</c>'s order.</summary>
+    /// <summary>
+    /// Every display macOS currently reports, in <c>CGGetActiveDisplayList</c>'s order.
+    /// </summary>
     IReadOnlyList<MacDisplay> ReadDisplays();
 
     /// <summary>

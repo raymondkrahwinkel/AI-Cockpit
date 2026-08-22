@@ -16,12 +16,18 @@ public interface IConsentBroker
     /// </summary>
     Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Raised when a request needs the operator — the UI shows a prompt. Not raised for a remembered or fail-closed request, which resolves without asking.</summary>
+    /// <summary>
+    /// Raised when a request needs the operator — the UI shows a prompt. Not raised for a remembered or fail-closed request, which resolves without asking.
+    /// </summary>
     event EventHandler<ConsentPrompt>? PromptOpened;
 
-    /// <summary>Raised when an opened prompt is resolved — by an answer, a cancellation, or the source going away — so the UI can take its surface down. Carries the prompt id.</summary>
+    /// <summary>
+    /// Raised when an opened prompt is resolved — by an answer, a cancellation, or the source going away — so the UI can take its surface down. Carries the prompt id.
+    /// </summary>
     event EventHandler<Guid>? PromptClosed;
 
-    /// <summary>The operator's answer to an open prompt, from the UI. <paramref name="remember"/> is honoured only for a rememberable prompt (<see cref="ConsentPrompt.CanRemember"/>). Unknown or already-resolved ids are ignored.</summary>
+    /// <summary>
+    /// The operator's answer to an open prompt, from the UI. <paramref name="remember"/> is honoured only for a rememberable prompt (<see cref="ConsentPrompt.CanRemember"/>). Unknown or already-resolved ids are ignored.
+    /// </summary>
     void Respond(Guid promptId, ConsentOutcome outcome, bool remember);
 }

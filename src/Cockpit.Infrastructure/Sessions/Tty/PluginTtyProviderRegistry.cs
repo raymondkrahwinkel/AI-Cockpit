@@ -10,13 +10,19 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 /// </summary>
 public interface IPluginTtyProviderRegistry
 {
-    /// <summary>Registers <paramref name="registration"/>; a later registration under the same provider id replaces the earlier one.</summary>
+    /// <summary>
+    /// Registers <paramref name="registration"/>; a later registration under the same provider id replaces the earlier one.
+    /// </summary>
     void Register(TtyProviderRegistration registration);
 
-    /// <summary>Every TTY provider registered so far, in registration order.</summary>
+    /// <summary>
+    /// Every TTY provider registered so far, in registration order.
+    /// </summary>
     IReadOnlyList<TtyProviderRegistration> Registrations { get; }
 
-    /// <summary>The registration for <paramref name="providerId"/>, or <see langword="null"/> when that provider offers no TUI.</summary>
+    /// <summary>
+    /// The registration for <paramref name="providerId"/>, or <see langword="null"/> when that provider offers no TUI.
+    /// </summary>
     TtyProviderRegistration? Resolve(string providerId);
 }
 

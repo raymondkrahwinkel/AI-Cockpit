@@ -9,9 +9,13 @@ namespace Cockpit.Infrastructure.Sessions;
 /// </summary>
 public interface IProfileLoginStarter
 {
-    /// <summary>Whether this profile's provider declared a <c>StartLogin</c> at all, with no subprocess spawned.</summary>
+    /// <summary>
+    /// Whether this profile's provider declared a <c>StartLogin</c> at all, with no subprocess spawned.
+    /// </summary>
     bool CanStartLogin(SessionProfile profile);
 
-    /// <summary>Starts the flow, or <see langword="null"/> when this profile's provider offers no in-app login.</summary>
+    /// <summary>
+    /// Starts the flow, or <see langword="null"/> when this profile's provider offers no in-app login.
+    /// </summary>
     ILoginFlow? StartLogin(SessionProfile profile, CancellationToken cancellationToken);
 }
