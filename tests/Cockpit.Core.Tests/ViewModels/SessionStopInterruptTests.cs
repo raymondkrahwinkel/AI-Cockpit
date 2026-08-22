@@ -46,6 +46,63 @@ public class SessionStopInterruptTests
         await vm.DisposeAsync();
     }
 
+    // AC-1031: the CLI reports an interrupted turn exactly like a real driver failure
+    // (is_error: true, no Result) — Stop is what tells the ViewModel the difference, so the row must read
+    // "Interrupted.", not a failure card asking to Retry.
+    [Fact]
+    public async Task TurnCompleted_AfterStop_RendersAsInterruptedNotAFailedTurn()
+    {
+        var (vm, _) = await StartedVm();
+
+        await vm.StopCommand.ExecuteAsync(null);
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "error_during_execution", Result = null, IsError = true });
+
+        var row = Assert.Single(vm.Transcript);
+        Assert.Equal("Interrupted.", row.Text);
+        Assert.False(row.IsFailedTurnRow);
+        Assert.False(row.HasAction);
+
+        await vm.DisposeAsync();
+    }
+
+    // A failed turn NOT preceded by Stop must keep rendering as a genuine failure (AC-728/AC-939)
+    // — the interrupted-row path must not swallow real errors.
+    [Fact]
+    public async Task TurnCompleted_ErrorWithoutStop_StillRendersAsAFailedTurn()
+    {
+        var (vm, _) = await StartedVm();
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "error_during_execution", Result = null, IsError = true });
+
+        var row = Assert.Single(vm.Transcript);
+        Assert.NotEqual("Interrupted.", row.Text);
+        Assert.True(row.IsFailedTurnRow);
+
+        await vm.DisposeAsync();
+    }
+
+    // AC-1031: a Stop whose own TurnCompleted never arrives (the turn already finished before the interrupt
+    // landed, or the session died) must not leave the flag standing for the NEXT turn to inherit — that next
+    // turn's own genuine failure would otherwise render as "Interrupted." too. Cleared at dispatch closes it.
+    [Fact]
+    public async Task TurnCompleted_ErrorAfterAStopThatNeverGotItsOwnTurnCompleted_StillRendersAsAFailedTurn()
+    {
+        var (vm, _) = await StartedVm();
+
+        await vm.StopCommand.ExecuteAsync(null);
+        // No TurnCompleted follows the Stop — simulates the interrupt landing too late, or the CLI dying.
+
+        vm.InputText = "try again";
+        await vm.SendCommand.ExecuteAsync(null);
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "error_during_execution", Result = null, IsError = true });
+
+        var row = Assert.Single(vm.Transcript, entry => entry.Kind == TranscriptEntryKind.TurnCompleted);
+        Assert.NotEqual("Interrupted.", row.Text);
+        Assert.True(row.IsFailedTurnRow);
+
+        await vm.DisposeAsync();
+    }
+
     private static async Task<(SessionViewModel Vm, ISessionDriver Driver)> StartedVm()
     {
         var driver = Substitute.For<ISessionDriver>();
