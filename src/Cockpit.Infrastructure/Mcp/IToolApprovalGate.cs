@@ -16,7 +16,9 @@ internal interface IToolApprovalGate
     /// </summary>
     Task<ToolApprovalResult> RequestApprovalAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken);
 
-    /// <summary>Reports the outcome of a tool call (its result text or a denial/error), so the session shows it under the tool row.</summary>
+    /// <summary>
+    /// Reports the outcome of a tool call (its result text or a denial/error), so the session shows it under the tool row.
+    /// </summary>
     void ReportToolResult(string toolUseId, string content, bool isError);
 }
 

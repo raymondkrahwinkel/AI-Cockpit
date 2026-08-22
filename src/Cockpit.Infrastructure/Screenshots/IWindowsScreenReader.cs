@@ -22,6 +22,8 @@ internal interface IWindowsScreenReader
     /// </summary>
     WindowsScreenLayout ReadLayout();
 
-    /// <summary>The given rectangle of the virtual screen, as PNG bytes.</summary>
+    /// <summary>
+    /// The given rectangle of the virtual screen, as PNG bytes.
+    /// </summary>
     byte[] CapturePng(CaptureRect bounds);
 }

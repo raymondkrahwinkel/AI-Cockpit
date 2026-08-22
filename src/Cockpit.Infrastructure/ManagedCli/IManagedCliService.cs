@@ -9,10 +9,14 @@ namespace Cockpit.Infrastructure.ManagedCli;
 /// </summary>
 public interface IManagedCliService
 {
-    /// <summary>The names of the managed CLIs plugins have registered — what a background update check iterates.</summary>
+    /// <summary>
+    /// The names of the managed CLIs plugins have registered — what a background update check iterates.
+    /// </summary>
     IReadOnlyCollection<string> RegisteredCliNames { get; }
 
-    /// <summary>Records a plugin's install recipe under its <see cref="ManagedCliDescriptor.CliName"/>. Idempotent — re-registering the same name replaces it.</summary>
+    /// <summary>
+    /// Records a plugin's install recipe under its <see cref="ManagedCliDescriptor.CliName"/>. Idempotent — re-registering the same name replaces it.
+    /// </summary>
     void Register(ManagedCliDescriptor descriptor);
 
     /// <summary>
