@@ -139,12 +139,13 @@ internal sealed class CockpitMcpEndpointHost
                 {
                     result = await next(context, cancellationToken).ConfigureAwait(false);
                 }
-                catch (Exception exception) when (exception is ArgumentException or JsonException)
+                // ArgumentException narrowed to the marshaller's own signature (ParamName "arguments") so a bug
+                // inside a tool's own logic is never mislabelled as a bad call; JsonException is left broad, since
+                // only argument deserialization throws it here.
+                catch (Exception exception) when (exception is ArgumentException { ParamName: "arguments" } or JsonException)
                 {
-                    // AC-1028: the AIFunctionFactory marshaller throws straight out of the call for a missing or
-                    // malformed argument instead of reporting it as a tool error — surfaced here as a readable
-                    // result naming the bad parameter and the tool's full parameter list, so the calling agent can
-                    // self-correct instead of reading this as "the tool is broken" (it was, 16 times, on 2026-08-22).
+                    // AC-1028: surfaced as a readable result naming the bad parameter and the tool's full parameter
+                    // list, so the calling agent can self-correct instead of reading this as "the tool is broken".
                     _logger.LogWarning(exception, "Tool {Tool} was called with an invalid argument.", context.Params.Name);
                     result = _ToolArgumentErrorResult(context, exception);
                 }
@@ -301,9 +302,8 @@ internal sealed class CockpitMcpEndpointHost
         _WithToolsGeneric.MakeGenericMethod(tools.GetType()).Invoke(null, [mcpBuilder, tools, null]);
 
     // Turns a marshalling failure (a missing required argument, or one that will not deserialize) into a tool
-    // result the calling agent can read and act on, instead of the generic transport-level failure it saw before
-    // (AC-1028). The parameter list comes from the tool's own advertised schema, not a hand-maintained list, so it
-    // can never drift from what the tool actually accepts.
+    // result the calling agent can act on (AC-1028). The parameter list comes from the tool's own advertised
+    // schema, not a hand-maintained list, so it can never drift from what the tool actually accepts.
     private static CallToolResult _ToolArgumentErrorResult(RequestContext<CallToolRequestParams> context, Exception exception)
     {
         var parameters = _ExpectedParameterNames(context.MatchedPrimitive);
