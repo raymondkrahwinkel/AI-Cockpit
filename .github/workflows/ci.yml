@@ -147,6 +147,12 @@ jobs:
           # The guard reads plugin.json at two commits, so the shallow default clone is not enough.
           fetch-depth: 0
 
+      # Runs before the real checks below: a red step here means a guard broke, not that it found something.
+      - name: Guards' own tests
+        run: |
+          bash scripts/check-plugin-versions.test.sh
+          bash scripts/check-plugin-abstractions-version.test.sh
+
       - name: Every changed plugin carries a newer version
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -168,8 +174,8 @@ jobs:
           fi
           bash scripts/check-plugin-versions.sh "$BASE" HEAD
 
-      - name: Guard's own tests
-        run: bash scripts/check-plugin-versions.test.sh
+      - name: Every plugin's abstractionsVersion matches the host contract
+        run: bash scripts/check-plugin-abstractions-version.sh
 
   # AC-319/AC-593 swept /// down to interface members, in ~15,700 lines across seven rounds. A rule nothing
   # enforces drifts back to where it started -- this is the enforcement.
