@@ -283,6 +283,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a Slack message sent with a file attached no longer vanishes on the way in. Slack marks any message
+  carrying a file as a special kind of message, and the plugin was throwing all of those away together with the
+  genuine bot and system traffic — so the sentence you wrote under a screenshot never arrived either, with no
+  error, no reaction and nothing in the log to say a message had ever been sent. Edits, deletions and "joined
+  the channel" notices are still ignored, and the bot still does not answer its own posts. On Discord the same
+  filter ran the other way round: a join or a pin arrived as an empty message and was forwarded as if someone
+  had sent it, which it now is not.
+
 - fixed: a session could go to "needs attention" for a tool waiting on your approval while the approval card was
   nowhere to be seen — it sits in the transcript, so scrolling up to read history left it below the fold with
   nothing on screen pointing at it. The round button in the corner of the transcript now says when something is
