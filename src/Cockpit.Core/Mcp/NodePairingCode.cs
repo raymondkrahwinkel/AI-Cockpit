@@ -8,6 +8,8 @@ namespace Cockpit.Core.Mcp;
 // it saw — a MITM forwards the nonce but can't forge the fingerprint, so the codes mismatch.
 public static class NodePairingCode
 {
+    // ponytail: truncated hash, not an SAS — the certificate is the long-lived key, so nothing extra to agree on.
+    // Upgrade to a real short-authentication-string if a node ever gets an identity beyond its TLS certificate.
     public const int Digits = 6;
 
     private const int Modulus = 1_000_000;
