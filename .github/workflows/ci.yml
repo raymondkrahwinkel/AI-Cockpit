@@ -168,8 +168,13 @@ jobs:
           fi
           bash scripts/check-plugin-versions.sh "$BASE" HEAD
 
+      - name: Every plugin's abstractionsVersion matches the host contract
+        run: bash scripts/check-plugin-abstractions-version.sh
+
       - name: Guard's own tests
-        run: bash scripts/check-plugin-versions.test.sh
+        run: |
+          bash scripts/check-plugin-versions.test.sh
+          bash scripts/check-plugin-abstractions-version.test.sh
 
   # AC-319/AC-593 swept /// down to interface members, in ~15,700 lines across seven rounds. A rule nothing
   # enforces drifts back to where it started -- this is the enforcement.
