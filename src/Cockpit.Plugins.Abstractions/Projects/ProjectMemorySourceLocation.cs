@@ -9,7 +9,9 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// The bare value written into the reference box when this location is picked — the same value a dev who knows it
 /// would type by hand, folded into <c>&lt;scheme&gt;:&lt;value&gt;</c> the same way the dropdown above already does.
 /// </param>
-/// <param name="Name">What the picker shows for this location — a project's display name, not its slug.</param>
+/// <param name="Name">
+/// What the picker shows for this location — a project's display name, not its slug.
+/// </param>
 /// <param name="Detail">
 /// An optional second line under <see cref="Name"/> — document count, last-modified, role — or <see langword="null"/>
 /// when the source has nothing more to say about a location than its name.

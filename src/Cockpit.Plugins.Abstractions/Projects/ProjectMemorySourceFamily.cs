@@ -20,7 +20,9 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// <see cref="ProjectMemorySourceRegistration.Scheme"/> makes for a stored reference. The first plugin to register a
 /// key keeps it, the same rule <see cref="ProjectFieldRegistration.Key"/> follows for a project field.
 /// </param>
-/// <param name="Title">What the picker's top-level dropdown shows for this family — "Depot".</param>
+/// <param name="Title">
+/// What the picker's top-level dropdown shows for this family — "Depot".
+/// </param>
 public sealed record ProjectMemorySourceFamily(string Key, string Title)
 {
     /// <summary>

@@ -10,7 +10,9 @@ namespace Cockpit.Plugins.Abstractions.Workspaces;
 /// </summary>
 public interface IEmbeddedSession
 {
-    /// <summary>The session's live view, ready to drop into the body's layout. The host keeps it alive across re-layouts.</summary>
+    /// <summary>
+    /// The session's live view, ready to drop into the body's layout. The host keeps it alive across re-layouts.
+    /// </summary>
     Control View { get; }
 
     /// <summary>

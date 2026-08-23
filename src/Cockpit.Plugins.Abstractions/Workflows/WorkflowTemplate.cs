@@ -12,11 +12,21 @@ namespace Cockpit.Plugins.Abstractions.Workflows;
 /// with a reason, never half-loaded.
 /// </para>
 /// </summary>
-/// <param name="Id">Stable identity ("youtrack.ticket-to-branch"), so a template can be recognised across versions.</param>
-/// <param name="Name">What the picker shows.</param>
-/// <param name="Description">One line: what the flow does, in the operator's words.</param>
-/// <param name="Json">The flow, as the workflows plugin writes it. Node ids inside are rewritten on import, so two copies of a template can live side by side.</param>
-/// <param name="Category">The heading it is filed under; defaults to the contributing plugin's own name, which is where an operator looks for it.</param>
+/// <param name="Id">
+/// Stable identity ("youtrack.ticket-to-branch"), so a template can be recognised across versions.
+/// </param>
+/// <param name="Name">
+/// What the picker shows.
+/// </param>
+/// <param name="Description">
+/// One line: what the flow does, in the operator's words.
+/// </param>
+/// <param name="Json">
+/// The flow, as the workflows plugin writes it. Node ids inside are rewritten on import, so two copies of a template can live side by side.
+/// </param>
+/// <param name="Category">
+/// The heading it is filed under; defaults to the contributing plugin's own name, which is where an operator looks for it.
+/// </param>
 public sealed record WorkflowTemplate(
     string Id,
     string Name,

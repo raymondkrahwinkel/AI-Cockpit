@@ -10,6 +10,8 @@ namespace Cockpit.Plugins.Abstractions.Workspaces;
 /// </summary>
 public sealed record PluginRememberedWorkingPaths(IReadOnlyList<string> Favorites, IReadOnlyList<string> Recents)
 {
-    /// <summary>Nothing remembered yet — what a host with no saved history returns.</summary>
+    /// <summary>
+    /// Nothing remembered yet — what a host with no saved history returns.
+    /// </summary>
     public static PluginRememberedWorkingPaths Empty { get; } = new([], []);
 }

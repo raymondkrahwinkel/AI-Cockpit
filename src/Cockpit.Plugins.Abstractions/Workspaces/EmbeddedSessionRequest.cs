@@ -7,10 +7,14 @@ namespace Cockpit.Plugins.Abstractions.Workspaces;
 /// </summary>
 public sealed record EmbeddedSessionRequest
 {
-    /// <summary>The profile the session runs under (its provider and identity); null starts the cockpit's default profile.</summary>
+    /// <summary>
+    /// The profile the session runs under (its provider and identity); null starts the cockpit's default profile.
+    /// </summary>
     public string? ProfileId { get; init; }
 
-    /// <summary>The directory the session starts in; null uses the app's own working directory.</summary>
+    /// <summary>
+    /// The directory the session starts in; null uses the app's own working directory.
+    /// </summary>
     public string? WorkingDirectory { get; init; }
 
     /// <summary>

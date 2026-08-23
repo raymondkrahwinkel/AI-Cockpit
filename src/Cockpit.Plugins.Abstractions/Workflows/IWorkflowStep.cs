@@ -18,16 +18,24 @@ namespace Cockpit.Plugins.Abstractions.Workflows;
 /// </summary>
 public interface IWorkflowStep
 {
-    /// <summary>Unique, and prefixed with the plugin: <c>youtrack.start</c>. It is stored in the flow, so it must not change once a flow uses it.</summary>
+    /// <summary>
+    /// Unique, and prefixed with the plugin: <c>youtrack.start</c>. It is stored in the flow, so it must not change once a flow uses it.
+    /// </summary>
     string TypeId { get; }
 
-    /// <summary>What it is called on the canvas: "Start a ticket".</summary>
+    /// <summary>
+    /// What it is called on the canvas: "Start a ticket".
+    /// </summary>
     string Name { get; }
 
-    /// <summary>One sentence: what it does, and anything the operator would be surprised by.</summary>
+    /// <summary>
+    /// One sentence: what it does, and anything the operator would be surprised by.
+    /// </summary>
     string Description { get; }
 
-    /// <summary>A single character or emoji for the card. Used when <see cref="IconKind"/> is null.</summary>
+    /// <summary>
+    /// A single character or emoji for the card. Used when <see cref="IconKind"/> is null.
+    /// </summary>
     string Icon { get; }
 
     /// <summary>
@@ -37,10 +45,14 @@ public interface IWorkflowStep
     /// </summary>
     MaterialIconKind? IconKind => null;
 
-    /// <summary>The heading it appears under in the step picker: the plugin's own name reads best ("YouTrack").</summary>
+    /// <summary>
+    /// The heading it appears under in the step picker: the plugin's own name reads best ("YouTrack").
+    /// </summary>
     string Category { get; }
 
-    /// <summary>The settings it asks for, in order. Each is a text field, and a value may carry <c>{output}</c> to use what an earlier step produced.</summary>
+    /// <summary>
+    /// The settings it asks for, in order. Each is a text field, and a value may carry <c>{output}</c> to use what an earlier step produced.
+    /// </summary>
     IReadOnlyList<string> Parameters { get; }
 
     /// <summary>
@@ -74,7 +86,9 @@ public interface IWorkflowStep
     /// </summary>
     bool IsTrigger => false;
 
-    /// <summary>What it typically hands on, with an example value — shown before a flow has ever run, so a step can be configured against its input rather than against a guess. Optional.</summary>
+    /// <summary>
+    /// What it typically hands on, with an example value — shown before a flow has ever run, so a step can be configured against its input rather than against a guess. Optional.
+    /// </summary>
     IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>();
 
     /// <summary>
@@ -101,29 +115,47 @@ public interface IWorkflowStep
 /// What a step is handed when it runs: its own settings, already resolved (a <c>{output}</c> in a parameter has been
 /// replaced with what the earlier step produced), and the data flowing into it.
 /// </summary>
-/// <param name="Parameters">The settings, by the names the step declared, with placeholders already filled.</param>
-/// <param name="Input">What the step before handed over — usually one item.</param>
+/// <param name="Parameters">
+/// The settings, by the names the step declared, with placeholders already filled.
+/// </param>
+/// <param name="Input">
+/// What the step before handed over — usually one item.
+/// </param>
 public sealed record WorkflowStepContext(
     IReadOnlyDictionary<string, string> Parameters,
     IReadOnlyList<IReadOnlyDictionary<string, string>> Input)
 {
-    /// <summary>One setting, or empty when it was left blank.</summary>
+    /// <summary>
+    /// One setting, or empty when it was left blank.
+    /// </summary>
     public string Parameter(string name) => Parameters.GetValueOrDefault(name, string.Empty);
 }
 
-/// <summary>What a step produced.</summary>
-/// <param name="Items">The data the next step gets. Empty means "pass on what came in".</param>
-/// <param name="Output">One line for the run log: what actually happened. This is what the operator reads afterwards.</param>
-/// <param name="Branch">For a step with named ways out: which one was taken. Null for the usual single way out.</param>
+/// <summary>
+/// What a step produced.
+/// </summary>
+/// <param name="Items">
+/// The data the next step gets. Empty means "pass on what came in".
+/// </param>
+/// <param name="Output">
+/// One line for the run log: what actually happened. This is what the operator reads afterwards.
+/// </param>
+/// <param name="Branch">
+/// For a step with named ways out: which one was taken. Null for the usual single way out.
+/// </param>
 public sealed record WorkflowStepResult(
     IReadOnlyList<IReadOnlyDictionary<string, string>> Items,
     string Output,
     string? Branch = null)
 {
-    /// <summary>A step that did something and has one thing to say about it, handing on a single named value.</summary>
+    /// <summary>
+    /// A step that did something and has one thing to say about it, handing on a single named value.
+    /// </summary>
     public static WorkflowStepResult Of(string field, string value, string output) =>
         new([new Dictionary<string, string> { [field] = value }], output);
 
-    /// <summary>A step that did something and produced no data of its own.</summary>
+    /// <summary>
+    /// A step that did something and produced no data of its own.
+    /// </summary>
     public static WorkflowStepResult Done(string output) => new([], output);
 }

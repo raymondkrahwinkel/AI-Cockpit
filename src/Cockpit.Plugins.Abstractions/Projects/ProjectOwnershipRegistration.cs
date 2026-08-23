@@ -17,11 +17,17 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// cannot express.
 /// </para>
 /// </summary>
-/// <param name="ProjectId">The project this claims, matched by <c>Project.Id</c>.</param>
-/// <param name="Default">What every field gets unless <see cref="Overrides"/> names it. Null claims nothing by default.</param>
+/// <param name="ProjectId">
+/// The project this claims, matched by <c>Project.Id</c>.
+/// </param>
+/// <param name="Default">
+/// What every field gets unless <see cref="Overrides"/> names it. Null claims nothing by default.
+/// </param>
 public sealed record ProjectOwnershipRegistration(string ProjectId, ProjectFieldOwnership? Default = null)
 {
-    /// <summary>Per-field deviation from <see cref="Default"/> — a different ownership, or null to leave this field local.</summary>
+    /// <summary>
+    /// Per-field deviation from <see cref="Default"/> — a different ownership, or null to leave this field local.
+    /// </summary>
     public IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?> Overrides { get; init; } =
         ReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>.Empty;
 }

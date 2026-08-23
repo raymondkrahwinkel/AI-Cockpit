@@ -45,7 +45,9 @@ public interface ISharedProjectSource
     /// keeps for a whole source's own failure.
     /// </para>
     /// </summary>
-    /// <param name="id">A <see cref="SharedProject.Id"/> this source itself listed — never one <see cref="ListAsync"/> never returned.</param>
+    /// <param name="id">
+    /// A <see cref="SharedProject.Id"/> this source itself listed — never one <see cref="ListAsync"/> never returned.
+    /// </param>
     Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken);
 
     /// <summary>
@@ -65,8 +67,12 @@ public interface ISharedProjectSource
     /// and offer a merge" cannot honour AC-247's own "never silently overwrite" rule.
     /// </para>
     /// </summary>
-    /// <param name="id">A <see cref="SharedProject.Id"/> this source itself listed.</param>
-    /// <param name="edit">The operator's edited values.</param>
+    /// <param name="id">
+    /// A <see cref="SharedProject.Id"/> this source itself listed.
+    /// </param>
+    /// <param name="edit">
+    /// The operator's edited values.
+    /// </param>
     /// <param name="baseChecksum">
     /// The <see cref="SharedProjectBinding.Checksum"/> from the read the operator's edit started from — sent
     /// unmodified, however long the editor stayed open, so this source's own optimistic-concurrency check answers
@@ -94,7 +100,11 @@ public interface ISharedProjectSource
     /// Publishes <paramref name="definition"/> as a new portable definition at <paramref name="targetId"/> (AC-620) —
     /// must fail with <see cref="SharedProjectPublishResult.AlreadyPublished"/> rather than overwrite one that already exists (<see cref="PrepareBindingAsync"/>'s case, not this call's).
     /// </summary>
-    /// <param name="targetId">A <see cref="SharedProjectPublishTarget.Id"/> this source itself listed.</param>
-    /// <param name="definition">The local project's portable snapshot, offered as-is — see <see cref="SharedProjectPublishDefinition"/> for what "portable" already excludes.</param>
+    /// <param name="targetId">
+    /// A <see cref="SharedProjectPublishTarget.Id"/> this source itself listed.
+    /// </param>
+    /// <param name="definition">
+    /// The local project's portable snapshot, offered as-is — see <see cref="SharedProjectPublishDefinition"/> for what "portable" already excludes.
+    /// </param>
     Task<SharedProjectPublishResult> PublishAsync(string targetId, SharedProjectPublishDefinition definition, CancellationToken cancellationToken);
 }

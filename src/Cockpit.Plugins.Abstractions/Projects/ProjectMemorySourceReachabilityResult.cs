@@ -1,7 +1,11 @@
 namespace Cockpit.Plugins.Abstractions.Projects;
 
-/// <summary>The answer to <see cref="ProjectMemorySourceRegistration.CheckReachability"/> (AC-503): a named state plus, only when useful, a short confirmation string to show under the row.</summary>
-/// <param name="State">What the check found.</param>
+/// <summary>
+/// The answer to <see cref="ProjectMemorySourceRegistration.CheckReachability"/> (AC-503): a named state plus, only when useful, a short confirmation string to show under the row.
+/// </summary>
+/// <param name="State">
+/// What the check found.
+/// </param>
 /// <param name="Detail">
 /// Shown under the row on <see cref="ProjectMemorySourceReachability.Confirmed"/> in place of a fixed sentence —
 /// "24 documents, last changed 2 hours ago", say — and, since AC-499, on <see cref="ProjectMemorySourceReachability.CheckFailed"/>

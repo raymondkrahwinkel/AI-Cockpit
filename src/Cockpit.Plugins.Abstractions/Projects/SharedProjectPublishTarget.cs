@@ -12,6 +12,10 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// (<c>&lt;scheme&gt;:&lt;value&gt;</c>), so a successful publish can bind the local project the same way
 /// <see cref="ISharedProjectSource.PrepareBindingAsync"/>'s own result does.
 /// </param>
-/// <param name="Name">The target's display name, read from wherever the source keeps its own listing.</param>
-/// <param name="Role">The operator's membership role there, same idiom as <see cref="SharedProject.Role"/> — display only.</param>
+/// <param name="Name">
+/// The target's display name, read from wherever the source keeps its own listing.
+/// </param>
+/// <param name="Role">
+/// The operator's membership role there, same idiom as <see cref="SharedProject.Role"/> — display only.
+/// </param>
 public sealed record SharedProjectPublishTarget(string Id, string Name, string? Role);

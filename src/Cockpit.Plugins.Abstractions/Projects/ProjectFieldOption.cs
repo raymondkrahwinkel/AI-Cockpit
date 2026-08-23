@@ -10,6 +10,10 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// showing the value alone would ask the operator to know the tag by heart.
 /// </para>
 /// </summary>
-/// <param name="Value">What is stored on the project and handed back to the plugin — the identifier it resolves.</param>
-/// <param name="Display">What the operator sees in the list and in the box once it is picked.</param>
+/// <param name="Value">
+/// What is stored on the project and handed back to the plugin — the identifier it resolves.
+/// </param>
+/// <param name="Display">
+/// What the operator sees in the list and in the box once it is picked.
+/// </param>
 public sealed record ProjectFieldOption(string Value, string Display);

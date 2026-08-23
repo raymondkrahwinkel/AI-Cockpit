@@ -19,7 +19,9 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// clash is plausible; the first plugin to register a scheme keeps it, the same agreement
 /// <see cref="ProjectFieldRegistration.Key"/> makes for a project field.
 /// </param>
-/// <param name="Title">How the source is named back to the operator and the session — "Depot project".</param>
+/// <param name="Title">
+/// How the source is named back to the operator and the session — "Depot project".
+/// </param>
 /// <param name="Instruction">
 /// The sentence appended after the session is told where its memory lives, saying how to actually reach it —
 /// "Read it through the Depot MCP's <c>read</c> tool." Told rather than loaded for the same reason a folder
