@@ -5,6 +5,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -311,7 +312,7 @@ public class AssistantChannelGatewayTests
             Name = "Test channel",
             Access = AssistantChannelAccess.ForSingleUser(Allowed).Access!,
         };
-        var gateway = new AssistantChannelGateway(channel, host, broker);
+        var gateway = new AssistantChannelGateway(channel, host, broker, NullLogger<AssistantChannelGateway>.Instance);
         gateway.RowChanged += (_, row) => rows.Add(row);
 
         return gateway;
