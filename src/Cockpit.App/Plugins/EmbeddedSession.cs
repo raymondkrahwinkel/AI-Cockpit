@@ -39,6 +39,11 @@ internal sealed class EmbeddedSession : IEmbeddedSession
 
     public Task<string?> Completion { get; }
 
+    // AC-1037: the session's own working directory — the isolated worktree the host resolved for it, when it made
+    // one. Read live rather than captured at construction: this adapter is handed back before the start has resolved
+    // the directory, so a captured value would be null for the whole session.
+    public string? WorktreePath => _session.WorkingDirectory;
+
     public bool IsBusy => _isBusy;
 
     public event Action<bool>? BusyChanged;

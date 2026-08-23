@@ -15,6 +15,29 @@ internal sealed record AutopilotPrProbe(bool IsGitRun, bool HasRemote, bool GhAv
 // `Body`: The pull request body (the run's goal and source link).
 internal sealed record AutopilotPrRequest(string WorktreePath, string Branch, string Title, string Body);
 
+// What became of work a step committed on a worktree of its own instead of on the run's branch (AC-1037).
+//
+// `Recovered`: The commits cherry-picked onto the run branch, oldest first — the run now carries this work.
+// `Stranded`: The commits still only on the step's own branch — the one the recovery stopped on, and every one after it.
+// `Error`:
+// Why this is not a clean answer — a cherry-pick that would not apply, or a check that could not run. Null only when
+// the branch really was read and everything is where it belongs.
+internal sealed record AutopilotStrayCommits(IReadOnlyList<string> Recovered, IReadOnlyList<string> Stranded, string? Error)
+{
+    // The step's work is on the run's branch and the harness knows it — the only all-clear this type has.
+    public static readonly AutopilotStrayCommits None = new([], [], null);
+
+    // The check itself did not run. Deliberately not `None`: "could not look" and "found nothing" lead to opposite
+    // conclusions about a step that reported success, and collapsing them is the failure shape of AC-1037 itself.
+    public static AutopilotStrayCommits Unmeasured(string reason) => new([], [], reason);
+
+    // Whether anything at all was found off the run's branch — false is the ordinary case.
+    public bool Found => Recovered.Count > 0 || Stranded.Count > 0;
+
+    // Whether the CEO has to be told something: work was moved, work is stuck, or nobody could look.
+    public bool NeedsSaying => Found || Error is not null;
+}
+
 // The outcome of publishing — what actually landed, for the operator-facing outcome line.
 //
 // `Pushed`: The run branch reached the remote.
@@ -48,4 +71,16 @@ internal interface IAutopilotPrPublisher
     /// throws; returns false only when a real commit attempt failed.
     /// </summary>
     Task<bool> EnsureCommittedAsync(string worktreePath, string message, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Brings work a step committed in <paramref name="stepWorktreePath"/> — a worktree of its own, on a branch of its
+    /// own — back onto <paramref name="runBranch"/> by cherry-picking it in <paramref name="runWorktreePath"/> (AC-1037).
+    /// A cherry-pick that hits a conflict is aborted and reported as stranded rather than resolved or skipped, and like
+    /// every other member here this never throws.
+    /// </summary>
+    Task<AutopilotStrayCommits> RecoverStrayCommitsAsync(
+        string runWorktreePath,
+        string runBranch,
+        string stepWorktreePath,
+        CancellationToken cancellationToken = default);
 }

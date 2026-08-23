@@ -78,6 +78,15 @@ internal sealed class GitCliEvidenceSource : IAutopilotEvidenceSource
             return null;
         }
 
+        // AC-1037: which tree this observation is of. Without it the CEO is handed a diff and a test result it cannot
+        // tie to any commit — exactly the gap a green suite from another branch walked through — so a HEAD git will
+        // not name degrades to no evidence at all rather than to evidence that cannot say where it came from.
+        var head = await GitCommandLine.RunAsync("git", ["rev-parse", "HEAD"], worktreePath, cancellationToken);
+        if (!head.Ok || head.StdOut.Trim().Length == 0)
+        {
+            return null;
+        }
+
         var untracked = await GitCommandLine.RunAsync("git", ["ls-files", "--others", "--exclude-standard"], worktreePath, cancellationToken);
         var newFiles = untracked.Ok
             ? _Lines(untracked.StdOut).Where(path => !mark.UntrackedFiles.Contains(path, StringComparer.Ordinal)).ToArray()
@@ -94,6 +103,7 @@ internal sealed class GitCliEvidenceSource : IAutopilotEvidenceSource
             changed,
             newFiles,
             staged,
+            head.StdOut.Trim(),
             patch.StdOut[..cut],
             cut < patch.StdOut.Length);
     }

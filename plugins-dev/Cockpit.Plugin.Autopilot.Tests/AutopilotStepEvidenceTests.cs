@@ -140,6 +140,31 @@ public class AutopilotStepEvidenceTests
     }
 
     [Fact]
+    public void ValidationTurn_NamesTheCommitTheObservationWasMeasuredOn()
+    {
+        // AC-1037: "73/73 green" was a real test result of another tree. An observation the CEO cannot tie to a commit
+        // cannot rule that out, so the commit is named and the turn says a result measured elsewhere proves nothing here.
+        var evidence = AutopilotStepEvidence.From(_Change(files: ["src/Thing.cs"], head: "5706650a"), _Step(), ["73/73 green"]);
+
+        var turn = AutopilotStepBrief.ValidationTurn(_Step(), ["73/73 green"], evidence);
+
+        Assert.Contains("at commit 5706650a", turn);
+        Assert.Contains("a real green run of another tree says nothing about this one", turn);
+    }
+
+    [Fact]
+    public void ValidationTurn_WithStrayCommitNotes_CarriesThemWithOrWithoutEvidence()
+    {
+        // AC-1037: whether git could be read at all has nothing to do with whether a commit went astray, so the note
+        // cannot live in the evidence branch alone — it is the one thing the CEO must never miss.
+        var evidence = AutopilotStepEvidence.From(_Change(files: ["src/Thing.cs"]), _Step(), ["done"]);
+        string[] notes = ["Cherry-picked 1 commit(s) onto “autopilot/run”"];
+
+        Assert.Contains("Cherry-picked 1 commit(s)", AutopilotStepBrief.ValidationTurn(_Step(), ["done"], evidence, notes));
+        Assert.Contains("Cherry-picked 1 commit(s)", AutopilotStepBrief.ValidationTurn(_Step(), ["done"], null, notes));
+    }
+
+    [Fact]
     public void ValidationTurn_ShowsTheSameObservation_WhateverTheAgentClaims()
     {
         // Criterion 1: the diff the validator sees comes from the harness. What the agent reports lands in its own
@@ -288,8 +313,9 @@ public class AutopilotStepEvidenceTests
         IReadOnlyList<string>? untracked = null,
         IReadOnlyList<string>? addedFromBefore = null,
         string patch = "",
-        bool truncated = false) =>
-        new(files ?? [], untracked ?? [], addedFromBefore ?? [], patch, truncated);
+        bool truncated = false,
+        string head = "c0ffee1") =>
+        new(files ?? [], untracked ?? [], addedFromBefore ?? [], head, patch, truncated);
 
     private static AutopilotStep _Step() =>
         new("1", "Code", "do the work", "Claude", "opus", "brief", "compiles", GateMode.Hard);

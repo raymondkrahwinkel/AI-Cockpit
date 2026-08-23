@@ -11,18 +11,21 @@ namespace Cockpit.Plugin.Autopilot;
 // account describes — so the text inside a diff is the step's own output and is handed to the CEO as data to judge,
 // never as instruction (see `AutopilotStepBrief.ValidationTurn`, which fences it for exactly that reason).
 //
+// `Commit`:
+// The commit this observation was measured on (AC-1037) — carried as its own field rather than left inside the
+// prose, so the validation turn cannot render an observation without saying which tree it is of.
 // `Observation`: What the harness saw, already worded for the validation turn.
 // `Concerns`:
 // What the harness flagged about the change (`AutopilotEvidenceSignals`). Empty means no spot-check fired
 // — not that the step is correct, and the turn says so in as many words.
-internal sealed record AutopilotStepEvidence(string Observation, IReadOnlyList<string> Concerns)
+internal sealed record AutopilotStepEvidence(string Commit, string Observation, IReadOnlyList<string> Concerns)
 {
     // A path list is as unbounded as a diff is, and for the same reason it has to be capped: a wide refactor — or a
     // repo whose build output is not ignored — would otherwise blow past the budget the patch cap exists to enforce.
     private const int MaxListedFiles = 50;
 
     public static AutopilotStepEvidence From(AutopilotWorktreeChange change, AutopilotStep step, IReadOnlyList<string> summaries) =>
-        new(_Describe(change), AutopilotEvidenceSignals.For(change, step, summaries));
+        new(change.HeadCommit, _Describe(change), AutopilotEvidenceSignals.For(change, step, summaries));
 
     private static string _Describe(AutopilotWorktreeChange change)
     {

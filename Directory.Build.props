@@ -8,7 +8,16 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.29.0: a channel plugin can now hand the assistant images along with a message (AC-1049) — a second
+    <!-- 0.30.0: an embedded session now says where it actually runs (AC-1037) — IEmbeddedSession.WorktreePath,
+         the isolated worktree the host resolved for it. A plugin that starts a step it did not hand a worktree
+         (Autopilot's review gates and parallel agents) could not tell whether that step's commits landed on the
+         run's branch or on a session branch of its own, which is how a step reported a green suite of a tree the
+         run did not have. Deliberately NOT an abstractionsVersion bump, on the same reasoning as 0.29.0 below:
+         this interface is implemented by the host and only ever called by a plugin, and the member is
+         default-implemented (null), so an already-compiled plugin loads and behaves exactly as before. A plugin
+         that reads it sets minHostVersion 0.30.0 — an older host's copy of the SDK has no such member, so the call
+         cannot resolve at all. Minor because it is additive; still 0.x.
+         0.29.0: a channel plugin can now hand the assistant images along with a message (AC-1049) — a second
          IAssistantChannelGateway.SendAsync taking the raw bytes, AssistantChannelImageLimits saying what will
          be accepted, and AssistantChannelSendResult.ImagesRefused reporting what was not. What an image is,
          how big it may be and how many there may be is decided host-side, so a plugin cannot widen any of it.
@@ -224,7 +233,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.29.0</VersionPrefix>
+    <VersionPrefix>0.30.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
