@@ -93,8 +93,8 @@ public class DialogChromeTests
     public void TheyWearItOnceTheirViewModelArrives(string name) => HeadlessAvalonia.Run(() =>
         Assert.Equal(_ExpectedDecorations, DeferredDialogs[name]().WindowDecorations));
 
-    // Mirrors WindowResizeGrip.DecorationsFor's own platform split (AC-678/AC-934) rather than a hardcoded
-    // expectation, so this still catches a regression on the platform where DecorationsFor is wrong.
+    // Guards that a dialog gets its decorations from WindowResizeGrip rather than setting its own; the value
+    // itself is WindowResizeGripTests' job. AC-1044.
     private static WindowDecorations _ExpectedDecorations =>
         WindowResizeGrip.DecorationsFor(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows());
 

@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 
@@ -27,7 +28,9 @@ public class AssistantChatWindowResizeAndFocusTests
     {
         var window = new AssistantChatWindow();
 
-        Assert.Equal(WindowDecorations.None, window.WindowDecorations);
+        // Guards that this window gets its decorations from WindowResizeGrip rather than setting its own; the
+        // value itself is WindowResizeGripTests' job. AC-1044.
+        Assert.Equal(WindowResizeGrip.DecorationsFor(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows()), window.WindowDecorations);
         Assert.True(window.CanResize);
         Assert.Equal(340, window.MinWidth);
         Assert.Equal(360, window.MinHeight);
