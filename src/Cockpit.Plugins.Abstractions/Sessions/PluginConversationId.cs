@@ -1,14 +1,15 @@
 namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
-/// A provider's conversation id, as much as the host currently knows it (AC-408) — the one contract both the SDK
-/// route (<see cref="IPluginSessionDriver.Conversation"/>) and the TTY route
-/// (<see cref="PluginTtyLaunchContext.ReportConversationId"/>) report through, so the host can eventually resume a
-/// session under the id its provider actually gave it. The three states are deliberately distinct:
-/// <see cref="PluginConversationIdState.Unknown"/> is "not yet", <see cref="PluginConversationIdState.Unsupported"/>
+/// A provider's conversation id, as much as the host currently knows it (AC-408) — the shared contract both the
+/// SDK route (<see cref="IPluginSessionDriver.Conversation"/>) and the TTY route
+/// (<see cref="PluginTtyLaunchContext.ReportConversationId"/>) report through.
+/// </summary>
+/// <remarks>
+/// <see cref="PluginConversationIdState.Unknown"/> means "not yet", <see cref="PluginConversationIdState.Unsupported"/>
 /// is an honest "this provider has none" rather than an error, and <see cref="PluginConversationIdState.Known"/>
 /// carries the real id in <see cref="Value"/>.
-/// </summary>
+/// </remarks>
 /// <param name="State">
 /// Which of the three states this record currently represents.
 /// </param>

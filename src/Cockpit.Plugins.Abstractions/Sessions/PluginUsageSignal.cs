@@ -2,15 +2,12 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
 /// One thing a provider's sessions can run out of, declared so the host can warn about it and act on it without
-/// knowing what it is (AC-229). A provider that reports a context window and two rolling caps declares three of
-/// these; one with a per-minute quota declares that instead; one that measures nothing declares none, and then no
-/// pill, no warning and no setting appears for it.
-/// <para>
-/// The provider owns the numbers as well as the vocabulary. It knows what its window means and therefore when it
-/// is worth interrupting for, so the threshold ships with the declaration rather than being a constant the host
-/// picked for everybody.
-/// </para>
+/// knowing what it is (AC-229).
 /// </summary>
+/// <remarks>
+/// A provider that reports a context window and two rolling caps declares three of these; one that measures
+/// nothing declares none, and then no pill, no warning and no setting appears for it.
+/// </remarks>
 /// <param name="Key">
 /// How a reading names this signal, and how a stored threshold finds it again. Stable — a rename orphans the operator's setting.
 /// </param>

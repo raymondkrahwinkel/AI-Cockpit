@@ -2,18 +2,15 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
 /// The values a plugin can pre-fill the cockpit's New-session dialog with (#AC-96) when it opens it through
-/// <see cref="ICockpitHost.ShowNewSessionDialogAsync"/> — so an assistant that knows which profile and folder a
-/// task wants can offer them ready, while the operator still confirms, edits, or overrides every field before the
-/// session starts. Every field is optional: a <see langword="null"/> or blank one leaves that part of the dialog on
-/// its own default, so a plugin fills only what it actually knows.
-/// <para>
-/// A prefill only seeds the dialog; it does not start anything. Nothing is created until the operator presses Start,
-/// and what starts is what the dialog then shows — the operator's final choices, not the plugin's suggestion. This
-/// is deliberately the whole dialog, not a headless launch: the plugin never gets to pick a profile, a working tree
-/// or a resume target on the operator's behalf without the operator seeing it (that quieter path is
-/// <see cref="ICockpitActions.StartSessionAsync"/>, which names a profile the operator already trusts).
-/// </para>
+/// <see cref="ICockpitHost.ShowNewSessionDialogAsync"/>. Every field is optional: a <see langword="null"/> or
+/// blank one leaves that part of the dialog on its own default.
 /// </summary>
+/// <remarks>
+/// A prefill only seeds the dialog — nothing starts until the operator presses Start, and what starts is the
+/// operator's final choices in the dialog, not the plugin's suggestion. For a quieter path that starts a session
+/// directly on a profile the operator already trusts, without showing the dialog, see
+/// <see cref="ICockpitActions.StartSessionAsync"/>.
+/// </remarks>
 /// <param name="ProfileLabel">
 /// The session profile to preselect, matched by its label (case-insensitively) against the configured profiles; a
 /// label that matches none leaves the dialog's own default selection. Deliberately a label rather than a profile
@@ -43,24 +40,16 @@ public sealed record NewSessionPrefill(
     string? ResumeSessionId = null)
 {
     /// <summary>
-    /// The project to open the dialog on, named by the link it carries rather than by id (#AC-419): a plugin says "the
-    /// project tracked in YouTrack's <c>AC</c>" and the host preselects the one that declares it — so a session started
-    /// from an issue no longer opens on <em>No project</em> on a dialog that already knows which issue it is for.
-    /// <para>
-    /// Nothing is invented and nothing is guessed. A link no project declares leaves the picker exactly where it was,
-    /// and so does one that two projects declare: an unselected field the operator still reads beats a confident wrong
-    /// one they stop reading. Preselecting is all it does — the project's own folder, profile and worktree defaults
-    /// land first and every one of them, the project included, stays editable until Start, and an explicit
-    /// <see cref="WorkingDirectory"/> here is applied over the project's.
-    /// </para>
-    /// <para>
-    /// An <c>init</c> property rather than a sixth parameter on the primary constructor, because this record is
-    /// constructed by plugin binaries that are already published: adding the parameter is source-compatible but
-    /// binary-breaking, and an installed plugin would fail to bind the constructor it compiled against. Same reasoning
-    /// as <see cref="ICockpitHost.AddMcpEndpoint(string, object, System.Func{bool}?)"/> keeping its original signature
-    /// beside the wider one. A plugin that sets this needs a host that reads it, so it sets <c>minHostVersion</c> 0.8.0
-    /// — on an older host the setter is simply not there.
-    /// </para>
+    /// The project to open the dialog on, named by the link it carries rather than by id (#AC-419): a plugin says
+    /// "the project tracked in YouTrack's <c>AC</c>" and the host preselects the one that declares it. Nothing is
+    /// invented or guessed — a link no project declares, or that two projects declare, leaves the picker exactly
+    /// where it was.
     /// </summary>
+    /// <remarks>
+    /// Preselecting is all it does: the project's own folder, profile and worktree defaults land first and every
+    /// one of them, the project included, stays editable until Start, with an explicit
+    /// <see cref="WorkingDirectory"/> here applied over the project's. A plugin that sets this needs a host that
+    /// reads it, so it sets <c>minHostVersion</c> 0.8.0 — on an older host the setter is simply not there.
+    /// </remarks>
     public ProjectLink? LinkedProject { get; init; }
 }

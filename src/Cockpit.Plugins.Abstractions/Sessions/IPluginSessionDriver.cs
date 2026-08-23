@@ -1,13 +1,16 @@
 namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
-/// Drives a single, persistent, multi-turn conversation with a plugin-registered provider and exposes it as
-/// a typed event stream (#45) — the narrow, plugin-facing analogue of <c>Cockpit.Core.Abstractions.Sessions.ISessionDriver</c>.
+/// Drives a single, persistent, multi-turn conversation with a plugin-registered provider and exposes it as a
+/// typed event stream (#45) — the narrow, plugin-facing analogue of
+/// <c>Cockpit.Core.Abstractions.Sessions.ISessionDriver</c>.
+/// </summary>
+/// <remarks>
 /// Deliberately trimmed to what a third-party HTTP provider can support: no Claude-CLI-only live controls
 /// (permission-mode/model/thinking-budget switch, always-allow rule persistence). The host's driver adapter
 /// wraps an implementation of this interface to satisfy the real <c>ISessionDriver</c> contract, no-opping
 /// the members this interface has no equivalent for.
-/// </summary>
+/// </remarks>
 public interface IPluginSessionDriver : IAsyncDisposable
 {
     /// <summary>
@@ -24,12 +27,13 @@ public interface IPluginSessionDriver : IAsyncDisposable
     /// The provider's conversation id as a three-state fact rather than a bare nullable string (AC-408): <see
     /// cref="PluginConversationIdState.Unknown"/> before <see cref="SessionId"/> is set, <see
     /// cref="PluginConversationIdState.Known"/> once it is, and <see cref="PluginConversationIdState.Unsupported"/>
-    /// for a driver that accepts a resume target but cannot actually resume (its own in-memory history, not a
-    /// server-side conversation) — overriding this default is how such a driver says so honestly instead of
-    /// leaving the host to infer resumability from a session id that merely happens to exist. A default property
-    /// derived straight from <see cref="SessionId"/>, so every already-compiled plugin driver reports correctly
-    /// without change.
+    /// for a driver that accepts a resume target but cannot actually resume it (its own in-memory history, not a
+    /// server-side conversation).
     /// </summary>
+    /// <remarks>
+    /// A default property derived straight from <see cref="SessionId"/>, so every already-compiled plugin driver
+    /// reports correctly without change; a driver in the <c>Unsupported</c> case overrides this to say so.
+    /// </remarks>
     PluginConversationId Conversation =>
         SessionId is { Length: > 0 } id ? PluginConversationId.Known(id) : PluginConversationId.Unknown;
 
@@ -50,32 +54,38 @@ public interface IPluginSessionDriver : IAsyncDisposable
 
     /// <summary>
     /// Starts the session with the working directory, resume target, per-session launch options and MCP servers
-    /// the cockpit knows (#45 D5, #44) — the surface the host's driver adapter actually calls.
-    /// <paramref name="workingDirectory"/>, when non-null/whitespace, is the directory the session runs in, so a
-    /// provider that needs one (a spawned CLI) takes it from here rather than asking the operator.
-    /// <paramref name="resumeSessionId"/>, when non-null/whitespace, resumes that existing conversation instead of
-    /// starting fresh. <paramref name="options"/> carries the operator's answers to this provider's declared
-    /// <see cref="SessionProviderRegistration.Options"/> (sandbox, model, …), keyed by each option's
-    /// <see cref="PluginSessionLaunchOption.Key"/>. <paramref name="mcpServers"/> are the endpoints the host
-    /// resolved from its shared registry for this session (#26); a provider that hosts tools of its own (an agent
-    /// CLI) exposes them, one that has no tool source ignores them. The default drops all of these and calls
-    /// <see cref="StartAsync(string?, CancellationToken)"/>: a driver with no working directory, history, launch
-    /// options or MCP tool source of its own (an HTTP provider) needs none, so it need not override this. A
-    /// default method rather than a signature change on the abstract member above, so no already-compiled plugin
-    /// breaks.
+    /// the cockpit knows (#45 D5, #44) — the surface the host's driver adapter actually calls. The default drops
+    /// all of these and calls <see cref="StartAsync(string?, CancellationToken)"/>, so a driver with no working
+    /// directory, history, launch options or MCP tool source of its own (an HTTP provider) need not override this.
     /// </summary>
+    /// <param name="workingDirectory">
+    /// When non-null/whitespace, the directory the session runs in, so a provider that needs one (a spawned CLI)
+    /// takes it from here rather than asking the operator.
+    /// </param>
+    /// <param name="resumeSessionId">
+    /// When non-null/whitespace, resumes that existing conversation instead of starting fresh.
+    /// </param>
+    /// <param name="options">
+    /// The operator's answers to this provider's declared <see cref="SessionProviderRegistration.Options"/>
+    /// (sandbox, model, …), keyed by each option's <see cref="PluginSessionLaunchOption.Key"/>.
+    /// </param>
+    /// <param name="mcpServers">
+    /// The endpoints the host resolved from its shared registry for this session (#26); a provider that hosts
+    /// tools of its own (an agent CLI) exposes them, one with no tool source ignores them.
+    /// </param>
     Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken) =>
         StartAsync(model, cancellationToken);
 
     /// <summary>
     /// Starts the session with, additionally, the profile's own environment variables to inject into the spawned
-    /// process (AC-22) — already scrubbed host-side (a host-controlled key never crosses this boundary), so a
-    /// driver applies them as-is, before its own variables: the driver's config-dir/credential rules keep the
-    /// last word. The default drops them and calls the overload above: a provider that spawns nothing (an HTTP
-    /// model) has no process to put them in, and an already-compiled plugin keeps loading. A driver that does
-    /// spawn overrides this and reports <see cref="PluginSessionCapabilities.SupportsEnvVars"/> so the host
-    /// offers the profile editor in the first place.
+    /// process (AC-22). The default drops them and calls the overload above; a driver that does spawn a process
+    /// overrides this and reports <see cref="PluginSessionCapabilities.SupportsEnvVars"/> so the host offers the
+    /// profile editor in the first place.
     /// </summary>
+    /// <param name="environment">
+    /// Already scrubbed host-side (a host-controlled key never crosses this boundary); the driver applies them
+    /// as-is, before its own variables, so its own config-dir/credential rules keep the last word.
+    /// </param>
     Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, CancellationToken cancellationToken) =>
         StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken);
 
@@ -103,12 +113,13 @@ public interface IPluginSessionDriver : IAsyncDisposable
 
     /// <summary>
     /// Sends a user message with pasted/attached images (#64) — the surface the host's driver adapter calls when the
-    /// operator attaches an image and the provider declared <see cref="PluginSessionCapabilities.SupportsVision"/>. The
-    /// default drops the images and calls the text-only overload above: a provider that cannot send images (or an
-    /// already-compiled plugin built before this member existed) simply ignores them, so nothing breaks. A driver that
-    /// supports vision overrides this to carry the images to its provider, and reports <c>SupportsVision: true</c> so
-    /// the host offers the attach affordance in the first place. A default method, so no already-compiled plugin breaks.
+    /// operator attaches an image and the provider declared <see cref="PluginSessionCapabilities.SupportsVision"/>.
+    /// The default drops the images and calls the text-only overload above.
     /// </summary>
+    /// <remarks>
+    /// A driver that supports vision overrides this to carry the images to its provider, and reports
+    /// <c>SupportsVision: true</c> so the host offers the attach affordance in the first place.
+    /// </remarks>
     Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken) =>
         SendUserMessageAsync(text, cancellationToken);
 
@@ -133,55 +144,62 @@ public interface IPluginSessionDriver : IAsyncDisposable
 
     /// <summary>
     /// Resolves the decision carrying the operator's answers as well (AC-715) — what a clarifying-question tool
-    /// asks for, where allow/deny alone leaves the agent approved but unanswered. <paramref name="answersJson"/> is
-    /// a JSON object keyed by question text, which the driver translates to its provider's shape; the default drops
-    /// it and falls back to the plain allow above, so an already-compiled plugin is unaffected.
+    /// asks for, where allow/deny alone leaves the agent approved but unanswered. The default drops
+    /// <paramref name="answersJson"/> and falls back to the plain allow above.
     /// </summary>
+    /// <param name="answersJson">
+    /// A JSON object keyed by question text, which the driver translates to its provider's shape.
+    /// </param>
     Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
         RespondToPermissionAsync(toolUseId, allow, cancellationToken);
 
     /// <summary>
     /// Resolves the decision with the reason for a refusal (AC-971) — what the host's own gate must say when it
-    /// denies a tool call for an unattended, delegated session. Nobody clicked anything there, so a driver's stock
-    /// "denied by the operator" is untrue, and a model told that retries instead of reporting that its task was
-    /// scoped read-only. <paramref name="denyReason"/> is ignored on an allow, and the default drops it and falls
-    /// back to the overload above, so an already-compiled plugin is unaffected.
+    /// denies a tool call for an unattended, delegated session, where a driver's stock "denied by the operator"
+    /// would be untrue. The default drops <paramref name="denyReason"/> and falls back to the overload above.
     /// </summary>
+    /// <param name="denyReason">
+    /// Ignored on an allow.
+    /// </param>
     Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, string? denyReason, CancellationToken cancellationToken) =>
         RespondToPermissionAsync(toolUseId, allow, answersJson, cancellationToken);
 
     /// <summary>
     /// Allows the outstanding decision for <paramref name="toolUseId"/> <em>and</em> stops prompting for the like
-    /// of it for the rest of this session (D4) — the operator's "allow always". A provider that can say this to
-    /// its agent (Codex's <c>acceptForSession</c>) overrides this; the default falls back to a one-time allow, so
-    /// a driver that cannot persist the decision still resolves the prompt. The rule is session-scoped only — the
-    /// narrow surface has no profile-rule vocabulary, so cross-restart persistence stays a host/Claude concern.
-    /// A default method, so no already-compiled plugin breaks.
+    /// of it for the rest of this session (D4) — the operator's "allow always". The default falls back to a
+    /// one-time allow when a driver cannot persist the decision.
     /// </summary>
+    /// <remarks>
+    /// The rule is session-scoped only — the narrow surface has no profile-rule vocabulary, so cross-restart
+    /// persistence stays a host/Claude concern. A provider that can say this to its agent (Codex's
+    /// <c>acceptForSession</c>) overrides this.
+    /// </remarks>
     Task AllowPermissionAlwaysAsync(string toolUseId, CancellationToken cancellationToken = default) =>
         RespondToPermissionAsync(toolUseId, allow: true, cancellationToken);
 
     /// <summary>
     /// The provider's latest limits snapshot (#45 D7) — how full the context window is and how much of its usage
     /// windows are spent, which the host polls and renders as the session header's limit bars. The default is
-    /// <see langword="null"/>: a provider that reports no usage (an HTTP model with no such feed) has none, and a
-    /// header shows nothing rather than a made-up zero. A driver that receives usage updates from its provider
-    /// (Codex's <c>thread/tokenUsage/updated</c> and <c>account/rateLimits/updated</c>) keeps the newest snapshot
-    /// here. A default property polled off the event stream, so no already-compiled plugin breaks.
+    /// <see langword="null"/> for a provider that reports no usage; a header shows nothing rather than a made-up
+    /// zero.
     /// </summary>
+    /// <remarks>
+    /// A driver that receives usage updates from its provider (Codex's <c>thread/tokenUsage/updated</c> and
+    /// <c>account/rateLimits/updated</c>) keeps the newest snapshot here.
+    /// </remarks>
     PluginSessionStatus? Status => null;
 
     /// <summary>
     /// The controls this running session can switch mid-conversation (#45 D4) — Codex's model and reasoning
     /// effort, each a per-turn override the driver applies to the next turn it sends. The provider owns the whole
-    /// vocabulary: it names each control (<see cref="PluginSessionLaunchOption.Key"/>), labels it, and offers the
-    /// values, so the host renders them in a generic panel without knowing what any of them mean — the running-session
-    /// mirror of <see cref="SessionProviderRegistration.Options"/>. The current value rides each option's
-    /// <see cref="PluginSessionLaunchOption.DefaultValue"/> so the panel opens on what the session is actually using.
-    /// The default is empty: a provider with nothing to switch live (an HTTP model) shows no panel. A driver reports
-    /// these once its session is up (the values can depend on what the provider listed at start), the same moment the
-    /// host reads <see cref="Capabilities"/>. A default property, so no already-compiled plugin breaks.
+    /// vocabulary, so the host renders them in a generic panel without knowing what any of them mean.
     /// </summary>
+    /// <remarks>
+    /// The running-session mirror of <see cref="SessionProviderRegistration.Options"/>. The current value rides
+    /// each option's <see cref="PluginSessionLaunchOption.DefaultValue"/> so the panel opens on what the session
+    /// is actually using. The default is empty for a provider with nothing to switch live; a driver reports these
+    /// once its session is up, the same moment the host reads <see cref="Capabilities"/>.
+    /// </remarks>
     IReadOnlyList<PluginSessionLaunchOption> LiveOptions => [];
 
     /// <summary>
@@ -197,10 +215,15 @@ public interface IPluginSessionDriver : IAsyncDisposable
 
     /// <summary>
     /// Switches one of the <see cref="LiveOptions"/> for the rest of this session (#45 D4) — the operator picked a
-    /// new value in the live-control panel. <paramref name="key"/> is the option's
-    /// <see cref="PluginSessionLaunchOption.Key"/> and <paramref name="value"/> the chosen entry; the driver applies
-    /// it to the next turn it sends (Codex carries model/effort as per-turn overrides on <c>turn/start</c>). Default
-    /// no-op: a driver that declares no live options has none to switch, so it need not implement it.
+    /// new value in the live-control panel. Default no-op: a driver that declares no live options has none to
+    /// switch.
     /// </summary>
+    /// <param name="key">
+    /// The option's <see cref="PluginSessionLaunchOption.Key"/>.
+    /// </param>
+    /// <param name="value">
+    /// The chosen entry; the driver applies it to the next turn it sends (Codex carries model/effort as per-turn
+    /// overrides on <c>turn/start</c>).
+    /// </param>
     Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

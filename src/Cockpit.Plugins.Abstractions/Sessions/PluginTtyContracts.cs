@@ -2,15 +2,13 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
 /// A CLI a plugin can run as the real interactive TUI in one of the cockpit's panes. It answers exactly one
-/// question — <em>how do I start this program?</em> — and knows nothing about pseudo consoles, panes or
-/// terminals; the host owns all of that.
-/// <para>
-/// Deliberately far smaller than <see cref="IPluginSessionDriver"/>: a pty has no approvals, no model switching,
-/// no events and no thinking budget. It has a program, arguments, an environment and a window size. A provider
-/// offers whichever of the two it can — a local model has no TUI, a TUI-only agent has no headless driver, and
-/// Claude and Codex have both.
-/// </para>
+/// question — how do I start this program? — and knows nothing about pseudo consoles, panes or terminals.
 /// </summary>
+/// <remarks>
+/// Far smaller than <see cref="IPluginSessionDriver"/>: a pty has no approvals, no model switching, no events and
+/// no thinking budget, just a program, arguments, an environment and a window size. A provider offers whichever of
+/// the two it can.
+/// </remarks>
 public interface IPluginTtyProvider
 {
     /// <summary>
@@ -141,13 +139,13 @@ public sealed record PluginTtyLaunchOption(
 {
     /// <summary>
     /// A friendly label per <see cref="Choices"/> value the operator reads instead of the raw value — how Claude
-    /// shows "Ask permissions" for the CLI's <c>default</c> permission mode. Keyed by value; a value with no entry
-    /// falls back to showing itself, and the value handed back in <see cref="PluginTtyLaunchContext.Options"/> is
-    /// always the raw <see cref="Choices"/> entry, never the label. <see langword="null"/> (the default) means the
-    /// provider wants none, so every value renders as itself — the current behaviour. Init-only rather than a
-    /// primary-ctor parameter so adding it does not change the record's constructor signature; an already-compiled
-    /// plugin keeps constructing this the old way and simply reports no labels.
+    /// shows "Ask permissions" for the CLI's <c>default</c> permission mode.
     /// </summary>
+    /// <remarks>
+    /// Keyed by value; a value with no entry falls back to showing itself, and the value handed back in
+    /// <see cref="PluginTtyLaunchContext.Options"/> is always the raw <see cref="Choices"/> entry, never the label.
+    /// <see langword="null"/> (the default) means every value renders as itself.
+    /// </remarks>
     public IReadOnlyDictionary<string, string>? ChoiceLabels { get; init; }
 }
 
@@ -175,55 +173,50 @@ public sealed record TtyProviderRegistration(
 {
     /// <summary>
     /// An optional way to refresh <see cref="Options"/> with live values when the New-session dialog opens for a
-    /// profile under this provider — the TTY mirror of <see cref="SessionProviderRegistration.ResolveOptionsAsync"/>,
-    /// so Codex fills its Model choices from the app-server's <c>model/list</c> in TTY mode too. The argument is the
-    /// profile's opaque config JSON; the result replaces the declared options for that dialog. The dialog renders
-    /// the declared <see cref="Options"/> first and calls this in the background, so opening is never blocked; on
-    /// <see langword="null"/>, a timeout, or any failure it keeps the declared options. Init-only rather than a
-    /// primary-ctor parameter so adding it does not change the record's constructor signature — an already-compiled
-    /// plugin keeps constructing this the old way and simply reports no dynamic options.
+    /// profile under this provider — the TTY mirror of <see cref="SessionProviderRegistration.ResolveOptionsAsync"/>.
     /// </summary>
+    /// <remarks>
+    /// The argument is the profile's opaque config JSON; the result replaces the declared options for that dialog.
+    /// The dialog renders the declared <see cref="Options"/> first and calls this in the background; on
+    /// <see langword="null"/>, a timeout, or any failure it keeps the declared options.
+    /// </remarks>
     public Func<string, CancellationToken, Task<IReadOnlyList<PluginTtyLaunchOption>>>? ResolveOptionsAsync { get; init; }
 
     /// <summary>
     /// What sessions under this provider can run out of (AC-229) — a context window, a rolling cap, whatever it
     /// measures — so the host can warn about it and offer to resume against it. Empty (the default) when the
-    /// provider measures nothing, and then no pill, no warning and no setting appears for it. Init-only, so an
-    /// already-compiled plugin keeps its constructor and simply declares none.
+    /// provider measures nothing: no pill, no warning, no setting.
     /// </summary>
     public IReadOnlyList<PluginUsageSignal> UsageSignals { get; init; } = [];
 
     /// <summary>
     /// Turns the contents of the session's status snapshot file into readings for the signals declared above.
-    /// <para>
-    /// The host owns the polling — it knows about files, timers and when a session is alive — and the provider
-    /// owns the meaning, because the shape of that file is the provider's business and has moved between versions
-    /// before. Handed the whole file as text; returns a reading per signal it could make out, and an empty list
-    /// for a snapshot it cannot use. It must not throw: a half-written file caught mid-flush is ordinary, and the
-    /// next poll brings a whole one.
-    /// </para>
-    /// <see langword="null"/> (the default) when this provider writes no such file, and the host then polls
-    /// nothing for it. Init-only for the same reason as everything else here.
     /// </summary>
+    /// <remarks>
+    /// The host owns the polling; the provider owns the meaning of the file's shape. Handed the whole file as text;
+    /// returns a reading per signal it could make out, and must not throw — a half-written file caught mid-flush is
+    /// ordinary. <see langword="null"/> (the default) when this provider writes no such file.
+    /// </remarks>
     public Func<string, IReadOnlyList<PluginUsageReading>>? ReadUsage { get; init; }
 
     /// <summary>
     /// Builds the provider's transcript reader for the host's status (#39) — the piece that tails this provider's
-    /// own on-disk conversation record, keeping the host free of any transcript format. The host resolves this
-    /// once from the container and dispatches to it for a session under this provider.
-    /// <see langword="null"/> (the default) when the provider records no tailable transcript, and the host offers
-    /// no status-from-transcript for it. Init-only so adding it does not change the constructor
-    /// signature — an already-compiled plugin keeps constructing this the old way and simply reports no reader.
+    /// own on-disk conversation record, keeping the host free of any transcript format.
     /// </summary>
+    /// <remarks>
+    /// The host resolves this once from the container and dispatches to it for a session under this provider.
+    /// <see langword="null"/> (the default) when the provider records no tailable transcript.
+    /// </remarks>
     public Func<IServiceProvider, IPluginTranscriptReader>? CreateTranscriptReader { get; init; }
 
     /// <summary>
-    /// Answers whether a profile under this provider is logged in, from its opaque <c>ConfigJson</c> — the host
-    /// gates a session start and shows the login prompt generically without knowing what "logged in" means for any
-    /// CLI. Existence-only by contract (Iron Law #8 — never read a credential's contents). <see langword="null"/>
-    /// (the default) when the provider has no login concept, and the host treats such a profile as always ready.
-    /// Init-only, so an already-compiled plugin keeps its constructor and simply reports no login gate.
+    /// Answers whether a profile under this provider is logged in, from its opaque <c>ConfigJson</c>. Existence-only
+    /// by contract (Iron Law #8 — never read a credential's contents).
     /// </summary>
+    /// <remarks>
+    /// <see langword="null"/> (the default) when the provider has no login concept, and the host treats such a
+    /// profile as always ready.
+    /// </remarks>
     public Func<string, bool>? IsLoggedIn { get; init; }
 
     /// <summary>
@@ -234,10 +227,11 @@ public sealed record TtyProviderRegistration(
 
     /// <summary>
     /// Discovers profiles already configured on this machine for this provider, offered to the host at startup so
-    /// a fresh install adopts an existing login instead of the operator recreating it. The provider owns the
-    /// discovery (only it knows where its CLI keeps state); the host labels and mints what it reports.
-    /// <see langword="null"/> (the default) when the provider self-detects nothing. Init-only, so an
-    /// already-compiled plugin keeps its constructor and simply contributes no auto-detected profiles.
+    /// a fresh install adopts an existing login instead of the operator recreating it.
     /// </summary>
+    /// <remarks>
+    /// The provider owns the discovery (only it knows where its CLI keeps state); the host labels and mints what it
+    /// reports. <see langword="null"/> (the default) when the provider self-detects nothing.
+    /// </remarks>
     public Func<IReadOnlyList<PluginDetectedProfile>>? DetectProfiles { get; init; }
 }
