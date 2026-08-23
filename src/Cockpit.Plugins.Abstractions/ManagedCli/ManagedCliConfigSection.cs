@@ -7,16 +7,14 @@ using Cockpit.Plugins.Abstractions.Theming;
 namespace Cockpit.Plugins.Abstractions.ManagedCli;
 
 /// <summary>
-/// The reusable "Install / Update / Remove" panel a provider config view embeds so the operator can let the cockpit
-/// manage the provider's CLI (AC-20). Drives the host's generic installer through <see cref="ICockpitHost"/>: shows
-/// whether a managed copy is installed and where, installs the latest on demand, and removes it to fall back to a
-/// pinned path or PATH. Nothing here is required — it is a convenience beside the manual executable-path field.
-/// <para>
-/// Deliberately in the shared abstractions assembly (like <see cref="Sessions.ProviderConfigStatus"/>): every provider
-/// that registers a managed CLI needs exactly this affordance, so centralising it keeps the panel identical across
-/// providers instead of each plugin hand-rolling it.
-/// </para>
+/// The reusable "Install / Update / Remove" panel a provider config view embeds so the operator can let the
+/// cockpit manage the provider's CLI (AC-20). Nothing here is required — it is a convenience beside the manual
+/// executable-path field.
 /// </summary>
+/// <remarks>
+/// Deliberately in the shared abstractions assembly, like <see cref="Sessions.ProviderConfigStatus"/>, so the
+/// panel stays identical across providers instead of each plugin hand-rolling it.
+/// </remarks>
 public sealed class ManagedCliConfigSection
 {
     private readonly ICockpitHost _host;

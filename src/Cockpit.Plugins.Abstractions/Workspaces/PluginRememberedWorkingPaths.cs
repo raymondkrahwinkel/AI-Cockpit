@@ -1,13 +1,14 @@
 namespace Cockpit.Plugins.Abstractions.Workspaces;
 
 /// <summary>
-/// The working directories the cockpit remembers for its New-session quick-pick (AC-174), exposed to a plugin so it can
-/// offer the same folders — a plugin that needs the operator to name a working directory (Autopilot's plan) shows the
-/// folders they already use instead of making them retype a path. <see cref="Favorites"/> are the operator's pinned
-/// folders (shown first, with a star icon), <see cref="Recents"/> the most-recently-used ones (most-recent first). Either list
-/// may be empty. A plugin records a newly-chosen folder back with <see cref="ICockpitHost.RememberWorkingPathAsync"/>,
-/// so the two surfaces share one history.
+/// The working directories the cockpit remembers for its New-session quick-pick (AC-174), exposed so a plugin
+/// can offer the same folders instead of making the operator retype a path.
 /// </summary>
+/// <remarks>
+/// <see cref="Favorites"/> are the operator's pinned folders; <see cref="Recents"/> the most-recently-used ones.
+/// Either list may be empty. Record a newly-chosen folder back with
+/// <see cref="ICockpitHost.RememberWorkingPathAsync"/> so the two surfaces share one history.
+/// </remarks>
 public sealed record PluginRememberedWorkingPaths(IReadOnlyList<string> Favorites, IReadOnlyList<string> Recents)
 {
     /// <summary>

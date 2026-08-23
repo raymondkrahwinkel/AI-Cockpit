@@ -5,13 +5,13 @@ namespace Cockpit.Plugins.Abstractions.Workspaces;
 
 /// <summary>
 /// A workspace type a plugin contributes (<see cref="ICockpitHost.AddWorkspaceType"/>) — the full-surface
-/// counterpart of a widget. Where <see cref="WidgetRegistration"/> fills one cell of the host's dashboard grid,
-/// a workspace type owns its <em>whole</em> body: the host draws the tab and the frame, and
-/// <see cref="CreateBody"/> draws everything inside it. The tab strip's "+" menu offers every registered type;
-/// picking one creates a workspace of that type and builds its body. The core stays unaware of what the body
-/// shows — a pipeline, a live session, a tracker — the same way it stays unaware of what a widget or a provider
-/// shows.
+/// counterpart of a widget: the host draws the tab and the frame, and <see cref="CreateBody"/> draws everything
+/// inside it.
 /// </summary>
+/// <remarks>
+/// Where <see cref="WidgetRegistration"/> fills one cell of the host's dashboard grid, a workspace type owns its
+/// whole body. The tab strip's "+" menu offers every registered type.
+/// </remarks>
 /// <param name="Id">
 /// A stable, unique id for the workspace <em>type</em>, namespaced by the plugin (e.g. "autopilot.run").
 /// Persisted with each workspace of this type so a saved desk rebuilds after a restart; changing it orphans

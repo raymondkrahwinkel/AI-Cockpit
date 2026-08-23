@@ -7,23 +7,16 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// What the check found.
 /// </param>
 /// <param name="Detail">
-/// Shown under the row on <see cref="ProjectMemorySourceReachability.Confirmed"/> in place of a fixed sentence —
-/// "24 documents, last changed 2 hours ago", say — and, since AC-499, on <see cref="ProjectMemorySourceReachability.CheckFailed"/>
-/// in place of its own fixed sentence, carrying what actually went wrong rather than a generic "could not check".
-/// Null falls back to each state's fixed sentence. Ignored for <see cref="ProjectMemorySourceReachability.NotSignedIn"/>
-/// and <see cref="ProjectMemorySourceReachability.NotFound"/>, which always show their own fixed sentence, the same
-/// as the existing broken-reference hint does — nothing plugin-supplied is shown for those, so a plugin cannot
-/// accidentally leak connection detail into a state meant to read as a plain, honest "no".
+/// Shown under the row on <see cref="ProjectMemorySourceReachability.Confirmed"/> or
+/// <see cref="ProjectMemorySourceReachability.CheckFailed"/> in place of a fixed sentence. Null falls back to
+/// each state's fixed sentence. Ignored for <see cref="ProjectMemorySourceReachability.NotSignedIn"/> and
+/// <see cref="ProjectMemorySourceReachability.NotFound"/>, which always show their own fixed sentence.
 /// </param>
 public sealed record ProjectMemorySourceReachabilityResult(ProjectMemorySourceReachability State, string? Detail = null)
 {
     /// <summary>
-    /// The longest <see cref="Detail"/> this type ever hands back (AC-503 adversarial review, Opus confirming
-    /// round). <see cref="Confirmed"/> is fed a plugin's own value, which in turn is often a tool's raw text
-    /// response — server-controlled, not operator-typed, and unbounded until this constant: a multi-kilobyte
-    /// document listing would otherwise reach the project editor's row exactly as it came off the wire. 200 is
-    /// comfortably longer than the confirmation sentences this type's own doc comment illustrates ("24 documents,
-    /// last changed 2 hours ago") while still reading as the "short" string that doc comment promises.
+    /// The longest <see cref="Detail"/> this type ever hands back (AC-503). A multi-kilobyte tool response would
+    /// otherwise reach the project editor's row exactly as it came off the wire.
     /// </summary>
     public const int MaxDetailLength = 200;
 
@@ -33,20 +26,22 @@ public sealed record ProjectMemorySourceReachabilityResult(ProjectMemorySourceRe
 
     /// <summary>
     /// <paramref name="detail"/> collapsed onto a single line and clamped to <see cref="MaxDetailLength"/> — never
-    /// the raw value verbatim, since a plugin's <c>detail</c> is only ever as trustworthy as whatever it read it
-    /// from (AC-503 adversarial review, Opus confirming round: nothing enforced the "short confirmation string" this
-    /// type's own doc comment promises until this clamp existed). A null or blank value passes through unchanged —
-    /// there is nothing to shorten, and the row falls back to its own fixed confirmation sentence.
+    /// the raw value verbatim, since a plugin's <c>detail</c> is only as trustworthy as whatever it read it from.
     /// </summary>
+    /// <remarks>
+    /// A null or blank value passes through unchanged — the row falls back to its own fixed confirmation sentence.
+    /// </remarks>
     public static ProjectMemorySourceReachabilityResult Confirmed(string? detail = null) =>
         new(ProjectMemorySourceReachability.Confirmed, _Clamp(detail));
 
     /// <summary>
-    /// The check ran but could not complete (AC-499) — <paramref name="detail"/> is the plugin's own account of what
-    /// went wrong (a tool's error text, an exception message), clamped the same way <see cref="Confirmed"/>'s own
-    /// detail is: never raw and unbounded, never a bearer token or other credential (Iron Law #8) — a plugin's own
-    /// error text is not itself trusted to be short or safe to show verbatim.
+    /// The check ran but could not complete (AC-499) — <paramref name="detail"/> is the plugin's own account of
+    /// what went wrong, clamped the same way <see cref="Confirmed"/>'s own detail is.
     /// </summary>
+    /// <remarks>
+    /// Never a bearer token or other credential (Iron Law #8) — a plugin's own error text is not trusted to be
+    /// short or safe to show verbatim.
+    /// </remarks>
     public static ProjectMemorySourceReachabilityResult CheckFailed(string? detail = null) =>
         new(ProjectMemorySourceReachability.CheckFailed, _Clamp(detail));
 

@@ -1,15 +1,13 @@
 namespace Cockpit.Plugins.Abstractions.Mcp;
 
 /// <summary>
-/// The answer to <see cref="ICockpitHost.ProbeMcpToolAsync"/> (AC-503): a named <see cref="Outcome"/> plus, only for
-/// <see cref="McpProbeOutcome.Success"/>, the tool's own raw text output as <see cref="Detail"/> — never a
-/// structured re-parse of it, which this host has no way to verify against every possible server's schema.
-/// <para>
-/// Iron Law #8: whatever builds this never puts a bearer token or other credential in <see cref="Detail"/> — the
-/// value here is either absent (every outcome but <see cref="McpProbeOutcome.Success"/>) or the tool's own response
-/// text, which this host never mixes with the Authorization header it sent to get there.
-/// </para>
+/// The answer to <see cref="ICockpitHost.ProbeMcpToolAsync"/> (AC-503): a named <see cref="Outcome"/> plus, only
+/// for <see cref="McpProbeOutcome.Success"/>, the tool's own raw text output as <see cref="Detail"/>.
 /// </summary>
+/// <remarks>
+/// Iron Law #8: <see cref="Detail"/> never carries a bearer token or other credential — only the tool's own
+/// response text, present only on success.
+/// </remarks>
 /// <param name="Outcome">
 /// What came of the call.
 /// </param>

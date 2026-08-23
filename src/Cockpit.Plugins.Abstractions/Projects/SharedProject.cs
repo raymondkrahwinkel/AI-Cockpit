@@ -30,13 +30,12 @@ public sealed record SharedProject(string Id, string Name)
 
     /// <summary>
     /// Whether this operator's role on this project allows <see cref="ISharedProjectSource.WriteBackAsync"/> to
-    /// succeed (AC-247) — a plain bool rather than <see cref="Role"/> itself, the same "interpreted signal, not a
-    /// raw enum" idiom this record already uses for <see cref="Role"/>: the host claims a bound project's editable
-    /// fields on this (<c>ProjectsViewModel._ClaimBoundProjects</c>), so a Viewer's fields render locked before
-    /// they ever type an edit that would only be rejected later. Not itself an access decision — the source's own
-    /// <see cref="ISharedProjectSource.WriteBackAsync"/> and, beneath that, the remote side, still enforce the
-    /// real rule; this only lets the host avoid the round trip that would otherwise be the sole way to find out.
-    /// False by default — the safe reading for a source that cannot say.
+    /// succeed (AC-247) — a plain bool rather than <see cref="Role"/> itself, so a Viewer's fields render locked
+    /// before they ever type an edit that would only be rejected later.
     /// </summary>
+    /// <remarks>
+    /// Not itself an access decision — the source's own <see cref="ISharedProjectSource.WriteBackAsync"/> still
+    /// enforces the real rule. False by default.
+    /// </remarks>
     public bool CanWriteBack { get; init; }
 }

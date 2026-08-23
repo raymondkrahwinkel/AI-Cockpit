@@ -2,20 +2,13 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 
 /// <summary>
 /// A field a plugin adds to the project editor (AC-317): "which YouTrack project is this", "which repository".
-/// The plugin says what the field is and where its choices come from; the host draws it, stores the answer on the
-/// project, and hands it back through <see cref="ICockpitHost.GetProjectFieldValueAsync"/>.
-/// <para>
-/// Declared rather than drawn — the plugin hands over a description, not a control — for the reason the dialog
-/// host already learned about margins: every plugin drawing its own row means every plugin remembering the
-/// editor's label, hint and spacing, and they will not. A description also survives the editor being restyled,
-/// and it is what lets a project be linked to a tracker that is not installed on this machine without the row
-/// disappearing.
-/// </para>
-/// <para>
-/// This is deliberately narrower than a config section: it is one identifier the operator picks. A plugin that
-/// needs a whole panel on a project is a different contribution and does not belong here.
-/// </para>
+/// The plugin says what the field is and where its choices come from; the host draws it and stores the answer.
 /// </summary>
+/// <remarks>
+/// Declared rather than drawn, so a description survives the editor being restyled and a project stays linked
+/// to a tracker not installed on this machine without the row disappearing. Deliberately narrower than a config
+/// section — a plugin that needs a whole panel is a different contribution.
+/// </remarks>
 /// <param name="Key">
 /// Stable, plugin-chosen name this field is stored under on the project — <c>youtrack.project</c>,
 /// <c>github.repository</c>. Prefix it with your plugin so two plugins do not collide by accident, and never

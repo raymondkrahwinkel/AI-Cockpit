@@ -47,25 +47,15 @@ public sealed record McpServerContribution(
     public string? OAuthClientId { get; init; }
 
     /// <summary>
-    /// A stable id for the thing this contribution stands for (AC-403) — an id of the plugin's own, unchanged when
-    /// the operator edits whatever it derives <see cref="Name"/> from. Set it, and the cockpit files this server's
-    /// OAuth token under it instead of under the name, so renaming a connection keeps its sign-in rather than
-    /// leaving the token stranded under the old name — and two connections to the same host that swap names cannot
-    /// end up presenting each other's bearer.
-    /// <para>
-    /// Only meaningful for a plugin whose <see cref="Name"/> is derived from something the operator can rename. A
-    /// plugin with a fixed name can leave this <see langword="null"/>: the host then keys on the name exactly as it
-    /// did before, so nothing changes for it.
-    /// </para>
-    /// <para>
-    /// ⚠️ It has to be stable <em>and</em> the plugin's own. Deriving it from the name puts the rename back where it
-    /// was; reusing one id across two connections merges their credentials. A value minted once per connection and
-    /// stored with it — a GUID, say — is what this is for.
-    /// </para>
-    /// <para>
-    /// Setting it requires <c>minHostVersion</c> 0.16.0: an older host's copy of this assembly has no such property,
-    /// so the init setter is not there to be called at all.
-    /// </para>
+    /// A stable id for the thing this contribution stands for (AC-403) — an id of the plugin's own, unchanged
+    /// when the operator edits whatever it derives <see cref="Name"/> from. Set it and the cockpit files this
+    /// server's OAuth token under it instead of under the name, so a rename keeps its sign-in.
     /// </summary>
+    /// <remarks>
+    /// Only meaningful for a plugin whose <see cref="Name"/> is derived from something renamable; a fixed-name
+    /// plugin can leave this null. ⚠️ Must be stable and the plugin's own — a GUID minted once per connection, not
+    /// derived from the name, and never reused across two connections. Setting it requires
+    /// <c>minHostVersion</c> 0.16.0.
+    /// </remarks>
     public string? Id { get; init; }
 }

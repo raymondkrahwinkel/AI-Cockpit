@@ -1,13 +1,13 @@
 namespace Cockpit.Plugins.Abstractions.Workspaces;
 
 /// <summary>
-/// Whether a directory is a git repository, as the host reports it to a plugin (AC-174). Deliberately three-valued
-/// rather than a bool so the decision built on it is fail-closed: <see cref="Unknown"/> is the default a host that does
-/// not implement the check returns, and a caller that isolates work in a worktree must treat it like
-/// <see cref="Repository"/> (isolate / refuse rather than run free), never like <see cref="NotARepository"/>. Only a
-/// host that positively answered <see cref="NotARepository"/> licenses running without isolation — so an older host,
-/// or one that could not tell, never silently drops the isolation guard.
+/// Whether a directory is a git repository, as the host reports it to a plugin (AC-174). Deliberately
+/// three-valued rather than a bool so the decision built on it is fail-closed.
 /// </summary>
+/// <remarks>
+/// <see cref="Unknown"/> is the default for a host that does not implement the check; a caller must treat it
+/// like <see cref="Repository"/> (isolate) rather than <see cref="NotARepository"/>.
+/// </remarks>
 public enum GitDirectoryStatus
 {
     /// <summary>

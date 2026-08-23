@@ -4,13 +4,14 @@ using Material.Icons;
 namespace Cockpit.Plugins.Abstractions.Widgets;
 
 /// <summary>
-/// A dashboard widget type a plugin contributes (<see cref="ICockpitHost.AddWidget"/>) — the widget
-/// equivalent of a session provider or a workflow step. A Dashboard workspace (the widget-hosting workspace
-/// kind, see docs/workspaces-widgets-terminals.md) shows every registered type in its "Add widget" gallery;
-/// picking one creates an instance, and <see cref="CreateView"/> builds that instance's control. The core
-/// stays unaware of what any widget shows — a clock, CPU/RAM bars, the git state of the active session — the
-/// same way it stays unaware of a provider's transcript format.
+/// A dashboard widget type a plugin contributes (<see cref="ICockpitHost.AddWidget"/>). A Dashboard workspace
+/// shows every registered type in its "Add widget" gallery; picking one creates an instance, and
+/// <see cref="CreateView"/> builds that instance's control.
 /// </summary>
+/// <remarks>
+/// The core stays unaware of what any widget shows, the same way it stays unaware of a provider's transcript
+/// format. See docs/workspaces-widgets-terminals.md.
+/// </remarks>
 /// <param name="Id">
 /// A stable, unique id for the widget <em>type</em>, namespaced by the plugin (e.g. "system-monitor.usage").
 /// Persisted with each placed instance so a saved dashboard rebuilds after a restart; changing it orphans
@@ -55,19 +56,14 @@ public sealed record WidgetRegistration(string Id, string Title, Func<IWidgetCon
     public int DefaultRowSpan { get; init; } = 1;
 
     /// <summary>
-    /// Builds this instance's settings form, or null when the widget has nothing to configure — a clock needs
-    /// no settings, a system monitor picks its metrics. Null is not just "no form": it is what hides the ⚙ on
-    /// the pane header (see <see cref="HasConfig"/>), so a widget can never show a gear that opens an empty
-    /// dialog. Handed the same per-instance <see cref="IWidgetContext"/> as <see cref="CreateView"/>, so the
-    /// form reads and writes the very config its view renders, through
-    /// <see cref="IWidgetContext.Storage"/>.
-    /// <para>
-    /// The plugin supplies the form's content only — the host wraps it in the dialog with the Save/Close
-    /// footer, exactly as it does for <c>AddSettings</c>. Saving raises
-    /// <see cref="IWidgetContext.RefreshRequested"/> on that instance, so the view picks the new config up
-    /// without the widget having to watch its own storage.
-    /// </para>
+    /// Builds this instance's settings form, or null when the widget has nothing to configure. Null hides the ⚙
+    /// on the pane header (see <see cref="HasConfig"/>).
     /// </summary>
+    /// <remarks>
+    /// Handed the same per-instance <see cref="IWidgetContext"/> as <see cref="CreateView"/>. The host wraps the
+    /// form in the dialog with the Save/Close footer; saving raises
+    /// <see cref="IWidgetContext.RefreshRequested"/> on that instance.
+    /// </remarks>
     public Func<IWidgetContext, Control>? CreateConfigView { get; init; }
 
     /// <summary>

@@ -3,12 +3,12 @@ namespace Cockpit.Plugins.Abstractions;
 /// <summary>
 /// A command a plugin contributes via <see cref="ICockpitHost.AddShortcut"/> — e.g. YouTrack binding
 /// <c>Shift+Y</c> to open its dialog. The host registers <paramref name="DefaultGesture"/> and invokes
-/// <paramref name="OnInvoke"/> (on the UI thread) when it is pressed, alongside the built-in app-action
-/// shortcuts, and lists it in the command palette. Like the app shortcuts, a bound gesture only fires when the
-/// operator is not typing into a text field or the terminal, so it never hijacks a keystroke. Leave
-/// <paramref name="DefaultGesture"/> blank for a <em>palette-only command</em>: no keystroke is bound, but it
-/// still appears in the command palette (and the operator can assign it a gesture in Options → Shortcuts).
+/// <paramref name="OnInvoke"/> (on the UI thread) when it is pressed.
 /// </summary>
+/// <remarks>
+/// A bound gesture only fires when the operator is not typing into a text field or the terminal. Leave
+/// <paramref name="DefaultGesture"/> blank for a palette-only command.
+/// </remarks>
 /// <param name="Id">
 /// Stable identifier for this command (e.g. "youtrack.open"), unique within the plugin.
 /// </param>
