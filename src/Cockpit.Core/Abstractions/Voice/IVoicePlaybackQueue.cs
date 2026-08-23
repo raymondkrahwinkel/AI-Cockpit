@@ -9,7 +9,9 @@ namespace Cockpit.Core.Abstractions.Voice;
 /// </summary>
 public interface IVoicePlaybackQueue
 {
-    /// <summary>Queues <paramref name="sentences"/> for playback with the given speaker and language, appended after whatever is already queued.</summary>
+    /// <summary>
+    /// Queues <paramref name="sentences"/> for playback with the given speaker and language, appended after whatever is already queued.
+    /// </summary>
     void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language, VoicePlaybackSource source = VoicePlaybackSource.Session);
 
     /// <summary>
@@ -40,7 +42,9 @@ public interface IVoicePlaybackQueue
     /// </summary>
     event EventHandler? SpeakingStarted;
 
-    /// <summary>Cancels whatever is currently synthesizing/playing and discards anything still queued.</summary>
+    /// <summary>
+    /// Cancels whatever is currently synthesizing/playing and discards anything still queued.
+    /// </summary>
     void StopAll();
 
     /// <summary>

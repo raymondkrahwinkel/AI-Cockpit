@@ -6,6 +6,8 @@ namespace Cockpit.Core.Abstractions.Voice;
 /// </summary>
 public interface IVoiceActivityDetector
 {
-    /// <summary>16 kHz mono float32 samples in [-1, 1]. True when at least one speech segment was detected.</summary>
+    /// <summary>
+    /// 16 kHz mono float32 samples in [-1, 1]. True when at least one speech segment was detected.
+    /// </summary>
     Task<bool> HasSpeechAsync(float[] samples, CancellationToken cancellationToken = default);
 }

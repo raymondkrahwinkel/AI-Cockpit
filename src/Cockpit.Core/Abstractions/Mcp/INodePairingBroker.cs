@@ -9,13 +9,19 @@ namespace Cockpit.Core.Abstractions.Mcp;
 /// </summary>
 public interface INodePairingBroker
 {
-    /// <summary>Who this node is paired with, or null.</summary>
+    /// <summary>
+    /// Who this node is paired with, or null.
+    /// </summary>
     NodePairing? Pairing { get; }
 
-    /// <summary>The pairing waiting for the operator, or null. Expired ones read as null.</summary>
+    /// <summary>
+    /// The pairing waiting for the operator, or null. Expired ones read as null.
+    /// </summary>
     NodePairingPending? Pending { get; }
 
-    /// <summary>Raised when <see cref="Pending"/> or <see cref="Pairing"/> changes, so the Security tab can follow along.</summary>
+    /// <summary>
+    /// Raised when <see cref="Pending"/> or <see cref="Pairing"/> changes, so the Security tab can follow along.
+    /// </summary>
     event EventHandler? Changed;
 
     /// <summary>
@@ -31,10 +37,14 @@ public interface INodePairingBroker
     /// <exception cref="NodePairingException">The request is refused; <c>Problem</c> says why.</exception>
     Task<NodePairingOffer> RequestAsync(string controllerName, string controllerAddress, CancellationToken cancellationToken = default);
 
-    /// <summary>The operator confirmed the code matches. Mints the shared secret and records the pairing.</summary>
+    /// <summary>
+    /// The operator confirmed the code matches. Mints the shared secret and records the pairing.
+    /// </summary>
     Task ConfirmAsync(string pairingId, CancellationToken cancellationToken = default);
 
-    /// <summary>The operator refused, or closed the prompt.</summary>
+    /// <summary>
+    /// The operator refused, or closed the prompt.
+    /// </summary>
     void Refuse(string pairingId);
 
     /// <summary>
@@ -58,7 +68,9 @@ public interface INodePairingBroker
     /// </summary>
     bool IsProfileAllowed(string profileLabel);
 
-    /// <summary>Same as <see cref="IsProfileAllowed"/>, for a project by <see cref="Cockpit.Core.Projects.Project.Id"/>.</summary>
+    /// <summary>
+    /// Same as <see cref="IsProfileAllowed"/>, for a project by <see cref="Cockpit.Core.Projects.Project.Id"/>.
+    /// </summary>
     bool IsProjectAllowed(string projectId);
 
     /// <summary>

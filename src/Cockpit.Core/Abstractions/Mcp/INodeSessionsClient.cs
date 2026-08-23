@@ -9,7 +9,9 @@ namespace Cockpit.Core.Abstractions.Mcp;
 /// </summary>
 public interface INodeSessionsClient
 {
-    /// <summary>The nodes this cockpit is paired with, by name, as the MCP registry records them.</summary>
+    /// <summary>
+    /// The nodes this cockpit is paired with, by name, as the MCP registry records them.
+    /// </summary>
     Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -7,10 +7,14 @@ namespace Cockpit.Core.Abstractions.Agents;
 /// </summary>
 public interface IAgentNotifyAuditLog
 {
-    /// <summary>Appends an entry. Never throws: a broken audit log must not take the notify down with it, so a write failure is a logged warning rather than a lost line.</summary>
+    /// <summary>
+    /// Appends an entry. Never throws: a broken audit log must not take the notify down with it, so a write failure is a logged warning rather than a lost line.
+    /// </summary>
     Task RecordAsync(AgentNotifyAuditEntry entry, CancellationToken cancellationToken = default);
 
-    /// <summary>The most recent entries, newest first.</summary>
+    /// <summary>
+    /// The most recent entries, newest first.
+    /// </summary>
     Task<IReadOnlyList<AgentNotifyAuditEntry>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default);
 }
 

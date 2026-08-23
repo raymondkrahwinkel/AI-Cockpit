@@ -23,7 +23,9 @@ public interface IVoicePushToTalkService
     /// </summary>
     event EventHandler<VoicePreparationProgress>? Preparing;
 
-    /// <summary>Forwarded from <see cref="ISpeechToTextService.Prepared"/>: preparation is over and the hold is really being transcribed now.</summary>
+    /// <summary>
+    /// Forwarded from <see cref="ISpeechToTextService.Prepared"/>: preparation is over and the hold is really being transcribed now.
+    /// </summary>
     event EventHandler? Prepared;
 
     /// <summary>

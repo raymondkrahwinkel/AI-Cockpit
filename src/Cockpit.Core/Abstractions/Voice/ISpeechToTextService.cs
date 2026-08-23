@@ -9,7 +9,9 @@ namespace Cockpit.Core.Abstractions.Voice;
 /// </summary>
 public interface ISpeechToTextService
 {
-    /// <summary>16 kHz mono float32 samples in [-1, 1] (the Whisper target format) in, transcribed text out.</summary>
+    /// <summary>
+    /// 16 kHz mono float32 samples in [-1, 1] (the Whisper target format) in, transcribed text out.
+    /// </summary>
     Task<string> TranscribeAsync(float[] samples, CancellationToken cancellationToken = default);
 
     /// <summary>

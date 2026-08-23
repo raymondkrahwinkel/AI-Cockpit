@@ -63,10 +63,14 @@ public interface IDelegationService
     /// </summary>
     Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, string? callerPaneId = null, CancellationToken cancellationToken = default);
 
-    /// <summary>The task's current state, without pulling its whole output.</summary>
+    /// <summary>
+    /// The task's current state, without pulling its whole output.
+    /// </summary>
     DelegatedTaskView? GetTask(string taskId, string? callerPaneId = null);
 
-    /// <summary>Every task this cockpit knows about, newest first.</summary>
+    /// <summary>
+    /// Every task this cockpit knows about, newest first.
+    /// </summary>
     IReadOnlyList<DelegatedTaskView> ListTasks(DelegatedTaskStatus? status = null, string? callerPaneId = null);
 
     /// <summary>
@@ -82,7 +86,9 @@ public interface IDelegationService
     /// </summary>
     Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, string? callerPaneId = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Stops the task and its session. Safe to call on an unknown or already-finished task.</summary>
+    /// <summary>
+    /// Stops the task and its session. Safe to call on an unknown or already-finished task.
+    /// </summary>
     Task<DelegatedTaskView?> StopAsync(string taskId, string? callerPaneId = null);
 }
 

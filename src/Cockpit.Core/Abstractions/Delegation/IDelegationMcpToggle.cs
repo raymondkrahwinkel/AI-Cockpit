@@ -7,9 +7,13 @@ namespace Cockpit.Core.Abstractions.Delegation;
 /// </summary>
 public interface IDelegationMcpToggle
 {
-    /// <summary>Whether the orchestrator MCP is currently offered to sessions.</summary>
+    /// <summary>
+    /// Whether the orchestrator MCP is currently offered to sessions.
+    /// </summary>
     bool McpEnabled { get; }
 
-    /// <summary>Turns the orchestrator MCP on or off — takes effect on the next session's servers, and is persisted.</summary>
+    /// <summary>
+    /// Turns the orchestrator MCP on or off — takes effect on the next session's servers, and is persisted.
+    /// </summary>
     Task SetMcpEnabledAsync(bool enabled, CancellationToken cancellationToken = default);
 }

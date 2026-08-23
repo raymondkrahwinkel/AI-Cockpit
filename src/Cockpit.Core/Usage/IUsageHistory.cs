@@ -7,7 +7,9 @@ namespace Cockpit.Core.Usage;
 /// </summary>
 public interface IUsageHistory
 {
-    /// <summary>Appends a snapshot. Never throws: losing a measurement must not take a session's turn down with it.</summary>
+    /// <summary>
+    /// Appends a snapshot. Never throws: losing a measurement must not take a session's turn down with it.
+    /// </summary>
     Task RecordAsync(UsageSnapshot snapshot, CancellationToken cancellationToken = default);
 
     /// <summary>

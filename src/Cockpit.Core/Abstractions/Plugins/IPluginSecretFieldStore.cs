@@ -7,9 +7,13 @@ namespace Cockpit.Core.Abstractions.Plugins;
 /// </summary>
 public interface IPluginSecretFieldStore
 {
-    /// <summary>Every declared key, across all plugins. Read at startup, before anything reads a plugin's settings.</summary>
+    /// <summary>
+    /// Every declared key, across all plugins. Read at startup, before anything reads a plugin's settings.
+    /// </summary>
     Task<IReadOnlyList<string>> LoadAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Remembers that <paramref name="key"/> holds a credential for <paramref name="pluginId"/>.</summary>
+    /// <summary>
+    /// Remembers that <paramref name="key"/> holds a credential for <paramref name="pluginId"/>.
+    /// </summary>
     Task DeclareAsync(string pluginId, IEnumerable<string> keys, CancellationToken cancellationToken = default);
 }

@@ -7,7 +7,9 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ITtySessionProvider
 {
-    /// <summary>Stable id of the provider this launches (<c>claude</c>, <c>codex</c>, …).</summary>
+    /// <summary>
+    /// Stable id of the provider this launches (<c>claude</c>, <c>codex</c>, …).
+    /// </summary>
     string ProviderId { get; }
 
     /// <summary>

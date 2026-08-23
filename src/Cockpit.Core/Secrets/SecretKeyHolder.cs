@@ -7,10 +7,14 @@ namespace Cockpit.Core.Secrets;
 /// </summary>
 public interface ISecretKeyHolder
 {
-    /// <summary>The protector for the unlocked session, or <see langword="null"/> when encryption is off (or the app is not unlocked yet).</summary>
+    /// <summary>
+    /// The protector for the unlocked session, or <see langword="null"/> when encryption is off (or the app is not unlocked yet).
+    /// </summary>
     ISecretProtector? Protector { get; }
 
-    /// <summary>Fields the plugins declared as secret, on top of the name rule.</summary>
+    /// <summary>
+    /// Fields the plugins declared as secret, on top of the name rule.
+    /// </summary>
     SecretFields Fields { get; }
 
     /// <summary>
@@ -20,7 +24,9 @@ public interface ISecretKeyHolder
     /// </summary>
     event EventHandler? UnprotectedSecretsWritten;
 
-    /// <summary>Tells listeners a credential was just written in the clear. Called by the config write seam; carries no value, only the fact.</summary>
+    /// <summary>
+    /// Tells listeners a credential was just written in the clear. Called by the config write seam; carries no value, only the fact.
+    /// </summary>
     void NoteUnprotectedSecretsWritten();
 }
 

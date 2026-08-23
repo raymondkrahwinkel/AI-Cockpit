@@ -9,7 +9,9 @@ namespace Cockpit.Core.Abstractions.Mcp;
 /// </summary>
 public interface IMcpServerCatalog
 {
-    /// <summary>The registry servers plus every active plugin's contributed servers, mapped into the same shape.</summary>
+    /// <summary>
+    /// The registry servers plus every active plugin's contributed servers, mapped into the same shape.
+    /// </summary>
     Task<IReadOnlyList<McpServerConfig>> GetServersAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

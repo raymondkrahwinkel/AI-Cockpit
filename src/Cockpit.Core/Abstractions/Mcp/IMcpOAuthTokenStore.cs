@@ -9,7 +9,9 @@ namespace Cockpit.Core.Abstractions.Mcp;
 /// </summary>
 public interface IMcpOAuthTokenStore
 {
-    /// <summary>The token held for <paramref name="serverId"/>, or <see langword="null"/> if nobody has signed in.</summary>
+    /// <summary>
+    /// The token held for <paramref name="serverId"/>, or <see langword="null"/> if nobody has signed in.
+    /// </summary>
     Task<McpOAuthToken?> GetAsync(string serverId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -18,13 +20,17 @@ public interface IMcpOAuthTokenStore
     /// </summary>
     Task SaveAsync(string serverId, string serverName, McpOAuthToken token, CancellationToken cancellationToken = default);
 
-    /// <summary>Forgets the token for <paramref name="serverId"/>. Removing one that is not there is not an error.</summary>
+    /// <summary>
+    /// Forgets the token for <paramref name="serverId"/>. Removing one that is not there is not an error.
+    /// </summary>
     Task RemoveAsync(string serverId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Re-keys tokens an older build filed under a server's name onto its current id (AC-403), for servers whose id
     /// can't be derived from the name. Already-covered entries are left alone. ⚠️ Run only before the operator can rename anything — safe exactly once at startup, or renamed servers would swap tokens.
     /// </summary>
-    /// <param name="idsByServerName">Every known server's current name mapped to the id it should be filed under.</param>
+    /// <param name="idsByServerName">
+    /// Every known server's current name mapped to the id it should be filed under.
+    /// </param>
     Task AdoptLegacyEntriesAsync(IReadOnlyDictionary<string, string> idsByServerName, CancellationToken cancellationToken = default);
 }

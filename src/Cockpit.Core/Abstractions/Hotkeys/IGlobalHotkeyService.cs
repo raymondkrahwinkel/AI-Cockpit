@@ -6,10 +6,14 @@ namespace Cockpit.Core.Abstractions.Hotkeys;
 /// </summary>
 public interface IGlobalHotkeyService
 {
-    /// <summary>A registered hotkey went down; the argument is its <see cref="GlobalHotkeyBinding.Id"/>.</summary>
+    /// <summary>
+    /// A registered hotkey went down; the argument is its <see cref="GlobalHotkeyBinding.Id"/>.
+    /// </summary>
     event EventHandler<string>? Pressed;
 
-    /// <summary>A registered hotkey came back up; the argument is its <see cref="GlobalHotkeyBinding.Id"/>. Push-to-talk's hold is the span between the two; a press-only feature ignores this.</summary>
+    /// <summary>
+    /// A registered hotkey came back up; the argument is its <see cref="GlobalHotkeyBinding.Id"/>. Push-to-talk's hold is the span between the two; a press-only feature ignores this.
+    /// </summary>
     event EventHandler<string>? Released;
 
     /// <summary>
@@ -19,7 +23,9 @@ public interface IGlobalHotkeyService
     /// </summary>
     string? TriggerDescriptionFor(string hotkeyId);
 
-    /// <summary>Raised when any trigger description changes — the operator rebound one in their desktop's settings, or a binding armed. Fires off the UI thread, like the key events.</summary>
+    /// <summary>
+    /// Raised when any trigger description changes — the operator rebound one in their desktop's settings, or a binding armed. Fires off the UI thread, like the key events.
+    /// </summary>
     event EventHandler? TriggerDescriptionsChanged;
 
     /// <summary>
@@ -29,6 +35,8 @@ public interface IGlobalHotkeyService
     /// </summary>
     Task StartAsync(IReadOnlyList<GlobalHotkeyBinding> bindings, CancellationToken cancellationToken = default);
 
-    /// <summary>Unregisters everything and stops listening. Idempotent.</summary>
+    /// <summary>
+    /// Unregisters everything and stops listening. Idempotent.
+    /// </summary>
     Task StopAsync(CancellationToken cancellationToken = default);
 }

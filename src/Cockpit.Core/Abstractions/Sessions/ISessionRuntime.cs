@@ -11,10 +11,14 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionRuntime : IAsyncDisposable
 {
-    /// <summary>Identifies this runtime in the <see cref="ISessionManager"/> register; stable for its lifetime.</summary>
+    /// <summary>
+    /// Identifies this runtime in the <see cref="ISessionManager"/> register; stable for its lifetime.
+    /// </summary>
     string Id { get; }
 
-    /// <summary>The profile the session runs under, once started.</summary>
+    /// <summary>
+    /// The profile the session runs under, once started.
+    /// </summary>
     SessionProfile? Profile { get; }
 
     /// <summary>
@@ -24,7 +28,9 @@ public interface ISessionRuntime : IAsyncDisposable
     /// </summary>
     SessionCapabilities? Capabilities { get; }
 
-    /// <summary>The process this session runs in, once its driver started one (#78) — what the resource meter weighs, along with everything that process spawns. Null for an HTTP-backed provider.</summary>
+    /// <summary>
+    /// The process this session runs in, once its driver started one (#78) — what the resource meter weighs, along with everything that process spawns. Null for an HTTP-backed provider.
+    /// </summary>
     int? ProcessId => null;
 
     /// <summary>
@@ -41,10 +47,14 @@ public interface ISessionRuntime : IAsyncDisposable
     /// </summary>
     IReadOnlyList<SessionLiveOption> LiveOptions => [];
 
-    /// <summary>True once <see cref="StartAsync"/> has brought a driver up and the event pump is running.</summary>
+    /// <summary>
+    /// True once <see cref="StartAsync"/> has brought a driver up and the event pump is running.
+    /// </summary>
     bool IsRunning { get; }
 
-    /// <summary>The assistant text of the most recently completed turn — a delegated task's result (#67).</summary>
+    /// <summary>
+    /// The assistant text of the most recently completed turn — a delegated task's result (#67).
+    /// </summary>
     string? LastAssistantText { get; }
 
     /// <summary>
@@ -80,7 +90,9 @@ public interface ISessionRuntime : IAsyncDisposable
 
     Task InterruptAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Asks the provider to compact this conversation in place (AC-664). See <see cref="ISessionDriver.CompactContextAsync"/>.</summary>
+    /// <summary>
+    /// Asks the provider to compact this conversation in place (AC-664). See <see cref="ISessionDriver.CompactContextAsync"/>.
+    /// </summary>
     Task CompactContextAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default);
@@ -93,12 +105,16 @@ public interface ISessionRuntime : IAsyncDisposable
 
     Task SetAutoApproveToolsAsync(bool autoApprove, CancellationToken cancellationToken = default);
 
-    /// <summary>Non-interactive delegated tool-gating (AC-79): tool calls are decided against the ceiling + allow-list rather than prompted. See <see cref="ISessionDriver.SetDelegatedToolGateAsync"/>.</summary>
+    /// <summary>
+    /// Non-interactive delegated tool-gating (AC-79): tool calls are decided against the ceiling + allow-list rather than prompted. See <see cref="ISessionDriver.SetDelegatedToolGateAsync"/>.
+    /// </summary>
     Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default);
 
     Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
 
-    /// <summary>Resolves the decision carrying the operator's answers as well (AC-715). See <see cref="ISessionDriver.RespondToPermissionAsync(string, bool, string?, CancellationToken)"/>.</summary>
+    /// <summary>
+    /// Resolves the decision carrying the operator's answers as well (AC-715). See <see cref="ISessionDriver.RespondToPermissionAsync(string, bool, string?, CancellationToken)"/>.
+    /// </summary>
     Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson, CancellationToken cancellationToken) =>
         RespondToPermissionAsync(toolUseId, allow, cancellationToken);
 

@@ -11,7 +11,9 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionDriver : IAsyncDisposable
 {
-    /// <summary>What this driver supports, so the UI renders/hides controls per provider.</summary>
+    /// <summary>
+    /// What this driver supports, so the UI renders/hides controls per provider.
+    /// </summary>
     SessionCapabilities Capabilities { get; }
 
     /// <summary>

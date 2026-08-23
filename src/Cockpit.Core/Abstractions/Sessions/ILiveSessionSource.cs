@@ -7,6 +7,8 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ILiveSessionSource
 {
-    /// <summary>The ids — the pane ids worktrees are keyed on — of the sessions this source is running right now.</summary>
+    /// <summary>
+    /// The ids — the pane ids worktrees are keyed on — of the sessions this source is running right now.
+    /// </summary>
     IReadOnlySet<string> LiveSessionIds { get; }
 }

@@ -23,6 +23,8 @@ public interface INodePairingClient
     /// <exception cref="NodePairingException">Expired, refused, already used, or the token was rejected.</exception>
     Task<NodePairingGrant> CompleteAsync(NodePairingHandshake handshake, CancellationToken cancellationToken = default);
 
-    /// <summary>Ends the coupling from this side, so the node forgets it and invalidates the secret.</summary>
+    /// <summary>
+    /// Ends the coupling from this side, so the node forgets it and invalidates the secret.
+    /// </summary>
     Task UnpairAsync(string address, string sharedSecret, string certificateFingerprint, CancellationToken cancellationToken = default);
 }

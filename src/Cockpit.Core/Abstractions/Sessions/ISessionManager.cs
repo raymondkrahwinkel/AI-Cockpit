@@ -9,10 +9,14 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionManager
 {
-    /// <summary>Every session currently registered, in creation order.</summary>
+    /// <summary>
+    /// Every session currently registered, in creation order.
+    /// </summary>
     IReadOnlyList<ISessionRuntime> Sessions { get; }
 
-    /// <summary>Raised whenever a session is added or removed, so a consumer can keep a live count.</summary>
+    /// <summary>
+    /// Raised whenever a session is added or removed, so a consumer can keep a live count.
+    /// </summary>
     event Action? SessionsChanged;
 
     /// <summary>
@@ -21,7 +25,9 @@ public interface ISessionManager
     /// </summary>
     ISessionRuntime Create(SessionProfile? profile);
 
-    /// <summary>The registered session with this id, or <see langword="null"/> when it has already been stopped.</summary>
+    /// <summary>
+    /// The registered session with this id, or <see langword="null"/> when it has already been stopped.
+    /// </summary>
     ISessionRuntime? Find(string id);
 
     /// <summary>

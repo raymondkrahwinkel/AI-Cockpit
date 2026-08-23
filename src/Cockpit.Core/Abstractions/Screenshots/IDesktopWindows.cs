@@ -7,7 +7,9 @@ namespace Cockpit.Core.Abstractions.Screenshots;
 /// </summary>
 public interface IDesktopWindows
 {
-    /// <summary>Whether this desktop will say where its windows are. False is an answer, and the surface shows it as one.</summary>
+    /// <summary>
+    /// Whether this desktop will say where its windows are. False is an answer, and the surface shows it as one.
+    /// </summary>
     bool IsSupported { get; }
 
     /// <summary>

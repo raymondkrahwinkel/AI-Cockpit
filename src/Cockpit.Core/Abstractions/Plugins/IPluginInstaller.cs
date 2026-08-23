@@ -17,12 +17,18 @@ public interface IPluginInstaller
     Task<PluginInstallResult> InstallFromZipAsync(
         string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Marks an installed plugin folder for deletion at the next startup, since a currently-loaded assembly cannot be deleted while the app runs.</summary>
+    /// <summary>
+    /// Marks an installed plugin folder for deletion at the next startup, since a currently-loaded assembly cannot be deleted while the app runs.
+    /// </summary>
     Task MarkForRemovalAsync(string folderId, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes any folders marked for removal; called once at startup before discovery so a removed plugin never loads again.</summary>
+    /// <summary>
+    /// Deletes any folders marked for removal; called once at startup before discovery so a removed plugin never loads again.
+    /// </summary>
     Task SweepRemovalsAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Applies any staged plugin updates (replacing the old folder with the new version); called once at startup before discovery, so the swap runs while no plugin assembly is loaded/locked.</summary>
+    /// <summary>
+    /// Applies any staged plugin updates (replacing the old folder with the new version); called once at startup before discovery, so the swap runs while no plugin assembly is loaded/locked.
+    /// </summary>
     Task SweepPendingUpdatesAsync(CancellationToken cancellationToken = default);
 }

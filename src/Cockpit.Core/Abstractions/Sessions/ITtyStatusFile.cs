@@ -7,6 +7,8 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ITtyStatusFile
 {
-    /// <summary>The file Claude's statusline JSON is written to for this session, or null when no relay was installed (Windows).</summary>
+    /// <summary>
+    /// The file Claude's statusline JSON is written to for this session, or null when no relay was installed (Windows).
+    /// </summary>
     string? StatusFile { get; }
 }

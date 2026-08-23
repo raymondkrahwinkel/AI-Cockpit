@@ -14,7 +14,9 @@ public interface IAgentTurnInboxDelivery
     /// </summary>
     AgentInboxTurnNotice? TakeForTurn(string paneId);
 
-    /// <summary>Says the turn carrying <paramref name="notice"/> went out, so its messages are read and gone.</summary>
+    /// <summary>
+    /// Says the turn carrying <paramref name="notice"/> went out, so its messages are read and gone.
+    /// </summary>
     void ConfirmDelivered(AgentInboxTurnNotice notice);
 
     /// <summary>

@@ -14,7 +14,9 @@ public interface IWorkspaceAgentCoordinator
     /// </summary>
     void Enroll(string paneId);
 
-    /// <summary>Whether <paramref name="paneId"/> is on the roster — that the host knows of it, not that it has ever called in.</summary>
+    /// <summary>
+    /// Whether <paramref name="paneId"/> is on the roster — that the host knows of it, not that it has ever called in.
+    /// </summary>
     bool IsEnrolled(string paneId);
 
     /// <summary>

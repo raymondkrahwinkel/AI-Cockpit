@@ -7,10 +7,14 @@ namespace Cockpit.Core.Abstractions.Assistant;
 /// </summary>
 public interface IAssistantSpawnAuditLog
 {
-    /// <summary>Appends one entry. Never throws: losing the record is bad, failing the operator's approved action because of it is worse.</summary>
+    /// <summary>
+    /// Appends one entry. Never throws: losing the record is bad, failing the operator's approved action because of it is worse.
+    /// </summary>
     Task RecordAsync(AssistantSpawnAuditEntry entry, CancellationToken cancellationToken = default);
 
-    /// <summary>The most recent entries, newest first.</summary>
+    /// <summary>
+    /// The most recent entries, newest first.
+    /// </summary>
     Task<IReadOnlyList<AssistantSpawnAuditEntry>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default);
 }
 

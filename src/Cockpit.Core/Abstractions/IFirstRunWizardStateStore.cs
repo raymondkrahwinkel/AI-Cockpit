@@ -6,9 +6,13 @@ namespace Cockpit.Core.Abstractions;
 /// </summary>
 public interface IFirstRunWizardStateStore
 {
-    /// <summary>The version last completed or skipped, or null before the wizard has ever run.</summary>
+    /// <summary>
+    /// The version last completed or skipped, or null before the wizard has ever run.
+    /// </summary>
     Task<int?> GetCompletedVersionAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Records that the operator finished or dismissed the wizard at the given content version.</summary>
+    /// <summary>
+    /// Records that the operator finished or dismissed the wizard at the given content version.
+    /// </summary>
     Task MarkCompletedAsync(int version, CancellationToken cancellationToken = default);
 }
