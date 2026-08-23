@@ -1,12 +1,8 @@
 namespace Cockpit.Core.Sessions;
 
 // A session's live status (#45 D7): how full its context window is and the usage windows its provider reports.
-// The core mirror of the plugin surface's `PluginSessionStatus` — a provider-neutral feed the session
-// header renders its bars from, whichever provider filled it. The windows are a self-labelled list, so the
-// header holds no five-hour/weekly vocabulary of its own.
-//
-// `ContextUsedPercent`: How full the context window is, 0-100, or `null` before the provider reports it.
-// `RateLimits`: The usage windows the provider reports, each self-labelled; empty when it reports none.
+// The core mirror of `PluginSessionStatus` — a provider-neutral feed the header renders bars from. `RateLimits`
+// is a self-labelled list, so the header holds no five-hour/weekly vocabulary of its own.
 public sealed record SessionStatusFeed(
     double? ContextUsedPercent,
     IReadOnlyList<SessionRateWindow> RateLimits)

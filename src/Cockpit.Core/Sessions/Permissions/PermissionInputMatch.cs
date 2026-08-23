@@ -8,10 +8,8 @@ namespace Cockpit.Core.Sessions.Permissions;
 // `PermissionRule` against a proposed call.
 public static class PermissionInputMatch
 {
-    // Canonicalizes `inputJson` to a deterministic string: object keys sorted,
-    // whitespace stripped. Malformed or empty JSON canonicalizes to its trimmed self so a rule can
-    // still be compared without throwing — an unparseable input simply only matches an identically
-    // unparseable one.
+    // Canonicalizes `inputJson` to a deterministic string: object keys sorted, whitespace stripped.
+    // Malformed/empty JSON canonicalizes to its trimmed self, so it only matches an identically unparseable input.
     public static string Canonicalize(string inputJson)
     {
         if (string.IsNullOrWhiteSpace(inputJson))
@@ -72,12 +70,9 @@ public static class PermissionInputMatch
                 break;
 
             case JsonValueKind.String:
-                // Re-serialize the decoded string through the same encoder so a value the two
-                // sources escaped differently canonicalizes identically. The stream tool_use JSON
-                // carries a '>' as the literal character, while the MCP permission_prompt JSON emits
-                // it as the ">" unicode escape; GetRawText() keeps each source's raw form, so an
-                // exact rule for any input with '>' / '<' / '&' (i.e. most shell commands) never
-                // matched. GetString() decodes both to the same char before re-encoding. See bug #27.
+                // Bug #27: re-serialize the decoded string through the same encoder — the stream tool_use JSON
+                // and the MCP permission_prompt JSON escape '>' differently, so GetRawText() left an exact
+                // rule for any '>'/'<'/'&' input never matching; GetString() decodes both the same way first.
                 builder.Append(JsonSerializer.Serialize(element.GetString()));
                 break;
 

@@ -1,11 +1,8 @@
 namespace Cockpit.Core.Sessions;
 
-// The thresholds an operator has set for themselves (AC-233), on top of what each provider declared. Three
-// levels, and the narrowest wins — the same precedence `SessionStartDefaults` uses, for the same reason: one
-// rule, applied in one place, rather than a copy per screen that can drift.
-//
-// Absence means "follow the level above", never a zero. A field left alone keeps following the provider even
-// after the provider changes its mind, which is what an operator who never touched it would expect.
+// AC-233: the thresholds an operator has set for themselves, on top of what each provider declared. Three
+// levels, narrowest wins — same precedence `SessionStartDefaults` uses. Absence means "follow the level
+// above", never a zero, so an untouched field keeps following the provider even after it changes its mind.
 public sealed class UsageThresholdSettings
 {
     // Per provider id, the signal keys that provider's sessions warn at differently from its own declaration.

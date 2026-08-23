@@ -1,27 +1,8 @@
 namespace Cockpit.Core.Sessions;
 
-// What a session driver can do, so the UI renders or hides controls per provider instead of showing
-// dead ones (#26). The Claude-CLI driver supports everything; the HTTP providers advertise a narrower
-// set (e.g. no plan mode, model switch = a new request rather than live control).
-//
-// `SupportsVision`:
-// Whether this driver actually sends pasted image attachments to the model (#64) — driver-backed, not a
-// declarative hint: only `ClaudeCli` is true today, since `ClaudeCliSession.SendUserMessageAsync`
-// is the only one that builds image content blocks. Defaults to `false` so existing 5-arg
-// construction (e.g. `OpenAiCompatSessionDriver`) keeps compiling and stays non-vision until it can
-// carry images too. Gates the session panel's image-paste handling so a provider that would otherwise
-// silently drop a pasted image never gets the chance to.
-// `SupportsResume`:
-// Whether this driver can pick up an earlier conversation (`SessionResume`) instead of starting a
-// fresh one — true for the Claude CLI, which keeps its own transcript history; false for the HTTP providers,
-// which keep no history to resume from. Gates the New-session dialog's resume controls.
-// `SupportsPermissionModeSwitch`:
-// Whether this driver can live-switch Claude's permission *mode* (default/acceptEdits/plan) mid-session
-// via `SetPermissionModeAsync` — true only for the Claude CLI. Distinct from `SupportsPermissions`,
-// which a plugin like Codex reports true because it does tool approvals, yet it has no permission-mode vocabulary:
-// Codex switches its approval *policy* instead, through the generic live-control panel (#45 D4). Gates the
-// header's Claude permission-mode dropdown so it no longer shows as a dead control on a provider that cannot honour
-// it. Defaults to `false` so existing construction stays non-switching.
+// What a session driver can do, so the UI hides dead controls per provider (#26). `SupportsVision` (#64):
+// only `ClaudeCli` sends pasted images today. `SupportsResume`: the HTTP providers keep no transcript to
+// resume. `SupportsPermissionModeSwitch` is distinct from `SupportsPermissions` (Codex has the latter but no mode).
 public sealed record SessionCapabilities(
     bool SupportsTools,
     bool SupportsPermissions,
@@ -37,13 +18,9 @@ public sealed record SessionCapabilities(
     // env-var section. Defaults to `false` so existing construction stays non-injecting.
     public bool SupportsEnvVars { get; init; }
 
-    // Whether this driver's own file-affecting tools stay within the session's working directory (AC-174) — the
-    // guarantee worktree isolation rests on. A driver that spawns a process in the working directory and edits
-    // files with cwd-bound native tools (Claude, Codex) confines them; an HTTP/in-process driver (a local model)
-    // has no process cwd and reaches files only through out-of-process MCP servers rooted at a fixed folder, so it
-    // does *not*. The host reads this after start to refuse an isolate-in-worktree embedded run on a
-    // non-confining provider rather than let it write the operator's real checkout. Defaults to
-    // `false` so a provider that has not vouched for confinement fails closed, not open.
+    // AC-174: whether this driver's own file-affecting tools stay within the session's working directory — the
+    // guarantee worktree isolation rests on. Claude/Codex confine via cwd-bound native tools; an in-process
+    // driver reaching files through a fixed-folder MCP server does not. Defaults to `false` (fail closed).
     public bool ConfinesFileAccessToWorkingDirectory { get; init; }
 
     // AC-664: whether a full context is answered by asking this driver to summarise and carry on, or by starting a

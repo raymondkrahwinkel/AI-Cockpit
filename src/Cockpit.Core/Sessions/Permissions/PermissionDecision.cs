@@ -1,9 +1,7 @@
 namespace Cockpit.Core.Sessions.Permissions;
 
-// The outcome of a permission prompt: allow the tool call to proceed (optionally with a
-// rewritten input) or deny it with a reason. Serialized back to the CLI's
-// `--permission-prompt-tool` as the `behavior`/`updatedInput`/`message`
-// contract (see `PermissionPromptResponse`).
+// The outcome of a permission prompt: allow (optionally with a rewritten input) or deny with a reason.
+// Serialized back to the CLI's `--permission-prompt-tool` contract (see `PermissionPromptResponse`).
 public sealed record PermissionDecision
 {
     private PermissionDecision(bool isAllowed, string? updatedInputJson, string? denyMessage)

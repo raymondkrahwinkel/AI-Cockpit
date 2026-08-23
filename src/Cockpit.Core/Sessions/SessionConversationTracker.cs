@@ -2,11 +2,9 @@ using Cockpit.Core.Abstractions;
 
 namespace Cockpit.Core.Sessions;
 
-// The default `ISessionConversationSink` (AC-408): keeps the latest reported conversation id per pane
-// in memory and raises `Changed` only when a report actually differs from what that pane last
-// reported — a route that reports the same id on every session event must not turn into a change every time.
-// Deliberately just the pass-through point: no persistence and no resume offer, both of which are a follow-up
-// ticket's concern.
+// AC-408: default `ISessionConversationSink`, keeping the latest reported conversation id per pane and
+// raising `Changed` only when it actually differs. Deliberately just the pass-through point — no
+// persistence, no resume offer; both are a follow-up ticket's concern.
 public sealed class SessionConversationTracker : ISessionConversationSink, ISingletonService
 {
     private readonly Dictionary<string, SessionConversationId> _known = new(StringComparer.Ordinal);

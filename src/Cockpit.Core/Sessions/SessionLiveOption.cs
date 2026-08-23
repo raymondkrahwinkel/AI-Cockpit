@@ -1,26 +1,15 @@
 namespace Cockpit.Core.Sessions;
 
-// One control a running session can switch mid-conversation (#45 D4) — a plugin provider's model or reasoning
-// effort, offered in the session header's live-control panel. The provider owns the vocabulary: it names the
-// control, labels it, and lists the values, so the host renders it without knowing what it means — the running
-// mirror of a launch option, and the core-side form the driver adapter maps a plugin's
-// `PluginSessionLaunchOption` onto at the plugin boundary (kept a separate type so Core needs no reference
-// to the plugin abstractions).
-//
-// `Key`: Identifies the control back to the driver's `SetLiveOptionAsync`.
-// `Label`: What the operator reads next to the control (e.g. "Model", "Effort").
-// `Choices`: The values on offer for the dropdown.
-// `CurrentValue`: The value the session is running on, so the panel opens on it, or `null` when unset.
+// One control a running session can switch mid-conversation (#45 D4). The provider owns the vocabulary —
+// names, labels, values — so the host renders it without knowing what it means; the core-side form the
+// adapter maps a plugin's `PluginSessionLaunchOption` onto (kept separate so Core needs no plugin reference).
 public sealed record SessionLiveOption(
     string Key,
     string Label,
     IReadOnlyList<string> Choices,
     string? CurrentValue)
 {
-    // A friendly label per `Choices` value the operator reads instead of the raw value (Claude's "Ask
-    // permissions" for `default`, "Low"/"Medium"/"High" for an effort key). Keyed by value; a value with no
-    // entry shows itself, and the value sent back to the driver is always the raw `Choices` entry. The
-    // driver adapter carries the plugin option's own labels onto this at the plugin boundary. `null`
-    // means unlabelled — every value renders as itself.
+    // A friendly label per `Choices` value (Claude's "Ask permissions" for `default`, etc.). A value with
+    // no entry shows itself; the value sent back to the driver is always the raw `Choices` entry, never the label.
     public IReadOnlyDictionary<string, string>? ChoiceLabels { get; init; }
 }

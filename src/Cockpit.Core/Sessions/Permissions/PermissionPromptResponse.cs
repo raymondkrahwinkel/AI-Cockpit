@@ -3,10 +3,8 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Core.Sessions.Permissions;
 
-// Serializes a `PermissionDecision` into the JSON body the CLI's
-// `--permission-prompt-tool` expects as the tool-result text:
-// `{"behavior":"allow","updatedInput":{...}}` or
-// `{"behavior":"deny","message":"..."}` (verified against claude.exe 2.1.197).
+// Serializes a `PermissionDecision` into the JSON body the CLI's `--permission-prompt-tool` expects
+// (`{"behavior":"allow"/"deny",...}`, verified against claude.exe 2.1.197).
 public static class PermissionPromptResponse
 {
     // Builds the behavior JSON for `decision`. For an allow with no rewritten

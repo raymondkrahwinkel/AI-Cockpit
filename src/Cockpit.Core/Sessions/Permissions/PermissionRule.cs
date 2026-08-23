@@ -10,16 +10,9 @@ public enum PermissionRuleScope
     Wildcard,
 }
 
-// A persisted "always allow" rule for one profile: the operator chose to stop being prompted for
-// a given tool call. A `PermissionRuleScope.Wildcard` rule allows every call to
-// `ToolName`; an `PermissionRuleScope.Exact` rule allows only the same
-// input, identified by the canonical `InputMatch` fingerprint of the input JSON.
-//
-// `ToolName`: The tool this rule applies to (e.g. `Bash`, `Edit`).
-// `Scope`: Whether the rule matches any input (wildcard) or one specific input (exact).
-// `InputMatch`:
-// The canonical fingerprint of the allowed input for an `PermissionRuleScope.Exact`
-// rule (see `PermissionInputMatch.Canonicalize`); `null` for a wildcard rule.
+// A persisted "always allow" rule for one profile: the operator chose to stop being prompted for a given
+// tool call. `Wildcard` allows every call to `ToolName`; `Exact` allows only the same input, identified by
+// the canonical `InputMatch` fingerprint (`PermissionInputMatch.Canonicalize`), null for a wildcard rule.
 public sealed record PermissionRule(string ToolName, PermissionRuleScope Scope, string? InputMatch = null)
 {
     // True when this rule allows a proposed call to `toolName` with
