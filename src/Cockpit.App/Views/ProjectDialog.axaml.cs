@@ -34,8 +34,8 @@ public partial class ProjectDialog : Window
         CockpitWindowChrome.Apply(this, viewModel.DialogTitle, "Anyone can make one — it does not take a developer.");
 
         viewModel.CloseRequested += project => Close(project);
-        // Started here rather than awaited in the factory (AC-317): both sources are a network call or a shelled-out
-        // CLI, and the editor has to be on screen and typeable while they come. Each row shows its own progress.
+        // AC-317: started here, not awaited in the factory — both sources are slow (network/CLI) and
+        // the editor must stay on screen and typeable while they load; each row shows its own progress.
         _ = viewModel.LoadPluginFieldOptionsAsync();
         viewModel.BrowseRequested += () => _ = _BrowseForFolderAsync(viewModel);
         viewModel.PickLogoRequested += () => _ = _PickLogoAsync(viewModel);
@@ -43,17 +43,12 @@ public partial class ProjectDialog : Window
         viewModel.BrowseRepositoryRequested += row => _ = _BrowseForRepositoryAsync(row);
     }
 
-    // "Choose…" on a resource row (AC-485): a folder picker for a Memory row — memory is somewhere else by
-    // definition, the same reason the single Memory row's own picker never seeded itself at the project's own
-    // folder — or a file picker for any other role, since standing instructions and reference material are most
-    // often one document rather than a whole folder.
+    // AC-485: folder picker for a Memory row (memory lives elsewhere by definition), file picker
+    // for any other role (instructions/reference material is usually one document, not a folder).
     private async Task _PickResourceAsync(ProjectDialogViewModel viewModel, ProjectResourceRowViewModel row)
     {
-        // AC-502: a Memory row with a source other than Folder picked, whose source can enumerate its own
-        // locations, opens a picker of names instead of browsing for a path — CanBrowse only lets this button be
-        // reachable at all when one of these two is true, so IsMemoryFolderMode false here implies ListLocationsAsync
-        // is not null. AC-499: SelectedMemorySourceLeaf rather than SelectedMemorySourceChoice — for a family row
-        // ListLocationsAsync belongs to the picked instance, not the family placeholder.
+        // AC-502: opens a name picker instead of a path browser — CanBrowse guarantees
+        // ListLocationsAsync is set here. AC-499: SelectedMemorySourceLeaf, not the family placeholder.
         if (row is { Role: ProjectResourceRole.Memory, IsMemoryFolderMode: false }
             && row.SelectedMemorySourceLeaf is { ListLocationsAsync: { } listLocationsAsync } choice)
         {
@@ -73,10 +68,9 @@ public partial class ProjectDialog : Window
 
             if (row.Role == ProjectResourceRole.Memory)
             {
-                // AC-605: a "~"-anchored Memory-folder reference (a legitimate, portable form — see
-                // ProjectResourcePathPortability's own remarks) must be resolved before it reaches the storage
-                // provider, which has no notion of "~" of its own; unresolved, it would simply fail to find a
-                // start location and the picker would open unseeded rather than at the folder the row names.
+                // AC-605: a "~"-anchored reference (legitimate, portable — see
+                // ProjectResourcePathPortability) must be resolved before the storage provider sees
+                // it, which has no notion of "~" and would open the picker unseeded otherwise.
                 var start = string.IsNullOrWhiteSpace(row.Reference)
                     ? null
                     : await StorageProvider.TryGetFolderFromPathAsync(ProjectResourcePathPortability.ResolveHomeAnchor(row.Reference));

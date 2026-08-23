@@ -4,11 +4,9 @@ using Cockpit.App.Controls;
 
 namespace Cockpit.App.Views;
 
-// The Manage-plugin-stores dialog (#62): add or remove the stores the catalogue browses, each shown with
-// the name, icon and plugin count its `index.json` advertises. Bound straight to the shared
-// `ViewModels.PluginManagerViewModel` — add/remove go through its own commands, so the store
-// dialog behind it refreshes its catalogue and sidebar from the same instance. Opened as an owned modal
-// from the store dialog's "Manage stores" button.
+// #62: manage-plugin-stores dialog, bound straight to the shared PluginManagerViewModel so
+// add/remove refreshes the store dialog behind it from the same instance. Opened as an owned
+// modal from that dialog's "Manage stores" button.
 public partial class ManageStoresDialog : Window
 {
     public ManageStoresDialog()

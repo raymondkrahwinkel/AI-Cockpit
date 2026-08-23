@@ -12,20 +12,14 @@ namespace Cockpit.App.Views;
 // location's bare value from `ShowDialog&lt;string?&gt;`, or null when the operator cancelled.
 public partial class MemorySourceLocationPickerDialog : Window
 {
-    // Review fix: DataContextChanged can in principle fire more than once (Screenshotter builds the view model,
-    // loads it once synchronously for a deterministic render, then assigns it as DataContext, firing this a second
-    // time). Without this guard each firing adds another CloseRequested subscriber and starts another concurrent
-    // LoadAsync — one live subscriber and one starting load is what this window ever needs.
+    // Review fix: DataContextChanged can fire more than once (Screenshotter re-assigns DataContext
+    // after a synchronous preload); without this guard each firing would add another
+    // CloseRequested subscriber and start another concurrent LoadAsync.
     private bool _wired;
 
-    // AC-499: _ScrollToWholeRows needs a laid-out window to measure a row against, but DataContext is assigned
-    // (firing OnDataContextChanged, which starts the load) before Show() is ever called at every call site this
-    // dialog has — ProjectDialog's own picker included. When the listing delegate resolves synchronously (as
-    // Screenshotter's scenes and this dialog's own tests do), LoadAsync's await never actually yields, so the scroll
-    // attempt used to run to completion inside that same DataContext assignment — before the window was shown, so
-    // nothing was realized to scroll against, and it silently did nothing. Bookkeeping both sides of the race
-    // (Opened can fire before or after the load resolves, depending on how the listing delegate behaves) rather
-    // than assuming an order neither call site guarantees.
+    // AC-499: a synchronous listing delegate can resolve the scroll before the window is shown
+    // (DataContext, and the load it starts, is always assigned before Show()) and silently do
+    // nothing — so both sides of this race are tracked instead of assumed.
     private bool _opened;
     private MemorySourceLocationPickerViewModel? _viewModelAwaitingScroll;
 
@@ -64,11 +58,9 @@ public partial class MemorySourceLocationPickerDialog : Window
         _TryScrollToCurrent();
     }
 
-    // AC-499: once the list has settled *and* the window is actually on screen, scroll the pre-selected "current"
-    // row into view rather than leaving the operator to find it themselves — the whole point of pre-selecting it is
-    // that they see where they came from without hunting. A no-op when nothing matched (SelectedLocation stays
-    // null; see the view model's own remarks on why no match means no selection, not a fallback pick) or when
-    // either half of the race above has not happened yet — the other side re-enters this once it does.
+    // AC-499: once settled and on screen, scroll the pre-selected "current" row into view so the
+    // operator sees where they came from without hunting. No-op when nothing matched or either
+    // half of the race above hasn't happened yet — the other side re-enters this once it does.
     private void _TryScrollToCurrent()
     {
         if (!_opened || _viewModelAwaitingScroll is not { SelectedLocation: { } current } viewModel)
@@ -80,24 +72,16 @@ public partial class MemorySourceLocationPickerDialog : Window
         _ScrollToWholeRows(viewModel, current);
     }
 
-    // Review fix (AC-499): the built-in `ListBox.ScrollIntoView` scrolls the minimum distance needed
-    // to bring the target row fully into view — which, whenever the list's own visible height is not an exact
-    // multiple of a row's height, stops with the row *before* it sliced in half at the opposite edge. That read
-    // as a data defect (a Detail line with no Name above it) rather than a scroll position. Rows are a uniform
-    // height now (see the item `DataTemplate`'s own remarks on `TargetNullValue`), so once that height
-    // is known the fix is arithmetic: cap the list's own visible area to a whole multiple of it, then only ever
-    // scroll in whole-row steps — which keeps both edges clean at any position, not only whichever edge the
-    // built-in method happened to land the target row against.
+    // Review fix (AC-499): ScrollIntoView's minimum-distance scroll slices the row before the
+    // target in half when the visible height isn't a whole row multiple — read as a data defect.
+    // Fix: cap the visible area to a whole multiple of row height, scroll in whole-row steps.
     private void _ScrollToWholeRows(MemorySourceLocationPickerViewModel viewModel, ProjectMemorySourceLocation current)
     {
         UpdateLayout();
 
-        // Not the compiled x:Name field (LocationsList): measured live, the generated field is still null at the
-        // point Show() raises Opened — Opened fires mid-way through building this window, before x:Name fields are
-        // assigned, even though the visual tree underneath is already fully realized (GetVisualDescendants finds
-        // 127 nodes, including this same ListBox, right then). A field that reads null on a tree that already
-        // contains it is exactly the "the helper is itself a fault source" trap AvaloniaUI.md warns about — walking
-        // the live tree here sidesteps it rather than caching a reference that might predate its own assignment.
+        // Not the compiled x:Name field: it's still null when Opened fires (assigned later in
+        // construction) even though the live tree is already fully realized — the classic
+        // "helper is itself a fault source" trap, so this walks the live tree instead.
         var listBox = this.GetVisualDescendants().OfType<ListBox>().FirstOrDefault();
         if (listBox is null)
         {
@@ -113,10 +97,8 @@ public partial class MemorySourceLocationPickerDialog : Window
             return;
         }
 
-        // Bounds is the item's own rendered box and excludes its Margin — Theme.axaml's global ListBoxItem style
-        // sets Margin="0,1", so the distance one row actually advances the stack (what a scroll offset increments
-        // against) is Bounds.Height plus that margin, not Bounds.Height alone. Missing it here made the maths
-        // drift by 2px per row — 18px over nine rows, enough on its own to slice a row at the target's far edge.
+        // Bounds excludes Margin (Theme.axaml sets Margin="0,1"), so the actual per-row advance is
+        // Bounds.Height plus margin — missing it drifted the maths 2px/row, 18px over nine rows.
         var rowHeight = firstRow.Bounds.Height + firstRow.Margin.Top + firstRow.Margin.Bottom;
         var wholeRows = (int)(scrollViewer.Viewport.Height / rowHeight);
         var locations = viewModel.Locations;

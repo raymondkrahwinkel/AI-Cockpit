@@ -6,10 +6,8 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-// The plugin store dialog (#62): sidebar/search/sort/grid/detail over a
-// `PluginStoreDialogViewModel`. Disposes the view model on close so it unsubscribes from
-// the shared (long-lived) `PluginManagerViewModel`'s collection/property-changed events —
-// otherwise every store-dialog open would leak one more subscription on that shared instance.
+// #62: plugin store dialog. Disposes the view model on close so it unsubscribes from the
+// shared long-lived PluginManagerViewModel's events — else every open leaks a subscription.
 public partial class PluginStoreDialog : Window
 {
     public PluginStoreDialog()
@@ -26,8 +24,7 @@ public partial class PluginStoreDialog : Window
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
 
-    // Opens the Manage-stores dialog as an owned modal over this one, on the same shared manager — so adding
-    // or removing a store there refreshes this dialog's catalogue and sidebar from the one instance.
+    // Owned modal on the same shared manager, so add/remove there refreshes this dialog too.
     private async void OnManageStores(object? sender, RoutedEventArgs e)
     {
         if (DataContext is PluginStoreDialogViewModel viewModel)

@@ -24,23 +24,16 @@ public partial class SessionView : UserControl
     // causes are never mistaken for the operator's — and never re-enter it.
     private bool _following;
 
-    // An operator gesture that can scroll happened, and the scroll change it produces is the next one to arrive.
-    // The delta fields cannot stand in for this: a virtualising panel corrects its own offset after arrange, and
-    // such a correction moves the offset with the extent and viewport both standing still — which is precisely
-    // the fingerprint the old code called "a real user scroll". Three rounds of this ticket died on that
-    // ambiguity. The wheel is a single event, so this is a one-shot flag; a scrollbar drag lasts as long as the
-    // button is held, which is what `_pointerHeld` is for.
-    // "The next one to arrive" is the whole claim, and it needs an expiry to stay true — see _OnTranscriptWheel.
+    // Marks a real scroll gesture happened; the next ScrollChanged is its consequence. Delta fields
+    // can't stand in — a panel's own offset correction has the same fingerprint (three rounds of
+    // this ticket died on that ambiguity). Needs an expiry — see _OnTranscriptWheel.
     private bool _wheelTurned;
 
     private bool _pointerHeld;
 
-    // The window this pane is attached to, watched for minimise. While a window is minimised its renderer is
-    // paused, so a streaming transcript's recycled rows never get the compositor commit that removes their server
-    // scene visuals — they pile up without bound (measured: a pane streamed minimised keeps every recycled row and
-    // its heavy control tree; shown, it keeps one viewport's worth). That is the overnight "idle at multi-GB, 0
-    // sessions" growth: the operator minimises Cockpit while an agent streams. Suspend realisation while minimised
-    // (see _ApplyRendererPause) — the same thing an inactive tab already does, so its transcript stays at zero.
+    // Watched for minimise: the paused renderer never commits recycled-row removal, so a minimised
+    // streaming pane keeps every row instead of one viewport's worth (overnight multi-GB growth).
+    // _ApplyRendererPause suspends realisation the same way an inactive tab already does.
     private Window? _hostWindow;
 
     // The two independent reasons a renderer can be paused, kept apart so lifting one never lifts the other.
@@ -57,12 +50,9 @@ public partial class SessionView : UserControl
     // see _ResolveDiagnostics. Null leaves this pane on exactly the pre-AC-883 behaviour: minimising, nothing else.
     internal DiagnosticsBackgroundService? Diagnostics { get; set; }
 
-    // Ticks the composer's tool-activity elapsed time once a second (AC-532), so "running 0:12" counts up
-    // instead of freezing at whatever it read on first render — and, since AC-531, the background-work
-    // pop-out's own per-task elapsed times alongside it. Lives here rather than in the view model: the derived
-    // state (which tool, since when) has to stay dispatcher-free to be unit-testable outside a running Avalonia
-    // app (`Cockpit.Core.Tests` calls `SessionViewModel.Apply` directly, with no platform initialized),
-    // so only this purely cosmetic re-tick — a no-op when nothing is running — lives in the view.
+    // AC-532: ticks the composer's tool-activity elapsed time each second so "running 0:12" counts
+    // up (and, AC-531, the background-work pop-out's per-task times). Lives here, not the view
+    // model, since the derived state must stay dispatcher-free for platform-less unit tests.
     private DispatcherTimer? _activityAgeTicker;
 
     private ScrollViewer? _transcriptScroll;
@@ -110,17 +100,9 @@ public partial class SessionView : UserControl
     {
         base.OnAttachedToVisualTree(e);
 
-        // Focus the input as soon as a session panel appears, so a freshly created session is ready to
-        // type in without a click (L10). Deferred so focus lands after the panel is laid out.
-        // Not while the operator is in another window (AC-636): in single-pane/zoom mode a session closing swaps
-        // which pane is realised, and this attach would then take the keyboard out of the assistant's chat pop-out
-        // — the same steal as the selection path's, one control further down.
-        // AC-650: and not for a pane that is not the selection. RestoreSessionPanesAsync attaches every
-        // restored pane's view in the same burst; every one of them used to post this same Focus() regardless
-        // of selection, so each attach tore the keyboard away from the last (Avalonia's TextBox teardown on
-        // that hand-off, TextBoxTextInputMethodClient.SetPresenter, is what became ruinously slow). Only the
-        // one CockpitView already means to focus (via SelectedSession) claims it here; the others still
-        // restore fully, they just do not fight over the caret.
+        // Focus the input as soon as a session panel appears (L10), deferred past layout. AC-636:
+        // not while in another window, else this steals the keyboard from the chat pop-out. AC-650:
+        // not for a non-selected pane, else a restore burst tears focus from pane to pane.
         Dispatcher.UIThread.Post(() =>
         {
             if (DataContext is SessionPanelViewModel { IsSelected: false })
@@ -198,14 +180,9 @@ public partial class SessionView : UserControl
 
         base.OnDetachedFromVisualTree(e);
 
-        // Force the compositor to flush this pane's teardown now — even when its tab/desk is inactive, so its
-        // renderer is paused and would otherwise never commit. A pane closed without a following render pass leaves
-        // its detached subtree's server composition visuals in the window's scene, uncollectable, until a commit
-        // runs (measured headless: closing a real SessionView without a render orphans it; a forced
-        // RequestCommitAsync releases it — TranscriptLeakHuntTests). That is the permanent half of the transcript
-        // memory growth; the same render-gated teardown lagging under streaming load is the transient half the
-        // AdaptiveGcCompactor was papering over. AC-878 pulled this out into CompositorTeardown so other surfaces
-        // with the same risk can share it instead of copying the block.
+        // Forces the compositor to flush teardown even on an inactive tab, whose paused renderer
+        // would otherwise never commit and leave the subtree's scene visuals uncollectable
+        // (TranscriptLeakHuntTests). AC-878: shared via CompositorTeardown.
         CompositorTeardown.Flush(e.RootVisual);
     }
 
@@ -299,15 +276,8 @@ public partial class SessionView : UserControl
         _UpdateJumpAffordance();
     }
 
-    // The corner button, which offers whichever of the two destinations is out of reach: the tail while the
-    // operator is scrolled up (#21), or — ahead of it — a consent card waiting off-screen.
-    //
-    // AC-996: needs-attention pointed nowhere. A permission that lands while the operator is reading history puts
-    // the session on needs-attention and leaves its card below the fold, and the only affordance was a chevron
-    // that says "newest message" and means nothing about being asked something. Measured: parked at the bottom
-    // the card is in view; twelve wheel clicks up and it is not, with the status identical either way. Deliberate
-    // that this does not scroll the card in by itself — scrolling up is the operator reading, and a question is
-    // not a reason to take the page away from them.
+    // Offers whichever destination is out of reach: the tail while scrolled up (#21), or a consent
+    // card off-screen (AC-996, was a dead-end chevron). Deliberately no auto-scroll to the card.
     private void _UpdateJumpAffordance()
     {
         var awaiting = _PendingPermissionIndex() is var pending && pending >= 0 && !_RowTopIsInView(pending);
@@ -393,14 +363,9 @@ public partial class SessionView : UserControl
         _WatchSession(DataContext as SessionViewModel);
     }
 
-    // A wheel turn at the bottom of the transcript moves nothing, so it raises no ScrollChanged at all — and the
-    // flag, cleared only in that handler, then stands until some later and entirely unrelated change comes to
-    // consume it. Measured (AC-621): park at the newest row, roll one click further down, send a message four
-    // lines or longer, and the row you just sent is read as the operator scrolling away from the tail — the
-    // follow stops, 62px short of the bottom at eight lines, 817px at sixty. Without the wheel turn first, the
-    // same message never breaks it. So expire the flag on the event that always happens, the end of this turn's
-    // layout work: Background is below Layout and Render, so every ScrollChanged the wheel genuinely did cause
-    // has already been raised — and one that never came can no longer be charged to the operator.
+    // A wheel turn at the bottom raises no ScrollChanged, so its flag stood until an unrelated later
+    // change consumed it (AC-621: misread an outgoing message as scrolling away). Expire it at
+    // end-of-turn layout instead, after any real ScrollChanged the wheel caused has fired.
     private void _OnTranscriptWheel(object? sender, PointerWheelEventArgs e)
     {
         _wheelTurned = true;
@@ -428,16 +393,9 @@ public partial class SessionView : UserControl
         _UpdateJumpAffordance();
     }
 
-    // Puts the viewport on the newest row. It asks for the row rather than for an offset, because the offset
-    // this used to use — `ScrollToEnd()`, i.e. `Extent - Viewport` — is computed from an estimate the
-    // panel then corrects on its next arrange: measured at four window sizes with a folded run streaming in, it
-    // left the transcript some 300px short of the bottom the panel would accept, which is the row that kept
-    // half-hiding under the composer hairline (AC-528, criterion 5). Worse, the correction raises another
-    // ScrollChanged, so following it lands right back on a fresh estimate — measured, that is a layout loop the
-    // manager gives up on ("Infinite layout loop detected"). Asking for the last row terminates instead: once it
-    // is in view the guard above says so and this does nothing.
-    // AC-800: the last row is now also the last one the reading level shows, since the transcript binds to
-    // `SessionViewModel.VisibleTranscript`. Following a hidden row could never terminate — the freeze in AC-611.
+    // Asks for the row, not an offset: ScrollToEnd()'s Extent-Viewport estimate left the transcript
+    // ~300px short of bottom (AC-528) and its own correction re-triggered an infinite layout loop.
+    // AC-800: also the last row VisibleTranscript shows — a hidden row could never terminate (AC-611).
     private int _NewestVisibleIndex() => TranscriptItems.ItemCount - 1;
 
     private void _FollowNewest()
@@ -458,23 +416,17 @@ public partial class SessionView : UserControl
         _following = true;
         try
         {
-            // ScrollIntoView forces a synchronous layout pass of its own. While a reply streams, the newest row is
-            // the one on screen, so asking for it costs that pass on every repaint for a row that is already
-            // realised — measured, roughly three layout passes per frame where one would do. Ask only when the
-            // row genuinely is not there, which is the case this call exists for: a jump from far up the history.
+            // ScrollIntoView forces a synchronous layout pass; asking for an already-realised row
+            // (as happens every repaint while streaming) costs that pass for nothing — measured,
+            // ~3 layout passes per frame where one would do. Only ask when the row genuinely isn't there.
             if (TranscriptItems.ContainerFromIndex(newestIndex) is null)
             {
                 TranscriptItems.ScrollIntoView(newestIndex);
             }
 
-            // ScrollIntoView brings the row's rect into view, and a rect taller than the viewport is already
-            // "in view" the moment its top edge is: a streaming reply several viewports tall therefore stops the
-            // viewport moving at all, while the row's bottom — what _NewestRowIsFullyVisible asks about — stays
-            // permanently below it. That leaves the follow unsatisfiable, so every ScrollChanged for the rest of
-            // the session calls back in here and drives another layout pass over a row that is measured whole:
-            // measured, the cost per delta climbs with the reply rather than settling, which is the SDK pane
-            // freezing with memory running away. Close the residue by hand — it is the row's own measured bottom,
-            // not an extent estimate, so it converges instead of chasing a figure the panel keeps correcting.
+            // ScrollIntoView treats a rect as in-view once its top edge is, so a row taller than the
+            // viewport leaves its bottom permanently below — unsatisfiable, re-triggering a layout
+            // pass on every ScrollChanged (the SDK freeze). Closes the residue by hand instead.
             if (_NewestRowIsFullyVisible())
             {
                 return;
@@ -498,13 +450,8 @@ public partial class SessionView : UserControl
         }
     }
 
-    // Whether the newest row is on screen in full — the transcript's honest answer to "are we at the bottom",
-    // and the reason this does not ask `Extent`. The transcript virtualises, so `Extent` is an
-    // estimate assembled from whichever rows happen to be realised; measured across four window sizes with a
-    // folded run streaming in, `Extent - Viewport` sat some 300px above any offset the panel would accept,
-    // which is a bottom the operator can never reach and a follow that can therefore never resume (AC-528).
-    // The last row's own bottom edge is a measurement rather than an estimate, and it is also exactly what
-    // criterion 5 is about: the newest row clear of the composer hairline, not half under it.
+    // Whether the newest row is fully on screen — not Extent, which is only an estimate that
+    // (measured, AC-528) sat ~300px above a reachable bottom. The row's own bottom edge is measured.
     private bool _NewestRowIsFullyVisible()
     {
         // The newest row the reading level actually shows — following one it hides can never terminate, see
@@ -573,10 +520,8 @@ public partial class SessionView : UserControl
 
         if (_IsPasteGesture(e))
         {
-            // The clipboard read is async but the default TextBox paste runs synchronously on this
-            // same KeyDown. To avoid a race where the default paste dumps binary/plaintext before
-            // our async read decides, we take over the whole paste: suppress the default now, then
-            // async-read the clipboard and route it ourselves (image -> attachment, text -> insert).
+            // Clipboard read is async but the default TextBox paste runs synchronously on this same
+            // KeyDown, so the default is suppressed and the whole paste is routed by hand instead.
             e.Handled = true;
             _ = _HandlePasteAsync();
             return;
@@ -625,11 +570,9 @@ public partial class SessionView : UserControl
     private static bool _IsPasteGesture(KeyEventArgs e) =>
         e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control);
 
-    // Handles CTRL+V ourselves: a bitmap on the clipboard becomes a PNG pending attachment on the
-    // view model; otherwise any clipboard text is inserted into the input as a normal text paste.
-    // `SessionViewModel.AddPastedImage` itself gates on `SessionViewModel.CanPasteImages`
-    // (#64) — a session whose driver cannot actually send images gets a transcript notice instead of a
-    // silently vanishing attachment, since CTRL+V has no button here to hide.
+    // Handles CTRL+V: a clipboard bitmap becomes a PNG pending attachment, otherwise text is
+    // inserted normally. AddPastedImage gates on CanPasteImages (#64) — a driver that can't send
+    // images gets a transcript notice instead of a silently vanishing attachment.
     private async System.Threading.Tasks.Task _HandlePasteAsync()
     {
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
@@ -705,12 +648,9 @@ public partial class SessionView : UserControl
         InputBox.SelectionEnd = InputBox.CaretIndex;
     }
 
-    // KeyDown for the push-to-talk hotkey. `SessionViewModel.BeginVoiceHold` itself
-    // guards against OS key-repeat re-triggering a capture restart while the key stays held, so this
-    // only marks the event handled when a hold actually started — an ignored press (voice off, or
-    // already holding) leaves the key free for anything else bound to it. No-ops when global
-    // push-to-talk is active (see `PushToTalkKeyGate`) so the global coordinator's hold
-    // does not fire twice.
+    // KeyDown for push-to-talk. BeginVoiceHold itself guards OS key-repeat, so this only marks the
+    // event handled when a hold actually started — an ignored press leaves the key free elsewhere.
+    // No-ops when global push-to-talk is active (PushToTalkKeyGate) to avoid firing twice.
     private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
     {
         if (DataContext is SessionViewModel vm
@@ -725,11 +665,9 @@ public partial class SessionView : UserControl
     // The key whose press opened a microphone here, until its own release ends the hold — see `_OnPushToTalkKeyUp`.
     private Key? _holdingKey;
 
-    // KeyUp for the push-to-talk hotkey: ends the hold, transcribes, and appends the result to the input box.
-    // Ends only what this view's own KeyDown started (AC-557): a release also arrives for a press that started
-    // nothing — voice off for this session — and ending a hold that never began throws. Which is also why this
-    // asks the key that started it rather than the gate again: the gate's answer can change mid-hold, and a hold
-    // nobody ends holds the microphone for good.
+    // KeyUp for push-to-talk: ends the hold, transcribes, appends to input. AC-557: ends only what
+    // this view's own KeyDown started — asks the key that started it, not the gate again, since the
+    // gate's answer can change mid-hold and an unended hold keeps the microphone forever.
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
         if (_holdingKey == e.Key && DataContext is SessionViewModel vm)

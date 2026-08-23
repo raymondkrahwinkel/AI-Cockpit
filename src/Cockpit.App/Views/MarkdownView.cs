@@ -13,19 +13,16 @@ using Cockpit.Core.Markdown;
 
 namespace Cockpit.App.Views;
 
-// Renders a markdown string into themed Avalonia controls — the cockpit's own thin markdown layer,
-// replacing Markdown.Avalonia so the transcript look (flat text, calm inline-code, dark tables) and
-// clickable links are fully under our control. Parsing lives in `MarkdownParser`; this
-// control walks the parsed blocks and builds the visual tree, matching the approved look&amp;feel mockup.
+// Renders markdown into themed Avalonia controls — replaces Markdown.Avalonia so the transcript
+// look and clickable links are fully under our control. Parsing lives in MarkdownParser; this
+// walks the parsed blocks and builds the visual tree.
 public sealed class MarkdownView : ContentControl
 {
     private static readonly FontFamily MonoFont =
         new("Cascadia Mono, Noto Sans Mono, DejaVu Sans Mono, monospace");
 
-    // Resolved through ThemeBrush on every access rather than cached in a static readonly field, so a theme swap
-    // is picked up the next time a message renders instead of staying pinned to whatever was current at type-load.
-    // The two colours with no dedicated token (code chip, table header) share CockpitInsetBgBrush — the layer
-    // above the panel that both chips and the code block sit on.
+    // Resolved through ThemeBrush on every access, not cached statically, so a theme swap is picked
+    // up next render instead of staying pinned. Code chip/table header share CockpitInsetBgBrush.
     private static IBrush CodeBackground => ThemeBrush.Resolve("CockpitInsetBgBrush", "#202430");
     private static IBrush CodeBlockBackground => ThemeBrush.Resolve("CockpitSecondaryBgBrush", "#0c0e12");
     private static IBrush Hairline => ThemeBrush.Resolve("CockpitHairlineBrush", "#2a2f39");
@@ -83,12 +80,9 @@ public sealed class MarkdownView : ContentControl
     // of being handed to the shell. Return true to say the link was handled. Null everywhere else.
     public Func<string, bool>? LinkHandler { get; set; }
 
-    // A streaming reply re-sets Markdown on every delta, and each set rebuilt the whole block tree: at the end of
-    // a long answer that is hundreds of controls reparsed and reconstructed, tens of times a second, for text that
-    // grew by a few characters. The cost climbs with the reply, so it accelerates rather than settles — the UI
-    // thread saturates and RSS runs away. Same runaway TtyView caps at 30 fps for the terminal, capped the same way
-    // here: the first change after a quiet moment renders at once, a burst is coalesced into one repaint per
-    // interval, and the tick after the last delta always flushes, so the finished reply is never left stale.
+    // A streaming reply re-sets Markdown on every delta; rebuilding the whole block tree each time
+    // gets more expensive as the reply grows, saturating the UI thread. Same 30fps cap as TtyView:
+    // first change renders at once, a burst coalesces into one repaint per interval, last delta always flushes.
     private const int RebuildIntervalMs = 33;
 
     private DispatcherTimer? _rebuildTimer;
@@ -101,10 +95,9 @@ public sealed class MarkdownView : ContentControl
     internal Task WaitForPendingRenderAsync() =>
         _pendingRebuild ? (_pendingRebuildSignal ??= new TaskCompletionSource()).Task : Task.CompletedTask;
 
-    // The rendered tree is kept and reconciled rather than thrown away, so the rate limit caps how OFTEN a repaint
-    // happens and this caps how MUCH each one costs. A delta only ever changes the last block or adds one after
-    // it; every block before that compares equal and keeps the controls it already has. Without this a repaint is
-    // O(reply length) and a long answer is still quadratic overall, only at 30 fps instead of per delta.
+    // Tree is kept and reconciled, not thrown away: the rate limit caps how OFTEN a repaint
+    // happens, this caps how MUCH each costs. A delta only changes/adds the last block; without
+    // this, a repaint is O(reply length) — quadratic overall, just at 30fps instead of per delta.
     private readonly StackPanel _blocks = new() { Spacing = 2 };
     private IReadOnlyList<MarkdownBlock> _rendered = [];
     private Color? _renderedPalette;
@@ -135,18 +128,9 @@ public sealed class MarkdownView : ContentControl
 
         _Render(Markdown ?? string.Empty);
 
-        // The rate limit is for a view on screen; a view that is not on screen must not start a timer, because a
-        // running DispatcherTimer is rooted by the dispatcher and its tick closes over this view — so the view and
-        // every control it built stay reachable for as long as it runs. The tick that stops an idle timer is the
-        // only thing that releases them, and it runs on the UI thread: exactly the thread that is not keeping up
-        // during the heavy streaming reply this rate limit exists for. A virtualising panel binds a container
-        // before attaching it and is free to drop it again without ever attaching it, so those views are made in
-        // numbers. Measured before this guard: 40 of 40 dropped views stayed alive until the dispatcher got round
-        // to their ticks, at roughly 5 MB of controls each — and it feeds itself, since the more is pinned, the
-        // further behind the UI thread falls and the longer the next batch stays pinned.
-        //
-        // Rendering still happens: a plugin asking the host for a markdown control gets one that is drawn, not one
-        // waiting for a visual tree it may never be put in.
+        // A view off screen must not start a timer: a running DispatcherTimer roots it until its
+        // own idle-stop tick runs on the UI thread. Measured: 40/40 never-attached views stayed
+        // alive this way, ~5MB each. Rendering still happens — a plugin gets a drawn control.
         if (this.IsAttachedToVisualTree())
         {
             _rebuildTimer ??= _CreateRebuildTimer();
@@ -158,15 +142,9 @@ public sealed class MarkdownView : ContentControl
     {
         var parsed = MarkdownParser.Parse(markdown, PreserveLineBreaks);
 
-        // Kept blocks keep the brushes they were built with, so a theme swap has to discard all of them —
-        // otherwise the untouched part of a message stays in the previous palette while the rest moves.
-        //
-        // The colour, not the brush instance. Identity looked like the signal — Avalonia does hand out one brush
-        // per key — but a resource lookup is answered against the tree the control is currently in, and a
-        // virtualising panel detaches and re-attaches a row as it recycles it. Every recycle therefore came back
-        // with a different instance for an unchanged palette and threw the whole message away: measured over eight
-        // streaming turns, 0 discards on the first (nothing scrolls yet) and 21, 23, 25, 27 … on the ones after,
-        // one per detach, each rebuilding every block of the reply. That is the SDK pane's memory runaway.
+        // Compares the colour, not brush identity: a recycled row's resource lookup returns a
+        // different brush instance for an unchanged palette, so identity comparison discarded the
+        // whole message every recycle (measured: 21, 23, 25, 27… discards per streaming turn).
         var palette = _CurrentPalette();
         if (palette != _renderedPalette)
         {
@@ -247,11 +225,9 @@ public sealed class MarkdownView : ContentControl
         }
     }
 
-    // `FilePathResolver`'s callback once a background probe lands (AC-642, valkuil 2): `_Render` reuses the
-    // block tree and compares parsed blocks for equality, so an answer that only changed a run's brush inside
-    // an otherwise-unchanged block is invisible to it. Force one full rebuild of this message to make the
-    // now-known answer show up; a view that is not attached defers to the same `_pendingRebuild` path a
-    // recycled row already uses.
+    // AC-642 valkuil 2: FilePathResolver's callback after a background probe lands. _Render compares
+    // parsed blocks for equality, so a run-brush-only change is invisible to it — force one full
+    // rebuild; an unattached view defers to the same _pendingRebuild path a recycled row uses.
     private void _OnPathResolved()
     {
         if (this.IsAttachedToVisualTree())
@@ -284,13 +260,8 @@ public sealed class MarkdownView : ContentControl
             MarkdownParser.ParseInlines($"![{block.ImageAlt}]({block.ImageSource})", PreserveLineBreaks),
             new Thickness(0, 3, 0, 3));
 
-    // Updates the control a block already has instead of building a new one, for the change a stream actually
-    // makes: the block at the end grew. Block-level reuse alone is too coarse for the shapes that arrive as one
-    // big block — a table or a fence is a single block however long it gets, so every repaint reconstructed its
-    // whole grid, or its border, scroller and copy button. Measured over a 4 KB reply that is 231 MB for a table
-    // and 188 MB for a fence against 48 MB for the same length of prose, which splits into small blocks of which
-    // only the last is rebuilt. Returns false whenever the shape changed rather than grew, and a rebuild is then
-    // the honest answer.
+    // Updates the block's existing control, for shapes that arrive as one big block (table/fence)
+    // where block-level reuse is too coarse. Returns false when shape changed rather than grew.
     private bool _TryUpdateInPlace(Control control, MarkdownBlock was, MarkdownBlock now)
     {
         if (was.Kind != now.Kind)
@@ -538,11 +509,8 @@ public sealed class MarkdownView : ContentControl
             Child = grid,
         };
 
-        // The copy button is built on the first hover, not with the block. A Button is a templated control, and
-        // applying its theme costs more than the border, scroller and text of a fenced block put together —
-        // measured, a fence is 290 KB to build against 5 KB for a paragraph, and a transcript row is rebuilt
-        // every time the virtualising panel realises it again. Nobody can click a button without first moving a
-        // pointer onto the block, so nothing is lost by waiting for that.
+        // Copy button built on first hover, not with the block: templating it costs more than the
+        // rest of a fenced block combined (measured: 290KB vs 5KB), and nobody clicks it without hovering first.
         border.PointerEntered += _AddCopyButton;
         return border;
     }
@@ -604,10 +572,8 @@ public sealed class MarkdownView : ContentControl
             VerticalAlignment = VerticalAlignment.Top,
         };
 
-        // A DockPanel, not a horizontal StackPanel: a horizontal StackPanel measures its children with
-        // infinite available width, so TextWrapping=Wrap on the content never triggers and long list items
-        // (e.g. with inline-code tokens) run off and get clipped by the viewport. Docking the marker left
-        // and letting the content fill the remainder gives the text a bounded width, so it wraps (AC-144).
+        // DockPanel, not horizontal StackPanel: a StackPanel measures children with infinite width,
+        // so TextWrapping=Wrap never triggers and long list items get clipped (AC-144).
         var row = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(marker, Dock.Left);
         row.Children.Add(marker);
@@ -665,10 +631,8 @@ public sealed class MarkdownView : ContentControl
         }
     }
 
-    // A text block that keeps the link ranges its runs were built from. Refilling one while a reply streams
-    // would otherwise stack another click handler on it per repaint, and hand out another platform cursor.
-    // `Line` rides along for a resolved file path (AC-642) — null for an ordinary markdown link, which has
-    // nowhere to jump to.
+    // Keeps the link ranges its runs were built from: refilling one while streaming would otherwise
+    // stack another click handler per repaint. `Line` rides along for a resolved file path (AC-642).
     private sealed class InlineTextBlock : SelectableTextBlock
     {
         public readonly List<(int Start, int Length, string Url, int? Line)> Links = [];
@@ -679,10 +643,9 @@ public sealed class MarkdownView : ContentControl
         protected override Type StyleKeyOverride => typeof(SelectableTextBlock);
     }
 
-    // One cursor for every block that holds a link, rather than one per build: a Cursor is a platform handle, and
-    // a streaming reply built a fresh one on each of its repaints. Made on first use rather than in a static
-    // initialiser: constructing one asks the platform for a cursor, and the type is touched by tests that run
-    // without a platform at all — an initialiser would take those down on the mere mention of this class.
+    // One cursor per block holding a link, not one per build — a streaming reply otherwise built a
+    // fresh platform handle per repaint. Made on first use, not a static initialiser, since tests
+    // touch this type without a platform at all.
     private static Cursor? _handCursor;
 
     // Builds a selectable text block from inline runs, styling code/links and making links clickable.
@@ -776,10 +739,9 @@ public sealed class MarkdownView : ContentControl
         block.Cursor = links.Count > 0 ? _handCursor ??= new Cursor(StandardCursorType.Hand) : null;
     }
 
-    // A web address opens the browser exactly as before; anything else in `Links` is a file path this same
-    // method already resolved to a real, existing file — open the preview window instead. `TopLevel.GetTopLevel`
-    // is asked of `block` rather than the enclosing `MarkdownView`: both sit in the same window, and this stays
-    // usable from a static context without threading `this` through the click handler.
+    // A web address opens the browser; anything else in Links is a resolved existing file path —
+    // opens the preview window instead. GetTopLevel is asked of `block`, not the enclosing
+    // MarkdownView, so this stays usable from a static context without threading `this` through.
     private static void _OnLinkClick(
         SelectableTextBlock block,
         List<(int Start, int Length, string Url, int? Line)> links,

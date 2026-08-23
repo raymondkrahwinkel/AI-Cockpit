@@ -7,10 +7,8 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-// Clones a repository from a URL (AC-90). Returns the local clone path from `ShowDialog&lt;string?&gt;` when the
-// clone succeeds, and `null` when the operator cancels, so the New-session dialog only adopts a
-// working directory that is actually there. The clone itself runs in the view model, which raises
-// `CloneFromGitUrlDialogViewModel.CloseRequested` with the path once it lands.
+// AC-90: clones a repository from a URL, returning the local clone path or null on cancel, so
+// the New-session dialog only adopts a working directory that actually exists.
 public partial class CloneFromGitUrlDialog : Window
 {
     public CloneFromGitUrlDialog()
@@ -33,10 +31,8 @@ public partial class CloneFromGitUrlDialog : Window
 
     private void OnCancel(object? sender, RoutedEventArgs e) => Close(null);
 
-    // Browse for the destination. A folder picker returns an existing folder, but git clones into a new (or empty)
-    // one — so the picked folder is treated as the *parent* and the repository's own folder name is kept underneath
-    // it, which is also what makes "relocate to another disk, same layout" a one-click move. Falls back to the picked
-    // folder itself when there is no name to keep yet.
+    // Git clones into a new/empty folder, so the picked folder is treated as the *parent* and the
+    // repo's own folder name kept underneath — falls back to the picked folder when there's no name yet.
     private async void OnBrowseTarget(object? sender, RoutedEventArgs e)
     {
         try

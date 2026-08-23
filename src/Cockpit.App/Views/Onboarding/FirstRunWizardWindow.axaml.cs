@@ -4,10 +4,9 @@ using Cockpit.App.ViewModels.Onboarding;
 
 namespace Cockpit.App.Views.Onboarding;
 
-// The first-run wizard shell (AC-509): a step bar plus Back/Next/Skip over whatever steps the current build has
-// registered. Closes itself when the view model asks — Skip, or Next on the last step — and
-// `Services.FirstRunWizardService` is what marks the wizard complete once this window closes, however
-// it closes, so the operator dismissing it some other way (Escape, the caption's Close button) still counts.
+// AC-509: first-run wizard shell over whatever steps are registered. Closes itself on the view
+// model's request (Skip, or Next on the last step); FirstRunWizardService marks it complete on
+// close however it closes, so Escape or the caption button count too.
 public partial class FirstRunWizardWindow : Window
 {
     public FirstRunWizardWindow()

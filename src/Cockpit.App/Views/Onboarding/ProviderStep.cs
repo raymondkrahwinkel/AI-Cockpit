@@ -6,10 +6,8 @@ using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.App.Views.Onboarding;
 
-// The wizard's provider page (AC-510[b]): what AI providers this host already has, observed where possible, and
-// a way to add more — while staying honest that Ollama and LM Studio (core, no install) already work on any
-// network. Order 20 leaves room below it for AC-511's work-type step, whichever order that lands on, the same
-// way `WelcomeStep` leaves room above at 0.
+// AC-510[b]: wizard's provider page — what AI providers this host has, plus a way to add more.
+// Order 20 leaves room below for AC-511's work-type step, same as WelcomeStep leaves room above at 0.
 internal sealed class ProviderStep(
     IPluginStoreConfigStore storeConfigStore,
     IPluginStoreClient storeClient,

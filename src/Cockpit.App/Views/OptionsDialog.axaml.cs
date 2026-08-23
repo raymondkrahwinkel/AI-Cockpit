@@ -20,12 +20,9 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.App.Views;
 
-// Options dialog (#13): a categorised replacement for the sidebar's Options flyout, which had grown
-// too tall for a popup. Its `Window.DataContext` is the shared `CockpitViewModel`
-// passed in by `Cockpit.App.Services.SessionDialogService.ShowOptionsDialogAsync`. The PLUGINS group (AC-1005) is
-// the one part of the sidebar built here in code rather than declared in the XAML above, because its rows come
-// from `CockpitViewModel.PluginOptionsRows` — whichever plugins are installed this session — instead of a fixed,
-// known-at-compile-time list the other 12 categories are.
+// #13: categorised replacement for the sidebar's Options flyout, which had grown too tall for a
+// popup. DataContext is the shared CockpitViewModel. The PLUGINS group (AC-1005) is built here in
+// code, not XAML, since its rows come from whichever plugins are installed this session.
 public partial class OptionsDialog : Window
 {
     // AC-1040: a `?` beside each page's title, landing on the section of the knowledge base that describes that
@@ -105,10 +102,9 @@ public partial class OptionsDialog : Window
 
         await cockpit.ApplyOptionsCommand.ExecuteAsync(null);
 
-        // A profile the plugin config view rejected, or a plugin settings row that refused to save (AC-1005),
-        // blocks the whole Apply (AC-1001 criterion 5) — stay open with the error visible rather than close over
-        // it. `PluginSettingsError` names which row refused, since the operator may be looking at a different
-        // category than the one that failed.
+        // AC-1005/AC-1001 criterion 5: a rejected profile or plugin settings row blocks the whole
+        // Apply — stay open with the error visible. PluginSettingsError names which row refused,
+        // since the operator may be looking at a different category.
         PluginSettingsErrorText.IsVisible = cockpit.PluginSettingsError is { Length: > 0 };
         PluginSettingsErrorText.Text = cockpit.PluginSettingsError;
 
@@ -121,10 +117,9 @@ public partial class OptionsDialog : Window
         Close();
     }
 
-    // The keywords a plugin's row and its own settings content search under (criterion 7: "docker" must also
-    // find the Docker status line inside Local CI). There is no way to derive these from a view's actual content,
-    // so — like every other category's `ConverterParameter` in the XAML above — they are hand-authored per known
-    // first-party plugin. A plugin with no entry here still gets a row; it just searches on its name alone.
+    // Criterion 7: search keywords for a plugin's row ("docker" must also find Docker inside Local
+    // CI). No way to derive these from view content, so hand-authored per known plugin; one with
+    // no entry still gets a row and searches on its name alone.
     private static readonly Dictionary<string, string> _PluginSearchKeywords = new(StringComparer.Ordinal)
     {
         ["youtrack"] = "youtrack issue tracker",
@@ -141,11 +136,9 @@ public partial class OptionsDialog : Window
         ["workflows"] = "workflows",
     };
 
-    // Builds the PLUGINS group: a non-clickable header (criterion 1) plus one plain row per plugin with a
-    // registered settings view, appended straight into the same `CategoryNav` ListBox and `CategoryContent`
-    // Panel the 12 static categories above declare in XAML — so the sidebar stays the one continuous scroll
-    // region and selection scope (criterion 6) that switching `ScrollViewer.Tag` against
-    // `CategoryTagEqualsConverter` already relies on. Skipped entirely when nothing is installed (criterion 10).
+    // Builds the PLUGINS group: header (criterion 1) plus one row per plugin with a settings view,
+    // appended into the same CategoryNav/CategoryContent the static categories use, so the sidebar
+    // stays one scroll region and selection scope (criterion 6). Skipped when nothing is installed (criterion 10).
     private void _BuildPluginCategories(CockpitViewModel cockpit)
     {
         if (cockpit.PluginOptionsRows.Count == 0)

@@ -5,17 +5,9 @@ using Cockpit.Core.Configuration;
 
 namespace Cockpit.App.Views;
 
-// The floating "Listening"/"Transcribing" pill shown while a global push-to-talk hold is active — see
-// `VoicePushToTalkCoordinator` for what drives its Show/Hide. Borderless, transparent,
-// always-on-top, bottom-centre of the primary screen, and (on Linux/X11) click-through so it never
-// steals focus or blocks the app underneath.
-// AC-636: and `ShowActivated="False"` in the markup, because click-through only ever answered the pointer —
-// showing a window activates it (on Win32: `SetFocus` + `SetForegroundWindow`), so the pill took the keyboard
-// off whatever the operator was typing in.
-// Ported from the KDE/KWin spike that proved topmost +
-// positioning + click-through work via XWayland (Iron Law #9: reuse the proven approach as the base
-// rather than reinventing it) — this window reuses that spike's window setup and click-through code
-// almost verbatim.
+// Floating "Listening"/"Transcribing" pill during push-to-talk — see VoicePushToTalkCoordinator.
+// AC-636 adds `ShowActivated="False"` in markup: click-through alone only answers the pointer,
+// showing a window still activates it (Win32) and steals the keyboard. Ported from the KDE/KWin spike.
 public partial class VoiceOverlayWindow : Window
 {
     private const int BottomGap = 48;
@@ -24,15 +16,12 @@ public partial class VoiceOverlayWindow : Window
     public VoiceOverlayWindow()
     {
         InitializeComponent();
-        // Set here rather than in the markup because it is the product's name plus a word: nobody reads this one
-        // (the pill has no decorations and stays out of the taskbar), but a window that names the app should not
-        // be the one place a rename has to remember to visit.
+        // Set here, not in markup: it's the product name plus a word, and a rename shouldn't have
+        // to remember this window even though nobody reads it (no decorations, not in the taskbar).
         Title = $"{CockpitProduct.DisplayName} voice overlay";
         Opened += _OnOpened;
-        // Re-centre once the window actually has a size. On the very first show the pre-show/Opened calls run
-        // before SizeToContent has measured the pill, so Bounds is still 0 and the maths lands it in the wrong
-        // place; this fires when the real size settles. It also re-centres when the pill grows/shrinks between
-        // its "Listening" and "Transcribing" states, keeping it anchored bottom-centre throughout.
+        // Fires once the real size settles: on first show, Bounds is still 0 before SizeToContent
+        // measures it, and this also re-centres as the pill grows/shrinks between its two states.
         SizeChanged += (_, _) => PositionBottomCenter();
     }
 
@@ -59,10 +48,8 @@ public partial class VoiceOverlayWindow : Window
         _TryEnableClickThrough();
     }
 
-    // Best-effort X11 input-shape click-through (Linux/XWayland only, ported from the spike): gives the
-    // window an empty input region so pointer events fall through to whatever is beneath it. Applied
-    // once — the shape persists on the platform window for its lifetime. A failure here just leaves the
-    // pill clickable; it never blocks showing the overlay.
+    // Best-effort X11 input-shape click-through (Linux/XWayland, ported from the spike): an empty
+    // input region so pointer events fall through. Applied once; the shape persists for the window's lifetime.
     private void _TryEnableClickThrough()
     {
         if (_clickThroughApplied || !OperatingSystem.IsLinux())

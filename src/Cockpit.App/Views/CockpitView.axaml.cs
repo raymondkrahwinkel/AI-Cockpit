@@ -66,11 +66,9 @@ public partial class CockpitView : UserControl
     {
         base.OnAttachedToVisualTree(e);
 
-        // Handle shortcuts on the top-level (window) so they fire regardless of which panel has focus. We
-        // tunnel (preview) so a gesture is seen before a focused TTY terminal swallows the keystroke into the
-        // pty; the per-binding gate below still stands down inside a TextBox, so its Ctrl+Left/Right
-        // word-navigation stays intact. A session switch that fires over the TTY is marked handled, so it does
-        // not also reach claude — rebind it in Options → Shortcuts to keep that gesture for the TUI.
+        // Top-level shortcuts, tunnelled so a gesture is seen before a focused TTY swallows it into
+        // the pty; the per-binding gate still stands down inside a TextBox (Ctrl+Left/Right stays
+        // intact). A session switch that fires over the TTY is marked handled so it doesn't reach claude too.
         if (e.RootVisual is InputElement root)
         {
             root.AddHandler(KeyDownEvent, OnRootKeyDown, RoutingStrategies.Tunnel);
@@ -80,10 +78,8 @@ public partial class CockpitView : UserControl
         // Tunnelling so the selection lands before a focused terminal or the reorder grip consumes the press.
         SessionGrid?.AddHandler(PointerPressedEvent, OnSessionPanePressed, RoutingStrategies.Tunnel);
 
-        // Keyboard or programmatic focus landing in a pane selects it too — not just a pointer press (AC-65).
-        // GotFocus only bubbles, so we listen on the way up; handledEventsToo so a control that marks its own
-        // focus handled (as some do) cannot hide the pane change from us. Without this a terminal can hold
-        // keyboard focus while the selection sits on another pane or on nothing.
+        // AC-65: focus landing in a pane selects it too, not just a pointer press. handledEventsToo
+        // so a control marking its own focus handled cannot hide the pane change from us.
         SessionGrid?.AddHandler(GotFocusEvent, OnSessionPaneGotFocus, RoutingStrategies.Bubble, handledEventsToo: true);
 
         _AttachPluginSections();
@@ -96,11 +92,8 @@ public partial class CockpitView : UserControl
             cockpit.PropertyChanged += OnCockpitPropertyChanged;
             cockpit.SpatialNavigationRequested += OnSpatialNavigationRequested;
 
-            // Closing a pane leaves its whole visual subtree (view, transcript rows, view model) rooted whenever a
-            // UIA client is active (a screen reader, 1Password's autofill, PowerToys, a desktop-automation tool):
-            // Avalonia's ControlAutomationPeer marks its children cache stale on the removal but never releases the
-            // old _children list, and a passive client never re-queries to rebuild it. Forcing the rebuild ourselves
-            // on close (see OnGridSessionsChanged) drops the removed container's peer and lets the pane collect.
+            // A closed pane's subtree leaks with a UIA client active: ControlAutomationPeer marks
+            // its cache stale but never releases _children, and a passive client never re-queries.
             _observedSessions = cockpit.Sessions;
             _observedSessions.CollectionChanged += OnGridSessionsChanged;
 
@@ -118,11 +111,9 @@ public partial class CockpitView : UserControl
             _resourceTimer.Start();
             _ = cockpit.SampleResourcesAsync();
 
-            // AC-439: same footing as the two timers above — the arithmetic (which panes collide) lives on the view
-            // model, only the tick lives here. The refresh itself hops to the thread pool for its filesystem
-            // canonicalization (see RefreshClaimCollisionsAsync), so this tick handler is fire-and-forget rather
-            // than awaited — a DispatcherTimer tick cannot be async void's usual footgun here since nothing on the
-            // UI thread is waiting on it.
+            // AC-439: collision arithmetic lives on the view model, only the tick lives here. Fire-
+            // and-forget rather than awaited: the refresh hops to the thread pool for filesystem
+            // canonicalization (RefreshClaimCollisionsAsync), and nothing on the UI thread awaits it.
             _claimCollisionTimer = new DispatcherTimer { Interval = ClaimCollisionCheckInterval };
             _claimCollisionTimer.Tick += (_, _) => _ = cockpit.RefreshClaimCollisionsAsync();
             _claimCollisionTimer.Start();
@@ -236,10 +227,9 @@ public partial class CockpitView : UserControl
         }
         else if (e.PropertyName == nameof(CockpitViewModel.DockPanels))
         {
-            // AC-953: the Assistant registers itself when its coordinator starts — after this view has attached,
-            // and possibly after the restored `OpenDockPanelId` has been read back — and withdraws itself again
-            // whenever it is undocked. Both change what the rail can show, so the rail follows the registry
-            // rather than only the open-panel id.
+            // AC-953: the Assistant registers with its coordinator after this view attaches (and
+            // maybe after OpenDockPanelId is restored) and withdraws on undock — so the rail
+            // follows the registry, not only the open-panel id.
             _ApplyDockRailWidth();
             _RebuildDockPanelContent();
         }
@@ -270,11 +260,9 @@ public partial class CockpitView : UserControl
         }
     }
 
-    // A closed pane's automation peer is only dropped from its parent's cached children when something re-queries
-    // them, which a passive UIA client never does — so we do it ourselves. Only removals leave a stale entry; an
-    // add or a reorder cannot. Posted at Background priority so the ItemsControl has already pulled the container
-    // out of the visual tree by the time we rebuild — rebuilding earlier would just re-cache a container still on
-    // its way out.
+    // A closed pane's automation peer only drops from cached children when re-queried, which a
+    // passive UIA client never does. Only removals leave a stale entry. Posted at Background
+    // priority so the ItemsControl has already pulled the container out before we rebuild.
     private void OnGridSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.Action is NotifyCollectionChangedAction.Add or NotifyCollectionChangedAction.Move)
@@ -285,10 +273,9 @@ public partial class CockpitView : UserControl
         Dispatcher.UIThread.Post(_RefreshPaneAutomationPeers, DispatcherPriority.Background);
     }
 
-    // Force the pane grid's automation-peer children to rebuild from the live visual tree, dropping the peer of the
-    // just-removed container (and with it the closed pane's view, transcript and view model). The tile panel is the
-    // container's visual parent, so its peer holds the stale reference; the grid is poked too for the case a client
-    // walked only that far. FromElement returns null when no peer exists, so this is a no-op without active UIA.
+    // Forces the pane grid's automation-peer children to rebuild, dropping the just-removed
+    // container's peer (and the closed pane behind it). The tile panel holds the stale reference;
+    // the grid is poked too in case a client walked only that far. No-op without active UIA.
     private void _RefreshPaneAutomationPeers()
     {
         if (SessionGrid is null)
@@ -625,10 +612,9 @@ public partial class CockpitView : UserControl
 
     private void OnSessionItemPointerReleased(object? sender, PointerReleasedEventArgs e) => _draggingSession = null;
 
-    // The awareness banner's "Enable now" (AC-41). Same two-clicks-plus-password path as Options → Security, and
-    // the same copy: the password dialog already carries the irreversibility warning, so the banner needs no
-    // confirm of its own. Opening a window is a view's job (it needs the owner), but the outcome is a toast raised
-    // from the view model, so success and failure are said the same way wherever encryption is turned on.
+    // AC-41: awareness banner's "Enable now" — same two-clicks-plus-password path as Options →
+    // Security; the password dialog already carries the irreversibility warning, so no confirm
+    // needed here. Opening the window is the view's job, but the outcome toast comes from the view model.
     private async void OnEnableEncryption(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not CockpitViewModel cockpit || TopLevel.GetTopLevel(this) is not Window owner)
@@ -654,10 +640,9 @@ public partial class CockpitView : UserControl
         }
     }
 
-    // Clicking anywhere on a workspace tab switches to it — same whole-row click target as a session
-    // row, and the same wiring: the tab is the `Border`'s DataContext. The ✕ inside the tab is a
-    // Button, so its click is handled there and never reaches this; a press that bubbles up from it would
-    // otherwise select the workspace it is about to close.
+    // Clicking anywhere on a workspace tab switches to it, same whole-row target as a session row.
+    // The ✕ inside is a Button so its click is handled there and never reaches this — else a
+    // bubbling press would select the workspace it's about to close.
     private void OnWorkspaceTabPressed(object? sender, PointerPressedEventArgs e)
     {
         if (e.Source is Control source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
@@ -684,20 +669,18 @@ public partial class CockpitView : UserControl
         }
     }
 
-    // Tab reordering (Raymond, 2026-07-15). Drag state is two fields rather than a full drag-drop session: the
-    // strip is one row of small targets, so "which tab, and has the pointer moved far enough to mean it" is the
-    // whole problem. The threshold keeps a sloppy click — the gesture that selects a workspace — from being
-    // read as a one-pixel reorder.
+    // Tab reordering: drag state is two fields, not a full drag-drop session — the strip is one row
+    // of small targets, so "which tab, moved far enough" is the whole problem. Threshold keeps a
+    // sloppy click (select) from reading as a one-pixel reorder.
     private WorkspaceTabViewModel? _draggingTab;
     private Point _tabDragOrigin;
     private const double TabDragThreshold = 6;
 
     private void OnWorkspaceTabPointerMoved(object? sender, PointerEventArgs e)
     {
-        // The strip is the ItemsControl's own panel, reached by name. Walking up from the tab does not get here:
-        // each tab sits inside its generated ContentPresenter, so Border.Parent is that presenter — which has
-        // exactly one child, the tab itself, so the drop target was always the tab being dragged and nothing
-        // ever moved.
+        // Reached by name, not by walking up from the tab: each tab sits inside a generated
+        // ContentPresenter, so Border.Parent is that presenter — walking up would always land back
+        // on the tab being dragged and nothing would ever move.
         if (_draggingTab is null || WorkspaceTabStrip?.ItemsPanelRoot is not { } strip || DataContext is not CockpitViewModel cockpit)
         {
             return;
@@ -918,11 +901,9 @@ public partial class CockpitView : UserControl
         {
             _draggingWidget = pane;
 
-            // Captured so the gesture keeps reporting once the pointer leaves the grid — without it the moves
-            // simply stop at the dashboard's edge and the release lands nowhere this view ever hears about,
-            // which is why a widget could never be dragged to another workspace's tab. The handlers still run:
-            // they sit on DashboardGrid, an ancestor of this header, and a captured pointer's events bubble
-            // from the capture target as usual.
+            // Captured so the gesture keeps reporting past the dashboard's edge — without it a
+            // widget could never be dragged to another workspace's tab. Handlers still run: they sit
+            // on DashboardGrid, an ancestor, and a captured pointer's events bubble as usual.
             e.Pointer.Capture(header);
         }
     }
@@ -972,10 +953,9 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        // The math answers both gestures the same way: what rectangle would this land on, or null when the
-        // answer is "nothing legal" — a resize onto a neighbour, off the grid, or inverted past its own origin;
-        // a move off the grid or over two widgets at once. The move asks Drop rather than working the cell out
-        // here, so the ghost cannot promise a landing the release then refuses.
+        // Answers both gestures the same way: what rectangle would this land on, or null for
+        // "nothing legal" (onto a neighbour, off-grid, inverted, over two widgets). Move asks Drop
+        // rather than working the cell out here, so the ghost can't promise a landing the release refuses.
         var panes = cockpit.Workspaces.WidgetPanes.Select(pane => (pane.Id, pane.Pane.Cell)).ToList();
         var layout = new DashboardLayout { Columns = columns, Rows = rows };
         _ghostCell = _resizingWidget is not null
@@ -1024,12 +1004,9 @@ public partial class CockpitView : UserControl
         }
     }
 
-    // Which workspace tab the pointer is over, or null. Only a dashboard other than the one showing counts: a
-    // sessions workspace cannot hold a widget (`WorkspaceTypeRules.Accepts` refuses it), and its own tab
-    // would be a drop that does nothing.
-    //
-    // Hit-tested from the strip rather than by handlers on the tabs, for the reason the strip's own drag
-    // already found out: a move rebuilds the tabs, so anything attached to one does not survive it.
+    // Which workspace tab the pointer is over, or null. Only a dashboard other than the current one
+    // counts — WorkspaceTypeRules.Accepts refuses a sessions workspace, and the own tab is a no-op
+    // drop. Hit-tested from the strip, not per-tab handlers, since a move rebuilds the tabs.
     private WorkspaceTabViewModel? _WorkspaceTabAt(PointerEventArgs e)
     {
         if (WorkspaceTabStrip?.ItemsPanelRoot is not { } strip || DataContext is not CockpitViewModel cockpit)
@@ -1199,12 +1176,9 @@ public partial class CockpitView : UserControl
         }
     }
 
-    // --- Drag-to-reorder grid panes (#54 follow-up) ----------------------------------------------------
-    // The pane is "picked up" (dimmed + follows the pointer via a render transform, which leaves its layout
-    // slot untouched) while an accent outline highlights the cell it will drop into. Nothing moves until
-    // release — live-swapping mid-drag felt clunky. Reordering goes through the panel's cell list, never the
-    // bound collection (moving a session there rebuilds its pane → a pty-less black terminal). The grid is
-    // 2-D, so the pane follows the pointer on both axes and drops into whichever cell the pointer is over.
+    // --- Drag-to-reorder grid panes (#54 follow-up) ---
+    // Pane is dimmed and follows the pointer via render transform; nothing moves until release.
+    // Reordering goes through the cell list, never the bound collection — that would rebuild the pane.
     private SessionPanelViewModel? _draggingPane;
     private SessionTilePanel? _dragPanel;
     private Control? _dragContainer;
@@ -1336,10 +1310,8 @@ public partial class CockpitView : UserControl
         }
     }
 
-    // Pressing anywhere in a pane makes that session the active one and (unless the press was on an
-    // interactive control like a header button or the rename box) puts keyboard focus on its terminal, so a
-    // click-then-type lands in the session you just clicked. Not marked handled — the terminal/button still
-    // gets the press.
+    // Pressing anywhere in a pane makes that session active and (unless on a header button/rename
+    // box) focuses its terminal, so click-then-type lands where clicked. Not marked handled.
     private void OnSessionPanePressed(object? sender, PointerPressedEventArgs e)
     {
         if (DataContext is not CockpitViewModel cockpit
@@ -1359,15 +1331,9 @@ public partial class CockpitView : UserControl
         }
     }
 
-    // The other half of the click path: focus that lands in a pane by any route — the keyboard, a restored
-    // window, a plugin moving it — makes that session the selected one, so the accent border, InjectText and
-    // the F9 voice hold all follow the pane the operator is actually in (AC-65). Guarded on the current
-    // selection so the focus a selection-change itself moves (see _FocusSelectedSessionInput) is a no-op
-    // and cannot loop.
-    //
-    // AC-704: the ReferenceEquals guard alone missed a second loop — derealizing the pane a selection just
-    // left could force focus back onto it, and that GotFocus flipped the selection back, fighting
-    // RefreshPaneVisibility (~45% CPU, unresponsive). IsPaneVisible closes it.
+    // AC-65: focus landing in a pane by any route selects it. Guarded on current selection so
+    // _FocusSelectedSessionInput's own focus move is a no-op. AC-704: IsPaneVisible closes a
+    // second loop where derealizing a just-left pane forced focus back and fought RefreshPaneVisibility.
     private void OnSessionPaneGotFocus(object? sender, FocusChangedEventArgs e)
     {
         if (DataContext is not CockpitViewModel cockpit
@@ -1423,12 +1389,9 @@ public partial class CockpitView : UserControl
         return null;
     }
 
-    // Puts keyboard focus on whatever this pane types into: a terminal pane's terminal, an SDK pane's composer.
-    // This only ever looked for a terminal, so switching to an SDK session moved the selection and left focus
-    // where it was — on the session the operator had just left, which is where the next keystroke went. It reads
-    // as the app ignoring the switch, and on a terminal pane it never showed, because there the one control it
-    // knew about is the one that wanted focus. Fixed here rather than at the selection-change caller: the pane
-    // click path goes through the same helper and had the same hole.
+    // Puts keyboard focus on whatever this pane types into (terminal or SDK composer). Previously
+    // only looked for a terminal, so switching to an SDK session left focus on the session just
+    // left. Fixed here, not at the selection-change caller, since the pane click path shares this helper.
     internal static void _FocusInputIn(Control container)
     {
         // AC-636: never across windows — a selection change the operator did not make must not pull the caret out

@@ -6,14 +6,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-// The New-session form, opened beside the cockpit rather than over it (AC-367). Closes with the confirmed
-// `NewSessionResult` (or null on cancel) when the view model raises
-// `NewSessionDialogViewModel.CloseRequested`.
-//
-// ⚠️ This window is not shown with `ShowDialog`, so the value handed to `Window.Close(object)`
-// reaches nobody — `Services.SessionDialogService` subscribes to the same event to record the
-// answer, and it must do so *before* setting this window's DataContext, because the handler below is
-// registered from `DataContextChanged` and closes the window. Whoever closes first wins.
+// AC-367: New-session form, opened beside the cockpit. Not shown with ShowDialog, so
+// SessionDialogService must subscribe to CloseRequested before this window's DataContext is
+// set, since the handler below (on DataContextChanged) closes the window first.
 public partial class NewSessionDialog : Window
 {
     public NewSessionDialog()
@@ -26,17 +21,14 @@ public partial class NewSessionDialog : Window
     {
         if (DataContext is NewSessionDialogViewModel viewModel)
         {
-            // The title bar waits for the view model: this window is "New session" or "Continue session"
-            // depending on it, and the XAML binding that decides which has not run while the constructor has.
-            // Applied there, the bar read Avalonia's default "Window" — which the old 13px line hid better
-            // than a heading does.
+            // Title bar waits for the view model — "New session" vs "Continue session" depends on
+            // it, and applying it in the constructor showed Avalonia's default "Window" instead.
             CockpitWindowChrome.Apply(this, viewModel.HeaderText);
             viewModel.CloseRequested += result => Close(result);
         }
     }
 
-    // Opens the OS folder picker and drops the chosen directory into the working-directory field. The picker
-    // needs the window's TopLevel, so it lives here rather than in the view model; the VM owns everything else.
+    // Needs the window's TopLevel, so the picker lives here rather than in the view model.
     private async void OnBrowseWorkingDirectory(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not NewSessionDialogViewModel viewModel)
