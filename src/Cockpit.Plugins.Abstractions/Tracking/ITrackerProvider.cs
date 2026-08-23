@@ -10,7 +10,9 @@ namespace Cockpit.Plugins.Abstractions.Tracking;
 /// </summary>
 public interface ITrackerProvider
 {
-    /// <summary>The tracker's id — matches the <c>tracker</c> a "start" intent carries, e.g. <c>youtrack</c> or <c>github-issues</c>.</summary>
+    /// <summary>
+    /// The tracker's id — matches the <c>tracker</c> a "start" intent carries, e.g. <c>youtrack</c> or <c>github-issues</c>.
+    /// </summary>
     string TrackerId { get; }
 
     /// <summary>
@@ -24,10 +26,14 @@ public interface ITrackerProvider
     /// </summary>
     IReadOnlyList<string> ReadToolMcpServerNames => [];
 
-    /// <summary>Posts a comment on the issue. Returns whether it landed.</summary>
+    /// <summary>
+    /// Posts a comment on the issue. Returns whether it landed.
+    /// </summary>
     Task<bool> PostCommentAsync(string issueId, string comment, CancellationToken cancellationToken = default);
 
-    /// <summary>Moves the issue to <paramref name="stage"/> — a stage name in the tracker's own vocabulary. Returns whether it landed (false when the tracker has no such stage, or none at all).</summary>
+    /// <summary>
+    /// Moves the issue to <paramref name="stage"/> — a stage name in the tracker's own vocabulary. Returns whether it landed (false when the tracker has no such stage, or none at all).
+    /// </summary>
     Task<bool> SetStageAsync(string issueId, string stage, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -39,10 +45,14 @@ public interface ITrackerProvider
     /// </summary>
     string? SuggestStageName(TrackerWorkStage stage) => null;
 
-    /// <summary>Attaches a file to the issue (a verify screenshot). Returns whether it landed — false when the tracker has no attachment channel (GitHub Issues), so a consumer can fall back to a comment.</summary>
+    /// <summary>
+    /// Attaches a file to the issue (a verify screenshot). Returns whether it landed — false when the tracker has no attachment channel (GitHub Issues), so a consumer can fall back to a comment.
+    /// </summary>
     Task<bool> AttachAsync(string issueId, string fileName, byte[] content, string mediaType, CancellationToken cancellationToken = default);
 
-    /// <summary>Reads the issue's comments (AC-155), oldest to newest — what a consumer polls to see the operator's reply to a blockade question. An empty list on failure, never a throw.</summary>
+    /// <summary>
+    /// Reads the issue's comments (AC-155), oldest to newest — what a consumer polls to see the operator's reply to a blockade question. An empty list on failure, never a throw.
+    /// </summary>
     Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string issueId, CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -12,10 +12,18 @@ namespace Cockpit.Plugins.Abstractions;
 /// re-registers on every start — so a plugin never persists templates itself.
 /// </para>
 /// </summary>
-/// <param name="Id">Stable identity ("autopilot.triage"), so a registration is recognised across versions and an operator override can be keyed to it.</param>
-/// <param name="Name">What the template picker shows.</param>
-/// <param name="Body">The goal/brief text, with optional <c>{{placeholder}}</c> tokens resolved at run time.</param>
-/// <param name="RequiredPlaceholders">The placeholder names the brief cannot do without, so the surface can warn before a run is started with one unfilled. Optional.</param>
+/// <param name="Id">
+/// Stable identity ("autopilot.triage"), so a registration is recognised across versions and an operator override can be keyed to it.
+/// </param>
+/// <param name="Name">
+/// What the template picker shows.
+/// </param>
+/// <param name="Body">
+/// The goal/brief text, with optional <c>{{placeholder}}</c> tokens resolved at run time.
+/// </param>
+/// <param name="RequiredPlaceholders">
+/// The placeholder names the brief cannot do without, so the surface can warn before a run is started with one unfilled. Optional.
+/// </param>
 /// <param name="DeliversPullRequest">
 /// Whether a run started from this template is a <em>code</em> run that must end with a merge-ready pull request
 /// (AC-216) — the template-level signal that decides the run's finalization, not a global switch. A code template

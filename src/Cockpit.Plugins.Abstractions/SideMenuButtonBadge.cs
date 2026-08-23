@@ -73,7 +73,9 @@ public sealed class SideMenuButtonBadge
         }
     }
 
-    /// <summary>Raised whenever <see cref="Primary"/> or <see cref="Secondary"/> changes, so the host re-renders without polling.</summary>
+    /// <summary>
+    /// Raised whenever <see cref="Primary"/> or <see cref="Secondary"/> changes, so the host re-renders without polling.
+    /// </summary>
     public event Action? Changed;
 
     /// <summary>

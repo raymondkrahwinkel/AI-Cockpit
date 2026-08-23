@@ -25,9 +25,13 @@ public enum McpProbeOutcome
     /// </summary>
     NotSignedIn,
 
-    /// <summary>The tool ran and reported, in a way this probe can actually recognise, that the value does not resolve to anything.</summary>
+    /// <summary>
+    /// The tool ran and reported, in a way this probe can actually recognise, that the value does not resolve to anything.
+    /// </summary>
     NotFound,
 
-    /// <summary>The tool ran and reported success. <see cref="McpProbeResult.Detail"/> carries its raw text output.</summary>
+    /// <summary>
+    /// The tool ran and reported success. <see cref="McpProbeResult.Detail"/> carries its raw text output.
+    /// </summary>
     Success,
 }

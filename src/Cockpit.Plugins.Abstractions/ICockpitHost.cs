@@ -30,13 +30,19 @@ public interface ICockpitHost
 
     IPluginStorage Storage { get; }
 
-    /// <summary>Registers the plugin's settings view, opened from the gear next to the plugin in the plugin manager. Call at most once.</summary>
+    /// <summary>
+    /// Registers the plugin's settings view, opened from the gear next to the plugin in the plugin manager. Call at most once.
+    /// </summary>
     void AddSettings(Func<Control> createView);
 
-    /// <summary>Adds a launcher button to the left menu; clicking runs <paramref name="onInvoke"/> — typically opening a dialog via <see cref="ShowDialogAsync"/>.</summary>
+    /// <summary>
+    /// Adds a launcher button to the left menu; clicking runs <paramref name="onInvoke"/> — typically opening a dialog via <see cref="ShowDialogAsync"/>.
+    /// </summary>
     void AddSideMenuButton(string title, Action onInvoke);
 
-    /// <summary>Adds an inline accordion section to the left menu, under the session list — for small, always-visible content.</summary>
+    /// <summary>
+    /// Adds an inline accordion section to the left menu, under the session list — for small, always-visible content.
+    /// </summary>
     void AddSideMenuSection(string title, Func<Control> createView);
 
     /// <summary>
@@ -66,7 +72,9 @@ public interface ICockpitHost
     /// no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep
     /// compiling untouched — only the app's own host renders it.
     /// </summary>
-    /// <param name="createView">Builds the control for one session; invoked once per session panel, on the UI thread.</param>
+    /// <param name="createView">
+    /// Builds the control for one session; invoked once per session panel, on the UI thread.
+    /// </param>
     void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView)
     {
     }
@@ -163,7 +171,9 @@ public interface ICockpitHost
     {
     }
 
-    /// <summary>The templates every plugin has contributed — what the workflows plugin reads to build its "New flow" picker. Default empty.</summary>
+    /// <summary>
+    /// The templates every plugin has contributed — what the workflows plugin reads to build its "New flow" picker. Default empty.
+    /// </summary>
     IReadOnlyList<WorkflowTemplate> WorkflowTemplates => [];
 
     /// <summary>
@@ -179,7 +189,9 @@ public interface ICockpitHost
     {
     }
 
-    /// <summary>Raised when any plugin fires a trigger — what the workflows plugin listens to. No other plugin has a reason to.</summary>
+    /// <summary>
+    /// Raised when any plugin fires a trigger — what the workflows plugin listens to. No other plugin has a reason to.
+    /// </summary>
     event EventHandler<WorkflowTriggerFired>? WorkflowTriggerRaised
     {
         add { }
@@ -244,10 +256,14 @@ public interface ICockpitHost
     {
     }
 
-    /// <summary>The Autopilot templates every plugin has contributed — what the Autopilot plugin reads to build its template picker. Default empty.</summary>
+    /// <summary>
+    /// The Autopilot templates every plugin has contributed — what the Autopilot plugin reads to build its template picker. Default empty.
+    /// </summary>
     IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates => [];
 
-    /// <summary>Opens a window beside the cockpit hosting <paramref name="createContent"/>; the plugin owns the content control. Not modal: the operator can still reach a running session while it is open, and can open a second one — every call builds its content afresh. Use the <paramref name="singleInstanceKey"/> overload for a window there should only ever be one of.</summary>
+    /// <summary>
+    /// Opens a window beside the cockpit hosting <paramref name="createContent"/>; the plugin owns the content control. Not modal: the operator can still reach a running session while it is open, and can open a second one — every call builds its content afresh. Use the <paramref name="singleInstanceKey"/> overload for a window there should only ever be one of.
+    /// </summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 
     /// <summary>
@@ -456,9 +472,15 @@ public interface ICockpitHost
     /// existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling
     /// untouched — only the app's own host can actually reach an MCP server.
     /// </summary>
-    /// <param name="serverName">The name this plugin registered the server under via <see cref="AddMcpServer"/> (<see cref="Mcp.McpServerContribution.Name"/>).</param>
-    /// <param name="toolName">The MCP tool to call.</param>
-    /// <param name="arguments">The tool's arguments, or null for none.</param>
+    /// <param name="serverName">
+    /// The name this plugin registered the server under via <see cref="AddMcpServer"/> (<see cref="Mcp.McpServerContribution.Name"/>).
+    /// </param>
+    /// <param name="toolName">
+    /// The MCP tool to call.
+    /// </param>
+    /// <param name="arguments">
+    /// The tool's arguments, or null for none.
+    /// </param>
     Task<Mcp.McpProbeResult> ProbeMcpToolAsync(
         string serverName,
         string toolName,
@@ -583,9 +605,15 @@ public interface ICockpitHost
     /// Default no-op (and no callback) so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin
     /// builds) keep compiling untouched — only the app's own host shows the dialog.
     /// </summary>
-    /// <param name="prefill">The fields to seed the dialog with, or <see langword="null"/> to open it on its own defaults.</param>
-    /// <param name="onStarted">Invoked with the started session's pane id when the operator confirms; not called if they cancel.</param>
-    /// <param name="onCancelled">Invoked when the operator cancels or no session could be started; not called once a session starts.</param>
+    /// <param name="prefill">
+    /// The fields to seed the dialog with, or <see langword="null"/> to open it on its own defaults.
+    /// </param>
+    /// <param name="onStarted">
+    /// Invoked with the started session's pane id when the operator confirms; not called if they cancel.
+    /// </param>
+    /// <param name="onCancelled">
+    /// Invoked when the operator cancels or no session could be started; not called once a session starts.
+    /// </param>
     Task ShowNewSessionDialogAsync(
         NewSessionPrefill? prefill = null,
         Action<string>? onStarted = null,
@@ -754,7 +782,9 @@ public interface ICockpitHost
     {
     }
 
-    /// <summary>The project fields every plugin has contributed — what the project editor reads to draw them. Default empty.</summary>
+    /// <summary>
+    /// The project fields every plugin has contributed — what the project editor reads to draw them. Default empty.
+    /// </summary>
     IReadOnlyList<Projects.ProjectFieldRegistration> ProjectFields => [];
 
     /// <summary>
@@ -819,7 +849,9 @@ public interface ICockpitHost
     {
     }
 
-    /// <summary>The memory sources every plugin has contributed — what the project editor's picker and a session's standing instructions both read. Default empty.</summary>
+    /// <summary>
+    /// The memory sources every plugin has contributed — what the project editor's picker and a session's standing instructions both read. Default empty.
+    /// </summary>
     IReadOnlyList<Projects.ProjectMemorySourceRegistration> ProjectMemorySources => [];
 
     /// <summary>
@@ -885,7 +917,9 @@ public interface ICockpitHost
     {
     }
 
-    /// <summary>The trackers every plugin has contributed — what a consumer reads to find the one for an issue's tracker id. Default empty.</summary>
+    /// <summary>
+    /// The trackers every plugin has contributed — what a consumer reads to find the one for an issue's tracker id. Default empty.
+    /// </summary>
     IReadOnlyList<Tracking.ITrackerProvider> TrackerProviders => [];
 
     /// <summary>
@@ -984,7 +1018,9 @@ public interface ICockpitHost
     {
     }
 
-    /// <summary>The session-resource providers every plugin has contributed — what a starting session is assembled from. Default empty.</summary>
+    /// <summary>
+    /// The session-resource providers every plugin has contributed — what a starting session is assembled from. Default empty.
+    /// </summary>
     IReadOnlyList<Sessions.ISessionResourceProvider> SessionResourceProviders => [];
 
     /// <summary>
@@ -1015,7 +1051,9 @@ public interface ICockpitHost
     {
     }
 
-    /// <summary>The shared-project sources every plugin has contributed — what the Projects workspace reads to list them. Default empty.</summary>
+    /// <summary>
+    /// The shared-project sources every plugin has contributed — what the Projects workspace reads to list them. Default empty.
+    /// </summary>
     IReadOnlyList<Projects.ISharedProjectSource> SharedProjectSources => [];
 
     /// <summary>

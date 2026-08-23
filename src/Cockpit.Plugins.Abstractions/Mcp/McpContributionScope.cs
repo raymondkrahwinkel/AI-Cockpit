@@ -9,12 +9,18 @@ namespace Cockpit.Plugins.Abstractions.Mcp;
 /// </summary>
 public enum McpContributionScope
 {
-    /// <summary>Available to every session — both the local-model tool-loop and Claude Code.</summary>
+    /// <summary>
+    /// Available to every session — both the local-model tool-loop and Claude Code.
+    /// </summary>
     All,
 
-    /// <summary>Only exposed to local models (Ollama/LM Studio); never fanned out to Claude Code.</summary>
+    /// <summary>
+    /// Only exposed to local models (Ollama/LM Studio); never fanned out to Claude Code.
+    /// </summary>
     LocalOnly,
 
-    /// <summary>Only fanned out to Claude Code; never hosted in the local-model tool-loop.</summary>
+    /// <summary>
+    /// Only fanned out to Claude Code; never hosted in the local-model tool-loop.
+    /// </summary>
     ClaudeOnly,
 }

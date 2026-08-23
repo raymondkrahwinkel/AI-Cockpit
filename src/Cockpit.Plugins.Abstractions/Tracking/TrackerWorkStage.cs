@@ -9,12 +9,18 @@ namespace Cockpit.Plugins.Abstractions.Tracking;
 /// </summary>
 public enum TrackerWorkStage
 {
-    /// <summary>The work has started and is being done — a run that just began its autonomous execution.</summary>
+    /// <summary>
+    /// The work has started and is being done — a run that just began its autonomous execution.
+    /// </summary>
     InProgress,
 
-    /// <summary>The work is finished and awaiting a human's review/merge — a run that reached merge-ready.</summary>
+    /// <summary>
+    /// The work is finished and awaiting a human's review/merge — a run that reached merge-ready.
+    /// </summary>
     InReview,
 
-    /// <summary>The work is complete and accepted — the terminal stage a tracker closes an item at.</summary>
+    /// <summary>
+    /// The work is complete and accepted — the terminal stage a tracker closes an item at.
+    /// </summary>
     Done,
 }

@@ -11,16 +11,24 @@ public enum PluginMcpToolCallOutcome
     // comment gives for keeping its own zero value out of "it worked": an unstubbed fake or a host that predates
     // this member must never read as a usable result.
 
-    /// <summary>This host predates <see cref="ICockpitHost.CallMcpToolAsync"/>, or the named server is not configured.</summary>
+    /// <summary>
+    /// This host predates <see cref="ICockpitHost.CallMcpToolAsync"/>, or the named server is not configured.
+    /// </summary>
     Unavailable,
 
-    /// <summary>The tool ran and returned <see cref="PluginMcpToolCallResult.Content"/>.</summary>
+    /// <summary>
+    /// The tool ran and returned <see cref="PluginMcpToolCallResult.Content"/>.
+    /// </summary>
     Success,
 
-    /// <summary>The server is OAuth-protected and has no usable token yet — offer <see cref="ICockpitHost.SignInMcpServerAsync"/>.</summary>
+    /// <summary>
+    /// The server is OAuth-protected and has no usable token yet — offer <see cref="ICockpitHost.SignInMcpServerAsync"/>.
+    /// </summary>
     AuthorizationRequired,
 
-    /// <summary>The call was attempted but failed — see <see cref="PluginMcpToolCallResult.Error"/>.</summary>
+    /// <summary>
+    /// The call was attempted but failed — see <see cref="PluginMcpToolCallResult.Error"/>.
+    /// </summary>
     Failed,
 }
 

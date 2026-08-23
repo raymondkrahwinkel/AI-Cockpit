@@ -13,12 +13,24 @@ namespace Cockpit.Plugins.Abstractions.Consent;
 /// job is to make it the truth, not to phrase it.
 /// </para>
 /// </summary>
-/// <param name="Title">A short line naming what is being asked — "Workflow wants to run a command". Host-side framing, distinct from the untrusted <paramref name="Action"/>.</param>
-/// <param name="Action">The literal action, shown verbatim and read-only: the real command + working directory, the real URL, the pane. Never a summary.</param>
-/// <param name="Source">Who is asking (session, plugin) — see <see cref="ConsentSource"/>.</param>
-/// <param name="Scope">A stable key for "remember this", identifying the kind of action (e.g. <c>workflow.http:GET</c>). Only consulted for a <see cref="ConsentRisk.LowRisk"/> request.</param>
-/// <param name="Risk">Whether this is a <see cref="ConsentRisk.Dangerous"/> action (never remembered) or <see cref="ConsentRisk.LowRisk"/>.</param>
-/// <param name="AllowRemember">Whether to offer "remember for this session". Honoured only when <paramref name="Risk"/> is <see cref="ConsentRisk.LowRisk"/>; ignored for a dangerous action.</param>
+/// <param name="Title">
+/// A short line naming what is being asked — "Workflow wants to run a command". Host-side framing, distinct from the untrusted <paramref name="Action"/>.
+/// </param>
+/// <param name="Action">
+/// The literal action, shown verbatim and read-only: the real command + working directory, the real URL, the pane. Never a summary.
+/// </param>
+/// <param name="Source">
+/// Who is asking (session, plugin) — see <see cref="ConsentSource"/>.
+/// </param>
+/// <param name="Scope">
+/// A stable key for "remember this", identifying the kind of action (e.g. <c>workflow.http:GET</c>). Only consulted for a <see cref="ConsentRisk.LowRisk"/> request.
+/// </param>
+/// <param name="Risk">
+/// Whether this is a <see cref="ConsentRisk.Dangerous"/> action (never remembered) or <see cref="ConsentRisk.LowRisk"/>.
+/// </param>
+/// <param name="AllowRemember">
+/// Whether to offer "remember for this session". Honoured only when <paramref name="Risk"/> is <see cref="ConsentRisk.LowRisk"/>; ignored for a dangerous action.
+/// </param>
 public sealed record ConsentRequest(
     string Title,
     string Action,

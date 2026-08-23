@@ -10,7 +10,9 @@ namespace Cockpit.Plugins.Abstractions.Widgets;
 /// </summary>
 public interface IWidgetContext
 {
-    /// <summary>This placed instance's stable id — distinct from the widget <em>type</em> id, and the key its config is stored under.</summary>
+    /// <summary>
+    /// This placed instance's stable id — distinct from the widget <em>type</em> id, and the key its config is stored under.
+    /// </summary>
     string InstanceId { get; }
 
     /// <summary>

@@ -7,13 +7,19 @@ namespace Cockpit.Plugins.Abstractions.Mcp;
 /// </summary>
 public enum PluginMcpAuthState
 {
-    /// <summary>The host has never heard of a server by that name, the contribution is not OAuth, or the host predates <see cref="ICockpitHost.GetMcpServerAuthStateAsync"/>.</summary>
+    /// <summary>
+    /// The host has never heard of a server by that name, the contribution is not OAuth, or the host predates <see cref="ICockpitHost.GetMcpServerAuthStateAsync"/>.
+    /// </summary>
     Unknown,
 
-    /// <summary>A usable access token is held for this server.</summary>
+    /// <summary>
+    /// A usable access token is held for this server.
+    /// </summary>
     Authorized,
 
-    /// <summary>The server needs a sign-in that has not happened, or whose token can no longer be renewed silently.</summary>
+    /// <summary>
+    /// The server needs a sign-in that has not happened, or whose token can no longer be renewed silently.
+    /// </summary>
     AuthorizationRequired,
 }
 
@@ -28,15 +34,23 @@ public enum PluginMcpSignInOutcome
     // switch arm, a deserialization gap — must never read as "signed in". Authorized used to be 0, which made
     // Substitute.For<ICockpitHost>() (and any other unconfigured Task<T> fake) report success for free.
 
-    /// <summary>This host predates <see cref="ICockpitHost.SignInMcpServerAsync"/>, or the named contribution is not (or no longer) an OAuth server.</summary>
+    /// <summary>
+    /// This host predates <see cref="ICockpitHost.SignInMcpServerAsync"/>, or the named contribution is not (or no longer) an OAuth server.
+    /// </summary>
     Unavailable,
 
-    /// <summary>The sign-in produced a usable access token.</summary>
+    /// <summary>
+    /// The sign-in produced a usable access token.
+    /// </summary>
     Authorized,
 
-    /// <summary>The sign-in was attempted but did not produce a usable token — the browser closed, the server refused, or the credential that came back was unusable. See the host's own MCP-servers dialog for detail.</summary>
+    /// <summary>
+    /// The sign-in was attempted but did not produce a usable token — the browser closed, the server refused, or the credential that came back was unusable. See the host's own MCP-servers dialog for detail.
+    /// </summary>
     Declined,
 
-    /// <summary>The sign-in could not even be attempted — a network/store failure, not the operator declining.</summary>
+    /// <summary>
+    /// The sign-in could not even be attempted — a network/store failure, not the operator declining.
+    /// </summary>
     Unreachable,
 }

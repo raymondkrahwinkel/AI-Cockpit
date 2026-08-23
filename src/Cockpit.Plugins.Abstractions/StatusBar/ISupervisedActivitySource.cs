@@ -9,12 +9,18 @@ namespace Cockpit.Plugins.Abstractions.StatusBar;
 /// </summary>
 public interface ISupervisedActivitySource
 {
-    /// <summary>The counter label, e.g. "Port-forwards".</summary>
+    /// <summary>
+    /// The counter label, e.g. "Port-forwards".
+    /// </summary>
     string Label { get; }
 
-    /// <summary>The activities running right now — a fresh snapshot each call.</summary>
+    /// <summary>
+    /// The activities running right now — a fresh snapshot each call.
+    /// </summary>
     IReadOnlyList<SupervisedActivity> Snapshot();
 
-    /// <summary>Raised when the set of activities changed, so the host recomputes the counter and refreshes an open panel.</summary>
+    /// <summary>
+    /// Raised when the set of activities changed, so the host recomputes the counter and refreshes an open panel.
+    /// </summary>
     event Action? Changed;
 }

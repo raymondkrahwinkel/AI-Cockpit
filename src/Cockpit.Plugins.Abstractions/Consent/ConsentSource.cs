@@ -8,6 +8,10 @@ namespace Cockpit.Plugins.Abstractions.Consent;
 /// The session pane the request belongs to (<c>IPluginSessionContext.PaneId</c>), so the prompt can appear on
 /// that session and a remembered approval is scoped to it. Null for a request that belongs to no single pane.
 /// </param>
-/// <param name="PluginId">The plugin that asked, when the request came through <see cref="ICockpitHost"/>. Null for a host-internal caller. Set by the host, not the caller.</param>
-/// <param name="Label">A short human name for the source, shown on the prompt and logged — "Workflows", "Terminal MCP".</param>
+/// <param name="PluginId">
+/// The plugin that asked, when the request came through <see cref="ICockpitHost"/>. Null for a host-internal caller. Set by the host, not the caller.
+/// </param>
+/// <param name="Label">
+/// A short human name for the source, shown on the prompt and logged — "Workflows", "Terminal MCP".
+/// </param>
 public sealed record ConsentSource(string? PaneId, string? PluginId, string Label);
