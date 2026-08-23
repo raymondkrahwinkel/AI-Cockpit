@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 
@@ -27,7 +28,9 @@ public class AssistantChatWindowResizeAndFocusTests
     {
         var window = new AssistantChatWindow();
 
-        Assert.Equal(WindowDecorations.None, window.WindowDecorations);
+        // Mirrors WindowResizeGrip.DecorationsFor's own platform split (AC-678/AC-934) rather than a hardcoded
+        // expectation, so this still catches a regression on the platform where DecorationsFor is wrong. AC-1044.
+        Assert.Equal(WindowResizeGrip.DecorationsFor(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows()), window.WindowDecorations);
         Assert.True(window.CanResize);
         Assert.Equal(340, window.MinWidth);
         Assert.Equal(360, window.MinHeight);
