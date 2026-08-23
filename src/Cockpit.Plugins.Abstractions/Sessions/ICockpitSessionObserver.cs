@@ -1,12 +1,9 @@
 namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
-/// The read/observe surface over the cockpit's sessions — the contract's first "read-as" capability,
-/// complementing the write-only <see cref="ICockpitActions"/>. It lets a plugin see <em>what the active
-/// session is working on</em> (its working directory) and <em>what sessions produce</em> (a stream of their
-/// output text), so a contribution can react to a session rather than only pushing into it: e.g. a
-/// directory-scoped view that follows the selected session, or a watcher that refreshes when a signal —
-/// like a freshly created pull-request url — shows up in the output. Obtained via
+/// The read/observe surface over the cockpit's sessions, complementing the write-only
+/// <see cref="ICockpitActions"/> — it lets a plugin see what the active session is working on and what
+/// sessions produce, so a contribution can react to a session instead of only pushing into it. Obtained via
 /// <see cref="ICockpitHost.Sessions"/>; events are raised on the UI thread.
 /// </summary>
 public interface ICockpitSessionObserver
@@ -26,21 +23,27 @@ public interface ICockpitSessionObserver
 
     /// <summary>
     /// Every open session — pane id and the operator-visible name shown on its header — so a contribution can
-    /// name a specific session rather than only ever "the active one" (AC-833). Includes the cockpit-assistant
-    /// under its own fixed pane id (<c>AssistantIdentity.PaneId</c>, "cockpit-assistant"): it is a session like
-    /// any other from this surface, with no separate mechanism for naming it. Empty on a host that predates this
-    /// member.
+    /// name a specific session rather than only ever "the active one" (AC-833). Empty on a host that predates
+    /// this member.
     /// </summary>
+    /// <remarks>
+    /// Includes the cockpit-assistant under its own fixed pane id (<c>AssistantIdentity.PaneId</c>,
+    /// "cockpit-assistant"): it is a session like any other from this surface, with no separate mechanism for
+    /// naming it.
+    /// </remarks>
     IReadOnlyList<OpenCockpitSession> OpenSessions => [];
 
     /// <summary>
     /// The selected session's current usage — how full its context window is, the windows it reports, and its
-    /// profile label (AC-54) — or <see langword="null"/> when nothing is selected, or on a host that predates this
-    /// member. The plugin-facing mirror of the header's usage pill: a widget reads it (and re-reads it on
-    /// <see cref="ActiveSessionUsageChanged"/>) to chart usage over time without the host knowing what the widget
-    /// shows. A snapshot with all-null figures (<see cref="SessionUsageSnapshot.HasAny"/> false) means the session
-    /// has not reported usage yet — a silence to skip, not a zero to record.
+    /// profile label (AC-54) — or <see langword="null"/> when nothing is selected or on a host that predates
+    /// this member. The plugin-facing mirror of the header's usage pill.
     /// </summary>
+    /// <remarks>
+    /// A widget reads it (and re-reads it on <see cref="ActiveSessionUsageChanged"/>) to chart usage over time
+    /// without the host knowing what the widget shows. A snapshot with all-null figures
+    /// (<see cref="SessionUsageSnapshot.HasAny"/> false) means the session has not reported usage yet — a
+    /// silence to skip, not a zero to record.
+    /// </remarks>
     SessionUsageSnapshot? ActiveSessionUsage => null;
 
     /// <summary>
@@ -68,13 +71,15 @@ public interface ICockpitSessionObserver
     event EventHandler<SessionOutputText>? OutputProduced;
 
     /// <summary>
-    /// Raised when a session's agent finishes a tool call, coupling the tool's name and input with its
-    /// result (AC-116) — richer than <see cref="OutputProduced"/>, which carries only the result text and
-    /// cannot say which tool produced it. Lets a plugin react to a specific tool completing (e.g. a YouTrack
-    /// tracker attaching the message's images to an issue the agent just created) instead of scanning prose
-    /// for a signal. Only structured (SDK) sessions raise it; a raw terminal session, whose tool calls the
-    /// cockpit does not parse, never does. Null on a host that predates this member.
+    /// Raised when a session's agent finishes a tool call, coupling the tool's name and input with its result
+    /// (AC-116) — richer than <see cref="OutputProduced"/>, which carries only the result text. Only structured
+    /// (SDK) sessions raise it; a raw terminal session never does.
     /// </summary>
+    /// <remarks>
+    /// Lets a plugin react to a specific tool completing (e.g. a YouTrack tracker attaching the message's images
+    /// to an issue the agent just created) instead of scanning prose for a signal. Null on a host that predates
+    /// this member.
+    /// </remarks>
     event EventHandler<SessionToolActivity>? ToolActivityObserved
     {
         add { }
@@ -83,12 +88,14 @@ public interface ICockpitSessionObserver
 
     /// <summary>
     /// Raised when a session closes — its pane leaves the cockpit — carrying that pane's
-    /// <see cref="IPluginSessionContext.PaneId"/>. The cue to drop anything a plugin kept keyed to that session:
-    /// a per-session subscription on a plugin-lived object, a cache entry, a header-item's registration — so a
-    /// closed session leaves nothing behind to hold it (and its whole transcript) alive. Raised on the UI thread,
-    /// once per close. A no-op add/remove on a host that predates this member, so a subscribing plugin keeps
-    /// compiling and simply never hears from it.
+    /// <see cref="IPluginSessionContext.PaneId"/>. The cue to drop anything a plugin kept keyed to that session,
+    /// so a closed session leaves nothing behind to hold it (and its whole transcript) alive.
     /// </summary>
+    /// <remarks>
+    /// Covers a per-session subscription on a plugin-lived object, a cache entry, a header-item's registration.
+    /// Raised on the UI thread, once per close. A no-op add/remove on a host that predates this member, so a
+    /// subscribing plugin keeps compiling and simply never hears from it.
+    /// </remarks>
     event EventHandler<string>? SessionClosed
     {
         add { }

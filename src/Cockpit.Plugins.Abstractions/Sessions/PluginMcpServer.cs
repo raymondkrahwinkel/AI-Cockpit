@@ -54,14 +54,12 @@ public sealed record PluginMcpServer
 
     /// <summary>
     /// Extra headers the operator configured for this server, for one that wants <c>X-Api-Key</c> or another scheme
-    /// rather than <c>Authorization: Bearer</c> (AC-354). Treat every value as a credential: it is where a token goes
-    /// when the server does not take a bearer, so it must never be written where another local account can read it —
-    /// the same care <see cref="BearerToken"/> already gets on each provider's own config route.
-    /// <para>
-    /// <see cref="BearerToken"/> wins over an <c>Authorization</c> entry here, so a server that has both configured
-    /// sends the credential the auth setting named rather than a stale one typed by hand.
-    /// </para>
+    /// rather than <c>Authorization: Bearer</c> (AC-354).
     /// </summary>
+    /// <remarks>
+    /// Treat every value as a credential, with the same care <see cref="BearerToken"/> gets. <see cref="BearerToken"/>
+    /// wins over an <c>Authorization</c> entry here.
+    /// </remarks>
     public IReadOnlyDictionary<string, string> Headers { get; init; } = new Dictionary<string, string>();
 
     /// <summary>

@@ -3,12 +3,11 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// <summary>
 /// Option keys the host bridges from its own typed session-start surface into a plugin driver's
 /// <see cref="IPluginSessionDriver.StartAsync(string?, string?, string?, System.Collections.Generic.IReadOnlyDictionary{string, string}?, System.Collections.Generic.IReadOnlyList{PluginMcpServer}?, System.Threading.CancellationToken)"/>
-/// options map. The host's <c>ISessionDriver.StartAsync</c> carries a typed <c>permissionMode</c> (a Claude concept
-/// that predates the plugin surface); the plugin contract has no such parameter, so a provider that understands
-/// Claude-style permission modes declares a launch option under <see cref="PermissionMode"/> and the host's driver
-/// adapter folds the operator's selection into the options map under that key. A provider that has no permission modes
-/// (an HTTP model, Codex's sandbox) simply never declares the option and never reads it.
+/// options map.
 /// </summary>
+/// <remarks>
+/// A provider that does not declare a given key never reads it — carrying an unread key is always safe.
+/// </remarks>
 public static class WellKnownPluginSessionOptions
 {
     /// <summary>
@@ -35,38 +34,36 @@ public static class WellKnownPluginSessionOptions
     /// The option key by which the host hands a plugin driver a hidden system prompt to prepend for this one session
     /// (AC-180) — the "you are the CEO, this is how you plan" briefing an embedded Autopilot run gives its agent
     /// without the operator seeing it as a turn (<see cref="Workspaces.EmbeddedSessionRequest.AppendSystemPrompt"/>).
-    /// It rides the options map like <see cref="PaneId"/>, so it reaches every provider without a signature change;
-    /// each driver applies it its own way (Claude/Codex CLI's <c>--append-system-prompt</c>, a leading system message
-    /// for an OpenAI-compatible model). A provider that cannot inject a system prompt ignores it — the key is safe to
-    /// carry unread, the same as any other option a driver does not declare.
     /// </summary>
+    /// <remarks>
+    /// Each driver applies it its own way (Claude/Codex CLI's <c>--append-system-prompt</c>, a leading system
+    /// message for an OpenAI-compatible model). A provider that cannot inject a system prompt ignores it.
+    /// </remarks>
     public const string AppendSystemPrompt = "cockpit.append-system-prompt";
 
     /// <summary>
     /// The option key by which the host asks a driver to confine this session's file tools to its working directory
-    /// (AC-174, Raymond 2026-07-22) — set to <c>"true"</c> when the host isolates an embedded session in a worktree
-    /// (<see cref="Workspaces.EmbeddedSessionRequest.IsolateInWorktree"/>). A provider that reaches files only through
-    /// out-of-process MCP servers (a local OpenAI-compatible model) honours it by re-rooting its file servers at the
-    /// working directory and dropping every server that could write or execute outside it, then reports
-    /// <c>ConfinesFileAccessToWorkingDirectory = true</c> so the host's fail-closed isolation gate lets the run proceed.
-    /// A provider that already confines natively (a CLI spawned cwd-bound) ignores it. The flag alone is never trusted —
-    /// only a driver that actually confined sets the capability.
+    /// (AC-174) — set to <c>"true"</c> when the host isolates an embedded session in a worktree
+    /// (<see cref="Workspaces.EmbeddedSessionRequest.IsolateInWorktree"/>).
     /// </summary>
+    /// <remarks>
+    /// A provider that reaches files only through out-of-process MCP servers honours it by re-rooting its file
+    /// servers at the working directory and dropping every server that could write or execute outside it, then
+    /// reports <c>ConfinesFileAccessToWorkingDirectory = true</c>. A provider that already confines natively ignores
+    /// it. The flag alone is never trusted — only a driver that actually confined sets the capability.
+    /// </remarks>
     public const string ConfineFileToolsToWorkingDirectory = "cockpit.confine-file-tools";
 
     /// <summary>
     /// The option key by which the host tells a driver that nobody is watching this session — <c>"true"</c> for a
-    /// delegated task (#67) and for an embedded run that drives itself
-    /// (<see cref="Workspaces.EmbeddedSessionRequest.StartWithInputDisabled"/>), and an explicit <c>"false"</c> for a
-    /// session an operator opened and sits in front of. The host states one or the other on every launch; a driver
-    /// that finds the key missing is running on a host older than this split and must read that as unattended, the
-    /// safe answer. It exists because "unattended" and "not a TTY" are two different questions that
-    /// AC-378 answered with one flag: strictness was hung on the SDK route, but the operator can open an interactive SDK
-    /// pane from the New-session dialog, and that pane then lost the account's own claude.ai connectors — the very
-    /// regression <c>ClaudeTtyProviderTests</c> guards the TTY route against. A driver that narrows this session's tool
-    /// surface makes that narrowing authoritative when this is set (Claude pairs <c>--mcp-config</c> with
-    /// <c>--strict-mcp-config</c>, so an agent that asks for fewer servers cannot end up with more) and additive when it
-    /// is not, leaving the operator's own configuration in place. A provider with nothing to narrow ignores it.
+    /// delegated task (#67) or an embedded run that drives itself, <c>"false"</c> for a session an operator sits
+    /// in front of.
     /// </summary>
+    /// <remarks>
+    /// The host states one or the other on every launch; a driver that finds the key missing must read that as
+    /// unattended, the safe answer. A driver that narrows this session's tool surface makes that narrowing
+    /// authoritative when this is set (Claude pairs <c>--mcp-config</c> with <c>--strict-mcp-config</c>) and additive
+    /// when it is not. A provider with nothing to narrow ignores it.
+    /// </remarks>
     public const string Unattended = "cockpit.unattended";
 }

@@ -35,45 +35,41 @@ public sealed record SessionProviderRegistration(
 {
     /// <summary>
     /// The per-session start defaults this provider wants the New-session dialog to ask about (sandbox, model, …),
-    /// the SDK-session mirror of <see cref="TtyProviderRegistration.Options"/>. Empty when it wants none. An
-    /// init-only property rather than a primary-ctor parameter so adding it does not change the record's
-    /// constructor signature — an already-compiled plugin keeps constructing this the old way and simply reports
-    /// no options.
+    /// the SDK-session mirror of <see cref="TtyProviderRegistration.Options"/>. Empty when it wants none.
     /// </summary>
     public IReadOnlyList<PluginSessionLaunchOption> Options { get; init; } = [];
 
     /// <summary>
     /// What sessions under this provider can run out of (AC-229) — the SDK mirror of
-    /// <see cref="TtyProviderRegistration.UsageSignals"/>. An SDK driver already reports its figures through
-    /// <c>PluginSessionStatus</c> at each turn boundary; this says what those figures <em>are</em>, so the host can
-    /// warn on them and offer to resume against them. Empty (the default) when the provider measures nothing.
-    /// Init-only, so an already-compiled plugin keeps its constructor and simply declares none.
+    /// <see cref="TtyProviderRegistration.UsageSignals"/>.
     /// </summary>
+    /// <remarks>
+    /// An SDK driver already reports its figures through <c>PluginSessionStatus</c> at each turn boundary; this
+    /// says what those figures are. Empty (the default) when the provider measures nothing.
+    /// </remarks>
     public IReadOnlyList<PluginUsageSignal> UsageSignals { get; init; } = [];
 
     /// <summary>
     /// An optional way to refresh <see cref="Options"/> with live values when the New-session dialog opens for a
-    /// profile under this provider — Codex fills its Model choices from the app-server's <c>model/list</c> here,
-    /// which the static declaration cannot know. The argument is the profile's opaque config JSON (whatever
-    /// <see cref="CreateConfigView"/> round-trips), so the provider can honour a per-profile command/home; the
+    /// profile under this provider — Codex fills its Model choices from the app-server's <c>model/list</c> here.
+    /// </summary>
+    /// <remarks>
+    /// The argument is the profile's opaque config JSON (whatever <see cref="CreateConfigView"/> round-trips); the
     /// result replaces the declared options for that dialog. The dialog renders the declared <see cref="Options"/>
     /// first and calls this in the background, so opening is never blocked; on <see langword="null"/>, a timeout,
-    /// or any failure (the CLI is not installed or logged in) it simply keeps the declared options. Init-only, so
-    /// an already-compiled plugin that never sets it keeps its static options.
-    /// </summary>
+    /// or any failure it keeps the declared options.
+    /// </remarks>
     public Func<string, CancellationToken, Task<IReadOnlyList<PluginSessionLaunchOption>>>? ResolveOptionsAsync { get; init; }
 
     /// <summary>
     /// Answers whether a profile under this provider is logged in, from its opaque <c>ConfigJson</c> — the SDK
-    /// mirror of <see cref="TtyProviderRegistration.IsLoggedIn"/>. Without it a provider registering only a
-    /// session provider could declare no gate at all, and every profile under it read as ready.
-    /// <para>
-    /// ⚠️ Called synchronously on the UI thread, once per profile. A provider whose real check costs a subprocess
-    /// answers from a cache and refreshes behind it; it must never block here.
-    /// </para>
-    /// Existence-only by contract (Iron Law #8). <see langword="null"/> (the default) when the provider has no
-    /// login concept, and the host treats such a profile as always ready.
+    /// mirror of <see cref="TtyProviderRegistration.IsLoggedIn"/>. Existence-only by contract (Iron Law #8).
     /// </summary>
+    /// <remarks>
+    /// Called synchronously on the UI thread, once per profile; a provider whose real check costs a subprocess
+    /// answers from a cache and must never block here. <see langword="null"/> (the default) when the provider has
+    /// no login concept, and the host treats such a profile as always ready.
+    /// </remarks>
     public Func<string, bool>? IsLoggedIn { get; init; }
 
     /// <summary>
