@@ -1053,6 +1053,9 @@ public class AutopilotRunCoordinatorTests
 
         public Task<bool> EnsureCommittedAsync(string worktreePath, string message, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
+
+        public Task<AutopilotStrayCommits> RecoverStrayCommitsAsync(string runWorktreePath, string runBranch, string stepWorktreePath, CancellationToken cancellationToken = default) =>
+            Task.FromResult(AutopilotStrayCommits.None);
     }
 
     // A hand-rolled step session whose Activity event can be raised on demand — NSubstitute cannot reliably raise an

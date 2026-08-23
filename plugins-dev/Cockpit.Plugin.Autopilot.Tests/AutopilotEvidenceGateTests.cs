@@ -20,7 +20,7 @@ public class AutopilotEvidenceGateTests
     {
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
-        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "@@ -1 +1 @@\n+new", false));
+        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "c0ffee1", "@@ -1 +1 @@\n+new", false));
         var coordinator = new AutopilotRunCoordinator(host, plan, evidenceSource: source);
         var turns = _CaptureCeoTurns(host);
 
@@ -48,7 +48,7 @@ public class AutopilotEvidenceGateTests
         // embedded — measuring against the worktree afterwards would compare it to its own result.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
-        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "diff", false));
+        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "c0ffee1", "diff", false));
         var coordinator = new AutopilotRunCoordinator(host, plan, evidenceSource: source);
         var turns = _CaptureCeoTurns(host);
 
@@ -78,7 +78,7 @@ public class AutopilotEvidenceGateTests
         // task in a plain folder has no worktree to observe, so the CEO keeps validating exactly as it did before.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
-        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "diff", false));
+        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "c0ffee1", "diff", false));
         var coordinator = new AutopilotRunCoordinator(host, plan, evidenceSource: source);
         var turns = _CaptureCeoTurns(host);
 
@@ -130,13 +130,14 @@ public class AutopilotEvidenceGateTests
     }
 
     [Fact]
-    public async Task RunAsync_ForAReviewGateStep_KeepsTheInspectionInstruction()
+    public async Task RunAsync_ForAReviewGateStep_MeasuresTheRunsOwnWorktree()
     {
-        // A review gate does not write to the shared worktree at all (AC-434: it forks its own throwaway copy to read),
-        // and its deliverable is a judgement rather than a change — there is nothing for the harness to diff.
+        // AC-1037: a gate is handed no shared worktree (AC-434), and evidence used to hang off that — so the one step
+        // type that works on a branch of its own was the one nothing was ever measured for. It is measured against the
+        // run's worktree like every other step, which is where its work has to end up.
         var plan = _RunningPlan(_HardStep("1") with { IsReviewGate = true });
         var host = _Host();
-        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "diff", false));
+        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "c0ffee1", "diff", false));
         var coordinator = new AutopilotRunCoordinator(host, plan, evidenceSource: source);
         var turns = _CaptureCeoTurns(host);
 
@@ -149,8 +150,141 @@ public class AutopilotEvidenceGateTests
         Assert.True(coordinator.ReportStepDone("step-pane", "reviewed it, found nothing"));
         await _Until(() => turns.Count >= 1);
 
-        Assert.Contains("do not rely on the summary alone", turns[0]);
-        Assert.Empty(source.Marked);
+        Assert.Contains("What the harness itself observed", turns[0]);
+        Assert.Equal(["/repo/.worktrees/run"], source.Marked);
+
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task RunAsync_ForAStepThatRanInAWorktreeOfItsOwn_BringsItsCommitsOntoTheRunBranch()
+    {
+        // AC-1037: the step commits where it was started, which for a gate or a parallel agent is a branch of its own.
+        // The harness fetches that work back before anyone judges the step, and says so.
+        var plan = _RunningPlan(_HardStep("1") with { IsReviewGate = true });
+        var host = _Host();
+        var publisher = new FakePrPublisher(new AutopilotStrayCommits(["3885af2611", "2a2695461f"], [], null));
+        var coordinator = new AutopilotRunCoordinator(host, plan, prPublisher: publisher);
+        var turns = _CaptureCeoTurns(host);
+
+        var shown = new TaskCompletionSource();
+        var run = coordinator.RunAsync(
+            _Context(_Session("step-pane", "/repo/.worktrees/gate")), _Session("ceo-pane"), _Settings(),
+            _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportStepDone("step-pane", "fixed the six findings, 73/73 green"));
+        await _Until(() => turns.Count >= 1);
+
+        Assert.Equal([("/repo/.worktrees/run", "autopilot/run", "/repo/.worktrees/gate")], publisher.Recoveries);
+        Assert.Contains("Cherry-picked 2 commit(s)", turns[0]);
+        Assert.Contains("3885af26", turns[0]);
+
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStrayCommitCannotBeBroughtBack_TellsTheCeoItIsNotInTheRun()
+    {
+        // A cherry-pick that hits a conflict stops there. The step still reported success, so the one thing that must
+        // not happen is silence: the CEO is told the report describes a tree this run does not have.
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var publisher = new FakePrPublisher(new AutopilotStrayCommits([], ["367b5e5a99"], "could not apply 367b5e5a"));
+        var coordinator = new AutopilotRunCoordinator(host, plan, prPublisher: publisher);
+        var turns = _CaptureCeoTurns(host);
+
+        var shown = new TaskCompletionSource();
+        var run = coordinator.RunAsync(
+            _Context(_Session("step-pane", "/repo/.worktrees/agent-2")), _Session("ceo-pane"), _Settings(),
+            _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportStepDone("step-pane", "done, all tests pass"));
+        await _Until(() => turns.Count >= 1);
+
+        Assert.Contains("could NOT be brought over", turns[0]);
+        Assert.Contains("could not apply 367b5e5a", turns[0]);
+        Assert.Contains("Do not accept the step on that report.", turns[0]);
+
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheStrayCommitCheckCouldNotRun_SaysSo_RatherThanLettingTheStepReadAsClean()
+    {
+        // AC-1037: a check that did not happen must not arrive as silence. The step reported success, so silence here
+        // is exactly what would let it through — the failure shape this ticket exists to close, one branch further on.
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var publisher = new FakePrPublisher(AutopilotStrayCommits.Unmeasured("fatal: bad revision"));
+        var coordinator = new AutopilotRunCoordinator(host, plan, prPublisher: publisher);
+        var turns = _CaptureCeoTurns(host);
+
+        var shown = new TaskCompletionSource();
+        var run = coordinator.RunAsync(
+            _Context(_Session("step-pane", "/repo/.worktrees/gate")), _Session("ceo-pane"), _Settings(),
+            _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportStepDone("step-pane", "done, all green"));
+        await _Until(() => turns.Count >= 1);
+
+        Assert.Contains("could not check whether this step's work landed", turns[0]);
+        Assert.Contains("fatal: bad revision", turns[0]);
+
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheStrayCommitCheckThrows_LandsWhereAReportedFailureLands()
+    {
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var coordinator = new AutopilotRunCoordinator(host, plan, prPublisher: new ThrowingPrPublisher());
+        var turns = _CaptureCeoTurns(host);
+
+        var shown = new TaskCompletionSource();
+        var run = coordinator.RunAsync(
+            _Context(_Session("step-pane", "/repo/.worktrees/gate")), _Session("ceo-pane"), _Settings(),
+            _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportStepDone("step-pane", "done"));
+        await _Until(() => turns.Count >= 1);
+
+        Assert.Contains("could not check whether this step's work landed", turns[0]);
+        Assert.Contains("git is not here", turns[0]);
+
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task RunAsync_ForAStepInTheRunsOwnWorktree_SaysNothingAboutStrayCommits()
+    {
+        // The ordinary case: nothing was found off the branch, so nothing is said. A note here every step would make
+        // the one step that needs it unreadable.
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var publisher = new FakePrPublisher(AutopilotStrayCommits.None);
+        var coordinator = new AutopilotRunCoordinator(host, plan, prPublisher: publisher);
+        var turns = _CaptureCeoTurns(host);
+
+        var shown = new TaskCompletionSource();
+        var run = coordinator.RunAsync(
+            _Context(_Session("step-pane", "/repo/.worktrees/run")), _Session("ceo-pane"), _Settings(),
+            _ => shown.TrySetResult(), _ => { }, _WorktreeEnvironment(), _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        Assert.True(coordinator.ReportStepDone("step-pane", "did the work"));
+        await _Until(() => turns.Count >= 1);
+
+        Assert.DoesNotContain("branch of its own", turns[0]);
 
         Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
         await run.WaitAsync(Timeout);
@@ -234,6 +368,46 @@ public class AutopilotEvidenceGateTests
         }
     }
 
+    // AC-1037: only the stray-commit recovery is asked of it here; the publishing half is exercised in its own suite.
+    private sealed class FakePrPublisher(AutopilotStrayCommits stray) : IAutopilotPrPublisher
+    {
+        public List<(string RunWorktree, string RunBranch, string StepWorktree)> Recoveries { get; } = [];
+
+        public Task<AutopilotPrProbe> ProbeAsync(string worktreePath, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AutopilotPrProbe(IsGitRun: true, HasRemote: true, GhAvailable: true));
+
+        public Task<AutopilotPrPublishResult> PublishAsync(AutopilotPrRequest request, bool createPullRequest, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AutopilotPrPublishResult(Pushed: true, PrUrl: "https://example.invalid/pr/1", Error: null));
+
+        public Task<bool> EnsureCommittedAsync(string worktreePath, string message, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
+
+        public Task<AutopilotStrayCommits> RecoverStrayCommitsAsync(string runWorktreePath, string runBranch, string stepWorktreePath, CancellationToken cancellationToken = default)
+        {
+            lock (Recoveries)
+            {
+                Recoveries.Add((runWorktreePath, runBranch, stepWorktreePath));
+            }
+
+            return Task.FromResult(string.Equals(runWorktreePath, stepWorktreePath, StringComparison.Ordinal) ? AutopilotStrayCommits.None : stray);
+        }
+    }
+
+    private sealed class ThrowingPrPublisher : IAutopilotPrPublisher
+    {
+        public Task<AutopilotPrProbe> ProbeAsync(string worktreePath, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("git is not here");
+
+        public Task<AutopilotPrPublishResult> PublishAsync(AutopilotPrRequest request, bool createPullRequest, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("git is not here");
+
+        public Task<bool> EnsureCommittedAsync(string worktreePath, string message, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("git is not here");
+
+        public Task<AutopilotStrayCommits> RecoverStrayCommitsAsync(string runWorktreePath, string runBranch, string stepWorktreePath, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("git is not here");
+    }
+
     private sealed class ThrowingEvidenceSource : IAutopilotEvidenceSource
     {
         public Task<AutopilotWorktreeMark?> MarkAsync(string worktreePath, CancellationToken cancellationToken = default) =>
@@ -281,11 +455,12 @@ public class AutopilotEvidenceGateTests
         return context;
     }
 
-    private static IEmbeddedSession _Session(string paneId)
+    private static IEmbeddedSession _Session(string paneId, string? worktreePath = null)
     {
         var session = Substitute.For<IEmbeddedSession>();
         session.View.Returns(new TextBlock());
         session.PaneId.Returns(paneId);
+        session.WorktreePath.Returns(worktreePath);
         session.CloseAsync().Returns(Task.CompletedTask);
         session.Completion.Returns(new TaskCompletionSource<string?>().Task);
         return session;

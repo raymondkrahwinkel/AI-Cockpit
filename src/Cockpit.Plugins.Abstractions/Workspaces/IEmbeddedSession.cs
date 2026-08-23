@@ -20,6 +20,12 @@ public interface IEmbeddedSession
     string PaneId { get; }
 
     /// <summary>
+    /// The directory this session actually runs in — its isolated worktree when the host made one, the working
+    /// directory otherwise (AC-1037). Null until the session has started, and for an adapter that does not surface it.
+    /// </summary>
+    string? WorktreePath => null;
+
+    /// <summary>
     /// Ends this one embedded session now — tears down its runtime and releases its worktree — without waiting for
     /// the workspace to close. What a body calls when it replaces one run's session with another's on the same
     /// surface, so the previous run's session and worktree are not left orphaned. Closing the workspace still ends

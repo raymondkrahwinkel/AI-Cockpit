@@ -102,6 +102,21 @@ public class AutopilotStepBriefTests
     }
 
     [Fact]
+    public void For_ForAReviewGate_TellsItToReadAndReport_NeverToCommit()
+    {
+        var step = new AutopilotStep("1", "Review", "d", "Claude", "opus", "review the diff", "reviewed") with { IsReviewGate = true };
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // AC-1037: a gate reads a throwaway fork on a branch of its own, so the execution mandate's "COMMIT your work
+        // in this worktree" was an instruction to strand its repairs where nothing merges from.
+        Assert.DoesNotContain("COMMIT your work in this worktree", brief);
+        Assert.Contains("review task, not an execution task", brief);
+        Assert.Contains("Do NOT edit the code and do NOT commit anything", brief);
+        Assert.Contains("a separate fix step applies them", brief);
+    }
+
+    [Fact]
     public void For_KeepsTheAssumptionAndConsultFlow_AlongsideTheExecutionMandate()
     {
         var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");

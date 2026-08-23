@@ -12,6 +12,9 @@ namespace Cockpit.Plugin.Autopilot;
 // `FilesChanged` — staging a file is a real change to the repository — but their *contents* are an
 // earlier step's work, and a diff shows them as brand new. Kept apart so the CEO is told, rather than left to read a
 // file someone else wrote as this step's output.
+// `HeadCommit`:
+// The commit this was collected on (AC-1037). Not optional — a change that cannot name its commit is not collected
+// at all, because a result without the tree it ran on is what let another branch's real "73/73 green" pass as proof.
 // `Patch`: The diff as git printed it, cut to what a brief can carry when `Truncated`.
 // `Truncated`:
 // The diff was longer than the brief carries and was cut. Said out loud in the validation turn — a silently shortened
@@ -20,6 +23,7 @@ internal sealed record AutopilotWorktreeChange(
     IReadOnlyList<string> FilesChanged,
     IReadOnlyList<string> UntrackedFiles,
     IReadOnlyList<string> AddedFromBeforeTheMark,
+    string HeadCommit,
     string Patch,
     bool Truncated)
 {

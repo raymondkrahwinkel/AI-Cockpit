@@ -38,6 +38,20 @@ public sealed class GitCliEvidenceSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task CollectAsync_NamesTheCommitTheChangeWasMeasuredOn()
+    {
+        // AC-1037: evidence that cannot say which tree it is of is what let a green suite from another branch pass as
+        // proof, so the head commit is part of the observation rather than something the wording may or may not carry.
+        var mark = await _source.MarkAsync(_repository);
+        Assert.NotNull(mark);
+
+        var change = await _source.CollectAsync(_repository, mark);
+
+        Assert.NotNull(change);
+        Assert.Equal((await _Git("rev-parse", "HEAD")).Trim(), change.HeadCommit);
+    }
+
+    [Fact]
     public async Task CollectAsync_ReportsOnlyUntrackedFilesThatWereNotAlreadyThere()
     {
         _Write("left-behind.txt", "an earlier step wrote this and never added it");

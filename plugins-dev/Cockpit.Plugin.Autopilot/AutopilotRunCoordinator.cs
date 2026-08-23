@@ -660,11 +660,11 @@ internal sealed class AutopilotRunCoordinator(
             // AC-255: where the worktree stood before this step's agents touched it, so the harness can tell the CEO
             // what this step changed instead of asking it to take the summary's word. It only has to be taken before
             // the agents start — whether they commit their work or leave it lying is not this mark's problem, since
-            // the diff it is later measured against reaches the working tree. Only a step that runs in the run's
-            // shared worktree can be measured this way (stepWorktreePath) — a parallel step's agents each write to
-            // their own, a review gate reads a throwaway fork, and a run in a plain folder has no worktree at all;
-            // all three keep the inspection instruction.
-            var evidenceMark = await _MarkEvidenceAsync(stepWorktreePath, cancellationToken).ConfigureAwait(false);
+            // the diff it is later measured against reaches the working tree.
+            //
+            // AC-1037: the run's own worktree for every step, not stepWorktreePath — that was null for exactly the
+            // step types that write on a branch of their own, so nothing was measured for them at all.
+            var evidenceMark = await _MarkEvidenceAsync(environment.RunWorktreePath, cancellationToken).ConfigureAwait(false);
 
             for (var index = 0; index < agentCount; index++)
             {
@@ -743,9 +743,13 @@ internal sealed class AutopilotRunCoordinator(
 
             var summaries = await Task.WhenAll(reports);
 
+            // AC-1037: whatever this step committed in a worktree of its own, brought back onto the run's branch
+            // before anyone judges the step — and said out loud in the validation turn either way.
+            var strayCommits = await _RecoverStrayCommitsAsync(environment, sessions, cancellationToken).ConfigureAwait(false);
+
             // AC-255: the harness's own account of what the step changed, collected before the CEO is asked anything so
             // the turn carries it. Null — nothing observable — hands the CEO the inspection instruction it always had.
-            var evidence = await _CollectEvidenceAsync(stepWorktreePath, evidenceMark, step, summaries, cancellationToken).ConfigureAwait(false);
+            var evidence = await _CollectEvidenceAsync(environment.RunWorktreePath, evidenceMark, step, summaries, cancellationToken).ConfigureAwait(false);
 
             // The agent(s) reported done, but the step is not settled until the CEO validates it — that window used to
             // read as a plain "Running…" with no sign the work was already done (the model says it's finished, but the
@@ -776,7 +780,7 @@ internal sealed class AutopilotRunCoordinator(
                 await _MaybeCheckpointCeoAsync();
                 var ceo = _CurrentCeo() ?? throw new InvalidOperationException("The run has no live CEO session to validate this step.");
 
-                await host.SendToSessionAsync(ceo.PaneId, AutopilotStepBrief.ValidationTurn(step, summaries, evidence));
+                await host.SendToSessionAsync(ceo.PaneId, AutopilotStepBrief.ValidationTurn(step, summaries, evidence, strayCommits));
                 passed = await _AwaitValidationOrCeoEndAsync(validation.Task, ceo, cancellationToken);
                 lock (_lock)
                 {
@@ -872,6 +876,75 @@ internal sealed class AutopilotRunCoordinator(
             });
         }
     }
+
+    // AC-1037: brings work a step committed in a worktree of its own back onto the run's branch, and returns what the
+    // CEO has to be told about it. Silence here means the step's work is where it belongs — never "nobody looked",
+    // which is why a check that could not run says so rather than returning nothing.
+    private async Task<IReadOnlyList<string>> _RecoverStrayCommitsAsync(
+        AutopilotRunEnvironment environment,
+        IReadOnlyList<IEmbeddedSession> sessions,
+        CancellationToken cancellationToken)
+    {
+        if (_prPublisher is null
+            || environment.RunWorktreePath is not { Length: > 0 } runWorktree
+            || environment.RunWorktreeBranch is not { Length: > 0 } runBranch)
+        {
+            return [];
+        }
+
+        var notes = new List<string>();
+        foreach (var session in sessions)
+        {
+            if (session.WorktreePath is not { Length: > 0 } stepWorktree)
+            {
+                continue;
+            }
+
+            try
+            {
+                var stray = await _prPublisher.RecoverStrayCommitsAsync(runWorktree, runBranch, stepWorktree, cancellationToken).ConfigureAwait(false);
+                if (stray.NeedsSaying)
+                {
+                    notes.Add(_DescribeStray(stray, runBranch, stepWorktree));
+                }
+            }
+            catch (Exception failure) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The publisher's contract is that it never throws, and a git fault must not fail a step that did its
+                // work. But an unchecked step is not a clean one, so a throw lands where a reported failure lands.
+                notes.Add(_DescribeStray(AutopilotStrayCommits.Unmeasured(failure.Message), runBranch, stepWorktree));
+            }
+        }
+
+        return notes;
+    }
+
+    // One line per session for the validation turn. A stranded commit is stated as what it is — the step's own report
+    // describes a tree the run does not have — because that is the sentence the CEO has to act on.
+    private static string _DescribeStray(AutopilotStrayCommits stray, string runBranch, string stepWorktree)
+    {
+        if (!stray.Found)
+        {
+            // Nothing was found because nothing could be looked at. Said as a failed check, never as a clean one.
+            return $"The harness could not check whether this step's work landed on “{runBranch}” "
+                + $"({stray.Error}) — the step ran in {stepWorktree}, so check that branch yourself before accepting it.";
+        }
+
+        var recovered = stray.Recovered.Count == 0
+            ? string.Empty
+            : $"Cherry-picked {stray.Recovered.Count} commit(s) it had made on a branch of its own onto “{runBranch}” "
+                + $"({string.Join(", ", stray.Recovered.Select(_Short))}) — that work is in the run now and the observation below covers it. ";
+
+        return stray.Stranded.Count == 0
+            ? recovered.TrimEnd()
+            : recovered
+                + $"{stray.Stranded.Count} further commit(s) could NOT be brought over ({string.Join(", ", stray.Stranded.Select(_Short))}): "
+                + $"{stray.Error ?? "the cherry-pick was refused"}. They are still only in {stepWorktree}, so anything the "
+                + "step reports about them — a passing suite, a finished fix — describes a tree this run does not have. "
+                + "Do not accept the step on that report.";
+    }
+
+    private static string _Short(string commit) => commit.Length > 8 ? commit[..8] : commit;
 
     // AC-255: where the shared run worktree stood before a step ran. Null whenever there is nothing to measure against
     // — no source, no shared worktree, or git could not answer — and the step then validates the way it always did.
