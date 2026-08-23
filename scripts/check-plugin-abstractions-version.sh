@@ -3,8 +3,9 @@
 # AbstractionsContract.Version loads on nobody's host: PluginLoadPolicy refuses it outright, silently, with
 # no build error and no red check (AC-1039 — Discord and Slack merged this way and were about to publish).
 #
-# Runs over every plugin in plugins-dev/, not just changed ones: the plugin AC-1039 caught was not touched
-# by the pull request that broke it.
+# Runs over every plugin in plugins-dev/ and templates/, not just changed ones: the plugin AC-1039 caught
+# was not touched by the pull request that broke it. templates/ is included because a scaffold that carries
+# the wrong number multiplies the bug into every plugin scaffolded from it.
 #
 #   scripts/check-plugin-abstractions-version.sh
 set -euo pipefail
@@ -18,6 +19,8 @@ expected="$(grep -oE 'public const int Version = [0-9]+;' "$contract" | grep -oE
 
 # The opening quote is part of the pattern, so "abstractionsVersion" cannot be mistaken for "minHostVersion"
 # or any other field — same trick check-plugin-versions.sh uses for "version" against "abstractionsVersion".
+# Deliberately matches only a numeric value: a missing field or a non-numeric one both come back empty, and
+# the caller reports that as "missing" rather than silently skipping it.
 manifest_abstractions_version() {
   grep -oE '"abstractionsVersion"[[:space:]]*:[[:space:]]*[0-9]+' "$1" \
     | head -1 \
@@ -27,7 +30,7 @@ manifest_abstractions_version() {
 
 offenders=''
 
-for dir in "${repo_root}"/plugins-dev/Cockpit.Plugin.*/; do
+for dir in "${repo_root}"/plugins-dev/Cockpit.Plugin.*/ "${repo_root}"/templates/*/; do
   dir="${dir%/}"
   case "$dir" in *.Tests) continue;; esac
 
@@ -35,9 +38,10 @@ for dir in "${repo_root}"/plugins-dev/Cockpit.Plugin.*/; do
   [ -f "$manifest" ] || continue
 
   actual="$(manifest_abstractions_version "$manifest")"
-  [ -n "$actual" ] || continue
 
-  if [ "$actual" != "$expected" ]; then
+  if [ -z "$actual" ]; then
+    offenders="${offenders}$(basename "$dir")|missing or non-numeric"$'\n'
+  elif [ "$actual" != "$expected" ]; then
     offenders="${offenders}$(basename "$dir")|${actual}"$'\n'
   fi
 done
