@@ -432,8 +432,8 @@
          to have a `Docs` folder become shipped documentation — including the WithCulture="false" that keeps a
          translated page out of a satellite assembly. buildTransitive so it reaches a project that picks the SDK
          up indirectly as well; build for the older clients that only look there. -->
-    <None Include="build\Cockpit.Plugins.Abstractions.targets" Pack="true" PackagePath="buildTransitive\" />
-    <None Include="build\Cockpit.Plugins.Abstractions.targets" Pack="true" PackagePath="build\" />
+    <None Include="build\Cockpit.Plugins.Abstractions.targets" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="build\Cockpit.Plugins.Abstractions.targets" Pack="true" PackagePath="build/" />
   </ItemGroup>
 
   <ItemGroup>
