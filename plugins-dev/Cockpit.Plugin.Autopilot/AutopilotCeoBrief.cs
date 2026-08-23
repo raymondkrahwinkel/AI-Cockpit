@@ -154,7 +154,7 @@ internal static class AutopilotCeoBrief
             Re-emit the whole plan every time you draft or revise it, so the operator always sees the current plan. You do
             not merge or approve anything: the operator approves the plan in the cockpit to start the autonomous run, and
             the final merge stays with them.
-            """;
+            """.ReplaceLineEndings("\n"); // AC-1051: raw string literals take the source file's line endings.
     }
 
     // The model-choice instruction, tuned to the operator's cost/quality steer (AC-174). All three still fit the model to

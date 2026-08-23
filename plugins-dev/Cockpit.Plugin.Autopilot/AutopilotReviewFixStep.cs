@@ -29,7 +29,7 @@ internal static class AutopilotReviewFixStep
             what they raise:
 
             {findings}
-            """,
+            """.ReplaceLineEndings("\n"), // AC-1051: raw string literals take the source file's line endings.
             "Every finding above is resolved in the diff, and the project builds and its test suite passes (run it once here) with no new warnings.",
             GateMode.Skip);
     }
