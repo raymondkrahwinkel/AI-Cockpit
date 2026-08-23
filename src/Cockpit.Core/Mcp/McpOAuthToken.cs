@@ -1,11 +1,8 @@
 namespace Cockpit.Core.Mcp;
 
-// The credential the cockpit holds for one OAuth-protected MCP server (AC-353), kept so that a single browser
-// sign-in serves every session route and survives a restart of the app.
-//
-// This is deliberately not part of `McpServerConfig`: that record is the operator's own configuration,
-// rewritten in full every time the server is edited, and a token riding along there would be dropped by the first
-// save. What the operator types and what the sign-in yielded have different lifetimes, so they are stored apart.
+// AC-353: the credential the cockpit holds for one OAuth-protected MCP server, kept apart from
+// `McpServerConfig` because that record is rewritten in full on every edit and would drop a token riding
+// along with it — the operator's config and the sign-in's yield have different lifetimes.
 public sealed record McpOAuthToken
 {
     // The access token presented as `Authorization: &lt;scheme&gt; &lt;token&gt;`.
@@ -26,13 +23,9 @@ public sealed record McpOAuthToken
     // The endpoint this token was obtained for. What binds the credential to a host rather than to a name.
     public string? ResourceUrl { get; init; }
 
-    // The OAuth client ID these tokens were issued to (AC-505). Without this, a refresh token is unusable beyond
-    // the connection that obtained it: the SDK builds a fresh `ClientOAuthProvider` per connect attempt (a new
-    // session, a renewal, a restart), which starts with no client identity of its own, and it will only try a
-    // refresh grant once it has one to present. Persisting it here is what `ClientOAuthProvider`'s own
-    // `RestoreCachedClientCredentials` is built to read back — the mechanism the SDK's own doc comments
-    // describe as letting "a persisted refresh token be used after a restart without re-running dynamic client
-    // registration".
+    // AC-505: OAuth client ID these tokens were issued to. Without it a refresh token is unusable beyond the
+    // connection that obtained it, since the SDK builds a fresh `ClientOAuthProvider` per connect attempt with
+    // no client identity until `RestoreCachedClientCredentials` reads this back.
     public string? ClientId { get; init; }
 
     // The OAuth client secret paired with `ClientId`, when dynamic client registration issued one.
@@ -48,14 +41,9 @@ public sealed record McpOAuthToken
     // same origin discipline `IsForResource` applies to the resource itself.
     public string? AuthorizationServer { get; init; }
 
-    // Whether this token may be presented to `url`. A stored token is found by the server's name,
-    // and a name is not an identity: a project can replace a registry server with its own entry under the same name
-    // and a different address, and the operator can rename or duplicate one. Without this check the credential
-    // obtained for one host would be handed to whatever now answers to that name — so the origin it was issued for
-    // has to match the origin it is about to be sent to, and a token with no recorded origin is not used at all.
-    //
-    // Compared on scheme, host and port rather than the whole address, because that is the boundary that decides
-    // who receives the bearer; a path that moved is the same party, a host that changed is not.
+    // Whether this token may be presented to `url`. A stored token is found by name, not identity — a project or
+    // rename can point the same name at a different address — so the issued origin must match the target origin
+    // (scheme/host/port; a token with no recorded origin is never used) or the credential could leak to an impostor.
     public bool IsForResource(string? url) =>
         Uri.TryCreate(ResourceUrl, UriKind.Absolute, out var issuedFor)
         && Uri.TryCreate(url, UriKind.Absolute, out var target)
@@ -73,10 +61,9 @@ public sealed record McpOAuthToken
         + $"{nameof(ClientId)} = {ClientId}, {nameof(ClientSecret)} = {(string.IsNullOrEmpty(ClientSecret) ? "null" : "***")}, "
         + $"{nameof(TokenEndpointAuthMethod)} = {TokenEndpointAuthMethod}, {nameof(AuthorizationServer)} = {AuthorizationServer} }}";
 
-    // Whether this token can still be handed to an agent at `moment`, keeping `margin`
-    // in hand. The margin is what stops a token that expires in two seconds from being written into a config file that
-    // a session will read for the next hour. A token whose server named no expiry is taken at face value — guessing a
-    // lifetime would either throw away a working credential or claim one that is already dead.
+    // Whether this token can still be handed to an agent at `moment`, keeping `margin` in hand — otherwise a token
+    // expiring in two seconds could be written into a config a session reads for the next hour. No named expiry
+    // is taken at face value; guessing would either discard a working credential or claim a dead one.
     public bool IsUsableAt(DateTimeOffset moment, TimeSpan margin) =>
         !string.IsNullOrWhiteSpace(AccessToken) && (ExpiresAt is null || ExpiresAt.Value - margin > moment);
 }

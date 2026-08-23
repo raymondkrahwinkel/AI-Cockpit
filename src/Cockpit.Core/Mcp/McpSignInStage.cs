@@ -1,12 +1,8 @@
 namespace Cockpit.Core.Mcp;
 
-// How far a sign-in got before it stopped (AC-457). The cockpit cannot say *what* refused without risking
-// request or response material in the UI (Iron Law #8), but it can say *where* it stopped — and that is the
-// difference between sending the operator to a browser window and telling them one was never opened.
-//
-// Each value is named for what the cockpit did, not for what it hopes happened on the other side. Handing a URL to
-// the system browser is the last thing this process can observe: whether a window then appeared is not knowable
-// from here, and a stage that asserted it would be the same defect one layer down.
+// AC-457: how far a sign-in got before it stopped. The cockpit cannot say *what* refused without risking
+// request/response material in the UI (Iron Law #8), so it says *where* — named for what the cockpit did, not
+// for what it hopes happened after the browser hand-off, which it can no longer observe.
 public enum McpSignInStage
 {
     // The sign-in was never handed to a browser. Nothing interactive was asked for, or discovery, registration, the

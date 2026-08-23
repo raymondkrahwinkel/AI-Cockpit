@@ -1,25 +1,21 @@
 namespace Cockpit.Core.Mcp;
 
-// A one-click template for a well-known MCP server (#26). Local models have no built-in tools, so these
-// presets are the fast path to giving them file access and a few other common capabilities: the user picks
-// a preset, adjusts anything specific (e.g. the folder a filesystem server is scoped to), and saves it into
-// the shared registry. Every resulting tool call is still gated by the approval prompt, and the filesystem
-// preset defaults to a single folder rather than the whole disk — access stays consent-scoped by design.
+// A one-click template for a well-known MCP server (#26): pick a preset, adjust it (e.g. filesystem folder),
+// and save into the shared registry. Every call stays gated by the approval prompt, and filesystem defaults
+// to one folder, not the whole disk — access stays consent-scoped by design.
 public sealed record McpServerPreset(string Label, string Description, McpServerConfig Template);
 
 // The built-in preset catalogue offered in the MCP-servers dialog's quick-add row.
 public static class McpServerPresets
 {
-    // The npm package behind the built-in filesystem preset. The delegated-tool gate keys its name-based
-    // fallback classification (AC-100) on this package — never on the bare server or tool name — so the
-    // "writes are folder-scoped, so a write is a Write not a Destructive" guarantee it relies on only ever
-    // applies to this specific first-party server, not to any server that happens to reuse a generic tool name.
+    // The npm package behind the built-in filesystem preset. The delegated-tool gate keys its AC-100 fallback
+    // classification on this package name — never on the bare server/tool name — so the "folder-scoped write ⇒
+    // Write not Destructive" guarantee applies only to this first-party server, not any lookalike tool name.
     public const string FilesystemServerPackage = "@modelcontextprotocol/server-filesystem";
 
-    // The presets, in the order shown. The filesystem preset is scoped to the user's profile folder by
-    // default — a sensible starting point the user is expected to narrow to the project they want the model
-    // to see. Runtime prerequisites (Node/`npx` or Python/`uvx`) are called out in each
-    // description so a preset that can't launch is a clear, not a silent, miss.
+    // The presets, in the order shown. Filesystem defaults to the user's profile folder — a starting point to
+    // narrow to the target project. Each description calls out its runtime prerequisite (Node/npx or
+    // Python/uvx) so a preset that can't launch is a clear, not a silent, miss.
     public static IReadOnlyList<McpServerPreset> All { get; } =
     [
         // Filesystem/Fetch/Git duplicate tools Claude Code already has (Read/Write, WebFetch, Bash git), so

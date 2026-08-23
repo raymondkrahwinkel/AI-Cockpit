@@ -1,9 +1,8 @@
 namespace Cockpit.Core.Mcp;
 
-// The Core-level mirror of `Cockpit.Plugins.Abstractions.Mcp.McpProbeResult` — see `McpToolProbeOutcome`'s own remarks on why this is a separate type rather than a shared one.
-//
-// `Outcome`: What came of the call.
-// `Detail`: The tool's raw text output, present only when `Outcome` is `McpToolProbeOutcome.Success`.
+// The Core-level mirror of `Cockpit.Plugins.Abstractions.Mcp.McpProbeResult` — see `McpToolProbeOutcome`'s own
+// remarks on why this is a separate type. `Detail` is the tool's raw text output, present only when `Outcome`
+// is `McpToolProbeOutcome.Success`.
 public sealed record McpToolProbeResult(McpToolProbeOutcome Outcome, string? Detail = null)
 {
     // The call could not be completed.

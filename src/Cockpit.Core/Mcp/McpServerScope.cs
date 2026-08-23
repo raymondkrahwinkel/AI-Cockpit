@@ -1,9 +1,8 @@
 namespace Cockpit.Core.Mcp;
 
-// Which session worlds a registry MCP server fans out to (#26). The two worlds have very different
-// built-in tools: a local model (Ollama/LM Studio) has none, so it needs servers like filesystem, while
-// Claude Code already ships file/shell/web tools of its own — the same server there is redundant noise.
-// Scoping a server lets one shared registry serve both without cross-contaminating them.
+// Which session worlds a registry MCP server fans out to (#26): a local model (Ollama/LM Studio) has no
+// built-in tools so it needs servers like filesystem, while Claude Code already ships file/shell/web tools
+// of its own — scoping lets one shared registry serve both without cross-contaminating them.
 public enum McpServerScope
 {
     // Available to every session — both the local-model tool-loop and Claude Code.
