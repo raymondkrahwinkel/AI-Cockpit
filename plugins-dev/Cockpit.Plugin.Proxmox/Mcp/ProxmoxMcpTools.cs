@@ -6,10 +6,9 @@ using Cockpit.Plugin.Proxmox.Settings;
 
 namespace Cockpit.Plugin.Proxmox.Mcp;
 
-// The `cockpit-proxmox` MCP tool surface (AC-1038). Each `[McpServerTool]` method routes through
-// `ProxmoxAccessGate` before touching the API and returns `McpText`-shaped JSON; every write waits for the
-// underlying Proxmox task (a UPID) and reports its real outcome, never just that the request was accepted. Tools on
-// an LXC container always say "lxc" rather than "container", so they read distinctly from a Docker container.
+// The `cockpit-proxmox` MCP tool surface (AC-1038). Every method routes through `ProxmoxAccessGate` first, and
+// every write waits for the underlying Proxmox task (a UPID) to report its real outcome, never just acceptance.
+// LXC tools always say "lxc" rather than "container", so they read distinctly from a Docker container.
 internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGate gate, IProxmoxEngine engine)
 {
     // ---- Reads -------------------------------------------------------------------------------------------------

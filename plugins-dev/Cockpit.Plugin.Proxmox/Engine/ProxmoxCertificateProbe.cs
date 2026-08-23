@@ -6,9 +6,8 @@ using System.Security.Cryptography.X509Certificates;
 namespace Cockpit.Plugin.Proxmox.Engine;
 
 // Reads the certificate a Proxmox host presents, the way an SSH client shows a host key on first connect (AC-1038).
-// Proxmox is self-signed by default, so trust here is never automatic: this only reads and formats the fingerprint
-// for the operator to look at in the settings UI; nothing is trusted until they explicitly confirm it, and the
-// probe connection carries no request beyond the TLS handshake itself.
+// Only reads and formats the fingerprint for the settings UI to show — nothing is trusted until the operator
+// explicitly confirms it, and the probe carries no request beyond the TLS handshake itself.
 internal static class ProxmoxCertificateProbe
 {
     public static async Task<(string? Fingerprint, string? Error)> FetchFingerprintAsync(string host, int port, CancellationToken cancellationToken)

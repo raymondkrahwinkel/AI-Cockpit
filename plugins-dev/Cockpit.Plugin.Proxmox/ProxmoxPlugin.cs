@@ -9,11 +9,9 @@ using Cockpit.Plugin.Proxmox.Ui;
 
 namespace Cockpit.Plugin.Proxmox;
 
-// Proxmox VE plugin entry point (AC-1038). Registers a Proxmox host or cluster and injects a cockpit-hosted
-// `cockpit-proxmox` MCP server so an agent can work with nodes, VMs and LXC containers under strict,
-// human-approved control. Proxy model — the plugin talks to the Proxmox REST API itself (plain `HttpClient`, no
-// community library, no ticket/cookie auth) and keeps the API token, gating every call through
-// `ProxmoxAccessGate`. Sibling of the Docker and Kubernetes plugins.
+// Proxmox VE plugin entry point (AC-1038). Registers a Proxmox target and injects a cockpit-proxmox MCP server;
+// the plugin talks to the REST API itself and keeps the token, gating every call through `ProxmoxAccessGate`.
+// Sibling of the Docker and Kubernetes plugins.
 public sealed class ProxmoxPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(

@@ -2,10 +2,8 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Proxmox.Settings;
 
-// The plugin's settings, persisted through the host's per-plugin `IPluginStorage` (AC-1038). One registered Proxmox
-// VE host or cluster (like the Docker plugin's single daemon, not the Kubernetes plugin's cluster list) — the API
-// token goes through the secret layer, declared in `plugin.json`'s `secretKeys`, never into plain storage. Read
-// fresh on every access, so a change made in the settings view takes effect on the next call without a restart.
+// The plugin's settings (AC-1038): one Proxmox target, like Docker's single daemon rather than Kubernetes' cluster
+// list. Read fresh from `IPluginStorage` on every access, so a settings save takes effect without a restart.
 internal sealed class ProxmoxSettings(IPluginStorage storage)
 {
     // Whether the cockpit-proxmox MCP server is offered to sessions. On by default.

@@ -22,13 +22,15 @@ something needs the matching write role on the paths you want reachable.
 
 ## The certificate {#certificate}
 
-Proxmox is self-signed by default, so this plugin never accepts a certificate silently. Click
-**Show fingerprint** to connect and read what the host presents — the same trust-on-first-use a step an SSH
-client shows a host key. Verify the SHA-256 fingerprint shown matches your Proxmox host's own (visible on
-its console, or via `openssl x509 -noout -fingerprint -sha256 -in /etc/pve/local/pve-ssl.pem` on the host
-itself) before clicking **Trust this certificate**. Every connection after that is checked against exactly
-that fingerprint; a host whose certificate changes — a renewal, a reinstall, or someone in the middle — fails
-closed with a message pointing back here, never a silent reconnect.
+A certificate from a real CA (say, a reverse proxy in front of Proxmox with a Let's Encrypt certificate)
+just works — nothing to trust by hand, and it keeps working through renewals. Proxmox is self-signed by
+default though, and this plugin never accepts a self-signed certificate silently: click **Show fingerprint**
+to connect and read what the host presents — the same trust-on-first-use step an SSH client takes with a
+host key. Verify the SHA-256 fingerprint shown matches your Proxmox host's own (visible on its console, or
+via `openssl x509 -noout -fingerprint -sha256 -in /etc/pve/local/pve-ssl.pem` on the host itself) before
+clicking **Trust this certificate**. Every connection after that is checked against exactly that fingerprint;
+a host whose certificate changes — a renewal, a reinstall, or someone in the middle — fails closed with a
+message pointing back here, never a silent reconnect.
 
 ## Rollback and delete — off by default {#dangerous-capabilities}
 

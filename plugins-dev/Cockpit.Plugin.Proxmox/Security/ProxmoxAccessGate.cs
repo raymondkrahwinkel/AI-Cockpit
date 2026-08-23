@@ -6,8 +6,7 @@ namespace Cockpit.Plugin.Proxmox.Security;
 
 // The single policy chokepoint in front of the Proxmox API (AC-1038), mirroring `DockerAccessGate`. Connecting asks
 // once and is remembered per pane; every mutation asks afresh, Dangerous, never remembered — shutdown and stop stay
-// separate calls with separate text, since Proxmox treats them as different operations. Every other surface that
-// touches the API (later: the overview workspace) routes through here too — it is not a second access path.
+// separate calls with separate text, since Proxmox treats them as different operations.
 internal sealed class ProxmoxAccessGate(ICockpitHost host)
 {
     private const string SourceLabel = "Proxmox";
@@ -93,8 +92,8 @@ internal sealed class ProxmoxAccessGate(ICockpitHost host)
     }
 
     // Rendered verbatim to the operator; parts (a VM/LXC id, a snapshot name) are agent-supplied. Escape line breaks
-    // and tabs VISIBLY and neutralize every other control character, keeping the consent body a single bounded line
-    // — an agent cannot smuggle extra lines into what the operator approves. Mirrors DockerAccessGate (AC-84).
+    // and tabs VISIBLY and neutralize every other control character, keeping the consent body a single physical
+    // line — an agent cannot smuggle extra lines into what the operator approves. Mirrors DockerAccessGate.
     private static string _SingleLine(string text)
     {
         var builder = new StringBuilder(text.Length);

@@ -1,15 +1,15 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Security;
 using System.Security.Authentication;
 using System.Text.Json;
 using Cockpit.Plugin.Proxmox.Settings;
 
 namespace Cockpit.Plugin.Proxmox.Engine;
 
-// `IProxmoxEngine` backed directly by `HttpClient` against the Proxmox REST API (no community client library — the
-// API is a well-documented JSON-Schema-driven REST surface, and a token needs no CSRF/ticket dance). The client is
-// built lazily from the configured host/port/token and cached; a settings save calls `Invalidate` so the next call
-// rebuilds against the new target. Mirrors `DockerEngine`'s caching shape.
+// `IProxmoxEngine` backed directly by `HttpClient` (AC-1038, no community library needed). The client is built
+// lazily from the configured host/port/token and cached; `Invalidate` (called on settings save) drops it so the
+// next call rebuilds against the new target — mirrors `DockerEngine`'s caching shape.
 internal sealed class ProxmoxEngine(ProxmoxSettings settings) : IProxmoxEngine, IDisposable
 {
     private static readonly TimeSpan TaskPollInterval = TimeSpan.FromSeconds(1);
@@ -34,11 +34,12 @@ internal sealed class ProxmoxEngine(ProxmoxSettings settings) : IProxmoxEngine, 
 
             var handler = new HttpClientHandler
             {
-                // Trust-on-first-use, never accept-all: the operator confirms a fingerprint once in the settings UI
-                // (see `ProxmoxCertificateProbe`), and every connection after that is checked against exactly that
-                // fingerprint — read live from settings, so a re-trust takes effect without rebuilding the client.
-                ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
-                    certificate is not null && ProxmoxCertificateProbe.Fingerprint(certificate) == settings.TrustedCertFingerprint,
+                // A validly-chained certificate passes as normal. Proxmox is self-signed by default though, so a
+                // chain failure falls back to the fingerprint trusted in settings (read live) — none trusted yet
+                // fails closed.
+                ServerCertificateCustomValidationCallback = (_, certificate, _, sslPolicyErrors) =>
+                    sslPolicyErrors == SslPolicyErrors.None
+                    || (certificate is not null && ProxmoxCertificateProbe.Fingerprint(certificate) == settings.TrustedCertFingerprint),
             };
 
             var client = new HttpClient(handler)
