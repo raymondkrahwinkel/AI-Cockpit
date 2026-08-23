@@ -58,9 +58,14 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
     private static readonly HashSet<string> _ignoredSubtypes = new(StringComparer.Ordinal)
     {
         "bot_message",
+        "bot_add",
+        "bot_remove",
         "message_changed",
         "message_deleted",
         "message_replied",
+        "file_comment",
+        "sh_room_created",
+        "app_conversation_leave",
         "channel_join",
         "channel_leave",
         "channel_topic",
@@ -68,6 +73,8 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
         "channel_name",
         "channel_archive",
         "channel_unarchive",
+        "channel_convert_to_private",
+        "channel_convert_to_public",
         "group_join",
         "group_leave",
         "group_topic",

@@ -18,8 +18,12 @@ public class SlackGatewayConnectionTests
     [InlineData("channel_join")]
     [InlineData("channel_leave")]
     [InlineData("bot_message")]
+    [InlineData("bot_add")]
     [InlineData("pinned_item")]
     [InlineData("channel_topic")]
+    [InlineData("channel_convert_to_private")]
+    [InlineData("app_conversation_leave")]
+    [InlineData("file_comment")]
     [InlineData("tombstone")]
     public void IgnoresBotAndSystemSubtypes(string subtype) =>
         Assert.False(SlackGatewayConnection.ShouldHandle(botId: null, subtype, Channel, Channel));
