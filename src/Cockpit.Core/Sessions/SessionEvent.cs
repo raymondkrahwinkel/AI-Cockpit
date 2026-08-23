@@ -1,11 +1,8 @@
 namespace Cockpit.Core.Sessions;
 
-// Base type for every typed event a `Abstractions.Sessions.ISessionDriver` can raise —
-// the one vocabulary the whole app renders, whichever provider produced it. Its shape was modelled on
-// the richest source, the `claude` CLI's stream-json output (captured against a live process); a
-// provider that cannot produce a given event (thinking deltas, rate-limit info) simply never raises it,
-// which `SessionCapabilities` tells the UI up front. Plugin providers emit the trimmed
-// `PluginSessionEvent` instead, which the host adapter maps onto these types.
+// Base type for every typed event a `Abstractions.Sessions.ISessionDriver` can raise — the one vocabulary
+// the whole app renders. Shaped on the richest source, the `claude` CLI's stream-json output; a provider
+// that cannot produce an event simply never raises it (`SessionCapabilities` tells the UI up front).
 public abstract record SessionEvent
 {
     // Session id reported by the CLI's `system/init` event, once known.
@@ -26,10 +23,8 @@ public sealed record SessionInitialized : SessionEvent
     public required string Cwd { get; init; }
     public required IReadOnlyList<string> Tools { get; init; }
 
-    // The model the session actually started under, when the driver's own init event names it (AC-141) — null
-    // when the provider has no such concept, or the session was launched with an explicit model the live-control
-    // already shows. Only ever used to seed a live-control's starting value; never fires a switch back at the
-    // driver.
+    // AC-141: the model the session actually started under, when the init event names it — only ever used
+    // to seed a live-control's starting value, never fires a switch back at the driver.
     public string? Model { get; init; }
 }
 
@@ -75,12 +70,9 @@ public sealed record ToolResult : SessionEvent
     public required bool IsError { get; init; }
 }
 
-// Claude is asking the host to allow or deny a tool call. This is a host-side concept:
-// there is no single canonical wire event for it (it depends on the chosen permission
-// approach — `canUseTool` callback, `--permission-prompt-tool`, or a PreToolUse
-// hook). F-C1 surfaces every `ToolUseRequested` as a pending permission
-// decision that the UI can allow/deny read-only; see ClaudeCliSession for how the
-// decision is (not yet) fed back to the CLI process.
+// Claude is asking the host to allow or deny a tool call. Host-side concept, no single canonical wire event
+// (depends on the chosen permission approach). F-C1 surfaces every `ToolUseRequested` as a pending decision
+// the UI can allow/deny read-only; see ClaudeCliSession for how it is (not yet) fed back to the CLI.
 public sealed record PermissionRequested : SessionEvent
 {
     public required string ToolUseId { get; init; }
@@ -114,10 +106,8 @@ public sealed record TurnCompleted : SessionEvent
     // The CLI's own turn count for the session from `num_turns` (#8), or null when absent.
     public int? NumTurns { get; init; }
 
-    // Why the turn failed, in the provider's own words (AC-410) — mirrors
-    // `Cockpit.Plugins.Abstractions.Sessions.PluginTurnCompleted.Errors`. Null on every turn except the one
-    // failure mode that carries no `Result` to explain itself: an `error_during_execution` from a
-    // `--resume` id the provider no longer recognises.
+    // AC-410: why the turn failed, in the provider's own words. Null except for the one failure mode that
+    // carries no `Result` to explain itself: an `error_during_execution` from an unrecognised `--resume` id.
     public IReadOnlyList<string>? Errors { get; init; }
 }
 
@@ -130,10 +120,8 @@ public sealed record TokenUsage(int InputTokens, int OutputTokens, int CacheRead
     public int Total => InputTokens + OutputTokens + CacheReadInputTokens + CacheCreationInputTokens;
 }
 
-// Per-session/per-turn status and attention state, derived from the CLI's own
-// `system/post_turn_summary` and `system/notification` events — the stream already
-// carries the status/attention signal the cockpit needs, so this event is a direct mapping
-// rather than a host-side heuristic. See `StreamJson-Schema.md` "Relevantie voor de cockpit".
+// Per-session/per-turn status and attention state, from the CLI's own `system/post_turn_summary` and
+// `system/notification` events — a direct mapping, not a host-side heuristic (see `StreamJson-Schema.md`).
 public sealed record SessionStatusChanged : SessionEvent
 {
     // From `post_turn_summary.status_category` (e.g. "review_ready"), or `null` when this update came from a notification only.

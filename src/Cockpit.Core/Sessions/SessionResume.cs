@@ -16,10 +16,8 @@ public enum SessionResumeMode
 }
 
 // What a starting session should resume, chosen in the New-session dialog. Only providers that keep a
-// conversation history of their own can honour this — see `SessionCapabilities.SupportsResume`.
-//
-// `Mode`: Fresh conversation, most recent one, or one by id.
-// `SessionId`: The conversation to resume when `Mode` is `SessionResumeMode.BySessionId`; ignored otherwise.
+// conversation history of their own can honour this — see `SessionCapabilities.SupportsResume`. `SessionId`
+// applies only when `Mode` is `SessionResumeMode.BySessionId`; ignored otherwise.
 public sealed record SessionResume(SessionResumeMode Mode, string? SessionId = null)
 {
     public static SessionResume New { get; } = new(SessionResumeMode.New);

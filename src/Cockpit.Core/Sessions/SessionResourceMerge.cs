@@ -6,18 +6,9 @@ namespace Cockpit.Core.Sessions;
 // resolver that gathers the contributions so the rules below can be tested without standing up a plugin host.
 public static class SessionResourceMerge
 {
-    // The contributions as one environment: each key kept as the first contributor that set it left it, and every
-    // host-controlled key dropped.
-    //
-    // First one wins rather than last, because the alternative is that a session's environment depends on the
-    // order plugins happened to load — which changes when the operator installs an unrelated one. Two plugins
-    // setting the same variable is not an error either: it usually means they agree about it.
-    //
-    // Scrubbed here even though the caller is expected to have scrubbed already, so the rule holds where the value
-    // is used rather than where it was collected. A guard that relies on its caller having run is not a guard.
-    //
-    // `contributions`: What each plugin returned, in the order the plugins were asked.
-    // The merged resources, and the keys that were refused — names only, never values.
+    // Merges contributions into one environment, first contributor wins (else a session's environment would
+    // depend on plugin load order), every host-controlled key dropped. Scrubbed here too, not just at the
+    // caller, so the rule holds where the value is used — a guard relying on its caller having run isn't one.
     public static (SessionResources Resources, IReadOnlyList<string> RejectedEnvironmentKeys) Merge(
         IReadOnlyList<SessionResources> contributions)
     {
