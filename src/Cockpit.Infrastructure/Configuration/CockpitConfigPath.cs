@@ -20,9 +20,7 @@ internal static class CockpitConfigPath
     private const UnixFileMode PrivateDirectoryMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
-    // How long the swap waits out a reader holding the file. A read is milliseconds; reaching this means
-    // something other than contention has it. Longer than the readers' own window so the two cannot trade places
-    // forever — the writer outlasts the reader that is waiting for it.
+    // Longer than the readers' two seconds so the two cannot trade places forever; five as in `BackupService.MoveContentionWindow`.
     private static readonly TimeSpan SwapContentionWindow = TimeSpan.FromSeconds(5);
 
     private static readonly TimeSpan SwapContentionInterval = TimeSpan.FromMilliseconds(20);
@@ -183,14 +181,8 @@ internal static class CockpitConfigPath
         }
     }
 
-    // Puts the new file in place, waiting out whoever is reading the old one (AC-1047). `File.Replace` needs the
-    // destination exclusively, and every reader of these files holds it for the length of one read — so a save
-    // that landed while a store reloaded threw, and the section it carried was silently dropped. Readers already
-    // wait the swap out (`CockpitConfigFileAccess.ReadWhenNotBeingReplacedAsync`); this is the same courtesy in
-    // the other direction, and it covers a holder that is not ours at all — a backup, an editor, a virus scanner.
-    //
-    // Past the window it is not contention, so the exception goes on to the caller rather than a save that
-    // reports success and wrote nothing.
+    // Puts the new file in place, waiting out a reader holding the old one (AC-1047), the same way readers
+    // already wait out the swap.
     private static void SwapWhenNotBeingRead(string temporaryPath, string path)
     {
         var deadline = DateTimeOffset.UtcNow + SwapContentionWindow;
@@ -211,9 +203,11 @@ internal static class CockpitConfigPath
 
                 return;
             }
-            catch (IOException exception) when (exception is not FileNotFoundException
-                                                && exception is not DirectoryNotFoundException
-                                                && DateTimeOffset.UtcNow < deadline)
+            // A held destination is an UnauthorizedAccessException naming nothing, not an IOException — the same
+            // distinction `BackupService.MoveIntoPlaceAsync` waits out.
+            catch (Exception exception) when (exception is UnauthorizedAccessException
+                                                 or (IOException and not FileNotFoundException and not DirectoryNotFoundException)
+                                              && DateTimeOffset.UtcNow < deadline)
             {
                 // Blocking on purpose: the callers are sync, and a reader holds the file for a millisecond or two.
                 Thread.Sleep(SwapContentionInterval);
