@@ -123,8 +123,10 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             {
                 return await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
             }
-            catch (IOException exception) when (exception is not FileNotFoundException
-                                                && exception is not DirectoryNotFoundException
+            // FileNotFoundException included on purpose (AC-1047): the swap frees the name for an instant between
+            // moving the old file to `.bak` and renaming the new one in, so a reader that lands there finds
+            // nothing — both callers checked the file exists before getting here.
+            catch (IOException exception) when (exception is not DirectoryNotFoundException
                                                 && DateTimeOffset.UtcNow < deadline)
             {
                 await Task.Delay(ReadContentionInterval, cancellationToken).ConfigureAwait(false);

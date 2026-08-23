@@ -20,6 +20,11 @@ internal static class CockpitConfigPath
     private const UnixFileMode PrivateDirectoryMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
+    // Longer than the readers' two seconds so the two cannot trade places forever; five as in `BackupService.MoveContentionWindow`.
+    private static readonly TimeSpan SwapContentionWindow = TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan SwapContentionInterval = TimeSpan.FromMilliseconds(20);
+
     public static string Root => CockpitBuild.StateRoot;
 
     public static string Default => Path.Combine(Root, "cockpit.json");
@@ -154,16 +159,7 @@ internal static class CockpitConfigPath
         {
             WriteAllTextPrivate(temporaryPath, contents, flushToDisk: true);
 
-            if (File.Exists(path))
-            {
-                // Replace() is the atomic swap, and it writes the backup as part of the same operation.
-                File.Replace(temporaryPath, path, path + ".bak", ignoreMetadataErrors: true);
-                RestrictExistingFile(path + ".bak");
-            }
-            else
-            {
-                File.Move(temporaryPath, path);
-            }
+            SwapWhenNotBeingRead(temporaryPath, path);
 
             RestrictExistingFile(path);
         }
@@ -181,6 +177,40 @@ internal static class CockpitConfigPath
                 {
                     // Swept on the next start (SweepStaleSidecars) — a locked leftover is not worth failing a save over.
                 }
+            }
+        }
+    }
+
+    // Puts the new file in place, waiting out a reader holding the old one (AC-1047), the same way readers
+    // already wait out the swap.
+    private static void SwapWhenNotBeingRead(string temporaryPath, string path)
+    {
+        var deadline = DateTimeOffset.UtcNow + SwapContentionWindow;
+        while (true)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    // Replace() is the atomic swap, and it writes the backup as part of the same operation.
+                    File.Replace(temporaryPath, path, path + ".bak", ignoreMetadataErrors: true);
+                    RestrictExistingFile(path + ".bak");
+                }
+                else
+                {
+                    File.Move(temporaryPath, path);
+                }
+
+                return;
+            }
+            // A held destination is an UnauthorizedAccessException naming nothing, not an IOException — the same
+            // distinction `BackupService.MoveIntoPlaceAsync` waits out.
+            catch (Exception exception) when (exception is UnauthorizedAccessException
+                                                 or (IOException and not FileNotFoundException and not DirectoryNotFoundException)
+                                              && DateTimeOffset.UtcNow < deadline)
+            {
+                // Blocking on purpose: the callers are sync, and a reader holds the file for a millisecond or two.
+                Thread.Sleep(SwapContentionInterval);
             }
         }
     }
