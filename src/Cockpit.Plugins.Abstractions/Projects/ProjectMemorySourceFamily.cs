@@ -1,19 +1,15 @@
 namespace Cockpit.Plugins.Abstractions.Projects;
 
 /// <summary>
-/// A group of <see cref="ProjectMemorySourceRegistration"/>s a plugin offers as one entry in the project editor's
-/// source picker (AC-499) — "Depot", say, covering however many Depot connections the operator has configured,
-/// rather than one dropdown row per connection. Registering a family is what turns the doorless-Depot dead end into
-/// a way out: a plugin whose scheme space is empty right now (no connections configured yet) still declares its
-/// family, so the picker can offer "Depot" and lead the operator to <see cref="ConfigureAsync"/> instead of leaving
-/// the picker unable to say Depot exists at all.
-/// <para>
-/// A registration opts into a family via <see cref="ProjectMemorySourceRegistration.FamilyKey"/>; a family with no
-/// matching registration yet is exactly the "no instances configured" state <see cref="EmptyHint"/> exists for.
-/// Declaring a family never requires a registration to exist for it, and removing every registration under a key
-/// never removes the family itself — the picker keeps offering "Depot" so the empty state stays reachable, not gone.
-/// </para>
+/// A group of <see cref="ProjectMemorySourceRegistration"/>s a plugin offers as one entry in the project
+/// editor's source picker (AC-499) — "Depot", say, covering however many connections the operator has
+/// configured, rather than one dropdown row per connection.
 /// </summary>
+/// <remarks>
+/// A registration opts into a family via <see cref="ProjectMemorySourceRegistration.FamilyKey"/>. Declaring a
+/// family never requires a registration to exist for it yet — the picker can still offer "Depot" and lead the
+/// operator to <see cref="ConfigureAsync"/>.
+/// </remarks>
 /// <param name="Key">
 /// Groups <see cref="ProjectMemorySourceRegistration"/>s under this family — matched to
 /// <see cref="ProjectMemorySourceRegistration.FamilyKey"/> case-insensitively, the same agreement
@@ -34,15 +30,11 @@ public sealed record ProjectMemorySourceFamily(string Key, string Title)
     public string? EmptyHint { get; init; }
 
     /// <summary>
-    /// Opens wherever the operator configures an instance of this family — a plugin's own settings, reached the
-    /// same way a "Configure…" button elsewhere in the app would (<c>host.ShowSettingsAsync()</c>, most often).
-    /// This is the way out of the empty state <see cref="EmptyHint"/> names: the picker's own "Servers…" button
-    /// calls this rather than sending the operator hunting for a settings screen the dialog never named.
-    /// <para>
-    /// Null means no such place exists (or none was wired up yet) — the button that would call this is never shown
-    /// at all, the same "never a dead button" rule <see cref="ProjectMemorySourceRegistration.ListLocationsAsync"/>
-    /// already follows for <c>Choose…</c>.
-    /// </para>
+    /// Opens wherever the operator configures an instance of this family — a plugin's own settings, most often
+    /// <c>host.ShowSettingsAsync()</c>. The way out of the empty state <see cref="EmptyHint"/> names.
     /// </summary>
+    /// <remarks>
+    /// Null means no such place exists — the button that would call this is never shown at all.
+    /// </remarks>
     public Func<CancellationToken, Task>? ConfigureAsync { get; init; }
 }

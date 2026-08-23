@@ -1,18 +1,16 @@
 namespace Cockpit.Plugins.Abstractions.Consent;
 
 /// <summary>
-/// Asks the operator to approve a single action before it happens — the one consent primitive shared by the
-/// workflows plugin's dangerous steps, the terminal MCP, and anything else that acts with the operator's rights
-/// on an agent's say-so. Passed to <c>ICockpitHost.RequestConsentAsync</c> (or the host's own broker) which
-/// shows an Approve/Deny surface and returns the <see cref="ConsentDecision"/>.
-/// <para>
-/// <see cref="Action"/> is the ground truth: it must be the literal thing that will run — the actual command and
-/// working directory, the actual URL, the pane being taken over — never a caller-composed summary of it. A
-/// prompt-injected agent controls the words it supplies, so a gate that shows a friendly description of a hostile
-/// command is a gate that approves the command. The surface renders <see cref="Action"/> verbatim; the caller's
-/// job is to make it the truth, not to phrase it.
-/// </para>
+/// Asks the operator to approve a single action before it happens — the one consent primitive shared by
+/// anything that acts with the operator's rights on an agent's say-so. Passed to
+/// <c>ICockpitHost.RequestConsentAsync</c>, which shows an Approve/Deny surface and returns the
+/// <see cref="ConsentDecision"/>.
 /// </summary>
+/// <remarks>
+/// <see cref="Action"/> is the ground truth and is rendered verbatim: it must be the literal thing that will
+/// run, never a caller-composed summary — a prompt-injected agent controls the words it supplies, so a friendly
+/// description of a hostile command would be a gate that approves it.
+/// </remarks>
 /// <param name="Title">
 /// A short line naming what is being asked — "Workflow wants to run a command". Host-side framing, distinct from the untrusted <paramref name="Action"/>.
 /// </param>

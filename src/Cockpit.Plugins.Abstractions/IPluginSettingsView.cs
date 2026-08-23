@@ -2,25 +2,17 @@ namespace Cockpit.Plugins.Abstractions;
 
 /// <summary>
 /// Optional interface a plugin's settings view (the control passed to <see cref="ICockpitHost.AddSettings"/>)
-/// can implement so the host's settings screen provides a standard Save/Close footer for it (#14). A settings
-/// view that applies changes live and needs no explicit save can skip this — it just gets a Close button.
-/// <para>
-/// <strong>The view validates and hands over; the host writes.</strong> Nothing is persisted while the operator
-/// is still in the screen, because the screen the settings sit in may be cancelled: the cockpit's Options
-/// dialog is one staged transaction (AC-999) where Cancel has to take a plugin's change back too, and it cannot
-/// take back a write that already happened. So <see cref="TryStage"/> only checks the fields and answers with
-/// the write to perform; the host decides whether and when to run it, and reverting is simply never running it.
-/// </para>
-/// <para>
-/// The same contract serves both hosts. The standalone settings window (a plugin's own gear, a widget pane's
-/// gear) stages and commits in one click; the Options screen holds the commit until the operator applies. A view
-/// notices no difference.
-/// </para>
-/// <para>
-/// <strong>Migrating from <c>bool Save()</c>:</strong> move the body into the <c>commit</c> you hand back, and
-/// return the reason you used to show yourself as <c>error</c>. See <c>docs/plugins/PLUGIN-SDK.md</c>.
-/// </para>
+/// can implement so the host's settings screen provides a standard Save/Close footer for it (#14). A view that
+/// applies changes live and needs no explicit save can skip this.
 /// </summary>
+/// <remarks>
+/// <strong>The view validates and hands over; the host writes.</strong> Nothing is persisted while the operator
+/// is still in the screen, since the cockpit's Options dialog is one staged transaction (AC-999) that Cancel
+/// must be able to revert. The same contract serves both the standalone settings window (stages and commits in
+/// one click) and the Options screen (holds the commit until the operator applies). <strong>Migrating from
+/// <c>bool Save()</c>:</strong> move the body into the <c>commit</c> you hand back. See
+/// <c>docs/plugins/PLUGIN-SDK.md</c>.
+/// </remarks>
 public interface IPluginSettingsView
 {
     /// <summary>

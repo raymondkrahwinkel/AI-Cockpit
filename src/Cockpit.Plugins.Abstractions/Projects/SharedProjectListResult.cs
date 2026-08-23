@@ -1,10 +1,9 @@
 namespace Cockpit.Plugins.Abstractions.Projects;
 
 /// <summary>
-/// What came of asking an <see cref="ISharedProjectSource"/> for its projects (AC-245) — a whole-source failure
-/// (not signed in, unreachable, timed out), distinct from one bad project among many, which a source is expected to
-/// leave out of <see cref="Projects"/> rather than fail the whole call over (a Depot project with no
-/// <c>.cockpit/project.json</c>, say — not every project on a connection opts into being shared this way).
+/// What came of asking an <see cref="ISharedProjectSource"/> for its projects (AC-245) — a whole-source failure,
+/// distinct from one bad project among many, which a source is expected to leave out of <see cref="Projects"/>
+/// rather than fail the whole call over.
 /// </summary>
 public sealed record SharedProjectListResult(bool Succeeded, IReadOnlyList<SharedProject> Projects, string? Error)
 {
@@ -14,16 +13,13 @@ public sealed record SharedProjectListResult(bool Succeeded, IReadOnlyList<Share
 
     /// <summary>
     /// Projects this source can see the operator is a member of, but could not read enough of to confirm a
-    /// portable definition for (AC-245) — a role visible in a membership listing whose read attempt failed for a
-    /// reason that may be role-related rather than "not shared" (Depot's own MCP <c>read</c> tool requires at least
-    /// Editor today while <c>list_projects</c> is ungated, measured against <c>ProjectMemberAccessGuard</c>;
-    /// intended to change so a Viewer gets read access too — Raymond, 2026-08-02 — which is why this is a named,
-    /// visible degradation and not a silent one: once that ships, these simply stop appearing here with no
-    /// consumer-side change needed). Deliberately not merged into <see cref="Projects"/>: a caller must choose
-    /// what, if anything, to show for one of these rather than silently treating it the same as a project this
-    /// source actually confirmed. Empty by default; nothing in this SDK consumes it yet — how (or whether) the
-    /// Projects workspace surfaces it is undecided.
+    /// portable definition for (AC-245) — a read attempt that failed for a reason that may be role-related
+    /// rather than "not shared".
     /// </summary>
+    /// <remarks>
+    /// Deliberately not merged into <see cref="Projects"/>: a caller must choose what, if anything, to show for
+    /// one of these. Empty by default; how the Projects workspace surfaces it is undecided.
+    /// </remarks>
     public IReadOnlyList<UnreadableSharedProject> VisibleButUnreadable { get; init; } = [];
 }
 

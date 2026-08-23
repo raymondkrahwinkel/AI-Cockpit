@@ -11,21 +11,14 @@ public interface IPluginStorage
 
     /// <summary>
     /// Stores a credential: a token, an API key, a webhook URL — anything that would be a problem in someone
-    /// else's hands.
-    /// <para>
-    /// The host recognises the usual names on its own (<c>token</c>, <c>apiKey</c>, <c>secret</c>, <c>password</c>,
-    /// <c>webhook</c>), so a plugin that calls plain <see cref="Set{T}"/> for a field with one of those names is
-    /// already covered. This is for the ones it cannot guess — a <c>pat</c>, a <c>credential</c> — and for saying
-    /// so at the call site, where the plugin author is the one who knows. What is stored this way is encrypted at
-    /// rest whenever the operator has turned that on, and is emptied from a backup that says it carries no
-    /// credentials.
-    /// </para>
-    /// <para>
-    /// A plugin can also declare the keys in its <c>plugin.json</c> (<c>"secretKeys": ["pat"]</c>), which is what
-    /// covers values written before this existed — and lets the store show, at install time, which credentials a
-    /// plugin intends to keep.
-    /// </para>
+    /// else's hands. Use this for a field name the host cannot guess is a secret (a <c>pat</c>, a
+    /// <c>credential</c>); it already recognises names like <c>token</c>, <c>apiKey</c> and <c>secret</c>.
     /// </summary>
+    /// <remarks>
+    /// What is stored this way is encrypted at rest when the operator has turned that on, and is emptied from a
+    /// backup that says it carries no credentials. A plugin can also declare the keys in its <c>plugin.json</c>
+    /// (<c>"secretKeys": ["pat"]</c>) to cover values written before this existed.
+    /// </remarks>
     /// <remarks>
     /// A default implementation, so this is an addition to the contract rather than a break of it: an existing
     /// plugin (or a test double) that implements <see cref="IPluginStorage"/> keeps compiling, and simply stores

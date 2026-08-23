@@ -4,18 +4,12 @@ namespace Cockpit.Plugins.Abstractions.Workflows;
 
 /// <summary>
 /// A step a plugin contributes to the workflow editor (#69) — "Move a ticket to In Progress", "Comment on a pull
-/// request". Without this, the steps a flow can take are whatever the workflows plugin happened to build, and every
-/// integration the cockpit ever grows would have to be built there too, by someone who does not have the YouTrack
-/// client in front of them.
-/// <para>
-/// A step is declared and run in one place, on purpose: what a step is called, what it asks for and what it does are
-/// the same knowledge, and splitting them across a registry and a runner is how they drift apart.
-/// </para>
-/// <para>
-/// Data is plain string fields, not the workflow engine's own item type. A plugin should not have to reference the
-/// workflows plugin to add a step to it — the contract between them is this interface and nothing else.
-/// </para>
+/// request". A step is declared and run in one place, on purpose.
 /// </summary>
+/// <remarks>
+/// Data is plain string fields, not the workflow engine's own item type — a plugin should not have to reference
+/// the workflows plugin to add a step to it.
+/// </remarks>
 public interface IWorkflowStep
 {
     /// <summary>
@@ -56,15 +50,13 @@ public interface IWorkflowStep
     IReadOnlyList<string> Parameters { get; }
 
     /// <summary>
-    /// What a parameter's plausible values are, asked when its field is opened — the statuses a YouTrack board allows,
-    /// the repositories you have, the profiles you may delegate to. The step knows them; the workflow editor cannot,
-    /// and typing "In Progres" into a free-text box is a flow that fails at run time over a letter.
-    /// <para>
-    /// Suggestions, not a closed list: the field stays typeable, because a value is often <c>{state}</c> from the step
-    /// before rather than any of the fixed ones. Fetch what you must — this is called on the UI's behalf, not in a
-    /// run — and return nothing when there is nothing to suggest (the default), which leaves a plain text box.
-    /// </para>
+    /// What a parameter's plausible values are, asked when its field is opened. The step knows them; the workflow
+    /// editor cannot.
     /// </summary>
+    /// <remarks>
+    /// Suggestions, not a closed list — the field stays typeable. Return nothing when there is nothing to suggest
+    /// (the default), which leaves a plain text box.
+    /// </remarks>
     Task<IReadOnlyList<string>> SuggestAsync(string parameter, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<string>>([]);
 
@@ -75,14 +67,9 @@ public interface IWorkflowStep
     IReadOnlyList<string> Outputs => [string.Empty];
 
     /// <summary>
-    /// This step <em>starts</em> a flow rather than doing work in one: a ticket was picked, a pull request wants a
-    /// review. Nothing flows into it, the engine never executes it, and <see cref="RunAsync"/> is never called —
-    /// the plugin fires it itself with <see cref="ICockpitHost.RaiseWorkflowTrigger"/>, handing over the data the
-    /// flow starts with.
-    /// <para>
-    /// A trigger is a promise that something will fire it. A trigger nobody fires is a step that can be drawn, wired
-    /// and armed and will sit there forever, which is the one thing worse than not offering it.
-    /// </para>
+    /// This step <em>starts</em> a flow rather than doing work in one. Nothing flows into it, the engine never
+    /// executes it, and <see cref="RunAsync"/> is never called — the plugin fires it itself with
+    /// <see cref="ICockpitHost.RaiseWorkflowTrigger"/>.
     /// </summary>
     bool IsTrigger => false;
 
