@@ -58,7 +58,9 @@ internal sealed class DiscordGatewayConnection : IDisposable
 
     private Task _OnMessageReceived(SocketMessage message)
     {
-        if (message.Author.IsBot || message.Channel.Id != _channelId)
+        // A join or a pin arrives as a SocketSystemMessage — Discord's counterpart of Slack's system subtypes
+        // (AC-1046). A user message keeps its text whether or not a file hangs off it.
+        if (message is not SocketUserMessage || message.Author.IsBot || message.Channel.Id != _channelId)
         {
             return Task.CompletedTask;
         }

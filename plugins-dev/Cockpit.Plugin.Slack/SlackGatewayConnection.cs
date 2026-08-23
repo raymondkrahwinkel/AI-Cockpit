@@ -53,11 +53,46 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
         }
     }
 
-    // A message arrived on the socket. Bot/system messages (edits, deletions, our own posts) carry a subtype
-    // or a BotId and are ignored, the same restraint Discord's MessageReceived gives its own IsBot check.
+    // Slack gives an ordinary user message a subtype too as soon as a file hangs off it (`file_share`), so only the
+    // known bot/system subtypes are named here — anything else is somebody talking (AC-1046).
+    private static readonly HashSet<string> _ignoredSubtypes = new(StringComparer.Ordinal)
+    {
+        "bot_message",
+        "message_changed",
+        "message_deleted",
+        "message_replied",
+        "channel_join",
+        "channel_leave",
+        "channel_topic",
+        "channel_purpose",
+        "channel_name",
+        "channel_archive",
+        "channel_unarchive",
+        "group_join",
+        "group_leave",
+        "group_topic",
+        "group_purpose",
+        "group_name",
+        "group_archive",
+        "group_unarchive",
+        "pinned_item",
+        "unpinned_item",
+        "reminder_add",
+        "ekm_access_denied",
+        "huddle_thread",
+        "tombstone",
+    };
+
+    // Whether an inbound event is a real message from a real person on this channel.
+    internal static bool ShouldHandle(string? botId, string? subtype, string? channel, string expectedChannel) =>
+        botId is null
+        && channel == expectedChannel
+        && (subtype is null || !_ignoredSubtypes.Contains(subtype));
+
+    // A message arrived on the socket.
     public Task Handle(MessageEvent slackEvent)
     {
-        if (slackEvent.BotId is not null || slackEvent.Subtype is not null || slackEvent.Channel != _channelId)
+        if (!ShouldHandle(slackEvent.BotId, slackEvent.Subtype, slackEvent.Channel, _channelId))
         {
             return Task.CompletedTask;
         }
