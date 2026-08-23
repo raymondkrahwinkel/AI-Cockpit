@@ -7,15 +7,23 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface IConPtyProcess : IDisposable
 {
-    /// <summary>Stream to write user keystrokes (already VT-encoded) into the pty's stdin.</summary>
+    /// <summary>
+    /// Stream to write user keystrokes (already VT-encoded) into the pty's stdin.
+    /// </summary>
     Stream InputStream { get; }
 
-    /// <summary>Stream to read the pty's rendered output (ANSI/VT bytes) from.</summary>
+    /// <summary>
+    /// Stream to read the pty's rendered output (ANSI/VT bytes) from.
+    /// </summary>
     Stream OutputStream { get; }
 
-    /// <summary>The child process id.</summary>
+    /// <summary>
+    /// The child process id.
+    /// </summary>
     int ProcessId { get; }
 
-    /// <summary>Resizes the pseudo console. Called when the hosting panel resizes.</summary>
+    /// <summary>
+    /// Resizes the pseudo console. Called when the hosting panel resizes.
+    /// </summary>
     void Resize(short columns, short rows);
 }

@@ -11,12 +11,18 @@ public interface IWorkingPathHistoryStore
 {
     Task<WorkingPathHistory> LoadAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Records <paramref name="path"/> as most-recently-used (front of the recent list, de-duplicated, capped) and saves. Returns the updated history.</summary>
+    /// <summary>
+    /// Records <paramref name="path"/> as most-recently-used (front of the recent list, de-duplicated, capped) and saves. Returns the updated history.
+    /// </summary>
     Task<WorkingPathHistory> RecordRecentAsync(string path, CancellationToken cancellationToken = default);
 
-    /// <summary>Pins or unpins <paramref name="path"/> as a favorite and saves. Returns the updated history.</summary>
+    /// <summary>
+    /// Pins or unpins <paramref name="path"/> as a favorite and saves. Returns the updated history.
+    /// </summary>
     Task<WorkingPathHistory> SetFavoriteAsync(string path, bool favorite, CancellationToken cancellationToken = default);
 
-    /// <summary>Forgets <paramref name="path"/> entirely — removed from both the recent and favorite lists (AC-131) — and saves. Returns the updated history.</summary>
+    /// <summary>
+    /// Forgets <paramref name="path"/> entirely — removed from both the recent and favorite lists (AC-131) — and saves. Returns the updated history.
+    /// </summary>
     Task<WorkingPathHistory> RemoveAsync(string path, CancellationToken cancellationToken = default);
 }

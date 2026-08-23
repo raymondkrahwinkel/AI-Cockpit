@@ -7,7 +7,9 @@ namespace Cockpit.Core.Abstractions.Verify;
 /// </summary>
 public interface IVerifySessionGateway
 {
-    /// <summary>The working directory the session with <paramref name="paneId"/> is running in, or null when no such live session is open.</summary>
+    /// <summary>
+    /// The working directory the session with <paramref name="paneId"/> is running in, or null when no such live session is open.
+    /// </summary>
     string? GetWorkingDirectory(string paneId);
 
     /// <summary>

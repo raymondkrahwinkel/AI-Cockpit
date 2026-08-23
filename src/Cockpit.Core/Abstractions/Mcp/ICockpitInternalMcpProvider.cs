@@ -9,7 +9,9 @@ namespace Cockpit.Core.Abstractions.Mcp;
 /// </summary>
 public interface ICockpitInternalMcpProvider
 {
-    /// <summary>The cockpit-hosted servers available right now, or an empty list when none are running yet.</summary>
+    /// <summary>
+    /// The cockpit-hosted servers available right now, or an empty list when none are running yet.
+    /// </summary>
     IReadOnlyList<McpServerConfig> GetServers();
 
     /// <summary>

@@ -12,7 +12,9 @@ public interface IPluginProvisioningService
     /// Installs one plugin. Refuses before any download when this host cannot run the requested version (AC-181);
     /// otherwise downloads (the store's published checksum still verified — a mismatch is a hard rejection, a missing one a warning carried on a success) and installs it, staging over an existing install.
     /// </summary>
-    /// <param name="hostAbstractionsMajor">The running cockpit's plugin-contract major — required, not defaulted: this project does not reference the plugin-abstractions assembly owning the constant, so a caller (which does) always passes it explicitly.</param>
+    /// <param name="hostAbstractionsMajor">
+    /// The running cockpit's plugin-contract major — required, not defaulted: this project does not reference the plugin-abstractions assembly owning the constant, so a caller (which does) always passes it explicitly.
+    /// </param>
     Task<PluginProvisionResult> InstallAsync(
         PluginProvisionRequest request, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default);
 

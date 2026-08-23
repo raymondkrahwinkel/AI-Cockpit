@@ -7,7 +7,9 @@ namespace Cockpit.Core.Abstractions.Worktrees;
 /// </summary>
 public interface IWorktreeReconcileGate
 {
-    /// <summary>Records the reconcile task <c>Program.cs</c> started, so a later <see cref="WaitAsync"/> has something to wait on.</summary>
+    /// <summary>
+    /// Records the reconcile task <c>Program.cs</c> started, so a later <see cref="WaitAsync"/> has something to wait on.
+    /// </summary>
     void SignalStarted(Task reconcileTask);
 
     /// <summary>

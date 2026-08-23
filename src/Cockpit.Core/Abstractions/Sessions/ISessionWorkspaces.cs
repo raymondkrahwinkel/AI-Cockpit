@@ -9,7 +9,9 @@ public interface ISessionWorkspaces
 {
     IReadOnlyList<string> ActiveWorkingDirectories { get; }
 
-    /// <summary>The directory a single session (by its pane id) is working in, or null — so delegation can scope a caller to its own directory (AC-128) rather than granting every open session's.</summary>
+    /// <summary>
+    /// The directory a single session (by its pane id) is working in, or null — so delegation can scope a caller to its own directory (AC-128) rather than granting every open session's.
+    /// </summary>
     string? WorkingDirectoryForPane(string paneId);
 }
 

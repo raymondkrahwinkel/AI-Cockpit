@@ -14,7 +14,9 @@ public interface IProjectLogoStore
     /// </summary>
     Task<string?> SaveAsync(string projectId, string source, CancellationToken cancellationToken = default);
 
-    /// <summary>Removes the logo <paramref name="projectId"/> had, if any. Never throws for one that is already gone.</summary>
+    /// <summary>
+    /// Removes the logo <paramref name="projectId"/> had, if any. Never throws for one that is already gone.
+    /// </summary>
     void Remove(string projectId);
 
     /// <summary>

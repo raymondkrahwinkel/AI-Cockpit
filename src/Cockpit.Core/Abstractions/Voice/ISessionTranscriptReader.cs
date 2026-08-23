@@ -20,7 +20,9 @@ public interface ISessionTranscriptReader
     /// Waits for a new transcript, then classifies each line into a <see cref="SessionActivity"/> —
     /// <see cref="SessionActivity.BackgroundBusy"/> keeps a background run from reading as done.
     /// </summary>
-    /// <param name="statusFile">Statusline snapshot file (AC-609) — names the transcript instead of inferring it.</param>
+    /// <param name="statusFile">
+    /// Statusline snapshot file (AC-609) — names the transcript instead of inferring it.
+    /// </param>
     IAsyncEnumerable<SessionTranscriptActivity> ReadActivityAsync(SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, string? statusFile, CancellationToken cancellationToken);
 
     /// <summary>

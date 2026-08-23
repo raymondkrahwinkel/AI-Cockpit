@@ -32,16 +32,24 @@ public interface ISecretProtectionService
     /// </summary>
     Task DismissUnprotectedWarningAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Derives the key from <paramref name="password"/> and, if it is the right one, unlocks the settings for this run. False means: wrong password.</summary>
+    /// <summary>
+    /// Derives the key from <paramref name="password"/> and, if it is the right one, unlocks the settings for this run. False means: wrong password.
+    /// </summary>
     Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default);
 
-    /// <summary>Encrypts every credential in the settings with a key derived from <paramref name="password"/>, and leaves the app unlocked.</summary>
+    /// <summary>
+    /// Encrypts every credential in the settings with a key derived from <paramref name="password"/>, and leaves the app unlocked.
+    /// </summary>
     Task EnableAsync(string password, IProgress<SecretMigrationProgress>? progress = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Writes every credential back in the clear. Requires an unlocked app — there is no way to decrypt without the key.</summary>
+    /// <summary>
+    /// Writes every credential back in the clear. Requires an unlocked app — there is no way to decrypt without the key.
+    /// </summary>
     Task DisableAsync(IProgress<SecretMigrationProgress>? progress = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Re-encrypts every credential under a new password (and a fresh salt).</summary>
+    /// <summary>
+    /// Re-encrypts every credential under a new password (and a fresh salt).
+    /// </summary>
     Task ChangePasswordAsync(string currentPassword, string newPassword, IProgress<SecretMigrationProgress>? progress = null, CancellationToken cancellationToken = default);
 
     /// <summary>

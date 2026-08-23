@@ -11,9 +11,13 @@ public interface IRepositoryCloneRegistry
 {
     Task<IReadOnlyList<RepositoryClone>> ListAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Records a clone, replacing any earlier entry for the same path so a reuse cannot duplicate it.</summary>
+    /// <summary>
+    /// Records a clone, replacing any earlier entry for the same path so a reuse cannot duplicate it.
+    /// </summary>
     Task AddAsync(RepositoryClone record, CancellationToken cancellationToken = default);
 
-    /// <summary>Removes the entry for <paramref name="path"/>; a no-op when none matches.</summary>
+    /// <summary>
+    /// Removes the entry for <paramref name="path"/>; a no-op when none matches.
+    /// </summary>
     Task RemoveAsync(string path, CancellationToken cancellationToken = default);
 }

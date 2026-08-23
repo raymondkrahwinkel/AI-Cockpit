@@ -9,9 +9,13 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface IScheduledResumeStore
 {
-    /// <summary>Every resume still waiting, oldest moment first. Empty when none are scheduled.</summary>
+    /// <summary>
+    /// Every resume still waiting, oldest moment first. Empty when none are scheduled.
+    /// </summary>
     Task<IReadOnlyList<ScheduledResume>> LoadAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Replaces the stored set. Callers load, change, and save the whole list — there are only ever a handful.</summary>
+    /// <summary>
+    /// Replaces the stored set. Callers load, change, and save the whole list — there are only ever a handful.
+    /// </summary>
     Task SaveAsync(IReadOnlyList<ScheduledResume> resumes, CancellationToken cancellationToken = default);
 }

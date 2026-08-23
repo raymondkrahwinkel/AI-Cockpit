@@ -11,9 +11,13 @@ public interface IWorktreeRegistry
 {
     Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Records a worktree, replacing any earlier entry for the same path so a retry cannot duplicate it.</summary>
+    /// <summary>
+    /// Records a worktree, replacing any earlier entry for the same path so a retry cannot duplicate it.
+    /// </summary>
     Task AddAsync(WorktreeRecord record, CancellationToken cancellationToken = default);
 
-    /// <summary>Removes the entry for <paramref name="worktreePath"/>; a no-op when none matches.</summary>
+    /// <summary>
+    /// Removes the entry for <paramref name="worktreePath"/>; a no-op when none matches.
+    /// </summary>
     Task RemoveAsync(string worktreePath, CancellationToken cancellationToken = default);
 }

@@ -11,9 +11,13 @@ public interface IVerifyRunnerRegistry
 {
     Task<IReadOnlyList<VerifyRunner>> ListAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Stores <paramref name="runner"/>, replacing any earlier runner with the same <see cref="VerifyRunner.Label"/> so an edit does not duplicate it.</summary>
+    /// <summary>
+    /// Stores <paramref name="runner"/>, replacing any earlier runner with the same <see cref="VerifyRunner.Label"/> so an edit does not duplicate it.
+    /// </summary>
     Task SaveAsync(VerifyRunner runner, CancellationToken cancellationToken = default);
 
-    /// <summary>Removes the runner named <paramref name="label"/>; a no-op when none matches.</summary>
+    /// <summary>
+    /// Removes the runner named <paramref name="label"/>; a no-op when none matches.
+    /// </summary>
     Task RemoveAsync(string label, CancellationToken cancellationToken = default);
 }

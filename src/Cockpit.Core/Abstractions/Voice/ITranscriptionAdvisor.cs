@@ -20,7 +20,9 @@ public sealed record TranscriptionCapabilities(bool CudaUsable, bool VulkanUsabl
 /// </summary>
 public interface ITranscriptionAdvisor
 {
-    /// <summary>Which GPU backends this machine can actually load. Cached after the first probe.</summary>
+    /// <summary>
+    /// Which GPU backends this machine can actually load. Cached after the first probe.
+    /// </summary>
     TranscriptionCapabilities DetectCapabilities();
 
     /// <summary>The display GPU's brand, description, whether it drives a monitor, and its VRAM (AC-68 slice 2).

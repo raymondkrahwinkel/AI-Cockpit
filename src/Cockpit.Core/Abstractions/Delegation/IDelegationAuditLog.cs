@@ -7,10 +7,14 @@ namespace Cockpit.Core.Abstractions.Delegation;
 /// </summary>
 public interface IDelegationAuditLog
 {
-    /// <summary>Appends an entry. Never throws: an audit failure must not take a delegation down with it, so a broken log is a logged warning rather than a lost task.</summary>
+    /// <summary>
+    /// Appends an entry. Never throws: an audit failure must not take a delegation down with it, so a broken log is a logged warning rather than a lost task.
+    /// </summary>
     Task RecordAsync(DelegationAuditEntry entry, CancellationToken cancellationToken = default);
 
-    /// <summary>The most recent entries, newest first, for the audit view.</summary>
+    /// <summary>
+    /// The most recent entries, newest first, for the audit view.
+    /// </summary>
     Task<IReadOnlyList<DelegationAuditEntry>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default);
 }
 

@@ -14,6 +14,8 @@ public interface ISessionProfileStore
     /// </summary>
     Task<IReadOnlyList<SessionProfile>> LoadAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Persists the given profiles, replacing whatever was stored before.</summary>
+    /// <summary>
+    /// Persists the given profiles, replacing whatever was stored before.
+    /// </summary>
     Task SaveAsync(IReadOnlyList<SessionProfile> profiles, CancellationToken cancellationToken = default);
 }

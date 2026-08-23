@@ -9,10 +9,14 @@ namespace Cockpit.Core.Abstractions.Updates;
 /// </summary>
 public interface IUpdateService
 {
-    /// <summary>What this build is: the version it carries, and the commit it was built from (which is a nightly's only identity).</summary>
+    /// <summary>
+    /// What this build is: the version it carries, and the commit it was built from (which is a nightly's only identity).
+    /// </summary>
     (string Version, string Commit) Current { get; }
 
-    /// <summary>Looks for a build newer than this one, on the channel the operator chose. Never throws: a check that failed says so, because reporting "up to date" when nothing was asked would be a lie they would believe.</summary>
+    /// <summary>
+    /// Looks for a build newer than this one, on the channel the operator chose. Never throws: a check that failed says so, because reporting "up to date" when nothing was asked would be a lie they would believe.
+    /// </summary>
     Task<UpdateCheckResult> CheckAsync(UpdateChannel channel, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -33,11 +37,15 @@ public interface IUpdateService
     /// Asks for the build fetched by the most recent successful <see cref="DownloadAsync"/> to be applied the next
     /// time the cockpit starts, leaving the session running now completely untouched (AC-388, AC-738).
     /// </summary>
-    /// <returns>Whether the request was recorded; false when nothing was downloaded or the request could not be written.</returns>
+    /// <returns>
+    /// Whether the request was recorded; false when nothing was downloaded or the request could not be written.
+    /// </returns>
     bool RequestUpdateOnNextStart();
 }
 
-/// <summary>Whether to look for updates at all, and which builds to be told about (#71).</summary>
+/// <summary>
+/// Whether to look for updates at all, and which builds to be told about (#71).
+/// </summary>
 public interface IUpdateSettingsStore
 {
     Task<UpdateSettings> LoadAsync(CancellationToken cancellationToken = default);

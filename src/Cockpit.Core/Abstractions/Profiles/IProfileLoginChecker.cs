@@ -9,6 +9,8 @@ namespace Cockpit.Core.Abstractions.Profiles;
 /// </summary>
 public interface IProfileLoginChecker
 {
-    /// <summary>True when the profile's provider reports it logged in; true for a provider that has no login gate, false when its gate reports logged out.</summary>
+    /// <summary>
+    /// True when the profile's provider reports it logged in; true for a provider that has no login gate, false when its gate reports logged out.
+    /// </summary>
     bool IsLoggedIn(SessionProfile profile);
 }

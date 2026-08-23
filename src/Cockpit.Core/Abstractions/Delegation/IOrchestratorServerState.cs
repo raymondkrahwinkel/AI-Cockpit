@@ -6,6 +6,8 @@ namespace Cockpit.Core.Abstractions.Delegation;
 /// </summary>
 public interface IOrchestratorServerState
 {
-    /// <summary>The server's MCP endpoint, or <see langword="null"/> before it has started.</summary>
+    /// <summary>
+    /// The server's MCP endpoint, or <see langword="null"/> before it has started.
+    /// </summary>
     string? OrchestratorMcpUrl { get; }
 }

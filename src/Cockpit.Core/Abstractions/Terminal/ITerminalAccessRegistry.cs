@@ -51,36 +51,56 @@ public interface ITerminalAccessRegistry
     /// </summary>
     void PaneOpened(string paneId, string name, bool plainShell);
 
-    /// <summary>Records that a pane closed (tab closed, shell exit, SSH dropped): any coupling on it is broken automatically.</summary>
+    /// <summary>
+    /// Records that a pane closed (tab closed, shell exit, SSH dropped): any coupling on it is broken automatically.
+    /// </summary>
     void PaneClosed(string paneId);
 
-    /// <summary>Feeds a pane's freshly rendered output. Buffered only while the pane is coupled, so capture begins at the coupling, not before.</summary>
+    /// <summary>
+    /// Feeds a pane's freshly rendered output. Buffered only while the pane is coupled, so capture begins at the coupling, not before.
+    /// </summary>
     void CaptureOutput(string paneId, string text);
 
-    /// <summary>Whether the pane is coupled to any agent — the cheap gate the producer uses so it only decodes/pushes output that will actually be read.</summary>
+    /// <summary>
+    /// Whether the pane is coupled to any agent — the cheap gate the producer uses so it only decodes/pushes output that will actually be read.
+    /// </summary>
     bool IsCoupled(string paneId);
 
-    /// <summary>Registers the sink that writes bytes into this pane's pty stdin (its keystroke channel), so a coupled agent's <c>send_terminal</c> reaches the shell. Cleared when the pane closes.</summary>
+    /// <summary>
+    /// Registers the sink that writes bytes into this pane's pty stdin (its keystroke channel), so a coupled agent's <c>send_terminal</c> reaches the shell. Cleared when the pane closes.
+    /// </summary>
     void RegisterInput(string paneId, Action<ReadOnlyMemory<byte>> writeToPty);
 
-    /// <summary>Raised on the coupling changing (coupled, or decoupled by close/session-end/operator Disconnect) so the pane can show or hide its "agent connected" bar.</summary>
+    /// <summary>
+    /// Raised on the coupling changing (coupled, or decoupled by close/session-end/operator Disconnect) so the pane can show or hide its "agent connected" bar.
+    /// </summary>
     event Action<TerminalCouplingChange>? CouplingChanged;
 
-    /// <summary>The operator's Disconnect on a pane: breaks the coupling at once. A <see cref="TerminalCouplingMode.Drive"/> coupling is interrupted (Ctrl-C) first so whatever the agent started stops; a watching agent never typed, so nothing is interrupted — sending Ctrl-C there would kill the operator's own running command.</summary>
+    /// <summary>
+    /// The operator's Disconnect on a pane: breaks the coupling at once. A <see cref="TerminalCouplingMode.Drive"/> coupling is interrupted (Ctrl-C) first so whatever the agent started stops; a watching agent never typed, so nothing is interrupted — sending Ctrl-C there would kill the operator's own running command.
+    /// </summary>
     void Disconnect(string paneId);
 
     // ---- Consumer side (the cockpit-terminal MCP tools) ----
 
-    /// <summary>The open plain-shell panes as this agent session sees them, each flagged with whether this session is coupled to it. Agent-session panes are left out entirely.</summary>
+    /// <summary>
+    /// The open plain-shell panes as this agent session sees them, each flagged with whether this session is coupled to it. Agent-session panes are left out entirely.
+    /// </summary>
     IReadOnlyList<TerminalPaneView> ListPanes(string sessionId);
 
-    /// <summary>Finds an open plain-shell pane by its id or its operator-facing name, or null if there is no such pane. Naming an agent-session pane directly resolves to null, so leaving it out of <see cref="ListPanes"/> is a real gate and not just a hidden entry.</summary>
+    /// <summary>
+    /// Finds an open plain-shell pane by its id or its operator-facing name, or null if there is no such pane. Naming an agent-session pane directly resolves to null, so leaving it out of <see cref="ListPanes"/> is a real gate and not just a hidden entry.
+    /// </summary>
     TerminalPane? Resolve(string paneRef);
 
-    /// <summary>What this session holds on the pane, or null when it holds nothing — so a caller can tell "no consent yet" from "consent to watch, but not to type".</summary>
+    /// <summary>
+    /// What this session holds on the pane, or null when it holds nothing — so a caller can tell "no consent yet" from "consent to watch, but not to type".
+    /// </summary>
     TerminalCouplingMode? CouplingOf(string sessionId, string paneId);
 
-    /// <summary>Whether a <em>different</em> agent session holds the coupling — exclusivity: a second agent is refused.</summary>
+    /// <summary>
+    /// Whether a <em>different</em> agent session holds the coupling — exclusivity: a second agent is refused.
+    /// </summary>
     bool IsCoupledByAnother(string sessionId, string paneId);
 
     /// <summary>
@@ -90,15 +110,23 @@ public interface ITerminalAccessRegistry
     /// </summary>
     void Couple(string sessionId, string paneId, TerminalCouplingMode mode);
 
-    /// <summary>The output captured since this session coupled to the pane, or null when this session does not hold the coupling. <paramref name="fromOffset"/> is a <see cref="TerminalShellState.CapturedSoFar"/> taken earlier, so a caller reads back only what arrived after it.</summary>
+    /// <summary>
+    /// The output captured since this session coupled to the pane, or null when this session does not hold the coupling. <paramref name="fromOffset"/> is a <see cref="TerminalShellState.CapturedSoFar"/> taken earlier, so a caller reads back only what arrived after it.
+    /// </summary>
     TerminalCapturedOutput? ReadCoupled(string sessionId, string paneId, long fromOffset = 0);
 
-    /// <summary>What the coupled pane's shell reports about itself, or null when this session does not hold the coupling.</summary>
+    /// <summary>
+    /// What the coupled pane's shell reports about itself, or null when this session does not hold the coupling.
+    /// </summary>
     TerminalShellState? ShellStateOf(string sessionId, string paneId);
 
-    /// <summary>Writes bytes into a coupled pane's pty stdin (a keystroke, Ctrl-C, a command). Returns false when this session does not hold a <see cref="TerminalCouplingMode.Drive"/> coupling on it, or the pane has no input sink.</summary>
+    /// <summary>
+    /// Writes bytes into a coupled pane's pty stdin (a keystroke, Ctrl-C, a command). Returns false when this session does not hold a <see cref="TerminalCouplingMode.Drive"/> coupling on it, or the pane has no input sink.
+    /// </summary>
     bool SendInput(string sessionId, string paneId, ReadOnlyMemory<byte> data);
 
-    /// <summary>Breaks every coupling this agent session held (its session ended or crashed).</summary>
+    /// <summary>
+    /// Breaks every coupling this agent session held (its session ended or crashed).
+    /// </summary>
     void SessionEnded(string sessionId);
 }

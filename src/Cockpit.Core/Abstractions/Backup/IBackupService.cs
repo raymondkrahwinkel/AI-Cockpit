@@ -8,10 +8,14 @@ namespace Cockpit.Core.Abstractions.Backup;
 /// </summary>
 public interface IBackupService
 {
-    /// <summary>Writes an archive to <paramref name="archivePath"/> and returns what it says about itself — including the secrets it stripped, which the operator will have to type in again.</summary>
+    /// <summary>
+    /// Writes an archive to <paramref name="archivePath"/> and returns what it says about itself — including the secrets it stripped, which the operator will have to type in again.
+    /// </summary>
     Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default);
 
-    /// <summary>Reads a backup's manifest without restoring it, so the operator can be shown what they are about to overwrite themselves with.</summary>
+    /// <summary>
+    /// Reads a backup's manifest without restoring it, so the operator can be shown what they are about to overwrite themselves with.
+    /// </summary>
     Task<BackupManifest> ReadManifestAsync(string archivePath, CancellationToken cancellationToken = default);
 
     /// <summary>

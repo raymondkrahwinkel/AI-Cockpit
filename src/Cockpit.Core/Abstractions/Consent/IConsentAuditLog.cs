@@ -7,10 +7,14 @@ namespace Cockpit.Core.Abstractions.Consent;
 /// </summary>
 public interface IConsentAuditLog
 {
-    /// <summary>Appends an entry. Never throws: a broken audit log must not take the action down with it, so a write failure is a logged warning rather than a lost decision.</summary>
+    /// <summary>
+    /// Appends an entry. Never throws: a broken audit log must not take the action down with it, so a write failure is a logged warning rather than a lost decision.
+    /// </summary>
     Task RecordAsync(ConsentAuditEntry entry, CancellationToken cancellationToken = default);
 
-    /// <summary>The most recent entries, newest first, for the audit view.</summary>
+    /// <summary>
+    /// The most recent entries, newest first, for the audit view.
+    /// </summary>
     Task<IReadOnlyList<ConsentAuditEntry>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default);
 }
 

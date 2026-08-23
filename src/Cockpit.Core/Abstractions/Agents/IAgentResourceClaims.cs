@@ -97,6 +97,8 @@ public interface IAgentResourceClaims
 /// </summary>
 public interface IAgentResourceClaimsAudit
 {
-    /// <summary>Every standing claim, from every desk, oldest first. Never to be reachable from an MCP tool result.</summary>
+    /// <summary>
+    /// Every standing claim, from every desk, oldest first. Never to be reachable from an MCP tool result.
+    /// </summary>
     IReadOnlyList<AgentResourceClaim> ListAll();
 }

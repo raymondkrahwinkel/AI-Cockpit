@@ -7,10 +7,14 @@ namespace Cockpit.Core.Abstractions.Assistant;
 /// </summary>
 public interface IAssistantMemory
 {
-    /// <summary>What has been remembered, ready to go into the launch instruction. Empty when nothing ever was.</summary>
+    /// <summary>
+    /// What has been remembered, ready to go into the launch instruction. Empty when nothing ever was.
+    /// </summary>
     Task<string> ReadAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Adds a line. Blank text is refused rather than stored — an empty memory entry is noise a later read cannot tell from a real one.</summary>
+    /// <summary>
+    /// Adds a line. Blank text is refused rather than stored — an empty memory entry is noise a later read cannot tell from a real one.
+    /// </summary>
     Task RememberAsync(string text, CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -9,7 +9,9 @@ namespace Cockpit.Core.Abstractions.Worktrees;
 /// </summary>
 public interface IWorktreeSettingsStore
 {
-    /// <summary>The default worktree root used when no override is set — shown in Options so the operator sees what "blank" means.</summary>
+    /// <summary>
+    /// The default worktree root used when no override is set — shown in Options so the operator sees what "blank" means.
+    /// </summary>
     string DefaultRoot { get; }
 
     Task<WorktreeSettings> LoadAsync(CancellationToken cancellationToken = default);

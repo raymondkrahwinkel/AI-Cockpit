@@ -2,7 +2,9 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Core.Abstractions.Voice;
 
-/// <summary>Synthesizes speech for a single utterance (a sentence-sized chunk of assistant prose).</summary>
+/// <summary>
+/// Synthesizes speech for a single utterance (a sentence-sized chunk of assistant prose).
+/// </summary>
 public interface ITextToSpeechService
 {
     /// <summary>

@@ -32,7 +32,9 @@ public sealed record CalibrationProgress(string Message, double? Fraction = null
 /// different box, and a measurement from one machine's GPU says nothing about another's.</summary>
 public interface ITranscriptionCalibrationStore
 {
-    /// <summary>The calibration measured on this machine, or null if it has never been run here.</summary>
+    /// <summary>
+    /// The calibration measured on this machine, or null if it has never been run here.
+    /// </summary>
     Task<TranscriptionCalibration?> LoadAsync(CancellationToken cancellationToken = default);
 
     Task SaveAsync(TranscriptionCalibration calibration, CancellationToken cancellationToken = default);
@@ -53,7 +55,9 @@ public interface IUiHitchProbe
     IUiHitchSession Start();
 }
 
-/// <summary>The worst UI-thread stall seen since the probe started, in milliseconds.</summary>
+/// <summary>
+/// The worst UI-thread stall seen since the probe started, in milliseconds.
+/// </summary>
 public interface IUiHitchSession : IDisposable
 {
     double MaxHitchMs { get; }
