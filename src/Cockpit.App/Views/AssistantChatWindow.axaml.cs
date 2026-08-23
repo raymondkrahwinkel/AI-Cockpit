@@ -11,10 +11,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Views;
 
-// The pop-out chat window (AC-543 criteria 7–9, 11): a peephole onto the assistant's own standing session,
-// never its owner. Since AC-952 the chat surface itself is `AssistantChatView` and this is the window around
-// it — everything here is window-shaped and only window-shaped: the resize grip, the drag-to-dock gesture,
-// the saved bounds, and the minimised-renderer pause.
+// AC-543 (criteria 7-9, 11): pop-out chat window, a peephole onto the assistant's own standing
+// session, never its owner. Since AC-952 the chat surface is AssistantChatView and this is only
+// the window around it — resize grip, drag-to-dock, saved bounds, minimised-renderer pause.
 public partial class AssistantChatWindow : Window
 {
     // AC-866: this window's own key in the (now keyed, AC-866) window-bounds store — kept apart from the main
@@ -143,10 +142,9 @@ public partial class AssistantChatWindow : Window
         ChatView.SetHostMinimised(WindowState == WindowState.Minimized);
     }
 
-    // Closing this window must never end the assistant's conversation (criterion 7) — the view's own teardown
-    // runs on detach and leaves the session alone. Disposing the view model is the peephole being let go, which
-    // is this window and not the view: AssistantChatViewModel.Dispose only detaches its own subscription, never
-    // the session — see its own remarks.
+    // Closing this window must never end the assistant's conversation (criterion 7) — disposing the
+    // view model is the peephole being let go; AssistantChatViewModel.Dispose only detaches its
+    // own subscription, never the session.
     protected override void OnClosed(EventArgs e)
     {
         _ = _SaveBoundsAsync();
@@ -161,10 +159,9 @@ public partial class AssistantChatWindow : Window
         base.OnClosed(e);
     }
 
-    // AC-883, the half of the pause only a window has: while this window is minimised its renderer is paused, so
-    // the transcript's recycled rows never get the compositor commit that removes their scene visuals and pile up.
-    // The view does the collapsing; this only says when. Guarded on ChatView because WindowState initialises
-    // before InitializeComponent has built it.
+    // AC-883: while minimised this window's renderer is paused, so recycled transcript rows never
+    // get the compositor commit that removes their visuals. Guarded on ChatView because
+    // WindowState initialises before InitializeComponent has built it.
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);

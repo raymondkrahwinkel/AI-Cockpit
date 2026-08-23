@@ -18,10 +18,9 @@ using Cockpit.Infrastructure.Svg;
 
 namespace Cockpit.App.Views;
 
-// The window a clickable code-span path opens onto (AC-642): an image, a source file (jumping to the line the
-// span carried), rendered markdown/json/csv, a one-level directory walk, or a plain header for anything else —
-// see FilePreviewClassifier for which. Reading and classifying always happens off this thread (valkuil 1's
-// sibling for disk reads); only the result crosses back to build controls.
+// AC-642: window a clickable code-span path opens onto — image, source file (jump to line),
+// rendered markdown/json/csv, a one-level directory walk, or a plain header; see
+// FilePreviewClassifier. Reading/classifying always happens off this thread; only the result returns.
 public partial class FilePreviewWindow : Window
 {
     // "1 MB tekst is ruim" — a cap on what gets read, not a cap most files ever reach.
@@ -29,8 +28,7 @@ public partial class FilePreviewWindow : Window
     private const int MaxListedRows = 500;
     private const float SvgRasterSize = 1600f;
 
-    // Ctrl+scroll zoom range for image/SVG (and later PDF) previews (AC-730), same pattern as AC-778's
-    // ImagePreviewWindow but with this ticket's own 10-800% range.
+    // AC-730: Ctrl+scroll zoom range for image/SVG (later PDF) previews, own 10-800% range.
     private const double MinZoom = 0.10;
     private const double MaxZoom = 8.0;
     private const double ZoomStepBase = 1.1;
@@ -465,10 +463,8 @@ public partial class FilePreviewWindow : Window
         };
     }
 
-    // A tiled two-tone pattern behind an image (AC-642), so transparency reads as transparency rather than as
-    // the panel's own flat background. Built from the same near-black tokens the rest of the app already uses —
-    // this is chrome, not a picture, so it stays on theme tokens like everything else here.
-    // Internal: AC-778's ImagePreviewWindow reuses this exact pattern rather than redrawing it.
+    // AC-642: tiled two-tone pattern behind an image so transparency reads as transparency, on
+    // theme tokens like the rest of the chrome. Internal: AC-778's ImagePreviewWindow reuses it.
     internal static IBrush CheckerboardBrush()
     {
         const double cell = 8;

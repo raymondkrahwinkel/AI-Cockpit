@@ -6,10 +6,8 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-// Manage-profiles dialog. Closes when the view model raises
-// `ManageProfilesDialogViewModel.CloseRequested`. The Browse buttons use the window's
-// `Window.StorageProvider` (a view-layer facility) to fill the selected profile's config
-// directory and executable path.
+// Manage-profiles dialog. Closes on CloseRequested; the Browse buttons use the window's
+// StorageProvider (a view-layer facility) to fill the selected profile's config dir/executable.
 public partial class ManageProfilesDialog : Window
 {
     public ManageProfilesDialog()
@@ -27,9 +25,8 @@ public partial class ManageProfilesDialog : Window
         }
     }
 
-    // async void: these are UI event handlers, so an unobserved exception from the picker (no desktop
-    // portal, permission denied) would tear down the process. A failed/cancelled pick is non-fatal —
-    // the operator just keeps the current path — so swallow it here rather than crash the app.
+    // async void handlers: an unobserved picker exception (no portal, permission denied) would tear
+    // down the process, so a failed/cancelled pick is swallowed and just keeps the current path.
     private async void OnBrowseConfigDir(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not ManageProfilesDialogViewModel { SelectedProfile: { } profile })
@@ -57,8 +54,7 @@ public partial class ManageProfilesDialog : Window
         }
     }
 
-    // The profile's default working directory (AC-130) — same folder picker as the config directory, pre-seeded
-    // with the current value so re-browsing opens where it points. A failed/cancelled pick keeps the current value.
+    // AC-130: same folder picker as the config directory, pre-seeded with the current value.
     private async void OnBrowseWorkingDirectory(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not ManageProfilesDialogViewModel { SelectedProfile: { } profile })

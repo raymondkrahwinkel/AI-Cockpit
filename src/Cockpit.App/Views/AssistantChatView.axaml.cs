@@ -19,16 +19,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Views;
 
-// The assistant's chat surface (AC-543 criteria 7–9, 11): a peephole onto the assistant's own standing session,
-// never its owner. See `AssistantChatViewModel`'s class remarks for how each criterion is met — this code-behind
-// only wires the interactions XAML bindings cannot: Enter-to-send, attaching to the live session, and keeping
-// the transcript scrolled to the newest row.
-//
-// AC-952 split this out of `AssistantChatWindow`, which is now a thin shell around it: everything window-shaped
-// (bounds, drag-to-move, Topmost, the resize grip, the Windows caption roles, the minimised-renderer pause)
-// stayed there. What used to hang off `Opened`/`OnClosed` hangs off attach/detach here instead — with one
-// deliberate exception: disposing the view model is the host's business, not this view's, because a host swap
-// (AC-953's dock/undock) must not end the conversation.
+// AC-543 (criteria 7-9, 11): chat surface, a peephole onto its own standing session. Wires what
+// XAML can't: Enter-to-send, attaching to the session, transcript auto-scroll. Disposing the view
+// model stays the host's business, not this view's — a host swap (AC-953) must not end the conversation.
 public partial class AssistantChatView : UserControl
 {
     // Stick-to-bottom, mirroring SessionView (AC-528): follow the tail only while the operator is at it.
@@ -55,10 +48,9 @@ public partial class AssistantChatView : UserControl
     // see SessionView._ResolveDiagnostics for why Windows and X11 must not even subscribe.
     internal DiagnosticsBackgroundService? Diagnostics { get; set; }
 
-    // The transcript's scroll owner. It lives inside TranscriptItems' own template since AC-774, so the
-    // virtualising panel measures against the viewport rather than the infinite height an enclosing ScrollViewer
-    // hands it — mirrors SessionView.axaml.cs's own TranscriptScroll exactly (AC-686). A name inside a template
-    // is not a code-behind field, so it is resolved from the template instead.
+    // AC-774: lives inside TranscriptItems' own template so the virtualising panel measures
+    // against the viewport, not an enclosing ScrollViewer's infinite height (mirrors SessionView's
+    // TranscriptScroll, AC-686) — resolved from the template since a template name isn't a field.
     internal ScrollViewer TranscriptScroll =>
         _transcriptScroll ??= _ResolveTranscriptScroll();
 
@@ -288,10 +280,9 @@ public partial class AssistantChatView : UserControl
         }
     }
 
-    // Same leak, same fix as SessionView (see its _ApplyRendererPause): while the host is minimised the renderer
-    // is paused, so the transcript's recycled rows never get the compositor commit that removes their scene visuals
-    // and pile up. Collapse the scroll owner while paused so the panel dematerialises its rows and stops building
-    // new ones; restore when it lifts.
+    // Same leak/fix as SessionView's _ApplyRendererPause: while minimised the renderer is paused so
+    // recycled rows never get the compositor commit that removes their visuals. Collapse the
+    // scroll owner while paused so the panel dematerialises rows instead of piling them up.
     private void _ApplyRendererPause()
     {
         var paused = _hostMinimised || _renderClockPaused;
@@ -409,11 +400,9 @@ public partial class AssistantChatView : UserControl
         return null;
     }
 
-    // The other half of AC-953's handover: bring the anchored row back and line its top up where it was.
-    // Two steps because ScrollIntoView only realises the row and brings it *into* view — from below it lands at
-    // the bottom of the viewport, not where it was — so the offset correction afterwards is what actually places
-    // it. Same measure-the-row-then-correct idiom as _FollowNewest, and `_following` for the same reason: the
-    // layout passes this drives are ours, not an operator scroll to draw conclusions from.
+    // AC-953 handover: two steps because ScrollIntoView only brings the row *into* view — from
+    // below it lands at the bottom, not where it was — so an offset correction places it exactly.
+    // `_following` marks these layout passes as ours, not an operator scroll to draw conclusions from.
     private void _RestoreScrollAnchor(TranscriptScrollPosition anchor)
     {
         if (anchor.Index < 0 || anchor.Index >= TranscriptItems.ItemCount)
@@ -476,13 +465,8 @@ public partial class AssistantChatView : UserControl
         _attachedSession = session;
     }
 
-    // Scrolls the Allow/Deny row into view the moment a permission starts waiting (AC-545).
-    // The transcript handler above cannot do this. A permission does not arrive as a new row — it turns a tool row
-    // that is already in the list into a pending one — so nothing is added, `CollectionChanged` stays quiet,
-    // and the view stays exactly where it was. With the progress line and the composer below it, the buttons then
-    // sit just under the fold: found only by someone who thinks to scroll, on the one control the whole consent
-    // design says must be in front of the operator. Same failure as AC-543's missing Allow row, a scroll offset
-    // further along.
+    // AC-545: scrolls Allow/Deny into view when waiting — a permission turns an existing tool row
+    // pending rather than adding one, so CollectionChanged stays quiet and the transcript handler can't.
     private void _OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(SessionViewModel.HasPendingPermission)
@@ -512,10 +496,9 @@ public partial class AssistantChatView : UserControl
         _attachedSession = null;
     }
 
-    // AC-895: a session badge click focuses that session and brings the main window forward — same shape as the
-    // main window's own OnWidgetHeaderPressed (CockpitView.axaml.cs), reused because a Button here would need
-    // transparent chrome to keep today's look. Also handles the AC-949 Sessions-flyout rows, which share the
-    // same DataContext type.
+    // AC-895: session badge click focuses that session and brings the main window forward, same
+    // shape as CockpitView's OnWidgetHeaderPressed (a Button would need transparent chrome to
+    // match). Also handles the AC-949 Sessions-flyout rows, which share the same DataContext type.
     private void _OnSessionSegmentPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is not Control { DataContext: SessionPanelViewModel session } || DataContext is not AssistantChatViewModel vm)

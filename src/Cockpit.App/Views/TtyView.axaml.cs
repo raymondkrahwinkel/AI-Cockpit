@@ -23,12 +23,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Views;
 
-// Hosts the real interactive `claude` TUI: an Exclr8 `TerminalControl` (a pure
-// byte-in/byte-out terminal-emulator renderer, no PTY plumbing of its own) bridged to a pty (ConPTY
-// on Windows, Porta.Pty on Linux/macOS via `IPtyHostFactory`). The code-behind owns the plumbing
-// between the two — pty output is written into the control, the control's `Input`/`Output`
-// byte events are written to pty stdin, and the control's `Resized` event is relayed to the pty
-// — because that bridge is inherently view/toolkit-bound, not view-model logic.
+// Hosts the interactive claude TUI: an Exclr8 TerminalControl (byte-in/byte-out renderer, no PTY
+// of its own) bridged to a pty (ConPTY/Porta.Pty via IPtyHostFactory). Code-behind owns the
+// plumbing between them — output/input bytes and Resized — since that bridge is view/toolkit-bound.
 public partial class TtyView : UserControl
 {
     private IConPtyProcess? _pty;
@@ -51,13 +48,9 @@ public partial class TtyView : UserControl
     // claude on the transient size and immediately reflowing it is a prime cause of the stacked-at-top render.
     private DispatcherTimer? _resizeSettle;
 
-    // AC-57: cap how often streaming pty output repaints the terminal. Exclr8's TerminalControl re-shapes all
-    // visible text (HarfBuzz shaping + glyph-run construction, no cross-frame cache) on every Render, so one
-    // repaint per pty chunk during a burst is a per-frame allocation storm — ~16 MB/s here, ~88 MB/s on macOS,
-    // where Metal retains it as native memory until the app falls over (the runaway this issue is about). The
-    // pty reader now appends into _outputPending on its background thread and a UI-thread timer flushes it into
-    // Terminal.Write at ~30 fps, so the control invalidates (and re-shapes) at a bounded rate rather than on
-    // every chunk. All bytes still arrive, in order; only the paint cadence is capped, and 30 fps stays smooth.
+    // AC-57: caps how often pty output repaints the terminal. TerminalControl re-shapes all visible
+    // text on every Render with no cache, so one repaint per chunk is an allocation storm (~16-88MB/s).
+    // The pty reader appends into _outputPending, a UI-thread timer flushes it at ~30fps.
     private const int OutputFlushIntervalMs = 33;
     private readonly object _outputLock = new();
     private readonly List<byte> _outputPending = [];
@@ -70,13 +63,9 @@ public partial class TtyView : UserControl
     private DateTime? _firstPtyOutputAtUtc;
     private bool _hostedTuiReady;
 
-    // #58 confirmation logging: every Exclr8 Resized event and every pty.Resize call, so the net-zero
-    // round-trip signature (>=2 Resized with different sizes within the settle window, followed by one
-    // pty.Resize equal to the previous pty size) can be confirmed from %APPDATA%\Cockpit\logs\cockpit.log.
-    // Resolved from the app's DI container rather than injected: this UserControl is constructed by the
-    // XAML view locator/designer, not by the container, matching the existing Program.Services lookups in
-    // App.axaml.cs. Absent wherever no container was built — the XAML previewer, and the headless harness the view
-    // tests render scenes in, which is the same condition and used to be checked as if it were only the first one.
+    // #58 confirmation logging: every Resized/pty.Resize call, so the net-zero round-trip signature
+    // can be confirmed from cockpit.log. Resolved from the DI container, not injected — this
+    // UserControl is built by the XAML view locator, matching Program.Services lookups in App.axaml.cs.
     private readonly ILogger<TtyView>? _logger =
         Program.Services?.GetService<ILogger<TtyView>>();
 
@@ -86,17 +75,15 @@ public partial class TtyView : UserControl
     private readonly IToastService? _toast =
         Program.Services?.GetService<IToastService>();
 
-    // AC-34: the terminal-access registry this pane feeds when an agent is coupled to it — the pane registers on
-    // launch, unregisters on close, and hands its rendered output to the registry (only while coupled, so read-scope
-    // starts at the coupling). Resolved from the app container like the logger/toast, since this control is built by
-    // the view locator, not the DI graph.
+    // AC-34: the terminal-access registry this pane feeds when coupled to an agent — registers on
+    // launch, unregisters on close, hands over rendered output only while coupled. Resolved from
+    // the app container like the logger/toast, since this control is built by the view locator.
     private readonly ITerminalAccessRegistry? _terminals =
         Program.Services?.GetService<ITerminalAccessRegistry>();
 
-    // AC-34: the operator types on the UI thread while a coupled agent's send_terminal arrives on an MCP request
-    // thread, both into this pane's single pty stdin. A Stream is not thread-safe, so two writes can interleave into
-    // a garbled command line — which is the one thing a shared pane must not do. Every write into the pty goes
-    // through _WriteToPty and takes this lock; the writes are a handful of bytes, so nothing waits for long.
+    // AC-34: operator keystrokes (UI thread) and a coupled agent's send_terminal (MCP thread) both
+    // write to this pty's single stdin — a non-thread-safe Stream, so interleaving would garble the
+    // command line. Every write goes through _WriteToPty and takes this lock.
     private readonly object _ptyWriteLock = new();
 
     // Which usage signals this session's provider declares, and how it reads its own statusline snapshot (AC-229).
@@ -124,12 +111,9 @@ public partial class TtyView : UserControl
         // OnPointerWheelChanged would otherwise run unconditionally — see OnTerminalWheel/TtyWheelScrollGate.
         AddHandler(InputElement.PointerWheelChangedEvent, OnTerminalWheel, RoutingStrategies.Tunnel);
 
-        // AC-2: Ctrl+click to follow a link. The terminal control forwards every click to the pty (and skips its
-        // own link activation) whenever the running app has mouse reporting on — claude's TUI does — and offers no
-        // modifier bypass, so a plain or Ctrl click never opened a URL. Tunnel so we hit-test the link and open it
-        // before TerminalControl's own OnPointerPressed runs; Ctrl (not a plain click) so text selection by drag
-        // is untouched. Handled only when a link is actually under the pointer, so every other click still reaches
-        // claude. Not Windows-gated: the same Exclr8 control renders on every OS, so the gap and the fix are shared.
+    // AC-2: Ctrl+click to follow a link. TerminalControl forwards every click to the pty with no
+    // modifier bypass when mouse reporting is on (claude's TUI is), so no click ever opened a URL.
+    // Tunnelled to hit-test and open before OnPointerPressed runs; Ctrl, not plain click, so drag-selection is untouched.
         AddHandler(InputElement.PointerPressedEvent, OnTerminalPointerPressedForLinks, RoutingStrategies.Tunnel);
 
         // AC-560: and its release. The control reports a release to the pty on mouse-reporting mode without checking
@@ -195,10 +179,8 @@ public partial class TtyView : UserControl
         });
     }
 
-    // AC-34: the bar shows the coupled agent session's operator-facing name (e.g. "work-6"), not the raw pane-id guid
-    // the coupling is keyed on. Resolved from the cockpit's live session list the way the plugin hosts reach it (this
-    // control is built by the view locator, not the DI graph); the guid stays as the fallback when no session matches
-    // it — e.g. the driving session has already closed.
+    // AC-34: shows the coupled agent's operator-facing name, not the raw pane-id guid it's keyed on.
+    // Resolved from the live session list the way plugin hosts do; guid is the fallback when no session matches.
     private static string? _ResolveAgentSessionName(string? agentSession)
     {
         if (string.IsNullOrEmpty(agentSession))
@@ -252,13 +234,9 @@ public partial class TtyView : UserControl
         _ApplyTerminalFont();
     }
 
-    // TerminalControl.FontFamily/FontSize are plain CLR properties, not registered AvaloniaProperties,
-    // so they can't be targeted by a compiled XAML binding (#40) — applied here imperatively instead,
-    // both on attach and every time the global terminal-settings VM property changes, so Options →
-    // Terminal takes effect live. Both setters re-measure the cell and reflow the grid on assignment,
-    // which raises `Exclr8.Terminal.TerminalControl.Resized` if the new metrics change the
-    // column/row count — `OnTerminalResized` then resizes the pty to match, the same as a
-    // window resize.
+    // #40: FontFamily/FontSize are plain CLR properties, not XAML-bindable — applied imperatively
+    // on attach and on settings change. Both re-measure on assignment, raising Resized if the grid
+    // changed; OnTerminalResized then resizes the pty, same as a window resize.
     private void _OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(TtyViewModel.TerminalFontFamily) or nameof(TtyViewModel.TerminalFontSize))
@@ -296,11 +274,9 @@ public partial class TtyView : UserControl
     // The key whose press opened a microphone here, until its own release ends the hold — see `_OnPushToTalkKeyUp`.
     private Key? _holdingKey;
 
-    // KeyUp for the push-to-talk hotkey: ends the hold and transcribes — see `TtyViewModel.OnVoiceTextReady`.
-    // Ends only what this view's own KeyDown started (AC-557): a release also arrives for a press that started
-    // nothing — voice off for this session — and ending a hold that never began throws. Which is also why this
-    // asks the key that started it rather than the gate again: the gate's answer can change mid-hold, and a hold
-    // nobody ends holds the microphone for good.
+    // KeyUp for push-to-talk: ends the hold, transcribes (TtyViewModel.OnVoiceTextReady). AC-557:
+    // ends only what this view's own KeyDown started — asks the key that started it, not the gate
+    // again, since the gate's answer can change mid-hold and an unended hold keeps the microphone forever.
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
         if (_holdingKey == e.Key && _viewModel is { } vm)
@@ -312,15 +288,9 @@ public partial class TtyView : UserControl
     }
 
 
-    // Pastes text into the terminal on the session's behalf (AC-341) — the path of a screenshot the operator
-    // just took, handed to the control the same way any other paste is.
-    // `Paste` rather than a synthesised Ctrl+V, which is what this did while the image travelled by
-    // clipboard: the key made the control go and read the clipboard, and the control's own paste is what this
-    // wanted from it in the first place. Nothing has to negotiate an image format now, because nothing but text
-    // crosses this line.
-    //
-    // The terminal is focused first, not because the paste needs it — it writes to the pty directly — but because
-    // the operator's next move is to type the sentence that goes with the screenshot.
+    // AC-341: pastes text into the terminal on the session's behalf — a screenshot path, handed to
+    // the control's own Paste rather than a synthesised Ctrl+V (which used to route the image via
+    // clipboard). Focused first not because paste needs it, but because typing follows next.
     private Task _OnPasteTextAsync(string text)
     {
         var pasted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -343,14 +313,9 @@ public partial class TtyView : UserControl
     // Writes a finished voice transcript into the pty — the same path a scheduled resume takes (`_WriteToPty(string)`).
     private void _OnVoiceTranscriptReady(string text) => _WriteToPty(text);
 
-    // AC-752: claude's CLI treats any stdin chunk >=64 bytes as a paste, swallowing a `\r` inside it as a literal
-    // newline instead of Enter. Route the text through bracketed paste (as `_OnPasteTextAsync` already does) and
-    // write a trailing CR raw right after.
-    // AC-941: a call carrying both text and a trailing CR defers the CR by AC-64's beat — landing in the
-    // same pty read as the paste otherwise folds it into the pasted block instead of Enter, regardless of
-    // bracketed paste. A call that is only "\r" stays immediate.
-    // AC-993: that beat scales with the pasted length (`TtyViewModel.AutoSubmitDelay`) — a multi-KB brief takes the
-    // CLI longer to drain than the ~60ms a spoken transcript needed.
+    // AC-752: a >=64 byte stdin chunk is treated as a paste by claude's CLI, swallowing inline `\r`
+    // — routed through bracketed paste with a trailing CR after. AC-941/993: the CR is deferred by
+    // a length-scaled delay (AutoSubmitDelay), else the same pty read folds it into the paste.
     private void _WriteToPty(string text)
     {
         var pty = _pty;
@@ -403,19 +368,13 @@ public partial class TtyView : UserControl
         Terminal.Output += OnTerminalBytesToPty;
         Terminal.Resized += OnTerminalResized;
 
-        // AC-2 (Windows especially): honour claude's clipboard writes and make URLs clickable. Both are opt-in
-        // terminal-emulator features. claude copies via OSC 52; on Linux it also reaches the clipboard through
-        // native tools (xclip/wl-copy) so it worked there regardless, but on Windows it relies on the terminal —
-        // and AllowClipboardAccess defaults off (it lets a remote process scrape the clipboard), so Cockpit
-        // silently dropped the write and "copied" never landed. This is the operator's own local claude session,
-        // so we opt in. Links are auto-detected by WebLinkProvider (http/https spans) and, once clicked, opened
-        // in the OS browser; LinkActivationPolicy is the safety gate that keeps anything but http/https out.
+        // AC-2: honour claude's OSC-52 clipboard writes and make URLs clickable, both opt-in.
+        // AllowClipboardAccess defaults off (scrape risk), but this is the operator's own session.
         Terminal.AllowClipboardAccess = true;
         Terminal.ClipboardRequested += OnClipboardRequested;
-        // Register the URL matcher so links are detected and underlined; opening them is entirely ours, through the
-        // Ctrl+click handler above (OnTerminalPointerPressedForLinks). We deliberately do NOT subscribe the control's
-        // own HyperlinkClicked: it fires on a plain click whenever mouse reporting happens to be off, which — on top
-        // of our Ctrl+click — opened every link twice. One opener, one gesture (Ctrl+click), on every mouse mode.
+        // Registers the URL matcher for detection/underline only; opening is entirely ours via
+        // OnTerminalPointerPressedForLinks. Deliberately not subscribed to HyperlinkClicked — it
+        // fires on a plain click when mouse reporting is off, which opened every link twice.
         Terminal.RegisterLinkProvider(new WebLinkProvider());
     }
 
@@ -485,10 +444,9 @@ public partial class TtyView : UserControl
         e.Handled = true;
     }
 
-    // The URL clickable at `position` (pointer coordinates relative to the terminal), or null.
-    // Mirrors TerminalControl's own hit-test (OSC 8 cell first, then registered plain-URL providers) using its
-    // public buffer API; only the pixel-to-cell mapping (`GridPos`) is not public, so it is reached by
-    // reflection and any miss degrades to "no link", never a throw.
+    // The URL clickable at `position`, or null. Mirrors TerminalControl's own hit-test (OSC 8 cell
+    // first, then plain-URL providers) via its public buffer API; only GridPos is not public, so
+    // reflection reaches it and any miss degrades to "no link", never a throw.
     private string? _LinkAt(Point position)
     {
         try
@@ -532,11 +490,9 @@ public partial class TtyView : UserControl
         }
     }
 
-    // Opens an http/https URL in the OS browser with a toast; returns whether it was handled (a browsable URL).
-    //
-    // Parses first and opens the address it got back, rather than asking `ExternalLink.TryOpen(string)`
-    // straight away: this is the one caller that has to tell "not a link at all" — which the terminal must leave to
-    // whatever else wants the click — apart from "a link the browser would not open", which it reports.
+    // Opens an http/https URL with a toast; returns whether handled. Parses first, then opens the
+    // result, rather than calling ExternalLink.TryOpen(string) straight away: this caller must
+    // distinguish "not a link at all" (leave the click alone) from "a link the browser won't open" (report it).
     private bool _TryOpenLink(string url)
     {
         if (!ExternalLink.TryParseWebAddress(url, out var address))
@@ -584,10 +540,9 @@ public partial class TtyView : UserControl
         _lastRows = Math.Max(1, e.Rows);
         UpdateDiagnostics();
 
-        // #58 confirmation logging: the glitch's signature is >=2 of these with different sizes within
-        // the ~150ms settle window, followed by exactly one "pty.Resize" log line equal to the previous
-        // pty size (see CreateResizeSettleTimer below). RenderScaling is logged alongside so a fractional-
-        // scaling renegotiation showing up as the trigger is visible directly in the log.
+        // #58 confirmation logging: the glitch's signature is >=2 of these with different sizes
+        // within the ~150ms settle window, followed by one pty.Resize equal to the previous pty
+        // size. RenderScaling is logged too, so a fractional-scaling trigger is visible directly.
         var scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
         _logger?.LogInformation(
             "Exclr8 Resized -> {Columns}x{Rows} (scale {Scale})", _lastColumns, _lastRows, scale);
@@ -615,12 +570,9 @@ public partial class TtyView : UserControl
                 return;
             }
 
-            // #58: decide deterministically instead of unconditionally resizing. A settled size that
-            // differs from what the pty already has is a real resize — claude sees a changed winsize and
-            // repaints via SIGWINCH on its own. A settled size that nets back to the pty's current size is
-            // the net-zero round trip (Exclr8's buffer mutated getting there, but claude's winsize never
-            // changed, so it never got a SIGWINCH to repaint from) — force the redraw claude otherwise
-            // never triggers instead of sending an identical, no-op resize.
+            // #58: decides deterministically instead of unconditionally resizing. A settled size
+            // differing from the pty's is a real resize (claude gets SIGWINCH); one netting back to
+            // the current size is the net-zero round trip — force the redraw claude never gets otherwise.
             var decision = TtyResizeSettleDecision.Decide(_ptyColumns, _ptyRows, _lastColumns, _lastRows);
             if (decision == TtyResizeSettleAction.Resize)
             {
@@ -642,13 +594,9 @@ public partial class TtyView : UserControl
         return timer;
     }
 
-    // Forces the TUI to repaint: shrinks the pty a couple of rows, waits for claude to react to the resize
-    // (SIGWINCH), then restores the real size so claude re-renders its managed UI. Recovers the reflow
-    // glitch where claude's frames end up stacked at the top after a resize/focus change on some setups —
-    // fired deterministically by the resize-settle timer's net-zero-round-trip decision (#58,
-    // `TtyResizeSettleDecision`), by the #55 auto-redraw vangnet for a pure focus/activation
-    // event with no resize transient at all, and manually via the Redraw button. Does not clear the
-    // emulator (that would wipe the scrolled-back conversation claude never re-emits).
+    // Forces a repaint: shrinks the pty, waits for SIGWINCH, restores size — fixes the stacked-at-
+    // top reflow glitch. Fired by #58, #55, or the Redraw button. Doesn't clear the emulator, which
+    // would wipe scrollback claude never re-emits.
     private async void ForceRedraw()
     {
         var pty = _pty;
@@ -709,10 +657,9 @@ public partial class TtyView : UserControl
 
         parts.Append(CultureInfo.InvariantCulture, $" · LANG={lang ?? "(unset)"} LC_ALL={lcAll ?? "(unset)"}");
 
-        // AC-129: which family the renderer really draws with, and the advance every column position is a
-        // multiple of. The configured list leads with Windows-only families, so on another platform the name
-        // that wins is whatever the font manager substitutes — and a substitute that is not monospace cannot
-        // hold the grid. Without this the operator (and the bug report) can only guess at it.
+        // AC-129: which family the renderer actually draws with. The configured list leads with
+        // Windows-only families, so another platform substitutes silently — a non-monospace
+        // substitute breaks the grid, and without this line nobody can tell from a bug report.
         parts.Append(CultureInfo.InvariantCulture,
             $" · font {Terminal.EffectiveFontFamily}{(Terminal.UsingMonospaceFallback ? " (substituted)" : "")}" +
             $" · cell {Terminal.CellWidth.ToString("0.###", CultureInfo.InvariantCulture)}px");
@@ -797,10 +744,9 @@ public partial class TtyView : UserControl
             }
             _logger?.LogInformation("pty launched at {Columns}x{Rows}", _ptyColumns, _ptyRows);
 
-            // AC-34: this pane is now a live terminal an agent could ask to use. Register it under its pane id and the
-            // name the operator sees (so list_terminals can name it), plus the input sink that a coupled agent's
-            // send_terminal writes through — the same pty stdin the operator's own keystrokes go to. IsTerminal says
-            // whether this is a plain shell; a pane running an agent CLI registers too but is never offered to an agent.
+            // AC-34: registers this live terminal under its pane id and operator-facing name (for
+            // list_terminals), plus the input sink send_terminal writes through — the same pty stdin
+            // as the operator's own keystrokes. IsTerminal: an agent-CLI pane registers but is never offered to an agent.
             if (_viewModel?.PaneId is { Length: > 0 } paneId && _terminals is { } terminals)
             {
                 terminals.PaneOpened(
@@ -862,18 +808,9 @@ public partial class TtyView : UserControl
         _WriteToPty(pty, e.Span);
     }
 
-    // Terminal-surface mouse wheel: dispatches per `TtyWheelScrollGate` instead of letting
-    // `TerminalControl`'s own wheel handling run unconditionally.
-    // `TtyWheelScrollAction.ForwardArrowKeys` (#56) — alternate screen, no mouse tracking:
-    // Exclr8.Terminal's alternate screen keeps no scrollback, so this sends an Up/Down arrow-key press to
-    // the pty instead (mirrors xterm's alternateScroll). `TtyWheelScrollAction.NativeScroll`
-    // (#57) — primary/inline screen, which is what Claude Code's TUI actually renders on (capture-
-    // confirmed: no alt-screen escape anywhere): scrolls Exclr8's own primary-screen scrollback directly
-    // via `TerminalBuffer.ScrollViewUp`/`ScrollViewDown`, which is real and populated (only the
-    // alternate screen's `ScrollbackLimit` is zeroed). Both mark the event handled so
-    // `TerminalControl`'s own `OnPointerWheelChanged` does not also run.
-    // `TtyWheelScrollAction.PassThrough` — alt screen with mouse tracking requested: left
-    // alone, `TerminalControl`'s own SGR-mouse-report path already covers it.
+    // Dispatches per TtyWheelScrollGate instead of TerminalControl's own wheel handling.
+    // ForwardArrowKeys (#56): alt screen has no scrollback, sends an arrow key. NativeScroll (#57):
+    // primary screen scrolls TerminalBuffer directly. PassThrough: alt screen with mouse tracking is left alone.
     private void OnTerminalWheel(object? sender, PointerWheelEventArgs e)
     {
         var buffer = Terminal.Buffer;
@@ -948,11 +885,9 @@ public partial class TtyView : UserControl
         });
     }
 
-    // The last few non-blank lines on screen, newest last — what a restored pane's degraded offer shows as why
-    // (AC-410) when the process exits before doing anything, e.g. `claude --resume` printing "No conversation
-    // found" and quitting. Read straight off the render buffer rather than kept separately: `_FlushOutput`
-    // above already wrote everything pending into it before this runs, so it holds exactly what the operator would
-    // have seen.
+    // AC-410: last few non-blank lines, newest last — shown as why a restored pane's degraded offer
+    // fired (e.g. claude --resume prints "No conversation found" and quits). Read off the render
+    // buffer directly, since _FlushOutput already wrote everything pending into it.
     private string? _LastVisibleLines(int maxLines = 6)
     {
         var buffer = Terminal.Buffer;

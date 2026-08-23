@@ -5,12 +5,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-// One plugin card in the store dialog (#62) — reused as-is in the main grid and the Discover page's
-// Featured/Recently-added rails, so its "Install"/"Update" button and the click-anywhere-to-open-details
-// behaviour only live in one place. Its own `Window.DataContext` is the row
-// (`StorePluginRowViewModel`); it reaches the dialog's `PluginStoreDialogViewModel`
-// through the owning window rather than a passed-in reference, since it is instantiated per catalogue
-// row by an `ItemsControl` template, not directly.
+// #62: one plugin card, reused as-is in the main grid and the Discover rails so Install/Update and
+// click-to-open-details live in one place. Reaches PluginStoreDialogViewModel via the owning
+// window rather than a passed-in reference, since an ItemsControl template instantiates it.
 public partial class StorePluginCardView : UserControl
 {
     public StorePluginCardView()
@@ -18,8 +15,8 @@ public partial class StorePluginCardView : UserControl
         InitializeComponent();
     }
 
-    // A click on the card's own buttons must not also open the detail panel — bail out whenever the
-    // press originated on (or inside) a Button, mirroring CockpitWindowChrome's title-bar drag handler.
+    // A click on the card's own buttons must not also open the detail panel — bail out whenever
+    // the press originated inside a Button (mirrors CockpitWindowChrome's title-bar drag handler).
     private void OnCardPressed(object? sender, PointerPressedEventArgs e)
     {
         if (e.Source is Control source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
