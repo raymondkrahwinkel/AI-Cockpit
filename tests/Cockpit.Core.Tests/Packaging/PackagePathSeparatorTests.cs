@@ -31,7 +31,8 @@ public partial class PackagePathSeparatorTests
             }
         }
 
-        Assert.Empty(offenders);
+        Assert.True(offenders.Count == 0,
+            $"PackagePath with a backslash lands as a literal filename on Linux (AC-1045): {string.Join(", ", offenders)}");
     }
 
     [GeneratedRegex("PackagePath\\s*=\\s*\"[^\"]*\\\\[^\"]*\"")]
