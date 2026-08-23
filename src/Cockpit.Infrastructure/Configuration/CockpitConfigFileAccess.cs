@@ -5,16 +5,9 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// Shared read-modify-write access to the single `cockpit.json` file. Both the profile store
-// and the notification store go through this so each can update its own section without clobbering
-// the other's: they always load the full `CockpitConfigFile`, mutate one section, and
-// write the whole file back.
-//
-// It is also where the credentials are encrypted and decrypted. Every section — profiles, MCP servers,
-// notifications, and the plugins' own storage — passes through here, so hanging the protection under this one
-// seam covers all of them, and covers a plugin that has never heard of it. Encryption is off unless the
-// operator turned it on and unlocked the app, in which case `ISecretKeyHolder.Protector` holds the
-// key for as long as the process runs.
+// Shared read-modify-write access to `cockpit.json`: every section loads the full file, mutates its
+// own part, and writes the whole document back, so no store clobbers a sibling's section. Also where
+// credentials are encrypted/decrypted, covering every section including a plugin's own storage.
 internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyHolder? keyHolder = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -42,11 +35,8 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             return configFile;
         }
 
-        // The file exists and does not parse. There is no honest way to read on: an operator's settings are not a
-        // thing to guess at, and the danger is not the failed read but what comes after it — a caller that treats
-        // an unreadable config as an absent one starts with an empty document and writes that emptiness back over
-        // everything on the next save. So the last known-good copy (kept by every write) is tried first, and only a
-        // genuinely missing file returns null.
+        // The file exists but does not parse. Treating it as absent would let a caller write an empty
+        // document back over everything, so the last known-good `.bak` is tried first instead.
         if (File.Exists(configFilePath)
             && await TryReadAsync(configFilePath + BackupSuffix, cancellationToken).ConfigureAwait(false) is { } recovered)
         {
@@ -100,20 +90,9 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         }
     }
 
-    // Reads the file, waiting out the moment a writer has it. `File.Replace(string,string,string)`
-    // holds the destination for the length of the swap, and a reader that lands in that window gets a sharing
-    // violation rather than either version of the file.
-    // This is what "a rename is atomic, so a reader never waits on a writer" missed: the *content* a
-    // reader sees is indeed all-or-nothing, but the read itself can still fail outright. On 2026-07-15 it did —
-    // at startup, where several stores read this file while the plugin layer wrote it — and the callers that did
-    // not catch it lost what they were starting. Global push-to-talk was one, and it went silently.
-    //
-    // Waiting is right where refusing is not: the file is there, it is readable, and it is busy for the length of
-    // one swap. Past the window something else is wrong, so the exception goes on to `ReadAsync`'s
-    // recovery — the backup, and then a refusal that says so.
-    //
-    // Internal rather than private so `SecretProtectionService` reads through the same retry (review
-    // #9): its status probe and migrations touch the same file, and an ungated read there had the same race.
+    // Reads the file, waiting out a writer mid-swap (`File.Replace` holds the destination and a reader
+    // that lands there gets a sharing violation) rather than failing outright — the 2026-07-15 incident.
+    // Internal so `SecretProtectionService` (review #9) reads through the same retry.
     internal static async Task<string> ReadWhenNotBeingReplacedAsync(string path, CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + ReadContentionWindow;
@@ -134,16 +113,9 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         }
     }
 
-    // Loads the current file (or a fresh, empty one), applies `mutate` to a single
-    // section, and writes the whole document back — preserving every other section.
-    //
-    // Serialised against every other writer, in this process and in any other cockpit on this machine. It has
-    // to be: "preserving every other section" is only true if nothing changed a section between the read and
-    // the write. Without the gate, two writers each read the file, each changed their own section, and each
-    // wrote the whole document — so the one that finished last silently restored the other's section to what
-    // it had been. That is how a plugin's freshly pinned hash disappeared and the plugin came back asking for
-    // consent, and it is why writing atomically was never enough: each write was whole, and one of them was
-    // whole and stale.
+    // Loads the file, mutates one section, and writes the whole document back, serialised against every
+    // other writer on this machine — without the gate, two concurrent writers each silently restore the
+    // other's section to what it had been (how a plugin's freshly pinned hash once disappeared).
     public async Task UpdateAsync(Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
     {
         using var gate = await CockpitConfigWriteGate.AcquireAsync(configFilePath, cancellationToken).ConfigureAwait(false);
@@ -160,26 +132,13 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             SecretJsonWalker.Transform(document, _keyHolder.Fields, (path, value) => protector.Protect(path, value));
         }
 
-        // Written whole and renamed into place, never streamed over the live file.
-        //
-        // Truncating the config and then streaming the new one into it means that for the length of that write the
-        // operator's settings exist nowhere: a crash, a kill or the power going leaves a half file — and the next
-        // start, finding it unreadable, would have begun with an empty config and saved that emptiness over
-        // everything. Two writers at once (a second instance, a script) could leave the tail of the longer document
-        // behind the shorter one, which is what happened to Raymond's config on 2026-07-14.
-        //
-        // A rename is atomic: the file is either entirely the old one or entirely the new one. That makes each write
-        // whole — it never made two writes safe, which is a different problem and the gate above's to solve.
-        //
-        // The previous version is kept as .bak, which is what ReadAsync falls back to. Owner-only either way — this
-        // file holds provider API keys, MCP bearer headers and the plugins' tokens.
+        // Written whole and renamed into place, never streamed over the live file — a rename is atomic, so
+        // a crash mid-write never leaves a half file (2026-07-14 incident). Previous version kept as .bak,
+        // which is what ReadAsync falls back to; owner-only, since this file holds provider credentials.
         CockpitConfigPath.ReplaceAtomicallyPrivate(configFilePath, document.ToJsonString(SerializerOptions));
 
-        // Save-time signal (AC-41): this is the universal seam every section passes through, so it is where a
-        // credential written in the clear — by a provider, an MCP server, a plugin this build never heard of —
-        // becomes visible to the awareness banner. Only when encryption is off (nothing to warn about once it is
-        // on) and only when this document actually carries a credential, so a settings save with no secret in it
-        // never nudges the banner. In-memory: it counts on a clone and raises an event, never a second write.
+        // AC-41: this universal seam is where a credential written in the clear becomes visible to the
+        // awareness banner — only while encryption is off and only when this save carries a credential.
         if (protector is null
             && SecretJsonWalker.Transform(document.DeepClone(), _keyHolder.Fields, (_, value) => value).Count > 0)
         {
@@ -189,8 +148,6 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         await Task.CompletedTask.ConfigureAwait(false);
     }
 
-    // The write gate lives in CockpitConfigWriteGate now, so the encryption migration and the awareness-banner
-    // dismissal (AC-41) take the same lock this does. Reads do not take it, but they are not free of it either:
-    // the swap that publishes a write holds the file for its duration, so a reader that lands in that window is
-    // refused rather than served either version — it waits the writer out instead (_ReadWhenNotBeingReplacedAsync).
+    // AC-41: the write gate lives in CockpitConfigWriteGate so the encryption migration and the banner
+    // dismissal share this lock. Reads don't take it, but a reader mid-swap waits the writer out instead.
 }

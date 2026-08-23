@@ -2,13 +2,9 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// The `Security` section of `cockpit.json`: what the cockpit needs in order to know that its
-// credentials are encrypted, and to turn the operator's password back into the key.
-//
-// None of it is a secret. The salt is public by design (it exists so the same password on two machines yields
-// different keys, not to be hidden), the iteration count is a cost, and the verifier is a known string
-// encrypted with the key — which is how a wrong password is told apart from a corrupt file, instead of the
-// operator being handed garbage and left to guess which of the two happened.
+// The `Security` section: what the cockpit needs to know credentials are encrypted, and to turn the
+// operator's password back into the key. None of it is secret — the verifier is a known string encrypted
+// with the key, so a wrong password is told apart from a corrupt file rather than handed as garbage.
 internal sealed class SecretProtectionEntry
 {
     public bool Enabled { get; set; }

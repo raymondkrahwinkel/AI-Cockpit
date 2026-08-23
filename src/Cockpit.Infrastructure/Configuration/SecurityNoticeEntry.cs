@@ -1,21 +1,12 @@
 namespace Cockpit.Infrastructure.Configuration;
 
-// The `SecurityNotice` section of `cockpit.json`: what the operator has already been told and told us
-// not to tell them again. Today that is only the awareness banner's dismissal (AC-41).
-//
-// Deliberately its own section, apart from the crypto `SecretProtectionEntry`: this has to stay
-// readable while encryption is off (that is exactly when the banner shows), and it carries no secret — the
-// *locations* of the credential fields, never their values. So a hand-edit that clears it costs nothing but
-// a banner the operator dismissed coming back once.
+// AC-41: `SecurityNotice` — what the operator has been told and dismissed, currently just the awareness
+// banner. Its own section, apart from the crypto entry, since it must stay readable while encryption is
+// off and carries no secret, only field locations. A hand-edit clearing it just re-shows the banner once.
 internal sealed class SecurityNoticeEntry
 {
-    // The credential field paths that were in the clear when the operator dismissed the banner, sorted. A later
-    // status re-nags only when a current plaintext path is *not* in this set — a genuinely new credential
-    // (review #7). Removing a field, or rotating the value at one already listed here, leaves the banner dismissed.
-    // Null or empty means never dismissed.
-    //
-    // These are field *locations* (`McpServers[0].ApiKey`), not values, so they are safe to keep in
-    // the clear. They live in an array so the walker never mistakes them for credentials — it only encrypts values
-    // under a secret-named object key, and array elements have no such key.
+    // Review #7: credential field paths in the clear when the banner was dismissed, sorted. Re-nags only
+    // for a path not in this set — a genuinely new credential. Null/empty means never dismissed. These
+    // are field locations, not values, kept in an array so the secret walker never mistakes them for one.
     public List<string>? DismissedPaths { get; set; }
 }

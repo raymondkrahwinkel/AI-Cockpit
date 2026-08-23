@@ -39,12 +39,9 @@ internal sealed class WorkspaceEntry
         Panes = [.. workspace.Panes.Select(WorkspacePaneEntry.FromDomain)],
     };
 
-    // This entry as a domain record. A blank type falls back to `WorkspaceType.Sessions`; a plugin
-    // type whose plugin is not installed keeps its id (so the workspace returns intact when the plugin does)
-    // rather than being rewritten to a host type — see `WorkspaceType.FromId`. A pane the resulting
-    // type cannot hold is dropped rather than thrown on: a config that disagrees with itself (a widget in a
-    // Sessions workspace, any grid pane in a plugin workspace) is recoverable by ignoring the pane, but not by
-    // refusing to start.
+    // This entry as a domain record. A blank type falls back to `Sessions`; an uninstalled plugin type
+    // keeps its id (see `WorkspaceType.FromId`) rather than being rewritten. A pane the resulting type
+    // cannot hold is dropped, not thrown on — a self-contradicting config is recoverable by ignoring it.
     public Workspace ToDomain()
     {
         var type = WorkspaceType.FromId(Type);

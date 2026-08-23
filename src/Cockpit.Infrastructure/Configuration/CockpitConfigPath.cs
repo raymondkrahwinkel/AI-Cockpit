@@ -2,15 +2,9 @@ using Cockpit.Core.Configuration;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// Resolves where the cockpit keeps its state (`%APPDATA%\Cockpit` on Windows, `~/.config/Cockpit`
-// elsewhere — a development build keeps its own, see `CockpitBuild`) and owns the file permissions
-// that go with it.
-//
-// The permissions live here rather than at each call site because the files hold credentials — API keys, MCP
-// bearer headers, plugin tokens — and a default `File.Create` leaves them at whatever the umask says,
-// which is world-readable on a stock Fedora. Every writer of a credential-bearing file goes through
-// `WriteAllTextPrivate` or `CreatePrivateFile`, so "who may read this" is one
-// decision in one place instead of one that each new writer has to remember.
+// Resolves where the cockpit keeps its state and owns the file permissions that go with it. Centralised
+// here because a default `File.Create` leaves credential files world-readable on a stock Fedora umask;
+// every writer goes through `WriteAllTextPrivate`/`CreatePrivateFile` so this is one decision, not many.
 internal static class CockpitConfigPath
 {
     // Owner read/write. No group, no other — these files hold credentials.
@@ -32,10 +26,8 @@ internal static class CockpitConfigPath
     // The plugins root — a `plugins/` folder next to `cockpit.json`, stable across app updates. Each plugin lives in its own subfolder here.
     public static string PluginsRoot => Path.Combine(Root, "plugins");
 
-    // Where project logos live (AC-162): a `project-logos/` folder next to `cockpit.json`. The picked
-    // file or downloaded image is copied here and the project keeps the copy's path, so a logo survives the
-    // original being moved, renamed or unplugged — a card that quietly loses its picture is worse than one that
-    // never had it.
+    // AC-162: project logos live in `project-logos/` next to `cockpit.json`. The image is copied here so
+    // a logo survives the original being moved, renamed, or unplugged.
     public static string ProjectLogosRoot => Path.Combine(Root, "project-logos");
 
     // Where session-isolation worktrees live (AC-85): a `worktrees/` folder next to `cockpit.json`,
@@ -62,19 +54,13 @@ internal static class CockpitConfigPath
     // whole on every new transcript row — the conversation's current shape, not a trail with its own retention.
     public static string AssistantTranscript => Path.Combine(Root, "assistant-transcript.json");
 
-    // This machine's node TLS certificate (AC-792), private key and all — hence written through
-    // `CreatePrivateFile` like every other credential-bearing file here.
-    //
-    // It survives restarts on purpose, which AC-790's throwaway certificate did not: a controller pins this
-    // certificate's fingerprint at pairing time, so a node that minted a fresh one each launch would break its own
-    // pairing every time it started. Persisting it is what turns the TLS AC-790 opened from encryption without an
-    // identity into an identity a second cockpit can recognise.
+    // AC-792: this machine's node TLS certificate, written via `CreatePrivateFile` like every other
+    // credential. Persists across restarts on purpose — a controller pins its fingerprint at pairing
+    // time, so a fresh certificate each launch would break the node's own pairing.
     public static string NodeCertificate => Path.Combine(Root, "node-certificate.pfx");
 
-    // This machine's stable discovery id (AC-793) — not a credential (nothing pins to it, nothing authorizes
-    // on it), just enough that a finder's "nodes found" list does not grow a new row every time the same node
-    // answers a second query. Owner-only anyway, like everything else next to `cockpit.json`, because there is no
-    // reason for it not to be.
+    // AC-793: this machine's stable discovery id — not a credential, just enough that a finder's "nodes
+    // found" list does not grow a new row per query. Owner-only anyway, like everything beside it.
     public static string NodeDiscoveryId => Path.Combine(Root, "node-discovery-id.txt");
 
     // Creates `directory` if needed and restricts it to its owner. Idempotent.
@@ -84,10 +70,9 @@ internal static class CockpitConfigPath
         Restrict(directory, PrivateDirectoryMode);
     }
 
-    // Opens `path` for writing, truncating it, created owner-only. The mode is set as part of
-    // the create call, so there is no window in which the file exists at the umask's permissions with content
-    // already in it — and an *existing* file (one written by a version of the cockpit that did not do
-    // this) is restricted on the way past, which is what migrates the operator's current world-readable config.
+    // Opens `path` for writing, truncating it, created owner-only. The mode is set as part of the create
+    // call, so there is no window at umask permissions with content already in it — and an existing file
+    // is restricted on the way past, migrating an operator's current world-readable config.
     public static FileStream CreatePrivateFile(string path)
     {
         var directory = Path.GetDirectoryName(path);
@@ -141,19 +126,13 @@ internal static class CockpitConfigPath
         }
     }
 
-    // Replaces `path` with `contents` in one step, keeping a `.bak` of what
-    // was there. Used by the encryption migration, which rewrites every credential in the file at once: a crash
-    // halfway through a plain write leaves a truncated config, and a truncated config is the operator's
-    // credentials gone. Writing a sibling file and renaming it means the file is either entirely the old one or
-    // entirely the new one — a rename is atomic — and the backup is the way back if the new one is wrong.
+    // Replaces `path` with `contents` in one step, keeping a `.bak`. Used by the encryption migration,
+    // which rewrites every credential at once: a crash halfway through a plain write would leave a
+    // truncated config. Writing a sibling file and renaming it (atomic) avoids that; `.bak` is the way back.
     public static void ReplaceAtomicallyPrivate(string path, string contents)
     {
-        // A sidecar of its own, never a shared name. Two writers on one fixed "<path>.new" is how the operator's
-        // config was destroyed on 2026-07-14: the second writer truncated the first one's half-written file and
-        // wrote its shorter document into it, and the first went on writing at its own offsets — leaving a valid
-        // document with the tail of a longer one behind it. Then one of them renamed that into place. The rename
-        // was atomic all along; the file it renamed was the problem. (The other writer, finding its sidecar gone,
-        // threw FileNotFoundException — the same race, wearing a different mask.)
+        // A sidecar of its own, never a shared name — two writers sharing a fixed "<path>.new" is how the
+        // operator's config was destroyed on 2026-07-14: the rename was atomic, the file it renamed wasn't.
         var temporaryPath = $"{path}.{Guid.NewGuid():N}.new";
         try
         {

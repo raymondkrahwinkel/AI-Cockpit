@@ -1,20 +1,7 @@
 namespace Cockpit.Infrastructure.Configuration;
 
-// The single write gate for `cockpit.json`: one lock file next to the config that every writer takes
-// before a read-modify-write, in this process and in any other cockpit on this machine.
-//
-// It used to live privately inside `CockpitConfigFileAccess`, where only the typed settings stores
-// reached it. The encryption migration and the awareness-banner dismissal (AC-41) rewrite the same file, so
-// they have to take the same lock — otherwise a migration could interleave with a store write and one of them
-// would silently restore the other's section. Hoisting it here makes "who serialises against whom" one fact in
-// one place: everyone locks on `&lt;path&gt;.lock`.
-//
-// A lock file rather than a named mutex: the operating system drops it when the holder exits — including a
-// process killed mid-write — and it behaves the same on the three platforms the cockpit runs on. The lock is
-// non-reentrant (`FileShare.None`), so a leaf operation must never take it while already holding it:
-// re-entering deadlocks until the timeout. That is why `ChangePasswordAsync` takes the gate exactly once
-// and re-encrypts in that single pass rather than delegating to Disable+Enable — nesting would re-enter and
-// deadlock, and Disable would put every credential back in the clear on disk for the width of the window.
+// AC-41: the single write gate for `cockpit.json` — one lock file every writer takes so the encryption
+// migration and the settings stores never interleave. Non-reentrant: `ChangePasswordAsync` takes it once.
 internal static class CockpitConfigWriteGate
 {
     // Holds the write gate; empty, and only its existence-while-open means anything.

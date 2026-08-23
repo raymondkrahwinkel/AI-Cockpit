@@ -3,11 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// Reads the `WindowBounds` section of `cockpit.json` in either shape it can take: the pre-AC-866 flat form (a
-// single `WindowBoundsEntry` object, for the main window alone) or the keyed form
-// (`{"main": {...}, "assistant": {...}}`, one entry per window). A flat object reads as the `"main"` entry —
-// smallest diff for the data already on disk — and this always writes the keyed form, so the file migrates
-// itself the first time anything saves.
+// AC-866: reads `WindowBounds` in either shape — the pre-AC-866 flat form (main window only, read as the
+// "main" entry) or the keyed per-window form — and always writes the keyed form, migrating on next save.
 internal sealed class WindowBoundsSectionJsonConverter : JsonConverter<Dictionary<string, WindowBoundsEntry>>
 {
     private const string MainKey = "main";

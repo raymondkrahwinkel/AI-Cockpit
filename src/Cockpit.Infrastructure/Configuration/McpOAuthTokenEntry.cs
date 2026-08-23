@@ -2,13 +2,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// On-disk shape of an `McpOAuthToken` in the `mcpOAuthTokens` section of `cockpit.json`.
-//
-// The field names are load-bearing: `SecretFields` decides what to encrypt and what to empty out of a backup by
-// the name of the field, so `AccessToken` and `RefreshToken` are covered by the existing
-// `token` rule without any plumbing of their own. The scheme is called `Scheme` rather than
-// `TokenType` for the same reason, the other way round — it holds the word "Bearer", and a name matching the
-// rule would have it needlessly encrypted.
+// On-disk shape of an `McpOAuthToken` in the `mcpOAuthTokens` section. Field names are load-bearing:
+// `SecretFields` matches by name, so `AccessToken`/`RefreshToken` are covered by the `token` rule
+// automatically, and `Scheme` (not `TokenType`) avoids that same rule needlessly encrypting "Bearer".
 internal sealed class McpOAuthTokenEntry
 {
     // The `McpServerConfig.IdentityKey` this token belongs to (AC-403) — the one field the store
@@ -16,13 +12,9 @@ internal sealed class McpOAuthTokenEntry
     // read for.
     public string ServerId { get; set; } = string.Empty;
 
-    // The `McpServerConfig.Name` this token was last written for — a label, so the section stays
-    // readable to whoever opens `cockpit.json`.
-    //
-    // ⚠️ *Never match a server against this.* It is a copy of a name the operator can change, and it goes
-    // stale the moment they do; that staleness is AC-403 itself. The single exception is an entry with no
-    // `ServerId` — one an older build wrote, whose name *was* its key — and even there the
-    // store compares against the id that name derives to, not against any server's current name.
+    // AC-403: the server name this token was last written for — a display label only, never match a
+    // server against it, since it goes stale the moment the operator renames the server. The one
+    // exception, a legacy entry with no `ServerId`, still compares against the id the name derives to.
     public string ServerName { get; set; } = string.Empty;
 
     public string AccessToken { get; set; } = string.Empty;

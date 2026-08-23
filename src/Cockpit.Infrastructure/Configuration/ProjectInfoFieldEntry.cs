@@ -3,13 +3,9 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// On-disk shape of a `ProjectInfoField` inside a `ProjectEntry`. The label is the operator's
-// own words and is never a key the cockpit looks anything up by.
-//
-// A credential is stored under `SecretValue` — a field name the secret rule recognises
-// (`SecretFields`), so it is encrypted at rest and scrubbed from backups without this entry knowing how
-// (AC-318, the same route `ProfileEnvironmentVariableEntry` takes). An ordinary value stays readable in
-// `cockpit.json` under `Value`, on purpose: the config file is the operator's to inspect.
+// AC-318: on-disk shape of a `ProjectInfoField`. Label is the operator's own words, never a lookup key.
+// A credential goes under `SecretValue`, which `SecretFields` recognises and encrypts automatically —
+// same route as `ProfileEnvironmentVariableEntry`; an ordinary value stays readable under `Value`.
 internal sealed class ProjectInfoFieldEntry
 {
     // Nullable because a hand-edited config can write `null` here, and the deserializer assigns it: the domain row takes strings, so the null is answered at this boundary rather than by every reader of it.

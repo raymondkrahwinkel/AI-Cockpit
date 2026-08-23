@@ -2,14 +2,9 @@ using Cockpit.Core.Rendering;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// Reads just the persisted render backend from `cockpit.json` for `Program.BuildAvaloniaApp()`'s
-// pre-container pass (AC-67), where the DI host — and the internal section stores — do not exist yet. Public on
-// purpose (like `PluginBootstrap`): callable with `new`/statically before the container is built.
-//
-// Returns `RenderBackendChoice.Auto` (no override) on any absence or read error — a missing or broken
-// config must never stop the app from starting, and the render backend is a diagnostic knob, not a hard setting.
-// Reuses the same deserialization as the writer, so it stays correct if the on-disk shape evolves; the encrypted
-// credential fields are irrelevant here since the backend is a non-secret plaintext value read alongside them.
+// AC-67: reads just the persisted render backend for `Program.BuildAvaloniaApp()`'s pre-container pass,
+// before the DI host exists. Public, like `PluginBootstrap`, so it's callable statically. Returns
+// `Auto` on any absence or read error — a broken config must never stop the app from starting.
 public static class RenderBackendConfig
 {
     public static RenderBackendChoice Read() => Read(CockpitConfigPath.Default);

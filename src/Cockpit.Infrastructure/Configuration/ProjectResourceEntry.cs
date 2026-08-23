@@ -10,17 +10,8 @@ internal sealed class ProjectResourceEntry
     // Nullable because a hand-edited config can write `null` here, and the deserializer assigns it: the domain row takes a string, so the null is answered at this boundary (`ToDomain`) rather than by every reader of it.
     public string? Reference { get; set; }
 
-    // The role as it reads on disk, kept as a plain string rather than the domain `ProjectResourceRole`
-    // itself (what this held before). Two failure modes made that the wrong choice: the file's shared
-    // `System.Text.Json.Serialization.JsonStringEnumConverter` throws for the *whole document*
-    // on a value it does not recognise (a typo, or a role a newer build added), which turns one bad row into
-    // every section of `cockpit.json` being declared damaged and rolled back to `.bak`; and a
-    // non-nullable enum reads a row that never wrote `role` at all as ordinal 0 —
-    // `ProjectResourceRole.Memory`, the one role this model itself documents as read *and written
-    // back to*. Handing the most powerful role to the row that forgot to ask for one is exactly backwards.
-    // `ToDomain` answers both cases the same way: a missing or unrecognised string becomes
-    // `ProjectResourceRole.Reference`, the least powerful role there is, so a bad or absent value
-    // costs one row's behavior rather than the whole file.
+    // Role kept as a plain string: the shared enum converter throws the whole document on one bad value,
+    // and a non-nullable enum would default a missing role to `Memory`. `ToDomain` maps both to `Reference`.
     public string? Role { get; set; }
 
     public string? Label { get; set; }
@@ -48,20 +39,14 @@ internal sealed class ProjectResourceEntry
             Label = Label,
             ReachesSessions = ReachesSessions,
 
-            // Dropped outright for any role but Instructions, rather than carried and merely ignored (AC-486
-            // review). The domain property already refuses to report it for another role, but that only masks it
-            // while the role stays wrong: this file can be edited by hand, and a tick stored on a Memory row came
-            // back the moment the operator changed that row to Instructions — arriving pre-ticked in front of
-            // someone who never set it, and opening the file from the next session on. A flag that was never
-            // offered must not survive the load at all, or every later `with { Role = … }` is a way to resurrect it.
+            // AC-486: dropped outright for any role but Instructions, not merely carried unread — a hand
+            // edit can change a row's role, and a stale tick would resurface pre-ticked for nobody who set it.
             SendsContent = SendsContent && role == ProjectResourceRole.Instructions,
         };
     }
 
-    // `role` parsed as a `ProjectResourceRole`, or `ProjectResourceRole.Reference`
-    // for anything that is not one of its member names — missing, blank, mis-typed, or a role only a newer build
-    // knows. The safe fallback rather than a thrown exception, so one stray row never costs the rest of the file
-    // (see the doc comment on `Role`).
+    // `role` parsed as `ProjectResourceRole`, or the safe fallback `Reference` for anything unrecognised —
+    // missing, blank, mis-typed, or a role only a newer build knows (see the doc comment on `Role`).
     private static ProjectResourceRole _ParseRole(string? role) =>
         Enum.TryParse<ProjectResourceRole>(role, ignoreCase: true, out var parsed) ? parsed : ProjectResourceRole.Reference;
 }

@@ -16,18 +16,12 @@ internal sealed class AssistantSettingsEntry
     // AC-681. Defaults true to match `AssistantSettings.AlwaysOnTop`'s own default.
     public bool AlwaysOnTop { get; set; } = true;
 
-    // The chat window's reading level (AC-138), stored as its enum name rather than the enum itself — same
-    // defensive shape as `ProfileDefaultsEntry.DefaultReadingLevel`: a name a newer build wrote that
-    // this one does not recognise (a fourth level, say) reads back as "no match" here, never as whichever value
-    // happens to sit at ordinal 0.
+    // AC-138: stored as the enum's name, not its ordinal, so a level a newer build wrote and this one
+    // does not recognise reads back as "no match" instead of silently landing on ordinal 0.
     public string? ReadingLevel { get; set; }
 
-    // The consent-bypass switches (#AC-575), on disk as two plain string lists rather than one enum per source.
-    // Deliberate: an unknown enum value costs `JsonlAuditLog`'s reader the line it is on and this file's
-    // reader the whole section, and the default of a non-nullable enum is ordinal 0 — so a three-state
-    // `None/LowRisk/Everything` written by a newer build is exactly the shape that reads back as whichever
-    // value happens to sit at 0 in an older one. A source name that means nothing to this build is simply a name
-    // that matches no source, which is the least powerful thing it could mean.
+    // AC-575: consent-bypass sources are plain string lists, not an enum per source — an unrecognised
+    // enum value would corrupt the reader, while an unrecognised name here just matches nothing.
     public List<string> ConsentBypassSources { get; set; } = [];
 
     public List<string> ConsentBypassDangerousSources { get; set; } = [];
@@ -66,10 +60,8 @@ internal sealed class AssistantSettingsEntry
         // it says so under its own name rather than by a list quietly reading as wider than it was written.
         ConsentBypassSources = [.. ConsentBypassSources ?? []],
         ConsentBypassDangerousSources = [.. ConsentBypassDangerousSources ?? []],
-        // Absent means a config that predates the switch, and that operator's cockpit was asking about everything:
-        // it keeps doing so. The default-on lives in `AssistantSettings` and so reaches a fresh install only, where
-        // there is no `assistant` section to read at all. Upgrading is not the moment to widen a permission nobody
-        // asked to widen.
+        // AC-637: absent means a pre-switch config, whose cockpit was asking about everything already — it
+        // keeps doing so rather than silently narrowing an existing permission on upgrade.
         ConsentBypassAll = ConsentBypassAll ?? false,
     };
 }

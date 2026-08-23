@@ -3,30 +3,18 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// Root JSON shape of `cockpit.json` under the app config directory. Each store owns one
-// section and reads-modifies-writes the whole file so it never clobbers a sibling section: the
-// profile store owns `Profiles`, the notification store owns `Notifications`,
-// the permission-rule store owns `PermissionRules`, the session-switch store owns
-// `SessionSwitching`, the transcript-display store owns `TranscriptDisplay`,
-// the layout store owns `Layout`, the voice store owns `Voice`, the
-// terminal-settings store owns `Terminal`.
-// Kept as a plain DTO separate from the domain records so the on-disk shape can evolve independently.
+// Root JSON shape of `cockpit.json`. Each store owns one section and reads-modifies-writes the whole
+// file so it never clobbers a sibling section. A plain DTO, kept apart from the domain records so the
+// on-disk shape can evolve independently.
 internal sealed class CockpitConfigFile
 {
-    // How the credentials in this file are protected: whether encryption is on, and the salt/iterations the
-    // key is derived from. Not a secret itself, and deliberately readable before the app is unlocked — without
-    // it there is no way to derive the key that reads the rest.
-    //
-    // Absent unless the operator turned encryption on: encryption is off by default, and a config that says
-    // `"Security": null` is a config inviting the question "am I locked?" — which is exactly the question
-    // it should never provoke.
+    // How credentials are protected — salt/iterations the key derives from. Not a secret, and readable
+    // before unlock on purpose. Absent unless encryption is on, so a bare config never implies "locked".
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SecretProtectionEntry? Security { get; set; }
 
-    // What the operator has been warned about and dismissed (AC-41) — currently the awareness banner's
-    // per-credential-set fingerprint. Owned by `SecretProtectionService`, but declared here so a
-    // typed store write round-trips it rather than dropping it. Absent until the banner is first dismissed, and
-    // deliberately readable while encryption is off — that is when the banner it silences is shown.
+    // AC-41: the awareness banner's dismissed fingerprint. Owned by `SecretProtectionService`, declared
+    // here so a typed store write round-trips it; readable while encryption is off, when it is shown.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SecurityNoticeEntry? SecurityNotice { get; set; }
 
@@ -105,27 +93,20 @@ internal sealed class CockpitConfigFile
 
     public Dictionary<string, PluginRegistrationEntry> Plugins { get; set; } = [];
 
-    // The folder ids of bundled plugins this build has already put in place at least once — the seed-once ledger.
-    // A bundled plugin ships as an ordinary, store-updatable plugin: it is copied into the operator's plugins
-    // directory on its first appearance and then never touched by the bundle again — the store owns every later
-    // version. This is what "first appearance" is measured against, so the seed survives an uninstall (a plugin
-    // the operator removed does not silently return next start) and a store update (a newer version the bundle
-    // still ships is not rolled back or re-pinned). Mirror of `PluginStoresDefaultSeeded`, per id.
+    // Folder ids of bundled plugins already seeded once — a bundled plugin is copied in on first
+    // appearance and never touched again, so an uninstall or a newer bundled version stays that way.
+    // Mirror of `PluginStoresDefaultSeeded`, per id.
     public List<string> SeededBundledPlugins { get; set; } = [];
 
-    // Per plugin id, the storage keys it keeps a credential in beyond the names the host recognises by itself
-    // (a `pat`, a `credential`) — declared in its `plugin.json` or by calling
-    // `IPluginStorage.SetSecret`. The names themselves are not secrets, and they have to be readable before
-    // the settings are decrypted: they are what says which fields to decrypt.
+    // Per plugin id, extra storage keys it keeps a credential in beyond the names the host recognises
+    // itself. Readable before decryption on purpose — these names say which fields to decrypt.
     public Dictionary<string, List<string>> PluginCredentialFields { get; set; } = [];
 
     // Configured plugin stores (#14, AC-7) the manager browses — remote (public or private) or local; owned by the plugin-store config store. A bare URL string from a pre-AC-7 config still reads (see `Cockpit.Core.Plugins.PluginStoreConfigJsonConverter`).
     public List<PluginStoreConfig> PluginStores { get; set; } = [];
 
-    // First-run marker (#43) for the built-in default store: set the first time `PluginStores`
-    // is resolved, whether that resolution seeded the default store (empty list, unmarked) or merely
-    // recognized an existing list as already the operator's own. Once true, the default is never added again —
-    // removing the default store is a durable choice, not something the next load undoes.
+    // First-run marker (#43): set the first time `PluginStores` resolves. Once true the default store
+    // is never re-added, so removing it stays a durable choice.
     public bool PluginStoresDefaultSeeded { get; set; }
 
     // User-configured MCP servers (#26), shared by the local-LLM tool-loop and the Claude CLI; owned by the MCP-server store.
@@ -179,16 +160,12 @@ internal sealed class CockpitConfigFile
     // The registered verify runners (AC-86) — the per-project command the visual verify loop may run; owned by the verify-runner-registry store. The agent triggers a runner but never supplies the command, so this list is also the boundary against arbitrary command execution.
     public List<VerifyRunnerEntry> VerifyRunners { get; set; } = [];
 
-    // The first-run wizard's completion marker (AC-509) — the content version the operator has seen, or absent
-    // before it has ever run; owned by the first-run-wizard-state store. A version rather than a bool, so a later
-    // addition to the wizard can decide whether an install that already finished an earlier version still needs
-    // to see something new, without reusing or clearing this flag.
+    // AC-509: first-run wizard's completion marker, absent before it has ever run. A version rather than
+    // a bool, so a later wizard addition can decide an earlier-finished install still needs to see it.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? FirstRunWizardVersion { get; set; }
 
-    // Managed-CLI names (AC-767) for which the background updater must not auto-install a newer version — an
-    // exception list rather than an allow list, same shape as HiddenSharedProjectIds above, so an absent section
-    // means auto-update is on for every CLI, existing or future, with no migration; owned by
-    // ManagedCliAutoUpdateStore.
+    // AC-767: managed-CLI names excluded from auto-update — an exception list, so an absent section
+    // means auto-update stays on for every CLI, existing or future, with no migration needed.
     public List<string> ManagedCliAutoUpdateDisabled { get; set; } = [];
 }
