@@ -31,8 +31,9 @@ public sealed class MarkdownViewFilePathTests : IDisposable
 
             view.Markdown = "See `Theme.axaml` and `CheckBox.Switch`.";
             // First pass renders both as plain code (the probe has not answered yet); the settle callback
-            // forces the rebuild that makes the resolved one tinted (AC-642 valkuil 2).
-            await Task.Delay(300);
+            // forces the rebuild that makes the resolved one tinted (AC-642 valkuil 2) — wait for the cursor
+            // that rebuild produces rather than a fixed delay hoping the background probe already landed.
+            await _WaitUntilAsync(() => _IsResolved(view));
 
             var text = Assert.IsAssignableFrom<SelectableTextBlock>(
                 Assert.Single(Assert.IsType<StackPanel>(view.Content).Children));
@@ -60,8 +61,9 @@ public sealed class MarkdownViewFilePathTests : IDisposable
             var window = new Window { Content = view, Width = 900, Height = 200 };
             window.Show();
 
+            // The vorm filter runs synchronously inside the property setter's own render pass — no probe is ever
+            // scheduled, so there is nothing to wait for.
             view.Markdown = "Build with `--warnaserror`.";
-            await Task.Delay(200);
 
             Assert.False(probed); // no separator, no short extension — the vorm filter rejects it before disk
             window.Close();
@@ -85,7 +87,7 @@ public sealed class MarkdownViewFilePathTests : IDisposable
                 window.Show();
 
                 view.Markdown = "See `Theme.axaml` here.";
-                await Task.Delay(300);
+                await _WaitUntilAsync(() => _IsResolved(view));
 
                 var text = Assert.IsAssignableFrom<SelectableTextBlock>(
                     Assert.Single(Assert.IsType<StackPanel>(view.Content).Children));
@@ -99,9 +101,11 @@ public sealed class MarkdownViewFilePathTests : IDisposable
                 var point = text.TranslatePoint(caret.Center, window)
                     ?? throw new InvalidOperationException("the run must be laid out inside the window to be clicked");
 
+                // The headless input pipeline dispatches PointerReleased (and the click handler it drives)
+                // synchronously within MouseUp itself — same as the inline click handling AC-1014's earlier
+                // AssistantDragToDockTests PR (#819) found for this harness — so the window is already open here.
                 window.MouseDown(point, MouseButton.Left);
                 window.MouseUp(point, MouseButton.Left);
-                await Task.Delay(300);
 
                 var opened = Assert.Single(window.OwnedWindows);
                 Assert.IsType<FilePreviewWindow>(opened);
@@ -113,5 +117,23 @@ public sealed class MarkdownViewFilePathTests : IDisposable
                 dir.Delete(recursive: true);
             }
         });
+    }
+
+    // True once the resolver's settle callback has forced its rebuild: a link is only added to the block
+    // (and the hand cursor set) once a code span's path is known to resolve — see MarkdownView._FillInlines.
+    private static bool _IsResolved(MarkdownView view)
+    {
+        var children = Assert.IsType<StackPanel>(view.Content).Children;
+        return children.Count == 1 && children[0] is SelectableTextBlock { Cursor: not null };
+    }
+
+    private static async Task _WaitUntilAsync(Func<bool> condition)
+    {
+        for (var i = 0; i < 500 && !condition(); i++)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition(), "the condition should become true within the poll window");
     }
 }
