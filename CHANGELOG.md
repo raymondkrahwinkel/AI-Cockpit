@@ -32,6 +32,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: you can send the assistant a picture from Slack or Discord. Attach a screenshot of the error you are
+  looking at, write your question underneath it, and both arrive as one message — the same thing pasting an
+  image into the chat window does, from your phone. A picture on its own, with nothing typed, is a message too.
+  Nothing is passed on quietly: whatever the file is called and whatever the platform says it is, the image is
+  decoded here before it goes anywhere, and a file that is not an image, is too large, or is one of more than
+  four on a single message is left behind — with a ⚠️ on your message in the channel saying so, and the text
+  you wrote delivered regardless. If the assistant is running on a model that cannot see images at all, it says
+  that in the conversation rather than dropping the picture without a word. Slack needs one extra permission
+  for this, `files:read`; the plugin's setup page says what happens if you forget it.
+
 - added: an in-app knowledge base — Help ▸ Documentation opens a window of its own, beside whatever you were
   working on, holding the app's own pages and every installed plugin's. It works with no connection and never
   describes a version you do not have: documentation travels inside the thing it documents. Search covers

@@ -302,11 +302,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // Sends one utterance or typed line to the assistant, starting it first if this is the first time. The single
     // entry point for both input paths, so speaking and typing reach the same conversation by the same route —
     // which is what makes the assistant fully usable with no microphone at all.
-    public async Task SendAsync(string text, CancellationToken cancellationToken = default)
+    public Task SendAsync(string text, CancellationToken cancellationToken = default) =>
+        SendAsync(text, [], cancellationToken);
+
+    public async Task SendAsync(string text, IReadOnlyList<byte[]> pngImages, CancellationToken cancellationToken = default)
     {
         // An image with no words is a message too (AC-630) — a pasted or captured attachment waiting on the
         // composer is reason enough to send, and refusing here left it hanging with no way out.
-        if (string.IsNullOrWhiteSpace(text) && Session is not { HasPendingAttachments: true })
+        if (string.IsNullOrWhiteSpace(text) && pngImages.Count == 0 && Session is not { HasPendingAttachments: true })
         {
             return;
         }
@@ -318,6 +321,13 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         if (await EnsureStartedAsync(cancellationToken).ConfigureAwait(true) is not { } session)
         {
             return;
+        }
+
+        // One notice, not one per attachment: AddPastedImage answers a provider that cannot see images with a
+        // transcript row of its own (AC-1049), which a channel relays straight back to whoever sent the image.
+        foreach (var image in session.CanPasteImages ? pngImages : pngImages.Take(1))
+        {
+            session.AddPastedImage(image);
         }
 
         if (string.IsNullOrWhiteSpace(text))

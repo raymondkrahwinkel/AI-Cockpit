@@ -13,6 +13,7 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
 {
     private readonly ISlackSocketModeClient _client;
     private readonly SlackChannelBridge _bridge;
+    private readonly SlackFileFetcher _files;
     private readonly string _channelId;
     private bool _disposed;
 
@@ -34,7 +35,8 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
             .RegisterBlockActionHandler<ButtonAction>(this);
 
         var sink = new SlackChannelSink(builder.GetApiClient(), channelId);
-        _bridge = new SlackChannelBridge(gateway, sink, access, verbosity);
+        _files = new SlackFileFetcher(botToken);
+        _bridge = new SlackChannelBridge(gateway, sink, _files, access, verbosity);
         _client = builder.GetSocketModeClient();
 
         _ = _ConnectAsync(reportConnectionError);
@@ -104,8 +106,18 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
             return Task.CompletedTask;
         }
 
-        return _bridge.HandleInboundMessageAsync(slackEvent.User, slackEvent.Text, slackEvent.Ts);
+        return _bridge.HandleInboundMessageAsync(slackEvent.User, slackEvent.Text, slackEvent.Ts, _InboundFiles(slackEvent));
     }
+
+    private static IReadOnlyList<SlackInboundFile> _InboundFiles(MessageEvent slackEvent) =>
+        slackEvent.Files?
+            .Select(file => new SlackInboundFile(
+                file.Name,
+                file.Mimetype,
+                file.Size,
+                // The download URL when Slack offers one; both need the bot token either way.
+                string.IsNullOrEmpty(file.UrlPrivateDownload) ? file.UrlPrivate : file.UrlPrivateDownload))
+            .ToList() ?? [];
 
     // An Approve/Deny button was clicked. SlackNet acknowledges the interaction itself once this task
     // completes — unlike Discord's Components API there is no separate defer step to call first.
@@ -121,6 +133,7 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
 
         _disposed = true;
         _bridge.Dispose();
+        _files.Dispose();
         _client.Disconnect();
         _client.Dispose();
     }

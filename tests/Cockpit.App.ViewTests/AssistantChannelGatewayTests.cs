@@ -1,3 +1,4 @@
+using SkiaSharp;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Assistant;
@@ -29,7 +30,7 @@ public class AssistantChannelGatewayTests
 
         Assert.True(result.Ok);
         Assert.False(result.Ignored);
-        await host.Received().SendAsync("how far is the build?", Arg.Any<CancellationToken>());
+        await host.Received().SendAsync("how far is the build?", Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
     });
 
     /// <summary>
@@ -45,7 +46,7 @@ public class AssistantChannelGatewayTests
         Assert.False(result.Ok);
         Assert.True(result.Ignored);
         Assert.Null(result.Error);
-        await host.DidNotReceive().SendAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await host.DidNotReceive().SendAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
     });
 
     /// <summary>
@@ -56,7 +57,7 @@ public class AssistantChannelGatewayTests
     public Task ASendThatFails_IsRefusedWithItsReason_AndNeverReportedAsSent() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (gateway, host, _, _) = _Gateway();
-        host.SendAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        host.SendAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("the assistant is not running")));
 
         // From the UI thread, where the gateway runs the send inline…
@@ -71,6 +72,83 @@ public class AssistantChannelGatewayTests
 
         Assert.False(dispatched.Ok);
         Assert.Equal("the assistant is not running", dispatched.Error);
+    });
+
+    // ── images (AC-1049) ───────────────────────────────────────────────────────────────────────────────────────
+
+    private static byte[] _Png(int width = 32, int height = 24)
+    {
+        using var bitmap = new SKBitmap(width, height);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 90);
+        return data.ToArray();
+    }
+
+    [Fact]
+    public Task AnImageThatIsOne_ReachesTheAssistantOnTheSameMessageAsTheText() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (gateway, host, _, _) = _Gateway();
+
+        var result = await gateway.SendAsync(Allowed, "look at this", [_Png()]);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ImagesRefused);
+        await host.Received().SendAsync(
+            "look at this",
+            Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 1),
+            Arg.Any<CancellationToken>());
+    });
+
+    /// <summary>
+    /// Criterion 5: the plugin said it was an image, the codec disagreed. The attachment is dropped on its own
+    /// and the sentence it came with still reaches the assistant.
+    /// </summary>
+    [Fact]
+    public Task SomethingThatIsNotAnImage_IsRefusedWhileItsTextGoesThroughAnyway() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (gateway, host, _, _) = _Gateway();
+
+        var result = await gateway.SendAsync(Allowed, "what do you make of this", ["not an image at all"u8.ToArray()]);
+
+        Assert.True(result.Ok);
+        Assert.Contains("not an image", result.ImagesRefused);
+        await host.Received().SendAsync(
+            "what do you make of this",
+            Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 0),
+            Arg.Any<CancellationToken>());
+    });
+
+    [Fact]
+    public Task MoreImagesThanOneMessageMayCarry_AreCutBackAndTheSenderIsTold() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (gateway, host, _, _) = _Gateway();
+        var tooMany = Enumerable.Range(0, AssistantChannelImageLimits.MaxPerMessage + 1).Select(_ => _Png()).ToList();
+
+        var result = await gateway.SendAsync(Allowed, "lots", tooMany);
+
+        Assert.True(result.Ok);
+        Assert.Contains($"first {AssistantChannelImageLimits.MaxPerMessage}", result.ImagesRefused);
+        await host.Received().SendAsync(
+            "lots",
+            Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == AssistantChannelImageLimits.MaxPerMessage),
+            Arg.Any<CancellationToken>());
+    });
+
+    /// <summary>
+    /// The identity check comes first, so a stranger's attachment is never even decoded — and they are still
+    /// answered with silence rather than with a reason.
+    /// </summary>
+    [Fact]
+    public Task AStrangersImage_IsNeverDecodedAndNeverExplained() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (gateway, host, _, _) = _Gateway();
+
+        var result = await gateway.SendAsync("118", "let me in", ["not an image at all"u8.ToArray()]);
+
+        Assert.True(result.Ignored);
+        Assert.Null(result.ImagesRefused);
+        await host.DidNotReceive().SendAsync(
+            Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
     });
 
     // ── outbound (§4) ──────────────────────────────────────────────────────────────────────────────────────────

@@ -109,9 +109,23 @@ public sealed record AssistantChannelConsentPrompt(Guid Id, ConsentRequest Reque
 public sealed record AssistantChannelSendResult(bool Ok, bool Ignored, string? Error)
 {
     /// <summary>
+    /// Why the images that came with this message were not passed on, when the message itself was (AC-1049) —
+    /// <see cref="Ok"/> stays true and the text arrived, so this is a sign to show the sender, not a failure.
+    /// Null when there was nothing to refuse.
+    /// </summary>
+    public string? ImagesRefused { get; init; }
+
+    /// <summary>
     /// The message reached the assistant by the same route as text typed in the chat window.
     /// </summary>
     public static AssistantChannelSendResult Sent() => new(true, false, null);
+
+    /// <summary>
+    /// The text reached the assistant but its images did not, for <paramref name="reason"/> — too big, not an
+    /// image, or a session that cannot see one. Tell the sender; do not resend the text.
+    /// </summary>
+    public static AssistantChannelSendResult SentWithoutImages(string reason) =>
+        new(true, false, null) { ImagesRefused = reason };
 
     /// <summary>
     /// The sender is not allowed on this channel. Say nothing back to them.
@@ -134,7 +148,24 @@ public interface IAssistantChannelGateway : IDisposable
     /// Hands a message from <paramref name="senderUserId"/> to the assistant, by the same route as typed text. The
     /// channel's own <see cref="AssistantChannelAccess"/> is checked here first.
     /// </summary>
-    Task<AssistantChannelSendResult> SendAsync(string senderUserId, string text, CancellationToken cancellationToken = default);
+    Task<AssistantChannelSendResult> SendAsync(string senderUserId, string text, CancellationToken cancellationToken = default) =>
+        SendAsync(senderUserId, text, [], cancellationToken);
+
+    /// <summary>
+    /// The same, with images attached to the message (AC-1049) — one message, not one per attachment, and an
+    /// empty <paramref name="text"/> with images is a message too. Hand the bytes over exactly as the platform
+    /// delivered them: what an image is, how big and how many is decided host-side, and refused ones come back as
+    /// <see cref="AssistantChannelSendResult.ImagesRefused"/> with the text still delivered.
+    /// </summary>
+    /// <remarks>
+    /// Added as a second member rather than by changing the one above, so no <c>abstractionsVersion</c> bump is
+    /// needed (AC-1049).
+    /// </remarks>
+    Task<AssistantChannelSendResult> SendAsync(
+        string senderUserId,
+        string text,
+        IReadOnlyList<byte[]> images,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// A transcript row arrived or changed — never a replay of what was already there. Raised on the UI thread, one

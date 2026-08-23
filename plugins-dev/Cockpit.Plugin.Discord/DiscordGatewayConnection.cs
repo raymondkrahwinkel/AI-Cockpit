@@ -11,6 +11,7 @@ internal sealed class DiscordGatewayConnection : IDisposable
 {
     private readonly DiscordSocketClient _client;
     private readonly DiscordChannelBridge _bridge;
+    private readonly DiscordFileFetcher _files;
     private readonly ulong _channelId;
     private bool _disposed;
 
@@ -30,7 +31,8 @@ internal sealed class DiscordGatewayConnection : IDisposable
         });
 
         var sink = new DiscordChannelSink(_ResolveChannelAsync);
-        _bridge = new DiscordChannelBridge(gateway, sink, access, verbosity);
+        _files = new DiscordFileFetcher();
+        _bridge = new DiscordChannelBridge(gateway, sink, _files, access, verbosity);
 
         _client.MessageReceived += _OnMessageReceived;
         _client.ButtonExecuted += _OnButtonExecutedAsync;
@@ -65,9 +67,16 @@ internal sealed class DiscordGatewayConnection : IDisposable
             return Task.CompletedTask;
         }
 
-        _ = _bridge.HandleInboundMessageAsync(message.Author.Id.ToString(), message.Content, message.Id);
+        _ = _bridge.HandleInboundMessageAsync(
+            message.Author.Id.ToString(), message.Content, message.Id, _InboundFiles(message));
         return Task.CompletedTask;
     }
+
+    private static IReadOnlyList<DiscordInboundFile> _InboundFiles(SocketMessage message) =>
+        message.Attachments
+            .Select(attachment => new DiscordInboundFile(
+                attachment.Filename, attachment.ContentType, attachment.Size, attachment.Url))
+            .ToList();
 
     private async Task _OnButtonExecutedAsync(SocketMessageComponent component)
     {
@@ -87,6 +96,7 @@ internal sealed class DiscordGatewayConnection : IDisposable
         _client.MessageReceived -= _OnMessageReceived;
         _client.ButtonExecuted -= _OnButtonExecutedAsync;
         _bridge.Dispose();
+        _files.Dispose();
         _ = _client.StopAsync();
         _client.Dispose();
     }

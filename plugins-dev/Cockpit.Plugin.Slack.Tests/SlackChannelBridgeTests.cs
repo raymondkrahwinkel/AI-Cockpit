@@ -14,10 +14,18 @@ public class SlackChannelBridgeTests
     private static (SlackChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeSlackChannelSink Sink) _Build(
         AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything)
     {
+        var (bridge, gateway, sink, _) = _BuildWithFiles(verbosity);
+        return (bridge, gateway, sink);
+    }
+
+    private static (SlackChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeSlackChannelSink Sink, FakeSlackFileFetcher Files) _BuildWithFiles(
+        AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything)
+    {
         var gateway = new FakeAssistantChannelGateway();
         var sink = new FakeSlackChannelSink();
-        var bridge = new SlackChannelBridge(gateway, sink, _SingleUserAccess(_AllowedUserId), () => verbosity);
-        return (bridge, gateway, sink);
+        var files = new FakeSlackFileFetcher();
+        var bridge = new SlackChannelBridge(gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => verbosity);
+        return (bridge, gateway, sink, files);
     }
 
     // AC-1025 criterion 2, the plugin-testable half of it: the host's gateway already reports a stranger's

@@ -29,7 +29,9 @@ from its settings — the **?** beside the token fields.
    URL needed under Socket Mode). Skip this and the bot still posts and still replies to plain messages — what
    silently breaks is the Approve/Deny buttons on consent prompts, leaving only the "type JA/NEE" fallback.
 4. **Choose bot scopes and install the app.** **OAuth & Permissions** page → **Bot Token Scopes**: add at
-   least `chat:write` and `channels:history` (`groups:history` for a private channel). **Event Subscriptions**
+   least `chat:write`, `channels:history` (`groups:history` for a private channel) and `files:read` — without
+   that last one Slack answers a file's private URL with its sign-in page and a `200`, so images silently
+   never arrive (the message text still does, with a ⚠️ on it). **Event Subscriptions**
    page: turn subscriptions on and add the `message.channels` bot event (`message.groups` for private) — this
    is what makes Slack deliver messages over the socket at all. Then **Install to Workspace** and copy the
    `xoxb-…` **Bot User OAuth Token**.

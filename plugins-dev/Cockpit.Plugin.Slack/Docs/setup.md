@@ -40,10 +40,19 @@ click never reaches this plugin, and only the "type JA/NEE" text fallback keeps 
 ## 4. Choose bot scopes and install the app {#install}
 
 Open **OAuth & Permissions** in the left-hand sidebar. Under **Scopes → Bot Token Scopes**, add at least
-`chat:write` (to post) and `channels:history` (to read the channel back — use `groups:history` instead if
-your channel is private). Then, still on **Event Subscriptions**, turn subscriptions on and add the
-`message.channels` bot event (`message.groups` for a private channel) — this is what makes Slack deliver
-messages over the socket at all, Interactivity notwithstanding.
+`chat:write` (to post), `channels:history` (to read the channel back — use `groups:history` instead if
+your channel is private) and `files:read` (to fetch an image sent along with a message). Then, still on
+**Event Subscriptions**, turn subscriptions on and add the `message.channels` bot event (`message.groups`
+for a private channel) — this is what makes Slack deliver messages over the socket at all, Interactivity
+notwithstanding.
+
+`files:read` is the one to double-check, because forgetting it fails in a way that looks like nothing at
+all. A Slack file lives behind a private URL that only answers to the bot token; without the scope Slack
+does not return an error for it but its **sign-in page**, with a `200` on it. This plugin refuses a
+response that is not an image, so the picture simply never arrives: your message and its text still reach
+the assistant, and you get a ⚠️ on your own message in Slack. If images are the only thing not coming
+through, this scope is the first place to look — and note that adding a scope means re-installing the app,
+which produces a new bot token to paste in.
 
 Press **Install to Workspace** at the top of **OAuth & Permissions**, and authorize. That produces the bot
 token — starting with `xoxb-` — shown as **Bot User OAuth Token**; copy it into this plugin's **Bot token**

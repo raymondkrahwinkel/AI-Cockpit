@@ -11,6 +11,9 @@ internal sealed class FakeAssistantChannelGateway : IAssistantChannelGateway
 
     public List<(string SenderId, string Text)> SentMessages { get; } = [];
 
+    // One entry per send, at the same index as SentMessages — kept apart so the tuple above stays comparable.
+    public List<IReadOnlyList<byte[]>> SentImages { get; } = [];
+
     public List<(Guid PromptId, ConsentOutcome Outcome, bool Remember)> Responses { get; } = [];
 
     public AssistantChannelSendResult NextResult { get; set; } = AssistantChannelSendResult.Sent();
@@ -21,11 +24,16 @@ internal sealed class FakeAssistantChannelGateway : IAssistantChannelGateway
 
     public event EventHandler<Guid>? ConsentPromptClosed;
 
-    public Task<AssistantChannelSendResult> SendAsync(string senderUserId, string text, CancellationToken cancellationToken = default)
+    public Task<AssistantChannelSendResult> SendAsync(string senderUserId, string text, CancellationToken cancellationToken = default) =>
+        SendAsync(senderUserId, text, [], cancellationToken);
+
+    public Task<AssistantChannelSendResult> SendAsync(
+        string senderUserId, string text, IReadOnlyList<byte[]> images, CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
             SentMessages.Add((senderUserId, text));
+            SentImages.Add(images);
         }
 
         return Task.FromResult(NextResult);
