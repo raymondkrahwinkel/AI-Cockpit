@@ -1,11 +1,7 @@
 namespace Cockpit.Infrastructure.Mcp;
 
-// The transport-verified identity of the session behind the MCP request currently being handled (AC-89). Set by
-// `McpAuthMiddleware` from the request's per-session bearer, before the tool runs; read by the consent
-// broker so it scopes remember decisions on this — the session the request actually came from — rather than on the
-// `session` value the agent declared. An `System.Threading.AsyncLocal{T}`, so it flows down the
-// async call chain from the middleware through the tool into the broker, and is null off that path (the in-process
-// tool loop, the app's own UI-side consent) — where the broker keeps its previous behaviour.
+// AC-89: transport-verified session identity for the current MCP request, set by McpAuthMiddleware and read by
+// the consent broker via AsyncLocal; null off that path (in-process tool loop, UI-side consent).
 public static class McpRequestContext
 {
     private static readonly AsyncLocal<string?> Current = new();

@@ -5,22 +5,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// The controller's side of the node's identity (AC-792): trust exactly one self-signed certificate, the one
-// remembered at pairing time, and nothing else.
-//
-// A node signs its own certificate, so the machine's trust store has no opinion about it — which leaves two
-// options. Turn validation off and accept whatever answers on that address, which is what "TLS over the LAN"
-// degenerates into and is why AC-790 called its own transport encryption without an identity. Or pin: decide once,
-// during a handshake a human is watching, and refuse every later deviation. Pinning is the only one of the two
-// that makes the shared secret worth guarding, because a machine in the middle that can present its own
-// certificate reads the bearer token on the very first call.
-//
-// Two modes, because pairing and use want opposite things from the same callback:
-//
-//   * `Observe` — no pin yet; accept the certificate but record its fingerprint, so the pairing client can derive
-//     the comparison code from what it *actually saw* (see `NodePairingCode`) and pin it afterwards. Acceptance
-//     here is not trust: nothing is granted until the operator compares two numbers.
-//   * `Require` — a pin exists; anything else is refused with a reason that names both fingerprints.
+// AC-792: trust exactly one self-signed node certificate, the one remembered at pairing time — pinning (decide
+// once during a human-watched handshake, refuse every deviation) is the only option that makes the shared
+// secret worth guarding. Observe records the fingerprint (no pin yet); Require refuses anything but the pin.
 internal static class NodeCertificatePin
 {
     // Accepts any server certificate and hands its fingerprint back through `observed`. Only for the pairing
@@ -67,13 +54,9 @@ internal static class NodeCertificatePin
     public static string FingerprintOf(X509Certificate certificate) =>
         Convert.ToHexString(SHA256.HashData(certificate.GetRawCertData()));
 
-    // The HTTP transport for `server`, pinned when it is a paired node and left exactly as it was for everything
-    // else. One helper rather than the same conditional at both call sites (`McpToolProvider` and `McpToolProbe`):
-    // a rule about which certificate is acceptable that is stated twice is the one that drifts, and the drift here
-    // would be a probe that silently trusts what the session refuses.
-    //
-    // `ownsHttpClient: true` — the pinned client exists for this transport alone, so its lifetime is the
-    // transport's; the parameter defaults to false, which would leak one handler per connection.
+    // The HTTP transport for `server`, pinned when paired and unchanged otherwise — one helper rather than the
+    // same conditional at both call sites, since a duplicated rule is the one that drifts. ownsHttpClient: true
+    // since the pinned client exists for this transport alone; the default false would leak a handler per call.
     public static HttpClientTransport TransportFor(McpServerConfig server, HttpClientTransportOptions options) =>
         string.IsNullOrEmpty(server.PinnedCertificateFingerprint)
             ? new HttpClientTransport(options)

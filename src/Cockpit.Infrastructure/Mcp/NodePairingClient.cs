@@ -6,14 +6,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// The controller's side of the handshake (AC-792): three calls against a node's pairing port.
-//
-// The shape worth noticing is which certificate is trusted when. `BeginAsync` runs with `NodeCertificatePin.Observe`
-// — no pin exists yet, so it accepts what answers and *records* it. That is not a hole: nothing is granted on that
-// call, and the fingerprint it records is what the comparison code is derived from, so a machine in the middle
-// presenting its own certificate produces a number that does not match the node's screen and the operator stops.
-// Everything after that point runs pinned, including the poll, so the machine that hands over the secret is the
-// machine whose code was compared.
+// AC-792: the controller's side of the handshake — three calls against a node's pairing port. BeginAsync runs
+// with NodeCertificatePin.Observe (no pin yet, so it records the fingerprint the comparison code derives from);
+// everything after runs pinned, so the machine that hands over the secret is the one whose code was compared.
 internal sealed class NodePairingClient : INodePairingClient, ISingletonService
 {
     // How often the controller asks whether the node's operator has answered. Short enough that Confirm feels
@@ -98,10 +93,8 @@ internal sealed class NodePairingClient : INodePairingClient, ISingletonService
         }
     }
 
-    // What the operator types is an address, not a URL: "192.168.1.20:7331" is the natural thing to read off the
-    // other machine's Security tab. The scheme is not theirs to choose — a node's pairing port is always https —
-    // so it is filled in rather than demanded, and a trailing slash is added because `HttpClient.BaseAddress`
-    // silently drops the last path segment without one.
+    // The operator types an address, not a URL — the https scheme is filled in rather than demanded, and a
+    // trailing slash added since HttpClient.BaseAddress silently drops the last path segment without one.
     public static Uri NormalizeAddress(string address)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(address);
@@ -132,10 +125,8 @@ internal sealed class NodePairingClient : INodePairingClient, ISingletonService
             ?? throw NodePairingException.For(NodePairingError.InvalidToken, "That address answered a pairing request with an empty body — it may not be a Cockpit node.");
     }
 
-    // The node's own problem document if it sent one, so the code and the sentence the operator sees are the
-    // node's rather than this side's guess at what a status means. Falling back on the status only when the body
-    // is not one of ours is what keeps "something else is listening on that port" from being reported as a
-    // pairing refusal.
+    // The node's own problem document if it sent one, falling back to the status only when the body isn't ours —
+    // keeps "something else is listening on that port" from being reported as a pairing refusal.
     private static async Task<NodePairingException> _ProblemAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         try

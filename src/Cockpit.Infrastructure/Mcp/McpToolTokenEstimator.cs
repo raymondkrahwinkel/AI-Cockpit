@@ -7,19 +7,14 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// `IMcpToolTokenEstimator` over the shared MCP tool provider (AC-134): to estimate a server's tool
-// tokens it connects that one server, reads the tools it exposes, serialises each (name + description + JSON
-// schema), and counts characters at `McpToolTokenMath`'s ratio. Connecting is the expensive part
-// (a stdio server spawns a process), so each server's estimate is cached and only recomputed on an explicit
-// refresh. A server that cannot be connected — unreachable, or it needs an auth this pre-flight does not do —
-// caches as `McpServerToolEstimate.Unavailable` so the UI shows "unknown" rather than a false zero.
+// AC-134: IMcpToolTokenEstimator over the shared MCP tool provider — connects one server, serialises its tools,
+// counts characters at McpToolTokenMath's ratio, and caches the estimate since connecting is expensive. A server
+// that can't connect caches as McpServerToolEstimate.Unavailable rather than a false zero.
 internal sealed class McpToolTokenEstimator(IMcpToolProvider toolProvider, ILogger<McpToolTokenEstimator> logger)
     : IMcpToolTokenEstimator, ISingletonService
 {
-    // A Lazy<Task> per server, not a completed value, so concurrent estimates for the same server share one
-    // enumeration (single-flight): several MCP-restricting profiles all counting on the Manage-profiles load would
-    // otherwise each spawn it before the first result landed (AC-134 review). The result stays cached; a refresh
-    // replaces the entry with a fresh run.
+    // AC-134: Lazy<Task> per server, not a completed value, so concurrent estimates single-flight instead of
+    // several MCP-restricting profiles each spawning their own before the first result lands.
     private readonly ConcurrentDictionary<string, Lazy<Task<McpServerToolEstimate>>> _cache = new(StringComparer.OrdinalIgnoreCase);
 
     public Task<McpServerToolEstimate> EstimateAsync(string serverName, bool refresh = false, CancellationToken cancellationToken = default)

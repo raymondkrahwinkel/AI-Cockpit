@@ -72,10 +72,8 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             options.DynamicClientRegistration = new DynamicClientRegistrationOptions { ClientName = "AI-OS Cockpit" };
         }
 
-        // The escape hatch (AC-505): ClientOAuthOptions.Scopes is only ever a fallback the SDK uses when a server
-        // gives it nothing to derive from, so it cannot override a server that advertises its own (narrower or
-        // wider) scopes_supported — which is exactly the case a per-server operator override exists for. Replacing
-        // the candidate list via ScopeSelector, which runs after that derivation, is what actually overrides it.
+        // AC-505: ClientOAuthOptions.Scopes is only a fallback the SDK uses when a server advertises none, so it
+        // can't override one that does — ScopeSelector runs after that derivation and is what actually overrides.
         if (!string.IsNullOrWhiteSpace(server.OAuthScopes))
         {
             // Split on whitespace or comma: the field is free text, and a scope list pasted from a server's own
@@ -99,10 +97,8 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
         return Task.FromResult<AuthorizationResult?>(null);
     }
 
-    // Opens the system browser at the authorization URL and waits on a loopback listener for the redirect,
-    // returning the authorization code (or null on failure/cancel — the SDK then reports the auth failure).
-    // Each stage is recorded where it is reached and never in advance (AC-457): the operator is told which stage
-    // stopped, so a stage noted before the thing happened would put the untruth back one layer down.
+    // Opens the system browser and waits on a loopback listener for the redirect, returning the code (or null on
+    // failure/cancel). AC-457: each stage is recorded only where it is reached, never in advance.
     private async Task<AuthorizationResult?> _HandleAuthorizationAsync(
         Uri authorizationUri,
         Uri redirectUri,

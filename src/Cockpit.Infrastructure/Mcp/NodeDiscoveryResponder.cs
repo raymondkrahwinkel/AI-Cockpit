@@ -9,18 +9,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// The node half of discovery (AC-793): joins the multicast group `NodeDiscoveryProtocol` names and answers a
-// query with exactly what `NodeDiscoveryAnnounce` allows — but only for a caller `NodeVisibilityPolicy` lets see
-// this node at all. Started only when the node master switch is on, the same posture `NodePairingHost` takes:
-// off, this binds nothing, so an unpaired cockpit nobody meant as a node has no discovery socket to find either.
-//
-// ponytail: multicast only, no subnet-broadcast fallback. The ticket flagged this as a real risk — some Wi-Fi
-// access points and guest VLANs drop multicast between clients — and it was measured rather than assumed:
-// loopback multicast delivery works in this dev sandbox (send → receive round-trip observed before writing this
-// file). The manual address route from AC-792 is unaffected either way; a network where this silently finds
-// nothing is a missing convenience, not a missing pairing path. Upgrade path if that turns out to matter on
-// Raymond's actual network: a `UdpClient` broadcast to the subnet's broadcast address as a second send alongside
-// the multicast one, same visibility check, same reply.
+// AC-793: the node half of discovery — joins the multicast group, answers only for a caller NodeVisibilityPolicy
+// allows, started only when the node master switch is on. ponytail: multicast only, no subnet-broadcast
+// fallback — some Wi-Fi/guest VLANs drop it; upgrade path is a UdpClient subnet broadcast alongside multicast.
 internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService, IAsyncDisposable
 {
     private readonly INodeEndpointSettingsStore _settings;
@@ -130,13 +121,9 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Best effort, deliberately broad: `_RespondAsync` reaches into `_visibility.IsAllowedAsync`,
-                // which reads `cockpit.json` — a corrupt config on disk throwing there must not take down the
-                // whole listen loop for the rest of the process's life over one bad query. A shutdown mid-send
-                // surfaces here too (`ObjectDisposedException`) and is equally harmless to log: `StopAsync`
-                // already cancelled the loop, so the next `ReceiveAsync` above exits it. `OperationCanceledException`
-                // is excluded so a genuine shutdown still ends the loop the same way the receive above does,
-                // rather than being logged as if it were a query gone wrong.
+                // Best effort, deliberately broad — a corrupt cockpit.json throwing inside IsAllowedAsync must
+                // not take down the listen loop for one bad query. OperationCanceledException is excluded so a
+                // genuine shutdown ends the loop the same way ReceiveAsync does, not logged as a query gone wrong.
                 _logger.LogWarning(ex, "Could not answer a discovery query.");
             }
         }

@@ -12,10 +12,8 @@ internal sealed class McpSignInStageRecorder
     // The furthest point any authorization attempt on these options got.
     public McpSignInStage Reached => (McpSignInStage)Volatile.Read(ref _reached);
 
-    // Notes that `stage` was reached, keeping the furthest one.
-    // Furthest rather than last, so a second attempt that gets less far cannot erase what the operator already
-    // watched happen. Deliberately a plain read-then-write rather than a compare-and-swap: a lost update can only
-    // leave the stage lower than it was, and lower is the wording that claims less — the safe direction to fail in.
+    // Notes that `stage` was reached, keeping the furthest one — so a second attempt that gets less far can't
+    // erase what the operator watched. Plain read-then-write, not compare-and-swap: a lost update only understates.
     public void Record(McpSignInStage stage)
     {
         if ((int)stage > Volatile.Read(ref _reached))

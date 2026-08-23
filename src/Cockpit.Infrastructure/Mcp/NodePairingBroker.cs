@@ -5,27 +5,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// The node half of the pairing handshake (AC-792): every rule about whether a pairing may happen, in one place
-// with no socket in sight. `NodePairingHost` in front of it only maps these outcomes onto status codes, and the
-// Security tab only shows what is here — so criteria 2, 3 and 4 are all testable without a network.
-//
-// Three properties this arrangement is built to hold:
-//
-// *An overheard code grants nothing.* The six digits are for the human; the machine's authority is `ClaimToken`,
-// 256 bits handed back only in the response to the request that created the pairing. Whoever reads the code off a
-// screen still cannot claim, because they were never on that connection (criterion 4).
-//
-// *Confirming is the operator's, and it happens before there is anything to steal.* No shared secret exists until
-// `ConfirmAsync`. A request that is never confirmed leaves the node exactly as it found it.
-//
-// *One controller, and the refusal says so.* The epic fixes a node to one controller (AC-742), and AC-791's
-// authorization model leans on it — one identity, no per-controller grants. So a second request is refused rather
-// than offered as a choice, and the refusal names the incumbent, because "you already have a controller" and "your
-// token is wrong" are different problems and a caller that cannot tell them apart will retry the wrong one
-// forever (open point 3).
-//
-// A pending pairing lives in memory only, deliberately: a two-minute window that survived a restart would be a
-// two-minute window that quietly became indefinite.
+// AC-792: the node half of the pairing handshake — every rule about whether a pairing may happen. An overheard
+// code grants nothing (authority is ClaimToken, returned only on the creating connection); one controller only
+// (AC-742), so a second request is refused naming the incumbent. Pending pairings live in memory only.
 internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
 {
     // Open point 1: two minutes, and single-use once claimed. The token guards a handshake the operator is
@@ -40,12 +22,8 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
     private readonly TimeProvider _time;
     private readonly Lock _gate = new();
 
-    // AC-794: serializes SetScopeAsync's disk round-trip. `_gate` cannot do this — it is a sync lock and the
-    // round-trip awaits — so without a second gate here, two toggles in quick succession (the checklist calls this
-    // once per row flipped, fire-and-forget) could run their read-modify-write-disk sequences interleaved, and
-    // whichever call's write lands last on disk would win regardless of which call the operator made last: an
-    // earlier, already-superseded grant silently overwriting a newer one. A `SemaphoreSlim` makes the two calls
-    // run one at a time instead, so the second one always starts from what the first one actually wrote.
+    // AC-794: serializes SetScopeAsync's disk round-trip, since `_gate` (a sync lock) can't guard an await —
+    // without this, two quick toggles could interleave their read-modify-write and let an earlier grant win.
     private readonly SemaphoreSlim _scopeWriteGate = new(1, 1);
 
     private PendingPairing? _pending;
@@ -181,10 +159,8 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         {
             _pairing = pairing;
 
-            // The exact object confirmed, not "whatever is pending now": the store write above released the lock,
-            // and handing this secret to a pairing that replaced it in that window would be a grant nobody
-            // confirmed. `_pairing` being set makes a replacement impossible today — this keeps it impossible if
-            // that ever stops being true.
+            // The exact object confirmed, not "whatever is pending now" — the store write above released the
+            // lock, and a pairing that replaced it in that window would otherwise get a grant nobody confirmed.
             if (ReferenceEquals(_pending, confirmed))
             {
                 confirmed.GrantedSecret = secret;
@@ -271,10 +247,8 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
 
         var current = await _settings.LoadAsync(cancellationToken).ConfigureAwait(false);
 
-        // The secret goes with the pairing, which is what makes this a revocation rather than a bookkeeping edit:
-        // `McpAuthMiddleware` accepts exactly this value on the node listener, so clearing it is the moment the
-        // controller stops being able to call in (criterion 5). Nothing is rotated *into* its place — an unpaired
-        // node has no credential to hand anybody.
+        // The secret goes with the pairing, making this a revocation, not a bookkeeping edit — clearing it is
+        // the moment the controller stops being able to call in (criterion 5); nothing rotates into its place.
         await _settings.SaveAsync(current with { SharedSecret = "", Pairing = null }, cancellationToken).ConfigureAwait(false);
 
         // And the running listener stops accepting it in the same act. Clearing only the stored copy would leave
@@ -290,10 +264,8 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         _RaiseChanged();
     }
 
-    // AC-794: read straight off `_pairing`, not the store — it is already the live, always-current copy every
-    // mutation below updates in the same act it writes to disk (see `SetScopeAsync`, `UnpairAsync`), so there is
-    // nothing a second holder like `NodeSharedSecret` would buy here. No pairing means no scope, not "everything":
-    // an unpaired node has nothing to check this against, the same posture `NodeSharedSecret.Value` being null takes.
+    // AC-794: read straight off `_pairing`, already the live copy every mutation updates in the same act it
+    // writes to disk — no pairing means no scope, not "everything", same posture as NodeSharedSecret.Value null.
     public bool IsProfileAllowed(string profileLabel)
     {
         lock (_gate)
@@ -349,10 +321,8 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         _RaiseChanged();
     }
 
-    // Reads the persisted pairing into memory. Public because `Pairing` and `Pending` are synchronous properties a
-    // view binds to and loading is not: without a call to this, a node that was paired before it restarted would
-    // show as unpaired on its own Security tab and offer no way to unpair. Idempotent, so every entry point can
-    // simply call it.
+    // Reads the persisted pairing into memory. Public since Pairing/Pending are sync properties a view binds to
+    // and loading is not — without this, a restarted node would show as unpaired with no way to unpair.
     public async Task EnsureLoadedAsync(CancellationToken cancellationToken = default)
     {
         lock (_gate)
@@ -375,13 +345,9 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         }
     }
 
-    // A pairing still waiting for this cockpit's operator — nothing more. Callers hold `_gate`.
-    //
-    // A confirmed one is deliberately not "live": the operator has already answered, so there is nothing left for
-    // them to press. Leaving it live would keep the Refuse button on screen after Confirm, and pressing it would
-    // mark a pairing refused whose secret is already minted, recorded and rotated into place — a node that reads
-    // as paired while its controller can never claim, with the previous credential already destroyed. Refusing
-    // after the fact is not a refusal; it is an unpair, and that is a different button.
+    // A pairing still waiting for this cockpit's operator — nothing more; callers hold `_gate`. A confirmed one
+    // is deliberately not "live", since Refusing after Confirm would be an unpair (a different button), not a
+    // refusal of a secret already minted and rotated into place.
     private PendingPairing? _LivePending() =>
         _pending is { } pending && !pending.Claimed && !pending.Refused && !pending.Confirmed && !_IsExpired(pending) ? pending : null;
 

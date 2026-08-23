@@ -3,19 +3,9 @@ using System.Text.Json;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// Watches the token endpoint for the one answer that says a refresh grant is really dead (AC-646).
-//
-// It has to be watched from out here because the SDK throws the answer away: `ClientOAuthProvider.RefreshTokensAsync`
-// returns null on any non-2xx without ever reading the body, and the flow then falls through to an authorization
-// step that refuses non-interactively — so a revoked grant and a token endpoint that was merely having a bad minute
-// arrive at the caller as the same exception. Sitting on the transport's `HttpClient`, which is the same one the SDK
-// hands its OAuth provider, is what makes the difference visible without a second OAuth implementation growing
-// alongside the SDK's.
-//
-// Only `invalid_grant` and `invalid_client` count (RFC 6749 §5.2): those are an authorization server saying the
-// grant will never work again. Everything else it can answer with — a 5xx, a rate limit, a body that is not the
-// shape this expects — leaves this false, and the caller reports that it could not be confirmed rather than
-// claiming the sign-in is gone.
+// AC-646: watches the token endpoint for the one answer that says a refresh grant is really dead, from the SDK's
+// own HttpClient since ClientOAuthProvider.RefreshTokensAsync discards the body on non-2xx. Only
+// invalid_grant/invalid_client (RFC 6749 §5.2) count; everything else reports "could not be confirmed".
 internal sealed class McpOAuthGrantRejectionWatcher : DelegatingHandler
 {
     // How much of an error body is worth reading to find one word in it. An OAuth error response is a few dozen
@@ -45,10 +35,8 @@ internal sealed class McpOAuthGrantRejectionWatcher : DelegatingHandler
 
     private static async Task<bool> _IsRefreshGrantAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        // Every MCP message this session sends travels over the same client, so the content type is checked before
-        // anything is read: a JSON-RPC call is `application/json` and must not have its body pulled into a string on
-        // the way past. A form post to this client is a token request and nothing else, and the SDK builds those as
-        // `FormUrlEncodedContent` — a byte array, so reading it here does not consume what is about to be sent.
+        // Content type is checked before reading, since every MCP message shares this client — a JSON-RPC call
+        // must not have its body pulled into a string on the way past.
         if (request.Method != HttpMethod.Post
             || request.Content?.Headers.ContentType?.MediaType != "application/x-www-form-urlencoded")
         {

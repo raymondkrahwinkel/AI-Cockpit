@@ -3,10 +3,8 @@ using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// The one decision point every host-run tool loop goes through (#26, AC-79, AC-964): auto-approve, an
-// always-allow rule, a delegated session's ceiling, or the operator's answer. Shared rather than copied per
-// driver — this is the only place in a tool loop where a mistake is a permission hole, so there is one of it.
-// The three callbacks are how a driver puts the call in its own transcript vocabulary; the decision is here.
+// AC-964: the one decision point every host-run tool loop goes through — auto-approve, an always-allow rule, a
+// delegated ceiling, or the operator's answer — shared rather than copied since a mistake here is a permission hole.
 internal sealed class SessionToolApprovalGate(
     Action<string, string, string> reportToolUse,
     Action<string, string, string> askPermission,
@@ -106,11 +104,8 @@ internal sealed class SessionToolApprovalGate(
 
     public void SetDelegatedGate(string ceiling, IReadOnlyList<string> allowedTools)
     {
-        // Set the allow-list first, then the ceiling — the ceiling being non-null is what arms the gate in
-        // RequestApprovalAsync, so the list it reads is already in place by the time a decision consults it.
-        // Coerce a null ceiling to empty (not null): a caller that asked for the gate must always get it armed —
-        // an empty ceiling grades as the most restrictive (read-only only), never "unarmed" (which would fall
-        // through to a prompt that hangs a headless session).
+        // Set the allow-list before the ceiling, since a non-null ceiling is what arms the gate; coerce null to
+        // empty so a caller always gets it armed, never falling through to a prompt that hangs a headless session.
         _delegatedGateAllowList = new HashSet<string>(allowedTools, StringComparer.Ordinal);
         _delegatedGateCeiling = ceiling ?? string.Empty;
     }

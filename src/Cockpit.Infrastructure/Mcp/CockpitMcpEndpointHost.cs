@@ -16,19 +16,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// Hosts every cockpit MCP endpoint (#AC-13, #AC-12): one lightweight loopback MCP server per endpoint. Endpoints
-// come from two places — the `CockpitMcpEndpoint`s registered up front (mounted at startup), and ones a
-// plugin mounts at runtime through `MountAsync` (it loads after the host has started). Either way it is
-// "a tools class and a name" with no Kestrel wiring of its own.
-// These are the cockpit's own servers, not the operator's, so they are *not* written into the user-managed
-// registry (AC-40). The host answers them live as an `ICockpitInternalMcpProvider` — the session
-// fan-out merges them in, while the MCP-servers manager (which reads only the store) never lists them. One HTTP
-// listener per endpoint, loopback on an OS-assigned port, guarded by this run's auth key.
-// AC-790: when the network-node master switch is on, each endpoint also gets a second, HTTPS listener on a
-// network interface, guarded by a persistent shared secret instead of this run's ephemeral key — off by default,
-// and read once at mount time, so flipping the setting takes effect on the next launch, not live.
-// AC-791: each endpoint except an `Internal` one, which stays loopback-only however the switch is set — see
-// `MountAsync`, and `NodeCallerIdentity` for what a caller that does reach a node listener is allowed to be.
+// AC-13/AC-12: hosts one loopback MCP server per cockpit endpoint, mounted at startup or by a plugin via
+// MountAsync; not written into the user-managed registry (AC-40). AC-790/AC-791: with the node switch on, each
+// endpoint but Internal also gets an HTTPS listener guarded by a persistent shared secret.
 internal sealed class CockpitMcpEndpointHost
     : IHostedService, ICockpitMcpEndpointHost, ICockpitInternalMcpProvider, ISingletonService, IAsyncDisposable
 {
@@ -124,14 +114,8 @@ internal sealed class CockpitMcpEndpointHost
             var mcpBuilder = builder.Services.AddMcpServer().WithHttpTransport();
             _WithToolsInstance(mcpBuilder, tools);
 
-            // AC-527: one registration, and every endpoint this host mounts carries the agent line's mail out on its
-            // tool results — the ones registered up front and the ones a plugin mounts later, without any of them
-            // knowing the inbox exists. Deliberately not narrowed to the cockpit-agents server: the value of this
-            // route is that *any* tool call an agent makes is a chance to reach it, and a pane that spends its day in
-            // cockpit-session or a plugin's tools is exactly the pane the old routes could not reach.
-            //
-            // The delivery service is resolved from the application's services, not this endpoint's slim container —
-            // the same reason WithTools takes a pre-built instance here rather than a type.
+            // AC-527: every endpoint this host mounts carries the agent line's mail on its tool results, resolved
+            // from the application's services rather than this endpoint's slim container.
             mcpBuilder.WithRequestFilters(filters => filters.AddCallToolFilter(next => async (context, cancellationToken) =>
             {
                 CallToolResult result;
@@ -155,21 +139,14 @@ internal sealed class CockpitMcpEndpointHost
 
             var nodeSettings = _nodeSettings ??= await _nodeEndpointSettings.LoadAsync(cancellationToken).ConfigureAwait(false);
 
-            // AC-791: an internal endpoint (AC-204 — the assistant's read and act tools) gets no network listener,
-            // whatever the master switch says. Internal already means "reaches only a launch that names it by
-            // name", and every one of those launches is a session on this machine; a caller from another machine
-            // cannot be one of them by construction, so there is nothing for it to reach here. Withholding the
-            // listener rather than refusing the request is deliberate: an endpoint that binds no socket off this
-            // machine cannot be opened later by a scoping mistake in whatever authorizes remote callers, and it
-            // gives a prober nothing to learn — the port is not there, so there is no answer to read.
+            // AC-791: an Internal endpoint (AC-204) gets no network listener whatever the master switch says —
+            // withholding the socket rather than refusing the request leaves a remote prober nothing to learn.
             var bindNodeListener = nodeSettings.Enabled && !isInternal;
 
             builder.WebHost.ConfigureKestrel(options =>
             {
-                // Port 0: the OS picks a free loopback port, so nothing to configure and no collision with a second
-                // cockpit. IPv4 loopback specifically, not ListenLocalhost — that binds both 127.0.0.1 and [::1] on
-                // one shared dynamic port, which Kestrel refuses ("dynamic port binding is not supported when
-                // binding to localhost") since the OS could hand the two families different ports.
+                // Port 0 lets the OS pick a free loopback port. IPv4 specifically, not ListenLocalhost — that binds
+                // both families on one shared dynamic port, which Kestrel refuses.
                 options.Listen(System.Net.IPAddress.Loopback, 0);
                 if (bindNodeListener)
                 {
@@ -181,10 +158,8 @@ internal sealed class CockpitMcpEndpointHost
 
             if (bindNodeListener && !_nodeSecretSeeded)
             {
-                // Seed the live holder from what is on disk, once — and the flag is what makes "once" true rather
-                // than merely intended. `MountAsync` is public and a plugin may mount an endpoint long after
-                // startup (AC-792); doing this again then would write `_nodeSettings`, cached at the first mount,
-                // back over a secret a pairing has since rotated or an unpair has since cleared.
+                // AC-792: seed the live holder from disk only once — MountAsync may run long after startup, and
+                // repeating this would overwrite _nodeSettings with a secret since rotated or cleared.
                 _nodeSharedSecret.Set(nodeSettings.SharedSecret);
                 _nodeSecretSeeded = true;
             }

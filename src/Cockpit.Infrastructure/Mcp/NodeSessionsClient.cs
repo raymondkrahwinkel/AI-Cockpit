@@ -10,24 +10,9 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// The controller's side of AC-795 — see `INodeSessionsClient` for what it is for. This is the how: a short-lived
-// MCP client per call, over the pinned HTTPS transport the pairing left in the registry.
-//
-// *Why a client per call and not a connection held open.* A node is a machine that sleeps, moves network or is
-// simply switched off, and a connection kept across those states is a connection that has to be watched, retried
-// and invalidated. Each call here is a screenful of text on a local network; paying a handshake for it buys a
-// component with no state to go stale. If this ever becomes a per-second poll rather than a button, that is the
-// moment to reconsider — not before.
-// ponytail: still no connection reuse, no retry, even now that the Security tab polls on a timer (AC-796). A
-// handshake every 20s to a machine on the same network is a few hundred bytes and a few milliseconds — cheap
-// enough that pooling would trade away this file's whole simplicity for a saving nobody has measured wanting.
-// Upgrade path is a pooled client keyed on node name if a shorter interval or a slower network ever makes that
-// measurable.
-//
-// *Why the registry is the node list.* There is no separate record on this side of who this cockpit is paired
-// with; the rows a pairing writes are it, and `NodeServerName` is the one place that shape is written and read.
-// A row's certificate pin and shared secret are what make the call possible at all, so a node with no row is not
-// a node this cockpit can reach — which is the honest answer rather than a name in a list that fails when pressed.
+// AC-795: the controller's side — a short-lived MCP client per call over the pinned HTTPS transport, not a
+// held-open connection, since a node sleeps/moves/switches off. ponytail: no connection reuse or retry even
+// with the AC-796 timer poll — cheap enough at 20s that pooling isn't worth it yet, key on node name if it is.
 internal sealed class NodeSessionsClient(
     IMcpServerStore servers,
     ILogger<NodeSessionsClient> logger) : INodeSessionsClient, ISingletonService
@@ -223,16 +208,9 @@ internal sealed class NodeSessionsClient(
             ? value.GetString() ?? ""
             : "";
 
-    // The sentence the operator sees for a failed call (AC-796, criterion 2): distinct wording for a refused
-    // connection, an untrusted certificate and a timeout, so "the connection is down" and "the node looks stopped"
-    // read differently where that distinction can actually be told apart — and the same honest "could not reach"
-    // as before for everything else, rather than a guess dressed up as one of the classified cases. Classified by
-    // unwrapping to the exception shape a real network failure actually produces — a refused connection is a
-    // `SocketException` inside the SDK's `HttpRequestException`, a pin mismatch rides the same wrapper
-    // (`NodeCertificatePin.Require`), and the call budget's own timeout can surface as a bare
-    // `OperationCanceledException` or one wrapped by the transport — rather than parsing `exception.Message`, which
-    // is not a contract and differs across platforms. Internal rather than private: it is the test seam a
-    // classification test drives directly, the same reason `NodePairingHost.BoundPort` is internal.
+    // AC-796 criterion 2: distinct wording for a refused connection, an untrusted certificate and a timeout,
+    // classified by unwrapping the real exception shape (SocketException, NodeCertificatePin.Require's wrapper,
+    // OperationCanceledException) rather than parsing exception.Message, which isn't a stable contract.
     internal static string Classify(string nodeName, Exception exception)
     {
         if (_Find<NodeCertificatePinMismatchException>(exception) is not null)
