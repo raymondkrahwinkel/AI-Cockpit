@@ -5,11 +5,8 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-// Turns a `DiscoveredPlugin` into a live `ICockpitPlugin` (#14): it loads the
-// entry assembly in its own `PluginLoadContext`, resolves the entry type (the manifest's
-// `entryType` if given, otherwise the single concrete `ICockpitPlugin` in the assembly)
-// and instantiates it. This is the real `activate` seam `PluginManager.LoadAndConfigure`
-// calls; the manager isolates any throw here, so a bad plugin never takes the app down.
+// #14: turns a `DiscoveredPlugin` into a live `ICockpitPlugin` by loading it in its own
+// `PluginLoadContext` and instantiating the entry type; `PluginManager.LoadAndConfigure` isolates any throw here.
 internal sealed class PluginActivator(ILogger<PluginActivator> logger)
 {
     public ICockpitPlugin? Activate(DiscoveredPlugin discovered)

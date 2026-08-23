@@ -10,21 +10,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-// Shows a plugin's content in a window beside the cockpit (#14), wrapped in the shared cockpit window
-// chrome (`CockpitWindowChrome`) so a plugin dialog looks native to the app. The plugin owns
-// the content control. The settings variant adds a host-provided Save/Close footer so every plugin's
-// settings dialog behaves the same — Save takes the write `IPluginSettingsView.TryStage` hands over, performs
-// it, and closes the window.
-//
-// These are surfaces, not questions (AC-367): a plugin's issue list or workflow manager is read and worked
-// in for minutes, and as a modal it took every running session down with it.
-//
-// Reduced to one window apiece only where the plugin says so, through a key it supplies. The host cannot
-// work that out on its own: all it is handed is a caption, and a caption is not an identity. The YouTrack
-// and GitHub-Issues plugins both title theirs "Track an issue in this session" over different panes, and
-// Transcript-search puts two different controls behind "Search transcripts" — the standalone search and the
-// conversation picker that answers the New-session dialog. Keying on the caption linked an issue to the
-// wrong session and left the picker's caller with a window that answers nothing.
+// #14: shows a plugin's content in a window beside the cockpit, wrapped in `CockpitWindowChrome`. AC-367:
+// these are surfaces, not questions, so unlike a modal they never take every running session down.
+// Reduced to one window per plugin-supplied key, never per caption — a caption is not an identity.
 internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogHost, ISingletonService
 {
     public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null, string? singleInstanceKey = null)
@@ -83,17 +71,9 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
         await surfaces.ShowAsync(key, window, owner);
     }
 
-    // The Save/Close footer every plugin settings dialog gets. Extracted so the failure branch below is directly
-    // testable without the rest of `ShowSettingsDialogAsync`'s `Application.Current.ApplicationLifetime`
-    // dependency (owner/sizing, in `_TryCreateWindow`) — this only touches the window and view it is handed.
-    //
-    // This is the immediate half of the staged contract (AC-1003): a standalone settings window has nothing to
-    // hold a commit for, so it stages and commits on the same click. The Options screen keeps the very same
-    // `TryStage` result across its transaction instead — see `PluginSettingsStaging`.
-    //
-    // *On a refused save:* the reason now comes from the view (AC-1003, replacing the generic host-level line
-    // AC-499 had to settle for while `bool Save()` carried no channel for one). Depot's duplicate-name refusal,
-    // for one, can finally name the row it refused on in the footer the operator clicked in.
+    // The Save/Close footer every plugin settings dialog gets, extracted so its failure branch is testable
+    // without `ApplicationLifetime`. AC-1003: the immediate half of the staged contract — a standalone
+    // window stages and commits on the same click, and the refusal reason now comes from the view itself.
     internal static Border BuildSettingsFooter(Window window, Control view, Action? onSaved)
     {
         var status = new TextBlock
@@ -177,10 +157,8 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
             return false;
         }
 
-        // The owner is whichever window the operator is actually looking at, not always the main one: a settings
-        // dialog opened from the gear on a plugin's own dialog must sit on top of that dialog. Owned by the main
-        // window it would open behind the very window that asked for it. The main window stays the fallback,
-        // which is what it is for every dialog opened from the cockpit itself.
+        // Owner is whichever window is actually active, not always the main one: a settings dialog opened
+        // from a plugin dialog's gear must sit on top of that dialog, not open behind it via the main window.
         owner = lifetime.Windows.LastOrDefault(candidate => candidate.IsActive) ?? main;
 
         // The size a plugin asks for is a wish, not a law: a dialog that wants 1400px on a 1280px-wide cockpit

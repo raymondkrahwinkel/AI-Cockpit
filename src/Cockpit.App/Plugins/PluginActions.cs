@@ -8,10 +8,8 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-// `ICockpitActions` a plugin uses to act on the cockpit: inject text into the selected
-// session (reusing the session's own per-kind input seam), put text on the clipboard, and ask the operator
-// to confirm a destructive action. The clipboard is resolved lazily via a factory so this has no hard
-// dependency on a window being up.
+// `ICockpitActions` a plugin uses to act on the cockpit: inject text into the selected session, put text
+// on the clipboard, and confirm a destructive action. Clipboard is resolved lazily so no window is required.
 public sealed class PluginActions(
     CockpitViewModel cockpit,
     Func<IClipboard?> clipboardFactory,
@@ -33,11 +31,8 @@ public sealed class PluginActions(
         return Task.CompletedTask;
     }
 
-    // AC-577, no fast path — deliberately. This writes to the on-screen session (statusline, name), so the
-    // marshalling is the whole job and an inline branch would let a caller off the UI thread mutate a bound
-    // property directly. The consequence is written down rather than discovered: PluginActions must never be
-    // constructed in a process without a dispatcher loop, and a test that claims to cover this line belongs in
-    // Cockpit.App.ViewTests — Cockpit.Core.Tests can no longer name Avalonia.Threading at all.
+    // AC-577: always marshals to the UI thread (no fast path) since this mutates a bound property directly;
+    // PluginActions must never be constructed in a process without a dispatcher loop.
     public Task SetActiveSessionStatusAsync(string? statusline = null, string? name = null) =>
         Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
         {
@@ -57,10 +52,8 @@ public sealed class PluginActions(
             }
         }).GetTask();
 
-    // Hands work to another profile as a background task and waits for the answer (#67, #69). The task goes through
-    // the cockpit's own delegation service, so it is refused by the same rules an agent's delegation is refused by,
-    // and it shows up in the delegated-tasks view — a plugin does not get a quieter way to run an agent than an agent
-    // has.
+    // #67, #69: hands work to another profile as a background task via the cockpit's own delegation service,
+    // so it is refused by the same rules and shows up in the delegated-tasks view like any agent's delegation.
     public Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null) =>
         DelegateAsync(profileLabel, prompt, workingDirectory, timeout, permission: null);
 
@@ -110,10 +103,8 @@ public sealed class PluginActions(
     public Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null) =>
         StartSessionAsync(profileLabel, prompt, workingDirectory, null);
 
-    // Opens a session on a named profile and hands it a prompt (#69) — the same act as the New-session dialog, minus
-    // the dialog. The profile's own defaults are used for model, permissions and effort, because a caller who names
-    // a profile means "the way I set that one up". `sessionName` names it as it opens (#AC-312);
-    // blank leaves the naming to the profile and the clock.
+    // #69: opens a session on a named profile with a prompt — the New-session dialog's act, minus the dialog.
+    // Uses the profile's own defaults for model/permissions/effort; `sessionName` blank leaves naming to it.
     public async Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName)
     {
         var profiles = await profileStore.LoadAsync().ConfigureAwait(false);

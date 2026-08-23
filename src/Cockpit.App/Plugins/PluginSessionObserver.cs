@@ -7,20 +7,15 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
 
-// The live `ICockpitSessionObserver` backing `ICockpitHost.Sessions`: the read/observe half
-// of the plugin surface. It tracks the cockpit's selected session (reporting its working directory and
-// raising `ActiveSessionChanged` when the selection or that directory changes) and relays every
-// session's produced output text to `OutputProduced`. One shared instance serves all plugins,
-// mirroring the single shared `ICockpitActions`. All events are marshalled to the UI thread so a
-// plugin's handler can touch its controls directly.
+// The live `ICockpitSessionObserver` backing `ICockpitHost.Sessions`: tracks the cockpit's selected
+// session and relays output. One shared instance serves all plugins, mirroring the shared `ICockpitActions`;
+// all events are marshalled to the UI thread.
 internal sealed class PluginSessionObserver : ICockpitSessionObserver
 {
     private readonly CockpitViewModel _cockpit;
 
-    // The sessions we have hooked, so we can detach cleanly when one leaves the collection (no leaked handlers
-    // on closed sessions) and avoid double-hooking on a spurious reset. The value is that session's own
-    // RateLimits handler, kept so it can be unsubscribed with the exact delegate it was added with (a per-session
-    // closure that raises usage-changed only while that session is the selected one).
+    // Sessions we have hooked, so we can detach cleanly (no leaked handlers) and avoid double-hooking on a
+    // spurious reset. The value is that session's own RateLimits handler, kept to unsubscribe the exact delegate added.
     private readonly Dictionary<SessionPanelViewModel, NotifyCollectionChangedEventHandler> _hooked = [];
 
     public PluginSessionObserver(CockpitViewModel cockpit)
@@ -72,11 +67,9 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
         return Dispatcher.UIThread.CheckAccess() ? Read() : Dispatcher.UIThread.Invoke(Read);
     }
 
-    // The selected session's ctx/5h/wk as a plugin reads it (AC-54), built from the same fields the header pill
-    // renders — its context percentage and the self-labelled rate windows — carrying the profile label so a
-    // per-profile history has something to group on. Null when nothing is selected; the windows map straight onto
-    // the abstraction's PluginRateLimitWindow (the session's SessionRateWindow reports no span, so WindowMinutes is
-    // left null).
+    // The selected session's ctx/5h/wk as a plugin reads it (AC-54), built from the same fields the header
+    // pill renders, carrying the profile label so per-profile history has something to group on. Null when
+    // nothing is selected.
     private static SessionUsageSnapshot? _Snapshot(SessionPanelViewModel? session)
     {
         if (session is null)

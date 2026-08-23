@@ -5,11 +5,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
 
-// The `IPluginSessionContext` handed to a header item: one session panel, exposed as the little a
-// plugin needs to follow it — where it is working, and what it produces. Bound to that one session for the life
-// of its panel, unlike `PluginSessionObserver`, which tracks whichever session is selected. Events
-// are marshalled to the UI thread so a handler can touch its controls directly; disposing detaches, so a closed
-// session leaves no handler behind on a panel nobody can see.
+// The `IPluginSessionContext` handed to a header item: bound to one session for the life of its panel,
+// unlike `PluginSessionObserver`, which tracks whichever session is selected. Events are marshalled to
+// the UI thread; disposing detaches, so a closed session leaves no handler behind.
 internal sealed class PluginSessionContext : IPluginSessionContext, IDisposable
 {
     private readonly SessionPanelViewModel _session;

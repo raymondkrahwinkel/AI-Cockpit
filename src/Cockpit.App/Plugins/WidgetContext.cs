@@ -4,10 +4,8 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.App.Plugins;
 
-// The host's `IWidgetContext`: what one placed widget is handed, built per instance so its
-// storage and its refresh signal are its own. The view and the settings form get the same instance, which
-// is what lets a form write config the view then re-reads on `RefreshRequested` without either
-// side watching storage.
+// The host's `IWidgetContext`, built per instance. View and settings form share one instance, so
+// a form write is picked up by the view via `RefreshRequested` without either side watching storage.
 public sealed class WidgetContext(string instanceId, IPluginStorage pluginStorage, ICockpitSessionObserver sessions) : IWidgetContext
 {
     public string InstanceId => instanceId;

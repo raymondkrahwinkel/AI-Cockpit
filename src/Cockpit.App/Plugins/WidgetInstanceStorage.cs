@@ -2,14 +2,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-// One placed widget's slice of its plugin's storage: every key is prefixed with the instance id, so two
-// System Monitors on the same dashboard keep separate config while the plugin still owns a single storage
-// section. A thin scoping layer over `IPluginStorage` rather than a second persistence
-// mechanism — the plugin's own section already round-trips through `cockpit.json`, and widget config
-// has no reason to live anywhere else.
-// The prefix is deliberately namespaced (`widget:`): a plugin that contributes both a widget and a
-// side-menu button shares one storage, and its own top-level keys must not be able to collide with an
-// instance's.
+// One placed widget's slice of its plugin's storage: every key gets the instance id prefixed, so two
+// instances keep separate config within one shared `IPluginStorage` section. Namespaced (`widget:`)
+// so a plugin's own top-level keys can't collide with an instance's.
 public sealed class WidgetInstanceStorage(IPluginStorage inner, string instanceId) : IPluginStorage
 {
     public T? Get<T>(string key) => inner.Get<T>(_Scope(key));

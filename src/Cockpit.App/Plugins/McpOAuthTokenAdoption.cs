@@ -6,27 +6,9 @@ using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.App.Plugins;
 
-// Moves the OAuth tokens an older build filed under a server's *name* onto the stable id that server is
-// known by now (AC-403), once, at startup.
-//
-// Most servers need nothing: a registry entry written before ids existed answers to the id its name derives to, so
-// its token is found by that derivation alone and no file is touched. What this exists for is a server whose id is
-// its own rather than derived — a plugin connection that mints one and keeps it across renames (a Depot
-// connection). Its token was filed under a name that derivation cannot reach from the minted id, and without this
-// the operator would be told to sign in again for a credential that is sitting right there.
-//
-// ⚠️ *Why this may only run here.* Matching a token against a server's *current* name is the very
-// mistake this ticket removes — two servers on one host that swap names would each adopt the other's token. It is
-// safe exactly once, at a moment when no rename can have happened since the tokens were written: the first launch
-// of a build that has ids, before any dialog is open and before any session starts. Called at the tail of
-// `App._InitializePlugins` — the earliest point at which a plugin's own servers can be asked for at all, and
-// still inside the stretch where the UI thread has not yet gone back to the operator, so nothing can be clicked
-// while this runs.
-//
-// A plugin that is switched off at that moment contributes nothing and so is not migrated — and does not have to
-// be: enabling, installing or updating a plugin all take effect on the next restart rather than live (a
-// non-collectible plugin cannot load into a running process), so a plugin that is on for a session was on when
-// this ran. There is no window in which one appears afterwards carrying tokens this pass never saw.
+// AC-403: once at startup, moves OAuth tokens an older build filed under a server's *name* onto the id it
+// is known by now (needed only for a minted, not derived, id, e.g. Depot). Must only run once, before any
+// rename could happen — matching by current name would let renamed servers adopt each other's token.
 internal sealed class McpOAuthTokenAdoption(
     IMcpOAuthTokenStore tokenStore,
     IMcpServerStore serverStore,

@@ -1,7 +1,5 @@
 namespace Cockpit.App.Plugins;
 
-// A plugin discovered as `Cockpit.Core.Plugins.PluginLoadDecision.NeedsConsent` (#14/AC-208): new,
-// or its bytes changed since it was last approved. Kept separate from `PluginFailure` — this is not
-// a failure, it is an expected, everyday state the operator can clear from the Plugin store — so it does not
-// carry a `PluginIssueSeverity`.
+// A plugin discovered as `NeedsConsent` (#14/AC-208): new, or its bytes changed since approval. Kept
+// separate from `PluginFailure` — an expected everyday state, not a failure — so it carries no `PluginIssueSeverity`.
 public sealed record PluginPendingApproval(string FolderId, string DisplayName);

@@ -3,18 +3,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-// `IPluginStorage` backed by an in-memory copy of the plugin's slice of `cockpit.json`,
-// seeded when the plugin loads. Values are JSON-serialized; `Set{T}` writes through the
-// supplied persist callback so the sync contract never blocks on file IO on the caller's thread.
-//
-// Every access to `_values` goes through `_lock` — not for the dictionary mutation alone (that
-// much a single writer thread would already give you for free), but because `persist` is
-// fire-and-forget: it reads its argument well after `Set{T}` has returned, on whatever thread the
-// host's file write happens to resume on. A plugin is no longer guaranteed to write from one thread only — a
-// background poll timer and the UI thread can both call `Set{T}` — so `Set{T}` hands
-// `persist` a snapshot taken under the lock, never the live dictionary, or a write racing a
-// slow persist read would throw `InvalidOperationException` ("Collection was modified") from a task
-// nobody observes (AC-515).
+// AC-515: `IPluginStorage` over an in-memory copy of the plugin's `cockpit.json` slice; `Set{T}`
+// persists asynchronously via callback. `_lock` guards `_values` because `persist` reads its
+// snapshot argument later on another thread, so `Set{T}` must hand it a copy, not the live dictionary.
 public sealed class PluginStorage : IPluginStorage
 {
     private readonly Lock _lock = new();
@@ -32,10 +23,8 @@ public sealed class PluginStorage : IPluginStorage
         _declareSecret = declareSecret;
     }
 
-    // Every key/value this plugin holds, as the raw JSON it was stored as. Host-side only — deliberately not on
-    // `IPluginStorage`, since a plugin has no business reading its own storage wholesale and even
-    // less another's. The host needs it to export a dashboard: it has to carry a widget's settings without
-    // knowing their shape.
+    // Host-side only, not on `IPluginStorage`: a plugin has no business reading its own storage
+    // wholesale, but the host needs the raw JSON to export a dashboard without knowing its shape.
     public IReadOnlyDictionary<string, string> Snapshot()
     {
         lock (_lock)

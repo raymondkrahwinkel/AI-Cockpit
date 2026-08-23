@@ -3,12 +3,9 @@ using System.Runtime.Loader;
 
 namespace Cockpit.App.Plugins;
 
-// Loads one plugin's assemblies in isolation (the MS "app with plugins" pattern): the
-// `AssemblyDependencyResolver` resolves the plugin's own dependencies from its folder, while
-// anything the plugin does not carry — Avalonia, CommunityToolkit, Cockpit.Plugins.Abstractions — falls
-// through to the default (host) context, so shared types keep a single identity across the boundary.
-// Non-collectible: a loaded UI plugin cannot be truly unloaded (disable = UI off + Dispose; memory frees
-// on restart).
+// Loads one plugin's assemblies in isolation (MS "app with plugins" pattern): resolves the plugin's own
+// dependencies from its folder, falling through to the default (host) context for anything shared
+// (Avalonia, Cockpit.Plugins.Abstractions), so shared types keep a single identity. Non-collectible.
 internal sealed class PluginLoadContext(string pluginMainAssemblyPath) : AssemblyLoadContext
 {
     private readonly AssemblyDependencyResolver _resolver = new(pluginMainAssemblyPath);

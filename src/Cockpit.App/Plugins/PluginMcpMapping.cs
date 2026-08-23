@@ -3,11 +3,9 @@ using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.App.Plugins;
 
-// Maps a plugin's `McpServerContribution` (a plugin-ALC-safe DTO, no `Cockpit.Core` types) to
-// the host's own `McpServerConfig` (#60, AC-11). The two sit either side of the plugin isolation
-// boundary and are declared independently, so the mapping lives here — the one place that sees both — and is
-// shared by the pull path (`McpServerCatalog`) and the legacy push path
-// (`CockpitHost.AddMcpServer`).
+// Maps a plugin's `McpServerContribution` (plugin-ALC-safe DTO) to the host's `McpServerConfig`
+// (#60, AC-11) — the one place that sees both sides of the plugin isolation boundary, shared by the
+// pull path (`McpServerCatalog`) and the legacy push path (`CockpitHost.AddMcpServer`).
 internal static class PluginMcpMapping
 {
     public static McpServerConfig ToServerConfig(McpServerContribution contribution)
@@ -35,13 +33,8 @@ internal static class PluginMcpMapping
         };
     }
 
-    // A non-empty (non-whitespace) OAuthAuthority is the contribution's only way to say "this is OAuth" (AC-500) —
-    // the DTO has no Cockpit.Core McpServerAuth to set directly, by the same isolation rule ToServerConfig's doc
-    // comment names. Checked ahead of BearerToken so a contribution that (wrongly) sets both is still treated as
-    // OAuth rather than silently degraded to a static token that will never satisfy the server's real auth
-    // requirement. Whitespace-only is treated the same as empty (not OAuth) — the dialog's own ToConfig() applies
-    // the identical IsNullOrWhiteSpace rule to what it keeps, and an authority nobody could reach would otherwise
-    // leave the server marked OAuth with nothing to negotiate against, stuck forever in ServersNeedingSignIn.
+    // A non-empty OAuthAuthority is the contribution's only way to say "this is OAuth" (AC-500), checked
+    // ahead of BearerToken so a contribution setting both is still treated as OAuth, not a dead static token.
     public static McpServerAuth ToAuth(McpServerContribution contribution) =>
         !string.IsNullOrWhiteSpace(contribution.OAuthAuthority) ? McpServerAuth.OAuth
         : !string.IsNullOrEmpty(contribution.BearerToken) ? McpServerAuth.ApiKey
