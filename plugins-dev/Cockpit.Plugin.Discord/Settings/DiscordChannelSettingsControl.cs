@@ -37,13 +37,27 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
         _specificUsersOption = new RadioButton { GroupName = "audience", Content = "Several specific Discord accounts" };
         _everyoneOption = new RadioButton { GroupName = "audience", Content = "Everyone in this channel" };
 
-        _singleUserId = new TextBox { PlaceholderText = "Discord user id (digits only) — enable Developer Mode, then right-click → Copy User ID" };
+        _singleUserId = new TextBox { PlaceholderText = "123456789012345678" };
+        var singleUserIdHint = new TextBlock
+        {
+            Text = "Not your Discord name — the user id. " + DiscordUserId.HowToFind,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.8,
+        };
         _specificUserIds = new TextBox
         {
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 60,
-            PlaceholderText = "One Discord user id per line — enable Developer Mode, then right-click → Copy User ID",
+            PlaceholderText = "One Discord user id per line",
+        };
+        var specificUserIdsHint = new TextBlock
+        {
+            Text = "Not Discord names — user ids. " + DiscordUserId.HowToFind,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.8,
         };
         var specificUsersWarningText = new TextBlock
         {
@@ -85,9 +99,11 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
             {
                 _singleUserOption,
                 _singleUserId,
+                singleUserIdHint,
                 _specificUsersOption,
                 specificUsersWarningText,
                 _specificUserIds,
+                specificUserIdsHint,
                 _specificUsersWarningAck,
                 _everyoneOption,
                 everyoneWarningText,

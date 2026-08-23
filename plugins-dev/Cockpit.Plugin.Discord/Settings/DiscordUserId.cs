@@ -1,10 +1,6 @@
 namespace Cockpit.Plugin.Discord.Settings;
 
-// AC-1048: `AssistantChannelAccess` compares ordinal against whatever the platform hands over as a sender, which
-// for Discord is a numeric snowflake — never a display name or a `username#0000` tag. Discord hides that id
-// behind Developer Mode, so a rejected value points at where to find it, not just that it is wrong.
-// Platform-specific on purpose: the shared abstraction (AssistantChannelAccess) stays agnostic to what a
-// "user id" looks like.
+// AC-1048: platform-specific shape check for what AssistantChannelAccess compares ordinal against.
 internal static class DiscordUserId
 {
     public const string HowToFind =

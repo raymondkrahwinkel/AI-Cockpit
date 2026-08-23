@@ -38,13 +38,27 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
         _specificUsersOption = new RadioButton { GroupName = "audience", Content = "Several specific Slack accounts" };
         _everyoneOption = new RadioButton { GroupName = "audience", Content = "Everyone in this channel" };
 
-        _singleUserId = new TextBox { PlaceholderText = "Slack member id, e.g. U0123ABCDEF — profile photo → ⋮ → Copy member ID" };
+        _singleUserId = new TextBox { PlaceholderText = "U0123ABCDEF" };
+        var singleUserIdHint = new TextBlock
+        {
+            Text = "Not your Slack name — the member id. " + SlackUserId.HowToFind,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.8,
+        };
         _specificUserIds = new TextBox
         {
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 60,
-            PlaceholderText = "One Slack member id per line — profile photo → ⋮ → Copy member ID",
+            PlaceholderText = "One Slack member id per line",
+        };
+        var specificUserIdsHint = new TextBlock
+        {
+            Text = "Not Slack names — member ids. " + SlackUserId.HowToFind,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.8,
         };
         var specificUsersWarningText = new TextBlock
         {
@@ -86,9 +100,11 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
             {
                 _singleUserOption,
                 _singleUserId,
+                singleUserIdHint,
                 _specificUsersOption,
                 specificUsersWarningText,
                 _specificUserIds,
+                specificUserIdsHint,
                 _specificUsersWarningAck,
                 _everyoneOption,
                 everyoneWarningText,

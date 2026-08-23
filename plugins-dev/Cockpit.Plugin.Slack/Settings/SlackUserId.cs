@@ -1,9 +1,6 @@
 namespace Cockpit.Plugin.Slack.Settings;
 
-// AC-1048: `AssistantChannelAccess` compares ordinal against whatever the platform hands over as a sender, which
-// for Slack is a member id like `U0123ABCDEF` — never a display name. Slack shows that id nowhere prominent, so a
-// rejected value points at where to find it, not just that it is wrong. Platform-specific on purpose: the shared
-// abstraction (AssistantChannelAccess) stays agnostic to what a "user id" looks like.
+// AC-1048: platform-specific shape check for what AssistantChannelAccess compares ordinal against.
 internal static class SlackUserId
 {
     public const string HowToFind =
