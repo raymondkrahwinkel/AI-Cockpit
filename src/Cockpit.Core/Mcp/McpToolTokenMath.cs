@@ -1,9 +1,8 @@
 namespace Cockpit.Core.Mcp;
 
-// The rough token estimate for a set of serialised MCP tool definitions (AC-134). A tool's cost is its name,
-// description and JSON schema as text, and text is counted at ~4 characters per token — the common
-// back-of-the-envelope ratio. It is model-agnostic (Claude, Qwen and Mistral all tokenise differently), so the
-// result is always presented as an estimate, never an exact budget.
+// The rough token estimate for a set of serialised MCP tool definitions (AC-134): a tool's name, description
+// and JSON schema as text, counted at ~4 chars/token. Model-agnostic (Claude, Qwen and Mistral all tokenise
+// differently), so the result is always presented as an estimate, never an exact budget.
 public static class McpToolTokenMath
 {
     // The chars-per-token ratio the estimate uses. ~4 is the widely-used rough English heuristic.

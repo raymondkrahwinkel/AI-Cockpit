@@ -3,10 +3,8 @@ using System.Text.Json;
 namespace Cockpit.Core.Mcp;
 
 // The wire shape of a discovery round-trip (AC-793): a query into a multicast group and, for whoever
-// `INodeVisibilityPolicy` lets answer, a unicast reply naming nothing but what a stranger on the segment is
-// owed — see `NodeDiscoveryAnnounce` for why a machine name is not in it. This is the second entrance to the
-// same handshake `NodePairingProtocol` describes; nothing here grants anything, it only helps a caller find an
-// address to hand `INodePairingClient.BeginAsync`.
+// `INodeVisibilityPolicy` lets answer, a unicast reply naming nothing but what a stranger is owed. Second
+// entrance to the same handshake `NodePairingProtocol` describes; nothing here grants anything, it only helps.
 public static class NodeDiscoveryProtocol
 {
     // Organization-local multicast scope (RFC 2365, 239.255.0.0/16) — routers do not forward it past the local
@@ -21,13 +19,9 @@ public static class NodeDiscoveryProtocol
     public static readonly byte[] QueryMarker = "cockpit-node-discover-v1"u8.ToArray();
 }
 
-// What a node unicasts back to a query it chose to answer. `DiscoveryId` is stable across announces so a finder
-// listening for longer than one round does not show the same node twice; `PairingPort` is the only thing a
-// finder needs to hand `INodePairingClient.BeginAsync` the same address a typed-in one would be. Deliberately
-// missing: `Environment.MachineName`, a username, a version — a broadcast's audience is everything on the
-// segment, not the one caller a pairing response goes to, and that difference in audience is a difference in
-// payload (AC-793 uitzoekpunt 2). The node's display name still arrives, just later — over TLS, inside
-// `NodePairingOffer`, only once a pairing has actually started.
+// What a node unicasts back to a chosen query (AC-793 uitzoekpunt 2): a stable `DiscoveryId` so a finder
+// doesn't re-show a node, and `PairingPort` for `INodePairingClient.BeginAsync`. Deliberately no machine
+// name/username/version — broadcast audience differs from pairing audience; the display name arrives later, over TLS via `NodePairingOffer`.
 public sealed record NodeDiscoveryAnnounce(string DiscoveryId, int PairingPort)
 {
     public const string CurrentMarker = "cockpit-node-announce-v1";

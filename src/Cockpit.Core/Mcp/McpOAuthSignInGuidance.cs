@@ -1,12 +1,8 @@
 namespace Cockpit.Core.Mcp;
 
-// The one sentence the operator is given when an OAuth-protected MCP server cannot be used (AC-524): what went
-// wrong, and what they can do about it. One place, because it is written into three of them — the log line the
-// coordinator raises on the transition, the line a session start leaves behind, and the error a running session's
-// tool call comes back with — and three copies of an instruction are three instructions that drift.
-//
-// Every reason gets its own action. A blanket "sign in again" is the mistake this replaces: it is wrong advice for
-// a server that was simply unreachable, and it sends someone who never signed in looking for a sign-in to renew.
+// AC-524: the one sentence the operator is given when an OAuth-protected MCP server cannot be used — one place
+// because three call sites (coordinator log, session-start line, tool-call error) would otherwise drift. Every
+// reason gets its own action, replacing a blanket "sign in again" that was wrong for e.g. an unreachable server.
 public static class McpOAuthSignInGuidance
 {
     public static string For(string serverName, McpOAuthAttentionReason reason) => reason switch

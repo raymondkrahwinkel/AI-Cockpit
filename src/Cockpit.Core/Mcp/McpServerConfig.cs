@@ -1,24 +1,19 @@
 namespace Cockpit.Core.Mcp;
 
-// A user-configured MCP server the cockpit can expose to sessions as tools (#26). One shared registry
-// fans out to both worlds: the local-LLM driver hosts these servers itself (the agentic tool-loop), and
-// the Claude CLI receives them through its own `--mcp-config`. Matches the standard
-// `{ "mcpServers": { name: { command/args | url/headers } } }` shape so that fan-out is a direct map.
+// #26: a user-configured MCP server the cockpit can expose to sessions as tools. One shared registry fans out to
+// both the local-LLM tool-loop and the Claude CLI's `--mcp-config`, matching the standard mcpServers shape.
 public sealed record McpServerConfig
 {
     // Unique display name for the server. A label the operator may change — see `Id` for what identifies it.
     public required string Name { get; init; }
 
-    // The stable id this server is known by (AC-403) — what the OAuth token store files a token under, so that
-    // renaming the server in the dialog does not leave its sign-in behind under the old name. Empty only for a
-    // config built by hand (a test, a design-time view); everything that reads one off disk or off a plugin
-    // contribution carries an id, and `IdentityKey` is what to key on either way.
+    // AC-403: stable id this server is known by — what the OAuth token store files a token under, so renaming
+    // the server does not orphan its sign-in. Empty only for a hand-built config (test/design-time); use
+    // `IdentityKey` to key on either way.
     public string Id { get; init; } = string.Empty;
 
-    // The key to file this server's credentials under: `Id` when there is one, and otherwise the id
-    // the name derives to (`McpServerIdentity.LegacyIdFor`) — which is exactly the name-keyed
-    // behaviour that came before, so a config assembled without an id behaves as it always did rather than
-    // keying on the empty string alongside every other such config.
+    // The key to file this server's credentials under: `Id` when there is one, otherwise `LegacyIdFor(Name)` —
+    // preserving the old name-keyed behaviour so a config without an id doesn't collide on the empty string.
     public string IdentityKey => string.IsNullOrEmpty(Id) ? McpServerIdentity.LegacyIdFor(Name) : Id;
 
     public McpTransport Transport { get; init; } = McpTransport.Stdio;
@@ -46,54 +41,35 @@ public sealed record McpServerConfig
     // OAuth client id when `Auth` is `McpServerAuth.OAuth`.
     public string? OAuthClientId { get; init; }
 
-    // Explicit OAuth scopes (space-separated) when `Auth` is `McpServerAuth.OAuth` — the
-    // escape hatch for a server with its own requirements (AC-505). Set, this overrides the scope the SDK would
-    // otherwise derive on its own (WWW-Authenticate challenge → protected-resource metadata → offline_access when
-    // the authorization server advertises it); left unset, that derivation runs unchanged.
+    // AC-505: explicit OAuth scopes (space-separated), an escape hatch for a server with its own requirements.
+    // Set, this overrides the SDK's own derivation (WWW-Authenticate → protected-resource metadata →
+    // offline_access); left unset, that derivation runs unchanged.
     public string? OAuthScopes { get; init; }
 
-    // Extra headers sent to an HTTP server alongside whatever `Auth` arranges (AC-354), for a server
-    // that wants `X-Api-Key` or another scheme `McpServerAuth.ApiKey` cannot express. An addition
-    // rather than a replacement: the ordinary bearer case stays a single field the operator does not have to spell
-    // out. Ignored for a stdio server, which has no request to put them on.
+    // AC-354: extra headers sent alongside whatever `Auth` arranges, for a server needing `X-Api-Key` or another
+    // scheme `McpServerAuth.ApiKey` can't express. Additive, not a replacement; ignored for stdio servers.
     public IReadOnlyList<McpHeader> Headers { get; init; } = [];
 
-    // The TLS certificate fingerprint this HTTP server must present (AC-792) — set for a Cockpit node this
-    // instance paired with, empty for every other server.
-    //
-    // A node signs its own certificate, so the machine's trust store has no opinion about it; the pairing
-    // handshake is where a human decided this one is the right machine, and this field is that decision written
-    // down. Without it the connection would have to accept whatever answers at that address, which would make the
-    // shared secret readable by anything that can get in the middle. Not a credential — a fingerprint is public —
-    // so it stays in the clear in `cockpit.json` where the operator can see what their cockpit is pinned to.
+    // AC-792: TLS certificate fingerprint a paired Cockpit node must present; empty for every other server. A
+    // node self-signs, so pinning is what makes the pairing handshake's trust decision stick — without it the
+    // shared secret could leak to a man-in-the-middle. Not a credential, so it stays in clear text in cockpit.json.
     public string? PinnedCertificateFingerprint { get; init; }
 
     // Whether this server is active — a disabled server is kept in the registry but not connected.
     public bool Enabled { get; init; } = true;
 
-    // Whether the cockpit itself hosts this server on a loopback port (AC-40): the orchestrator and the endpoint-host
-    // servers set this when they publish. It is what tells the spawn paths to hand the child the app-lifetime auth
-    // key for this server, and it is never set for a user-added server — the key is only ever handed to an endpoint
-    // the cockpit runs, never to a third party's.
+    // AC-40: whether the cockpit itself hosts this server on a loopback port. Tells spawn paths to hand the child
+    // the app-lifetime auth key; never set for a user-added server, since that key must never reach a third party.
     public bool CockpitHosted { get; init; }
 
-    // Whether this server is internal-only (AC-204): kept out of every user-facing MCP selection (the New-session
-    // checklist, the profile preselection and its token estimate) and out of the no-selection "all enabled servers"
-    // fan-out, yet still reachable when a launch names it explicitly in its per-session selection. It is how a
-    // cockpit-hosted endpoint that only a specific spawn is meant to mount — the Autopilot CEO/step endpoints, which
-    // only a run's own agents scope to by name — stays mountable without an ordinary operator ever seeing or ticking
-    // it. Never set for a user-added server.
+    // AC-204: whether this server is internal-only — kept out of every user-facing MCP selection and the
+    // no-selection fan-out, but reachable when a launch names it explicitly (e.g. Autopilot CEO/step endpoints
+    // that only a run's own agents scope to). Never set for a user-added server.
     public bool Internal { get; init; }
 
-    // Whether every session gets this server whether or not it was selected: kept out of the user-facing pickers
-    // like `Internal`, but mounted regardless of the per-session selection instead of only when named.
-    // It is for the cockpit's own plumbing that is not a choice — `cockpit-session`, which is how a session
-    // tells the operator what it is working on. Left as an ordinary server it appears in the checklist as
-    // something to weigh up, and unticking it silently costs the operator their status line.
-    //
-    // Mutually exclusive with `Internal`, which is the opposite arrangement (hidden and mounted
-    // *only* when a launch names it); a server that set both would be asking to be both always and never
-    // mounted, and this one wins. Never set for a user-added server.
+    // Whether every session gets this server regardless of selection — hidden from pickers like `Internal`, but
+    // mounted unconditionally rather than only when named (e.g. `cockpit-session`, so unticking it can't silently
+    // cost the operator their status line). Mutually exclusive with `Internal` (opposite arrangement); this wins.
     public bool AlwaysMounted { get; init; }
 
     // Whether this server is offered only because the session's project points at it (AC-736) — the Depot connection

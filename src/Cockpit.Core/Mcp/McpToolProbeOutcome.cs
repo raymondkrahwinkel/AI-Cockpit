@@ -1,10 +1,8 @@
 namespace Cockpit.Core.Mcp;
 
-// The Core-level mirror of `Cockpit.Plugins.Abstractions.Mcp.McpProbeOutcome` (AC-503) — kept as its own type
-// rather than shared, the same isolation `McpAuthState`/`PluginMcpAuthState` already keep apart:
-// `Cockpit.Core` carries no reference to the plugin SDK, so `IMcpToolProbe` answers in this
-// vocabulary and the app layer (`CockpitHost`) maps it onto the plugin-facing one, the same seam
-// `GetMcpServerAuthStateAsync`/`SignInMcpServerAsync` already use for their own outcomes.
+// The Core-level mirror of `Cockpit.Plugins.Abstractions.Mcp.McpProbeOutcome` (AC-503) — kept separate because
+// `Cockpit.Core` carries no reference to the plugin SDK, so `IMcpToolProbe` answers in this vocabulary and
+// `CockpitHost` maps it onto the plugin-facing one, the same seam `SignInMcpServerAsync` already uses.
 public enum McpToolProbeOutcome
 {
     // Failed at 0 for the same reason PluginMcpSignInOutcome.Unavailable is: an unstubbed fake or a call that never

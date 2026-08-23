@@ -3,31 +3,14 @@ using System.Text.Json.Serialization;
 
 namespace Cockpit.Core.Mcp;
 
-// The wire shapes of the pairing handshake (AC-792), kept in one file because they are one protocol: a reader
-// checking whether the node and the controller agree should not have to open five.
-//
-// The handshake, in the order it happens:
-//
-//   1. controller → node   POST /pair/request   `NodePairingRequest`
-//      The node mints a pending pairing and answers `NodePairingOffer`. Nothing is granted yet.
-//   2. both screens        derive `NodePairingCode` — the node from its own certificate, the controller from the
-//                          one it saw — and the operator compares them.
-//   3. node operator       confirms. Only now does a shared secret exist.
-//   4. controller → node   POST /pair/claim     `NodePairingClaimRequest`
-//      Pending until step 3, then once — `NodePairingGrant` — and never again.
-//   5. either side         POST /pair/unpair (bearer: the shared secret) or the node's own screen.
-//
-// Deliberately plain HTTP+JSON rather than MCP tools: every one of these runs *before* the caller holds the
-// credential the MCP listener demands, so there is no session, no tool set and no bearer to key on yet. The only
-// authority in steps 1–4 is the claim token, which never leaves the TLS connection that asked for it.
+// AC-792: wire shapes of the pairing handshake (request -> offer -> code compare -> confirm -> claim -> grant
+// -> unpair), kept in one file since they are one protocol. Plain HTTP+JSON rather than MCP tools: every step
+// runs before the caller holds the MCP bearer credential, so only the claim token can authorize steps 1-4.
 public sealed record NodePairingRequest(string ControllerName);
 
-// What the node hands back for a pairing it has taken on but not granted.
-//
-// `ClaimToken` is the whole reason an overheard code is not enough (criterion 4): it is 256 bits of randomness
-// returned only in the response to the request that created this pairing, so the party that can later claim the
-// secret is the party that opened that connection — not whoever read six digits off a screen. `Nonce` is public
-// by design; it only has to be unpredictable enough that a code cannot be precomputed.
+// What the node hands back for a pairing it has taken on but not granted. `ClaimToken` (256 bits, criterion 4)
+// ensures only the connection that opened the pairing can later claim it, not whoever read the code off a
+// screen; `Nonce` is public and only needs to be unpredictable enough to stop precomputing a code.
 public sealed record NodePairingOffer(string PairingId, string ClaimToken, string Nonce, string NodeName, DateTimeOffset ExpiresAtUtc);
 
 public sealed record NodePairingClaimRequest(string PairingId, string ClaimToken);
