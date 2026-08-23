@@ -79,7 +79,7 @@ internal static class AutopilotStepBrief
             When the work is complete, call mcp__{{AutopilotRunTools.EndpointName}}__autopilot_step_done with a short
             summary of what you did and the result, so the CEO can validate it against the acceptance. Call it exactly
             once, at the end. Do not merge anything — a human does the final merge.
-            """;
+            """.ReplaceLineEndings("\n"); // AC-1051: raw string literals take the source file's line endings.
     }
 
     // The one reminder a step agent gets if it goes quiet without reporting done: weaker/local

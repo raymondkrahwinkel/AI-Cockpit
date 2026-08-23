@@ -28,6 +28,6 @@ internal static class AutopilotValidatorBrief
             reasonable default, a design call within the approved plan. Only when it is genuinely an operator decision — a
             truly irreversible or destructive change, a missing credential, or a business preference you cannot make
             within the plan — escalate it with mcp__{{AutopilotCeoTools.EndpointName}}__autopilot_escalate_to_operator.
-            """;
+            """.ReplaceLineEndings("\n"); // AC-1051: raw string literals take the source file's line endings.
     }
 }

@@ -24,6 +24,6 @@ internal static class AutopilotConsultBrief
             destructive choice, a missing credential, or a business preference you cannot make within the plan — escalate
             with mcp__{{AutopilotCeoTools.EndpointName}}__autopilot_escalate_to_operator. Prefer to answer yourself
             whenever you reasonably can.
-            """;
+            """.ReplaceLineEndings("\n"); // AC-1051: raw string literals take the source file's line endings.
     }
 }

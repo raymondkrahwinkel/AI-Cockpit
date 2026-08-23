@@ -21,6 +21,8 @@ internal static class AutopilotCeoCheckpoint
 
         // The step's own account of what it changed is deliberately not summarised back in: saying "their diffs are
         // gone" while quietly keeping a paraphrase would be the same growing tail under another name.
+        // AC-1051: a raw string literal takes the source file's own line endings, which are CRLF on a Windows
+        // checkout — normalise to '\n' so the carried-over text doesn't depend on how the plugin was checked out.
         return $"""
             Steps of this run that were already validated, and how they settled:
             {ledger}
@@ -29,7 +31,7 @@ internal static class AutopilotCeoCheckpoint
             one that judged them, and the lines above are all that carried over. When a later step's acceptance turns on
             what an earlier one actually did, read it from your working directory or its git history rather than
             assuming it — "I cannot see it here" is not the same claim as "it was not done".
-            """;
+            """.ReplaceLineEndings("\n");
     }
 
     // How a settled step reads in the ledger, or null for one nobody has judged yet (pending, running, blocked).
