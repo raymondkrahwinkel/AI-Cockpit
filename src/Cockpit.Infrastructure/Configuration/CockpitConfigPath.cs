@@ -20,6 +20,13 @@ internal static class CockpitConfigPath
     private const UnixFileMode PrivateDirectoryMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
+    // How long the swap waits out a reader holding the file. A read is milliseconds; reaching this means
+    // something other than contention has it. Longer than the readers' own window so the two cannot trade places
+    // forever — the writer outlasts the reader that is waiting for it.
+    private static readonly TimeSpan SwapContentionWindow = TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan SwapContentionInterval = TimeSpan.FromMilliseconds(20);
+
     public static string Root => CockpitBuild.StateRoot;
 
     public static string Default => Path.Combine(Root, "cockpit.json");
@@ -154,16 +161,7 @@ internal static class CockpitConfigPath
         {
             WriteAllTextPrivate(temporaryPath, contents, flushToDisk: true);
 
-            if (File.Exists(path))
-            {
-                // Replace() is the atomic swap, and it writes the backup as part of the same operation.
-                File.Replace(temporaryPath, path, path + ".bak", ignoreMetadataErrors: true);
-                RestrictExistingFile(path + ".bak");
-            }
-            else
-            {
-                File.Move(temporaryPath, path);
-            }
+            SwapWhenNotBeingRead(temporaryPath, path);
 
             RestrictExistingFile(path);
         }
@@ -181,6 +179,44 @@ internal static class CockpitConfigPath
                 {
                     // Swept on the next start (SweepStaleSidecars) — a locked leftover is not worth failing a save over.
                 }
+            }
+        }
+    }
+
+    // Puts the new file in place, waiting out whoever is reading the old one (AC-1047). `File.Replace` needs the
+    // destination exclusively, and every reader of these files holds it for the length of one read — so a save
+    // that landed while a store reloaded threw, and the section it carried was silently dropped. Readers already
+    // wait the swap out (`CockpitConfigFileAccess.ReadWhenNotBeingReplacedAsync`); this is the same courtesy in
+    // the other direction, and it covers a holder that is not ours at all — a backup, an editor, a virus scanner.
+    //
+    // Past the window it is not contention, so the exception goes on to the caller rather than a save that
+    // reports success and wrote nothing.
+    private static void SwapWhenNotBeingRead(string temporaryPath, string path)
+    {
+        var deadline = DateTimeOffset.UtcNow + SwapContentionWindow;
+        while (true)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    // Replace() is the atomic swap, and it writes the backup as part of the same operation.
+                    File.Replace(temporaryPath, path, path + ".bak", ignoreMetadataErrors: true);
+                    RestrictExistingFile(path + ".bak");
+                }
+                else
+                {
+                    File.Move(temporaryPath, path);
+                }
+
+                return;
+            }
+            catch (IOException exception) when (exception is not FileNotFoundException
+                                                && exception is not DirectoryNotFoundException
+                                                && DateTimeOffset.UtcNow < deadline)
+            {
+                // Blocking on purpose: the callers are sync, and a reader holds the file for a millisecond or two.
+                Thread.Sleep(SwapContentionInterval);
             }
         }
     }

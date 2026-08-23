@@ -84,4 +84,65 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
         Assert.NotNull(written.WindowBounds);
         Assert.Single(written.Profiles, profile => profile.Label == "written-by-the-profile-store");
     }
+
+    [Fact]
+    public async Task UpdateAsync_WhileAnotherStoreIsReading_StillWrites()
+    {
+        // AC-1047: readers do not take the write gate, and `File.Replace` refuses a destination somebody else
+        // has open — so a save landing while any store reloads threw, and that section was silently lost.
+        var access = new CockpitConfigFileAccess(ConfigPath);
+        await access.UpdateAsync(
+            config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("seed", new ClaudeConfig("/home/someone/.claude")))],
+            CancellationToken.None);
+
+        using var readers = new CancellationTokenSource();
+        var reading = Enumerable.Range(0, 4).Select(_ => Task.Run(async () =>
+        {
+            while (!readers.IsCancellationRequested)
+            {
+                await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
+            }
+        })).ToArray();
+
+        for (var index = 0; index < 40; index++)
+        {
+            var label = $"written-{index}";
+            await access.UpdateAsync(
+                config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile(label, new ClaudeConfig("/home/someone/.claude")))],
+                CancellationToken.None);
+        }
+
+        await readers.CancelAsync();
+        await Task.WhenAll(reading);
+
+        var written = await access.ReadAsync(CancellationToken.None);
+
+        Assert.NotNull(written);
+        Assert.Single(written.Profiles, profile => profile.Label == "written-39");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenManyWritersMutateAtOnce_KeepsEveryMutation()
+    {
+        // AC-1047 criterion 3. Each writer appends its own profile to what it read, which is the read-modify-write
+        // the Options dialog's Apply does across sections: a writer that reads a document another has already
+        // moved on from writes that staleness back, and the setting it overwrote is gone with no sign of it.
+        var writers = Enumerable.Range(0, 16).Select(index => Task.Run(() =>
+            new CockpitConfigFileAccess(ConfigPath).UpdateAsync(
+                config => config.Profiles =
+                [
+                    .. config.Profiles,
+                    SessionProfileEntry.FromDomain(new SessionProfile($"writer-{index}", new ClaudeConfig($"/home/someone/.claude-{index}"))),
+                ],
+                CancellationToken.None)));
+
+        await Task.WhenAll(writers);
+
+        var written = await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
+
+        Assert.NotNull(written);
+        Assert.Equal(
+            [.. Enumerable.Range(0, 16).Select(index => $"writer-{index}").Order()],
+            written.Profiles.Select(profile => profile.Label).Order());
+    }
 }
