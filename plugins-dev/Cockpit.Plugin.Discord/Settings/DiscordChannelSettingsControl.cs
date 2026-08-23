@@ -37,13 +37,13 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
         _specificUsersOption = new RadioButton { GroupName = "audience", Content = "Several specific Discord accounts" };
         _everyoneOption = new RadioButton { GroupName = "audience", Content = "Everyone in this channel" };
 
-        _singleUserId = new TextBox { PlaceholderText = "Discord user id" };
+        _singleUserId = new TextBox { PlaceholderText = "Discord user id (digits only) — enable Developer Mode, then right-click → Copy User ID" };
         _specificUserIds = new TextBox
         {
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 60,
-            PlaceholderText = "One Discord user id per line",
+            PlaceholderText = "One Discord user id per line — enable Developer Mode, then right-click → Copy User ID",
         };
         var specificUsersWarningText = new TextBlock
         {
@@ -152,6 +152,25 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = null;
+
+        // AC-1048: caught here, before AssistantChannelAccess even sees the value — a display name or anything
+        // else that is not a Discord snowflake is refused with what the field actually needs, not just "invalid".
+        if (_singleUserOption.IsChecked == true && !string.IsNullOrWhiteSpace(_singleUserId.Text)
+            && DiscordUserId.Validate(_singleUserId.Text.Trim()) is { } singleUserIdError)
+        {
+            return _Fail(out commit, out error, singleUserIdError);
+        }
+
+        if (_specificUsersOption.IsChecked == true)
+        {
+            foreach (var userId in _ParseUserIds(_specificUserIds.Text))
+            {
+                if (DiscordUserId.Validate(userId) is { } listUserIdError)
+                {
+                    return _Fail(out commit, out error, listUserIdError);
+                }
+            }
+        }
 
         var result = _singleUserOption.IsChecked == true
             ? AssistantChannelAccess.ForSingleUser(_singleUserId.Text ?? string.Empty)

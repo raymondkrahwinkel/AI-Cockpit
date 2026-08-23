@@ -107,7 +107,11 @@ internal sealed class CockpitHost(
             previous.Dispose();
         }
 
-        var gateway = new AssistantChannelGateway(contribution, assistantHost, services.GetRequiredService<IConsentBroker>());
+        var gateway = new AssistantChannelGateway(
+            contribution,
+            assistantHost,
+            services.GetRequiredService<IConsentBroker>(),
+            services.GetRequiredService<ILogger<AssistantChannelGateway>>());
         _assistantChannels[contribution.Id] = gateway;
 
         return gateway;

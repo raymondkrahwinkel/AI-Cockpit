@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia.Threading;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure.Consent;
@@ -18,6 +19,7 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
     private readonly AssistantChannelContribution _channel;
     private readonly IAssistantSessionHost _host;
     private readonly IConsentBroker _consent;
+    private readonly ILogger<AssistantChannelGateway> _logger;
 
     // Row identity: the transcript's entries carry none of their own, and a streaming row is mutated in place, so a
     // plugin needs something stable to recognise "the same message, longer" by. Reference-keyed, and the same
@@ -32,11 +34,13 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
     public AssistantChannelGateway(
         AssistantChannelContribution channel,
         IAssistantSessionHost host,
-        IConsentBroker consent)
+        IConsentBroker consent,
+        ILogger<AssistantChannelGateway> logger)
     {
         _channel = channel;
         _host = host;
         _consent = consent;
+        _logger = logger;
 
         _host.PropertyChanged += _OnHostPropertyChanged;
         _consent.PromptOpened += _OnPromptOpened;
@@ -70,6 +74,13 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
 
         if (!_channel.Access.IsAllowed(senderUserId))
         {
+            // AC-1048: silent to the sender on purpose (a stranger gets no sign the bot is listening) — this is
+            // the one place an operator debugging "nothing comes in" can find out why.
+            _logger.LogDebug(
+                "Channel {ChannelId} ({ChannelName}) ignored a message from {SenderUserId}: not on the access list.",
+                _channel.Id,
+                _channel.Name,
+                senderUserId);
             return AssistantChannelSendResult.IgnoredSender();
         }
 
