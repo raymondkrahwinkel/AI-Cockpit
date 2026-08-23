@@ -32,7 +32,9 @@ public sealed class ManagedCliConfigSection
     // does not itself read back as the operator toggling the box and write the value it just loaded.
     private bool _loadingAutoUpdateState;
 
-    /// <summary>The control to place in the provider config view's field stack.</summary>
+    /// <summary>
+    /// The control to place in the provider config view's field stack.
+    /// </summary>
     public Control View { get; }
 
     /// <param name="onStateChanged">

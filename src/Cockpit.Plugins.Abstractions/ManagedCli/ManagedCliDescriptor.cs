@@ -14,7 +14,9 @@ namespace Cockpit.Plugins.Abstractions.ManagedCli;
 /// </remarks>
 public sealed record ManagedCliDescriptor
 {
-    /// <summary>The CLI's name — the key the host stores it under (<c>&lt;StateRoot&gt;/cli/&lt;CliName&gt;/…</c>) and resolves it by. E.g. <c>claude</c>, <c>codex</c>.</summary>
+    /// <summary>
+    /// The CLI's name — the key the host stores it under (<c>&lt;StateRoot&gt;/cli/&lt;CliName&gt;/…</c>) and resolves it by. E.g. <c>claude</c>, <c>codex</c>.
+    /// </summary>
     public required string CliName { get; init; }
 
     /// <summary>

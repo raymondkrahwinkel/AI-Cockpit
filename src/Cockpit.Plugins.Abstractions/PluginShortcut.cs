@@ -9,8 +9,16 @@ namespace Cockpit.Plugins.Abstractions;
 /// <paramref name="DefaultGesture"/> blank for a <em>palette-only command</em>: no keystroke is bound, but it
 /// still appears in the command palette (and the operator can assign it a gesture in Options → Shortcuts).
 /// </summary>
-/// <param name="Id">Stable identifier for this command (e.g. "youtrack.open"), unique within the plugin.</param>
-/// <param name="Title">Human-readable label shown in the command palette and the shortcuts list in Options.</param>
-/// <param name="DefaultGesture">The gesture to bind, in Avalonia form (e.g. "Shift+Y", "Ctrl+Shift+K"). Blank = palette-only (no key bound).</param>
-/// <param name="OnInvoke">Runs when the gesture is pressed or the command is chosen in the palette.</param>
+/// <param name="Id">
+/// Stable identifier for this command (e.g. "youtrack.open"), unique within the plugin.
+/// </param>
+/// <param name="Title">
+/// Human-readable label shown in the command palette and the shortcuts list in Options.
+/// </param>
+/// <param name="DefaultGesture">
+/// The gesture to bind, in Avalonia form (e.g. "Shift+Y", "Ctrl+Shift+K"). Blank = palette-only (no key bound).
+/// </param>
+/// <param name="OnInvoke">
+/// Runs when the gesture is pressed or the command is chosen in the palette.
+/// </param>
 public sealed record PluginShortcut(string Id, string Title, string DefaultGesture, Action OnInvoke);

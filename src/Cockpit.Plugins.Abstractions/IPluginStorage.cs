@@ -1,6 +1,8 @@
 namespace Cockpit.Plugins.Abstractions;
 
-/// <summary>Per-plugin key/value storage, persisted in a plugin-scoped section of the host's <c>cockpit.json</c>. Values are serialized as JSON.</summary>
+/// <summary>
+/// Per-plugin key/value storage, persisted in a plugin-scoped section of the host's <c>cockpit.json</c>. Values are serialized as JSON.
+/// </summary>
 public interface IPluginStorage
 {
     T? Get<T>(string key);
@@ -31,6 +33,8 @@ public interface IPluginStorage
     /// </remarks>
     void SetSecret(string key, string value) => Set(key, value);
 
-    /// <summary>Reads back what <see cref="SetSecret"/> stored. The same as <see cref="Get{T}"/> for a string — the difference is at the writing end, where the host has to be told what it is looking at.</summary>
+    /// <summary>
+    /// Reads back what <see cref="SetSecret"/> stored. The same as <see cref="Get{T}"/> for a string — the difference is at the writing end, where the host has to be told what it is looking at.
+    /// </summary>
     string? GetSecret(string key) => Get<string>(key);
 }

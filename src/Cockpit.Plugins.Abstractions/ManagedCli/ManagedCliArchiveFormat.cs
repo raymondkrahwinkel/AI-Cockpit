@@ -7,9 +7,13 @@ namespace Cockpit.Plugins.Abstractions.ManagedCli;
 /// </summary>
 public enum ManagedCliArchiveFormat
 {
-    /// <summary>The download <em>is</em> the executable — write it out, mark it executable, done (Claude).</summary>
+    /// <summary>
+    /// The download <em>is</em> the executable — write it out, mark it executable, done (Claude).
+    /// </summary>
     RawBinary,
 
-    /// <summary>A <c>.tar.gz</c> holding the executable (and possibly siblings); extract the entry the plan names (Codex).</summary>
+    /// <summary>
+    /// A <c>.tar.gz</c> holding the executable (and possibly siblings); extract the entry the plan names (Codex).
+    /// </summary>
     TarGz,
 }

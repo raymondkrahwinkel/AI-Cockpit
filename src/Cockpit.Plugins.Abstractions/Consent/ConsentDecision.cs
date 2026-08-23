@@ -5,8 +5,12 @@ namespace Cockpit.Plugins.Abstractions.Consent;
 /// it for the rest of the session (only ever possible for a <see cref="ConsentRisk.LowRisk"/> request — see
 /// <see cref="ConsentRisk"/>).
 /// </summary>
-/// <param name="Outcome">Approved or denied.</param>
-/// <param name="Remembered">True when the operator asked not to be prompted again this session for this source and scope.</param>
+/// <param name="Outcome">
+/// Approved or denied.
+/// </param>
+/// <param name="Remembered">
+/// True when the operator asked not to be prompted again this session for this source and scope.
+/// </param>
 /// <param name="Bypassed">
 /// True when nothing was ever shown — the operator switched the card off ahead of time for this source
 /// (AC-575) — as opposed to an approval a card was actually raised and answered for. A caller that only reads
@@ -15,9 +19,13 @@ namespace Cockpit.Plugins.Abstractions.Consent;
 /// </param>
 public sealed record ConsentDecision(ConsentOutcome Outcome, bool Remembered = false, bool Bypassed = false)
 {
-    /// <summary>Convenience for the fail-closed default: a plain denial.</summary>
+    /// <summary>
+    /// Convenience for the fail-closed default: a plain denial.
+    /// </summary>
     public static ConsentDecision Denied { get; } = new(ConsentOutcome.Denied);
 
-    /// <summary>Whether the caller may go ahead.</summary>
+    /// <summary>
+    /// Whether the caller may go ahead.
+    /// </summary>
     public bool IsApproved => Outcome == ConsentOutcome.Approved;
 }

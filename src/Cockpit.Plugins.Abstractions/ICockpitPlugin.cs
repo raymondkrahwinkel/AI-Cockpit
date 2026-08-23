@@ -14,9 +14,13 @@ public interface ICockpitPlugin : IDisposable
 {
     PluginMetadata Metadata { get; }
 
-    /// <summary>Phase 1, before the container is built: register the plugin's own services.</summary>
+    /// <summary>
+    /// Phase 1, before the container is built: register the plugin's own services.
+    /// </summary>
     void ConfigureServices(IServiceCollection services);
 
-    /// <summary>Phase 2, after the container is built: register contribution points (Options tab, side-menu section) via the host.</summary>
+    /// <summary>
+    /// Phase 2, after the container is built: register contribution points (Options tab, side-menu section) via the host.
+    /// </summary>
     void Initialize(ICockpitHost host);
 }

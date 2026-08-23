@@ -8,7 +8,13 @@ namespace Cockpit.Plugins.Abstractions;
 /// is free: open this plugin's own settings (<see cref="ICockpitHost.ShowSettingsAsync"/>), open a dialog
 /// (<see cref="ICockpitHost.ShowDialogAsync"/>), or anything else.
 /// </summary>
-/// <param name="Title">Short label, shown as the button's tooltip and used as its accessible name.</param>
-/// <param name="Icon">Bundled vector icon to show (e.g. <see cref="MaterialIconKind.Docker"/>); a generic icon is used when null.</param>
-/// <param name="OnInvoke">Runs on click, on the UI thread.</param>
+/// <param name="Title">
+/// Short label, shown as the button's tooltip and used as its accessible name.
+/// </param>
+/// <param name="Icon">
+/// Bundled vector icon to show (e.g. <see cref="MaterialIconKind.Docker"/>); a generic icon is used when null.
+/// </param>
+/// <param name="OnInvoke">
+/// Runs on click, on the UI thread.
+/// </param>
 public sealed record ToolbarAction(string Title, MaterialIconKind? Icon, Func<Task> OnInvoke);

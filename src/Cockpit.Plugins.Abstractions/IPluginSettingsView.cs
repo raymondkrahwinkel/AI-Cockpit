@@ -39,7 +39,9 @@ public interface IPluginSettingsView
     /// 'work'", not "invalid input". The view may also mark the offending field itself; this is what the host
     /// has to say when it cannot.
     /// </param>
-    /// <returns><see langword="true"/> when the values are good and <paramref name="commit"/> is set; <see langword="false"/> when they are not and <paramref name="error"/> says why.</returns>
+    /// <returns>
+    /// <see langword="true"/> when the values are good and <paramref name="commit"/> is set; <see langword="false"/> when they are not and <paramref name="error"/> says why.
+    /// </returns>
     /// <remarks>
     /// Deliberately without <c>[NotNullWhen]</c> annotations: they would make every implementation that does not
     /// repeat them warn (CS8767), which is a tax on a member a dozen plugins implement — and the host has to

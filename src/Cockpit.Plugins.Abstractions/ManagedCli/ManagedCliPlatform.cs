@@ -9,12 +9,20 @@ namespace Cockpit.Plugins.Abstractions.ManagedCli;
 /// its provider's release channel uses (Claude's <c>linux-x64</c>/<c>darwin-arm64</c>, Codex's
 /// <c>x86_64-unknown-linux-musl</c>, …), so the same installer serves every provider unchanged.
 /// </summary>
-/// <param name="Os">The OS family: <c>win32</c>, <c>darwin</c> or <c>linux</c> — the vocabulary Claude's manifest uses.</param>
-/// <param name="Arch">The CPU architecture: <c>x64</c>, <c>arm64</c>, or the lowercased <see cref="Architecture"/> name for anything else.</param>
-/// <param name="IsMusl">True on a Linux machine whose C library is musl (Alpine and similar); always false off Linux.</param>
+/// <param name="Os">
+/// The OS family: <c>win32</c>, <c>darwin</c> or <c>linux</c> — the vocabulary Claude's manifest uses.
+/// </param>
+/// <param name="Arch">
+/// The CPU architecture: <c>x64</c>, <c>arm64</c>, or the lowercased <see cref="Architecture"/> name for anything else.
+/// </param>
+/// <param name="IsMusl">
+/// True on a Linux machine whose C library is musl (Alpine and similar); always false off Linux.
+/// </param>
 public readonly record struct ManagedCliPlatform(string Os, string Arch, bool IsMusl)
 {
-    /// <summary>Reads the running machine's platform. Cheap and side-effect-free — call it per install rather than caching.</summary>
+    /// <summary>
+    /// Reads the running machine's platform. Cheap and side-effect-free — call it per install rather than caching.
+    /// </summary>
     public static ManagedCliPlatform Current()
     {
         var os = OperatingSystem.IsWindows() ? "win32"

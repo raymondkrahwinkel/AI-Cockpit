@@ -8,7 +8,9 @@ namespace Cockpit.Plugins.Abstractions.ManagedCli;
 /// </summary>
 public sealed record ManagedCliDownloadPlan
 {
-    /// <summary>Where the bytes come from — the raw binary (Claude) or the archive (Codex).</summary>
+    /// <summary>
+    /// Where the bytes come from — the raw binary (Claude) or the archive (Codex).
+    /// </summary>
     public required string Url { get; init; }
 
     /// <summary>
@@ -18,10 +20,14 @@ public sealed record ManagedCliDownloadPlan
     /// </summary>
     public required string ExpectedSha256 { get; init; }
 
-    /// <summary>The name the executable is given inside its version directory (e.g. <c>claude</c>, <c>claude.exe</c>, <c>codex</c>).</summary>
+    /// <summary>
+    /// The name the executable is given inside its version directory (e.g. <c>claude</c>, <c>claude.exe</c>, <c>codex</c>).
+    /// </summary>
     public required string ExecutableFileName { get; init; }
 
-    /// <summary>How <see cref="Url"/>'s bytes are packaged. Defaults to <see cref="ManagedCliArchiveFormat.RawBinary"/>.</summary>
+    /// <summary>
+    /// How <see cref="Url"/>'s bytes are packaged. Defaults to <see cref="ManagedCliArchiveFormat.RawBinary"/>.
+    /// </summary>
     public ManagedCliArchiveFormat ArchiveFormat { get; init; } = ManagedCliArchiveFormat.RawBinary;
 
     /// <summary>
@@ -30,6 +36,8 @@ public sealed record ManagedCliDownloadPlan
     /// </summary>
     public string? ExecutableEntryName { get; init; }
 
-    /// <summary>Whether the placed file needs the Unix executable bit set (true for the Unix binaries; a no-op on Windows).</summary>
+    /// <summary>
+    /// Whether the placed file needs the Unix executable bit set (true for the Unix binaries; a no-op on Windows).
+    /// </summary>
     public bool NeedsExecutableBit { get; init; }
 }

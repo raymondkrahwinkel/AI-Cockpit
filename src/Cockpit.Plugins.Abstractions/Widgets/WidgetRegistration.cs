@@ -16,7 +16,9 @@ namespace Cockpit.Plugins.Abstractions.Widgets;
 /// Persisted with each placed instance so a saved dashboard rebuilds after a restart; changing it orphans
 /// existing instances, so treat it as an API surface.
 /// </param>
-/// <param name="Title">The widget's display name, shown in the gallery and as the pane's default header.</param>
+/// <param name="Title">
+/// The widget's display name, shown in the gallery and as the pane's default header.
+/// </param>
 /// <param name="CreateView">
 /// Builds the control for one placed instance, on the UI thread, handed that instance's own
 /// <see cref="IWidgetContext"/> (per-instance storage for its config, the session-observe surface, a refresh
@@ -25,7 +27,9 @@ namespace Cockpit.Plugins.Abstractions.Widgets;
 /// </param>
 public sealed record WidgetRegistration(string Id, string Title, Func<IWidgetContext, Control> CreateView)
 {
-    /// <summary>A short glyph shown on the gallery card and the pane header when <see cref="IconKind"/> is null. Empty by default — every bundled widget sets <see cref="IconKind"/> instead; a plugin may still put an emoji or letter here.</summary>
+    /// <summary>
+    /// A short glyph shown on the gallery card and the pane header when <see cref="IconKind"/> is null. Empty by default — every bundled widget sets <see cref="IconKind"/> instead; a plugin may still put an emoji or letter here.
+    /// </summary>
     public string Icon { get; init; } = string.Empty;
 
     /// <summary>
@@ -35,13 +39,19 @@ public sealed record WidgetRegistration(string Id, string Title, Func<IWidgetCon
     /// </summary>
     public MaterialIconKind? IconKind { get; init; }
 
-    /// <summary>One line describing the widget for the gallery card. Empty by default.</summary>
+    /// <summary>
+    /// One line describing the widget for the gallery card. Empty by default.
+    /// </summary>
     public string Description { get; init; } = string.Empty;
 
-    /// <summary>How many grid columns a freshly placed instance spans (the operator can resize afterwards). Defaults to 1.</summary>
+    /// <summary>
+    /// How many grid columns a freshly placed instance spans (the operator can resize afterwards). Defaults to 1.
+    /// </summary>
     public int DefaultColumnSpan { get; init; } = 1;
 
-    /// <summary>How many grid rows a freshly placed instance spans. Defaults to 1.</summary>
+    /// <summary>
+    /// How many grid rows a freshly placed instance spans. Defaults to 1.
+    /// </summary>
     public int DefaultRowSpan { get; init; } = 1;
 
     /// <summary>

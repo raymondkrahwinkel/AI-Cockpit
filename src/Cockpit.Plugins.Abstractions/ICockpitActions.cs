@@ -1,11 +1,15 @@
 namespace Cockpit.Plugins.Abstractions;
 
-/// <summary>Actions a plugin can perform on the cockpit itself: put text on the clipboard, or inject it into the active session's input.</summary>
+/// <summary>
+/// Actions a plugin can perform on the cockpit itself: put text on the clipboard, or inject it into the active session's input.
+/// </summary>
 public interface ICockpitActions
 {
     Task SetClipboardTextAsync(string text);
 
-    /// <summary>Injects text into the currently selected session — appended to the input box for an SDK session, written to the pty for a TTY session. No-op when <see cref="HasActiveSession"/> is false.</summary>
+    /// <summary>
+    /// Injects text into the currently selected session — appended to the input box for an SDK session, written to the pty for a TTY session. No-op when <see cref="HasActiveSession"/> is false.
+    /// </summary>
     Task InjectIntoActiveSessionAsync(string text);
 
     bool HasActiveSession { get; }
@@ -79,10 +83,18 @@ public interface ICockpitActions
     /// treat it as one.
     /// </para>
     /// </summary>
-    /// <param name="profileLabel">The profile to hand it to. It must have opted in as a delegation target.</param>
-    /// <param name="prompt">The work.</param>
-    /// <param name="workingDirectory">Where it runs, when the profile allows one to be named.</param>
-    /// <param name="timeout">How long to wait for an answer. Null waits as long as the host's own default.</param>
+    /// <param name="profileLabel">
+    /// The profile to hand it to. It must have opted in as a delegation target.
+    /// </param>
+    /// <param name="prompt">
+    /// The work.
+    /// </param>
+    /// <param name="workingDirectory">
+    /// Where it runs, when the profile allows one to be named.
+    /// </param>
+    /// <param name="timeout">
+    /// How long to wait for an answer. Null waits as long as the host's own default.
+    /// </param>
     Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null) =>
         throw new NotSupportedException("This host cannot delegate work.");
 

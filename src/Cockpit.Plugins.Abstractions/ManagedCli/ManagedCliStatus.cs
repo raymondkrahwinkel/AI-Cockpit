@@ -7,6 +7,10 @@ namespace Cockpit.Plugins.Abstractions.ManagedCli;
 /// the provider's channel could not be reached (offline) — in which case the caller should fall back rather than claim
 /// "up to date".
 /// </summary>
-/// <param name="InstalledVersion">The newest version on disk, or <see langword="null"/> when none is installed.</param>
-/// <param name="LatestVersion">The latest version the provider offers, or <see langword="null"/> when it could not be determined.</param>
+/// <param name="InstalledVersion">
+/// The newest version on disk, or <see langword="null"/> when none is installed.
+/// </param>
+/// <param name="LatestVersion">
+/// The latest version the provider offers, or <see langword="null"/> when it could not be determined.
+/// </param>
 public sealed record ManagedCliStatus(string? InstalledVersion, string? LatestVersion);

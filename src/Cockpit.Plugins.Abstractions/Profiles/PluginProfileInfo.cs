@@ -8,7 +8,9 @@ namespace Cockpit.Plugins.Abstractions.Profiles;
 /// (the Claude CLI's transcripts, say) needs the directories the operator actually configured, not a guess at
 /// the well-known ones.
 /// </summary>
-/// <param name="Label">Display name, as shown in the profile picker.</param>
+/// <param name="Label">
+/// Display name, as shown in the profile picker.
+/// </param>
 /// <param name="Provider">
 /// Which backend the profile runs under, as the host's provider name (<c>ClaudeCli</c>, <c>Ollama</c>,
 /// <c>LmStudio</c>, <c>Plugin</c>). A string rather than an enum so the contract does not have to change every

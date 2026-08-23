@@ -8,8 +8,12 @@ namespace Cockpit.Plugins.Abstractions;
 /// <see cref="ICockpitHost.RegisteredAutopilotTemplates"/> and needs the owner to attribute each template and to key
 /// any operator override to it.
 /// </summary>
-/// <param name="OwnerPluginId">The manifest id of the plugin that registered the template.</param>
-/// <param name="Template">The registered template.</param>
+/// <param name="OwnerPluginId">
+/// The manifest id of the plugin that registered the template.
+/// </param>
+/// <param name="Template">
+/// The registered template.
+/// </param>
 public sealed record RegisteredAutopilotTemplate(
     string OwnerPluginId,
     PluginAutopilotTemplate Template);

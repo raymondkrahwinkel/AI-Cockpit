@@ -12,9 +12,15 @@ namespace Cockpit.Plugins.Abstractions.Mcp;
 /// host performs — calling this again with the same <paramref name="Name"/> refreshes the existing entry's
 /// URL/token instead of adding a duplicate.
 /// </param>
-/// <param name="Url">The server's HTTP endpoint, e.g. <c>https://x.youtrack.cloud/mcp</c>.</param>
-/// <param name="BearerToken">Static bearer token sent as <c>Authorization: Bearer …</c>, or <see langword="null"/>/empty for no auth.</param>
-/// <param name="Scope">Which session worlds this server fans out to on first registration. Defaults to <see cref="McpContributionScope.All"/>.</param>
+/// <param name="Url">
+/// The server's HTTP endpoint, e.g. <c>https://x.youtrack.cloud/mcp</c>.
+/// </param>
+/// <param name="BearerToken">
+/// Static bearer token sent as <c>Authorization: Bearer …</c>, or <see langword="null"/>/empty for no auth.
+/// </param>
+/// <param name="Scope">
+/// Which session worlds this server fans out to on first registration. Defaults to <see cref="McpContributionScope.All"/>.
+/// </param>
 public sealed record McpServerContribution(
     string Name,
     string Url,
