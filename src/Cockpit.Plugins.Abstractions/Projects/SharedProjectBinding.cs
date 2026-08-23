@@ -13,19 +13,29 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// one (AC-246's "make it usable at all").
 /// </para>
 /// </summary>
-/// <param name="Name">The project's display name, as the shared definition carries it right now.</param>
+/// <param name="Name">
+/// The project's display name, as the shared definition carries it right now.
+/// </param>
 public sealed record SharedProjectBinding(string Name)
 {
-    /// <summary>Free-text note on what this project is, same idiom as <c>Project.Description</c>. Null when the source has none.</summary>
+    /// <summary>
+    /// Free-text note on what this project is, same idiom as <c>Project.Description</c>. Null when the source has none.
+    /// </summary>
     public string? Description { get; init; }
 
-    /// <summary>The Git URL this project's source folder can be cloned from — an offer, not a requirement (AC-246: "Clone… is een aanbod, geen poort"). Null for a project with no source of its own.</summary>
+    /// <summary>
+    /// The Git URL this project's source folder can be cloned from — an offer, not a requirement (AC-246: "Clone… is een aanbod, geen poort"). Null for a project with no source of its own.
+    /// </summary>
     public string? GitUrl { get; init; }
 
-    /// <summary>How the profile should behave here, the same idiom as <c>Project.BehaviorPrompt</c>. Null/blank appends nothing.</summary>
+    /// <summary>
+    /// How the profile should behave here, the same idiom as <c>Project.BehaviorPrompt</c>. Null/blank appends nothing.
+    /// </summary>
     public string? BehaviorPrompt { get; init; }
 
-    /// <summary>Whether new sessions here isolate in their own git worktree by default, the same idiom as <c>Project.IsolateInWorktreeByDefault</c>.</summary>
+    /// <summary>
+    /// Whether new sessions here isolate in their own git worktree by default, the same idiom as <c>Project.IsolateInWorktreeByDefault</c>.
+    /// </summary>
     public bool IsolateInWorktreeByDefault { get; init; }
 
     /// <summary>
@@ -62,8 +72,12 @@ public sealed record SharedProjectBinding(string Name)
     public byte[]? LogoBytes { get; init; }
 }
 
-/// <summary>One <see cref="SharedProjectBinding.Resources"/> row (AC-246) — <see cref="Role"/> a plain string, the same "not an enum across this boundary" idiom <see cref="SharedProject.Role"/> already uses.</summary>
-/// <param name="Role">What a session does with this row — matched case-insensitively against <c>Cockpit.Core.Projects.ProjectResourceRole</c>'s own names by whoever builds the local project; an unrecognised value is the caller's to fall back on, never this record's to guess at.</param>
+/// <summary>
+/// One <see cref="SharedProjectBinding.Resources"/> row (AC-246) — <see cref="Role"/> a plain string, the same "not an enum across this boundary" idiom <see cref="SharedProject.Role"/> already uses.
+/// </summary>
+/// <param name="Role">
+/// What a session does with this row — matched case-insensitively against <c>Cockpit.Core.Projects.ProjectResourceRole</c>'s own names by whoever builds the local project; an unrecognised value is the caller's to fall back on, never this record's to guess at.
+/// </param>
 /// <param name="Reference">
 /// Where this resource is, or what names it — exactly as the shared definition stores it, unresolved and unjudged.
 /// <para>
@@ -92,7 +106,9 @@ public sealed record SharedProjectBindingResource(string Role, string Reference)
     public string? Label { get; init; }
 }
 
-/// <summary>What came of asking an <see cref="ISharedProjectSource"/> to prepare one project for binding (AC-246) — the <see cref="SharedProjectListResult"/> idiom, once per project instead of once for a whole source.</summary>
+/// <summary>
+/// What came of asking an <see cref="ISharedProjectSource"/> to prepare one project for binding (AC-246) — the <see cref="SharedProjectListResult"/> idiom, once per project instead of once for a whole source.
+/// </summary>
 public sealed record SharedProjectBindingResult(bool Succeeded, SharedProjectBinding? Binding, string? Error)
 {
     public static SharedProjectBindingResult Success(SharedProjectBinding binding) => new(true, binding, null);

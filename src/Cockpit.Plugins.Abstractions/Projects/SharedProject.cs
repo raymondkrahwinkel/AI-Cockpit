@@ -11,10 +11,14 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// project" means without a second identifier to keep in sync. What the host cross-references against every local
 /// project's own memory reference to know this one is already bound and should not be listed twice.
 /// </param>
-/// <param name="Name">The project's display name, read from wherever the source keeps its portable definition — never copied into <c>cockpit.json</c>.</param>
+/// <param name="Name">
+/// The project's display name, read from wherever the source keeps its portable definition — never copied into <c>cockpit.json</c>.
+/// </param>
 public sealed record SharedProject(string Id, string Name)
 {
-    /// <summary>Free-text note on what this project is, same idiom as <c>Project.Description</c>. Null when the source has none.</summary>
+    /// <summary>
+    /// Free-text note on what this project is, same idiom as <c>Project.Description</c>. Null when the source has none.
+    /// </summary>
     public string? Description { get; init; }
 
     /// <summary>

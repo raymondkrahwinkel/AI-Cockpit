@@ -27,8 +27,16 @@ public sealed record SharedProjectListResult(bool Succeeded, IReadOnlyList<Share
     public IReadOnlyList<UnreadableSharedProject> VisibleButUnreadable { get; init; } = [];
 }
 
-/// <summary>See <see cref="SharedProjectListResult.VisibleButUnreadable"/>.</summary>
-/// <param name="Id">Same shape as <see cref="SharedProject.Id"/>.</param>
-/// <param name="Name">Best-effort only — the source's own name for it, not a confirmed portable one (that read is exactly what this state means could not happen).</param>
-/// <param name="Role">The operator's membership role, same idiom as <see cref="SharedProject.Role"/>.</param>
+/// <summary>
+/// See <see cref="SharedProjectListResult.VisibleButUnreadable"/>.
+/// </summary>
+/// <param name="Id">
+/// Same shape as <see cref="SharedProject.Id"/>.
+/// </param>
+/// <param name="Name">
+/// Best-effort only — the source's own name for it, not a confirmed portable one (that read is exactly what this state means could not happen).
+/// </param>
+/// <param name="Role">
+/// The operator's membership role, same idiom as <see cref="SharedProject.Role"/>.
+/// </param>
 public sealed record UnreadableSharedProject(string Id, string Name, string? Role);

@@ -23,7 +23,9 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// supported case, not a clash — it means they agree on what the value is (a repository is a repository), and
 /// the first registration wins so either one alone still offers the field.
 /// </param>
-/// <param name="Title">The field's label in the editor — "YouTrack project", "GitHub repository".</param>
+/// <param name="Title">
+/// The field's label in the editor — "YouTrack project", "GitHub repository".
+/// </param>
 /// <param name="LoadOptionsAsync">
 /// Fetches the choices. Runs off the UI thread while the editor is already open and usable, so it may reach the
 /// network or shell out. Return an empty list when there is nothing to offer (no instance configured, no

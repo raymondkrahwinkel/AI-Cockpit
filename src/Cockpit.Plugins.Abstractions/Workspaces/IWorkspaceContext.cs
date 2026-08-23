@@ -17,7 +17,9 @@ namespace Cockpit.Plugins.Abstractions.Workspaces;
 /// </remarks>
 public interface IWorkspaceContext
 {
-    /// <summary>This workspace instance's stable id — the key its state is stored under, and distinct from the workspace <em>type</em> id.</summary>
+    /// <summary>
+    /// This workspace instance's stable id — the key its state is stored under, and distinct from the workspace <em>type</em> id.
+    /// </summary>
     string WorkspaceId { get; }
 
     /// <summary>
@@ -39,7 +41,9 @@ public interface IWorkspaceContext
     /// the session's lifecycle and ties it to this workspace — closing the workspace ends the session — and keeps it
     /// out of the session grid, so it shows only here. The plugin owns the place, never the lifetime.
     /// </summary>
-    /// <param name="request">Which session to start (profile, working directory); see <see cref="EmbeddedSessionRequest"/>.</param>
+    /// <param name="request">
+    /// Which session to start (profile, working directory); see <see cref="EmbeddedSessionRequest"/>.
+    /// </param>
     IEmbeddedSession EmbedSession(EmbeddedSessionRequest request);
 
     /// <summary>

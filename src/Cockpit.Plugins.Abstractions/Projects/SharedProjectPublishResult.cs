@@ -1,9 +1,13 @@
 namespace Cockpit.Plugins.Abstractions.Projects;
 
-/// <summary>What came of <see cref="ISharedProjectSource.PublishAsync"/> (AC-620) — the first-publish mirror of <see cref="SharedProjectWriteBackOutcome"/>'s own idiom.</summary>
+/// <summary>
+/// What came of <see cref="ISharedProjectSource.PublishAsync"/> (AC-620) — the first-publish mirror of <see cref="SharedProjectWriteBackOutcome"/>'s own idiom.
+/// </summary>
 public enum SharedProjectPublishOutcome
 {
-    /// <summary>The project is now published. <see cref="SharedProjectPublishResult.BoundId"/> is the reference to bind the local project to, same shape as <see cref="SharedProject.Id"/>.</summary>
+    /// <summary>
+    /// The project is now published. <see cref="SharedProjectPublishResult.BoundId"/> is the reference to bind the local project to, same shape as <see cref="SharedProject.Id"/>.
+    /// </summary>
     Success,
 
     /// <summary>
@@ -12,14 +16,20 @@ public enum SharedProjectPublishOutcome
     /// </summary>
     AlreadyPublished,
 
-    /// <summary>The operator's role on the target does not allow publishing there. Never retry; show <see cref="SharedProjectPublishResult.Error"/> as the reason.</summary>
+    /// <summary>
+    /// The operator's role on the target does not allow publishing there. Never retry; show <see cref="SharedProjectPublishResult.Error"/> as the reason.
+    /// </summary>
     PermissionDenied,
 
-    /// <summary>Anything else — unreachable, not signed in, a malformed response.</summary>
+    /// <summary>
+    /// Anything else — unreachable, not signed in, a malformed response.
+    /// </summary>
     Failed,
 }
 
-/// <summary>See <see cref="SharedProjectPublishOutcome"/>.</summary>
+/// <summary>
+/// See <see cref="SharedProjectPublishOutcome"/>.
+/// </summary>
 public sealed record SharedProjectPublishResult(SharedProjectPublishOutcome Outcome, string? BoundId = null, string? Error = null)
 {
     public static SharedProjectPublishResult Success(string boundId) => new(SharedProjectPublishOutcome.Success, BoundId: boundId);

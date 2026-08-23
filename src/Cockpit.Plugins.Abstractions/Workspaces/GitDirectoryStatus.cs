@@ -10,12 +10,18 @@ namespace Cockpit.Plugins.Abstractions.Workspaces;
 /// </summary>
 public enum GitDirectoryStatus
 {
-    /// <summary>The host could not tell (it does not implement the check, or the probe failed) — treat as needing isolation.</summary>
+    /// <summary>
+    /// The host could not tell (it does not implement the check, or the probe failed) — treat as needing isolation.
+    /// </summary>
     Unknown = 0,
 
-    /// <summary>The directory is not a git repository — a caller may run there without worktree isolation.</summary>
+    /// <summary>
+    /// The directory is not a git repository — a caller may run there without worktree isolation.
+    /// </summary>
     NotARepository,
 
-    /// <summary>The directory is a git repository (or inside one) — work can be isolated in a worktree off it.</summary>
+    /// <summary>
+    /// The directory is a git repository (or inside one) — work can be isolated in a worktree off it.
+    /// </summary>
     Repository,
 }

@@ -7,10 +7,18 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// <c>Resources</c> are read but never edited through this dialog (AC-247's own scope) and must be carried through
 /// untouched by a source's own <c>WriteBackAsync</c>, never dropped because this type does not mention them.
 /// </summary>
-/// <param name="Name">The operator's edited name — never blank; the editor's own <c>CanSave</c> already guards that.</param>
-/// <param name="Description">The operator's edited description. Null clears it.</param>
-/// <param name="BehaviorPrompt">The operator's edited behaviour prompt. Null clears it.</param>
-/// <param name="IsolateInWorktreeByDefault">The operator's edited worktree-isolation default.</param>
+/// <param name="Name">
+/// The operator's edited name — never blank; the editor's own <c>CanSave</c> already guards that.
+/// </param>
+/// <param name="Description">
+/// The operator's edited description. Null clears it.
+/// </param>
+/// <param name="BehaviorPrompt">
+/// The operator's edited behaviour prompt. Null clears it.
+/// </param>
+/// <param name="IsolateInWorktreeByDefault">
+/// The operator's edited worktree-isolation default.
+/// </param>
 /// <param name="EnabledMcpServerNames">
 /// The operator's edited MCP overlay, by server name. Null means "no opinion" (every offered server ticked) —
 /// the same idiom <see cref="SharedProjectBinding.EnabledMcpServerNames"/> already carries in the read direction.
@@ -32,7 +40,9 @@ public sealed record SharedProjectDefinitionEdit(
 /// <see cref="SharedProjectDefinitionEdit.LogoEdit"/>'s own tri-state (AC-763): the field itself being null means
 /// "untouched"; this record then splits the remaining two states — cleared, or replaced with new bytes.
 /// </summary>
-/// <param name="PngBytes">The replacement logo's PNG bytes, or null for <see cref="Cleared"/>.</param>
+/// <param name="PngBytes">
+/// The replacement logo's PNG bytes, or null for <see cref="Cleared"/>.
+/// </param>
 public sealed record SharedProjectLogoEdit(byte[]? PngBytes)
 {
     public static SharedProjectLogoEdit Replace(byte[] pngBytes) => new(pngBytes);

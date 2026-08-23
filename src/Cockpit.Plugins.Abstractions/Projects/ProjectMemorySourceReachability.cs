@@ -32,10 +32,14 @@ public enum ProjectMemorySourceReachability
     /// </summary>
     NotSignedIn,
 
-    /// <summary>The check ran, reached the connection, and the value does not resolve to anything — or resolves to something this operator/token cannot see (see the type's own remarks on DEP-136).</summary>
+    /// <summary>
+    /// The check ran, reached the connection, and the value does not resolve to anything — or resolves to something this operator/token cannot see (see the type's own remarks on DEP-136).
+    /// </summary>
     NotFound,
 
-    /// <summary>The check ran and confirmed the value. <see cref="ProjectMemorySourceReachabilityResult.Detail"/> carries what it found, if anything.</summary>
+    /// <summary>
+    /// The check ran and confirmed the value. <see cref="ProjectMemorySourceReachabilityResult.Detail"/> carries what it found, if anything.
+    /// </summary>
     Confirmed,
 
     /// <summary>

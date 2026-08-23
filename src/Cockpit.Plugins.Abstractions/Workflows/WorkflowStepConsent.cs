@@ -8,12 +8,18 @@ namespace Cockpit.Plugins.Abstractions.Workflows;
 /// </summary>
 public enum WorkflowStepConsent
 {
-    /// <summary>Safe to run without asking — a read, a transform, a local computation with no side effect worth gating.</summary>
+    /// <summary>
+    /// Safe to run without asking — a read, a transform, a local computation with no side effect worth gating.
+    /// </summary>
     None,
 
-    /// <summary>An idempotent, low-consequence action. Gated, and the operator may choose "remember for this session" (bound to the exact action).</summary>
+    /// <summary>
+    /// An idempotent, low-consequence action. Gated, and the operator may choose "remember for this session" (bound to the exact action).
+    /// </summary>
     LowRisk,
 
-    /// <summary>Acts with the operator's rights — a command, a session hand-off, arbitrary egress. Gated, asked afresh every time, never remembered.</summary>
+    /// <summary>
+    /// Acts with the operator's rights — a command, a session hand-off, arbitrary egress. Gated, asked afresh every time, never remembered.
+    /// </summary>
     Dangerous,
 }
