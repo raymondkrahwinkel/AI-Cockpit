@@ -6,6 +6,10 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// The host's driver adapter converts one to the other at the plugin boundary, so this assembly never references
 /// <c>Cockpit.Core</c>.
 /// </summary>
-/// <param name="MediaType">The image MIME type, e.g. <c>image/png</c>.</param>
-/// <param name="Base64Data">The raw image bytes, base64-encoded (no data-URI prefix).</param>
+/// <param name="MediaType">
+/// The image MIME type, e.g. <c>image/png</c>.
+/// </param>
+/// <param name="Base64Data">
+/// The raw image bytes, base64-encoded (no data-URI prefix).
+/// </param>
 public sealed record PluginImageAttachment(string MediaType, string Base64Data);

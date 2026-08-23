@@ -8,8 +8,12 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// declaration by <see cref="SignalKey"/> and renders the result; it never learns what was read or from where.
 /// </para>
 /// </summary>
-/// <param name="SignalKey">Which declared signal this is a value for. A reading whose key matches no declaration is ignored rather than guessed at.</param>
-/// <param name="UsedPercent">How full it is, 0-100.</param>
+/// <param name="SignalKey">
+/// Which declared signal this is a value for. A reading whose key matches no declaration is ignored rather than guessed at.
+/// </param>
+/// <param name="UsedPercent">
+/// How full it is, 0-100.
+/// </param>
 /// <param name="ResetsAt">
 /// When an allowance rolls over, or <see langword="null"/> when this signal has no moment (a fill) or the
 /// provider did not say. A resume can only be offered against a reading that carries one.

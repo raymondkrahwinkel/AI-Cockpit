@@ -11,7 +11,9 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public static class WellKnownPluginSessionOptions
 {
-    /// <summary>The option key by which a plugin driver receives the host's Claude-style permission-mode selection.</summary>
+    /// <summary>
+    /// The option key by which a plugin driver receives the host's Claude-style permission-mode selection.
+    /// </summary>
     public const string PermissionMode = "permission-mode";
 
     /// <summary>

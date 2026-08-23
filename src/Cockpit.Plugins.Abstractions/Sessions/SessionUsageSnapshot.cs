@@ -20,13 +20,19 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// The only identifying handle a profile carries (there is no stable profile id), so it is what a per-profile
 /// history groups on; renaming a profile therefore starts a fresh group.
 /// </param>
-/// <param name="ContextUsedPercent">How full the context window is, 0-100, or <see langword="null"/> before the provider reports it.</param>
-/// <param name="RateLimits">The usage windows the session reports, each self-labelled (e.g. "5h", "wk"); empty when it reports none.</param>
+/// <param name="ContextUsedPercent">
+/// How full the context window is, 0-100, or <see langword="null"/> before the provider reports it.
+/// </param>
+/// <param name="RateLimits">
+/// The usage windows the session reports, each self-labelled (e.g. "5h", "wk"); empty when it reports none.
+/// </param>
 public sealed record SessionUsageSnapshot(
     string? ProfileLabel,
     double? ContextUsedPercent,
     IReadOnlyList<PluginRateLimitWindow> RateLimits)
 {
-    /// <summary>Whether there is any usage figure worth recording — a context percentage, or at least one window — so a consumer can skip a silent snapshot rather than storing a row of nulls.</summary>
+    /// <summary>
+    /// Whether there is any usage figure worth recording — a context percentage, or at least one window — so a consumer can skip a silent snapshot rather than storing a row of nulls.
+    /// </summary>
     public bool HasAny => ContextUsedPercent is not null || RateLimits.Count > 0;
 }

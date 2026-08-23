@@ -10,10 +10,14 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public interface IPluginSessionDriver : IAsyncDisposable
 {
-    /// <summary>What this driver supports, so the UI renders/hides controls per provider.</summary>
+    /// <summary>
+    /// What this driver supports, so the UI renders/hides controls per provider.
+    /// </summary>
     PluginSessionCapabilities Capabilities { get; }
 
-    /// <summary>The provider's own session id, once known; <see langword="null"/> before that.</summary>
+    /// <summary>
+    /// The provider's own session id, once known; <see langword="null"/> before that.
+    /// </summary>
     string? SessionId { get; }
 
     /// <summary>
@@ -92,7 +96,9 @@ public interface IPluginSessionDriver : IAsyncDisposable
     Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, IPluginToolset? toolset, CancellationToken cancellationToken) =>
         StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, cancellationToken);
 
-    /// <summary>Sends a user message; the session stays open for further turns afterwards.</summary>
+    /// <summary>
+    /// Sends a user message; the session stays open for further turns afterwards.
+    /// </summary>
     Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -106,7 +112,9 @@ public interface IPluginSessionDriver : IAsyncDisposable
     Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken) =>
         SendUserMessageAsync(text, cancellationToken);
 
-    /// <summary>Interrupts the current in-flight turn, if any.</summary>
+    /// <summary>
+    /// Interrupts the current in-flight turn, if any.
+    /// </summary>
     Task InterruptAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -176,7 +184,9 @@ public interface IPluginSessionDriver : IAsyncDisposable
     /// </summary>
     IReadOnlyList<PluginSessionLaunchOption> LiveOptions => [];
 
-    /// <summary>The live, ordered stream of typed transcript events for this session.</summary>
+    /// <summary>
+    /// The live, ordered stream of typed transcript events for this session.
+    /// </summary>
     IAsyncEnumerable<PluginSessionEvent> Events { get; }
 
     /// <summary>

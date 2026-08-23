@@ -6,10 +6,18 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// running token/cost meter (#8) can fold it in. How the counts accumulate across turns is the host's concern;
 /// this just reports what one turn cost.
 /// </summary>
-/// <param name="InputTokens">Input (prompt) tokens for the turn.</param>
-/// <param name="OutputTokens">Output (completion) tokens for the turn, reasoning included.</param>
-/// <param name="CacheReadInputTokens">Input tokens served from cache rather than re-read.</param>
-/// <param name="CacheCreationInputTokens">Input tokens written to cache this turn.</param>
+/// <param name="InputTokens">
+/// Input (prompt) tokens for the turn.
+/// </param>
+/// <param name="OutputTokens">
+/// Output (completion) tokens for the turn, reasoning included.
+/// </param>
+/// <param name="CacheReadInputTokens">
+/// Input tokens served from cache rather than re-read.
+/// </param>
+/// <param name="CacheCreationInputTokens">
+/// Input tokens written to cache this turn.
+/// </param>
 public sealed record PluginTokenUsage(
     int InputTokens,
     int OutputTokens,

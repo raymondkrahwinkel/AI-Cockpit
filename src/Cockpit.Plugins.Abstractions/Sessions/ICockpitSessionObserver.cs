@@ -109,16 +109,26 @@ public interface ICockpitSessionObserver
 /// One entry in <see cref="ICockpitSessionObserver.OpenSessions"/> — a session's pane id and the operator-visible
 /// name shown on its header, how a contribution outside any session names the one it means to act on.
 /// </summary>
-/// <param name="PaneId">The session's <see cref="IPluginSessionContext.PaneId"/>.</param>
-/// <param name="Name">The name the operator sees on that session's header.</param>
+/// <param name="PaneId">
+/// The session's <see cref="IPluginSessionContext.PaneId"/>.
+/// </param>
+/// <param name="Name">
+/// The name the operator sees on that session's header.
+/// </param>
 public sealed record OpenCockpitSession(string PaneId, string Name);
 
 /// <summary>
 /// One chunk of text a session produced, delivered on <see cref="ICockpitSessionObserver.OutputProduced"/>.
 /// </summary>
-/// <param name="Text">The produced text (assistant prose or tool output), verbatim.</param>
-/// <param name="WorkingDirectory">Working directory of the session that produced it, or null when unknown.</param>
-/// <param name="IsFromActiveSession">True when this came from the currently selected session, so a watcher can ignore background sessions if it only cares about the one in view.</param>
+/// <param name="Text">
+/// The produced text (assistant prose or tool output), verbatim.
+/// </param>
+/// <param name="WorkingDirectory">
+/// Working directory of the session that produced it, or null when unknown.
+/// </param>
+/// <param name="IsFromActiveSession">
+/// True when this came from the currently selected session, so a watcher can ignore background sessions if it only cares about the one in view.
+/// </param>
 public sealed record SessionOutputText(string Text, string? WorkingDirectory, bool IsFromActiveSession);
 
 /// <summary>
@@ -128,11 +138,21 @@ public sealed record SessionOutputText(string Text, string? WorkingDirectory, bo
 /// the content and error flag from the matching tool-result — coupled by the host so a consumer sees the whole
 /// call in one place.
 /// </summary>
-/// <param name="PaneId">Pane id of the session whose agent made the call — how a consumer names the session to act on (e.g. to fetch that turn's images via <see cref="ICockpitSessionObserver.GetCurrentTurnImages"/>).</param>
-/// <param name="ToolName">The tool's name as the agent called it, e.g. <c>mcp__youtrack_personal__create_issue</c>.</param>
-/// <param name="InputJson">The call's arguments as a JSON string, verbatim.</param>
-/// <param name="ResultContent">The tool result's content, verbatim (often JSON the tool returned).</param>
-/// <param name="IsError">True when the tool reported the call as an error.</param>
+/// <param name="PaneId">
+/// Pane id of the session whose agent made the call — how a consumer names the session to act on (e.g. to fetch that turn's images via <see cref="ICockpitSessionObserver.GetCurrentTurnImages"/>).
+/// </param>
+/// <param name="ToolName">
+/// The tool's name as the agent called it, e.g. <c>mcp__youtrack_personal__create_issue</c>.
+/// </param>
+/// <param name="InputJson">
+/// The call's arguments as a JSON string, verbatim.
+/// </param>
+/// <param name="ResultContent">
+/// The tool result's content, verbatim (often JSON the tool returned).
+/// </param>
+/// <param name="IsError">
+/// True when the tool reported the call as an error.
+/// </param>
 public sealed record SessionToolActivity(string PaneId, string ToolName, string InputJson, string ResultContent, bool IsError);
 
 /// <summary>

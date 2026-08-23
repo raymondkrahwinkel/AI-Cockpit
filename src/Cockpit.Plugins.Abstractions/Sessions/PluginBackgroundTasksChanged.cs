@@ -15,6 +15,8 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public sealed record PluginBackgroundTasksChanged : PluginSessionEvent
 {
-    /// <summary>Everything still outstanding right now. Empty when the last of it finished.</summary>
+    /// <summary>
+    /// Everything still outstanding right now. Empty when the last of it finished.
+    /// </summary>
     public required IReadOnlyList<PluginBackgroundTask> Tasks { get; init; }
 }

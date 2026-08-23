@@ -10,7 +10,9 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public abstract record PluginSessionEvent
 {
-    /// <summary>Session id the driver assigned, once known.</summary>
+    /// <summary>
+    /// Session id the driver assigned, once known.
+    /// </summary>
     public required string? SessionId { get; init; }
 
     /// <summary>

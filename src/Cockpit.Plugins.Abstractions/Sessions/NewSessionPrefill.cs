@@ -19,8 +19,12 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// label that matches none leaves the dialog's own default selection. Deliberately a label rather than a profile
 /// object — a plugin sees profiles as names (see <c>PluginProfileInfo</c>), never the host's <c>SessionProfile</c>.
 /// </param>
-/// <param name="WorkingDirectory">The folder to pre-fill as the session's working directory; blank leaves it to the operator.</param>
-/// <param name="SessionName">The friendly session name to pre-fill (shown in the sidebar and header); blank falls back to the dialog's generated name.</param>
+/// <param name="WorkingDirectory">
+/// The folder to pre-fill as the session's working directory; blank leaves it to the operator.
+/// </param>
+/// <param name="SessionName">
+/// The friendly session name to pre-fill (shown in the sidebar and header); blank falls back to the dialog's generated name.
+/// </param>
 /// <param name="InitialPrompt">
 /// A first prompt to place into the started session's input once it exists — injected through the same seam a
 /// plugin's <c>ICockpitActions.InjectIntoActiveSessionAsync</c> uses, so the operator sees it in the composer and

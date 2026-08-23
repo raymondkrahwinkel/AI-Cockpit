@@ -8,9 +8,13 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public sealed record PluginAssistantThinkingDelta : PluginSessionEvent
 {
-    /// <summary>Index of the thinking block this chunk belongs to, so successive chunks accumulate into one block.</summary>
+    /// <summary>
+    /// Index of the thinking block this chunk belongs to, so successive chunks accumulate into one block.
+    /// </summary>
     public required int BlockIndex { get; init; }
 
-    /// <summary>The reasoning text of this chunk.</summary>
+    /// <summary>
+    /// The reasoning text of this chunk.
+    /// </summary>
     public required string Thinking { get; init; }
 }

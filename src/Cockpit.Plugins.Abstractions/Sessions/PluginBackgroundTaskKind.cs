@@ -15,9 +15,13 @@ public enum PluginBackgroundTaskKind
     /// </summary>
     Unknown,
 
-    /// <summary>A nested agent (the Task tool). Outstanding work the operator is waiting on.</summary>
+    /// <summary>
+    /// A nested agent (the Task tool). Outstanding work the operator is waiting on.
+    /// </summary>
     SubAgent,
 
-    /// <summary>A backgrounded shell command that outlived the turn that started it.</summary>
+    /// <summary>
+    /// A backgrounded shell command that outlived the turn that started it.
+    /// </summary>
     Shell,
 }

@@ -19,6 +19,8 @@ public sealed record PluginModelCostEstimate(string Model)
     /// </summary>
     public decimal? EstimatedInputUsdPerMillionTokens { get; init; }
 
-    /// <summary>Estimated price per million output tokens in USD, or <see langword="null"/> when the provider offers no figure.</summary>
+    /// <summary>
+    /// Estimated price per million output tokens in USD, or <see langword="null"/> when the provider offers no figure.
+    /// </summary>
     public decimal? EstimatedOutputUsdPerMillionTokens { get; init; }
 }

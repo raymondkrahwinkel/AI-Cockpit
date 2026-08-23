@@ -18,12 +18,18 @@ public interface IPluginSessionContext
     /// </summary>
     string PaneId => string.Empty;
 
-    /// <summary>The directory this session is working in, or null until it is known (an SDK session before its init event).</summary>
+    /// <summary>
+    /// The directory this session is working in, or null until it is known (an SDK session before its init event).
+    /// </summary>
     string? WorkingDirectory { get; }
 
-    /// <summary>Raised when <see cref="WorkingDirectory"/> becomes known or changes — the cue to re-scope.</summary>
+    /// <summary>
+    /// Raised when <see cref="WorkingDirectory"/> becomes known or changes — the cue to re-scope.
+    /// </summary>
     event EventHandler? WorkingDirectoryChanged;
 
-    /// <summary>Raised for each chunk of text <em>this</em> session produces (assistant prose and tool output), verbatim — substring-scan it for a signal.</summary>
+    /// <summary>
+    /// Raised for each chunk of text <em>this</em> session produces (assistant prose and tool output), verbatim — substring-scan it for a signal.
+    /// </summary>
     event EventHandler<SessionOutputText>? OutputProduced;
 }

@@ -8,7 +8,9 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// resumed correctly when the session starts in that same directory, so the picker hands the location back with
 /// the id and the New-session dialog starts the resumed session there.
 /// </summary>
-/// <param name="SessionId">The chosen conversation's id, as the provider's resume flag expects it.</param>
+/// <param name="SessionId">
+/// The chosen conversation's id, as the provider's resume flag expects it.
+/// </param>
 /// <param name="WorkingDirectory">
 /// The directory the conversation ran in, or <see langword="null"/> when the picker cannot tell — a provider that
 /// resumes regardless of directory, or a transcript that never recorded one. The dialog then leaves the working

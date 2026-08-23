@@ -28,7 +28,9 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </remarks>
 public sealed class PluginSessionEventPublisher
 {
-    /// <summary>How many events may sit unread before further ones are dropped and counted.</summary>
+    /// <summary>
+    /// How many events may sit unread before further ones are dropped and counted.
+    /// </summary>
     public const int Capacity = 4096;
 
     private readonly Channel<PluginSessionEvent> _channel =
@@ -41,10 +43,14 @@ public sealed class PluginSessionEventPublisher
 
     private int _dropped;
 
-    /// <summary>The events, for the host's pump. Enumerated once per driver.</summary>
+    /// <summary>
+    /// The events, for the host's pump. Enumerated once per driver.
+    /// </summary>
     public IAsyncEnumerable<PluginSessionEvent> Events => _channel.Reader.ReadAllAsync();
 
-    /// <summary>How many events have been dropped and not yet reported to the host.</summary>
+    /// <summary>
+    /// How many events have been dropped and not yet reported to the host.
+    /// </summary>
     public int PendingDroppedCount => Volatile.Read(ref _dropped);
 
     /// <summary>
@@ -68,7 +74,9 @@ public sealed class PluginSessionEventPublisher
         return true;
     }
 
-    /// <summary>Closes the stream, optionally with the error that ended it. Reports any outstanding gap first.</summary>
+    /// <summary>
+    /// Closes the stream, optionally with the error that ended it. Reports any outstanding gap first.
+    /// </summary>
     public bool TryComplete(Exception? error = null)
     {
         _ReportAnyGap(sessionId: null);

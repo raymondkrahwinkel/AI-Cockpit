@@ -16,11 +16,15 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public static class ProviderConfigStatus
 {
-    /// <summary>Creates an empty status line to place under a config field; fill it with <see cref="Set"/>.</summary>
+    /// <summary>
+    /// Creates an empty status line to place under a config field; fill it with <see cref="Set"/>.
+    /// </summary>
     public static TextBlock CreateLine() =>
         new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
 
-    /// <summary>Sets the status text and colour: green when <paramref name="isOk"/>, otherwise amber.</summary>
+    /// <summary>
+    /// Sets the status text and colour: green when <paramref name="isOk"/>, otherwise amber.
+    /// </summary>
     public static void Set(TextBlock line, string message, bool isOk)
     {
         line.Text = message;

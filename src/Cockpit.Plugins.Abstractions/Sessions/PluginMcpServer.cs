@@ -17,16 +17,24 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </remarks>
 public sealed record PluginMcpServer
 {
-    /// <summary>The server's registry name — also the key the provider registers it under.</summary>
+    /// <summary>
+    /// The server's registry name — also the key the provider registers it under.
+    /// </summary>
     public required string Name { get; init; }
 
-    /// <summary>Endpoint URL for an HTTP server; <see langword="null"/> for a stdio server.</summary>
+    /// <summary>
+    /// Endpoint URL for an HTTP server; <see langword="null"/> for a stdio server.
+    /// </summary>
     public string? Url { get; init; }
 
-    /// <summary>Executable for a stdio server; <see langword="null"/> for an HTTP server.</summary>
+    /// <summary>
+    /// Executable for a stdio server; <see langword="null"/> for an HTTP server.
+    /// </summary>
     public string? Command { get; init; }
 
-    /// <summary>Arguments for the stdio <see cref="Command"/>.</summary>
+    /// <summary>
+    /// Arguments for the stdio <see cref="Command"/>.
+    /// </summary>
     public IReadOnlyList<string> Args { get; init; } = [];
 
     /// <summary>

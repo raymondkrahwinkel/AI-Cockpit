@@ -8,8 +8,12 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// the other at the plugin boundary. <see cref="SupportsTools"/>/<see cref="SupportsPermissions"/> are here
 /// because a plugin driver can genuinely back them.
 /// </summary>
-/// <param name="SupportsTools">Whether the plugin driver has a tool source (native tools or an MCP loop of its own).</param>
-/// <param name="SupportsPermissions">Whether the plugin driver knows Claude-style permission modes.</param>
+/// <param name="SupportsTools">
+/// Whether the plugin driver has a tool source (native tools or an MCP loop of its own).
+/// </param>
+/// <param name="SupportsPermissions">
+/// Whether the plugin driver knows Claude-style permission modes.
+/// </param>
 /// <param name="SupportsVision">
 /// Whether this plugin's driver sends pasted image attachments to the model (#64). Defaults to
 /// <see langword="false"/> for back-compat with existing 2-arg construction.

@@ -28,8 +28,14 @@ public interface IPluginToolset
     /// Runs one tool and returns its result as the model should see it. A refused or failed call comes back as
     /// result text rather than an exception, so the loop continues and the model can react.
     /// </summary>
-    /// <param name="name">The tool's <see cref="PluginToolDescriptor.Name"/>.</param>
-    /// <param name="argumentsJson">The call's arguments as a JSON object.</param>
-    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <param name="name">
+    /// The tool's <see cref="PluginToolDescriptor.Name"/>.
+    /// </param>
+    /// <param name="argumentsJson">
+    /// The call's arguments as a JSON object.
+    /// </param>
+    /// <param name="cancellationToken">
+    /// Cancels the call.
+    /// </param>
     Task<string> InvokeAsync(string name, string argumentsJson, CancellationToken cancellationToken = default);
 }

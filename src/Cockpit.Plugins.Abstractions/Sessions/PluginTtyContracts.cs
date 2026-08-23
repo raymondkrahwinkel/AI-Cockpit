@@ -21,15 +21,23 @@ public interface IPluginTtyProvider
     PluginTtyLaunchSpec BuildLaunch(PluginTtyLaunchContext context);
 }
 
-/// <summary>What the host tells a provider about the session it is about to start.</summary>
-/// <param name="ConfigJson">The profile's own configuration for this provider, in whatever shape the plugin defined.</param>
+/// <summary>
+/// What the host tells a provider about the session it is about to start.
+/// </summary>
+/// <param name="ConfigJson">
+/// The profile's own configuration for this provider, in whatever shape the plugin defined.
+/// </param>
 /// <param name="Options">
 /// The start defaults the operator chose, keyed by the <see cref="PluginTtyLaunchOption.Key"/>s this provider
 /// declared. The host does not know what they mean — it renders what the provider asks for and hands back what
 /// was picked, which is what keeps Claude's vocabulary (permission modes, effort) out of everyone else's CLI.
 /// </param>
-/// <param name="WorkingDirectory">Absolute path the session runs in, already resolved by the host.</param>
-/// <param name="Resume">Which earlier conversation to pick up, or <see langword="null"/> for a fresh one.</param>
+/// <param name="WorkingDirectory">
+/// Absolute path the session runs in, already resolved by the host.
+/// </param>
+/// <param name="Resume">
+/// Which earlier conversation to pick up, or <see langword="null"/> for a fresh one.
+/// </param>
 /// <param name="BaseEnvironment">
 /// The environment the child will start from, already scrubbed by the host. Read it to compose an overlay that
 /// extends an inherited value; it is not yours to return.
@@ -55,19 +63,29 @@ public sealed record PluginTtyLaunchContext(
     /// </summary>
     public string? DelegationSystemPrompt { get; init; }
 
-    /// <summary>Called whenever the provider learns this session's conversation id, and again when it changes (AC-408).</summary>
+    /// <summary>
+    /// Called whenever the provider learns this session's conversation id, and again when it changes (AC-408).
+    /// </summary>
     public Action<PluginConversationId>? ReportConversationId { get; init; }
 }
 
-/// <summary>Pick up an earlier conversation: the most recent one, or a specific one by the id the CLI gave it.</summary>
-/// <param name="SessionId">The conversation to resume; <see langword="null"/> means the most recent one.</param>
+/// <summary>
+/// Pick up an earlier conversation: the most recent one, or a specific one by the id the CLI gave it.
+/// </summary>
+/// <param name="SessionId">
+/// The conversation to resume; <see langword="null"/> means the most recent one.
+/// </param>
 public sealed record PluginTtyResume(string? SessionId);
 
 /// <summary>
 /// How to start the provider's CLI.
 /// </summary>
-/// <param name="ExecutablePath">The program to run. The provider resolves it: only it knows where its CLI lives.</param>
-/// <param name="Arguments">Launch-only start defaults, in the provider's own CLI syntax.</param>
+/// <param name="ExecutablePath">
+/// The program to run. The provider resolves it: only it knows where its CLI lives.
+/// </param>
+/// <param name="Arguments">
+/// Launch-only start defaults, in the provider's own CLI syntax.
+/// </param>
 /// <param name="EnvironmentOverlay">
 /// Laid over the host's base environment, never in place of it. A <see langword="null"/> value removes a
 /// variable. Variables the host controls — the markers of the agent session the cockpit was launched from, the
@@ -75,8 +93,12 @@ public sealed record PluginTtyResume(string? SessionId);
 /// safety, and a scrub a provider could opt out of is not a scrub. Removing one is allowed; the attempt to set
 /// one is ignored and logged by name.
 /// </param>
-/// <param name="WorkingDirectory">Absolute path the pty child runs in.</param>
-/// <param name="SessionScopedFiles">Files written for this one session. The host deletes them when it ends.</param>
+/// <param name="WorkingDirectory">
+/// Absolute path the pty child runs in.
+/// </param>
+/// <param name="SessionScopedFiles">
+/// Files written for this one session. The host deletes them when it ends.
+/// </param>
 public sealed record PluginTtyLaunchSpec(
     string ExecutablePath,
     IReadOnlyList<string> Arguments,
@@ -99,10 +121,18 @@ public sealed record PluginTtyLaunchSpec(
 /// back in <see cref="PluginTtyLaunchContext.Options"/>. The host never learns what any of them mean, which is
 /// the only way a dialog can serve providers it has never heard of.
 /// </summary>
-/// <param name="Key">How the answer comes back in <see cref="PluginTtyLaunchContext.Options"/>.</param>
-/// <param name="Label">What the operator reads.</param>
-/// <param name="Choices">The values on offer. Empty means free text.</param>
-/// <param name="DefaultValue">Pre-selected, or <see langword="null"/> to leave the option unset (the CLI's own default then applies).</param>
+/// <param name="Key">
+/// How the answer comes back in <see cref="PluginTtyLaunchContext.Options"/>.
+/// </param>
+/// <param name="Label">
+/// What the operator reads.
+/// </param>
+/// <param name="Choices">
+/// The values on offer. Empty means free text.
+/// </param>
+/// <param name="DefaultValue">
+/// Pre-selected, or <see langword="null"/> to leave the option unset (the CLI's own default then applies).
+/// </param>
 public sealed record PluginTtyLaunchOption(
     string Key,
     string Label,
@@ -128,9 +158,15 @@ public sealed record PluginTtyLaunchOption(
 /// The same id the plugin registers its session provider under, when it has one. A profile names a provider;
 /// what that provider can do — a headless driver, a TUI, or both — is what it registered.
 /// </param>
-/// <param name="DisplayName">Shown wherever the operator picks a provider.</param>
-/// <param name="CreateProvider">Builds the provider from the container, once, when the host first needs it.</param>
-/// <param name="Options">The start defaults this provider wants asked about; empty when it wants none.</param>
+/// <param name="DisplayName">
+/// Shown wherever the operator picks a provider.
+/// </param>
+/// <param name="CreateProvider">
+/// Builds the provider from the container, once, when the host first needs it.
+/// </param>
+/// <param name="Options">
+/// The start defaults this provider wants asked about; empty when it wants none.
+/// </param>
 public sealed record TtyProviderRegistration(
     string ProviderId,
     string DisplayName,

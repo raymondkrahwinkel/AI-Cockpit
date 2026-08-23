@@ -11,9 +11,15 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// picked for everybody.
 /// </para>
 /// </summary>
-/// <param name="Key">How a reading names this signal, and how a stored threshold finds it again. Stable — a rename orphans the operator's setting.</param>
-/// <param name="Label">The short text the header shows, chosen by the provider (e.g. "ctx", "5h", "wk").</param>
-/// <param name="Kind">Whether this fills and drains or spends down and rolls over; see <see cref="PluginUsageSignalKind"/>.</param>
+/// <param name="Key">
+/// How a reading names this signal, and how a stored threshold finds it again. Stable — a rename orphans the operator's setting.
+/// </param>
+/// <param name="Label">
+/// The short text the header shows, chosen by the provider (e.g. "ctx", "5h", "wk").
+/// </param>
+/// <param name="Kind">
+/// Whether this fills and drains or spends down and rolls over; see <see cref="PluginUsageSignalKind"/>.
+/// </param>
 /// <param name="DefaultThresholdPercent">
 /// How full it has to be before the cockpit says something, 0-100. The provider's answer; an operator can
 /// override it per provider, and a profile can override that again.
