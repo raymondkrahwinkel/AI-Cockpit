@@ -181,10 +181,16 @@ public class TtyUsageRecordingTests
         var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader, usageHistory: history);
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
 
+        // No positive record to poll for, but every reading raises OutputTextProduced before the tail decides
+        // whether to write one — RunContinuationsAsynchronously so that firing (mid-callback, with more of the
+        // same callback still to run) cannot resume this test's assert ahead of it.
+        var processed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        vm.OutputTextProduced += (_, _) => processed.TrySetResult();
+
         vm.OnLaunchSucceeded();
 
-        // Give the (correctly silent) tail a moment to have run, since there is no positive signal to poll for.
-        await Task.Delay(200);
+        await Task.WhenAny(processed.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.True(processed.Task.IsCompletedSuccessfully, "the reading should have been processed within the wait window");
         Assert.Empty(history.Recorded);
     });
 
@@ -201,11 +207,22 @@ public class TtyUsageRecordingTests
         var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader, usageHistory: history);
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
 
+        // HasOutstandingBackgroundShells is re-raised for every reading, RawLine or not, so its second firing
+        // marks the synthetic (RawLine: null) reading as fully handled too — not just the first, real one.
+        var readingsProcessed = 0;
+        var secondReadingProcessed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(TtyViewModel.HasOutstandingBackgroundShells) && ++readingsProcessed == 2)
+            {
+                secondReadingProcessed.TrySetResult();
+            }
+        };
+
         vm.OnLaunchSucceeded();
 
-        await _WaitUntilAsync(() => history.Recorded.Count > 0);
-        // Give the synthetic reading a chance to have reached the tail too before asserting nothing further landed.
-        await Task.Delay(200);
+        await Task.WhenAny(secondReadingProcessed.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.True(secondReadingProcessed.Task.IsCompletedSuccessfully, "both readings should have been processed within the wait window");
         var snapshot = Assert.Single(history.Recorded);
         Assert.Equal(1, snapshot.Turns);
     });
@@ -219,10 +236,17 @@ public class TtyUsageRecordingTests
         var reader = _ReaderYielding(new SessionTranscriptActivity(SessionActivity.Busy, "tool-use line", new TokenUsage(10, 5, 0, 0)));
         var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader, usageHistory: history);
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
+
+        // The one reading above has no terminating TurnComplete, so there is no record to poll for yet — but it
+        // does raise OutputTextProduced before its pending tokens are accumulated, in the same tail callback.
+        // RunContinuationsAsynchronously so DisposeAsync below cannot run inline ahead of that accumulation.
+        var processed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        vm.OutputTextProduced += (_, _) => processed.TrySetResult();
+
         vm.OnLaunchSucceeded();
 
-        // The one reading above has no terminating TurnComplete — wait for it to have been processed, then close.
-        await Task.Delay(200);
+        await Task.WhenAny(processed.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.True(processed.Task.IsCompletedSuccessfully, "the reading should have been processed within the wait window");
         await vm.DisposeAsync();
 
         var snapshot = Assert.Single(history.Recorded);
