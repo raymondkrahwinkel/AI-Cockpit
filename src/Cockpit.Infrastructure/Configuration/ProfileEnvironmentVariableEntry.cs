@@ -2,10 +2,9 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// On-disk shape of one profile environment variable (AC-22). A secret value is stored under
-// `SecretValue` — a field name the secret rule recognises (`SecretFields`), so it is
-// encrypted at rest and scrubbed from backups without this entry knowing how. A plain value stays readable
-// in `cockpit.json` under `Value`, on purpose: the config file is the operator's to inspect.
+// AC-22: on-disk shape of one profile environment variable. A secret goes under `SecretValue`, a name
+// `SecretFields` recognises, so it is encrypted without this entry knowing how; a plain value stays
+// readable under `Value` — the config file is the operator's to inspect.
 internal sealed class ProfileEnvironmentVariableEntry
 {
     public string Key { get; set; } = string.Empty;

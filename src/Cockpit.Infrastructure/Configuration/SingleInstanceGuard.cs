@@ -1,16 +1,8 @@
 namespace Cockpit.Infrastructure.Configuration;
 
-// The system-wide claim that this is the only cockpit running (AC-4). A second start finds the claim taken and
-// stands down before it touches anything the first one owns.
-//
-// Two cockpits over one state directory is not a tidiness problem: they share `cockpit.json`, and each
-// writes it whole. The second one's startup housekeeping deletes the `--mcp-config` files the first one's
-// live sessions are still reading, and its bundled-plugin install deletes plugin directories the first one has
-// loaded. This is why the guard runs before any of that, and not after.
-//
-// A named mutex rather than a PID lock-file because it is the only mechanism the kernel cleans up on all three
-// platforms when a process is killed outright. A lock-file has to guess whether the PID in it is still alive,
-// and a wrong guess leaves the app unstartable — worse than having no guard.
+// AC-4: the system-wide claim that this is the only cockpit running — a second start stands down before
+// its startup housekeeping deletes files or plugins the first instance still has live. A named mutex,
+// not a PID lock-file, since the kernel cleans it up on a killed process on all three platforms.
 public sealed class SingleInstanceGuard : IDisposable
 {
     // No `Global\` prefix: backslash is reserved in a mutex name, and the scope is set through
@@ -27,21 +19,14 @@ public sealed class SingleInstanceGuard : IDisposable
 
     private SingleInstanceGuard(Mutex? claim) => _claim = claim;
 
-    // Claims the right to run, or reports that another cockpit already has it.
-    //
-    // `isDevelopmentBuild`:
-    // A development build takes no claim and honours none: it is meant to run beside the production cockpit,
-    // including the one hosting the session that is rebuilding it. Its state lives elsewhere
-    // (`Cockpit.Core.Configuration.CockpitBuild.StateFolder`), so the two cannot collide anyway.
-    // Null when another cockpit holds the claim — the caller must not start. Otherwise a guard that holds the
-    // claim until it is disposed.
+    // Claims the right to run, or reports another cockpit already has it. `isDevelopmentBuild` takes no
+    // claim and honours none, since a dev build's state lives elsewhere and cannot collide anyway.
+    // Null means another cockpit holds the claim; otherwise a guard that holds it until disposed.
     public static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild) => TryAcquire(isDevelopmentBuild, ClaimName);
 
-    // As `TryAcquire(bool)`, but waits up to `claimWait` for the claim to come free
-    // instead of giving up the instant it is taken. A restart hands the claim from the old cockpit to the new one
-    // (`Cockpit.App.Services.AppRestartService`): the new process starts while the old one is still
-    // shutting down and holding the claim, so without a wait it would lose the race and refuse to start. A plain
-    // double-launch keeps the zero wait and still stands down at once.
+    // As `TryAcquire(bool)`, but waits up to `claimWait` instead of giving up instantly. A restart's new
+    // process starts while the old one is still shutting down and holding the claim, so it needs the wait
+    // to avoid losing the race; a plain double-launch keeps zero wait and stands down at once.
     public static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild, TimeSpan claimWait) =>
         TryAcquire(isDevelopmentBuild, ClaimName, claimWait);
 
@@ -80,10 +65,9 @@ public sealed class SingleInstanceGuard : IDisposable
         }
         catch (AbandonedMutexException)
         {
-            // The previous holder died without releasing — a crash, a kill -9. The wait succeeded and the claim is
-            // ours; the exception is the kernel telling us who it used to belong to. Letting it escape would build
-            // exactly the thing this design rejected a lock-file to avoid: a cockpit that will not start again
-            // after it has crashed once.
+            // The previous holder died without releasing (crash, kill -9); the wait succeeded and the claim
+            // is ours. Letting this exception escape would rebuild the exact problem a lock-file was rejected
+            // to avoid: a cockpit that won't start again after crashing once.
             return new SingleInstanceGuard(claim);
         }
 

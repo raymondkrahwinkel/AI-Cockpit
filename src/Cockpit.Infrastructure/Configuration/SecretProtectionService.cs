@@ -6,20 +6,9 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// Turns credential encryption on and off, and unlocks it at startup.
-//
-// It works on the raw JSON rather than the typed config model on purpose: a migration must convert every
-// credential that is *in the file*, including the sections of plugins this build has never heard of and
-// any field a future version adds. Round-tripping through the typed model would silently drop what it does not
-// know about — and dropping a section during the one operation that rewrites every credential is exactly the
-// data loss this is supposed to prevent.
-//
-// Every operation that rewrites the file (Enable/Disable/Reset/Dismiss/ChangePassword, and the startup sidecar
-// sweep) takes the shared `CockpitConfigWriteGate` — the same lock the typed settings stores use — so
-// a migration can never interleave with an ordinary save. The gate is non-reentrant, so each of these takes it
-// exactly once and never calls another gated method while holding it: `ChangePasswordAsync` in particular
-// re-encrypts in one gated pass rather than delegating to Disable+Enable, both because that would deadlock and
-// because Disable would put every credential back in the clear on disk for the width of the window between them.
+// Turns credential encryption on/off and unlocks it at startup. Works on the raw JSON, not the typed
+// model, so a migration converts every credential, including plugin sections this build never heard of.
+// Every rewrite takes the shared `CockpitConfigWriteGate`, exactly once (non-reentrant).
 internal sealed class SecretProtectionService : ISecretProtectionService, ISingletonService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
@@ -57,10 +46,9 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         var enabled = document["Security"]?.Deserialize<SecretProtectionEntry>(SerializerOptions)?.Enabled ?? false;
         var unlocked = _keyHolder.Protector is not null;
 
-        // The banner shows only while encryption is off, there is at least one credential in the clear, and at
-        // least one of those credential fields is one the operator has not already dismissed. Keyed on additions,
-        // not on any change: a new credential path re-nags, but removing or rotating one that was already there
-        // does not — so the dismissal is a subset check, not an equality one (Raymond, 2026-07-19, review #7).
+        // Review #7 (2026-07-19): banner shows only while encryption is off and at least one credential
+        // field is not already dismissed — keyed on additions, so removing/rotating an existing one does
+        // not re-nag; dismissal is a subset check, not equality.
         var shouldWarn = false;
         if (!enabled)
         {
@@ -119,10 +107,9 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         var protector = ProtectorFor(password, security);
         security.Verifier = protector.Protect(SecretProtectionEntry.VerifierPath, SecretProtectionEntry.VerifierPlaintext);
 
-        // Encrypt what is there now — a value already encrypted (a half-migrated file from an interrupted run) is
-        // left alone rather than encrypted twice — and prove each freshly encrypted field reads back, in the very
-        // field it will live in, before the atomic swap below wipes the plaintext. A field that will not round-trip
-        // aborts here with the file untouched, rather than publishing a config we can never read our way back into.
+        // A value already encrypted (a half-migrated file from an interrupted run) is left alone rather
+        // than double-encrypted. Each freshly encrypted field is proven to read back before the atomic
+        // swap wipes the plaintext — a field that won't round-trip aborts here, file untouched.
         ConvertSecrets(document, progress, (path, value) =>
             SecretProtector.IsProtected(value) ? value : ProtectVerified(protector, path, value));
         WriteSecurity(document, security);
@@ -170,11 +157,9 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         IProgress<SecretMigrationProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        // One gated pass, not Disable-then-Enable (review #1). Delegating would deadlock on the non-reentrant gate,
-        // and — worse — Disable would write every credential back to the live cockpit.json in the clear for the
-        // width of the window before Enable re-encrypted them. Here the decrypt-then-re-encrypt happens entirely in
-        // memory and only the finished ciphertext is swapped in atomically, so the primary file goes straight from
-        // old ciphertext to new ciphertext and is never readable in between.
+        // Review #1: one gated pass, not Disable-then-Enable — that would deadlock the non-reentrant gate
+        // and briefly write every credential to disk in the clear. Decrypt-then-re-encrypt happens entirely
+        // in memory; the file goes straight from old ciphertext to new, never readable in between.
         using var gate = await CockpitConfigWriteGate.AcquireAsync(_configFilePath, cancellationToken).ConfigureAwait(false);
 
         var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
@@ -333,10 +318,8 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
             return new JsonObject();
         }
 
-        // The same retry-read the settings stores use (review #9): File.Replace holds the file for the length of a
-        // swap, so a read that lands in that window gets a sharing violation rather than either version. Waiting the
-        // writer out — rather than reading ungated — is what keeps a status probe from throwing when a save happens
-        // to be publishing at the same moment. It is the fix for the 2026-07-15 incident, applied here too.
+        // Review #9: the same retry-read the settings stores use — waiting a writer out mid-swap, rather
+        // than reading ungated, is what keeps a status probe from throwing (the 2026-07-15 fix, applied here).
         var json = await CockpitConfigFileAccess.ReadWhenNotBeingReplacedAsync(_configFilePath, cancellationToken).ConfigureAwait(false);
 
         return JsonNode.Parse(json) ?? new JsonObject();

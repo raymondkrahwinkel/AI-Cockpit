@@ -3,15 +3,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// On-disk shape of `NodeEndpointSettings` in the `nodeEndpoint` section of `cockpit.json` (AC-790) — the
-// network-node master switch and its persistent shared secret, off unless the operator turned it on.
-//
-// `SharedSecret` deliberately keeps that exact name: `SecretFields` (Cockpit.Core.Secrets) recognises any field
-// whose name contains "secret" as a credential and encrypts/scrubs it automatically — no separate registration.
-//
-// AC-792 adds `Pairing`: who that secret was granted to. Absent for a node that was never paired — including
-// every config written before this existed, which reads back as an unpaired node with its hand-copied secret
-// intact, so nothing has to migrate.
+// AC-790: on-disk shape of `NodeEndpointSettings` — the network-node master switch and its persistent
+// shared secret, off by default. `SharedSecret` keeps that exact name so `SecretFields` auto-recognises
+// it. AC-792 adds `Pairing`, absent for an unpaired or pre-existing node, so nothing has to migrate.
 internal sealed class NodeEndpointSettingsEntry
 {
     public bool Enabled { get; set; }
@@ -51,10 +45,8 @@ internal sealed class NodePairingEntry
     public string ControllerAddress { get; set; } = string.Empty;
     public DateTimeOffset PairedAtUtc { get; set; }
 
-    // AC-794: which profiles and projects this pairing may use. Null (not an empty array) for a pairing written
-    // before this existed, which reads back through `ToDomain` as the same empty list `NodePairing`'s own
-    // properties default to — nothing to migrate, and a pre-AC-794 pairing starts able to use nothing, the same
-    // posture a fresh one takes.
+    // AC-794: which profiles/projects this pairing may use. Null for a pre-AC-794 pairing, which
+    // `ToDomain` reads as the same empty-list default a fresh pairing gets — nothing to migrate.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? AllowedProfileLabels { get; set; }
 

@@ -23,10 +23,8 @@ internal sealed class ProviderConfigEntry
     // The plugin's own config record, serialized as JSON, for a plugin-backed profile (#45).
     public string? PluginConfigJson { get; set; }
 
-    // Maps a domain config to its on-disk form. A Claude profile writes a block too — one that says only which
-    // provider it is, since its settings live in the entry's own `ConfigDir`/`ExecutablePath` fields.
-    // It used to write nothing at all, and absence meant Claude: a config in which the most-used provider was
-    // the one you could not see.
+    // Maps a domain config to its on-disk form. A Claude profile now writes a block too, saying only which
+    // provider it is; it used to write nothing, so absence meant Claude — the most-used provider unseen.
     public static ProviderConfigEntry FromDomain(ProviderConfig config) => config switch
     {
         ClaudeConfig => new() { Provider = SessionProvider.ClaudeCli },
@@ -36,10 +34,8 @@ internal sealed class ProviderConfigEntry
         _ => throw new InvalidOperationException($"No on-disk shape is defined for provider config {config.GetType().Name}."),
     };
 
-    // Maps the on-disk block back to a domain config. A Claude entry (an explicit `SessionProvider.ClaudeCli`
-    // or an older entry with no provider block at all) is migrated to the bundled Claude provider plugin on load, so its
-    // settings — which still live at the top of the owning entry — become that plugin's config (Fase 4). Idempotent: a
-    // profile already stored as a plugin comes back through the `SessionProvider.Plugin` arm unchanged.
+    // Maps the on-disk block back to a domain config. A Claude entry (explicit or a legacy blockless one)
+    // is migrated to the bundled Claude provider plugin on load (Fase 4); already-plugin entries pass through.
     public ProviderConfig ToDomain(string claudeConfigDir, string? claudeExecutablePath) => Provider switch
     {
         SessionProvider.Ollama => new OllamaConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, SystemPrompt),

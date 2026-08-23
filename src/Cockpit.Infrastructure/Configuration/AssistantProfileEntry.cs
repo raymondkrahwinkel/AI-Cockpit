@@ -2,19 +2,12 @@ using Cockpit.Core.Assistant;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// On-disk shape of the `AssistantProfileSlot` in the `assistantProfile` section — its own
-// section, deliberately not an entry in `profiles`.
-//
-// The record itself round-trips through `SessionProfileEntry` rather than through a second
-// serializer of its own. It is an ordinary `Cockpit.Core.Profiles.SessionProfile`, and a parallel
-// mapping would be a copy that drifts: the day a profile gains a field, one of the two mappings gets it and the
-// assistant's record quietly loses it on the next save.
+// On-disk shape of the `AssistantProfileSlot`, its own section, deliberately not an entry in `profiles`.
+// Round-trips through `SessionProfileEntry` rather than a second mapping, so the two never drift apart.
 internal sealed class AssistantProfileEntry
 {
-    // What the slot says when it has no record and the config offers no reason — a fresh install, or a config
-    // hand-edited into that state. Filled in on read rather than left null, because
-    // `AssistantProfileSlot.UnsetReason` being null while there is no record is the blank row
-    // criterion 4 rules out.
+    // Default reason for a slot with no record and none given (fresh install or hand-edit); filled in on
+    // read rather than left null, since a null reason with no record is a blank row criterion 4 rules out.
     internal const string NoRecordYetReason = "No assistant profile has been set up yet.";
 
     // The record the slot points at; absent means the slot is unset and `UnsetReason` says why.

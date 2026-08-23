@@ -2,10 +2,8 @@ using Cockpit.Core.Notifications;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// On-disk shape of `NotificationSettings` in the `notifications` section of
-// `cockpit.json`. Stores the idle threshold as whole minutes (the unit the user configures)
-// rather than a serialized `TimeSpan`, so the JSON stays human-editable. Local and Discord
-// notifications are independent switches.
+// On-disk shape of `NotificationSettings`. Idle threshold is stored as whole minutes, not a serialized
+// `TimeSpan`, so the JSON stays human-editable. Local and Discord notifications are independent switches.
 internal sealed class NotificationSettingsEntry
 {
     public bool LocalEnabled { get; set; } = true;

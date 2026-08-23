@@ -2,14 +2,9 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// On-disk shape of a single `SessionProfile` in the `profiles` section.
-//
-// `ConfigDir` and `ExecutablePath` stay where they have always been — at the top of the
-// entry, not inside the provider block. They are Claude's settings and the domain now models them that way
-// (`ClaudeConfig`), but moving them on disk would rewrite every operator's config to gain nothing:
-// the mapping below absorbs the difference, which is what a mapping is for. They move when Claude becomes a
-// plugin and its settings become that plugin's config — one shape change, at the point where the shape actually
-// changes.
+// On-disk shape of a single `SessionProfile`. `ConfigDir`/`ExecutablePath` stay at the top of the entry,
+// not inside the provider block — moving them on disk would rewrite every config to gain nothing; the
+// mapping below absorbs the difference until Claude becomes a plugin and the shape actually changes.
 internal sealed class SessionProfileEntry
 {
     public string Label { get; set; } = string.Empty;
@@ -24,10 +19,8 @@ internal sealed class SessionProfileEntry
 
     public ProfileDefaultsEntry? Defaults { get; set; }
 
-    // Which provider this profile runs under. Written for every profile, including Claude's — but an entry
-    // without one is still read as Claude, because that is what an older cockpit wrote and an operator's config
-    // is not a thing to invalidate. A profile saved by this version says so explicitly; one saved by an earlier
-    // version is understood, and says so explicitly the next time it is saved.
+    // Which provider this profile runs under, written for every profile. An entry without one still
+    // reads as Claude — what an older cockpit wrote — and gains the explicit field on its next save.
     public ProviderConfigEntry? Provider { get; set; }
 
     // What this profile allows when another session delegates to it (#67); absent means it is not a target.
@@ -54,10 +47,8 @@ internal sealed class SessionProfileEntry
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()
     {
         Label = profile.Label,
-        // Only a legacy in-tree ClaudeConfig profile still writes its settings to the top-level fields; a plugin
-        // profile (including a migrated Claude one) keeps them inside its own PluginConfigJson, so these stay blank and
-        // the config directory is not duplicated. Uses the raw ProviderConfig, not SessionProfile.Claude, which now
-        // also reconstructs a plugin Claude profile's config.
+        // Only a legacy in-tree ClaudeConfig profile writes settings to the top-level fields; a plugin
+        // profile keeps them in its own PluginConfigJson, so these stay blank and nothing is duplicated.
         ConfigDir = (profile.ProviderConfig as ClaudeConfig)?.ConfigDir ?? string.Empty,
         ExecutablePath = (profile.ProviderConfig as ClaudeConfig)?.ExecutablePath,
         Purpose = profile.Purpose,

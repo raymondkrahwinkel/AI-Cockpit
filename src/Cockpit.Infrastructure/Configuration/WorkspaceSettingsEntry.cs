@@ -2,11 +2,8 @@ using Cockpit.Core.Workspaces;
 
 namespace Cockpit.Infrastructure.Configuration;
 
-// On-disk shape of `WorkspaceSettings` in the `workspaces` section of `cockpit.json`.
-// Carries only what the host itself needs to rebuild a workspace: which widget type, which instance, and
-// where it sits. A widget's own configuration is deliberately absent — it lives in the plugin's per-instance
-// storage keyed by the pane id, so the host never has to know the shape of a plugin's config and this file
-// never grows plugin blobs.
+// On-disk shape of `WorkspaceSettings`. Carries only what the host needs to rebuild a workspace — widget
+// type, instance, position. A widget's own config lives in the plugin's per-instance storage instead.
 internal sealed class WorkspaceSettingsEntry
 {
     public List<WorkspaceEntry> Workspaces { get; set; } = [];
