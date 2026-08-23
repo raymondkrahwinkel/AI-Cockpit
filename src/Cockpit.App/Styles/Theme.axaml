@@ -469,6 +469,7 @@
         <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
         <Setter Property="Padding" Value="14,8"/>
         <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <!-- Hover brightens the edge and leaves the fill; press is the one that moves the surface, so the
          two states stay distinguishable without either of them shouting. -->
@@ -486,6 +487,7 @@
          rule has to come after every variant to be able to override them. -->
     <Style Selector="Button:disabled">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+        <Setter Property="Cursor" Value="Arrow"/>
     </Style>
     <Style Selector="Button:disabled /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
