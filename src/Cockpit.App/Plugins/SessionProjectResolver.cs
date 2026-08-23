@@ -6,12 +6,9 @@ using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
 
-// Turns a pane into the project its session belongs to (AC-320) — the one implementation of that lookup, shared by
-// everything that needs it: what a plugin contributes to a starting session, what a plugin reads off a project, and
-// what a delegated task inherits from the session that asked for it.
-// `services` rather than a constructor-injected `CockpitViewModel`: the view model owns
-// the sessions, so depending on it directly would close a cycle. Resolved lazily at call time, the same way
-// `SessionResourceResolver` reaches it.
+// AC-320: the one implementation of pane-to-project lookup, shared by every caller that needs it.
+// Takes `services` rather than a constructor-injected `CockpitViewModel` and resolves it lazily
+// at call time, since the view model owns the sessions and depending on it directly would cycle.
 internal sealed class SessionProjectResolver(IServiceProvider services) : ISessionProjectResolver, ISingletonService
 {
     public async Task<string?> ProjectIdOfAsync(string? paneId, CancellationToken cancellationToken = default)

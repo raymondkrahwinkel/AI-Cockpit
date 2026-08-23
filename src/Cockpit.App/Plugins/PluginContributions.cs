@@ -8,12 +8,8 @@ namespace Cockpit.App.Plugins;
 // A left-menu accordion section a plugin contributes, shown under the session list: which plugin it came from (#72 — the operator orders and hides the menu per plugin), its title, and a factory that builds the section content.
 public sealed record PluginSideSection(string PluginId, string Title, Func<Control> CreateView);
 
-// A left-menu launcher button a plugin contributes: which plugin it came from (#72), its title, and the action run
-// on click (typically opening a dialog). `Badge` (AC-516) is the live counter handle the plugin
-// got back from `ICockpitHost.AddSideMenuButtonWithBadge`, or null for a button added through the
-// plain `ICockpitHost.AddSideMenuButton` — trailing and defaulted rather than inserted, because this
-// record is host-internal (never crosses the plugin ABI boundary), but its one construction site
-// (`CockpitViewModel`) still only ever needs to name what changed.
+// A left-menu launcher button a plugin contributes (#72): which plugin, its title, and the click action.
+// `Badge` (AC-516) is the counter handle from `AddSideMenuButtonWithBadge`, or null for a plain button.
 public sealed record PluginSideButton(string PluginId, string Title, Action OnInvoke, SideMenuButtonBadge? Badge = null);
 
 // A Sessions-toolbar button a plugin contributes (AC-91): which plugin it came from (#72 — the operator's menu order/hide applies here too), and the action itself (icon, tooltip, on-click).

@@ -5,12 +5,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
-// Drives the two-phase plugin lifecycle across the app's DI bootstrap (#14). Phase 1
-// (`LoadAndConfigure`) runs before the container is built: it instantiates every
-// load-decided plugin and lets each register its own services. Phase 2 (`Initialize`) runs
-// once the container and UI exist: each plugin registers its contribution points through a host built
-// for it. Instantiation is a delegate seam so the orchestration is testable without real assembly
-// loading. One plugin that throws is logged and skipped — it never takes the app or its siblings down.
+// Drives the two-phase plugin lifecycle across the app's DI bootstrap (#14): Phase 1 instantiates
+// and configures each loaded plugin before the container is built, Phase 2 wires contribution points
+// once the container and UI exist. One plugin that throws is logged and skipped, never taking down the rest.
 public sealed class PluginManager(
     ILogger<PluginManager> logger,
     PluginDiagnostics diagnostics,
@@ -18,11 +15,8 @@ public sealed class PluginManager(
     Version? hostAbstractionsVersion = null,
     Func<ICockpitPlugin, Version?>? builtAgainstResolver = null) : IDisposable
 {
-    // The command-line switch (AC-478) that starts the cockpit with no plugins loaded at all — reachable even
-    // when a UI plugin is the thing crashing on load, since nothing gets as far as instantiating one. Read once
-    // in `Program.Main` and handed to this manager's constructor; a restart via
-    // `Cockpit.App.Services.AppRestartService.BuildLaunchArguments` strips it again so safe mode is always
-    // a one-shot recovery, never a state the operator has to remember to turn off by hand.
+    // AC-478: starts the cockpit with no plugins loaded, reachable even when a UI plugin is crashing on
+    // load; a restart strips it again so it is always a one-shot recovery, never left on by hand.
     public const string SafeModeArgument = "--safe-mode";
 
     // Whether this run skips the load phase entirely (AC-478) — read by the host to show the safe-mode marker.
@@ -30,10 +24,9 @@ public sealed class PluginManager(
 
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin Plugin)> _loaded = [];
 
-    // The abstractions version this app actually ships, and how to read the one a plugin was built against —
-    // both seams so a test can drive the drift check without a purpose-built assembly. The defaults are the
-    // real thing: the host's own Cockpit.Plugins.Abstractions, and the version baked into the plugin's assembly
-    // reference at compile time (which no manifest can misstate).
+    // Both the host's abstractions version and how to read a plugin's are seams so a test can drive the
+    // drift check without a real assembly; defaults read the host's own Abstractions and the plugin's
+    // compile-time assembly reference (which no manifest can misstate).
     private readonly Version _hostAbstractions =
         hostAbstractionsVersion ?? typeof(AbstractionsContract).Assembly.GetName().Version ?? new Version(0, 0);
 
@@ -47,19 +40,15 @@ public sealed class PluginManager(
     public IReadOnlyList<(DiscoveredPlugin Discovered, System.Reflection.Assembly Assembly)> LoadedWithAssemblies =>
         [.. _loaded.Select(entry => (entry.Discovered, entry.Plugin.GetType().Assembly))];
 
-    // Phase 1 — before `BuildServiceProvider`: instantiate each `PluginLoadDecision.Load`
-    // plugin via `activate` and run its `ICockpitPlugin.ConfigureServices`
-    // against the still-open `services`. Plugins that fail to instantiate or configure
-    // are skipped (and disposed if they were created).
+    // Phase 1, before `BuildServiceProvider`: instantiate each `Load`-decided plugin and run its
+    // `ConfigureServices` against the still-open `services`; failures are skipped (and disposed if created).
     public void LoadAndConfigure(
         IReadOnlyList<DiscoveredPlugin> discovered,
         IServiceCollection services,
         Func<DiscoveredPlugin, ICockpitPlugin?> activate)
     {
-        // AC-478: safe mode skips the load phase outright — not even the discovery/decision breadcrumb below,
-        // since the point is a host that never instantiates a plugin, however many are on disk. discovered is
-        // still computed by the caller (housekeeping like a pending removal must still apply), it is simply
-        // never walked here.
+        // AC-478: safe mode skips the load phase outright, including the breadcrumb below — the point is a
+        // host that never instantiates a plugin. `discovered` is still computed by the caller, just not walked.
         if (SafeMode)
         {
             logger.LogInformation(
@@ -112,12 +101,9 @@ public sealed class PluginManager(
         }
     }
 
-    // A plugin discovery decided not to load leaves no other trace — the loop simply skips it — so a provider that
-    // silently vanished (a Claude update that dropped to needs-consent, an abstractions mismatch) became an
-    // unexplained "no such provider" downstream with nothing in the log to explain it. This is that breadcrumb.
-    // The refused decisions (abstractions/host) and awaiting-consent are also recorded for the startup banner and
-    // plugin manager to surface (AC-208 added the latter); disabled is a log line only — the manager already shows
-    // that state, and an operator who disabled a plugin does not need reminding.
+    // A skipped plugin discovery otherwise leaves no trace, so a silently vanished provider becomes an
+    // unexplained "no such provider" downstream — this is that breadcrumb. Refused/awaiting-consent decisions
+    // are also recorded for the UI (AC-208); disabled is log-only since the manager already shows that state.
     private void _NoteSkipped(DiscoveredPlugin candidate)
     {
         switch (candidate.Decision)
@@ -157,10 +143,8 @@ public sealed class PluginManager(
         }
     }
 
-    // The plugin loaded — the reference to Cockpit.Plugins.Abstractions resolved to the host's own copy. But if
-    // it was compiled against a newer SDK than this app ships, it may call a member that copy does not have, and
-    // that fails somewhere the operator never sees. It stays loaded (an older app running a plugin from a newer
-    // one usually works), but this says so out loud instead of leaving it to surface as an unexplained throw.
+    // A plugin compiled against a newer Abstractions SDK than this app ships may call a member the host copy
+    // lacks; it stays loaded (usually still works) but this warns explicitly instead of an unexplained throw later.
     private void _WarnIfBuiltAgainstNewerHost(DiscoveredPlugin candidate, ICockpitPlugin plugin)
     {
         var builtAgainst = _builtAgainst(plugin);
@@ -185,13 +169,9 @@ public sealed class PluginManager(
             .FirstOrDefault(name => string.Equals(name.Name, "Cockpit.Plugins.Abstractions", StringComparison.Ordinal))?
             .Version;
 
-    // Phase 2 — after the container is built and the UI exists: give each loaded plugin the host built
-    // for it (via `hostFor`, which carries that plugin's own storage) so it can register
-    // its contribution points. A plugin that throws here is logged and left out; the others still init.
-    // `hostFor` also receives the loaded `ICockpitPlugin` instance itself (AC-499) —
-    // already sitting right here in `_loaded`, just not previously handed onward — so the caller can
-    // build a host that knows its own plugin's runtime type (`CockpitHost.ownPluginType`), the identity its
-    // MCP tool-call resolution scopes a fallback to.
+    // Phase 2, after the container and UI exist: give each loaded plugin the host `hostFor` built for it so
+    // it can register contribution points (a throwing plugin is logged and skipped). `hostFor` also gets the
+    // loaded `ICockpitPlugin` (AC-499), which MCP tool-call resolution scopes a fallback to.
     public void Initialize(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor)
     {
         foreach (var (discovered, plugin) in _loaded)

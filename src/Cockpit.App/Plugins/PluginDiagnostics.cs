@@ -1,16 +1,12 @@
 namespace Cockpit.App.Plugins;
 
-// Collects the plugins that failed to load or initialize (#14), and (AC-208) the ones sitting at
-// awaiting-approval, so the app can keep running while still telling the operator: a startup banner and the
-// plugin manager both read this. Written by the `PluginManager` across both phases (some run
-// before the DI container exists), so it is created in `Program.Main` and shared, not resolved.
-// Thread-safe for the rare concurrent write.
+// #14/AC-208: collects plugins that failed to load/initialize and ones awaiting approval, so the app
+// keeps running while a startup banner and the plugin manager read this. Created in `Program.Main` and
+// shared (not resolved), since `PluginManager` writes to it before the DI container exists. Thread-safe.
 public sealed class PluginDiagnostics
 {
-    // Phases a plugin never became operative from (#184) — as opposed to a phase recorded afterwards (e.g.
-    // `"mcp-server"`, `"compatibility"`), which leaves it loaded but flags one contribution. The one
-    // place this is named, so `ForFolder` and a row's own reading of `AllForFolder`
-    // classify a phase the same way.
+    // #184: phases a plugin never became operative from, as opposed to a later-recorded phase that leaves it
+    // loaded but flags one contribution. The one place this is named, so `ForFolder`/`AllForFolder` agree.
     public static readonly IReadOnlySet<string> ActivationPhases =
         new HashSet<string>(["load", "configure", "initialize"], StringComparer.Ordinal);
 
@@ -65,12 +61,9 @@ public sealed class PluginDiagnostics
         Changed?.Invoke();
     }
 
-    // The failure that best describes a plugin folder's current state, if any — used by the manager to mark
-    // the row. A folder can accumulate more than one entry (#184): e.g. a compatibility warning at load time,
-    // then a runtime failure from a contribution recorded later (`CockpitHost.AddMcpServer`). An
-    // `ActivationPhases` entry always wins over a later contribution one — a plugin that never
-    // became operative is the more fundamental fact, even if a fire-and-forget contribution call happens to
-    // record its own (lesser) failure afterwards. Among entries of the same standing, the most recent wins.
+    // The failure that best describes a folder's current state (#184). An `ActivationPhases` entry always
+    // wins over a later contribution failure — never becoming operative is the more fundamental fact.
+    // Among entries of equal standing, the most recent wins.
     public PluginFailure? ForFolder(string folderId)
     {
         lock (_gate)

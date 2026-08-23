@@ -40,24 +40,9 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.Plugins;
 
-// The `ICockpitHost` a plugin receives in `ICockpitPlugin.Initialize`: the built
-// service provider, the shared `ICockpitActions`, this plugin's own `IPluginStorage`
-// slice, the contribution points routed to the running UI via an `IPluginContributionSink`, and
-// the dialog helper. Built per plugin (each gets its own storage and its settings keyed by
-// `pluginId`), so `Storage` and any settings view are scoped to this plugin.
-//
-// `ownPluginType`:
-// The runtime type of the `ICockpitPlugin` instance this host was built for (AC-499), or
-// `null` for a host built without one (most tests). The only thing it drives is
-// `_OwnMcpServerContributions`: which of the container-wide `IPluginMcpProvider`
-// registrations belong to *this* plugin rather than some other one. `services` is the whole app's
-// shared provider — every plugin's `ConfigureServices` adds its own `IPluginMcpProvider` into
-// the same collection — so there is no per-plugin scope to resolve against; type identity against the plugin's
-// own concrete type is what stands in for it. This matches how the one plugin that needs it registers today
-// (`services.AddSingleton&lt;IPluginMcpProvider&gt;(this)` — Depot), so its own provider's `GetType()`
-// is literally the plugin's own type. A plugin that instead contributed a separate `IPluginMcpProvider`
-// class would not match here and would need this check broadened, not the type swapped for a laxer one — see
-// `CallMcpToolAsync`'s own remarks on why "any provider" is deliberately not the default any more.
+// The `ICockpitHost` a plugin receives in `ICockpitPlugin.Initialize`, scoped by `pluginId`.
+// AC-499: `ownPluginType` (this instance's runtime type, or `null` in tests) scopes
+// `_OwnMcpServerContributions` to this plugin's own `IPluginMcpProvider` registration.
 internal sealed class CockpitHost(
     string pluginId,
     string pluginName,
@@ -226,11 +211,8 @@ internal sealed class CockpitHost(
             return;
         }
 
-        // AC-577, no fast path — deliberately. A CheckAccess() shortcut would let this run inline on whatever
-        // thread called, which is the branch that makes a test pass while proving nothing about the marshalling
-        // it exists for. Without it the call hangs in a process with no dispatcher loop, and that is the honest
-        // trade: CockpitHost is only ever constructed behind a running application, and a test that claims to
-        // cover this line belongs in Cockpit.App.ViewTests (Cockpit.Core.Tests cannot even name Dispatcher now).
+        // AC-577: no CheckAccess() fast path, deliberately — that shortcut would let a test pass inline
+        // without proving anything about marshalling; a test for this belongs in Cockpit.App.ViewTests.
         await Dispatcher.UIThread.InvokeAsync(() => workspaces.OpenWorkspaceAsync(workspaceTypeId));
     }
 
@@ -459,10 +441,8 @@ internal sealed class CockpitHost(
     public IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates =>
         services.GetRequiredService<IAutopilotTemplateRegistry>().Registrations;
 
-    // A plugin's dialog gets a gear in its title bar when the plugin has settings to open — asked for at the
-    // moment the dialog opens rather than when the plugin was built, since a plugin registers its settings and
-    // its dialogs in any order it likes. The dialog the operator is looking at is where they find out something
-    // is unconfigured, so it is where the way to configure it belongs.
+    // A plugin's dialog gets a gear in its title bar when the plugin has settings to open — checked when the
+    // dialog opens, not when the plugin is built, since settings and dialogs can register in any order.
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
         _ShowPluginDialogAsync(title, createContent, width, height, singleInstanceKey: null);
 
@@ -486,11 +466,9 @@ internal sealed class CockpitHost(
     // Delegates to the cockpit's own `MarkdownView` — no second parser, one markdown idiom for both the transcript and every plugin dialog.
     public Control CreateMarkdownView(string markdown) => new MarkdownView { Markdown = _CapForRendering(markdown) };
 
-    // What comes through here is an issue body somebody else wrote, and rendering it is synchronous: a pipe-heavy
-    // 65 KB description — the size a GitHub body is allowed to be — becomes tens of thousands of controls in an
-    // all-Auto grid while the operator waits. The cap sits on this seam rather than inside MarkdownView because the
-    // transcript renders through that same control, and cutting the cockpit's own output short would be a defect
-    // rather than a guard (AC-303).
+    // AC-303: caps a plugin-supplied markdown body (e.g. a 65 KB GitHub issue) before synchronous rendering,
+    // which otherwise stalls the UI in an all-Auto grid; capped here, not in MarkdownView, since the transcript
+    // also renders through that control and must not be truncated.
     private const int MaxPluginMarkdownCharacters = 64 * 1024;
 
     // Nullable although the contract says otherwise: the caller is plugin code, which may well be compiled with
@@ -522,14 +500,9 @@ internal sealed class CockpitHost(
                 var model = _DeclaredModelOption(registry, profile);
                 return new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty)
                 {
-                    // Whatever models the profile's own provider offers. The host used to answer this from its own copy
-                    // of the Claude aliases, which is how Autopilot came to describe that list as running cheapest-first
-                    // while it ran the other way round (AC-256): a second copy carrying meaning nobody promised it. Ask
-                    // the provider instead, so every provider is served by the same code and none needs the host to know
-                    // its vocabulary. The catalogue stays only as the answer when there is no registration to ask —
-                    // a Claude profile whose provider plugin did not load, and the legacy typed config that
-                    // ProviderConfigEntry.ToDomain migrates away on read. Keeping it there leaves that case exactly as
-                    // it behaves today rather than quietly emptying it as part of this change.
+                    // AC-256: asks the provider for its models instead of keeping the host's own copy of the
+                    // Claude aliases, which had drifted out of cheapest-first order. Falls back to the catalogue
+                    // only when there is no registration to ask (unloaded provider plugin, legacy typed config).
                     ModelSuggestions = model?.Choices ?? (profile.Claude is not null ? SessionOptionCatalog.ClaudeModelSuggestions : []),
                     // Cost is the provider's own estimate or nothing at all; the host never ranks or prices a model.
                     ModelCostEstimatesCheapestFirst = model?.CostEstimatesCheapestFirst ?? [],
@@ -540,33 +513,17 @@ internal sealed class CockpitHost(
             .ToList();
     }
 
-    // The model launch option the profile's own session provider declares, or `null` when the profile
-    // is not plugin-backed or its provider offers no model choice. Found by `WellKnownPluginSessionOptions.Model`
-    // — the same key the driver adapter bridges a live model switch through — so the host locates it without knowing
-    // any provider's option vocabulary. Only the statically declared options are read: `SessionProviderRegistration.ResolveOptionsAsync`
-    // reaches out to a CLI, and this runs on every plan emission and step start, where a stall would be felt.
+    // The profile's model launch option, if its provider declares one, found via the well-known `Model`
+    // key. Reads only statically declared options, not `ResolveOptionsAsync` — that hits a CLI, and this
+    // runs on every plan emission and step start, where a stall would be felt.
     private static PluginSessionLaunchOption? _DeclaredModelOption(IPluginProviderRegistry registry, Core.Profiles.SessionProfile profile) =>
         profile.ProviderConfig is Core.Profiles.PluginProviderConfig plugin
             ? registry.Resolve(plugin.ProviderId)?.Options.FirstOrDefault(option => option.Key == WellKnownPluginSessionOptions.Model)
             : null;
 
-    // Idempotent upsert-by-name into the shared `IMcpServerStore` registry (#60). No entry named
-    // `McpServerContribution.Name` yet → add one (enabled by default, scoped as requested). An
-    // entry already exists → refresh only the plugin-owned `McpServerConfig.Url`/
-    // `McpServerConfig.Auth`/`McpServerConfig.ApiKey`, leaving
-    // `McpServerConfig.Enabled` and `McpServerConfig.Scope` untouched — respects a
-    // server the user disabled or rescoped from the MCP-servers dialog instead of clobbering their choice on
-    // every plugin restart/settings-save. Deliberately does *not* track "the user deleted this on
-    // purpose": a removed entry is indistinguishable from one never registered, so it comes back as a fresh
-    // (enabled) add the next time the plugin calls this — bounded to the plugin's own trigger points
-    // (`Initialize`, its settings-saved callback), not a background loop, so it is a re-add on explicit
-    // action rather than a silent fight with the user.
-    //
-    // Called fire-and-forget from a synchronous callback (per the interface doc), so a store I/O failure here
-    // would otherwise throw on an unobserved task — invisible to the plugin and the operator (#184). Caught and
-    // attributed to this plugin in `PluginDiagnostics`; a cancellation (app shutting down) is not
-    // this plugin's fault and is left unrecorded, and resolving `IMcpServerStore` itself stays
-    // outside the catch — a missing registration is a host bug, not something to blame on the plugin.
+    // Idempotent upsert-by-name into `IMcpServerStore` (#60), refreshing only plugin-owned connection
+    // fields on repeat calls (Enabled/Scope stay as the operator left them). Fire-and-forget (#184): I/O
+    // failures are caught and attributed to this plugin instead of throwing unobserved.
     public async Task AddMcpServer(McpServerContribution contribution)
     {
         var store = services.GetRequiredService<IMcpServerStore>();
@@ -582,10 +539,8 @@ internal sealed class CockpitHost(
             }
             else
             {
-                // Refresh only the connection fields; the entry's Scope and Enabled are the operator's and are left as
-                // they are (a server they disabled or rescoped in the dialog stays that way). Reuses ToServerConfig
-                // rather than restating its auth-field-clearing rule (AC-500) — the one place that sees both DTOs is
-                // exactly where that rule should live, per this file's own doc comment on PluginMcpMapping.
+                // Refresh only the connection fields; Scope/Enabled stay as the operator left them. Reuses
+                // ToServerConfig instead of restating its auth-field-clearing rule (AC-500).
                 var refreshed = PluginMcpMapping.ToServerConfig(contribution);
                 servers[existingIndex] = servers[existingIndex] with
                 {
@@ -632,13 +587,9 @@ internal sealed class CockpitHost(
         }
     }
 
-    // Looks up the OAuth server contributed under `name` — the shared registry first, then (AC-504)
-    // every registered `IPluginMcpProvider`'s own `_ResolveOAuthServerAsync` fallback, for a
-    // plugin (Depot) whose servers are delivered to sessions per-project rather than pushed into that registry — and
-    // asks the shared `IMcpOAuthCoordinator` non-interactively (AC-243), the same read the host's own
-    // MCP-servers dialog does per row. A name nothing resolves to (never contributed, contributed as a static
-    // token, or removed), or a coordinator that is not registered, answers `PluginMcpAuthState.Unknown`
-    // rather than throwing — a status read is informational only.
+    // Looks up the OAuth server for `name` (shared registry, then AC-504 per-plugin fallback for
+    // per-project delivery like Depot) and asks `IMcpOAuthCoordinator` non-interactively (AC-243).
+    // An unresolved name or missing coordinator answers Unknown rather than throwing.
     public async Task<PluginMcpAuthState> GetMcpServerAuthStateAsync(string name, CancellationToken cancellationToken = default)
     {
         if (services.GetService<IMcpOAuthCoordinator>() is not { } coordinator)
@@ -668,11 +619,9 @@ internal sealed class CockpitHost(
         }
     }
 
-    // Drives the same interactive loopback sign-in the host's own MCP-servers dialog offers (AC-243/AC-355) for
-    // the OAuth server this plugin contributed under `name`, reporting only a named outcome —
-    // never a token (Iron Law #8) and never the failure detail the dialog's own row reserves for its own log line.
-    // A name with no matching OAuth entry, or a host with no coordinator registered, answers
-    // `PluginMcpSignInOutcome.Unavailable` without attempting anything.
+    // Drives the same interactive loopback sign-in the MCP-servers dialog offers (AC-243/AC-355), reporting
+    // only a named outcome — never a token (Iron Law #8) or the dialog's own failure detail. An unmatched
+    // name or missing coordinator answers Unavailable without attempting anything.
     public async Task<PluginMcpSignInOutcome> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default)
     {
         if (services.GetService<IMcpOAuthCoordinator>() is not { } coordinator)
@@ -698,28 +647,9 @@ internal sealed class CockpitHost(
         }
     }
 
-    // Calls a tool on this plugin's own MCP server through the same `IMcpToolInvoker` a session's
-    // tool-loop uses to reach it (AC-502) — on the app's behalf, never opening a browser and never handing the
-    // plugin the bearer token the invoker used to authenticate the call.
-    //
-    // Refuses any `name` that resolves to neither the shared registry nor any plugin's own
-    // `IPluginMcpProvider.GetMcpServers()` — the same `_ResolveOAuthServerAsync` lookup
-    // `GetMcpServerAuthStateAsync`/`SignInMcpServerAsync` already use (AC-504), so a plugin
-    // whose servers are delivered per-project (Depot, since AC-504) rather than pushed via `AddMcpServer`
-    // is reachable here the same way its own sign-in already is. What this still excludes: a cockpit-internal
-    // endpoint (terminal, worktrees, the delegation orchestrator, …) mounted via `AddMcpEndpoint` —
-    // those carry no plugin's consent and go through no permission gate a session's own connect applies, and
-    // neither the registry nor `IPluginMcpProvider` ever lists them.
-    //
-    // AC-499: *this* check (whether the name is known at all) still accepts any plugin's provider, unchanged
-    // from AC-504 — but the invoker's own resolution used to be stricter, only the project-scoped catalog, so a
-    // server this plugin delivers per-project (Depot) could pass this check and still fail to resolve inside
-    // `IMcpToolInvoker.InvokeAsync` whenever the calling project had not yet been saved with the row
-    // that would put it in that catalog. `_OwnMcpServerContributions` closes that gap by handing the
-    // invoker a caller-scoped fallback list — deliberately narrower than this accept check: only *this*
-    // plugin's own contributions, never another plugin's, because a project-agnostic fallback that let any caller
-    // reach any plugin's server would turn "not saved yet" into "no scoping at all". This accept check staying lax
-    // is pre-existing AC-504 behaviour and out of this fix's scope, not a second inconsistency introduced here.
+    // Calls a tool on this plugin's own MCP server via `IMcpToolInvoker` (AC-502), never opening a browser
+    // or exposing the bearer token. Accepts any `name` known to the registry or a plugin's `GetMcpServers`
+    // (AC-504); AC-499 scopes the invoker's own caller fallback list to this plugin's contributions only.
     public async Task<PluginMcpToolCallResult> CallMcpToolAsync(
         string name,
         string toolName,
@@ -754,24 +684,18 @@ internal sealed class CockpitHost(
         }
     }
 
-    // AC-748: the MCP client SDK prefixes a failed tool call's message with "An error occurred invoking
-    // '{toolName}': " before it ever reaches here — on both the outcome-Failed branch above (the tool ran and
-    // reported isError, e.g. Depot's own "[NotFound]" wording) and the exception branch (the invoker itself threw).
-    // Stripping it once here, rather than in each caller that pattern-matches the tool's own error text, is what
-    // makes those matches (like Depot's PublishAsync StartsWith("[NotFound]")) see the tool's original wording again.
+    // AC-748: the MCP client SDK prefixes failed-call messages with "An error occurred invoking '{toolName}': ".
+    // Stripped once here rather than in every caller that pattern-matches the tool's own error text
+    // (e.g. Depot's PublishAsync StartsWith("[NotFound]")).
     private static string _UnwrapToolInvocationError(string toolName, string message)
     {
         var prefix = $"An error occurred invoking '{toolName}': ";
         return message.StartsWith(prefix, StringComparison.Ordinal) ? message[prefix.Length..] : message;
     }
 
-    // The OAuth server named `name`, wherever it lives: the shared registry first (a
-    // registry-configured server, or a plugin still on the AC-243 push model), then, if nothing there matches
-    // (AC-504), every `IPluginMcpProvider`'s own project-agnostic `IPluginMcpProvider.GetMcpServers()`
-    // — a plugin whose servers are delivered to sessions per-project (Depot, one server per connection) still has
-    // no project to scope by here: signing in happens from that plugin's own settings view, not from inside a
-    // session. A plugin that throws while listing its servers is treated the same way `McpServerCatalog`
-    // treats it — logged and skipped, not fatal to the lookup.
+    // The OAuth server named `name`: shared registry first, then (AC-504) every plugin's project-agnostic
+    // `GetMcpServers()` — sign-in has no project to scope by here. A plugin that throws while listing is
+    // logged and skipped, same as `McpServerCatalog` does, not fatal to the lookup.
     private async Task<McpServerConfig?> _ResolveOAuthServerAsync(string name, CancellationToken cancellationToken)
     {
         var store = services.GetRequiredService<IMcpServerStore>();
@@ -789,14 +713,9 @@ internal sealed class CockpitHost(
             .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
     }
 
-    // Whether `name` resolves to anything at all — the shared registry (any auth kind, not only
-    // OAuth, unlike `_ResolveOAuthServerAsync`) or any plugin's own `IPluginMcpProvider.GetMcpServers()`
-    // (AC-502 review). This is `CallMcpToolAsync`'s own scope check: it deliberately does not
-    // distinguish "this calling plugin's own server" from "some other plugin's" — the same laxness
-    // `_ResolveOAuthServerAsync` already accepts for a sign-in — because there is no way from inside a
-    // shared-container-resolved `IPluginMcpProvider` list to tell whose instance is whose. What matters
-    // is that a cockpit-internal endpoint (never in the registry, never behind `IPluginMcpProvider`)
-    // can never pass this check.
+    // Whether `name` resolves to anything at all — shared registry (any auth kind) or any plugin's
+    // `GetMcpServers()` (AC-502 review), same lax cross-plugin scope as `_ResolveOAuthServerAsync`.
+    // What matters: a cockpit-internal endpoint can never pass this check.
     private async Task<bool> _IsKnownMcpServerNameAsync(string name, CancellationToken cancellationToken)
     {
         var store = services.GetRequiredService<IMcpServerStore>();
@@ -827,14 +746,9 @@ internal sealed class CockpitHost(
         }
     }
 
-    // This plugin's own MCP servers, project-agnostic (the same `IPluginMcpProvider.GetMcpServers()`
-    // overload `_ResolveOAuthServerAsync` already falls back to), mapped to `McpServerConfig`
-    // and handed to `IMcpToolInvoker.InvokeAsync`/`IMcpToolProbe.ProbeAsync` as their own
-    // additive fallback candidate list (AC-499). Scoped by `ownPluginType` (see this class's own
-    // parameter doc) to *only* the `IPluginMcpProvider` instance(s) whose concrete type is this
-    // plugin's own — never the whole container-wide `services.GetServices&lt;IPluginMcpProvider&gt;()` set —
-    // so this method can never hand a caller a fallback into some other plugin's server. Empty when no plugin
-    // instance was supplied (most tests) or when this plugin registers no matching provider.
+    // This plugin's own MCP servers (AC-499), handed to `IMcpToolInvoker`/`IMcpToolProbe` as an additive
+    // fallback list. Scoped by `ownPluginType` to only the matching `IPluginMcpProvider` instance(s), never
+    // the whole container-wide set, so this can never fall back into another plugin's server.
     private IReadOnlyList<McpServerConfig> _OwnMcpServerContributions()
     {
         if (ownPluginType is null)
@@ -849,15 +763,9 @@ internal sealed class CockpitHost(
             .ToList();
     }
 
-    // Delegates to `IMcpToolProbe` (AC-503) and maps its Core-level `McpToolProbeResult`
-    // onto the plugin-facing `McpProbeResult` — the same isolation seam `GetMcpServerAuthStateAsync`
-    // and `SignInMcpServerAsync` already keep between `Cockpit.Core`'s own vocabulary and the
-    // plugin SDK's. A host with no probe registered (a test fake, an older host) answers `McpProbeResult.Failed`
-    // without attempting anything.
-    //
-    // AC-499: also hands the probe `_OwnMcpServerContributions` as its caller-scoped fallback — this
-    // call takes no project id, so a plugin whose servers never land in the shared registry (Depot, AC-504) would
-    // otherwise be unprobeable regardless of whether the project row that would put it in the catalog exists yet.
+    // Delegates to `IMcpToolProbe` (AC-503), mapping its result onto `McpProbeResult`; no probe registered
+    // answers Failed without attempting anything. AC-499: also hands the probe `_OwnMcpServerContributions`
+    // as fallback, since this call takes no project id — else a per-project plugin (Depot) is unprobeable.
     public async Task<McpProbeResult> ProbeMcpToolAsync(
         string serverName,
         string toolName,
@@ -922,12 +830,9 @@ internal sealed class CockpitHost(
             ? autoUpdateStore.SetAsync(cliName, enabled, cancellationToken)
             : Task.CompletedTask;
 
-    // Opens the cockpit's New-session dialog (#AC-96) pre-filled from `prefill`, on the UI thread,
-    // and — once the operator confirms — reports the started session's pane id through `onStarted`,
-    // or fires `onCancelled` when they dismiss it or no session started. Exactly one callback runs.
-    // Routed through `CockpitViewModel` so the session is minted by the app's own launch path (worktree
-    // isolation, the launch-result recorded for Duplicate) rather than a second, divergent one; a host with no cockpit
-    // view model reports cancellation, never a silent nothing.
+    // Opens the New-session dialog (#AC-96) pre-filled from `prefill`; exactly one callback runs, `onStarted`
+    // or `onCancelled`. Routed through `CockpitViewModel` so the session is minted by the app's own launch
+    // path (worktree isolation, Duplicate's launch-result), not a second, divergent one.
     public async Task ShowNewSessionDialogAsync(
         NewSessionPrefill? prefill = null,
         Action<string>? onStarted = null,
@@ -1011,10 +916,9 @@ internal sealed class CockpitHost(
             return Cockpit.Plugins.Abstractions.Workspaces.GitDirectoryStatus.Unknown;
         }
 
-        // DetectRepositoryAsync returns null both for a real not-a-repository and for a probe that merely failed (git
-        // refusing a real repo it will not read — dubious ownership, a permission or lock error, no commit yet). Feeding
-        // that null straight to NotARepository would drop isolation for a real checkout, so the resolver decides
-        // "not a repository" from the filesystem (no .git in the tree), not from the probe failing — fail-closed.
+        // DetectRepositoryAsync returns null both for a true non-repository and for a probe failure on a real
+        // one (dubious ownership, permission/lock error) — so "not a repository" is decided from the
+        // filesystem (no .git), not from the probe failing, to avoid dropping isolation on a real checkout.
         var confirmedRepository = await worktrees.DetectRepositoryAsync(directory, cancellationToken).ConfigureAwait(false) is not null;
         return GitDirectoryStatusResolver.Resolve(directory, confirmedRepository);
     }
@@ -1057,11 +961,9 @@ internal sealed class CockpitHost(
             }
         }
 
-        // AC-577, fast path — deliberately, and the third of this file's three dispatcher sites to choose
-        // differently from the other two. This one is called on the UI thread most of the time and marshals a
-        // field write rather than a dialog, so the inline branch is what it costs nothing to take. The price is
-        // named where it is paid: a test that takes this branch proves nothing about the marshalling, so a test
-        // covering it belongs in Cockpit.App.ViewTests, where the dispatcher is real and CheckAccess is honest.
+        // AC-577: fast path here, unlike this file's other two dispatcher sites — usually called on the UI
+        // thread and marshals a field write rather than a dialog, so the inline CheckAccess() branch costs
+        // nothing; a test covering that branch belongs in Cockpit.App.ViewTests, not here.
         if (Dispatcher.UIThread.CheckAccess())
         {
             Apply();

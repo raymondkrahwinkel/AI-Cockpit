@@ -80,10 +80,8 @@ internal sealed class WorkspaceTypeRegistry(IServiceProvider services) : IWorksp
             return null;
         }
 
-        // Resolved here rather than injected: the shell view model that implements IEmbeddedSessionHost is built
-        // after this singleton, and a workspace body is created long after startup — so there is no construction
-        // cycle to break, only a service to reach when a body actually asks to embed a session (Code.md §2 —
-        // service location is for orchestrators that lazily resolve to break a cycle).
+        // Resolved here, not injected: IEmbeddedSessionHost's implementer is built after this
+        // singleton, so there's no construction cycle, just a service to reach lazily (Code.md §2).
         var embeddedSessions = services.GetService<IEmbeddedSessionHost>();
         var context = new WorkspaceContext(workspaceId, registered.PluginStorage, registered.Sessions, embeddedSessions);
         return (registered.Registration, context);
