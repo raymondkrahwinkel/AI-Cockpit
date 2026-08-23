@@ -234,7 +234,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         [Description("The node the VM runs on.")] string node,
         [Description("The VM id.")] string vmid,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"start VM {vmid} on node \"{node}\"", session, ct => engine.StartVmAsync(node, vmid, ct), cancellationToken);
+        _MutateAsync(ProxmoxActionText.StartVm(node, vmid), session, ct => engine.StartVmAsync(node, vmid, ct), cancellationToken);
 
     [McpServerTool(Name = "shutdown_vm")]
     [Description("Gracefully shuts a VM down (an ACPI shutdown request the guest OS can act on) — distinct from stop_vm, which powers it off immediately. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
@@ -243,7 +243,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         [Description("The node the VM runs on.")] string node,
         [Description("The VM id.")] string vmid,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"gracefully shut down VM {vmid} on node \"{node}\" (ACPI shutdown)", session, ct => engine.ShutdownVmAsync(node, vmid, ct), cancellationToken);
+        _MutateAsync(ProxmoxActionText.ShutdownVm(node, vmid), session, ct => engine.ShutdownVmAsync(node, vmid, ct), cancellationToken);
 
     [McpServerTool(Name = "stop_vm")]
     [Description("Hard-powers a VM off immediately, with no guest cooperation — distinct from shutdown_vm's graceful ACPI request. Like pulling the power cord: unsaved guest state can be lost. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
@@ -252,7 +252,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         [Description("The node the VM runs on.")] string node,
         [Description("The VM id.")] string vmid,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"hard power off VM {vmid} on node \"{node}\" (immediate, may cause data loss)", session, ct => engine.StopVmAsync(node, vmid, ct), cancellationToken);
+        _MutateAsync(ProxmoxActionText.StopVm(node, vmid), session, ct => engine.StopVmAsync(node, vmid, ct), cancellationToken);
 
     [McpServerTool(Name = "reboot_vm")]
     [Description("Gracefully reboots a VM (ACPI). Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
@@ -261,7 +261,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         [Description("The node the VM runs on.")] string node,
         [Description("The VM id.")] string vmid,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"reboot VM {vmid} on node \"{node}\" (ACPI)", session, ct => engine.RebootVmAsync(node, vmid, ct), cancellationToken);
+        _MutateAsync(ProxmoxActionText.RebootVm(node, vmid), session, ct => engine.RebootVmAsync(node, vmid, ct), cancellationToken);
 
     [McpServerTool(Name = "snapshot_vm")]
     [Description("Creates a snapshot of a VM. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
@@ -272,7 +272,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         [Description("The snapshot's name.")] string name,
         [Description("Optional snapshot description.")] string? description = null,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"create snapshot \"{name}\" of VM {vmid} on node \"{node}\"", session, ct => engine.SnapshotVmAsync(node, vmid, name, description, ct), cancellationToken);
+        _MutateAsync(ProxmoxActionText.SnapshotVm(node, vmid, name), session, ct => engine.SnapshotVmAsync(node, vmid, name, description, ct), cancellationToken);
 
     // ---- LXC mutations (always Dangerous, never remembered) ------------------------------------------------------
 
@@ -283,7 +283,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         [Description("The node the LXC container runs on.")] string node,
         [Description("The LXC container id.")] string vmid,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"start LXC container {vmid} on node \"{node}\"", session, ct => engine.StartLxcAsync(node, vmid, ct), cancellationToken);
+        _MutateAsync(ProxmoxActionText.StartLxc(node, vmid), session, ct => engine.StartLxcAsync(node, vmid, ct), cancellationToken);
 
     [McpServerTool(Name = "shutdown_lxc")]
     [Description("Gracefully shuts an LXC container down — distinct from stop_lxc, which stops it immediately. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
@@ -292,7 +292,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         [Description("The node the LXC container runs on.")] string node,
         [Description("The LXC container id.")] string vmid,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"gracefully shut down LXC container {vmid} on node \"{node}\"", session, ct => engine.ShutdownLxcAsync(node, vmid, ct), cancellationToken);
+        _MutateAsync(ProxmoxActionText.ShutdownLxc(node, vmid), session, ct => engine.ShutdownLxcAsync(node, vmid, ct), cancellationToken);
 
     [McpServerTool(Name = "stop_lxc")]
     [Description("Stops an LXC container immediately, with no cooperation from the processes inside it — distinct from shutdown_lxc's graceful stop. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
@@ -301,7 +301,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         [Description("The node the LXC container runs on.")] string node,
         [Description("The LXC container id.")] string vmid,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"hard stop LXC container {vmid} on node \"{node}\" (immediate, may cause data loss)", session, ct => engine.StopLxcAsync(node, vmid, ct), cancellationToken);
+        _MutateAsync(ProxmoxActionText.StopLxc(node, vmid), session, ct => engine.StopLxcAsync(node, vmid, ct), cancellationToken);
 
     [McpServerTool(Name = "reboot_lxc")]
     [Description("Reboots an LXC container. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
@@ -310,7 +310,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         [Description("The node the LXC container runs on.")] string node,
         [Description("The LXC container id.")] string vmid,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"reboot LXC container {vmid} on node \"{node}\"", session, ct => engine.RebootLxcAsync(node, vmid, ct), cancellationToken);
+        _MutateAsync(ProxmoxActionText.RebootLxc(node, vmid), session, ct => engine.RebootLxcAsync(node, vmid, ct), cancellationToken);
 
     [McpServerTool(Name = "snapshot_lxc")]
     [Description("Creates a snapshot of an LXC container. Waits for the Proxmox task to finish and reports its real outcome. Asks the operator afresh each time and is never remembered.")]
@@ -321,7 +321,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         [Description("The snapshot's name.")] string name,
         [Description("Optional snapshot description.")] string? description = null,
         CancellationToken cancellationToken = default) =>
-        _MutateAsync($"create snapshot \"{name}\" of LXC container {vmid} on node \"{node}\"", session, ct => engine.SnapshotLxcAsync(node, vmid, name, description, ct), cancellationToken);
+        _MutateAsync(ProxmoxActionText.SnapshotLxc(node, vmid, name), session, ct => engine.SnapshotLxcAsync(node, vmid, name, description, ct), cancellationToken);
 
     // ---- Rollback / delete (off by default, per-capability) -------------------------------------------------------
 
@@ -335,8 +335,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         CancellationToken cancellationToken = default)
     {
         var decision = await gate.AuthorizeDangerAsync(
-            DangerCapability.Rollback, settings.AllowRollback,
-            $"roll back VM {vmid} on node \"{node}\" to snapshot \"{name}\" — this destroys everything since that snapshot", session);
+            DangerCapability.Rollback, settings.AllowRollback, ProxmoxActionText.RollbackVm(node, vmid, name), session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -363,8 +362,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         CancellationToken cancellationToken = default)
     {
         var decision = await gate.AuthorizeDangerAsync(
-            DangerCapability.Rollback, settings.AllowRollback,
-            $"roll back LXC container {vmid} on node \"{node}\" to snapshot \"{name}\" — this destroys everything since that snapshot", session);
+            DangerCapability.Rollback, settings.AllowRollback, ProxmoxActionText.RollbackLxc(node, vmid, name), session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -390,7 +388,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         CancellationToken cancellationToken = default)
     {
         var decision = await gate.AuthorizeDangerAsync(
-            DangerCapability.Delete, settings.AllowDelete, $"delete VM {vmid} on node \"{node}\" — irreversible", session);
+            DangerCapability.Delete, settings.AllowDelete, ProxmoxActionText.DeleteVm(node, vmid), session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);
@@ -416,7 +414,7 @@ internal sealed class ProxmoxMcpTools(ProxmoxSettings settings, ProxmoxAccessGat
         CancellationToken cancellationToken = default)
     {
         var decision = await gate.AuthorizeDangerAsync(
-            DangerCapability.Delete, settings.AllowDelete, $"delete LXC container {vmid} on node \"{node}\" — irreversible", session);
+            DangerCapability.Delete, settings.AllowDelete, ProxmoxActionText.DeleteLxc(node, vmid), session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);

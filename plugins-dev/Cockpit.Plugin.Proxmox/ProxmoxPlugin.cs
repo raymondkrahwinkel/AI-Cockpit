@@ -6,6 +6,7 @@ using Cockpit.Plugin.Proxmox.Mcp;
 using Cockpit.Plugin.Proxmox.Security;
 using Cockpit.Plugin.Proxmox.Settings;
 using Cockpit.Plugin.Proxmox.Ui;
+using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Proxmox;
 
@@ -37,6 +38,13 @@ public sealed class ProxmoxPlugin : ICockpitPlugin
         host.AddSettings(() => new ProxmoxSettingsControl(host, settings));
         host.AddToolbarAction(new ToolbarAction("Proxmox settings", MaterialIconKind.Server, () => host.ShowSettingsAsync()));
         _ = host.AddMcpEndpoint("cockpit-proxmox", tools, isEnabled: () => settings.McpEnabled);
+
+        // Read-only surface over the same gate/engine as the MCP tools — no second way to reach the API.
+        host.AddWorkspaceType(new WorkspaceTypeRegistration("proxmox.overview", "Proxmox", context => new ProxmoxOverviewBody(context, gate, engine))
+        {
+            IconKind = MaterialIconKind.Server,
+            Description = "Nodes, VMs, LXC containers and storage for a configured Proxmox target.",
+        });
 
         // A settings save may have changed the target or its trusted certificate; drop the cached client so the
         // next call rebuilds it.
