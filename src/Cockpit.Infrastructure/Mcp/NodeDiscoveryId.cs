@@ -4,11 +4,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// This machine's stable id in a discovery announce (AC-793) — not a credential, just enough that a finder's
-// "nodes found" list does not grow a new row every time the same node answers a second query. Same shape as
-// `NodeSelfSignedCertificate` (lazy load-or-create under a lock, one file, regenerate if unreadable) minus
-// everything that shape needed only because a certificate is a credential: no validity window, no PKCS#12, no
-// refusal semantics for a stale value — sixteen random bytes are either there or they are not.
+// AC-793: this machine's stable discovery-announce id — not a credential, just enough that a finder's list
+// doesn't grow a new row per query. Same lazy load-or-create shape as NodeSelfSignedCertificate, minus
+// everything that shape needs only because a certificate is a credential.
 internal sealed class NodeDiscoveryId : ISingletonService
 {
     private readonly string _path;

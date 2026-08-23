@@ -45,10 +45,8 @@ internal sealed class McpOAuthTokenStore : IMcpOAuthTokenStore, ISingletonServic
 
     public async Task AdoptLegacyEntriesAsync(IReadOnlyDictionary<string, string> idsByServerName, CancellationToken cancellationToken = default)
     {
-        // Read first and leave without writing at all when nothing would move — which is every launch after the one
-        // that migrates, and every launch of an install that never had a plugin-keyed token to begin with. This runs
-        // on the startup path, and rewriting cockpit.json each time to change nothing is churn on a file the
-        // operator hand-edits and every other section store shares.
+        // Read first and skip the write when nothing would move, which is every launch after migration — avoids
+        // churn on a cockpit.json section the operator hand-edits.
         var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
         if (configFile?.McpOAuthTokens is null
             || !configFile.McpOAuthTokens.Any(entry => _AdoptableId(configFile.McpOAuthTokens, entry, idsByServerName) is not null))
@@ -59,10 +57,8 @@ internal sealed class McpOAuthTokenStore : IMcpOAuthTokenStore, ISingletonServic
         await _configFile.UpdateAsync(
             file =>
             {
-                // Re-decided against the list this update actually holds rather than against the snapshot above: the
-                // read happened outside the write gate, so what was concluded there is a hint, not a fact.
-                // ToList() because the loop assigns into the entries it is walking, and that is exactly what the
-                // "does anyone already hold this id" check reads back.
+                // Re-decided against the update's own list, not the outer snapshot, since that read happened
+                // outside the write gate. ToList() because the loop assigns into the list it walks.
                 foreach (var entry in file.McpOAuthTokens.ToList())
                 {
                     if (_AdoptableId(file.McpOAuthTokens, entry, idsByServerName) is { } serverId)
@@ -74,11 +70,8 @@ internal sealed class McpOAuthTokenStore : IMcpOAuthTokenStore, ISingletonServic
             cancellationToken).ConfigureAwait(false);
     }
 
-    // The id `entry` should be re-keyed onto, or `null` when it must be left
-    // exactly as it is. Four ways to be left alone: it already carries an id — a real sign-in, which a guess made
-    // from a name may never overwrite; no server currently answers to its name; the id offered is the one its own
-    // name already derives to, so it is reachable without writing anything; or another entry already holds that id,
-    // which is what stops two of these collapsing onto a single credential.
+    // AC-403: the id `entry` should be re-keyed onto, or null to leave it alone — already has an id, no server
+    // answers to its name, the id already matches its derived name, or another entry already holds that id.
     private static string? _AdoptableId(
         List<McpOAuthTokenEntry> entries,
         McpOAuthTokenEntry entry,
@@ -90,19 +83,9 @@ internal sealed class McpOAuthTokenStore : IMcpOAuthTokenStore, ISingletonServic
             ? serverId
             : null;
 
-    // Whether `entry` is the token held for `serverId` (AC-403).
-    //
-    // Two ways in, and the second one is the whole migration. An entry written since this id exists carries it,
-    // and is matched on that alone. An entry an older build wrote has no id and was filed under the server's
-    // name — so it answers to the id that name derives to, which is precisely the id
-    // `McpServerConfig.IdentityKey` hands back for a server that has not been given one of its own.
-    // Nothing has to be rewritten for that to hold.
-    //
-    // ⚠️ What is deliberately *not* here is a fallback onto the server's *current* name. That is the
-    // defect this ticket is about: two servers on one host that swap names would each adopt the other's token and
-    // present a bearer to an endpoint it was never issued for. A derived legacy id is fixed at the name the row
-    // carried when its id was first needed, and travels with the row from then on; the current name never enters
-    // the comparison.
+    // AC-403: whether `entry` is the token held for `serverId` — matched by id if it has one, else by the legacy
+    // id its name derives to. Deliberately never falls back to the server's *current* name, since two servers
+    // swapping names would otherwise adopt each other's token.
     internal static bool Matches(McpOAuthTokenEntry entry, string serverId) =>
         !string.IsNullOrEmpty(entry.ServerId)
             ? string.Equals(entry.ServerId, serverId, StringComparison.Ordinal)

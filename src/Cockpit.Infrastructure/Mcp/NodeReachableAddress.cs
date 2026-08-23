@@ -4,12 +4,9 @@ using System.Net.Sockets;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// Best-effort LAN-facing address for the node UI (AC-790): the operator types this into a second Cockpit, so it
-// has to be something reachable from another machine, not "127.0.0.1" or a wildcard bind address.
-// ponytail: name/type heuristics to skip obvious Docker/VPN/bridge adapters and link-local self-assigned
-// addresses, not a routing-table lookup — on a machine with unusual networking (several real NICs, a VPN that
-// owns the default route) this can still pick the wrong one. Upgrade path: let the operator pick/override the
-// interface once that actually bites (no report of it yet, and pairing/discovery are later, sibling tickets).
+// AC-790: best-effort LAN-facing address for the node UI — reachable from another machine, not 127.0.0.1 or a
+// wildcard bind address. ponytail: name/type heuristics, not a routing-table lookup, can still pick the wrong
+// NIC on unusual networking. Upgrade path: an operator-driven interface picker, once that actually bites.
 internal static class NodeReachableAddress
 {
     private static readonly string[] _VirtualNameHints =
@@ -22,11 +19,8 @@ internal static class NodeReachableAddress
             .Select(candidate => candidate.Address.Address.ToString())
             .FirstOrDefault();
 
-    // Every IPv4 unicast address this machine has on what looks like a real, physical-ish LAN interface —
-    // loopback, tunnels, link-local self-assigned addresses and known virtual adapters (Docker, WSL, VPN
-    // bridges) filtered out. Shared with `NodeVisibilityPolicy` (AC-793): "what a second cockpit can reach me at"
-    // and "what counts as my own network" are the same question asked from two directions, and answering it with
-    // two separate filters would let them quietly disagree about which interfaces count.
+    // AC-793: every IPv4 unicast address on a real-looking LAN interface, loopback/tunnels/virtual adapters
+    // filtered out. Shared with NodeVisibilityPolicy so "reach me at" and "my own network" can't disagree.
     internal static IEnumerable<(NetworkInterfaceType Type, UnicastIPAddressInformation Address)> RealUnicastAddresses() =>
         NetworkInterface.GetAllNetworkInterfaces()
             .Where(nic => nic.OperationalStatus == OperationalStatus.Up

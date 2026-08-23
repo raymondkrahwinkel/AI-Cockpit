@@ -14,25 +14,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// The pairing handshake's network surface (AC-792): one HTTPS listener carrying `/pair/request`, `/pair/claim`
-// and `/pair/unpair`, on the same certificate the node's MCP listeners use. Started only when the node master
-// switch is on — off, this binds nothing, so an unpaired cockpit that nobody meant as a node has no pairing port
-// to find, the same posture AC-791 chose for internal endpoints.
-//
-// Its own listener rather than routes on the MCP endpoints' listeners, for two reasons that pull the same way.
-// `CockpitMcpEndpointHost` mounts one Kestrel per endpoint, so hanging pairing off "an" endpoint means picking one
-// arbitrarily and inheriting its lifetime — and the plugin-mounted ones arrive after startup. And these routes sit
-// *outside* `McpAuthMiddleware` by necessity: they are how a caller obtains the credential that middleware
-// demands, so they cannot be behind it. Keeping them on a separate application is what makes that exemption a
-// property of the design rather than an ordering trick inside a shared pipeline.
-//
-// What is unauthenticated here is bounded on purpose: `/pair/request` can only create a pending pairing that does
-// nothing until this machine's operator presses Confirm, and `/pair/claim` needs a token that never left the
-// connection that asked for it. `/pair/unpair` is the exception and does take the shared secret — undoing a
-// pairing is an act only the paired controller may perform remotely.
-// ponytail: no rate limiting on /pair/request — the one-pending-at-a-time rule and the two-minute window bound
-// what an unauthenticated caller can achieve to "keep the operator's screen busy". Upgrade path is a per-address
-// throttle if the discovery sub (AC-793) ever makes this port easy to find at scale.
+// AC-792: the pairing handshake's network surface — one HTTPS listener for /pair/*, on only when the node
+// master switch is on, its own listener since these sit outside McpAuthMiddleware by necessity. Unauthenticated
+// surface is bounded: /pair/request only creates a pending pairing needing operator Confirm.
 internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, ISingletonService, IAsyncDisposable
 {
     private readonly INodeEndpointSettingsStore _settings;
@@ -61,10 +45,8 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
 
     public string? Address { get; private set; }
 
-    // The port Kestrel actually bound, whatever `NodeReachableAddress` did or did not find. Kept apart from
-    // `Address` because the two answer different questions — "is this listening" and "what does the operator
-    // type" — and a machine with no LAN-facing interface has the first without the second. Also the test seam:
-    // a handshake over real TLS needs a port, not an advertised address.
+    // The port Kestrel actually bound, kept apart from Address ("is this listening" vs. "what does the operator
+    // type") — a machine with no LAN interface has the first without the second. Also the test seam for real TLS.
     internal int? BoundPort { get; private set; }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -124,11 +106,8 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
                 return _Problem(StatusCodes.Status400BadRequest, NodePairingError.InvalidToken, "Expected a JSON body with a controllerName.");
             }
 
-            // Criterion 3, the pairing half: the same visibility check discovery's reply passes through, so a
-            // caller outside this node's own range and outside the whitelist cannot reach pairing by skipping
-            // discovery and guessing the address — "hij ziet me toch niet" only holds if both entrances agree.
-            // Fails closed: no remote address at all (should not happen over real TCP) is treated as not visible
-            // rather than as "unknown, so allow".
+            // Criterion 3: the same visibility check discovery's reply passes through, so a caller outside the
+            // whitelist can't reach pairing by guessing the address. Fails closed on no remote address at all.
             var remoteAddress = context.Connection.RemoteIpAddress;
             if (remoteAddress is null || !await _visibility.IsAllowedAsync(remoteAddress, context.RequestAborted).ConfigureAwait(false))
             {
@@ -188,10 +167,8 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
         });
     }
 
-    // `Pending` is not a failure of the request — the controller is doing exactly what it should — so it answers
-    // 202 rather than an error status, and only the genuinely terminal outcomes carry a 4xx. `AlreadyUsed` and
-    // `Expired` share 410 (both say "this is gone") but keep separate codes in the body, which is the distinction
-    // criterion 2 asks for; a caller branching on status alone would lose it, and that is why the code is there.
+    // Pending answers 202, not an error status; AlreadyUsed and Expired share 410 but keep separate codes in the
+    // body (criterion 2), since a caller branching on status alone would otherwise lose the distinction.
     private static int _StatusFor(string error) => error switch
     {
         NodePairingError.Pending => StatusCodes.Status202Accepted,
@@ -209,10 +186,8 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
         catch (Exception ex) when (ex is System.Text.Json.JsonException or BadHttpRequestException or IOException
             or InvalidOperationException or NotSupportedException)
         {
-            // `ReadFromJsonAsync` throws `InvalidOperationException`/`NotSupportedException` for a body that is not
-            // declared as JSON at all. These routes are unauthenticated and on a network interface, so anything at
-            // all can arrive here; answering a malformed probe with 400 rather than letting it become a 500 keeps
-            // an error page off a socket strangers can reach.
+            // ReadFromJsonAsync throws for a non-JSON body; these routes are unauthenticated on a network
+            // interface, so a 400 here keeps an error page off a socket strangers can reach.
             return null;
         }
     }

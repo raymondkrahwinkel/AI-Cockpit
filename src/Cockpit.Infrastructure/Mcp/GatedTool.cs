@@ -3,11 +3,8 @@ using Microsoft.Extensions.AI;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// Wraps an MCP tool (any `AIFunction`) so it is only executed after the operator approves it
-// (#26). On invocation it asks the `IToolApprovalGate` — which raises the session's
-// PermissionRequested flow and awaits the decision — and runs the underlying tool only on approval; a
-// denial becomes the tool result rather than an execution. This keeps the agentic
-// `UseFunctionInvocation` loop intact while gating every call, mirroring the Claude permission flow.
+// #26: wraps an MCP tool so it only runs after the operator approves it via IToolApprovalGate; a denial becomes
+// the tool result instead of an execution.
 internal sealed class GatedTool(AIFunction inner, IToolApprovalGate gate) : DelegatingAIFunction(inner)
 {
     protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)

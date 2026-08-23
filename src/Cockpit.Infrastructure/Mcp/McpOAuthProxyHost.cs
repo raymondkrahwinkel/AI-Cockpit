@@ -12,17 +12,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// One loopback listener per OAuth-protected MCP server, standing in for that server's real address (AC-524). A
-// session's config points here with the app-lifetime key it already uses for the cockpit's own endpoints, and every
-// request that arrives is forwarded upstream with a freshly obtained OAuth token on it.
-// Deliberately its own host rather than a mode of `CockpitMcpEndpointHost`: that one serves the cockpit's own
-// tool sets and has nothing to do with a third party's address, and a shared host would put this ticket's changes
-// on the path of eight servers that work. The only thing the two share is the auth gate, which is shared rather
-// than copied for the usual reason — a security check that exists twice is a security check that drifts.
-//
-// Nothing is mounted up front: the set of OAuth servers is whatever the operator configured, and a listener is
-// bound the first time a session actually asks for one. It then stays up for the app's lifetime, because the
-// sessions it serves outlive the call that created it.
+// AC-524: one loopback listener per OAuth-protected server, standing in for its real address, forwarding every
+// request upstream with a fresh OAuth token. Its own host rather than a CockpitMcpEndpointHost mode, sharing
+// only the auth gate; a listener binds on first use and stays up for the app's lifetime.
 internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAsyncDisposable
 {
     private readonly IMcpOAuthCoordinator _coordinator;
@@ -33,16 +25,12 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
     private readonly ConcurrentDictionary<string, string> _mounted = new(StringComparer.Ordinal);
     private readonly List<WebApplication> _apps = [];
 
-    // One gate per server rather than one for all of them. A launch gives every mount it needs a single shared
-    // budget — five seconds for the whole launch on the TTY route — so a slow first mount holding a global gate
-    // would spend the second server's time as well as its own, and the second would be dropped for a delay that
-    // had nothing to do with it.
+    // One gate per server, not a global one — a launch's shared mount budget (five seconds on the TTY route)
+    // would otherwise have a slow first mount spend the second server's time too.
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _mountGates = new(StringComparer.Ordinal);
 
-    // One client for every proxied server, with no timeout of its own. The default hundred seconds would cut an MCP
-    // streamable-HTTP response off mid-stream: a server-to-client SSE stream is meant to stay open for as long as
-    // the server has more to say, and a client timeout would turn that into a session whose tools stop answering.
-    // Redirects are not followed, because a redirect is the upstream's answer to relay, not ours to resolve.
+    // One client per proxied server with no timeout — the default hundred seconds would cut an SSE stream off
+    // mid-session. Redirects are not followed, since that's the upstream's answer to relay, not ours to resolve.
     private readonly HttpClient _upstream = new(new SocketsHttpHandler { AllowAutoRedirect = false })
     {
         Timeout = Timeout.InfiniteTimeSpan,

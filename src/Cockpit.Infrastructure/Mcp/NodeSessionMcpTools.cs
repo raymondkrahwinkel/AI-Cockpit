@@ -8,40 +8,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// The `cockpit-node` MCP tools (AC-795): what a paired controller may do with the sessions on this machine — see
-// them, start one, stop one. The last sub of AC-742, and the first thing on the node listener a remote caller can
-// actually reach.
-//
-// *Why this is a server of its own and not four more tools somewhere.* Every endpoint AC-790 exposes on the node
-// listener already carries tools, and a remote caller can call none of them: they key on the transport-verified
-// pane (`McpRequestContext.CurrentPaneId`), a controller has no pane, and so each one fails closed — deliberately,
-// per AC-791. That property is worth keeping exactly as it is. So the tools a controller *may* call are a separate
-// server whose whole subject is the remote case, rather than an exception carved into tools whose current
-// guarantee is that they have none.
-//
-// *The mount rule, and why it is the inverse of the assistant's.* `AssistantAgentMcpTools` is `Internal` — hosted,
-// but reaching only a launch that names it. This one is the mirror image: registered with `IsEnabled` returning
-// false, so `CockpitMcpEndpointHost` hosts it (which is what binds the node listener in front of it) while no local
-// session is ever told it exists. One endpoint, reachable from the network and from nowhere on this machine.
-//
-// *And, like there, the mount is not the gate.* `_RefuseIfNotTheController` runs first in every tool and returns
-// before any gateway is touched, because a mount is configuration and configuration widens by accident — an
-// `IsEnabled` that someone makes conditional, a fan-out that stops reading the flag. What is checked instead is
-// the pane `McpAuthMiddleware` stamped from the node's own shared secret, which no argument on any tool can move.
-//
-// *What stands in for the operator's click.* Nothing here raises a consent card, and that is the point rather than
-// an omission. A card would appear on a machine the epic exists precisely so that nobody has to be standing at
-// (AC-742: "taken offloaden naar een laptop"), where it would sit unanswered until it timed out — a gate that
-// cannot be answered is not a gate, it is an outage. The grant AC-794 put on the pairing is the consent: the node's
-// operator ticked these profiles and projects ahead of time, on this machine, and unticking one takes effect on the
-// next call rather than the next restart. So every start below is checked against `INodePairingBroker`, which
-// answers false for everything while unpaired.
-//
-// *A session started here outlives the controller.* Raymond's decision on the epic's open question (2026-08-15):
-// this is offloading, not remote control. There is therefore no teardown path in this file and none anywhere else
-// — a controller that closes, crashes or unpairs leaves what it started running, and `stop_node_agent` is the only
-// thing that ends one. `NodeSessionsOutliveTheControllerTests` pins that, because the tempting "tidy up on unpair"
-// is exactly the well-meant addition that would silently make it the other thing.
+// AC-795 (last sub of AC-742): the cockpit-node MCP tools — see, start, stop sessions on this machine. No
+// consent card (an unattended laptop) — AC-794's pairing grant is the consent; a session outlives the
+// controller by design (2026-08-15), only stop_node_agent ends one.
 internal sealed class NodeSessionMcpTools(
     IAssistantReadGateway read,
     IAssistantAgentGateway gateway,
@@ -100,10 +69,8 @@ internal sealed class NodeSessionMcpTools(
 
             var known = await profiles.LoadAsync().ConfigureAwait(false);
 
-            // `NodeScopedProfileSummary` is AC-794's allow-list of what may cross this boundary, and this is the
-            // call it was written for. Constructing it from the three named fields rather than mapping a profile
-            // wholesale is the whole of its guarantee: a field added to `SessionProfile` later does not arrive here
-            // by default, it has to be put here on purpose, with that type's secrecy test updated to say so.
+            // AC-794's allow-list of what may cross this boundary — built from three named fields rather than
+            // mapping a profile wholesale, so a field added to SessionProfile later doesn't arrive here by default.
             return _Serialize(new
             {
                 ok = true,
@@ -165,15 +132,9 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
-            // Both checks before anything is started, and both against the live grant rather than a copy read at
-            // pairing time: unticking a row on the node's Security tab has to stop covering the next call, which is
-            // the promise `INodePairingBroker.SetScopeAsync` makes. An unpaired node answers false to both, so a
-            // controller whose pairing has just been revoked is refused here as well as at the door.
-            //
-            // The label is resolved to a real profile *first*, with the same case-insensitive comparison the spawn
-            // itself will use, and the grant is then checked against what that resolved to. Checking the string as
-            // it arrived would leave a gap wherever two profiles differ only in case: "Foo" is ticked, "foo" is not,
-            // and a request naming "Foo" passes a grant check the spawn then answers with either of them.
+            // Both checks against the live grant, not a copy read at pairing time, so unticking a row takes
+            // effect on the next call. The label is resolved to a real profile first, with the same
+            // case-insensitive comparison the spawn uses, so "Foo"/"foo" can't pass a grant check on the wrong one.
             if (await _ResolveAllowedProfileAsync(profile).ConfigureAwait(false) is not { } allowedProfile)
             {
                 return _Serialize(new
@@ -242,10 +203,8 @@ internal sealed class NodeSessionMcpTools(
                 return refusal;
             }
 
-            // Stopping is bounded by exactly what listing showed, and for the same reason: the grant is what this
-            // controller was given, and a session the node's operator started under a profile they never ticked is
-            // their work, not this caller's. Without this a fresh pairing with nothing ticked could still end every
-            // agent on the machine — able to break everything while allowed to start nothing.
+            // Stopping is bounded by exactly what listing showed — a session under an unticked profile is the
+            // node operator's work, not this caller's, else a fresh empty pairing could still end every agent.
             var visible = await _VisibleSessionsAsync().ConfigureAwait(false);
             if (!visible.Any(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal)))
             {
@@ -267,14 +226,9 @@ internal sealed class NodeSessionMcpTools(
         }
     }
 
-    // The sessions this controller may see, which is the same set it may stop: the ones running under a profile
-    // its grant covers. One method rather than a filter at each call site, because "what you can see" and "what you
-    // can end" drifting apart is precisely the hole this closes.
-    //
-    // A session whose profile is no longer ticked disappears from the list and stops being stoppable, live — the
-    // same posture every other grant check here takes. Sessions the node's operator started themselves are visible
-    // when they run under a shared profile, which is deliberate: the grant is over the profile, and two machines
-    // sharing one is what "offload to the laptop" means.
+    // The sessions this controller may see, the same set it may stop — one method rather than a filter per call
+    // site, closing the gap where "see" and "end" could drift apart. Live against the grant: an unticked profile
+    // disappears from the list immediately, and the node operator's own sessions are visible under a shared profile.
     private async Task<IReadOnlyList<AssistantSessionRow>> _VisibleSessionsAsync()
     {
         var sessions = await read.ListSessionsAsync().ConfigureAwait(false);
@@ -291,10 +245,8 @@ internal sealed class NodeSessionMcpTools(
         return match is not null && pairing.IsProfileAllowed(match.Label) ? match.Label : null;
     }
 
-    // The desk a controller's session lands on: the one this machine is showing. Derived here and never named by
-    // the caller — a controller has never seen this cockpit's desks, so any id it sent would be a guess. Falls back
-    // to the first desk that can hold a session, because "the active one" is a workspace type away from being able
-    // to (a terminal-only desk is active just as often as any other).
+    // The desk a controller's session lands on, derived here and never named by the caller — a controller has
+    // never seen this cockpit's desks. Falls back to the first desk that can hold a session.
     private async Task<string?> _ActiveWorkspaceIdAsync()
     {
         var workspaces = await gateway.ListWorkspacesAsync().ConfigureAwait(false);

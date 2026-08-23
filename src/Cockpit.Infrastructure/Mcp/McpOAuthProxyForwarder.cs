@@ -11,13 +11,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// Forwards one loopback request to the OAuth-protected MCP server it stands for, swapping the local key on the way
-// in for a freshly obtained OAuth token (AC-524).
-//
-// This is not an MCP implementation and must not become one. It relays a method, a path, a query, the headers and
-// the body, and streams the answer back; what any of it means is between the agent and the server. The single
-// exception is the reply it composes when there is no credential to forward with, which has to be shaped like an
-// answer the client will accept — see `_RespondUnavailableAsync` for why a 401 cannot be one.
+// AC-524: forwards one loopback request to the OAuth-protected server it stands for, swapping the local key for a
+// freshly obtained OAuth token. Not an MCP implementation and must not become one — it relays everything as-is,
+// except the reply it composes when there is no credential to forward with (see `_RespondUnavailableAsync`).
 internal sealed class McpOAuthProxyForwarder(
     McpServerConfig server,
     IMcpOAuthCoordinator coordinator,
@@ -42,10 +38,8 @@ internal sealed class McpOAuthProxyForwarder(
     // a JSON document and almost always fits; the threshold is generous so the ordinary one never touches disk.
     private const int MemoryBufferThreshold = 128 * 1024;
 
-    // How large a call may be and still be worth sending a second time after its credential was renewed. Beyond it
-    // the body only exists as a temp file, and re-reading megabytes from disk to save one call is a poor trade for
-    // a caller that has been told to send it again. A limit on the retry only — the first forward is never refused
-    // for size.
+    // Above this, the body only exists as a temp file and re-reading it to save one retry is a poor trade — a
+    // limit on the retry only, the first forward is never refused for size.
     private const long RepeatableBodyLimit = 8L * 1024 * 1024;
 
     // How long to wait before asking for a credential a second time. Long enough that a rotation race or a token
@@ -54,11 +48,9 @@ internal sealed class McpOAuthProxyForwarder(
 
     public async Task ForwardAsync(HttpContext context, CancellationToken cancellationToken)
     {
-        // Buffered so the body can be read more than once: to forward it, to send it again after a refused
-        // credential has been renewed, and to find the JSON-RPC id a refusal has to be answered under. Kept in
-        // memory up to a threshold and spilled to a temp file beyond it, which the request's own teardown removes.
-        // Deliberately without a hard buffer limit: one would abort the ordinary forward as well, and refusing a
-        // large call outright is a worse answer than relaying it and only giving up its retry.
+        // Buffered so the body can be read more than once: to forward it, to retry after a renewed credential, and
+        // to find the JSON-RPC id a refusal is answered under. No hard limit — that would abort the ordinary
+        // forward too, and refusing a large call outright is worse than relaying it and only losing its retry.
         context.Request.EnableBuffering(bufferThreshold: MemoryBufferThreshold);
 
         var access = await _AcquireWithOneSecondChanceAsync(cancellationToken).ConfigureAwait(false);
@@ -108,22 +100,9 @@ internal sealed class McpOAuthProxyForwarder(
         }
     }
 
-    // The credential for this call, with the one second chance a failed silent renewal gets (AC-646).
-    //
-    // Measured: a renewal failed, the call came back telling the agent its sign-in was revoked, and the same call a
-    // few minutes later went through with nothing signed in or restarted. One bad second cost a call and stopped an
-    // agent — so the renewal is simply asked again, after a pause long enough for whatever it was to pass.
-    //
-    // Exactly once and never a loop, the same discipline as `_RetryWithARenewedCredentialAsync`, and only for the two
-    // reasons a second attempt can actually change: one that could not be told apart, and one where nothing answered.
-    // Retrying a sign-in the server itself declared dead, one that was never made, or a token that is structurally
-    // too short is a round trip spent on an answer that cannot change — and it would bury the one sentence the
-    // operator does need to read under a retry that never ends in anything.
-    //
-    // Safe on the shared path: the coordinator removes a finished renewal from its single-flight table before its
-    // completion can be observed, so the second ask starts a fresh one rather than joining the dead one. And the
-    // same table is what keeps this from multiplying — a hundred calls that all take their second chance coalesce
-    // onto one renewal, exactly as their first attempt did.
+    // AC-646: the credential for this call, with one second chance a failed silent renewal gets — measured, a
+    // renewal that failed once succeeded moments later. Only for unconfirmed/unreachable, never a dead grant;
+    // safe on the shared path since the coordinator's single-flight table coalesces concurrent second chances.
     private async Task<McpOAuthAccess> _AcquireWithOneSecondChanceAsync(CancellationToken cancellationToken)
     {
         var access = await coordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
@@ -141,14 +120,9 @@ internal sealed class McpOAuthProxyForwarder(
         return await coordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
     }
 
-    // The one retry a refused credential gets. The cockpit judges a token on its own clock, and the server is the
-    // only one who knows for certain — a grant revoked at the far end, or a rotation race lost to another session,
-    // leaves something that looks healthy here and is dead there. Without this, every later call would present the
-    // same dead token and the server would be gone for the rest of the session over a single renewal.
-    //
-    // Exactly once, never a loop: a server that refuses everything must cost two round trips per call, not a storm.
-    // The renewal itself is the coordinator's, and coalesces — a hundred calls refused at the same moment cause one.
-    // The response to relay, or `null` when this method has already answered the request.
+    // The one retry a refused credential gets — the server alone knows for certain a grant is dead, so a single
+    // retry avoids losing the server over one renewal. Never a loop; the coordinator coalesces concurrent retries.
+    // Returns the response to relay, or `null` when this method has already answered the request.
     private async Task<HttpResponseMessage?> _RetryWithARenewedCredentialAsync(
         HttpContext context,
         string rejectedAccessToken,
@@ -188,14 +162,8 @@ internal sealed class McpOAuthProxyForwarder(
             return null;
         }
 
-        // Still refused with a credential minted seconds ago. Renewing again would only find the same answer, so
-        // this is where it stops and the operator is told instead.
-        //
-        // Told what, exactly, is the whole of AC-550. A renewal that worked and a server that says no anyway is a
-        // revoked grant and a server refusing one live token at the same time, and there is nothing here to separate
-        // them: this end holds a token the authorization server issued seconds ago. Measured twice on Depot — the
-        // sign-in was reported dead and the very next call went through untouched — so "expired, go and sign in"
-        // is the reading the evidence rules out, and it is the one that makes an agent stop and wait.
+        // AC-550: still refused with a credential minted seconds ago — renewing again would find the same answer,
+        // so this stops and tells the operator instead of guessing "expired", which measured evidence rules out.
         if (_IsRefusal(second))
         {
             logger.LogWarning(
@@ -306,11 +274,8 @@ internal sealed class McpOAuthProxyForwarder(
         // chunk by chunk would be a promise this side cannot keep.
         context.Response.Headers.Remove("Content-Length");
 
-        // MCP over streamable HTTP answers a request either with a JSON document or with an SSE stream that stays
-        // open while the server keeps talking. Handing the body to CopyToAsync leaves the flushing to whoever owns
-        // the buffer, and an event that is written but not yet flushed is an agent waiting on an answer that has
-        // already been sent — the session simply hangs. Reading and flushing each chunk is what makes the first
-        // event arrive when it was sent rather than when the response ends.
+        // An SSE stream can stay open indefinitely; CopyToAsync would leave flushing to whoever owns the buffer,
+        // hanging the agent on an event that was written but not yet flushed. Read-and-flush per chunk instead.
         context.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
         var body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -333,11 +298,8 @@ internal sealed class McpOAuthProxyForwarder(
         }
     }
 
-    // The answer when there is no credential to forward with. Everything here is chosen so the client keeps the
-    // server rather than dropping it: the measured behaviour is that a 401 makes the CLI report the server as
-    // needing re-authorization and remove its tools from the session for good, and a session cannot get them back.
-    // So the request is answered as a request, with the reason where the agent will read it out loud, and the next
-    // call works the moment the operator has signed in again.
+    // The answer when there's no credential to forward with, chosen so the client keeps the server rather than
+    // dropping it — a bare 401 makes the CLI remove the server's tools for the rest of the session, for good.
     private async Task _RespondUnavailableAsync(HttpContext context, McpOAuthAttentionReason reason, CancellationToken cancellationToken)
     {
         if (context.Response.HasStarted)

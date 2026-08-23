@@ -4,16 +4,9 @@ using Cockpit.Core.Abstractions;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// The app-lifetime bearer key that guards the cockpit's own loopback MCP endpoints (AC-40). The endpoints listen on
-// an OS-assigned loopback port with no auth of their own, so any local process could enumerate the port and POST to
-// them; this key is the capability the endpoint checks. A fresh, cryptographically-random key is minted once per app
-// launch and never persisted — a key left over from a previous run is invalid after a restart.
-//
-// The in-memory value here is the source of truth for validating incoming requests; the spawn paths hand the same
-// value to each in-app session so a session the operator started reaches the endpoints transparently, while a
-// process outside the app has no key and is turned away with a 401. The remaining boundary is honest and unchanged:
-// during a session the key sits in that session's owner-only mcp-config, readable by another same-user process that
-// knows the path — the same trust the rest of the config already rests on.
+// AC-40: app-lifetime bearer key guarding the cockpit's loopback MCP endpoints, which otherwise have no auth of
+// their own; minted fresh and unpersisted per launch, and handed only to in-app sessions so an outside process is
+// turned away with a 401.
 internal sealed class McpAuthKey : ISingletonService
 {
     // The current run's key: 256 bits of randomness as hex, minted at construction and constant for the app's lifetime.

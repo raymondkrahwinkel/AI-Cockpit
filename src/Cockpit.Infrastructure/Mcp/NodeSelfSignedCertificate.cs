@@ -5,18 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// This machine's identity as a node: one self-signed certificate for the node listener's TLS (AC-790), kept on
-// disk so it is the same one tomorrow (AC-792).
-//
-// AC-790 minted a throwaway per launch and said so — trust rested entirely on the shared secret, and a client had
-// to be told out-of-band to accept whatever certificate it met. That is encryption without an identity: anything
-// on the LAN that can answer on the node's address gets the same acceptance, so a machine in the middle reads and
-// rewrites every call. Pairing closes that by having the controller remember this fingerprint and refuse anything
-// else afterwards (`NodeCertificatePin`) — which only works if the fingerprint outlives a restart. Hence a file.
-//
-// Regenerated when it is missing, unreadable, or past its validity. A regenerated certificate is a new identity
-// and existing controllers will refuse it; that is the honest outcome — the alternative is a node that silently
-// stops being the machine somebody paired with.
+// AC-790/AC-792: this machine's identity as a node — a self-signed TLS certificate kept on disk so it's the
+// same one tomorrow, letting the controller pin its fingerprint (NodeCertificatePin) across restarts.
+// Regenerated when missing/unreadable/expired — existing controllers will then refuse it, the honest outcome.
 internal sealed class NodeSelfSignedCertificate : ISingletonService, IDisposable
 {
     private readonly string _path;
@@ -55,10 +46,8 @@ internal sealed class NodeSelfSignedCertificate : ISingletonService, IDisposable
             return existing;
         }
 
-        // The PKCS#12 bytes are the artifact, and they are produced *before* anything is re-imported. Exporting the
-        // loaded certificate instead would be a Windows-only trap: `X509CertificateLoader` there puts the private
-        // key in a keyset that is not marked exportable, so `Export(Pfx)` throws — and a swallowed throw here means
-        // a fresh identity every launch, which is precisely what pinning cannot survive.
+        // The PKCS#12 bytes are produced before anything is re-imported — exporting the loaded certificate
+        // instead is a Windows-only trap (X509CertificateLoader's keyset isn't marked exportable there).
         var bytes = _CreatePkcs12();
 
         try

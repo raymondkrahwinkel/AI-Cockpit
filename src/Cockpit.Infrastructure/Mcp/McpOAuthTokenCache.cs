@@ -5,22 +5,9 @@ using ModelContextProtocol.Authentication;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// Bridges the MCP client's token cache to the cockpit's own storage for one server (AC-353).
-//
-// This is the whole reason the cockpit ever sees a token. Left unset, `ClientOAuthOptions.TokenCache` defaults
-// to an in-memory cache owned by the transport: the sign-in works, and the result dies with the connection — so
-// every session pays for its own browser login and nothing can be handed to an agent. Pointed here instead, the
-// SDK reads the stored token on each request and writes back every renewal, which is what makes one sign-in serve
-// every route and survive a restart.
-//
-// `serverId`: The server's stable `McpServerConfig.IdentityKey` (AC-403) — the key the store files under.
-// `serverName`: The server's current name, written alongside the token purely as a label.
-// `resourceUrl`: The address the token is being obtained for, so a record cannot be used at another one.
-// `store`: Where the token lands.
-// `logger`: Where a renewal leaves its trace (AC-524) — this class used to write nothing at all, which
-// made an expiry an anecdote instead of an event anyone could go and look up.
-// `renewalMargin`: How much life the caller needs the token to have left, subtracted from what this reports (AC-771).
-// Zero for a connect that only wants to use whatever is stored.
+// AC-353: bridges the MCP client's token cache to the cockpit's storage for one server — without it,
+// ClientOAuthOptions.TokenCache defaults to an in-memory cache that dies with the connection. `serverId` is the
+// stable IdentityKey (AC-403); `renewalMargin` (AC-771) is subtracted from the reported lifetime.
 internal sealed class McpOAuthTokenCache(
     string serverId,
     string serverName,
@@ -39,13 +26,9 @@ internal sealed class McpOAuthTokenCache(
             return;
         }
 
-        // RFC 6749 §6: a refresh response may leave the refresh token out, which means "keep the one you have". Taking
-        // the response at face value would throw it away on the first renewal against any server that does not rotate,
-        // and every later expiry would then ask the operator to sign in again for no reason.
-        // The one it keeps has to be its own, though: the stored record is this server's across a rename (AC-403),
-        // but the operator can still have pointed that same server at a different host since, and carrying its
-        // refresh token over would launder one host's grant into another host's record — the same leak the origin
-        // check exists to stop, one layer down.
+        // RFC 6749 §6: a refresh response may omit the refresh token, meaning "keep the one you have" — but only
+        // the stored record's own token, since AC-403's rename-survival could otherwise launder one host's grant
+        // into a record now pointed at another host.
         var existing = await store.GetAsync(serverId, cancellationToken).ConfigureAwait(false);
         var inheritable = existing is not null && existing.IsForResource(resourceUrl) ? existing.RefreshToken : null;
         var refreshToken = string.IsNullOrWhiteSpace(token.RefreshToken) ? inheritable : token.RefreshToken;
@@ -61,10 +44,8 @@ internal sealed class McpOAuthTokenCache(
                 ExpiresAt = _ExpiresAt(token),
                 Scope = token.Scope,
                 ResourceUrl = resourceUrl,
-                // Without these, the refresh token above is unusable beyond this one connection: the SDK only
-                // attempts a refresh grant once it has a client identity to present, and a fresh connect attempt
-                // (a new session, a renewal, a restart) starts a brand-new provider with none — it has to be
-                // restored from here (AC-505).
+                // AC-505: without these the refresh token is unusable beyond this connection — a fresh connect
+                // starts a brand-new provider with no client identity to present, so this restores it.
                 ClientId = token.ClientId,
                 ClientSecret = token.ClientSecret,
                 TokenEndpointAuthMethod = token.TokenEndpointAuthMethod,
@@ -86,21 +67,16 @@ internal sealed class McpOAuthTokenCache(
     {
         var stored = await store.GetAsync(serverId, cancellationToken).ConfigureAwait(false);
 
-        // This server's own token is still not automatically usable here: the address under it can have changed
-        // since it was issued (a project's own entry replaces a registry server by name and may carry a different
-        // one, and an operator can edit the URL). Handing it over would send one host's credential to another, so a
-        // mismatch reads as having no token at all.
+        // The stored token isn't automatically usable — its address can have changed since issuance, so a mismatch
+        // reads as having no token at all rather than sending one host's credential to another.
         if (stored is null || !stored.IsForResource(resourceUrl))
         {
             return null;
         }
 
-        // ExpiresIn is relative to ObtainedAt, so the pair has to be rebuilt from the absolute instant we stored:
-        // handing back the original ExpiresIn with a fresh ObtainedAt would present an expired token as brand new.
-        //
-        // AC-771: less the caller's margin. The SDK renews on `TokenContainer.IsExpired` alone — dead on the second,
-        // no margin of its own — so a margin it was never told about was a renewal the coordinator asked for, that
-        // quietly did not happen, and then read as a renewal that had failed.
+        // ExpiresIn is relative to ObtainedAt, so it must be rebuilt from the stored absolute instant, not a fresh
+        // ObtainedAt. AC-771: minus the caller's margin, since the SDK renews on IsExpired alone with no margin of
+        // its own.
         var obtainedAt = DateTimeOffset.UtcNow;
         int? remaining = stored.ExpiresAt is { } expiresAt
             ? (int)Math.Max(0, Math.Round((expiresAt - renewalMargin - obtainedAt).TotalSeconds))
