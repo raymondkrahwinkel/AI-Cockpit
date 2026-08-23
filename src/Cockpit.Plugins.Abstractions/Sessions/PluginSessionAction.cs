@@ -10,9 +10,15 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// answer them. One menu holds them all, and a plugin that has nothing to show shows nothing.
 /// </para>
 /// </summary>
-/// <param name="Title">What it says in the menu: "Track a YouTrack issue…".</param>
-/// <param name="Icon">A single character or emoji, or empty. Used when <see cref="IconKind"/> is null.</param>
-/// <param name="Invoke">Runs it, for the session it was opened from — on the UI thread.</param>
+/// <param name="Title">
+/// What it says in the menu: "Track a YouTrack issue…".
+/// </param>
+/// <param name="Icon">
+/// A single character or emoji, or empty. Used when <see cref="IconKind"/> is null.
+/// </param>
+/// <param name="Invoke">
+/// Runs it, for the session it was opened from — on the UI thread.
+/// </param>
 public sealed record PluginSessionAction(string Title, string Icon, Action<IPluginSessionContext> Invoke)
 {
     /// <summary>

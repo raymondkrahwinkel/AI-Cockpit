@@ -12,7 +12,9 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public sealed record SessionResourceContribution
 {
-    /// <summary>A contribution that adds nothing — what a plugin returns when this session is not its business. Cheaper than building an empty one per launch.</summary>
+    /// <summary>
+    /// A contribution that adds nothing — what a plugin returns when this session is not its business. Cheaper than building an empty one per launch.
+    /// </summary>
     public static SessionResourceContribution None { get; } = new();
 
     /// <summary>
@@ -27,6 +29,8 @@ public sealed record SessionResourceContribution
     public IReadOnlyDictionary<string, string> EnvironmentVariables { get; init; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
-    /// <summary>Whether this contribution would change anything, so the host can skip the merge for the ordinary case of a plugin with nothing to add.</summary>
+    /// <summary>
+    /// Whether this contribution would change anything, so the host can skip the merge for the ordinary case of a plugin with nothing to add.
+    /// </summary>
     public bool IsEmpty => EnvironmentVariables.Count == 0;
 }

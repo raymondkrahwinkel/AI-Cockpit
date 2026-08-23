@@ -9,16 +9,26 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// is an honest "this provider has none" rather than an error, and <see cref="PluginConversationIdState.Known"/>
 /// carries the real id in <see cref="Value"/>.
 /// </summary>
-/// <param name="State">Which of the three states this record currently represents.</param>
-/// <param name="Value">The provider's id, set only when <paramref name="State"/> is <see cref="PluginConversationIdState.Known"/>.</param>
+/// <param name="State">
+/// Which of the three states this record currently represents.
+/// </param>
+/// <param name="Value">
+/// The provider's id, set only when <paramref name="State"/> is <see cref="PluginConversationIdState.Known"/>.
+/// </param>
 public sealed record PluginConversationId(PluginConversationIdState State, string? Value)
 {
-    /// <summary>Not yet known.</summary>
+    /// <summary>
+    /// Not yet known.
+    /// </summary>
     public static PluginConversationId Unknown { get; } = new(PluginConversationIdState.Unknown, null);
 
-    /// <summary>This provider has no resumable conversation id.</summary>
+    /// <summary>
+    /// This provider has no resumable conversation id.
+    /// </summary>
     public static PluginConversationId Unsupported { get; } = new(PluginConversationIdState.Unsupported, null);
 
-    /// <summary>The provider's real conversation id.</summary>
+    /// <summary>
+    /// The provider's real conversation id.
+    /// </summary>
     public static PluginConversationId Known(string value) => new(PluginConversationIdState.Known, value);
 }

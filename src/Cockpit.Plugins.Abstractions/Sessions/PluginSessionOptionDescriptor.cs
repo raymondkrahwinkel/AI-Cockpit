@@ -8,10 +8,18 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// <see cref="PluginSessionLaunchOption"/>, which asks the New-session dialog to render a control, this only states
 /// what exists — it renders nothing.
 /// </summary>
-/// <param name="Key">The options-map key, e.g. <see cref="WellKnownPluginSessionOptions.Model"/> or a private one like <c>effort</c>.</param>
-/// <param name="Label">What a human reads for the option itself.</param>
-/// <param name="KnownValues">The values it takes, or <see langword="null"/> for a free-form option (a model id, a path).</param>
-/// <param name="CurrentValueHint">The value that applies when nobody sets one, when the provider knows it.</param>
+/// <param name="Key">
+/// The options-map key, e.g. <see cref="WellKnownPluginSessionOptions.Model"/> or a private one like <c>effort</c>.
+/// </param>
+/// <param name="Label">
+/// What a human reads for the option itself.
+/// </param>
+/// <param name="KnownValues">
+/// The values it takes, or <see langword="null"/> for a free-form option (a model id, a path).
+/// </param>
+/// <param name="CurrentValueHint">
+/// The value that applies when nobody sets one, when the provider knows it.
+/// </param>
 public sealed record PluginSessionOptionDescriptor(
     string Key,
     string Label,

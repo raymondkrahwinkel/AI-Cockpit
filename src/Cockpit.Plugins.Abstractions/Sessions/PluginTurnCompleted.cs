@@ -1,6 +1,8 @@
 namespace Cockpit.Plugins.Abstractions.Sessions;
 
-/// <summary>A turn finished.</summary>
+/// <summary>
+/// A turn finished.
+/// </summary>
 public sealed record PluginTurnCompleted : PluginSessionEvent
 {
     public required string Subtype { get; init; }
@@ -18,10 +20,14 @@ public sealed record PluginTurnCompleted : PluginSessionEvent
     /// </summary>
     public PluginTokenUsage? Usage { get; init; }
 
-    /// <summary>What the session has cost in USD so far — a running total, not this turn's share — when the provider reports one; <see langword="null"/> when it does not (most do not — they have no pricing).</summary>
+    /// <summary>
+    /// What the session has cost in USD so far — a running total, not this turn's share — when the provider reports one; <see langword="null"/> when it does not (most do not — they have no pricing).
+    /// </summary>
     public double? TotalCostUsd { get; init; }
 
-    /// <summary>The provider's own turn count for the session, when it reports one.</summary>
+    /// <summary>
+    /// The provider's own turn count for the session, when it reports one.
+    /// </summary>
     public int? NumTurns { get; init; }
 
     /// <summary>

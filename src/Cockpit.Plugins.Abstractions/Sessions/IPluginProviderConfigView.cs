@@ -9,9 +9,13 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public interface IPluginProviderConfigView
 {
-    /// <summary>The control hosting this provider's config fields, embedded in the profile editor.</summary>
+    /// <summary>
+    /// The control hosting this provider's config fields, embedded in the profile editor.
+    /// </summary>
     Control View { get; }
 
-    /// <summary>Validates the current field values and serializes them; returns <see langword="false"/> (and no JSON) when validation fails, keeping the editor open.</summary>
+    /// <summary>
+    /// Validates the current field values and serializes them; returns <see langword="false"/> (and no JSON) when validation fails, keeping the editor open.
+    /// </summary>
     bool TryGetConfigJson(out string configJson);
 }

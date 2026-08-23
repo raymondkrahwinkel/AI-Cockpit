@@ -13,12 +13,18 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// the driver interface (no new event type, no abstractions break).
 /// </para>
 /// </summary>
-/// <param name="ContextUsedPercent">How full the context window is, 0-100, or <see langword="null"/> before the provider reports it.</param>
-/// <param name="RateLimits">The usage windows the provider reports, each self-labelled; empty when it reports none.</param>
+/// <param name="ContextUsedPercent">
+/// How full the context window is, 0-100, or <see langword="null"/> before the provider reports it.
+/// </param>
+/// <param name="RateLimits">
+/// The usage windows the provider reports, each self-labelled; empty when it reports none.
+/// </param>
 public sealed record PluginSessionStatus(
     double? ContextUsedPercent,
     IReadOnlyList<PluginRateLimitWindow> RateLimits)
 {
-    /// <summary>Whether there is anything worth showing, so a header can hide the bars until a provider reports usage.</summary>
+    /// <summary>
+    /// Whether there is anything worth showing, so a header can hide the bars until a provider reports usage.
+    /// </summary>
     public bool HasAny => ContextUsedPercent is not null || RateLimits.Count > 0;
 }
