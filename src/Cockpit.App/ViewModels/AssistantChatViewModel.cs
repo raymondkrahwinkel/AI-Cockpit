@@ -56,6 +56,17 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     Task SendAsync(string text, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same with images attached (AC-1049), already validated and PNG-encoded by the caller. They ride on the
+    /// message the text sends, or on a message of their own when the text is empty.
+    /// </summary>
+    /// <remarks>
+    /// Default-implemented so the test doubles of this interface that never send an image stay as they are. There
+    /// is one real implementation by design (see <c>AssistantSessionHost</c>) and it overrides this.
+    /// </remarks>
+    Task SendAsync(string text, IReadOnlyList<byte[]> pngImages, CancellationToken cancellationToken = default) =>
+        SendAsync(text, cancellationToken);
+
+    /// <summary>
     /// AC-740: the Assistant Profile's own default working directory, once known — read synchronously so the
     /// @-mention picker can fall back to it before any <see cref="Session"/> exists. Null until the profile has
     /// loaded at least once; a read lazily triggers that load, so a window that never opens the picker never pays for it.

@@ -14,10 +14,18 @@ public class DiscordChannelBridgeTests
     private static (DiscordChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeDiscordChannelSink Sink) _Build(
         AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything)
     {
+        var (bridge, gateway, sink, _) = _BuildWithFiles(verbosity);
+        return (bridge, gateway, sink);
+    }
+
+    private static (DiscordChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeDiscordChannelSink Sink, FakeDiscordFileFetcher Files) _BuildWithFiles(
+        AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything)
+    {
         var gateway = new FakeAssistantChannelGateway();
         var sink = new FakeDiscordChannelSink();
-        var bridge = new DiscordChannelBridge(gateway, sink, _SingleUserAccess(_AllowedUserId), () => verbosity);
-        return (bridge, gateway, sink);
+        var files = new FakeDiscordFileFetcher();
+        var bridge = new DiscordChannelBridge(gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => verbosity);
+        return (bridge, gateway, sink, files);
     }
 
     // AC-1024 criterion 2, the plugin-testable half of it: the host's gateway already reports a stranger's

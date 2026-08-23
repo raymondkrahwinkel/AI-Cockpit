@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -10,6 +11,7 @@ internal sealed class SlackChannelBridge : IDisposable
 {
     private readonly IAssistantChannelGateway _gateway;
     private readonly ISlackChannelSink _sink;
+    private readonly ISlackFileFetcher _files;
 
     // Fixed for this bridge's lifetime, unlike _verbosity: an access change only reaches storage via the
     // settings dialog's save, which SlackChannelPlugin's OnSettingsSaved answers by disposing this bridge and
@@ -35,11 +37,13 @@ internal sealed class SlackChannelBridge : IDisposable
     public SlackChannelBridge(
         IAssistantChannelGateway gateway,
         ISlackChannelSink sink,
+        ISlackFileFetcher files,
         AssistantChannelAccess access,
         Func<AssistantChannelVerbosity> verbosity)
     {
         _gateway = gateway;
         _sink = sink;
+        _files = files;
         _access = access;
         _verbosity = verbosity;
 
@@ -49,9 +53,14 @@ internal sealed class SlackChannelBridge : IDisposable
     }
 
     // A message arrived in the Slack channel. Answers an open consent prompt when the text is JA/NEE and one
-    // is waiting; otherwise forwards it as a chat turn. A real failure (never an ignored sender) gets a
-    // ⚠️ reaction — the only sender-visible sign anything happened.
-    public async Task HandleInboundMessageAsync(string senderId, string text, string messageTs, CancellationToken cancellationToken = default)
+    // is waiting; otherwise forwards it as a chat turn, images and all (AC-1049). A real failure, or an
+    // attachment that did not make it, gets a ⚠️ reaction — never an ignored sender, who is answered with silence.
+    public async Task HandleInboundMessageAsync(
+        string senderId,
+        string text,
+        string messageTs,
+        IReadOnlyList<SlackInboundFile>? files = null,
+        CancellationToken cancellationToken = default)
     {
         if (SlackConsentReplyParser.TryParse(text, out var outcome))
         {
@@ -72,11 +81,60 @@ internal sealed class SlackChannelBridge : IDisposable
             }
         }
 
-        var result = await _gateway.SendAsync(senderId, text, cancellationToken).ConfigureAwait(false);
-        if (!result.Ok && !result.Ignored && result.Error is not null)
+        var (images, someFileRefused) = await _CollectImagesAsync(files, cancellationToken).ConfigureAwait(false);
+
+        var result = await _gateway.SendAsync(senderId, text, images, cancellationToken).ConfigureAwait(false);
+        if (result.Ignored)
+        {
+            return;
+        }
+
+        // The text still went (AC-1049 criterion 5), so a refused attachment is a mark on the sender's own
+        // message rather than a message that failed.
+        if ((!result.Ok && result.Error is not null) || someFileRefused || result.ImagesRefused is not null)
         {
             await _sink.AddReactionAsync(messageTs, "warning", cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    // What of a message's files is worth handing over. The mime type and size Slack reports are a pre-filter that
+    // saves a pointless download — the host decides what an image really is, and does not take our word for it.
+    private async Task<(IReadOnlyList<byte[]> Images, bool Refused)> _CollectImagesAsync(
+        IReadOnlyList<SlackInboundFile>? files, CancellationToken cancellationToken)
+    {
+        if (files is not { Count: > 0 })
+        {
+            return ([], false);
+        }
+
+        var images = new List<byte[]>();
+        var refused = false;
+
+        foreach (var file in files)
+        {
+            if (file.Url is null
+                || file.MimeType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) != true
+                || file.Size > AssistantChannelImageLimits.MaxBytes
+                || images.Count >= AssistantChannelImageLimits.MaxPerMessage)
+            {
+                refused = true;
+                continue;
+            }
+
+            try
+            {
+                images.Add(await _files.FetchAsync(file.Url, cancellationToken).ConfigureAwait(false));
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The sender only ever sees the reaction, so the reason goes to Trace — a plugin has no host log
+                // seam, and a download that failed is otherwise indistinguishable from a bad token (AC-1048).
+                Trace.WriteLine($"Slack: '{file.Name}' was not passed to the assistant — {exception.Message}");
+                refused = true;
+            }
+        }
+
+        return (images, refused);
     }
 
     // An Approve/Deny button was clicked.

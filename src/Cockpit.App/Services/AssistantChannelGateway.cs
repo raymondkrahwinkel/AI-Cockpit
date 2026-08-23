@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Images;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -50,9 +51,16 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
 
     public event EventHandler<Guid>? ConsentPromptClosed;
 
+    public Task<AssistantChannelSendResult> SendAsync(
+        string senderUserId,
+        string text,
+        CancellationToken cancellationToken = default) =>
+        SendAsync(senderUserId, text, [], cancellationToken);
+
     public async Task<AssistantChannelSendResult> SendAsync(
         string senderUserId,
         string text,
+        IReadOnlyList<byte[]> images,
         CancellationToken cancellationToken = default)
     {
         if (_disposed)
@@ -65,16 +73,54 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
             return AssistantChannelSendResult.IgnoredSender();
         }
 
+        // Before the dispatch, so the decoding runs off the UI thread.
+        var (accepted, refusal) = _Accept(images);
+
         try
         {
-            await _OnUiThreadAsync(() => _host.SendAsync(text, cancellationToken)).ConfigureAwait(false);
+            await _OnUiThreadAsync(() => _host.SendAsync(text, accepted, cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             return AssistantChannelSendResult.Refused(exception.Message);
         }
 
-        return AssistantChannelSendResult.Sent();
+        return refusal is null
+            ? AssistantChannelSendResult.Sent()
+            : AssistantChannelSendResult.SentWithoutImages(refusal);
+    }
+
+    // The host's half of the trust boundary (AC-1049): the plugin says these are images, `InboundImage` decides.
+    // A file that will not pass is dropped on its own — the message it came with still goes, which is what a
+    // sender who wrote a paragraph and attached the wrong file needs to happen.
+    private static (IReadOnlyList<byte[]> Accepted, string? Refusal) _Accept(IReadOnlyList<byte[]> images)
+    {
+        if (images.Count == 0)
+        {
+            return ([], null);
+        }
+
+        var accepted = new List<byte[]>();
+        var refusals = new List<string>();
+
+        foreach (var image in images.Take(AssistantChannelImageLimits.MaxPerMessage))
+        {
+            if (InboundImage.TryNormalizeToPng(image, out var png, out var refusal))
+            {
+                accepted.Add(png);
+            }
+            else
+            {
+                refusals.Add(refusal);
+            }
+        }
+
+        if (images.Count > AssistantChannelImageLimits.MaxPerMessage)
+        {
+            refusals.Add($"only the first {AssistantChannelImageLimits.MaxPerMessage} images of a message are passed on");
+        }
+
+        return (accepted, refusals.Count == 0 ? null : string.Join("; ", refusals.Distinct()));
     }
 
     // AC-1023: awaits the send finishing rather than only its start — `InvokeAsync`'s own `Func<Task>` overload

@@ -8,7 +8,18 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.28.0: an in-app knowledge base (AC-1033) — new host-provided functionality a plugin contributes to
+    <!-- 0.29.0: a channel plugin can now hand the assistant images along with a message (AC-1049) — a second
+         IAssistantChannelGateway.SendAsync taking the raw bytes, AssistantChannelImageLimits saying what will
+         be accepted, and AssistantChannelSendResult.ImagesRefused reporting what was not. What an image is,
+         how big it may be and how many there may be is decided host-side, so a plugin cannot widen any of it.
+         Deliberately NOT an abstractionsVersion bump, though AC-1049 asked for one: this interface is
+         implemented by the host and only ever called by a plugin, so the existing text-only overload (now
+         default-implemented in terms of the new one) keeps resolving for an already-compiled plugin. A
+         contract bump matches the major exactly and would have refused every installed plugin until it was
+         rebuilt, for a change that concerns two of them. A plugin that sends images sets minHostVersion
+         0.29.0 — an older host's copy of the SDK has neither the member nor the limits type. Minor because it
+         is additive; still 0.x.
+         0.28.0: an in-app knowledge base (AC-1033) — new host-provided functionality a plugin contributes to
          and calls: documentation embedded under a `Docs` folder is found by scanning, which needs no API at
          all, plus ICockpitHost.CreateHelpHint / OpenHelp / HasHelp for the `?` the SDK draws and the deep links
          behind it. All three are default-implemented (an invisible control, a no-op, false), so an
@@ -213,7 +224,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.28.0</VersionPrefix>
+    <VersionPrefix>0.29.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
