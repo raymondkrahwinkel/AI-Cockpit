@@ -62,6 +62,8 @@ internal sealed class SlackChannelBridge : IDisposable
         IReadOnlyList<SlackInboundFile>? files = null,
         CancellationToken cancellationToken = default)
     {
+        text = _DecodeSlackEntities(text);
+
         if (SlackConsentReplyParser.TryParse(text, out var outcome))
         {
             Guid? promptId;
@@ -96,6 +98,12 @@ internal sealed class SlackChannelBridge : IDisposable
             await _sink.AddReactionAsync(messageTs, "warning", cancellationToken).ConfigureAwait(false);
         }
     }
+
+    // Decodes exactly what Slack escapes in message text (&amp; &lt; &gt;); order matters (&amp; last) so a
+    // literal "&amp;lt;" survives as "&lt;", not "<". Slack's own <@U>/<url|label> syntax is undecoded too —
+    // any future mention/link parser must run before this decode.
+    private static string _DecodeSlackEntities(string text) =>
+        text.Replace("&lt;", "<").Replace("&gt;", ">").Replace("&amp;", "&");
 
     // What of a message's files is worth handing over. The mime type and size Slack reports are a pre-filter that
     // saves a pointless download — the host decides what an image really is, and does not take our word for it.
