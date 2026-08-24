@@ -4,15 +4,9 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// The windows on a macOS desktop (AC-330), through `CGWindowListCopyWindowInfo` — which reports bounds and
-// layer for every on-screen window, front to back, and needs no Screen Recording permission to do it: geometry
-// is not pixels.
-// Bounds are in points, the same space `CGDisplayBounds` speaks and the same the capture's
-// `CapturedDisplay.DesktopBounds` carries on this platform, so nothing is converted here.
-//
-// Unverified: there is no Mac. Kept thin for that reason, with the picking itself in
-// `ScreenshotSelectionViewModel` where it is tested. The window list is read through Core Foundation's own
-// accessors rather than by laying a struct over the dictionaries, because their layout is not public.
+// AC-1013 (AC-330): The windows on a macOS desktop via `CGWindowListCopyWindowInfo`, needing no Screen Recording
+// permission since geometry isn't pixels; bounds stay in points (no conversion) to match `CapturedDisplay`.
+// Trimmed: unverified-on-real-Mac caveat and why Core Foundation accessors are used over a struct overlay.
 [SupportedOSPlatform("macos")]
 internal sealed class MacDesktopWindows : IDesktopWindows
 {

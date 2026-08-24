@@ -2,11 +2,9 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// Windows' virtual screen (AC-327): the rectangle that spans every monitor, and where each of them sits inside
-// it.
-// The virtual screen is not the union of the monitors — Windows defines it as their bounding rectangle, which
-// on a staggered or L-shaped arrangement contains area no monitor covers. A capture of it therefore has holes
-// in it, and the displays are what say which pixels are anyone's.
+// Windows' virtual screen (AC-327): the bounding rectangle over every monitor, plus where each sits inside it.
+// Not the union of the monitors — a staggered/L-shaped arrangement leaves area no monitor covers, so a
+// capture of it can have holes; the displays list is what says which pixels belong to anyone.
 internal sealed record WindowsScreenLayout
 {
     // The whole virtual screen, in the coordinates the monitors below are reported in.

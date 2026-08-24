@@ -4,21 +4,9 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// Screen capture on macOS (AC-328): every display read whole and silently, then drawn into the one image the
-// capture contract asks for. The selection is the cockpit's own (AC-329); this only supplies the pixels.
-// AC-220 ran `screencapture -i`, which is the system's own crosshair — drag a region, press space for a
-// window. Dropping the `-i` is the whole change: the same binary writes the screen with no picker and no
-// interaction.
-//
-// macOS does not force one scale across displays the way a Linux compositor does, so a Retina panel beside an
-// ordinary monitor captures at two different resolutions. They are composed here onto a canvas at the largest
-// of those scales, positioned by the point geometry, which is the same shape the Linux portal hands back
-// whole — so the selection surface above meets one kind of image rather than three.
-//
-// <strong>This ships unverified.</strong> There is no Mac to run it on, and the codebase's convention for that
-// is not to pretend: what cannot be checked says so. Screen Recording permission is granted once per app, and
-// until it is, `screencapture` runs and yields nothing — which is why nothing captured is reported as
-// possibly-not-permitted rather than as a picker somebody dismissed.
+// AC-1013 (AC-328): Screen capture on macOS — every display read whole, composed onto one canvas at the largest
+// scale in use (Retina panels aren't forced to one scale like on Linux) so the selection surface meets one image.
+// Trimmed: AC-220's `-i` interactive-picker history; ships unverified (no Mac); permission-denied vs no-op ambiguity.
 internal sealed class MacScreenshotCapture(IMacScreenReader screens, ILogger<MacScreenshotCapture> logger)
     : IScreenshotCapture
 {
@@ -40,10 +28,8 @@ internal sealed class MacScreenshotCapture(IMacScreenReader screens, ILogger<Mac
         {
             if (await screens.CaptureDisplayAsync(display.Index, cancellationToken).ConfigureAwait(false) is not { } image)
             {
-                // One display yielding nothing means all of them will: the permission is per application, not
-                // per screen. Reported as nothing captured, which the caller passes over in silence — the same
-                // as a selection nobody completed, and honest, because the two are genuinely indistinguishable
-                // from here until someone looks at the privacy settings.
+                // AC-1013: One display yielding nothing means all will (permission is per app, not per screen);
+                // reported as nothing captured, indistinguishable here from a selection nobody completed.
                 logger.LogInformation(
                     "screencapture wrote nothing for display {Display}. Screen Recording is granted per application, so it may not have been allowed yet.",
                     display.Index);
@@ -53,10 +39,8 @@ internal sealed class MacScreenshotCapture(IMacScreenReader screens, ILogger<Mac
             captured.Add((display, image));
         }
 
-        // The displays were read once and then captured one process launch at a time, so the window in which
-        // somebody can unplug a screen is far wider here than on Windows — where the same check guards a single
-        // blit. A display list that has moved on means the pixels below belong to a desktop this layout no
-        // longer describes.
+        // AC-1013: Displays are read once, then captured one process launch at a time — a wider unplug window
+        // than Windows' single blit. A moved-on display list means the pixels below no longer match this layout.
         if (!screens.ReadDisplays().SequenceEqual(displays))
         {
             throw new InvalidOperationException("The displays changed while the screens were being read, so the captures and the layout describe different desktops.");
@@ -78,10 +62,8 @@ internal sealed class MacScreenshotCapture(IMacScreenReader screens, ILogger<Mac
         var desktop = _BoundingBox(displays);
         var width = (int)Math.Round(desktop.Width * scale);
 
-        // Derived from the width rather than from the scale a second time. Rounding both against the same
-        // fraction lets them land on ratios that differ, and the layout below reconstructs its ratio from the
-        // width alone — on a desktop taller than it is wide the two can then disagree by more than the pixel it
-        // allows, and a perfectly ordinary arrangement of stacked displays is refused.
+        // AC-1013: Height is derived from the width, not the scale a second time — rounding both independently
+        // can make ratios disagree by more than a pixel and get a legitimate stacked-display layout refused.
         var height = (int)Math.Round(desktop.Height * (width / (double)desktop.Width));
 
         var layout = ComposedCaptureLayout.TryCompose(displays, width, height)
@@ -99,10 +81,8 @@ internal sealed class MacScreenshotCapture(IMacScreenReader screens, ILogger<Mac
         {
             using var image = CaptureBitmap.Decode(entry.Image, $"What screencapture wrote for display {entry.Display.Index}");
 
-            // What came back has to be the display it was asked for. Nothing else here would notice otherwise:
-            // the draw stretches whatever it is given into the slot, so a capture of the wrong screen — the
-            // -D numbering not lining up with the enumeration, which is this file's one unverified assumption —
-            // would compose into a picture that is the right size and shows the wrong desktop in the wrong place.
+            // AC-1013: What came back must be the display asked for — otherwise the draw silently stretches a
+            // wrong-screen capture (mismatched -D numbering) into a right-size, wrong-content image.
             if (image.Width != entry.Display.PixelWidth || image.Height != entry.Display.PixelHeight)
             {
                 throw new InvalidOperationException(

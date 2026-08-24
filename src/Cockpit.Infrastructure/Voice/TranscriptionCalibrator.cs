@@ -6,12 +6,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// Runs the first-use calibration (AC-68) in two phases. Phase one times the configured model on every backend this
-// machine can use — the CPU always, plus the GPU when a runtime loads — each in its own child process (Whisper.net
-// loads its native runtime once per process), while this parent samples desktop hitch across the timed runs (GPU
-// contention is system-wide, so a child on the GPU stutters this desktop as a real dictation would). A CPU-preferring
-// verdict picks the backend. Phase two then times a ladder of models on that winning backend — one child, one
-// factory per model — so the accuracy-vs-speed advice rests on real numbers too. The result is remembered per machine.
+// AC-1013: First-use calibration (AC-68) in two phases: phase one times the configured model on every usable
+// backend, each in its own child process, while this parent samples desktop hitch (GPU contention is
+// system-wide); a CPU-preferring verdict wins. Phase two times a model ladder on the winning backend, remembered per machine.
 internal sealed class TranscriptionCalibrator(
     ITranscriptionAdvisor advisor,
     IUiHitchProbe hitchProbe,
@@ -84,10 +81,9 @@ internal sealed class TranscriptionCalibrator(
     {
         progress?.Report(new CalibrationProgress($"{label}: preparing…"));
 
-        // Sample desktop hitch only across the timed runs, not the one-off runtime/model download and load: that
-        // setup's disk and memory I/O would otherwise be blamed on the backend and could flip a smooth GPU to
-        // "hitching", steering Auto onto the CPU for a stutter the real dictation never causes. The child announces
-        // the timed runs with a "Measuring …" line, so start the probe when the first one arrives.
+        // AC-1013: Sample hitch only across timed runs, not the one-off download/load, whose disk/memory I/O
+        // would otherwise flip a smooth GPU to "hitching" and steer Auto onto CPU for a stutter dictation never
+        // causes. The child's "Measuring …" line marks when to start the probe.
         IUiHitchSession? hitchSession = null;
         var results = await _RunChildAsync(
             backend,
@@ -175,10 +171,9 @@ internal sealed class TranscriptionCalibrator(
         return ladder;
     }
 
-    // Spawns this same executable in its headless calibration mode for one backend and a set of models, relaying
-    // its protocol lines and collecting one result per model. A child that outlives a cancellation is killed with
-    // its tree so a wedged native load cannot linger; the caller's `onMessage` sees every decoded
-    // line before it is handled here.
+    // AC-1013: Spawns this executable headlessly for one backend/model set, relaying protocol lines and
+    // collecting one result per model; a child outliving cancellation is killed with its tree so a wedged native
+    // load cannot linger, and `onMessage` sees every decoded line before it is handled here.
     private async Task<IReadOnlyList<CalibrationChildMessage>> _RunChildAsync(
         VoiceBackendPreference backend,
         IReadOnlyList<string> models,

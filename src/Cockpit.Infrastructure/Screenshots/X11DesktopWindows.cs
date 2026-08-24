@@ -4,15 +4,9 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// The windows on a genuine X11 session (AC-330): `_NET_CLIENT_LIST_STACKING` for the stacking order and
-// `XGetGeometry` plus `XTranslateCoordinates` for where each one sits on the screen.
-// Registered only for a real X11 session, never under XWayland. From inside an XWayland client this property
-// lists other XWayland clients and nothing else — on Plasma 6 nearly every window is a native Wayland toplevel,
-// so the picker would offer a handful of the operator's windows and silently omit the rest.
-//
-// Unverified: there is no X11 session here to run it against. Written to the standard P/Invoke pattern and kept
-// thin, with the decisions above it (`ScreenshotSelectionViewModel`) where they are tested — the same
-// split `MacScreenLockMonitor` takes for the same reason.
+// AC-1013 (AC-330): windows on a genuine X11 session via `_NET_CLIENT_LIST_STACKING` + `XGetGeometry`/
+// `XTranslateCoordinates`. Registered only for real X11, never XWayland, which would only see other XWayland
+// clients. Unverified against a real X11 session; kept thin/P/Invoke-only like `MacScreenLockMonitor`.
 [SupportedOSPlatform("linux")]
 internal sealed class X11DesktopWindows : IDesktopWindows
 {
@@ -31,10 +25,9 @@ internal sealed class X11DesktopWindows : IDesktopWindows
             return [];
         }
 
-        // Xlib's default error handler prints and calls exit(). A window that closes between being listed and
-        // being asked about is an ordinary race on a live desktop, and a BadWindow from it would take the whole
-        // cockpit down — so the handler is swapped for one that answers nothing and restored afterwards. It is
-        // process-global, which is why it goes back.
+        // Xlib's default error handler exits the process. A closed window is an ordinary race on a live desktop
+        // and its BadWindow would otherwise take the whole cockpit down, so the (process-global) handler is
+        // swapped for a no-op and restored in `finally`.
         var previousHandler = XSetErrorHandler(_IgnoreError);
         try
         {

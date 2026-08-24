@@ -2,20 +2,9 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// Places displays into one image that covers the whole desktop at a single scale (AC-326), and refuses when the
-// image is not the size those displays imply.
-// Two callers, for opposite reasons. Linux is *given* such an image — KWin renders every output into one
-// buffer — and has to check the desktop's own display list accounts for it, because the portal says nothing
-// about what went into what it hands back; a layout that does not add up is a wrong crop waiting to happen and
-// is turned down instead. macOS captures each display separately and *builds* one, so it asks this where
-// to draw each of them (AC-328). Windows needs neither: its blit already produces the virtual screen, monitors
-// laid into it at their own pixels.
-//
-// The consequence worth stating on the Linux side: with one display this always works, whatever the scale,
-// because one display is trivially its own bounding box. With several it holds as long as the compositor really
-// does use one scale for the lot — measured on Plasma 6.7 for the single-display case only. A multi-monitor
-// desktop that composes some other way ends as a refusal naming both sizes, which is an answer that can be
-// acted on; guessing is not.
+// AC-1013 (AC-326): Places displays into one image at a single scale, refusing when the image size does not
+// match. Linux verifies a given composited image against the portal's own display list (no cross-check
+// otherwise); macOS builds one from separate captures (AC-328). Trimmed: multi-monitor scale caveat, measured only on Plasma 6.7.
 internal static class ComposedCaptureLayout
 {
     // The displays placed into the image, or `null` when the image is not the size those
@@ -64,10 +53,8 @@ internal static class ComposedCaptureLayout
         return new CaptureRect(left, top, right - left, bottom - top);
     }
 
-    // Both edges are scaled and only then subtracted, so displays laid edge to edge stay edge to edge in the
-    // image: the right edge of one and the left edge of the next round to the same pixel. Scaling the width
-    // instead would let rounding open a one-pixel seam between them, and the seam would be inside the image with
-    // nothing owning it.
+    // AC-1013: Both edges are scaled, then subtracted, so adjacent displays round to the same pixel and stay
+    // edge to edge; scaling the width instead would open an unowned one-pixel seam.
     private static CaptureRect _Place(CaptureRect bounds, CaptureRect desktop, int imageWidth, int imageHeight)
     {
         var left = _EdgeOf(bounds.X - desktop.X, imageWidth, desktop.Width);

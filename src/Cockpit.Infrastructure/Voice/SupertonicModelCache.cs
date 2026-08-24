@@ -4,12 +4,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// Resolves the on-disk cache for the SupertonicTTS model and downloads+extracts it on first use — mirrors
-// `WhisperModelCache` (never bundled/committed; the archive is tens of MB). Unlike the old
-// per-Piper-voice archives, Supertonic is one multilingual, multi-speaker model shared by every read-aloud
-// language: a single `.tar.bz2` that extracts to a folder of the same name holding the four int8 ONNX
-// graphs plus `tts.json`, `unicode_indexer.bin` and `voice.bin` (verified against the real
-// sherpa-onnx release asset). The weights are OpenRAIL-M licensed (commercial use allowed with attribution).
+// Resolves the on-disk SupertonicTTS model cache and downloads+extracts it on first use (mirrors
+// WhisperModelCache — never bundled/committed, archive is tens of MB). One multilingual, multi-speaker
+// model (not per-voice archives) — a .tar.bz2 of four int8 ONNX graphs plus tts.json/unicode_indexer.bin/voice.bin.
 internal static class SupertonicModelCache
 {
     private const string ReleaseBaseUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models";
@@ -46,10 +43,9 @@ internal static class SupertonicModelCache
 
         Directory.CreateDirectory(tempDirectory);
 
-        // Download the archive to a seekable temp file before extracting. SharpCompress's format
-        // auto-detection rewinds the stream to sniff the header; a raw HttpClient response stream is
-        // forward-only, so sniffing past its small rewind buffer throws ("Recording buffer overflow").
-        // A file stream is seekable, so the reader can rewind freely.
+        // AC-1013: download to a seekable temp file first — SharpCompress's format
+        // auto-detection rewinds to sniff the header, which a forward-only HttpClient
+        // stream can't do (throws "Recording buffer overflow" past its rewind buffer).
         var archivePath = Path.Combine(tempDirectory, $"{ModelArchiveName}.tar.bz2");
         await using (var httpStream = await HttpClient
                          .GetStreamAsync($"{ReleaseBaseUrl}/{ModelArchiveName}.tar.bz2", cancellationToken)

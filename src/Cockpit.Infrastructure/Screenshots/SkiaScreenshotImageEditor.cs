@@ -87,11 +87,9 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
         return encoded.ToArray();
     }
 
-    // Draws the frame straight onto the bitmap, letting the canvas clip whatever falls outside it — a mark that
-    // ran off the edge of the crop keeps the sides that are in the picture and grows no new ones.
-    // Inset by half the stroke, because Skia centres a stroke on the path: a frame on the exact rectangle would
-    // put half its width outside the area it is framing, and on a mark drawn to the image's edge that half is
-    // clipped away and the frame reads thinner on that side than the others.
+    // Drawn straight onto the bitmap so the canvas clips whatever falls outside the crop. Inset by half the
+    // stroke because Skia centres a stroke on the path — on the exact rectangle a frame drawn to the image's
+    // edge would have half its width clipped away and read thinner on that side than the others.
     private static void _Outline(SKBitmap image, OutlineMark outline)
     {
         using var canvas = new SKCanvas(image);
@@ -110,14 +108,9 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
             paint);
     }
 
-    // Draws the typed note: a plate in the contrasting shade with the letters on it.
-    // The plate is sized from what the font actually produced rather than guessed from the number of characters —
-    // a label whose plate is a little too narrow has letters hanging off the end of it, which reads as a bug in
-    // the screenshot rather than as a note.
-    //
-    // How wide the letters come out is the one thing about this mark the surface and the imaging library can
-    // disagree on: they measure with different font stacks, so a plate can differ by a few pixels between the
-    // preview and the picture. What it says and where it starts are the same in both.
+    // The plate is sized from what the font actually measures, not guessed from character count, so letters
+    // never hang off a too-narrow plate. The surface and imaging library use different font stacks, so the
+    // plate can differ by a few pixels between preview and picture — text and position stay identical.
     private static void _Text(SKBitmap image, TextMark note)
     {
         using var canvas = new SKCanvas(image);
@@ -141,13 +134,9 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
         canvas.DrawText(note.Text, note.At.X + padding, note.At.Y + padding - metrics.Ascent, font, letters);
     }
 
-    // Draws the freehand line in its own colour, and nothing else.
-    // Rounded at the joins and the ends — a hand does not make corners, and a line that ends in a flat cut looks
-    // like it was interrupted.
-    //
-    // It carried a contrasting ring until AC-375, on the argument that a screenshot has no single background and
-    // nobody could be asked what this line would cross. The palette answers that: the operator picks the ink, and
-    // once they can, the ring is a white outline they did not ask for around a red line they did.
+    // Draws the freehand line in its own colour only, rounded at joins/ends since a hand makes no corners.
+    // AC-1013: dropped the contrasting outline ring added pre-AC-375 to survive an unknown background —
+    // once the operator picks the ink colour themselves, an unrequested white ring around it is unwanted.
     private static void _Stroke(SKBitmap image, StrokeMark stroke)
     {
         if (stroke.Start() is not { } start || stroke.Curve() is not { Count: > 0 } curves)
@@ -182,12 +171,9 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
         IsAntialias = true,
     };
 
-    // Washes the band in its colour, multiplied into the pixels or lifted out of them depending on which way the
-    // mark says — the one operation here that is meant to leave what is underneath readable.
-    // Blended rather than composited. Painting the colour on at a fraction of its strength drags the text and the
-    // page it sits on towards each other, and a page that started at over 20:1 of contrast ends up near 3:1;
-    // multiplying scales both ends instead of pulling them together, and keeps most of the ratio. Two bands over
-    // each other therefore deepen, the way two passes of a marker do.
+    // AC-1013: washes the band in its colour via multiply/screen blend (not opaque composite) so the underlying
+    // text stays readable — multiplying keeps most of the contrast ratio instead of collapsing it, and stacked
+    // bands deepen like repeated marker passes. Dropped: the ~20:1-to-3:1 contrast math behind that choice.
     private static void _Highlight(SKBitmap image, HighlightMark highlight)
     {
         using var canvas = new SKCanvas(image);
@@ -202,12 +188,9 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
         canvas.DrawRect(new SKRect(area.X, area.Y, area.Right, area.Bottom), paint);
     }
 
-    // Draws the arrow as one closed shape — shaft and head together — filled in its colour.
-    // The shape itself comes from the mark rather than from here. Two libraries draw this arrow and only one of
-    // them can decide what it is.
-    //
-    // It carried a contrasting ring until AC-375, for want of knowing what it would be drawn over. The palette
-    // makes that the operator's answer to give.
+    // Draws the arrow as one closed shape (shaft+head together), filled; the shape geometry itself comes from
+    // the mark, not here, so only one thing decides what the arrow looks like. AC-1013: dropped the contrasting
+    // outline ring carried pre-AC-375 for an unknown background — the operator's ink colour now covers that.
     private static void _Arrow(SKBitmap image, ArrowMark arrow)
     {
         if (arrow.Silhouette() is not { Count: > 0 } corners)

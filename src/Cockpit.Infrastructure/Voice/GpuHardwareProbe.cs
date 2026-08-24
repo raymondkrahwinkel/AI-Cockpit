@@ -4,14 +4,9 @@ using Cockpit.Core.Abstractions.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// Identifies the display GPU beyond "can a runtime load" (AC-68 slice 2): brand, description, whether it also
-// drives a monitor, and its dedicated VRAM. The whole point is the "drives a monitor" fact — a single GPU that
-// renders the desktop should not also be transcribing, or the desktop stutters — which no existing probe knew.
-//
-// Windows is first-class via DXGI (accurate VRAM and per-adapter outputs). Linux is best-effort from sysfs
-// (vendor + whether a connector is connected; no VRAM). macOS is reported as Apple on Apple Silicon — the
-// recommender routes macOS to Metal by platform regardless. Every path is wrapped so a probe failure degrades
-// to `GpuHardware.None` (treated as CPU-only) rather than throwing into the Options dialog.
+// AC-68 slice 2: Identifies the display GPU beyond "can a runtime load" — brand, whether it also drives a
+// monitor (transcribing on the display GPU stutters the desktop), and dedicated VRAM. Windows uses DXGI
+// (accurate), Linux is best-effort sysfs; every path degrades to GpuHardware.None rather than throwing.
 internal static class GpuHardwareProbe
 {
     private const uint DxgiAdapterFlagSoftware = 2;

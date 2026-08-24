@@ -6,9 +6,8 @@ using Cockpit.Infrastructure.Configuration;
 namespace Cockpit.Infrastructure.Screenshots;
 
 // Persists `ScreenshotSettings` under the `screenshots` section of `cockpit.json` (same
-// file/pattern as `VoiceSettingsStore`). Reads-modifies-writes the whole file via
-// `CockpitConfigFileAccess` so it leaves the other sections untouched. When nothing was ever
-// saved, `LoadAsync` returns the defaults (the global hotkey off).
+// file/pattern as `VoiceSettingsStore`), reading-modifying-writing via `CockpitConfigFileAccess`
+// so other sections stay untouched. `LoadAsync` falls back to defaults (hotkey off) when unsaved.
 internal sealed class ScreenshotSettingsStore : IScreenshotSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;

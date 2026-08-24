@@ -2,11 +2,9 @@ using SkiaSharp;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// Decodes bytes that are supposed to be a capture, and says so plainly when they are not.
-// Its own thing because `SKBitmap.Decode(byte[])` does not answer null for something it cannot read — it
-// throws `ArgumentNullException` from inside, naming a parameter the caller never passed. A
-// `?? throw` after it is dead code that reads as a guard, which is worse than no guard: the operator gets
-// "Value cannot be null (Parameter 'codec')" where they should be told the capture did not arrive.
+// AC-1013: Decodes capture bytes and reports failure plainly, because `SKBitmap.Decode` throws an internal
+// `ArgumentNullException` (naming a parameter the caller never passed) rather than returning null.
+// Trimmed: the "codec" parameter name confusion example and why a `?? throw` guard would be dead code.
 internal static class CaptureBitmap
 {
     // The image these bytes hold, or an `InvalidOperationException` naming what they were meant to be.

@@ -7,13 +7,9 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// `ISpeechToTextService` that runs Whisper in a child process (AC-174, Raymond 2026-07-22). Whisper.net loads
-// a native runtime that can `abort()` on a bad model or a GPU backend it cannot really use — a native crash no
-// managed handler can catch, which took the whole app down (a ggml_abort in whisper_model_load). Isolating it means a
-// native crash kills only the worker; the desktop respawns it and stays up. The worker is warm: spawned on first use, it
-// keeps the model loaded and takes clip after clip, and is killed after `IdleUnloadAfter` of no dictation to
-// give the ~1.5 GB back. If it crashes while loading — the classic GPU-backend abort — the next attempt is forced onto
-// the CPU backend, which does not abort, so dictation degrades to CPU instead of failing outright.
+// AC-1013 (AC-174): `ISpeechToTextService` running Whisper in a child process because Whisper.net's native
+// runtime can `abort()` uncatchably, which used to take the whole app down; isolating it confines the crash.
+// Trimmed: the ggml_abort incident, warm-worker/IdleUnloadAfter memory behavior, CPU-backend crash retry.
 internal sealed class WhisperWorkerSpeechToTextService(
     IVoiceSettingsStore settingsStore,
     ILogger<WhisperWorkerSpeechToTextService> logger)
@@ -142,14 +138,9 @@ internal sealed class WhisperWorkerSpeechToTextService(
         }
     }
 
-    // Ensures a live worker exists for the coming clip, returning whether this call had to spawn one
-    // (a cold start, AC-535) rather than reuse an already-warm process.
-    // Serialized on `_spawnGate` because it has two callers that hold nothing in common (AC-603): the clip's
-    // own path under `_gate`, and `WarmUpAsync` from the hotkey press under nothing at all. Let
-    // both past the health check below and the second one kills the process the first is still waiting on and
-    // starts the cold start over — at the release, which is the exact wait warming up exists to remove. Holding
-    // the gate across the spawn is the point: a release arriving mid-spawn waits for that worker rather than
-    // replacing it.
+    // AC-1013 (AC-603): Ensures a live worker exists, returning whether this call had to spawn one (cold start,
+    // AC-535). Serialized on `_spawnGate`, held across the spawn, because the clip path and `WarmUpAsync` share
+    // no other lock; letting both past the health check races a kill/restart at exactly the point warming avoids.
     private async Task<bool> _EnsureWorkerAsync(CancellationToken cancellationToken)
     {
         await _spawnGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -266,11 +257,8 @@ internal sealed class WhisperWorkerSpeechToTextService(
         return tail.Length == 0 ? message : $"{message} Stderr tail:{Environment.NewLine}{tail}";
     }
 
-    // The dictation trace (AC-535): recording length, backend, transcription time and outcome length, as one line
-    // per successful clip. The startup time is reported separately rather than as a flag beside the total, because
-    // a cold start is the most expensive step there is and folding it into one number hides which of the two was
-    // slow. A failed clip is already logged (Warning on the CPU retry, Error if that fails too) — this only covers
-    // the path that had nothing to say about itself before.
+    // AC-1013 (AC-535): Dictation trace line per successful clip; startup time is broken out separately because
+    // folding it into the total hides which step was slow. Trimmed: failed-clip logging already covers itself.
     private void _LogTranscribed(double recordingSeconds, long elapsedMs, long startupMs, bool coldStart, int textLength) =>
         logger.LogInformation(
             "Dictation transcribed {RecordingSeconds:F1}s of audio on {Backend} in {ElapsedMs} ms " +

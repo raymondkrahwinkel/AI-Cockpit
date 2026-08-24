@@ -6,15 +6,9 @@ using Whisper.net;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// The protocol between the desktop process and a dictation transcription child (AC-174, Raymond 2026-07-22). Whisper.net
-// loads a native runtime that can `abort()` on a bad model/backend — a native crash no managed handler can catch,
-// which took the whole app down (a ggml_abort in whisper_model_load). So transcription runs in a child process, the same
-// way calibration already does: the desktop spawns this exe with `TranscribeArgument` plus the backend, model
-// and language, streams 16 kHz mono float32 clips to it over stdin, and reads text (and progress) back as prefixed lines
-// on stdout. If the child aborts, only the child dies; the desktop sees the pipe close and carries on.
-//
-// Wire format: stdin is binary — each request is an Int32 little-endian sample count followed by that many little-endian
-// float32 samples; a count of 0 or stdin EOF asks the child to exit. stdout is the line protocol below.
+// AC-174: Transcription runs in a child process because Whisper.net's native runtime can abort() on a bad
+// model/backend, a crash no managed handler can catch, so only the child dies and the desktop carries on.
+// Desktop streams 16 kHz mono float32 clips via stdin; child replies with prefixed text/progress lines on stdout.
 internal static class DictationWorkerProtocol
 {
     public const string TranscribeArgument = "--transcribe-dictation";
@@ -90,11 +84,9 @@ public static class HeadlessDictation
     }
 }
 
-// The transcription worker, run headless in a child process (AC-174). It forces the chosen backend onto Whisper.net,
-// loads the model once, and then loops: read one clip's samples off stdin, transcribe it, write the text back. Because it
-// is its own process, a native `abort()` in the model load or in inference takes only this worker down — the desktop
-// respawns it and the app stays up. Mirrors `TranscriptionCalibrationProbe`'s native setup, but warm and
-// request-driven rather than one-shot.
+// AC-174: Headless transcription worker child process — forces the backend onto Whisper.net, loads the
+// model once, then loops reading clips off stdin and writing transcribed text back, so a native abort()
+// during load/inference only kills this worker, not the desktop.
 internal static class DictationWorker
 {
     public static async Task<int> RunAsync(VoiceBackendPreference backend, string model, string language, CancellationToken cancellationToken)

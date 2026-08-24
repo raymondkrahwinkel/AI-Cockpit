@@ -5,10 +5,9 @@ using Whisper.net.Ggml;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// Resolves the on-disk cache path for a ggml model and downloads it on first use via
-// `WhisperGgmlDownloader` — never bundled/committed to the repo (a ~1.6 GB
-// `large-v3-turbo` download would otherwise hit every clone). Lives next to `cockpit.json`
-// under the user's app-data directory, one file per model so switching models does not re-download.
+// Resolves the on-disk cache path for a ggml model and downloads it on first use via `WhisperGgmlDownloader` —
+// never bundled/committed (a ~1.6 GB `large-v3-turbo` would otherwise hit every clone). Lives next to
+// `cockpit.json` under the user's app-data directory, one file per model so switching models does not re-download.
 internal static class WhisperModelCache
 {
     private static string ModelsDirectory => Path.Combine(

@@ -7,13 +7,9 @@ namespace Cockpit.Infrastructure.Screenshots;
 // that can be held to a test from anywhere.
 internal static class ScreenCaptureArguments
 {
-    // Captures one display, whole, silently, to the given path.
-    // `-x` silences the shutter, a camera noise nobody asked for when the point is to hand an image to an
-    // agent. `-D` names the display; without it and with several attached, what the binary writes and
-    // where is not something the ticket's research could establish, so it is never left out.
-    //
-    // What is *not* here is `-i`. That flag is the interactive selection — the crosshair, the
-    // spacebar-for-a-window — and it is exactly the UI this tool exists to own rather than borrow.
+    // Captures one display, silently (`-x`, no shutter sound) and by index (`-D`, so the right
+    // display is targeted when several are attached). Deliberately omits `-i` (interactive picker) —
+    // that selection UI is what this tool exists to own itself, not borrow from `screencapture`.
     public static IReadOnlyList<string> ForDisplay(int displayIndex, string path) =>
         ["-x", "-D", displayIndex.ToString(CultureInfo.InvariantCulture), path];
 }

@@ -2,11 +2,9 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// One macOS display as both halves of the problem see it (AC-328): where it sits on the desktop in points,
-// which is the only space `CGDisplayBounds` speaks, and how many pixels it actually has.
-// The two are not the same number and the gap is the whole reason this type exists. A Retina panel reports
-// 1710 × 1112 points and captures at 3420 × 2224, and macOS — unlike a Linux compositor — does not force one
-// factor across displays, so a Retina laptop beside an ordinary monitor has two of them at once.
+// AC-1013 (AC-328): One macOS display in both points (`CGDisplayBounds`) and pixels, because macOS — unlike
+// a Linux compositor — doesn't force one scale factor across displays (Retina laptop beside an ordinary monitor).
+// Trimmed: the concrete 1710x1112 vs 3420x2224 Retina point/pixel example.
 internal sealed record MacDisplay
 {
     // The display's place in `screencapture -D`'s own numbering, which is one-based and follows

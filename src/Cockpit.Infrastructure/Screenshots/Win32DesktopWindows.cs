@@ -5,15 +5,9 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// The windows on a Windows desktop (AC-330), through `EnumWindows` — which walks top-level windows in
-// z-order, front-most first, so the stacking the picker needs comes free.
-// Bounds come from `DWMWA_EXTENDED_FRAME_BOUNDS` rather than `GetWindowRect`. The latter includes the
-// invisible resize border a window carries, so cropping to it takes a band of whatever is behind the window
-// along with it — a few pixels of somebody else's screen in every window shot.
-//
-// Cloaked windows are skipped. A UWP application that is suspended, or a window on another virtual desktop,
-// still enumerates and still reports a rectangle; it just is not on screen, and offering it would highlight a
-// region of the capture that shows something else entirely.
+// AC-1013 (AC-330): windows via `EnumWindows` (front-most-first order gives stacking for free). Bounds use
+// `DWMWA_EXTENDED_FRAME_BOUNDS`, not `GetWindowRect`, to exclude the invisible resize border that would
+// otherwise crop in someone else's screen. Cloaked windows (suspended UWP, other virtual desktop) are skipped.
 [SupportedOSPlatform("windows")]
 internal sealed class Win32DesktopWindows : IDesktopWindows
 {

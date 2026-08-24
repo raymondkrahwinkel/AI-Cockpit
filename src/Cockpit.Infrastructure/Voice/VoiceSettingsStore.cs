@@ -5,10 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// Persists `VoiceSettings` under the `voice` section of `cockpit.json` (same
-// file/pattern as `LayoutSettingsStore`). Reads-modifies-writes the whole file via
-// `CockpitConfigFileAccess` so it leaves the other sections untouched. When no settings
-// were ever saved, `LoadAsync` returns the defaults (voice disabled).
+// Persists `VoiceSettings` under the `voice` section of `cockpit.json` (same file/pattern as
+// `LayoutSettingsStore`). Reads-modifies-writes the whole file via `CockpitConfigFileAccess` so other
+// sections stay untouched; `LoadAsync` returns the defaults (voice disabled) when nothing was saved.
 internal sealed class VoiceSettingsStore : IVoiceSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;

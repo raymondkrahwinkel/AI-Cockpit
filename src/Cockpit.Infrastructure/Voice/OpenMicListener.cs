@@ -8,11 +8,9 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// `IOpenMicListener`: captures the microphone continuously, slices it into fixed analysis
-// windows, asks the VAD whether each window is speech, and feeds those observations to a
-// `VadEndpointDetector` to find utterance boundaries. On each detected utterance it runs STT
-// and raises `UtteranceTranscribed`. Registered as a singleton — one shared mic pipeline for
-// the whole (single-user) cockpit, mirroring `VoicePushToTalkService`.
+// IOpenMicListener: captures the mic continuously, slices it into fixed windows, asks the VAD if each
+// window is speech, feeds observations to VadEndpointDetector to find utterance boundaries, then runs STT
+// and raises UtteranceTranscribed. Singleton — one shared pipeline, mirrors VoicePushToTalkService.
 internal sealed class OpenMicListener(
     IAudioCaptureService captureService,
     IVoiceActivityDetector vad,
@@ -129,12 +127,9 @@ internal sealed class OpenMicListener(
 
                 if (_paused)
                 {
-                    // Barge-in: abandon whatever was in progress so a resumed capture starts clean and the
-                    // audio heard while read-aloud played is never transcribed.
-                    //
-                    // An utterance abandoned here never reaches SpeechEnded, so anyone told it started has to be
-                    // told it is over — or the overlay sits on "Listening" for a sentence that will never be
-                    // transcribed, which is the pill lying about a microphone that is not even being read.
+                    // Barge-in: abandon in-progress capture so a resumed capture starts clean and audio heard
+                    // during read-aloud is never transcribed. An utterance abandoned here never reaches
+                    // SpeechEnded, so anyone told it started must be told it's over, else the pill lies.
                     if (detector.IsInSpeech)
                     {
                         SpeechEnded?.Invoke(this, EventArgs.Empty);
