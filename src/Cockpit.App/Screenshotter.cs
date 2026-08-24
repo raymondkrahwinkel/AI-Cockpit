@@ -265,6 +265,10 @@ internal static class Screenshotter
         // this ticket's own acceptance criteria demanded be eyeballed on screen, not just asserted in a test.
         ["session-subagent"] = (width, height) => new Window { Width = width, Height = height, Content = _SubAgentSession(expanded: false) },
         ["session-subagent-expanded"] = (width, height) => new Window { Width = width, Height = height, Content = _SubAgentSession(expanded: true) },
+
+        // AC-1056: a blocking call and a background one in the same transcript — the pair that used to render
+        // identically, which is the whole thing this scene exists to show apart.
+        ["session-background-tool"] = (width, height) => new Window { Width = width, Height = height, Content = _BackgroundToolSession() },
         // AC-558: the transcript lines Raymond reported — a bare URL, and a link wrapped in bold that used to
         // print its own markdown syntax on screen. Rendered rather than only asserted on the parser, because
         // "a link is there" and "it reads as a link, and the one next to it is a different link" are separate
@@ -1495,6 +1499,40 @@ internal static class Screenshotter
 
         var anchor = viewModel.Transcript.Single(row => row.ToolUseId == "toolu_task1");
         anchor.IsSubAgentExpanded = expanded;
+
+        return new SessionView { DataContext = viewModel };
+    }
+
+    // AC-1056: four tool calls that used to be indistinguishable — one blocking, one still running in the
+    // background, one whose background task the ledger has stopped reporting, and one that came back an error.
+    private static SessionView _BackgroundToolSession()
+    {
+        var viewModel = new SessionViewModel { Title = "personal - webshop" };
+
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "Building, and starting the dev server alongside it." });
+
+        viewModel.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_fg", ToolName = "Bash", InputJson = """{"command":"dotnet build"}""" });
+        viewModel.Apply(new ToolResult { SessionId = "s1", ToolUseId = "toolu_fg", Content = "Build succeeded. 0 Warning(s), 0 Error(s)", IsError = false });
+
+        viewModel.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_bg", ToolName = "Bash", InputJson = """{"command":"npm run dev","run_in_background":true}""" });
+        viewModel.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_done", ToolName = "Bash", InputJson = """{"command":"npm run build","run_in_background":true}""" });
+        viewModel.Apply(new BackgroundTasksChanged
+        {
+            SessionId = "s1",
+            Tasks = [new BackgroundTask("b706pro1i", BackgroundTaskKind.Shell, "npm run dev")],
+        });
+        viewModel.Apply(new ToolResult { SessionId = "s1", ToolUseId = "toolu_bg", Content = "Command running in background with ID: b706pro1i.", IsError = false });
+        viewModel.Apply(new ToolResult { SessionId = "s1", ToolUseId = "toolu_done", Content = "Command running in background with ID: b9kk2mfe1.", IsError = false });
+
+        // The MCP half (AC-1053): nothing in the input asked for the background, the result announces it.
+        viewModel.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_mcp", ToolName = "run_local_checks", InputJson = """{"job":"build"}""" });
+        viewModel.Apply(new ToolResult
+        {
+            SessionId = "s1",
+            ToolUseId = "toolu_mcp",
+            Content = "transport dropped mid-call after it was moved to the background as task kswv2rq5q",
+            IsError = true,
+        });
 
         return new SessionView { DataContext = viewModel };
     }

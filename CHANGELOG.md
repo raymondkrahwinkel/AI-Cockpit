@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a tool call a session let go of to the background now says so in the transcript, and says how it is
+  doing — "Background · running" while it is still going, "done" once it finishes, "failed" when it came back an
+  error. A call the session is actually waiting on carries no badge at all, so the two are no longer the same
+  line with the same dot, and you can check from your own screen whether a session let go of something or is
+  sitting on it.
+
 - added: the Options sidebar now sorts plugin settings into their own group instead of one flat PLUGINS list —
   Discord and Slack show under a new "Assistant Plugins" group, separate from tool plugins like Docker and
   Kubernetes.
