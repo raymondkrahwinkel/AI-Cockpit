@@ -81,6 +81,33 @@ public sealed class ManagedCliUpdateCheckerTests
     }
 
     [Fact]
+    public async Task AutoUpdateOn_MajorJumpAvailable_DoesNotInstall_OnlyToasts()
+    {
+        var managedCli = _ManagedCli(new ManagedCliStatus("4.2.2", "5.0.0"));
+
+        await _Checker(managedCli, autoUpdateEnabled: true).CheckNowAsync();
+
+        await managedCli.DidNotReceive().EnsureInstalledAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        _toast.Received(1).Show(
+            Arg.Is<string>(message => message.Contains("major") && message.Contains("5.0.0")),
+            ToastSeverity.Information,
+            Arg.Any<string?>(),
+            Arg.Any<Action?>());
+    }
+
+    [Fact]
+    public async Task AutoUpdateOn_MinorJumpAvailable_Installs()
+    {
+        var managedCli = _ManagedCli(new ManagedCliStatus("4.2.2", "4.2.4"));
+        managedCli.EnsureInstalledAsync("claude", Arg.Any<CancellationToken>())
+            .Returns(ManagedCliInstallResult.Ok("4.2.4", @"C:\cli\claude\4.2.4\claude.exe"));
+
+        await _Checker(managedCli, autoUpdateEnabled: true).CheckNowAsync();
+
+        await managedCli.Received(1).EnsureInstalledAsync("claude", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task AutoUpdateOn_InstallFails_FallsBackToAvailableToast()
     {
         var managedCli = _ManagedCli(new ManagedCliStatus("2.1.212", "2.1.213"));
