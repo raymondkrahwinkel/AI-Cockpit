@@ -6,6 +6,7 @@ using ModelContextProtocol.Server;
 using k8s;
 using k8s.Models;
 using Cockpit.Plugin.Kubernetes.Cluster;
+using Cockpit.Plugin.Kubernetes.Helm;
 using Cockpit.Plugin.Kubernetes.Model;
 using Cockpit.Plugin.Kubernetes.Security;
 using Cockpit.Plugin.Kubernetes.Settings;
@@ -19,7 +20,7 @@ namespace Cockpit.Plugin.Kubernetes.Mcp;
 // apiVersion/plural, and passes its own `COCKPIT_PANE_ID` as `session` so a remembered approval is scoped
 // to the session that asked. Whether a resource is namespaced or cluster-scoped is decided by its real REST scope
 // (`ResourceScope`), never by whether the agent left the namespace blank.
-internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAccessGate gate, ClusterConnectionFactory connections, PortForwardManager portForwards)
+internal sealed partial class KubernetesMcpTools(KubernetesSettings settings, ClusterAccessGate gate, ClusterConnectionFactory connections, PortForwardManager portForwards)
 {
     private static readonly TimeSpan PortForwardMaxLifetime = TimeSpan.FromMinutes(30);
     private const int MaxLogTailLines = 10_000;
@@ -81,7 +82,7 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
     }
 
     [McpServerTool(Name = "get_resource")]
-    [Description("Reads one resource in full. apiVersion like \"v1\" or \"apps/v1\", plural like \"pods\"/\"deployments\". A namespaced kind needs its namespace (outside the allowed list asks first; a secret always asks); a cluster-scoped kind needs cluster-scoped access on. Returns the resource as JSON.")]
+    [Description("Reads one resource in full. apiVersion like \"v1\" or \"apps/v1\", plural like \"pods\"/\"deployments\". A namespaced kind needs its namespace (outside the allowed list asks first; a secret always asks); a cluster-scoped kind needs cluster-scoped access on. Returns the resource as JSON, with a \"helmManaged\" field (release name/namespace) added when the resource was installed by Helm.")]
     public async Task<string> GetResource(
         [Description("The cluster label.")] string cluster,
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -115,7 +116,13 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
             var resource = clusterScoped
                 ? await generic.ReadAsync<RawKubernetesObject>(name, cancel: token)
                 : await generic.ReadNamespacedAsync<RawKubernetesObject>(_RequireNamespace(@namespace), name, cancel: token);
-            return McpText.Node(JsonSerializer.SerializeToNode(resource));
+            var node = JsonSerializer.SerializeToNode(resource);
+            if (HelmManagedDetector.Detect(node) is { } helmManaged)
+            {
+                node![HelmManagedDetector.PropertyName] = helmManaged;
+            }
+
+            return McpText.Node(node);
         }, cancellationToken);
     }
 
