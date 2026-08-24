@@ -1,12 +1,8 @@
 namespace Cockpit.Core.Abstractions.Screenshots;
 
-// An arrow pointing at one thing on a busy screen (AC-360) — the mark this whole epic is really about, since
-// every other tool says *this area* and only this one says *that*.
-//
-// `From`: Where the drag began, in the pixels of whichever image it is being spoken about in. The tail, so an arrow can come in from an empty part of the picture rather than lying over the thing it indicates.
-// `To`: Where it points. The head sits here and turns to face this way.
-// `Colour`: The body's colour as 0xAARRGGBB, carried for the same reason `OutlineMark` carries it.
-// `Thickness`: The thinnest the shaft is ever drawn, in the image's pixels — a floor rather than the width itself. See `Weight`.
+// An arrow pointing at one thing on a busy screen (AC-360) — every other tool says *this area*, only this
+// one says *that*. `From`/`To` are tail/head in image pixels; `Colour` is 0xAARRGGBB; `Thickness` is the
+// shaft's thinnest draw width, a floor not the width itself — see `Weight`.
 public sealed record ArrowMark(CapturePoint From, CapturePoint To, uint Colour, int Thickness) : Mark
 {
     // How heavy the arrow is drawn for its length, before the limits below. The whole arrow scales, never the
@@ -29,19 +25,14 @@ public sealed record ArrowMark(CapturePoint From, CapturePoint To, uint Colour, 
     // arrow and becomes a triangle with a stub behind it.
     private const double MostOfTheArrow = 0.6;
 
-    // How thick this arrow is actually drawn, in the image's pixels: proportional to its own length, never below
-    // the thickness it was given and never more than a few times it.
-    // This is the answer to how the head scales — it does not scale on its own. Every measurement of the shape is
-    // a multiple of this one number, so a short arrow and a long one are one drawing at two sizes rather than two
-    // marks that happen to share a name, and an operator who puts both on the same screenshot sees one tool.
+    // AC-360: Actual draw thickness in image pixels — proportional to length, floored at Thickness, capped at
+    // HeaviestInThicknesses. The head does not scale on its own: every shape measurement is a multiple of this
+    // one number, so short and long arrows read as one drawing at two sizes, not two different marks.
     public double Weight => Math.Clamp(_Length * WeightOfLength, Thickness, Thickness * HeaviestInThicknesses);
 
-    // The outline of the whole arrow — shaft and head as one closed shape, running from one side of the tail
-    // round the tip and back. Empty for a drag that went nowhere, which is not an arrow: it has no direction to
-    // point in.
-    // Worked out here rather than by each drawer so that the preview on the surface and the shape burnt into the
-    // picture cannot be two different arrows. They are drawn by different libraries; this is the one place that
-    // decides what is being drawn.
+    // AC-360: The whole arrow's outline (shaft+head, one closed shape); empty for a zero-length drag, which has
+    // no direction to point in. Computed here rather than per-drawer so the preview and the burnt-in shape —
+    // drawn by different libraries — can't diverge into two different arrows.
     public IReadOnlyList<MarkPoint> Silhouette()
     {
         var length = _Length;
@@ -78,12 +69,9 @@ public sealed record ArrowMark(CapturePoint From, CapturePoint To, uint Colour, 
         ];
     }
 
-    // Moved into the crop's space and left whole, the way a frame is and for the same reason: an arrow trimmed at
-    // the tip would end in a flat cut where the operator drew a point, and one trimmed at the tail would start
-    // somewhere they did not begin. What falls outside is simply not painted.
-    // Dropped only when the shape cannot reach the region at all. The test is the shape's own bounding box, which
-    // can say yes to a diagonal whose ink misses the region entirely — that costs a mark that paints nothing, and
-    // is the cheap side to be wrong on. Being wrong the other way would rub out an arrow that was visible.
+    // AC-360: Moved into the crop's space and left whole (like a frame) — trimming the tip/tail would end an
+    // arrow in a flat cut or a wrong start point; what falls outside is just not painted. Dropped only when the
+    // bounding box can't reach the region — a cheap false positive (paints nothing) beats rubbing out a visible arrow.
     public override Mark? ClipTo(CaptureRect region) =>
         Bounds() is { } bounds && bounds.Overlap(region) is not null
             ? this with

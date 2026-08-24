@@ -1,11 +1,7 @@
 namespace Cockpit.Core.Abstractions.Screenshots;
 
-// A frame drawn around part of the picture (AC-359) — the first tool on the mark layer, and the way an operator
-// says look here rather than look at all of this.
-//
-// `Area`: The rectangle it frames, in the pixels of whichever image it is being spoken about in.
-// `Colour`: Its colour as 0xAARRGGBB. Carried on the mark because the theme lives in the app and the burning-in happens where the imaging library does; passing the value keeps the one from having to know the other.
-// `Thickness`: How thick the frame is, in the image's pixels.
+// AC-359: a frame drawn around part of the picture, the first mark-layer tool. `Area`/`Colour`/`Thickness`;
+// colour is carried on the mark so the imaging library (where burning-in happens) needn't know the app's theme.
 public sealed record OutlineMark(CaptureRect Area, uint Colour, int Thickness) : Mark
 {
     // Moved into the crop's space but deliberately not shrunk to it. Shrinking a frame draws a line along the

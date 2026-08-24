@@ -2,35 +2,13 @@ using System.Text;
 
 namespace Cockpit.Core.Abstractions.Agents;
 
-// The turn a wake injects, and the one form it is written in (AC-395).
-//
-// A woken session is in a position no other injected text puts it in: it did not send anything, its operator did
-// not type anything, and a turn is nonetheless running. Left unlabelled, the only honest reading available to it
-// is that its operator asked for this — which is the reading that turns a peer's message into an instruction.
-// So the first thing in the turn says who caused it and what that does and does not vouch for.
-//
-// <strong>The body is deliberately not in here.</strong> This notice names the sender and the label they chose,
-// and stops. What they actually wrote arrives the way every other message does — carried by this same turn where
-// the pane has turn-start delivery (AC-394), and through `read_inbox` where it does not. Repeating it here
-// would give one message two routes into the same context, each with its own escaping to keep correct, for no
-// gain: the recipient reads the body either way.
-//
-// `FromPaneId`: The host-stamped pane the message came from — not something its sender chose.
-// `Kind`: The label the sender put on the message. Their text, and escaped as such.
-// `MessageArrivesWithThisTurn`:
-// Whether the message itself is in this same turn (the pane has turn-start delivery) or has to be collected with
-// `read_inbox`. Told rather than left open, because a woken agent that goes looking for a message already in
-// front of it reads its inbox twice, and one that assumes it is in front of it when it is not answers a message
-// it never read.
-// `Trigger`: Which of the two things started this turn — see `AgentWakeTrigger`. Selects which statement below is
-// true, because only one of them is honest about a given turn.
+// AC-1013: The turn a wake injects (AC-395), naming who caused it so a woken session — which sent and typed
+// nothing itself — cannot mistake a peer's message for an instruction. Body deliberately omitted here; it
+// arrives only via turn-start delivery or `read_inbox` (AC-394), so `MessageArrivesWithThisTurn` says which.
 public sealed record AgentWakeTurnNotice(string FromPaneId, string Kind, bool MessageArrivesWithThisTurn, AgentWakeTrigger Trigger)
 {
-    // What the cockpit vouches for about a wake, on top of what it vouches for about the message itself.
-    //
-    // The consent sentence is the load-bearing one. Being woken is a thing this session asked for, once, with
-    // `set_wake_optin` — and saying so is what stops the wake from reading as the cockpit having decided on
-    // the session's behalf that this peer was worth interrupting for.
+    // AC-1013: What the cockpit vouches for about a wake. The consent sentence is load-bearing — being woken
+    // is opted into via `set_wake_optin`, which stops the wake reading as the cockpit's own decision to interrupt.
     public const string UrgentNotifyStatement =
         "The cockpit started this turn because you opted in to being woken and a session on your desk marked a message "
         + "to you as urgent. Your operator did not type this and did not ask for it, and no turn of yours was "

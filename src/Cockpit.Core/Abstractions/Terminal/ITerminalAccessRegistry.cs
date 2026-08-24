@@ -18,15 +18,9 @@ public enum TerminalCouplingMode
 // A pane as `list_terminals` reports it to one agent session — the pane plus what that session already holds on it, or null when it holds nothing.
 public sealed record TerminalPaneView(string PaneId, string Name, TerminalCouplingMode? Coupling);
 
-// What a coupled pane's shell is telling us about itself through its shell-integration marks (OSC 133/633), which
-// is what lets `run_in_terminal` know a command finished instead of guessing at a quiet stream.
-//
-// `ShellIntegrationSeen`: Whether any mark has arrived. Without one there is no way to tell a finished command from a slow one, and the tool says so rather than guessing.
-// `AtPrompt`: Whether the shell is idle at a prompt. False while a command runs — which is also true while a full-screen program like `vim` is open, so this is what keeps a command from being typed into one.
-// `CommandsStarted`: How many commands have begun. Paired with `CommandsFinished` so a caller can tell that the finish it sees belongs to a command that started after it sent, not to one already in flight.
-// `CommandsFinished`: A counter a caller snapshots before sending, then waits to move.
-// `LastExitCode`: What the last finished command exited with, or null when the shell reported no code.
-// `CapturedSoFar`: Everything captured up to now, counted across the whole coupling, so a caller can read back only what its own command produced. Not a buffer position: the buffer is capped and drops its oldest text.
+// AC-1013: What a coupled pane's shell tells us via its shell-integration marks (OSC 133/633), letting
+// run_in_terminal know a command finished instead of guessing at a quiet stream. Trimmed: AtPrompt is also
+// false during a full-screen program like vim (keeps a command from being typed into one); CommandsStarted/Finished pair lets a caller match a finish to the command it sent; CapturedSoFar excludes text the capped buffer already dropped.
 public sealed record TerminalShellState(bool ShellIntegrationSeen, bool AtPrompt, int CommandsStarted, int CommandsFinished, int? LastExitCode, long CapturedSoFar);
 
 // Captured pane output, and whether the buffer cap dropped part of what was asked for — worth passing on, since an agent must not read a build as clean when the errors scrolled out of reach.

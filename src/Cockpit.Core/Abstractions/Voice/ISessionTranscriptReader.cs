@@ -33,24 +33,16 @@ public interface ISessionTranscriptReader
     SessionTranscriptSlice ReadEntries(SessionProfile? profile, string? statusFile, int count);
 }
 
-// A TTY session's transcript as read back on demand (AC-609): the last rows asked for, oldest first, and how many
-// the whole record holds — the core's mirror of the plugin-facing slice, so nothing above this line handles a
-// plugin type.
-//
-// `Entries`: The rows, oldest first.
-// `TotalEntries`: How many rows the transcript holds in all.
+// AC-1013: A TTY session's transcript as read back on demand (AC-609) — the last rows asked for (Entries,
+// oldest first) and TotalEntries the whole record holds. Trimmed: this is the core's own mirror of the
+// plugin-facing slice, so nothing above this line has to handle a plugin type.
 public sealed record SessionTranscriptSlice(IReadOnlyList<SessionTranscriptEntry> Entries, int TotalEntries)
 {
     // Nothing read — a session whose transcript cannot be named, or which has written nothing yet.
     public static SessionTranscriptSlice Empty { get; } = new([], 0);
 }
 
-// One already-written row of a TTY session's transcript (AC-609), in the coarse vocabulary shared by every
-// provider. `Kind` is a name from the host's own transcript vocabulary
-// (`UserText`, `AssistantText`, `ToolUse`, `ToolResult`, `Thinking`, `Error`), so a
-// reader of this does not have to know which provider produced it.
-//
-// `Kind`: What the row is.
-// `Text`: Its text: the message, the thinking, or a tool call's name and arguments.
-// `ToolResult`: What a tool call returned, on the row that made it. Null on every other kind.
+// AC-1013: One already-written transcript row (AC-609), Kind/Text/ToolResult. Trimmed: Kind is a name
+// from the host's own coarse vocabulary (UserText/AssistantText/ToolUse/ToolResult/Thinking/Error), shared
+// across providers, so a reader never needs to know which provider produced the row.
 public sealed record SessionTranscriptEntry(string Kind, string Text, string? ToolResult);

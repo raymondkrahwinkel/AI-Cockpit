@@ -1,16 +1,8 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
-// One message one agent session addressed to another (AC-392) — the envelope, never a bare string. A bare string
-// would arrive in the recipient's context indistinguishable from something the operator asked for; carrying the
-// verified sender and a caller-chosen `Kind` alongside the text is what lets the recipient
-// present it as data with a stated origin instead of as an instruction.
-//
-// `Id`: The message's own id, minted host-side by `IAgentMessageInbox` — not by the sending agent, which has nothing to gain from choosing it and could otherwise collide with a message it did not send.
-// `FromPaneId`: The pane the message actually came from. Stamped from the transport-verified caller, never from anything the sender declared.
-// `ToPaneId`: The pane it was addressed to.
-// `Kind`: The sender's own label for what this is ("question", "heads-up") — free text, and no more trustworthy than the sender.
-// `Body`: The payload text.
-// `SentAtUtc`: When the host accepted it.
+// AC-1013: One message one agent session addressed to another (AC-392) — the envelope, never a bare string, so
+// the recipient can present it as data with a stated origin rather than mistake it for something the operator
+// asked for. Id is host-minted, not sender-chosen, since the sender has nothing to gain from choosing it.
 public sealed record AgentMessage(
     string Id,
     string FromPaneId,
@@ -32,23 +24,12 @@ public enum AgentMessageDeliveryOutcome
     RecipientInboxFull,
 }
 
-// The result of a delivery attempt: what happened, and the message it happened to.
-//
-// `Outcome`: Delivered, deduplicated onto one already waiting, or refused because the recipient's inbox is full.
-// `Message`:
-// The message now waiting for the recipient — the newly created one on `AgentMessageDeliveryOutcome.Delivered`,
-// the already-waiting duplicate on `AgentMessageDeliveryOutcome.Deduplicated` (so the sender gets that
-// one's id back rather than an id for a message nobody holds), and null when nothing was accepted.
+// AC-1013: The result of a delivery attempt. Message is the newly created one on Delivered, the already-waiting
+// duplicate on Deduplicated (so the sender gets that id back, not one for a message nobody holds), else null.
 public sealed record AgentMessageDelivery(AgentMessageDeliveryOutcome Outcome, AgentMessage? Message);
 
-// One `IAgentMessageInbox.Drain`'s worth of mail: the messages handed over now, and how many are still
-// waiting behind them.
-//
-// `Messages`: The messages handed to the caller, oldest first. No longer in the inbox — a drain is a handover.
-// `Remaining`:
-// How many are still waiting after this batch. Non-zero means the drain was capped and the caller should come back
-// for the rest: the recipient has to be told that, or a bounded batch is indistinguishable from an empty inbox and
-// the tail is silently never read.
+// AC-1013: One `Drain`'s worth of mail. Remaining must be told to the caller — a capped batch is otherwise
+// indistinguishable from an empty inbox, and the tail silently never gets read.
 public sealed record AgentInboxBatch(IReadOnlyList<AgentMessage> Messages, int Remaining);
 
 /// <summary>

@@ -53,10 +53,7 @@ public interface IUpdateSettingsStore
     Task SaveAsync(UpdateSettings settings, CancellationToken cancellationToken = default);
 }
 
-// `CheckOnStartup`: Look once when the cockpit starts. On by default: an update nobody is told about is an update nobody installs.
-// `Channel`:
-// The channel the operator chose, or null when nobody has chosen one — then the build's own stream decides
-// (`BuildChannel`). Nullable rather than defaulting to `UpdateChannel.Stable`, because a
-// default is indistinguishable from a choice: a nightly started without a configuration file would land on stable
-// and be offered a downgrade as its first update.
+// AC-1013: CheckOnStartup defaults true (an update nobody is told about is one nobody installs). Channel
+// is null (not defaulted to Stable) when nobody chose one, so the build's own BuildChannel decides.
+// Trimmed: defaulting to Stable would be indistinguishable from a choice — a nightly with no config file would land on stable and get offered a downgrade as its first update.
 public sealed record UpdateSettings(bool CheckOnStartup = true, UpdateChannel? Channel = null);

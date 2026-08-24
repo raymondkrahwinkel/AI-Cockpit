@@ -1,9 +1,7 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
-// The two things one agent can spend on the line (AC-396), counted apart because they cost different people
-// different amounts. A message waits in an inbox until its recipient chooses to read it; a wake starts a turn the
-// recipient's operator pays for and did not ask for. One cap over both would either be loose enough to let a
-// wake loop through or tight enough to stop ordinary talking.
+// AC-1013: The two things one agent can spend on the line (AC-396), counted apart because they cost different
+// people different amounts — a shared cap would be either loose enough to let a wake loop through or too tight to talk.
 public enum AgentLineActivity
 {
     // An accepted `notify` — a message put in a neighbour's inbox.
@@ -13,19 +11,9 @@ public enum AgentLineActivity
     Wake,
 }
 
-// What the budget said about one attempt, with the numbers the sender needs to act on it. Refusals here are
-// informative and temporary by design: this is a guard rail against a loop, not a punishment and not a kill switch
-// for the sender — Raymond settled that on the ticket (2026-07-28: *"dat zijn meer guard rails"*).
-//
-// `Allowed`: Whether the attempt may go ahead. False means it was not counted either — a refused attempt does not deepen the hole it is in.
-// `Activity`: Which of the two counters this verdict is about.
-// `Used`: How many of this kind the pane has spent inside the window, counting this one when it was allowed.
-// `Limit`: The most of this kind one pane may spend inside the window.
-// `Window`: How far back the count reaches.
-// `RetryAfter`:
-// How long until the oldest counted attempt falls out of the window and room appears again — zero when the attempt
-// was allowed. Given as a duration rather than a timestamp because it is what the sender actually needs: an agent
-// deciding whether to wait or to take another route is asking "how long", not "until when".
+// AC-1013: What the budget said about one attempt, with the numbers to act on it. Refusals are informative and
+// temporary by design — a guard rail against a loop, not a punishment (Raymond, 2026-07-28: "dat zijn meer guard
+// rails"). RetryAfter is a duration, not a timestamp, since "how long" is what the sender needs, not "until when".
 public sealed record AgentLineBudgetVerdict(
     bool Allowed,
     AgentLineActivity Activity,
@@ -34,13 +22,7 @@ public sealed record AgentLineBudgetVerdict(
     TimeSpan Window,
     TimeSpan RetryAfter);
 
-// One pane's standing against one of the two counters, for the operator-facing read.
-//
-// `PaneId`: The sender the count belongs to.
-// `Activity`: Which counter.
-// `Used`: How many attempts of that kind are still inside the window.
-// `Limit`: The cap that applies.
-// `Window`: How far back the count reaches.
+// AC-1013: One pane's standing against one of the two counters, for the operator-facing read.
 public sealed record AgentLineBudgetUsage(
     string PaneId,
     AgentLineActivity Activity,

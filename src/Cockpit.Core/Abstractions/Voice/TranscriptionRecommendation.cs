@@ -13,10 +13,9 @@ public enum GpuVendor
     Apple,
 }
 
-// What the host's display GPU is, beyond "can a runtime load" (AC-68 slice 2): the brand, a human description,
-// whether that adapter also drives a monitor (so GPU transcription would fight the compositor for it), and its
-// dedicated VRAM. All best-effort — a field the probe could not determine is left at its neutral default, and
-// the recommender degrades to a safe CPU choice rather than guessing.
+// AC-1013: What the host's display GPU is, beyond "can a runtime load" (AC-68 slice 2) — brand, description,
+// whether it also drives a monitor (so GPU transcription would fight the compositor), and dedicated VRAM.
+// Trimmed: all best-effort — a field the probe can't determine stays at its neutral default, and the recommender degrades to a safe CPU choice rather than guessing.
 public sealed record GpuHardware(GpuVendor Vendor, string? Description, bool DrivesDisplay, long VideoMemoryBytes)
 {
     // No GPU could be identified — the recommender then treats the machine as CPU-only.
@@ -32,10 +31,9 @@ public sealed record TranscriptionRecommendation(
     string Reason,
     IReadOnlyList<string> Badges);
 
-// The hardware-aware rule table (AC-68 slice 2). Pure so it is unit-testable without probing a real machine:
-// given what can load, what the display GPU is, and the OS, it recommends a model + backend + reason. The
-// governing insight is that a single GPU which also draws the screen should transcribe on the CPU, so a long
-// dictation does not make the desktop stutter — the GPU is fast but it is busy being your display.
+// AC-1013: The hardware-aware rule table (AC-68 slice 2); pure so it's unit-testable without probing a
+// real machine. Trimmed: governing insight is a single GPU that also draws the screen should transcribe
+// on the CPU, so a long dictation doesn't make the desktop stutter — the GPU is fast but busy being your display.
 public static class TranscriptionRecommender
 {
     // Below this, a discrete GPU is treated as too small to be worth the fast path even on NVIDIA.
@@ -70,11 +68,9 @@ public static class TranscriptionRecommender
                 badges);
         }
 
-        // Any usable GPU: use it. This is only the first-run guess before a calibration exists, and the CPU
-        // alternative can be unusably slow (a full model can take tens of seconds on the CPU), so defaulting to the
-        // fast path is far safer than defaulting to a slow one. If the GPU also draws the screen and a long
-        // dictation stutters the desktop, the first-use calibration measures exactly that and moves Auto to the
-        // CPU — a real number, not this guess. Vulkan preferred where present (the AMD/Intel path), else CUDA.
+        // AC-1013: Any usable GPU is used here as only the first-run guess before a calibration exists (CPU
+        // can be unusably slow). Trimmed: why defaulting to fast-but-maybe-wrong beats slow-but-safe — a
+        // display-driving GPU that stutters gets corrected to CPU once the first-use calibration has real numbers. Vulkan preferred where present, else CUDA.
         if (capabilities.GpuUsable)
         {
             var backend = capabilities.VulkanUsable ? VoiceBackendPreference.Vulkan : VoiceBackendPreference.Cuda;

@@ -155,13 +155,8 @@ public interface IAssistantAgentGateway
     Task<OpenUrlResult> OpenUrlAsync(string url, CancellationToken cancellationToken = default);
 }
 
-// What came of binding a shared project (AC-798). Same shape and same reason as `AgentStopResult` — a refusal is a
-// sentence the assistant says, not an exception it fails on.
-//
-// `SourceName`: the connection it came from ("Depot — Work"), so the confirmation names where the project is from
-// rather than only what it is now called.
-// `SourceDirectory`: the folder it was pointed at — echoed back because it is the one field on the consent card, and
-// the one thing the operator can still check afterwards.
+// AC-1013: What came of binding a shared project (AC-798) — a refusal is a sentence the assistant says, not an
+// exception it fails on. SourceName/SourceDirectory are echoed back so the confirmation names where it came from.
 public sealed record AssistantProjectBindResult(
     bool Ok, string? ProjectId, string? Name, string? SourceName, string? SourceDirectory, string? Error)
 {
@@ -199,11 +194,8 @@ public sealed record WorktreeHandoverResult(bool Ok, string? Path, string? Branc
     public static WorktreeHandoverResult Refused(string error) => new(false, null, null, null, error);
 }
 
-// What came of opening a web address (AC-587). Same shape and same reason as `AgentStopResult` — a refusal is
-// a sentence the assistant says, not an exception it fails on.
-//
-// `Url`: the address that was opened, echoed back so the assistant can say which one it was rather than
-// assuming its own argument survived unchanged.
+// AC-1013: What came of opening a web address (AC-587). Url is echoed back so the assistant can say which one
+// it was rather than assuming its own argument survived unchanged.
 public sealed record OpenUrlResult(bool Ok, string? Url, string? Error)
 {
     public static OpenUrlResult Opened(string url) => new(true, url, null);
@@ -211,11 +203,8 @@ public sealed record OpenUrlResult(bool Ok, string? Url, string? Error)
     public static OpenUrlResult Refused(string error) => new(false, null, error);
 }
 
-// What came of arming a watch. Same shape and same reason as `AgentStopResult`: a refusal is a sentence the
-// assistant says out loud, not an exception it fails on.
-//
-// `Name`: the watched session's title, so the confirmation names what is being watched rather than a pane id nobody
-// can check by ear.
+// AC-1013: What came of arming a watch. Name is the watched session's title, so the confirmation names what is
+// being watched rather than a pane id nobody can check by ear.
 public sealed record AssistantWatchResult(bool Ok, string? Name, string? Error)
 {
     public static AssistantWatchResult Watched(string name) => new(true, name, null);
@@ -223,14 +212,8 @@ public sealed record AssistantWatchResult(bool Ok, string? Name, string? Error)
     public static AssistantWatchResult Refused(string error) => new(false, null, error);
 }
 
-// What came of a message. Same shape and same reason as `AgentStopResult`.
-//
-// `MessageId`: The id the message is waiting under, so a repeat send can be recognised as the same one.
-// `Deduplicated`: True when the identical message was already waiting unread: this call added nothing, and `MessageId` is the one that was already there.
-// `DeliversAtTurnStart`:
-// Whether the recipient will see this without going to look. Reported because "delivered" on a pane with no passive
-// delivery means the message is waiting, not that anyone has been told — and an assistant that then reports "I told
-// them" to the operator has said something untrue on the strength of a field that read like success.
+// AC-1013: What came of a message. DeliversAtTurnStart is reported because "delivered" on a pane with no
+// passive delivery only means waiting, not told — else the assistant could wrongly report "I told them".
 public sealed record AgentMessageResult(
     bool Ok,
     string? PaneId,
@@ -246,13 +229,8 @@ public sealed record AgentMessageResult(
     public static AgentMessageResult Refused(string error) => new(false, null, null, null, false, false, error);
 }
 
-// What came of a prompt. Same shape and same reason as `AgentStopResult`.
-//
-// `Delivered`:
-// True when the turn was submitted on the spot. False means the session cannot take one yet — it is still coming up
-// — and the turn is being held for it. Not an error, and not a delivery either: the difference is the whole reason
-// this field exists, because an assistant that says "sent" for a turn that is still waiting has reported work that
-// has not started.
+// AC-1013: What came of a prompt. Delivered false means the session isn't up yet and the turn is held, not an
+// error — without this field an assistant could wrongly say "sent" for work that hasn't started.
 public sealed record AgentPromptResult(bool Ok, string? PaneId, string? SessionName, bool Delivered, string? Error)
 {
     public static AgentPromptResult Handed(string paneId, string sessionName, bool delivered) =>
@@ -271,42 +249,9 @@ public sealed record WorkspaceRemovalResult(bool Ok, string? Name, string? Error
     public static WorkspaceRemovalResult Refused(string error) => new(false, null, error);
 }
 
-// One session to start: where it goes, what it runs, and what it is handed to begin with.
-//
-// `Target`: The desk and the rule that chose it. See `SpawnTarget`.
-// `ProfileLabel`:
-// The profile to run under, by its label. Required unless `ProjectId` names a project with its own
-// `Project.DefaultProfileLabel` (AC-773) — omitted then, that default is used instead, and the label actually used
-// comes back as `AgentSpawnResult.ResolvedProfileLabel` so the assistant can say which one it was, never silently.
-// Naming one here always wins over the project's default (AC-436 guardrail 6 still holds: an agent that did not have
-// to say so would spawn Opus workers by accident, so an explicit label is never overruled by a project).
-// `ProjectId` (AC-773):
-// The project this session works on, by its id from `list_projects` — the one thing `CockpitViewModel
-// .StartSessionOnWorkspaceAsync` needs to apply that project's working directory, profile default, worktree
-// isolation, behaviour prompt, memory/resources and MCP overlay in one pass, the same way it already does for a
-// folder that happens to map-match a project (AC-682). Left out, resolution falls back to that map-match exactly as
-// before. An id that names no project is refused rather than silently falling back to the folder guess.
-// `Prompt`: The first message to hand the session once it is up, or null to leave it waiting.
-// `WorkingDirectory`: The folder to run in, or null for the profile's own default.
-// `SessionName`: What to call the pane, or null to let the profile and the clock name it.
-// `Kind`:
-// The route to start on — "sdk" or "tty" — or null for the one the profile is set to, which is what nearly every
-// spawn should use.
-// *Why the route is here at all.* The New-session dialog has a Kind toggle, so "the same profile, but as an
-// SDK session" is an ordinary thing to want. Without a way to say it here, that request has nowhere to land — and
-// what an assistant does with a request it has no tool for is reach for the nearest thing that sounds close. Asked
-// for exactly this, it went looking through `cockpit-orchestrator`, which starts work with no pane, outside
-// this ticket's consent gate and outside its trail. A missing parameter turned into a detour around the guardrail.
-// `OptionOverrides`:
-// Provider option keys to start this one session with, on top of the profile's own defaults (AC-648) — "that profile,
-// but at low effort". Per key: what is not named keeps the profile's value, so naming `effort` never costs the profile
-// its own `permission-mode`. Validated against what the profile's provider declares (AC-649), and `permission-mode`
-// — with any other provider's word for the same launch-time access-control question — is refused outright, whoever
-// asks. See `SpawnOptionOverrides`. One key is the host's own rather than a provider's: `cockpit.memory-cap-mb`
-// (AC-661) sets how much memory this session's whole process tree may hold before the OS cuts it off.
-// `IsolateInWorktree` (AC-719):
-// Tri-state — left out inherits the resolved project's own default, `true` may isolate on top of it, and `false`
-// is refused before a launch is composed: overruling isolation *away* would run it in the operator's real checkout.
+// AC-1013: One session to start — desk, profile (overrides project default, AC-436 guardrail 6), and what it's
+// handed (Prompt, OptionOverrides AC-648/649, IsolateInWorktree AC-719). Kind exists because a Kind-less request
+// once got mis-routed through cockpit-orchestrator, bypassing this gate — full history belongs on AC-1013.
 public sealed record AgentSpawnRequest(
     SpawnTarget Target,
     string? ProfileLabel,
@@ -318,15 +263,9 @@ public sealed record AgentSpawnRequest(
     IReadOnlyDictionary<string, string>? OptionOverrides = null,
     bool? IsolateInWorktree = null);
 
-// What came of a spawn. A refusal carries `Error` and no pane; both are reported to the agent, so a
-// spawn that could not happen is a sentence the operator hears rather than a session that silently is not there.
-//
-// `PromptDelivered` (AC-760): null when no `Prompt` was given; true when it was submitted on the spot; false when
-// the pane exists but the CLI was not yet reading stdin, so it is held rather than lost or silently claimed sent.
-//
-// `ResolvedProfileLabel` (AC-773): the profile actually used — the request's own `ProfileLabel` echoed back, or,
-// when that was left out, whatever the resolved project's `DefaultProfileLabel` supplied. Reported so the assistant
-// says which one it was rather than assuming, the same reason a profile was made required in the first place.
+// AC-1013: What came of a spawn — a refusal carries Error and no pane, so a failed spawn is a sentence the
+// operator hears, not a session that's silently missing. PromptDelivered (AC-760) and ResolvedProfileLabel
+// (AC-773) are reported so the assistant states what actually happened rather than assuming.
 public sealed record AgentSpawnResult(
     bool Ok, string? PaneId, string? SessionName, string? WorkingDirectory, string? Error,
     bool? PromptDelivered = null, string? ResolvedProfileLabel = null)
@@ -355,17 +294,8 @@ public sealed record AssistantRenameResult(bool Ok, string? Name, string? Error)
     public static AssistantRenameResult Refused(string error) => new(false, null, error);
 }
 
-// One desk, as the assistant may see it: enough to name it back to the operator and to spawn onto it.
-//
-// `Id`: The workspace id — what a spawn actually takes.
-// `Name`: The tab label the operator sees, which is the name they will say out loud.
-// `Type`: The workspace type id ("sessions", "dashboard", "projects", a plugin's own).
-// `CanHostSessions`:
-// Whether a session may be placed here at all. Only a Sessions desk can show one — a dashboard would run it
-// invisibly, which is worse than refusing — so this is reported rather than left for the assistant to infer from
-// `Type`.
-// `SessionCount`: How many agent sessions are on it right now.
-// `IsActive`: Whether this is the desk the operator is looking at.
+// AC-1013: One desk, as the assistant may see it. CanHostSessions is reported explicitly, not inferred from
+// Type, because a dashboard desk would run a spawned session invisibly rather than refusing it.
 public sealed record AssistantWorkspaceRow(
     string Id,
     string Name,
@@ -374,11 +304,8 @@ public sealed record AssistantWorkspaceRow(
     int SessionCount,
     bool IsActive);
 
-// One profile a spawn may name.
-//
-// `Label`: Exactly what `start_agent` takes — the label, not the display string.
-// `Provider`: Which provider it runs on ("Claude", "LM Studio"), so "a Claude one" can be resolved without guessing from the label's wording.
-// `Model`: The model, where the profile pins one. Null means the provider's own default, which is worth saying rather than showing as blank.
+// AC-1013: One profile a spawn may name. Provider is reported so "a Claude one" resolves without guessing from
+// the label's wording; a null Model means the provider's own default, distinct from blank.
 public sealed record AssistantProfileRow(string Label, string Provider, string? Model)
 {
     // What this profile is actually configured to run at, in its provider's own vocabulary (AC-647) — read from
@@ -387,13 +314,8 @@ public sealed record AssistantProfileRow(string Label, string Provider, string? 
     public IReadOnlyList<AssistantProfileOptionRow> Options { get; init; } = [];
 }
 
-// One option a profile's provider understands, with what this profile sets it to (AC-647).
-//
-// `Key`: The provider's own option key, e.g. `permission-mode` or `sandbox` — what `start_agent` will one day take.
-// `Label`: What the option is called in the provider's own words, for reading out loud.
-// `Value`: The raw value in force. Null when the profile sets none and the provider names no default.
-// `ValueLabel`: That value in the provider's own words ("Bypass permissions"), or the raw value when it has no friendlier one.
-// `SetOnProfile`: Whether the profile itself sets this, or it is only the provider's default — the difference between what was chosen and what merely applies.
+// AC-1013: One option a profile's provider understands (AC-647). SetOnProfile distinguishes what the profile
+// chose from what merely applies as the provider's own default.
 public sealed record AssistantProfileOptionRow(
     string Key,
     string Label,

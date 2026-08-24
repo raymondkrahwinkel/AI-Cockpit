@@ -124,10 +124,9 @@ public sealed record DelegationTargetView(
     int RunningTasks,
     IReadOnlyList<string> McpServers);
 
-// What a caller asks for when delegating (#67). Everything else — driver, credentials, environment — comes from
-// the profile, never from the call. `McpServers` (AC-136) optionally narrows the task to a subset
-// of the servers the profile allows; null leaves the profile's full set, and a name outside the allowed set is
-// refused, never honoured — the per-task choice can only restrict, never grant.
+// What a caller asks for when delegating (#67). Everything else — driver, credentials, environment — comes
+// from the profile, never the call. `McpServers` (AC-136) optionally narrows to a subset of the profile's
+// allowed servers; null keeps the full set, and a name outside it is refused — restrict only, never grant.
 public sealed record DelegationRequest(
     string ProfileLabel,
     string Prompt,
