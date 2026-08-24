@@ -9,13 +9,9 @@ public static class PluginHash
 {
     public static string Compute(ReadOnlySpan<byte> assemblyBytes) => Convert.ToHexStringLower(SHA256.HashData(assemblyBytes));
 
-    // Folds a plugin's whole load closure into one pin (AC-43). Pinning only the entry assembly re-triggered
-    // consent when the entry DLL changed but not when a sibling *dependency* DLL was swapped — and those
-    // are loaded in-process with full trust (`PluginLoadContext` resolves them from the folder), so a tamper
-    // or a store update that kept the entry byte-identical ran unconsented code. Each file contributes its
-    // forward-slash relative path and its own SHA-256, ordered by path so the pin is independent of enumeration
-    // order and platform separator. Any changed byte in any file — or a moved/renamed file — changes the pin, so
-    // the consent prompt returns. Pure: the caller does the file IO.
+    // AC-43: Pins the whole load closure, not just the entry assembly — pinning only the entry let a
+    // swapped dependency DLL run unconsented, since dependencies load in-process with full trust too.
+    // (Omitted: path/hash framing and ordering rationale, the "pure, caller does IO" note; see ticket.)
     public static string ComputeClosure(IEnumerable<PluginClosureFile> files)
     {
         using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);

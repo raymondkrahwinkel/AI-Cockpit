@@ -1,12 +1,8 @@
 namespace Cockpit.Core.Plugins;
 
-// A plugin this build has replaced with others, and the pure decision of whether to say so. Splitting a plugin
-// in two — or folding one into another — leaves the old one installed (the installer never removes what an
-// operator has), so it keeps claiming the same widget or workspace types as its successors, and one loses.
-//
-// `Id`: The folder id of the plugin that has been replaced.
-// `DisplayName`: What to call it when telling the operator.
-// `SuccessorIds`: The plugins that took over. Nothing is said until at least one of them is actually enabled.
+// AC-1013: A plugin this build has replaced with others, and the pure decision of whether to say so —
+// splitting/folding a plugin leaves the old one installed (never removed), so it keeps claiming the
+// same widget/workspace types as its successors (Id/DisplayName/SuccessorIds: replaced/label/takeover).
 public sealed record SupersededPlugin(string Id, string DisplayName, IReadOnlyList<string> SuccessorIds)
 {
     // What this build knows it has replaced. It should stay short: this is a migration aid, not a general
@@ -24,13 +20,9 @@ public sealed record SupersededPlugin(string Id, string DisplayName, IReadOnlyLi
         new("whiteboard", "Whiteboard", ["diagram"]),
     ];
 
-    // Whether to tell the operator about this one: it is still loaded, and at least one successor is loaded too
-    // and has taken over from it. Neither half alone is worth a word — an old plugin with no successor is just a
-    // plugin, and a successor without the old one is the ordinary case.
-    //
-    // `loadedIds`:
-    // The folder ids of the plugins that actually loaded, not the ones with a registration. Only a loaded plugin
-    // claims a widget type, which is the whole reason there is anything to say.
+    // AC-1013: Tell the operator only when both this plugin and a successor are loaded — `loadedIds`
+    // is the plugins that actually loaded (not merely registered), since only a loaded plugin claims a
+    // widget type, the reason there's anything to say.
     public bool ShouldOffer(IReadOnlyCollection<string> loadedIds) =>
         loadedIds.Contains(Id) && SuccessorIds.Any(loadedIds.Contains);
 }

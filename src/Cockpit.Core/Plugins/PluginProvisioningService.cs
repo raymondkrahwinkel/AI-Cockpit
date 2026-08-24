@@ -3,11 +3,9 @@ using Cockpit.Core.Abstractions.Plugins;
 
 namespace Cockpit.Core.Plugins;
 
-// Implements the provisioning seam (AC-510[b]) over `IPluginStoreClient` and
-// `IPluginInstaller` — the download-verify-install glue that used to live only inside
-// `PluginManagerViewModel`. A fresh install's consent walk and a staged update's registration re-pin stay
-// with the caller: both need UI (a dialog) or session state this service has no business holding, so this class
-// stops at "here is what landed", which is exactly what a screen-less caller needs too.
+// AC-510[b]: Provisioning seam over IPluginStoreClient/IPluginInstaller — download-verify-install glue
+// moved out of PluginManagerViewModel. Consent walk and registration re-pin stay with the caller, since
+// both need UI/session state this service shouldn't hold. (Omitted: screen-less-caller rationale; see ticket.)
 public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IPluginInstaller installer)
     : IPluginProvisioningService, ISingletonService
 {

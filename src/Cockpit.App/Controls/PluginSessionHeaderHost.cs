@@ -8,11 +8,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Controls;
 
-// Renders the plugin-contributed header items (`ICockpitHost.AddSessionHeaderItem`) for the session panel
-// it sits in: one control per registered item, each built from a `PluginSessionContext` bound to
-// *this* session. Both session kinds (SDK chat and TTY terminal) drop this into their header, so the
-// wiring lives here once instead of twice in two code-behinds. Contributes nothing — and takes no space — when
-// no plugin registers a header item.
+// AC-1013: renders the plugin-contributed header items (`ICockpitHost.AddSessionHeaderItem`) for the
+// session panel it sits in, one control per item bound to this session's `PluginSessionContext`, shared
+// by both session kinds (SDK chat, TTY) instead of duplicating the wiring per code-behind.
 internal sealed class PluginSessionHeaderHost : StackPanel
 {
     private readonly List<PluginSessionContext> _contexts = [];

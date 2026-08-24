@@ -1,20 +1,8 @@
 namespace Cockpit.Core.Plugins;
 
-// One plugin advertised by a store: its identity, display fields, the latest version and the full
-// version history, plus the optional presentation fields the store dialog (#62) uses for browsing —
-// `Category`/`Icon`/`Homepage`/`Repository`/
-// `Featured`/`Published` — `Audience` (AC-511), the curator's own
-// second axis — and `Hidden` (AC-815), which drops an entry out of the browsable store entirely. All
-// are additive and default to "not set" (null/false/empty), so an `index.json` published before they existed
-// still parses without them: the store dialog falls back to an "Other" category, a monogram icon, no
-// links, no Featured/Recently-added rail membership, no audience recommendation, and every plugin
-// browsable. `Icon` is a single emoji/glyph, not an image path — see the #62 design doc
-// for why (no new download/cache layer needed for a text glyph the app already renders elsewhere, e.g.
-// the titlebar caption glyphs).
-//
-// `LogoAsset` (AC-553) is additive too: a bare file name resolves against the host's bundled assets, an
-// `http(s)` URL is fetched live from the vendor's own CDN (see NOTICE) — either falls back to `Icon`, then
-// the monogram, when it does not resolve.
+// AC-1013: One plugin advertised by a store — identity, display fields, version history, plus optional
+// presentation fields the store dialog (#62) uses for browsing. All are additive/default "not set" so
+// a pre-existing `index.json` still parses (per-field fallback behavior: see AC-511, AC-815, AC-553).
 public sealed record PluginStoreEntry(
     string Id,
     string Name,

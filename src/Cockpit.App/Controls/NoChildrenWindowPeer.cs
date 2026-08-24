@@ -3,13 +3,9 @@ using Avalonia.Controls;
 
 namespace Cockpit.App.Controls;
 
-// Cockpit serves NO UI-Automation tree below its windows. It has its own in-app voice assistant, so external UIA
-// clients (screen readers, PowerToys, desktop-automation tools) are deliberately not exposed the window contents —
-// and serving them is what leaks: an external client realises a COM node per control (AutomationNode, a CCW) that
-// Avalonia never releases on detach (issue #8240), so every closed session pane's transcript stays pinned until the
-// client disconnects. Reporting no children means the client can never descend into (and thus never pin) the pane
-// contents. The window peer itself stays a real WindowAutomationPeer — RootAutomationNode requires an IRootProvider
-// or WM_GETOBJECT throws — so only its children are hidden, not the root.
+// AC-1013: Cockpit deliberately serves no UI-Automation tree below its windows — an external UIA client
+// realises a COM node per control that Avalonia never releases on detach (#8240), pinning a closed session
+// pane's transcript until it disconnects. Details: dropped the in-app-voice-assistant rationale and the IRootProvider note.
 internal sealed class NoChildrenWindowPeer : WindowAutomationPeer
 {
     public NoChildrenWindowPeer(Window owner) : base(owner)

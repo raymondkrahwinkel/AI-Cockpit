@@ -1,12 +1,8 @@
 namespace Cockpit.App.Controls;
 
-// Pure, UI-free geometry for the vertically-stacked session layout (#54 follow-up): turning per-pane
-// *weights* into stacked rectangles, hit-testing the draggable gutters between them, transferring
-// height between two neighbours on a splitter drag, and picking the drop index for a reorder drag.
-// Weights are proportional (unitless): only their ratios matter, so a window resize keeps each pane's
-// share instead of snapping back to equal — the arithmetic here normalises by the running sum. Keeping
-// it separate from `SessionTilePanel` lets the fiddly cases (min-height clamping, a drag
-// past a neighbour) be unit-tested without a visual tree.
+// AC-1013 (#54 follow-up): pure, UI-free geometry for the vertically-stacked session layout — per-pane
+// proportional weights into stacked rectangles, gutter hit-testing, splitter height transfer, and reorder
+// drop index. Kept separate from `SessionTilePanel` so fiddly cases are unit-testable without a visual tree.
 internal static class StackPaneMath
 {
     // A pane's arranged vertical slot: `Top` down by `Height`.
@@ -64,10 +60,8 @@ internal static class StackPaneMath
         return slots;
     }
 
-    // The index of the gutter (between pane `i` and `i+1`) whose grab band contains
-    // `y`, or -1 if the pointer is over pane content rather than a gutter. The band is
-    // the gutter itself widened by `grab` on each side so a thin gutter is still easy
-    // to catch.
+    // The gutter index (between pane `i` and `i+1`) whose grab band contains `y`, or -1 over pane content.
+    // Band = the gutter widened by `grab` on each side, so a thin gutter stays easy to catch.
     public static int GutterAt(IReadOnlyList<Slot> slots, double y, double gutter, double grab)
     {
         for (var i = 0; i < slots.Count - 1; i++)
@@ -83,10 +77,8 @@ internal static class StackPaneMath
         return -1;
     }
 
-    // Moves `pixelDelta` of height across the gutter `gutterIndex`
-    // (positive grows the upper pane, shrinks the lower) and returns a fresh weight array. Only the two
-    // neighbours change; their combined share is preserved, so the other panes hold their size. Each of
-    // the pair is clamped to `minPixels` so a pane can't be dragged shut.
+    // Moves `pixelDelta` of height across `gutterIndex` (positive grows upper, shrinks lower), returning a
+    // fresh weight array. Only the two neighbours change, clamped to `minPixels` so a pane can't be dragged shut.
     public static double[] Resize(
         IReadOnlyList<double> weights,
         int gutterIndex,
@@ -172,10 +164,8 @@ internal static class StackPaneMath
         return slots.Count == 0 ? 0 : slots.Count - 1;
     }
 
-    // The index the pane at `draggedIndex` should occupy when its grip is held at
-    // `pointerY`: it sits after every *other* pane whose vertical centre the
-    // pointer has passed. Returns a value in `[0, count-1]`, equal to `draggedIndex`
-    // when nothing should move.
+    // The index `draggedIndex` should occupy when its grip is held at `pointerY`: after every other pane
+    // whose vertical centre the pointer has passed. Returns `[0, count-1]`, equal to `draggedIndex` if no move.
     public static int ReorderTarget(IReadOnlyList<Slot> slots, int draggedIndex, double pointerY)
     {
         if (draggedIndex < 0 || draggedIndex >= slots.Count)

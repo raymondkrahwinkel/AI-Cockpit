@@ -17,11 +17,9 @@ public static class PluginLoadPolicy
             return PluginLoadDecision.AbstractionsMajorMismatch;
         }
 
-        // The contract major above only catches a plugin built against a different SDK generation. It says nothing
-        // about a plugin that calls a member this host does not have yet — that one loads (the member exists in the
-        // contract it compiled against) and then fails somewhere the operator cannot see. minHostVersion is the only
-        // thing that catches it, and nothing compared it: every manifest could claim whatever it liked, and every
-        // one of them claimed 1.0.0 because that is what the template said.
+        // AC-1013: contract-major alone misses a plugin that calls a member the host lacks yet;
+        // minHostVersion is the only gate that catches it, and previously nothing compared it.
+        // (Omitted: history of every manifest claiming template-default 1.0.0; see ticket.)
         if (!MeetsMinHostVersion(manifest.MinHostVersion, hostVersion))
         {
             return PluginLoadDecision.HostTooOld;
@@ -42,20 +40,9 @@ public static class PluginLoadPolicy
             : PluginLoadDecision.NeedsConsent;
     }
 
-    // True when a declared `minHostVersion` does not refuse `hostVersion` — shared by every
-    // gate that measures a plugin against this host (AC-181: this load gate, the install-time gate, and the store
-    // browse "not compatible" badge), so the three can never disagree about the same plugin.
-    //
-    // A plugin cannot honestly need a 1.0+ host while the cockpit itself has not reached 1.0 — before that
-    // milestone the project promises no compatibility at all (Versioning skill), so a *declared* "1.0.0 or
-    // later" on a 0.x host is the leftover template default every manifest used to carry regardless of what it
-    // actually needed, not a real requirement, and is not enforced. An *honest* sub-1.0 requirement (a
-    // plugin that says it needs 0.13.0) is a real, current claim and is enforced host 0.x or not — 21+ manifests
-    // already carry granular values in that range, each tied to a specific SDK member (see
-    // `Directory.Build.props`'s per-version changelog), so refusing a plugin that asks for a newer one than
-    // this host is exactly the case this gate exists to catch, not a false positive to suppress.
-    // An unparsable or missing `minHostVersion` is never a reason to refuse — a typo or an
-    // absent field means "nothing declared", not "unsupported".
+    // AC-181/AC-1013: shared by every gate comparing a plugin to this host. A declared "1.0.0+" on a
+    // sub-1.0 host is ignored as the unenforced template default, but an honest sub-1.0 requirement is
+    // enforced; unparsable/missing means "nothing declared", not refused. (Omitted: Versioning-skill and 21+-manifest evidence; see ticket.)
     public static bool MeetsMinHostVersion(string? minHostVersion, Version? hostVersion)
     {
         if (hostVersion is null || !Version.TryParse(minHostVersion, out var required))

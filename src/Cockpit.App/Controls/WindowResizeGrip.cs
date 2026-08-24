@@ -24,12 +24,9 @@ internal static class WindowResizeGrip
         }
     }
 
-    // AC-755: macOS can do neither half of AC-678. Avalonia.Native's BeginResizeDrag is an empty method
-    // (AvaloniaUI/Avalonia#3834), and WindowDecorations.None leaves NSWindowStyleMaskResizable off the window
-    // whatever CanResize says (WindowImpl.mm, CalculateStyleMask) — so there every window was stuck at its size.
-    // AC-934: Windows needs the same trade — WindowDecorations.None also strips WS_CAPTION/WS_THICKFRAME/
-    // WS_MAXIMIZEBOX, which Aero Snap requires; BorderOnly plus the extended client area (already set by
-    // CockpitWindowChrome/AssistantChatWindow) keeps those styles without drawing the OS frame.
+    // AC-1013: AC-755 (macOS BeginResizeDrag is a no-op; WindowDecorations.None disables native resize —
+    // AvaloniaUI/Avalonia#3834, WindowImpl.mm) and AC-934 (Windows: same None strips WS_CAPTION/
+    // THICKFRAME/MAXIMIZEBOX needed for Aero Snap) both need BorderOnly instead; details on the tickets.
     internal static WindowDecorations DecorationsFor(bool isMacOs, bool isWindows = false) =>
         isMacOs || isWindows ? WindowDecorations.BorderOnly : WindowDecorations.None;
 

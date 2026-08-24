@@ -2,14 +2,9 @@ using System.Text.Json.Serialization;
 
 namespace Cockpit.Core.Plugins;
 
-// A configured plugin store (#14, AC-7): a remote http(s) index or a local folder, plus an optional bearer
-// `Token` for a private remote store. `Location` is the store URL (remote) or the
-// folder path (local) — the one thing that identifies it.
-//
-// Persisted in `cockpit.json`'s `pluginStores`. It serialises to an object, but a bare string is
-// still read as a public remote store, so a config written before AC-7 keeps working (see
-// `PluginStoreConfigJsonConverter`). The token field is named to fall under the host's
-// secret-field rule, so it is encrypted at rest and scrubbed from backups whenever protection is on.
+// AC-1013: A configured plugin store (#14, AC-7) — remote http(s) index or local folder, with an
+// optional bearer `Token`; persisted in `cockpit.json`'s `pluginStores`, serialising a bare string
+// (pre-AC-7 format) as a public remote store via `PluginStoreConfigJsonConverter`.
 [JsonConverter(typeof(PluginStoreConfigJsonConverter))]
 public sealed record PluginStoreConfig(PluginStoreKind Kind, string Location, string? Token = null)
 {
@@ -26,10 +21,8 @@ public sealed record PluginStoreConfig(PluginStoreKind Kind, string Location, st
     [JsonIgnore]
     public bool HasToken => !string.IsNullOrWhiteSpace(Token);
 
-    // Whether this and `other` point at the same store — identity is kind + location. A remote
-    // location (a URL) compares case-insensitively as before; a local location is a filesystem path, compared
-    // case-sensitively, so two genuinely different folders on a case-sensitive filesystem are never mistaken for
-    // one — otherwise adding one could silently drop the other.
+    // AC-1013: Whether this and `other` are the same store (kind + location); a remote URL compares
+    // case-insensitively, a local path case-sensitively so distinct folders are never merged.
     public bool SameStoreAs(PluginStoreConfig other) =>
         Kind == other.Kind
         && string.Equals(Location, other.Location, IsLocal ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);

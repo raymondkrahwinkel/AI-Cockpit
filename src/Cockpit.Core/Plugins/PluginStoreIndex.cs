@@ -2,16 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Core.Plugins;
 
-// The catalogue a plugin store publishes (#14): the store's name, the plugins it offers, and — since #69 — the
-// workflow templates it offers. Fetched from a public repo's `index.json`. The catalogue advertises plugins; the
-// zip's own `plugin.json` remains the source of truth at install time (consent + hash pin still apply).
-//
-// `Templates`, `Icon` and `IconUrl` are additive and default to empty/null, so
-// an `index.json` published before they existed still parses. A store that offers no templates has none to
-// show; one that sets neither icon falls back to a default storefront glyph in the Manage-stores dialog.
-// `Icon` is a single emoji/glyph (like a plugin's `PluginStoreEntry.Icon`);
-// `IconUrl` is a real logo image — an http(s) URL, or one relative to the index — fetched and shown
-// when present, with `Icon` then the default glyph as fallbacks.
+// AC-1013: The catalogue a plugin store publishes (#14, plus #69 workflow templates), fetched from a
+// public repo's `index.json`; the zip's own `plugin.json` stays the install-time source of truth.
+// `Templates`/`Icon`/`IconUrl` are additive with fallbacks (default glyph, `Icon` before monogram).
 public sealed record PluginStoreIndex(
     string? Name,
     IReadOnlyList<PluginStoreEntry> Plugins,
