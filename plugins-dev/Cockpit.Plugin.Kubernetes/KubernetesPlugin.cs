@@ -40,8 +40,8 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         var gate = new ClusterAccessGate(host);
         var tools = new KubernetesMcpTools(settings, gate, connections, portForwards);
 
-        // The cockpit can install and manage the helm binary itself (AC-20/AC-1061 fase 3); helm_upgrade (a later
-        // fase) prefers the managed copy over PATH via host.ResolveManagedCliPath, same as codex/claude.
+        // The cockpit can install and manage the helm binary itself (AC-20/AC-1061 phase 3); helm_upgrade (a later
+        // phase) prefers the managed copy over PATH via host.ResolveManagedCliPath, same as codex/claude.
         host.AddManagedCli(HelmManagedCli.Descriptor);
 
         host.AddSettings(() => new KubernetesSettingsControl(host, settings));

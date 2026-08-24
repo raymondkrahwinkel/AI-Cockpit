@@ -3,14 +3,9 @@ using Cockpit.Plugins.Abstractions.ManagedCli;
 
 namespace Cockpit.Plugin.Kubernetes.Helm;
 
-// Helm's managed-CLI install recipe (AC-1061 fase 3, modelled on Cockpit.Plugin.CliAgentProvider/CodexManagedCli.cs).
-// Route (verified against the live GitHub release list and get.helm.sh, 2026-08): helm publishes two trains at once
-// (a v3.x and a v4.x release can both be current), and the more recently *published* one is not necessarily the
-// higher version — so ResolveLatestVersionAsync lists releases, skips drafts/prereleases, and takes the highest
-// semver rather than trusting publish order or /releases/latest. Downloads live at
-// get.helm.sh/helm-<tag>-<os>-<arch>.<ext>, each with a sibling one-line "<hash>  <filename>" ".sha256sum" — fetched
-// per version, so nothing needs to be known ahead of time. The download host is pinned to get.helm.sh over https so
-// a spoofed releases response cannot redirect the fetch elsewhere.
+// Helm's managed-CLI install recipe (AC-1061 phase 3, modelled on
+// Cockpit.Plugin.CliAgentProvider/CodexManagedCli.cs). Helm publishes two trains at once, so the highest semver
+// wins over publish order — see the PR description for the full route.
 internal static class HelmManagedCli
 {
     public const string CliName = "helm";

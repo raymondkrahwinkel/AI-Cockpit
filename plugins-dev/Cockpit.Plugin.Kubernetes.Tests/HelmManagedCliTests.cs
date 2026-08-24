@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions.ManagedCli;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-// The Helm managed-CLI descriptor (AC-1061 fase 3, AC 6/7/8): version parsing, the two-train version selection, the
+// The Helm managed-CLI descriptor (AC-1061 phase 3, AC 6/7/8): version parsing, the two-train version selection, the
 // get.helm.sh URL/entry mapping and the .sha256sum parsing. Fixtures mirror the real
 // api.github.com/repos/helm/helm/releases shape.
 public class HelmManagedCliTests
