@@ -181,8 +181,18 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // A hidden per-session system prompt (AC-180) the host folded into the options map — an embedded run's brief
         // (Autopilot's CEO), or the assistant's whole standing instruction. Applied at start through
         // --append-system-prompt-file, so it needs no post-start turn and no room on the command line.
-        _systemPromptPath = ClaudePrivateTempFile.WriteSystemPrompt(
-            _ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, defaultValue: null));
+        var appendSystemPrompt = _ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, defaultValue: null);
+
+        // AC-1058: appended to whatever brief this session already carries, so an unattended agent is told its
+        // plugin MCP tools are gone instead of a skill silently steering it at one.
+        if (unattended)
+        {
+            appendSystemPrompt = string.IsNullOrWhiteSpace(appendSystemPrompt)
+                ? ClaudeSdkArguments.UnattendedPluginMcpNotice
+                : $"{appendSystemPrompt}\n\n{ClaudeSdkArguments.UnattendedPluginMcpNotice}";
+        }
+
+        _systemPromptPath = ClaudePrivateTempFile.WriteSystemPrompt(appendSystemPrompt);
         var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPromptPath: _systemPromptPath, mcpConfigPath: _mcpConfigPath, strictMcpConfig: unattended);
         var environment = _BuildEnvironment(userHome);
 

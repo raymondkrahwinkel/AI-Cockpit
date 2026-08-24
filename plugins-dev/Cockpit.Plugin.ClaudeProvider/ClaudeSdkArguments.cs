@@ -19,6 +19,15 @@ internal static class ClaudeSdkArguments
     // `replace(options, permission_prompt_tool_name="stdio")` — "Automatically set … to 'stdio' for control protocol").
     public const string StdioPermissionPromptTool = "stdio";
 
+    // AC-1058: told to the model itself (via the unattended session's own append-system-prompt) so a skill that
+    // names an unmounted plugin tool is not followed blind. Kept beside the strict-mcp-config comment below so the
+    // explanation and the text handed to the model cannot drift apart.
+    public const string UnattendedPluginMcpNotice =
+        "This is an unattended Claude Code session: MCP servers belonging to Claude Code's own plugins are not " +
+        "mounted, even though their skills, hooks, and slash commands still load. A skill that names an " +
+        "mcp__plugin_*__ tool cannot be followed here — use the CLI's built-in tools instead. This is deliberate " +
+        "containment for a session nobody is watching, not a malfunction.";
+
     // The persistent, bidirectional *streaming* invocation — deliberately *without* `-p`/`--print`
     // (the SDK uses "streaming mode with stdin"), *with* `--permission-prompt-tool stdio`. The two together are
     // what make the CLI route tool approvals in-band as `can_use_tool` control_requests: without the stdio
@@ -66,13 +75,9 @@ internal static class ClaudeSdkArguments
         }
 
         // Fan the shared MCP registry into the SDK spawn — the user's own cockpit-configured servers (#26/#44).
-        // --strict-mcp-config rides along only for an UNATTENDED session (AC-378, re-cut on the right axis): a
-        // delegated task or a self-driving Autopilot step must get EXACTLY the servers the resolution produced,
-        // never the CLI's own user/project claude.ai-connectors (AI-OS-Brain, depot, Microsoft 365, …) unioned in
-        // on top. Without the strict flag, narrowing a delegated task DOWN to fewer servers could leave it with
-        // MORE (and different) ones than an unnarrowed task: a narrowing that resolves to nothing used to drop
-        // --mcp-config entirely (see ClaudeSdkSessionDriver, which writes an explicit — possibly empty — config
-        // file for exactly that case) and the session would inherit the full CLI config instead of getting none.
+        // --strict-mcp-config (AC-378, unattended only) makes --mcp-config authoritative — CLI: "ignoring all other
+        // MCP configurations" — so it also drops Claude Code's own plugin MCP servers; their skills/hooks/slash-
+        // commands still load (AC-1058). Want one plugin server anyway? Register it as plugin_<plugin>_<server>.
         //
         // What AC-378 first hung on "is this the SDK route" belongs on "is anyone watching": the operator can open
         // an interactive SDK pane from the New-session dialog (SessionKind.Sdk) or through a profile whose
