@@ -34,11 +34,11 @@ internal sealed partial class KubernetesMcpTools
 
         return await _WithClient(registration, async (client, token) =>
         {
-            var secrets = await client.CoreV1.ListNamespacedSecretAsync(@namespace, labelSelector: "owner=helm", fieldSelector: "type=helm.sh/release.v1", cancellationToken: token);
+            var secrets = await client.CoreV1.ListNamespacedSecretAsync(@namespace, labelSelector: "owner=helm", fieldSelector: $"type={HelmReleaseLedger.SecretType}", cancellationToken: token);
             var latestPerRelease = secrets.Items
                 .Where(secret => secret.Metadata?.Labels?.ContainsKey("name") == true)
                 .GroupBy(secret => secret.Metadata!.Labels!["name"])
-                .Select(group => group.OrderByDescending(_RevisionOf).First());
+                .Select(group => group.OrderByDescending(HelmReleaseLedger.RevisionOf).First());
 
             var releases = new JsonArray();
             foreach (var secret in latestPerRelease)
@@ -90,18 +90,18 @@ internal sealed partial class KubernetesMcpTools
 
         return await _WithClient(registration, async (client, token) =>
         {
-            var secrets = await client.CoreV1.ListNamespacedSecretAsync(@namespace, labelSelector: $"owner=helm,name={release}", fieldSelector: "type=helm.sh/release.v1", cancellationToken: token);
+            var secrets = await client.CoreV1.ListNamespacedSecretAsync(@namespace, labelSelector: $"owner=helm,name={release}", fieldSelector: $"type={HelmReleaseLedger.SecretType}", cancellationToken: token);
             if (secrets.Items.Count == 0)
             {
                 return McpText.Error($"No Helm release \"{release}\" found in namespace \"{@namespace}\".");
             }
 
             var revisions = new JsonArray();
-            foreach (var secret in secrets.Items.OrderByDescending(_RevisionOf))
+            foreach (var secret in secrets.Items.OrderByDescending(HelmReleaseLedger.RevisionOf))
             {
                 var decoded = HelmReleaseSecretCodec.TryDecode(secret, out var error);
                 revisions.Add(decoded is null
-                    ? new JsonObject { ["revision"] = _RevisionOf(secret), ["error"] = error }
+                    ? new JsonObject { ["revision"] = HelmReleaseLedger.RevisionOf(secret), ["error"] = error }
                     : decoded.ToHistoryEntry());
             }
 
@@ -177,17 +177,14 @@ internal sealed partial class KubernetesMcpTools
     {
         if (revision > 0)
         {
-            var secret = await client.CoreV1.ReadNamespacedSecretAsync($"sh.helm.release.v1.{release}.v{revision}", @namespace, cancellationToken: cancellationToken);
+            var secret = await client.CoreV1.ReadNamespacedSecretAsync(HelmReleaseLedger.SecretName(release, revision), @namespace, cancellationToken: cancellationToken);
             return (secret, null);
         }
 
-        var secrets = await client.CoreV1.ListNamespacedSecretAsync(@namespace, labelSelector: $"owner=helm,name={release}", fieldSelector: "type=helm.sh/release.v1", cancellationToken: cancellationToken);
-        var latest = secrets.Items.OrderByDescending(_RevisionOf).FirstOrDefault();
+        var secrets = await client.CoreV1.ListNamespacedSecretAsync(@namespace, labelSelector: $"owner=helm,name={release}", fieldSelector: $"type={HelmReleaseLedger.SecretType}", cancellationToken: cancellationToken);
+        var latest = secrets.Items.OrderByDescending(HelmReleaseLedger.RevisionOf).FirstOrDefault();
         return latest is null
             ? (null, $"No Helm release \"{release}\" found in namespace \"{@namespace}\".")
             : (latest, null);
     }
-
-    private static int _RevisionOf(V1Secret secret) =>
-        secret.Metadata?.Labels?.TryGetValue("version", out var version) == true && int.TryParse(version, out var parsed) ? parsed : 0;
 }

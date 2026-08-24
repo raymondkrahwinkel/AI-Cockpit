@@ -13,6 +13,14 @@ internal static class HelmReleaseSecretCodec
 {
     public static HelmRelease? TryDecode(V1Secret secret, out string? error)
     {
+        var release = TryDecodeRaw(secret, out error);
+        return release is null ? null : HelmRelease.FromJson(release);
+    }
+
+    // The release JSON as helm wrote it. A rollback has to write a revision back (AC-1061 fase 2), and only the
+    // whole document round-trips — `HelmRelease` is the read tools' projection and drops the chart and the hooks.
+    public static JsonObject? TryDecodeRaw(V1Secret secret, out string? error)
+    {
         var secretName = secret.Metadata?.Name ?? "(unnamed)";
         if (secret.Data is null || !secret.Data.TryGetValue("release", out var helmLayerBytes))
         {
@@ -34,7 +42,7 @@ internal static class HelmReleaseSecretCodec
             }
 
             error = null;
-            return HelmRelease.FromJson(release);
+            return release;
         }
         catch (Exception exception) when (exception is FormatException or InvalidDataException or JsonException)
         {
@@ -44,5 +52,19 @@ internal static class HelmReleaseSecretCodec
             error = $"Secret \"{secretName}\": could not decode the release payload ({exception.Message}).";
             return null;
         }
+    }
+
+    // The inverse of the unwrap above, byte-for-byte the shape helm reads back: JSON, gzipped, base64, and then
+    // the base64 text as the bytes `V1Secret.Data` encodes a second time on the wire.
+    public static byte[] Encode(JsonObject release)
+    {
+        var buffer = new MemoryStream();
+        using (var gzip = new GZipStream(buffer, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            var json = Encoding.UTF8.GetBytes(release.ToJsonString());
+            gzip.Write(json, 0, json.Length);
+        }
+
+        return Encoding.ASCII.GetBytes(Convert.ToBase64String(buffer.ToArray()));
     }
 }

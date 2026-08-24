@@ -20,7 +20,7 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         Id: "kubernetes",
         DisplayName: "Kubernetes",
         Author: "Cockpit",
-        Description: "Register Kubernetes clusters and give agents scoped, human-approved access to them through an mcp__cockpit-k8s__* server. The plugin talks to the cluster itself and keeps the credentials — an agent never gets a kubeconfig. Opening a cluster asks for consent, a namespace outside the cluster's allowed list asks each session (reads included), and every change asks afresh. Cluster-scoped resources and exec/port-forward/attach are off until you turn them on per cluster. Helm releases can be read straight from their release secrets, no helm binary needed.");
+        Description: "Register Kubernetes clusters and give agents scoped, human-approved access to them through an mcp__cockpit-k8s__* server. The plugin talks to the cluster itself and keeps the credentials — an agent never gets a kubeconfig. Opening a cluster asks for consent, a namespace outside the cluster's allowed list asks each session (reads included), and every change asks afresh. Cluster-scoped resources and exec/port-forward/attach are off until you turn them on per cluster. Helm releases can be read straight from their release secrets and rolled back to an earlier revision, no helm binary needed; the rollback approval shows the manifest diff, and there is no install or uninstall.");
 
     private ClusterConnectionFactory? _connections;
     private PortForwardManager? _portForwards;

@@ -261,6 +261,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   rendered manifest — with no `helm` binary needed. This always asks you to approve, the same as reading any
   other secret. Reading a resource's full details also now says when it was installed by Helm and which release
   owns it.
+- added: an agent can now roll a Helm release back to an earlier revision on a registered Kubernetes cluster,
+  without a `helm` binary — it applies the manifest that revision already stored in the cluster. The approval shows
+  the literal diff (which resources are created, which are updated and on which lines, and which are deleted), so
+  you decide on what actually changes rather than on a release name. It is deliberately not a full stand-in for
+  `helm rollback`: it applies the stored manifest instead of merging it against what is live, it does not run the
+  chart's rollback hooks, and it will not force a change past an immutable field — anything it refuses can still be
+  done with `helm` itself, and the tool says so up front. There is still no way for an agent to install or
+  uninstall a release.
 
 ### Changed
 
