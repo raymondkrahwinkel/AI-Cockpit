@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using System.Text.Json.Nodes;
 using Cockpit.Plugin.Kubernetes.Helm;
 using k8s.Models;
 
@@ -105,6 +106,20 @@ public class HelmReleaseSecretCodecTests
 
         Assert.Null(release);
         Assert.NotNull(error);
+    }
+
+    // AC-1061 phase 5, §2c: `helm upgrade --output json` prints the same `release.Release` struct as JSON directly
+    // (no gzip/base64 — that layer is only in the secret), so the typed record this plugin already has for reads
+    // is also the typed record for the CLI's JSON output; no separate model is needed for it.
+    [Fact]
+    public void FromJson_ParsesTheShapeHelmCliPrintsForOutputJson_WithoutTheSecretEncoding()
+    {
+        var release = HelmRelease.FromJson((JsonObject)JsonNode.Parse(ReleaseJson)!);
+
+        Assert.Equal("cert-manager", release.Name);
+        Assert.Equal(1, release.Revision);
+        Assert.Equal("deployed", release.Status);
+        Assert.Equal("1.4.16", release.ChartVersion);
     }
 
     // Mirrors exactly how Helm writes the secret: the release JSON is gzipped, base64-encoded (Helm's own layer),
