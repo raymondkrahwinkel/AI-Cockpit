@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using k8s;
 using k8s.Autorest;
@@ -20,6 +19,11 @@ internal sealed record PlannedResource(ManifestResourceChange Change, string Plu
 // the release namespace, a cluster-scoped resource on a cluster where that is off. Nothing half-approved.
 internal sealed class HelmRollbackPlan(IKubernetes client, string releaseNamespace, IReadOnlyList<PlannedResource> resources)
 {
+    // Every write claims helm's own field manager: the apiserver only reconciles an Update entry with helm's
+    // server-side Apply when the manager name matches. Measured on a cluster — under any other name the next
+    // `helm rollback` fails with `conflict with "unknown"`.
+    private const string FieldManager = "helm";
+
     public IReadOnlyList<PlannedResource> Resources => resources;
 
     public static async Task<(HelmRollbackPlan? Plan, string? Error)> ResolveAsync(
@@ -81,20 +85,20 @@ internal sealed class HelmRollbackPlan(IKubernetes client, string releaseNamespa
             return new ManifestApplyResult(document.Display, "apply", "The rendered document is not a YAML mapping.");
         }
 
-        using var generic = _ClientFor(document, resource.Plural);
+        var reference = ApiVersionRef.Parse(document.ApiVersion);
         try
         {
             // A JSON merge patch, not a server-side apply: it sets what the target revision spells out and leaves
             // every other field alone, so no controller loses a field it owns. The cost is in the tool description.
             var patch = new V1Patch(json.ToJsonString(), V1Patch.PatchType.MergePatch);
             _ = resource.Namespaced
-                ? await generic.PatchNamespacedAsync<RawKubernetesObject>(patch, releaseNamespace, document.Name, cancellationToken)
-                : await generic.PatchAsync<RawKubernetesObject>(patch, document.Name, cancellationToken);
+                ? await client.CustomObjects.PatchNamespacedCustomObjectWithHttpMessagesAsync(patch, reference.Group, reference.Version, releaseNamespace, resource.Plural, document.Name, fieldManager: FieldManager, cancellationToken: cancellationToken)
+                : await client.CustomObjects.PatchClusterCustomObjectWithHttpMessagesAsync(patch, reference.Group, reference.Version, resource.Plural, document.Name, fieldManager: FieldManager, cancellationToken: cancellationToken);
             return new ManifestApplyResult(document.Display, "updated", null);
         }
         catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
         {
-            return await _CreateAsync(generic, resource, json, cancellationToken);
+            return await _CreateAsync(reference, resource, json, cancellationToken);
         }
         catch (HttpOperationException exception)
         {
@@ -102,20 +106,14 @@ internal sealed class HelmRollbackPlan(IKubernetes client, string releaseNamespa
         }
     }
 
-    private async Task<ManifestApplyResult> _CreateAsync(GenericClient generic, PlannedResource resource, JsonObject json, CancellationToken cancellationToken)
+    private async Task<ManifestApplyResult> _CreateAsync(ApiVersionRef reference, PlannedResource resource, JsonObject json, CancellationToken cancellationToken)
     {
         var document = resource.Change.Document;
         try
         {
-            var body = json.Deserialize<RawKubernetesObject>();
-            if (body is null)
-            {
-                return new ManifestApplyResult(document.Display, "create", "The rendered document could not be read back as a resource.");
-            }
-
             _ = resource.Namespaced
-                ? await generic.CreateNamespacedAsync(body, releaseNamespace, cancellationToken)
-                : await generic.CreateAsync(body, cancellationToken);
+                ? await client.CustomObjects.CreateNamespacedCustomObjectWithHttpMessagesAsync(json, reference.Group, reference.Version, releaseNamespace, resource.Plural, fieldManager: FieldManager, cancellationToken: cancellationToken)
+                : await client.CustomObjects.CreateClusterCustomObjectWithHttpMessagesAsync(json, reference.Group, reference.Version, resource.Plural, fieldManager: FieldManager, cancellationToken: cancellationToken);
             return new ManifestApplyResult(document.Display, "created", null);
         }
         catch (HttpOperationException exception)
@@ -127,16 +125,16 @@ internal sealed class HelmRollbackPlan(IKubernetes client, string releaseNamespa
     private async Task<ManifestApplyResult> _DeleteAsync(PlannedResource resource, CancellationToken cancellationToken)
     {
         var document = resource.Change.Document;
-        using var generic = _ClientFor(document, resource.Plural);
+        var reference = ApiVersionRef.Parse(document.ApiVersion);
         try
         {
             if (resource.Namespaced)
             {
-                await generic.DeleteNamespacedAsync<RawKubernetesObject>(releaseNamespace, document.Name, cancellationToken);
+                await client.CustomObjects.DeleteNamespacedCustomObjectWithHttpMessagesAsync(reference.Group, reference.Version, releaseNamespace, resource.Plural, document.Name, cancellationToken: cancellationToken);
             }
             else
             {
-                await generic.DeleteAsync<RawKubernetesObject>(document.Name, cancellationToken);
+                await client.CustomObjects.DeleteClusterCustomObjectWithHttpMessagesAsync(reference.Group, reference.Version, resource.Plural, document.Name, cancellationToken: cancellationToken);
             }
 
             return new ManifestApplyResult(document.Display, "deleted", null);
@@ -149,12 +147,6 @@ internal sealed class HelmRollbackPlan(IKubernetes client, string releaseNamespa
         {
             return new ManifestApplyResult(document.Display, "delete", _Describe(exception));
         }
-    }
-
-    private GenericClient _ClientFor(ManifestDocument document, string plural)
-    {
-        var reference = ApiVersionRef.Parse(document.ApiVersion);
-        return new GenericClient(client, reference.Group, reference.Version, plural, disposeClient: false);
     }
 
     // Status and reason only: the response body of a Kubernetes rejection can name the kubeconfig's user or

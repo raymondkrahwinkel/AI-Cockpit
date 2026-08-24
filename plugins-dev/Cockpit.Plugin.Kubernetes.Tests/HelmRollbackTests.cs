@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json.Nodes;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -8,6 +10,7 @@ using Cockpit.Plugin.Kubernetes.Model;
 using Cockpit.Plugin.Kubernetes.Security;
 using Cockpit.Plugin.Kubernetes.Settings;
 using NSubstitute;
+using k8s.Models;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
@@ -128,6 +131,28 @@ public class HelmRollbackTests
         Assert.Null(error);
         Assert.Equal(HelmReleaseLedger.Deployed, written!["info"]!["status"]!.GetValue<string>());
         Assert.Equal(8, written["version"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void Encode_WritesTimestampOffsetsLiterally_BecauseHelmParsesThemFromTheRawBytes()
+    {
+        var withOffset = (JsonObject)TargetRelease.DeepClone();
+        withOffset["info"]!["first_deployed"] = "2026-08-24T15:35:43.887449942+02:00";
+
+        var (secret, _) = HelmReleaseLedger.NewRevision(withOffset, "traefik", "system-ingress", 8, 6, DateTimeOffset.UnixEpoch);
+
+        // Helm's own time type parses the JSON string's raw bytes without undoing escapes, so a "+" written as
+        // "\u002B" — what System.Text.Json does by default — leaves a revision helm silently drops from its history.
+        // A round-trip through this codec cannot catch that, because our decoder unescapes correctly.
+        Assert.Contains("+02:00", _RawJson(secret));
+        Assert.DoesNotContain("u002B", _RawJson(secret));
+    }
+
+    private static string _RawJson(V1Secret secret)
+    {
+        var gzip = Convert.FromBase64String(Encoding.ASCII.GetString(secret.Data["release"]));
+        using var stream = new GZipStream(new MemoryStream(gzip), CompressionMode.Decompress);
+        return new StreamReader(stream, Encoding.UTF8).ReadToEnd();
     }
 
     [Fact]

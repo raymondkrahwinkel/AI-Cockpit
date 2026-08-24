@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using k8s.Models;
@@ -54,6 +55,11 @@ internal static class HelmReleaseSecretCodec
         }
     }
 
+    // Helm parses a release timestamp straight out of the raw JSON bytes without undoing string escapes, so the
+    // default encoder's `+` -> `\u002B` makes every `+02:00` offset unreadable to helm while still round-tripping
+    // perfectly through this codec. Write strings literally, the way Go does. Verified against helm 4 on a cluster.
+    private static readonly JsonSerializerOptions ReleaseJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
     // The inverse of the unwrap above, byte-for-byte the shape helm reads back: JSON, gzipped, base64, and then
     // the base64 text as the bytes `V1Secret.Data` encodes a second time on the wire.
     public static byte[] Encode(JsonObject release)
@@ -61,7 +67,7 @@ internal static class HelmReleaseSecretCodec
         var buffer = new MemoryStream();
         using (var gzip = new GZipStream(buffer, CompressionLevel.Optimal, leaveOpen: true))
         {
-            var json = Encoding.UTF8.GetBytes(release.ToJsonString());
+            var json = Encoding.UTF8.GetBytes(release.ToJsonString(ReleaseJson));
             gzip.Write(json, 0, json.Length);
         }
 
