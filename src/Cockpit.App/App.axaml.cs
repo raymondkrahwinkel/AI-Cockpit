@@ -446,7 +446,7 @@ public partial class App : Application
         if (Program.Services.GetService<Services.DepotSyncWatcher>() is { } depotSyncWatcher)
         {
             depotSyncWatcher.BoundProjects = () => cockpitViewModel.Projects.DepotBoundProjects();
-            depotSyncWatcher.OnChecked = (projectId, changed) => cockpitViewModel.Projects.SetRemoteChangeState(projectId, changed);
+            depotSyncWatcher.OnChecked = (projectId, changed, logoBytes) => cockpitViewModel.Projects.SetRemoteChangeState(projectId, changed, logoBytes);
             cockpitViewModel.Projects.SyncNow = project => depotSyncWatcher.SyncNowAsync(project.Id);
             depotSyncWatcher.Start();
         }

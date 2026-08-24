@@ -3,6 +3,8 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Projects;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Depot;
 
@@ -151,8 +153,13 @@ internal sealed class DepotSharedProjectSource(
             {
                 binding = binding with { LogoBytes = download.Bytes };
             }
-
-            // A failed download costs the picture, not the bind — SharedProjectBinding.LogoBytes' own remarks.
+            else
+            {
+                // A failed download costs the picture, not the bind (SharedProjectBinding.LogoBytes' own remarks) —
+                // but AC-1054: it must not do so silently, or "download failed" is indistinguishable from "no logo set".
+                host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot")
+                    .LogWarning("Downloading {Slug}'s logo failed: {Reason}", slug, download.Error);
+            }
         }
 
         return SharedProjectBindingResult.Success(binding);

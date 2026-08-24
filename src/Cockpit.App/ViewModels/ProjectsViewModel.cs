@@ -849,16 +849,42 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         return bound;
     }
 
-    // AC-894: `DepotSyncWatcher`'s own report for one project, from either its timer tick or "Sync now" — a
-    // republish only when the flag actually moved, so a project checked every 15 minutes without ever changing
-    // does not rebuild every card in the workspace on every tick.
-    internal void SetRemoteChangeState(string projectId, bool hasRemoteChange)
+    // AC-894: `DepotSyncWatcher`'s own report for one project — a republish only when the flag actually moved.
+    // AC-1054: also carries the logo bytes that same check already re-downloaded, adopted below only into a
+    // project with no logo of its own yet, so a sync check can never overwrite a local choice.
+    internal async Task SetRemoteChangeState(string projectId, bool hasRemoteChange, byte[]? logoBytes)
     {
         var moved = hasRemoteChange ? _remoteChangedProjectIds.Add(projectId) : _remoteChangedProjectIds.Remove(projectId);
         if (moved)
         {
             _RepublishCategoryGroups();
         }
+
+        await _AdoptSharedLogoIfMissingAsync(projectId, logoBytes);
+    }
+
+    // AC-1054: the bytes `DepotSyncWatcher` already downloaded for the checksum check, written in only when this
+    // machine's own copy of the project still has no logo — the same one-way "never overwrite" rule AC-894 set for
+    // the rest of a changed shared definition.
+    private async Task _AdoptSharedLogoIfMissingAsync(string projectId, byte[]? logoBytes)
+    {
+        if (_logos is null || logoBytes is not { Length: > 0 })
+        {
+            return;
+        }
+
+        if (_settings.Projects.FirstOrDefault(project => project.Id == projectId) is not { LogoPath: null } project)
+        {
+            return;
+        }
+
+        if (TempLogoFile.WriteOrNull(logoBytes) is not { } tempPath)
+        {
+            return;
+        }
+
+        var stored = await _WithStoredLogoAsync(project with { LogoPath = tempPath });
+        await _PersistAsync(_settings.WithUpdated(stored));
     }
 
     // "● This machine", or "◆ &lt;connection&gt;" once `_ownership` has a claim on `project` (AC-604, claimed by

@@ -32,7 +32,7 @@ public class DepotSyncWatcherTests
         _Answers("checksum-1");
         var reports = new List<(string ProjectId, bool Changed)>();
         using var watcher = _Watcher();
-        watcher.OnChecked = (id, changed) => reports.Add((id, changed));
+        watcher.OnChecked = (id, changed, _) => { reports.Add((id, changed)); return Task.CompletedTask; };
 
         await watcher.RunOnceAsync();
 
@@ -47,7 +47,7 @@ public class DepotSyncWatcherTests
         _Answers("checksum-1", "checksum-2");
         var reports = new List<(string ProjectId, bool Changed)>();
         using var watcher = _Watcher();
-        watcher.OnChecked = (id, changed) => reports.Add((id, changed));
+        watcher.OnChecked = (id, changed, _) => { reports.Add((id, changed)); return Task.CompletedTask; };
 
         await watcher.RunOnceAsync();
         await watcher.RunOnceAsync();
@@ -63,7 +63,7 @@ public class DepotSyncWatcherTests
         _Answers("checksum-1", "checksum-1");
         var reports = new List<bool>();
         using var watcher = _Watcher();
-        watcher.OnChecked = (_, changed) => reports.Add(changed);
+        watcher.OnChecked = (_, changed, _) => { reports.Add(changed); return Task.CompletedTask; };
 
         await watcher.RunOnceAsync();
         await watcher.RunOnceAsync();
@@ -80,7 +80,7 @@ public class DepotSyncWatcherTests
             .Returns(SharedProjectBindingResult.Failed("unreachable"));
         var called = false;
         using var watcher = _Watcher();
-        watcher.OnChecked = (_, _) => called = true;
+        watcher.OnChecked = (_, _, _) => { called = true; return Task.CompletedTask; };
 
         await watcher.RunOnceAsync();
 
@@ -126,11 +126,28 @@ public class DepotSyncWatcherTests
         _Answers("checksum-1");
         var reports = new List<string>();
         using var watcher = _Watcher();
-        watcher.OnChecked = (id, _) => reports.Add(id);
+        watcher.OnChecked = (id, _, _) => { reports.Add(id); return Task.CompletedTask; };
 
         await watcher.SyncNowAsync("proj-1");
 
         Assert.Equal(["proj-1"], reports);
+    }
+
+    // AC-1054: the bytes `PrepareBindingAsync` re-downloads every check — handed to `OnChecked` unchanged so the
+    // cockpit can adopt a logo that arrived on the shared definition after this machine already bound it.
+    [Fact]
+    public async Task TheBindingsLogoBytes_AreHandedToOnChecked()
+    {
+        var expectedBytes = new byte[] { 1, 2, 3 };
+        _source.PrepareBindingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(SharedProjectBindingResult.Success(new SharedProjectBinding("Name") { Checksum = "c", LogoBytes = expectedBytes }));
+        byte[]? reported = null;
+        using var watcher = _Watcher();
+        watcher.OnChecked = (_, _, logoBytes) => { reported = logoBytes; return Task.CompletedTask; };
+
+        await watcher.RunOnceAsync();
+
+        Assert.Equal(expectedBytes, reported);
     }
 
     // Asked of the container rather than of the class: an unregistered watcher resolves to null in `App.axaml.cs`,

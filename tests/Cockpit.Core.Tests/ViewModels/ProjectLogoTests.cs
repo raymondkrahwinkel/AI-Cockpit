@@ -101,4 +101,36 @@ public class ProjectLogoTests
 
         logos.Received(1).Remove(project.Id);
     }
+
+    // AC-1054: a bind is a one-time copy — a logo added to the shared definition afterward never arrives on its
+    // own. `DepotSyncWatcher` already re-downloads it on every check; this adopts it once the project has none yet.
+    [Fact]
+    public async Task ASyncCheckWithLogoBytes_WritesTheLogoWhenTheProjectHasNone()
+    {
+        var project = Project.Create("EVE Together");
+        var (viewModel, store, _, logos) = Build(project);
+        logos.SaveAsync(project.Id, Arg.Any<string>()).Returns("/cockpit/project-logos/eve.png");
+        await viewModel.LoadAsync();
+
+        await viewModel.SetRemoteChangeState(project.Id, hasRemoteChange: false, [1, 2, 3]);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<ProjectSettings>(settings => settings.Projects[0].LogoPath == "/cockpit/project-logos/eve.png"),
+            Arg.Any<CancellationToken>());
+    }
+
+    // Criterion 2: a project that already has its own logo must never have it swapped out from under the operator
+    // by a background check.
+    [Fact]
+    public async Task ASyncCheckWithLogoBytes_NeverOverwritesAnExistingLogo()
+    {
+        var project = Project.Create("EVE Together") with { LogoPath = "/cockpit/project-logos/x.png" };
+        var (viewModel, store, _, logos) = Build(project);
+        await viewModel.LoadAsync();
+
+        await viewModel.SetRemoteChangeState(project.Id, hasRemoteChange: false, [1, 2, 3]);
+
+        await logos.DidNotReceiveWithAnyArgs().SaveAsync(default!, default!, default);
+        await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
+    }
 }

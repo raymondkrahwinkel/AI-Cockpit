@@ -37,9 +37,10 @@ public sealed class DepotSyncWatcher(
     // through which one. Set by the cockpit, which owns the project list; nothing is polled until it is.
     public Func<IReadOnlyList<DepotBoundProject>>? BoundProjects { get; set; }
 
-    // Told about every check that actually completed: the project id, and whether its checksum moved since the
-    // last one seen. Set by the cockpit, which owns the badge that reads it.
-    public Action<string, bool>? OnChecked { get; set; }
+    // Told about every check that completed: project id, whether its checksum moved, and the logo bytes
+    // `PrepareBindingAsync` re-downloaded regardless (AC-1054) — awaited, so "Sync now" only returns once
+    // adoption is done. Set by the cockpit, which owns the badge and logo store that read it.
+    public Func<string, bool, byte[]?, Task>? OnChecked { get; set; }
 
     // Starts polling the clock. Idempotent, and on the UI thread because that is where a DispatcherTimer has to be
     // created to ever tick at all (AC-368).
@@ -120,7 +121,10 @@ public sealed class DepotSyncWatcher(
             && !string.Equals(previous, checksum, StringComparison.Ordinal);
         _lastChecksum[bound.ProjectId] = checksum;
 
-        OnChecked?.Invoke(bound.ProjectId, changed);
+        if (OnChecked is not null)
+        {
+            await OnChecked(bound.ProjectId, changed, result.Binding!.LogoBytes).ConfigureAwait(true);
+        }
     }
 
     private async void _OnTick(object? sender, EventArgs e)
