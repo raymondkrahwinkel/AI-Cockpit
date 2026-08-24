@@ -2,21 +2,14 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Core.Workspaces;
 
-// Turns a dashboard into something you can keep or hand over, and back again. Pure: the caller reads and
-// writes the widget config, this decides what travels.
-// The whole point of the split is the scrubbing. A dashboard you "just share" must not carry an API key, and
-// the rule for what counts as one already exists — `SecretFields`, which the backup scrubber and
-// the at-rest protector both use. This is its third user rather than its second definition: the class's own
-// remarks say two lists would drift, and that the drift is invisible.
+// AC-1013: turns a dashboard into something to keep/hand over and back; pure, caller owns widget config storage.
+// Scrubbing reuses `SecretFields` (also used by the backup scrubber and at-rest protector) rather than a new
+// list, since `SecretFields`'s own remarks warn two lists would drift invisibly. (Trimmed: full text on ticket.)
 public static class DashboardExporter
 {
-    // A dashboard as an export, with every credential dropped from the widget configs.
-    //
-    // `workspace`: The dashboard. A workspace of another type has no widgets and exports as empty.
-    // `configFor`: This instance's stored config, by pane id — the caller owns the storage.
-    // `secrets`:
-    // What counts as a credential. Pass the plugin-declared keys alongside the name rule where they are known;
-    // `SecretFields.ByName` alone still catches token/apiKey/secret/password/webhook.
+    // AC-1013: a dashboard as an export, credentials scrubbed from widget configs. `secrets` should carry the
+    // plugin-declared keys alongside the name rule where known; `SecretFields.ByName` alone still catches
+    // token/apiKey/secret/password/webhook. A non-Dashboard workspace has no widgets and exports empty.
     public static DashboardExport ToExport(
         Workspace workspace,
         Func<string, IReadOnlyDictionary<string, string>> configFor,
@@ -30,15 +23,9 @@ public static class DashboardExporter
         return new DashboardExport(DashboardExport.CurrentFormatVersion, workspace.Name, workspace.Layout.Clamped(), panes);
     }
 
-    // An export as a new dashboard, plus the config to write for each new instance. Everything gets fresh ids:
-    // an imported dashboard is a new dashboard, and reusing the exporter's instance ids would have two
-    // dashboards writing over one widget's settings.
-    //
-    // `isInstalled`:
-    // Whether a widget type is available here. A pane whose widget is missing is skipped and reported rather
-    // than refusing the whole file (Raymond's call): one absent widget out of ten should cost you that widget,
-    // not the dashboard — and the report is what turns "something is missing" into "install this plugin".
-    // The workspace, the config to store per pane id, and the widget types that were not available.
+    // AC-1013: an export as a new dashboard with fresh instance ids (reusing export ids would let two dashboards
+    // write over one widget's settings). A missing widget type is skipped and reported rather than refusing the
+    // whole file — Raymond's call: one absent widget should cost that widget, not the dashboard. (Full text on ticket.)
     public static DashboardImport FromExport(DashboardExport export, Func<string, bool> isInstalled, string? name = null)
     {
         var workspace = Workspace.Create(

@@ -3,17 +3,9 @@ using System.Runtime.InteropServices;
 
 namespace Cockpit.Core.Diagnostics;
 
-// The cockpit process's own memory, split into the figure that matters and the figure that misleads (AC-57/AC-58).
-// `ResidentBytes` is what the process actually occupies; `VirtualBytes` is the address
-// space it reserved, which the .NET region GC inflates to tens of gigabytes on 64-bit Linux/Windows without using
-// any of it. AC-57 started as a "62 GB" panic that was this reservation — so the panel shows resident first and
-// labels virtual for what it is.
-//
-// `ResidentBytes`: Working set — physical memory in use now.
-// `PeakResidentBytes`: The highest the working set has reached this run.
-// `VirtualBytes`: Reserved address space. Large is normal; it is not memory in use.
-// `PrivateBytes`: Committed private memory — closer to the real cost than virtual, minus shared mappings.
-// `SwapBytes`: Swapped-out pages, when the platform reports them (Linux); null elsewhere.
+// AC-1013 (AC-57/AC-58): Cockpit's own memory, split into the figure that matters (`ResidentBytes`) and the one
+// that misleads (`VirtualBytes`, inflated to tens of GB by .NET's region GC on 64-bit Linux/Windows) — AC-57
+// began as a "62 GB" panic that was this reservation. `PrivateBytes`/`PeakResidentBytes`/`SwapBytes` (Linux only) round it out.
 public sealed record ProcessMemoryInfo(
     long ResidentBytes,
     long PeakResidentBytes,
@@ -34,12 +26,9 @@ public sealed record ProcessMemoryInfo(
             _SwapBytes());
     }
 
-    // .NET does not populate Process.PeakWorkingSet64 on macOS — it returns 0 there. In the diagnostics panel that
-    // read as a false "0 B" and hid the one figure AC-57 needs: whether resident ever spiked this run, even after
-    // it settled back (Rick's trace showed 272 MB resident but "Peak resident: 0 B", so a mid-run explosion would
-    // leave no trace). macOS exposes the peak cheaply through getrusage's ru_maxrss — in bytes on Darwin, unlike
-    // Linux where it is kilobytes — so read it natively there. Any failure falls back to the framework value: a
-    // missing or wrong peak must never take the panel down.
+    // AC-1013 (AC-57): .NET returns 0 for Process.PeakWorkingSet64 on macOS, hiding whether resident ever spiked
+    // (Rick's trace showed 272 MB resident but "Peak resident: 0 B"). Read natively via getrusage's ru_maxrss
+    // (bytes on Darwin, unlike Linux's kilobytes); any failure falls back to the framework value.
     private static long _PeakResidentBytes(Process process)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))

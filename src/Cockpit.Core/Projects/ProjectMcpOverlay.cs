@@ -2,46 +2,22 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Core.Projects;
 
-// A project's change to the MCP servers its sessions see (AC-159, "variant B"): the global registry stays the
-// base, and a project brings servers of its own, overrides one by name, and says which start ticked. Deliberately
-// a change rather than a list of its own — servers live in one registry, and a project that carried a full copy
-// would silently drift from it the moment a server is edited there.
-//
-// A project narrows what is *selected*, never what is *offered* (Raymond, 2026-07-24): the New-session
-// checklist lists every server whichever project is picked, exactly as it does for a profile, and the project's
-// choice is the pre-selection — which beats the profile's when both have one. Removing a server from the list
-// instead would take a decision away from the operator that the checklist exists to give them.
-//
-// `AdditionalServers` is complete in the model but no session mounts one yet, and nothing in the app
-// can produce one — see `IMcpServerCatalog.GetServersForProjectAsync` and AC-218.
+// AC-1013: A project's change to the MCP servers its sessions see (AC-159, "variant B") — a diff on the global
+// registry, not a copy of it, so it never drifts. Narrows what is *selected* (a pre-selection), never what is
+// *offered* (Raymond, 2026-07-24). AdditionalServers is modeled but not yet mounted by any session (AC-218).
 public sealed record ProjectMcpOverlay
 {
     // An overlay that changes nothing — what a project without MCP choices carries.
     public static ProjectMcpOverlay None { get; } = new();
 
-    // Names of servers this project's sessions start ticked, matched case-insensitively against
-    // `McpServerConfig.Name` — or `null` for a project that made no MCP choice at all,
-    // which starts every offered server ticked the way the registry intends.
-    //
-    // Named the right way round on purpose (Raymond, 2026-08-01). It used to be `DisabledServerNames`
-    // alone, and a server added to the registry afterwards was in nobody's off-list — so it arrived ticked in every
-    // project, including the ones that had deliberately switched most servers off. A list of what is *on* has
-    // no such hole: a server nobody has decided about is simply not in it, and a project that narrowed its servers
-    // stays narrowed until the operator says otherwise.
-    //
-    // A pre-selection, not a removal (Raymond, 2026-07-24): the checklist still lists every server, exactly as it
-    // does for a profile — the project only decides what is ticked when it opens, and the operator can tick one back
-    // on for this session.
+    // AC-1013: Server names this project's sessions start ticked; null means no MCP choice, starting everything
+    // ticked. Named the right way round (Raymond, 2026-08-01) — used to be DisabledServerNames alone, which let a
+    // newly registered server arrive ticked even in projects that had deliberately switched most servers off.
     public IReadOnlyList<string>? EnabledServerNames { get; init; }
 
-    // The older shape of the same choice: names this project's sessions start *unticked*. Read for projects
-    // saved by an earlier build, which have no `EnabledServerNames` yet, and — since AC-736 gave `EnabledServerNames`
-    // that job — the project editor replaced it with the list above the first time such a project was saved.
-    // AC-766 reuses this same field for a project-linked server's own "off" instead (`IsSelectedByDefault` above):
-    // that decision cannot live in `EnabledServerNames`. No migration needed either way — an older build's own
-    // `IsSelectedByDefault(McpServerConfig)` short-circuits true on `ProjectLinked` before ever reading this list,
-    // so it keeps mounting the server regardless of a name recorded here; only the ability to turn it off is what
-    // does not reach that build, not the server disappearing under it.
+    // AC-1013: Older shape of the same choice (names started *unticked*), read for pre-AC-736 projects and
+    // migrated to EnabledServerNames on first save. AC-766 repurposes this same field for a project-linked
+    // server's own "off" (EnabledServerNames can't express that); an older build ignores this repurposing safely.
     public IReadOnlyList<string> DisabledServerNames { get; init; } = [];
 
     // Servers this project brings itself. One whose name matches a registry server replaces it for this
@@ -51,20 +27,15 @@ public sealed record ProjectMcpOverlay
     // Whether this overlay would change anything, so a caller can skip the work for the common case of a project with no MCP choices.
     public bool IsEmpty => EnabledServerNames is null && DisabledServerNames.Count == 0 && AdditionalServers.Count == 0;
 
-    // Whether `serverName` starts ticked under this project. The rule a project brings: its answer
-    // stands where it has one, and the profile's saved selection applies only to a session started without a project.
-    // A project that has chosen ticks exactly what it chose — a server it has never seen is not one of them — and a
-    // project that has chosen nothing ticks everything the checklist offers.
+    // AC-1013: Whether `serverName` starts ticked under this project — a project's answer stands where it has
+    // one; the profile's selection applies only without a project.
     public bool IsSelectedByDefault(string serverName) => EnabledServerNames is { } enabled
         ? enabled.Any(name => string.Equals(name, serverName, StringComparison.OrdinalIgnoreCase))
         : !DisabledServerNames.Any(name => string.Equals(name, serverName, StringComparison.OrdinalIgnoreCase));
 
-    // The same answer for a server the catalog already resolved for this project (AC-736): one offered only because
-    // this project points at it (`McpServerConfig.ProjectLinked`) starts ticked, whatever `EnabledServerNames`
-    // holds — it never had a row in the project editor before now, so its absence there is no decision the
-    // operator ever made. `EnabledServerNames` therefore cannot express "off" for it; `DisabledServerNames` — free
-    // again since no build still writes it for its own, older reason — does that instead (AC-766): a project-linked
-    // server stays on unless its name is explicitly there.
+    // AC-1013: Same answer for a catalog-resolved project-linked server (AC-736) — starts ticked regardless of
+    // EnabledServerNames since it never had an editor row; DisabledServerNames (repurposed, AC-766) is what
+    // can turn it off instead.
     public bool IsSelectedByDefault(McpServerConfig server) => server.ProjectLinked
         ? !DisabledServerNames.Any(name => string.Equals(name, server.Name, StringComparison.OrdinalIgnoreCase))
         : IsSelectedByDefault(server.Name);

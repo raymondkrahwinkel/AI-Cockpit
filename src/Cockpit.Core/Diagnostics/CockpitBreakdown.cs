@@ -1,14 +1,8 @@
 namespace Cockpit.Core.Diagnostics;
 
-// What the cockpit's own total is actually made of (#78). The figure in the status bar is the whole process tree, and
-// a session is only one of the things in it: the MCP tool servers a session connects to (`npm exec …`, `uv`)
-// are spawned by the cockpit, so they are counted in that total — while appearing nowhere, being neither a session nor
-// a model server. That is how opening one Ollama session takes the figure from 300 MB to 800 with no explanation on
-// screen, and a number nobody can explain is a number nobody can act on.
-//
-// Each child is measured as a tree (an `npm exec` is a shell around the node process doing the work), and the
-// sessions are left out: they have a section of their own, and counting them twice would make the parts add up to
-// more than the whole.
+// The status bar's total includes MCP tool servers (`npm exec`, `uv`) the cockpit spawns that are neither a
+// session nor a model server, so this breaks them out explicitly rather than leaving them unexplained (#78).
+// Each child is measured as a tree; sessions are excluded here since they already have their own section.
 public static class CockpitBreakdown
 {
     // The cockpit's own process, and each of its children that is not a session, heaviest first. Together with the

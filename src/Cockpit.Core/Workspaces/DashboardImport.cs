@@ -1,12 +1,8 @@
 namespace Cockpit.Core.Workspaces;
 
-// What came out of an imported file: the dashboard, the config to store for each of its new instances, and
-// the widget types this cockpit does not have.
-//
-// `MissingWidgetIds`:
-// The widget types that were skipped, once each. Not an error — the dashboard imported, minus these — but the
-// operator has to be told, or a shared dashboard silently arrives with holes in it and looks broken rather
-// than incomplete. Naming the type is what makes it actionable: it is the plugin to go and install.
+// AC-1013: what an import produced — the dashboard, config per new instance, and widget types this cockpit
+// lacks. `MissingWidgetIds` (deduped) is not an error: the dashboard imported minus these, but the operator
+// must be told or it looks broken rather than incomplete — naming the type makes it actionable. (Full text on ticket.)
 public sealed record DashboardImport(
     Workspace Workspace,
     IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Config,
