@@ -3,19 +3,14 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Cockpit.App.Services;
 
-// Hands a web address to whatever the operator browses with — the only thing in `Cockpit.App` that does. Two
-// rules, in one place: only `http` and `https` reach the shell, and a browser that fails to start must not
-// take the UI thread with it. Four views had grown their own copy of exactly this, each comment pointing at the last
-// (AC-315), and a guard duplicated per view holds only until someone tightens one copy.
-//
-// `Cockpit.Infrastructure` keeps its own for the MCP OAuth sign-in: it cannot reference the app, so that one
-// stays a second implementation of the same rule rather than a caller of this.
+// AC-315: Hands a web address to whatever the operator browses with, the only thing in `Cockpit.App` that does
+// (only `http`/`https` reach the shell, a failed browser start must not take the UI thread with it), replacing
+// four views that had each grown their own copy of this guard. `Cockpit.Infrastructure` keeps a second copy since it cannot reference the app.
 internal static class ExternalLink
 {
-    // Parses `url` only if it is an absolute `http(s)` address. Its own method so the decision
-    // is testable in both directions — exercising the opening half would start a browser on the machine running the
-    // test, so otherwise an inverted guard would leave every link dead with the suite still green. A caller that has
-    // to tell "not a link" from "the browser would not start" asks this first, then opens what it got back.
+    // AC-1013: Parses `url` only if it is an absolute `http(s)` address, kept as its own testable method since
+    // exercising the opening half would start a real browser and let an inverted guard pass with the suite green.
+    // A caller distinguishing "not a link" from "the browser would not start" asks this first.
     public static bool TryParseWebAddress(string? url, [NotNullWhen(true)] out Uri? address)
     {
         address = Uri.TryCreate(url, UriKind.Absolute, out var uri) &&

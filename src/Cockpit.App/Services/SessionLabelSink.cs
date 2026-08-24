@@ -5,11 +5,7 @@ using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
 
-// The live `ISessionLabelSink` (#AC-13, #AC-312): sets a session's statusline and proposes its name over
-// the cockpit view-model on behalf of the `cockpit-session` MCP server's `set_status` tool, marshalling to
-// the UI thread. This is the Infrastructure→App direction the orchestrator's
-// `Core.Abstractions.Delegation.IDelegationService.TasksChanged` also uses; registered in the App's DI so
-// the endpoint host resolves it in place of the null sink.
+// AC-1013: Live `ISessionLabelSink` (#AC-13, #AC-312), marshals statusline/name updates from the MCP `set_status` tool to the UI thread via the cockpit view-model.
 public sealed class SessionLabelSink(CockpitViewModel cockpit) : ISessionLabelSink, ISingletonService
 {
     public Task<bool> SetStatuslineAsync(string paneId, string statusline) =>

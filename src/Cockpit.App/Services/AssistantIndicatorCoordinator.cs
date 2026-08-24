@@ -16,17 +16,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.Services;
 
-// Feeds the sidebar's `AssistantIndicatorViewModel` and acts on what the operator does to it
-// (AC-543). The one place that answers the question the indicator exists to ask: *who* is listening.
-// The indicator itself knows nothing about any of this — it is a reusable component (criterion 21) that AC-238
-// will drop into the companion window, so the three sources that decide its state are joined here instead of
-// reached for from inside it: the assistant host (ready/thinking/speaking/unavailable), open-mic (listening
-// continuously), and dictation (`F9`, which is not the assistant at all and is the one state on this chip
-// that means your words are going somewhere else).
-//
-// Dictation outranks everything else shown here, deliberately. The other states are about the assistant and are
-// merely informative; this one is a warning that the microphone is pointed at a session, and a chip that showed
-// "Ready" while F9 was recording would be wrong in the single way that costs something.
+// AC-543: feeds the sidebar's `AssistantIndicatorViewModel`, joining the three sources that decide its
+// state (assistant host, open-mic, F9 dictation) so the reusable indicator (AC-238) stays ignorant of them.
+// Dictation outranks the rest: "Ready" showing while F9 records would be wrong in the way that costs.
 public sealed class AssistantIndicatorCoordinator : ISingletonService
 {
     private readonly AssistantSessionHost _assistant;
@@ -44,18 +36,15 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     public const string DockPanelId = "assistant";
 
     // The pop-out, kept between openings rather than rebuilt: closing it must not disturb the conversation behind it (criterion 7).
-    // Null while the assistant is docked — there is no window then, which is what "geen ownerless venster" means.
+    // Null while the assistant is docked — there is no window then.
     private AssistantChatWindow? _chatWindow;
 
-    // The chat's view model — the standing holder across a host swap (AC-953), so docking and undocking keep the
-    // same conversation, input text and attachments. Also how a settings change reaches an open chat without
-    // touching the window off the UI thread.
+    // The chat's view model — the standing holder across a host swap (AC-953), so docking and undocking
+    // keep the same conversation, input text and attachments.
     private AssistantChatViewModel? _chatViewModel;
 
-    // Test seam: whether a floating window is standing right now. Null the moment one closes (see `_ShowChatWindow`),
-    // so "two hosts at once" is exactly this being non-null while the rail also shows the chat — the state AC-953
-    // exists to make impossible, and the one the headless harness cannot ask the platform about (it runs without an
-    // application lifetime, so there is no window list to enumerate).
+    // Test seam: whether a floating window is standing right now. Null the moment one closes — the headless
+    // harness has no application lifetime to enumerate windows from, so it needs this instead.
     internal AssistantChatWindow? OpenChatWindow => _chatWindow;
 
     public AssistantIndicatorCoordinator(
@@ -90,25 +79,19 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _openMic.PropertyChanged += _OnSourceChanged;
         _overlay.Overlay.PropertyChanged += _OnSourceChanged;
 
-        // The one source the chip was declared to have and never actually listened to. AssistantActivity.Speaking
-        // exists, the indicator renders it, and there is even a baseline for that frame — but nothing ever set it,
-        // because the assistant host only ever writes Activity for things it does itself (a hold, a send, a start)
-        // and speaking is something the playback queue does afterwards. So the one state the operator most wants
-        // at a glance — "it is talking to me right now" — was dead from the day it was drawn.
+        // AC-1013: AssistantActivity.Speaking was rendered but never set — the host only writes Activity for
+        // things it does itself, not for playback afterwards — so "it is talking" was dead until wired here.
         _playbackQueue.PlaybackActiveChanged += _OnPlaybackActiveChanged;
 
-        // The microphone line on the chip. Same feed as the voice pill's waveform — all three capture sources
-        // already funnel through the overlay coordinator, and the chip drops what arrives in a state that has no
-        // microphone, so this needs no filtering of its own.
+        // Same feed as the voice pill's waveform; all three capture sources already funnel through the
+        // overlay coordinator, so no extra filtering is needed here.
         _overlay.LevelSampled += _OnLevelSampled;
 
         Indicator.Clicked += (_, _) => _ = _OpenChatAsync();
         Indicator.ListeningModeSelected += (_, mode) => _ = _ApplyListeningModeAsync(mode);
 
-        // AC-953: the assistant becomes a real dock panel, replacing AC-951's placeholder. Its registration follows
-        // the dock stand rather than standing permanently — undocked, the assistant is a window, and a rail tab for
-        // it would be a second one waiting to be opened. Driven off the property rather than only from the swap,
-        // because the stand also arrives from the layout restore, well after this runs.
+        // AC-953: dock-panel registration follows the dock stand rather than standing permanently, driven off
+        // the property (not just the swap) because the stand also arrives later, from the layout restore.
         _cockpit.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(CockpitViewModel.AssistantDocked))
@@ -119,9 +102,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
         _ApplyDockRegistration();
 
-        // The chip owns the one-time cost explanation (criterion 18); this only tells it whether the operator has
-        // already been given it, and writes back once they have — so it stays given across restarts rather than
-        // returning on the next launch, which is the shape of warning people learn to click through.
+        // The chip owns the one-time cost explanation (criterion 18); this only tracks whether the operator
+        // has been given it and persists that, so it doesn't return on next launch (criterion 18).
         _ = _SeedAcknowledgementAsync();
 
         _Refresh();
@@ -143,11 +125,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         Indicator.IsConsentBypassActive = settings.HasConsentBypass;
         _Refresh();
 
-        // The pop-out too, when it is open. It is kept between openings and is ownerless, so Options can be used
-        // while it sits there — and Show() on a live window raises no new Opened, which means its own open-time read
-        // would never run again. Without this the chip refreshed its bypass mark and the window behind it did not.
-        // Held as its own field rather than read back off Window.DataContext: this runs on whatever thread the
-        // Options save left it on, and an Avalonia property read off the UI thread throws.
+        // AC-1013: also applies to the pop-out when open — it's ownerless and kept between openings, and Show()
+        // on a live window raises no new Opened, so without this the window's bypass mark would go stale.
         if (_chatViewModel is { } chat)
         {
             await chat.ApplySettingsAsync(cancellationToken).ConfigureAwait(true);
@@ -164,10 +143,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private void _OnLevelSampled(object? sender, double level) =>
         Dispatcher.UIThread.Post(() => Indicator.PushLevel(level));
 
-    // Whether the playback queue is speaking right now — the chip's `AssistantActivity.Speaking`.
-    // Kept as a field rather than asked of the queue in `_ResolveActivity`, because the queue reports
-    // this by event and has no property to read back — and the event arrives on the playback thread, so the value
-    // is captured here and the refresh marshalled like every other source.
+    // Whether the playback queue is speaking right now. Kept as a field rather than asked of the queue in
+    // `_ResolveActivity`, because the queue reports this by event, with no property to read back.
     private bool _isSpeaking;
 
     private void _OnPlaybackActiveChanged(object? sender, bool active) =>
@@ -201,12 +178,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             return AssistantActivity.Dictating;
         }
 
-        // Speaking, before the open-mic stand below and after dictation above. It outranks "listening
-        // continuously" because it is a handling and that is a stand: with the microphone open the assistant is
-        // always, in some sense, listening, and saying so while it is audibly talking answers the wrong question.
-        // It does not outrank a held key or a hold being transcribed — those are the operator interrupting, and
-        // barge-in stops the playback anyway, so reporting Speaking there would be a frame of the state that is
-        // just ending.
+        // Speaking outranks "listening continuously" — with the mic open the assistant is always in some sense
+        // listening, so showing that while it audibly talks answers the wrong question. It does not outrank a
+        // held key or a hold being transcribed: those are the operator interrupting, and barge-in stops playback.
         if (_isSpeaking && _assistant.Activity is AssistantActivity.Ready or AssistantActivity.Thinking)
         {
             return AssistantActivity.Speaking;
@@ -222,10 +196,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         return _assistant.Activity;
     }
 
-    // The chip is clicked: bring the assistant up if this is the first time, and show the conversation. Equal to
-    // holding the hotkey as far as starting goes — a voice feature reachable only by a key shuts people out.
-    // Fire-and-forget from the click handler below, so a failure here used to vanish silently (AC-765) — caught
-    // and logged instead, rather than leaving the operator clicking a button that does nothing.
+    // The chip is clicked: bring the assistant up if this is the first time, and show the conversation — equal
+    // to holding the hotkey, since a voice feature reachable only by a key shuts people out. Fire-and-forget
+    // from the click handler, so a failure used to vanish silently (AC-765) — now caught and logged instead.
     private async Task _OpenChatAsync()
     {
         try
@@ -234,15 +207,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             // restart because it is read back off `LayoutSettings`.
             await _ShowInAsync(_cockpit.AssistantDocked).ConfigureAwait(true);
 
-            // The window first, the session after — AC-959. Starting it is not a fast local call: it resolves the
-            // MCP catalog, stands up loopback endpoints, renews OAuth sign-ins *over the network*, spawns the CLI
-            // and replays the transcript. Measured on one open: 3,4 seconds from the start of that to the spawned
-            // process, with a Depot sign-in that failed quickly — a slow one costs more. Awaiting it before the
-            // window meant several seconds of nothing at all between the click and anything appearing.
-            //
-            // The window copes with a session that is not up: it binds to the host and shows "the session has not
-            // started yet" until one arrives, which is exactly what an operator wants to see while it starts. The
-            // await stays, so a failure still reaches the catch below rather than becoming an unobserved task.
+            // AC-1013: AC-959 — window first, session after. Starting the session is slow (MCP catalog, loopback
+            // endpoints, OAuth renewal, CLI spawn, transcript replay — measured 3.4s to spawn on one open, more
+            // with a slow sign-in); the window shows "not started yet" meanwhile, and the await still reaches the catch.
             await _assistant.EnsureStartedAsync().ConfigureAwait(true);
         }
         catch (Exception exception)
@@ -298,14 +265,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         }
     }
 
-    // The rail is the only caller of this factory, so being built by it *is* being docked. Two routes reach it
-    // without going through `_ShowInAsync` — clicking the rail tab, and the restore that reopens the last open
-    // panel at startup — so the same handover has to happen here, or those two leave the window standing beside
-    // the docked view with the operator typing into whichever one they clicked last.
-    //
-    // This is also exactly the right moment for it: the factory runs after the rail has decided to show the chat
-    // and before the view it returns is attached, so the window's view detaches — handing over its scroll
-    // position — before this one reads it.
+    // AC-1013: the rail is the only caller of this factory, so being built by it *is* being docked. Two routes
+    // bypass `_ShowInAsync` (the rail tab click, the startup restore), so this runs the handover too — timed so
+    // the window's view detaches (handing over scroll position) before the returned view reads it.
     private Control _CreateDockedChatView()
     {
         var chat = _EnsureChatViewModel();
@@ -333,14 +295,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
                 }
             };
 
-            // Shown without an owner, and closed with the cockpit by hand instead. Ownerless is deliberate: an owned
-            // window minimises and restores with its owner, and this one has to stay reachable while the cockpit is
-            // in the background — that is the whole point of a global hotkey. But Avalonia's default shutdown is
-            // "when the last window closes", so an ownerless window that outlives the main one keeps the entire
-            // process alive: the cockpit vanished from the screen, the chat pop-out stayed sitting there, and the
-            // app went on running with its global hotkeys still registered — which is what then refused F10 to the
-            // next launch, since the key was still held by a process nobody could see.
-            // Docked, neither half applies: the view sits inside MainWindow, so it closes with it by itself.
+            // AC-1013: shown without an owner (deliberately, so it stays reachable via global hotkey while the
+            // cockpit is backgrounded), closed with the cockpit by hand — without it, Avalonia's "shutdown on
+            // last window closed" left an ownerless pop-out keeping the process (and F10) alive after cockpit close.
             if (Avalonia.Application.Current?.ApplicationLifetime
                 is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             {
@@ -356,14 +313,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         WindowActivation.BringToFront(_chatWindow);
     }
 
-    // Puts the chat in one host and takes it out of the other — the single place that decides where it stands, so
-    // there is no route that can leave two of them on screen at once. Every caller says which host it wants
-    // rather than what to change, which makes it idempotent: asking for the host it is already in does nothing.
-    //
-    // The order inside each branch is the whole of AC-953: the old host is torn down first and the new one built
-    // after, so the leaving view has written its scroll position onto the view model before the arriving view
-    // reads it. Build-then-tear-down would have the new view read a stale position and the old view overwrite it
-    // afterwards with nothing looking.
+    // AC-953: the single place that decides where the chat stands, so no route leaves two on screen. Callers say
+    // which host they want (idempotent). Old host torn down first, new one built after, so the leaving view
+    // writes its scroll position before the arriving view reads it — build-then-tear-down would read it stale.
     private async Task _ShowInAsync(bool docked)
     {
         if (_chatViewModel is { } chat)
@@ -410,11 +362,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         }
     }
 
-    // Switches the microphone between held-only and held-open — the only two modes the chip offers.
-    // The wake-word mode is refused rather than absent from this check: the enum still carries it (the wake word
-    // is its own future ticket), and a mode that cannot be picked today is one a caller could still pass
-    // tomorrow by reading the enum rather than the UI. Guarding here costs one line and means the microphone
-    // never opens on a filter that does not exist.
+    // Switches the microphone between held-only and held-open. Wake-word mode is refused rather than absent
+    // from the UI: the enum still carries it (its own future ticket), so a caller could still pass it — this
+    // one-line guard keeps the microphone from opening on a filter that doesn't exist yet.
     private async Task _ApplyListeningModeAsync(AssistantListeningMode mode)
     {
         if (mode == AssistantListeningMode.AlwaysOnWithWakeWord)

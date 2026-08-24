@@ -3,17 +3,9 @@ using Cockpit.Core.Rendering;
 
 namespace Cockpit.App.Services;
 
-// AC-57 diagnostic probe: an opt-in override of the macOS render backend, read from the
-// `COCKPIT_RENDER_BACKEND` environment variable. Off by default — an unset or unrecognised value leaves
-// `UsePlatformDetect()`'s Metal auto-selection untouched — so it changes nothing for a normal run. A
-// tester sets it to `opengl` or `software` to run the same build on a non-Metal path: the decisive
-// test for whether the runaway native-memory growth on macOS is the Metal render layer. The options it
-// produces (`AvaloniaNativePlatformOptions`) are read only by the macOS (Avalonia.Native) backend,
-// so the override is inert on Windows and Linux.
-//
-// The env→modes mapping is a pure `Parse` so it is unit-testable without an Avalonia app or a Mac,
-// the same reasoning as `TtyAutoRedrawGate`. Every option keeps `Software` as the last resort so a
-// machine that cannot create the requested surface still starts rather than failing to a black window.
+// AC-57 diagnostic probe: opt-in override of the macOS render backend via `COCKPIT_RENDER_BACKEND`, off by
+// default. A tester sets `opengl`/`software` to test whether macOS's runaway native-memory growth is the
+// Metal render layer. Parse is pure (testable without Avalonia/a Mac); `Software` is always the last resort.
 public static class RenderBackendOverride
 {
     public const string EnvironmentVariable = "COCKPIT_RENDER_BACKEND";

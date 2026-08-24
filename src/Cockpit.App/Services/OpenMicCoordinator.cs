@@ -12,20 +12,9 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.App.Services;
 
-// Keeps the microphone open for the assistant and exposes the on/off behind the indicator's listening mode: while
-// listening, the continuous `IOpenMicListener` hands each finished utterance to
-// `AssistantSessionHost`, and the mic pauses while read-aloud is playing so it never transcribes the
-// cockpit's own speech. The on/off state is persisted, so it resumes next launch.
-// *It used to dictate.* Until AC-543 this injected into whichever session happened to be selected, which
-// made "leave the microphone open" mean something different depending on where you last clicked. It now always
-// means the assistant; `F9` is the only path into a session and is unchanged. What follows from that, and is
-// worth saying out loud: with this on, everything you say reaches the assistant — an aside to a colleague, a
-// phone call, thinking out loud — and each of those costs a turn. A wake word is the filter for that, and it is
-// not built yet, so the indicator says so at the moment it is switched on.
-// Threading mirrors `VoicePushToTalkCoordinator`: `IOpenMicListener.UtteranceTranscribed`
-// fires on the capture thread, so injection is marshaled onto the UI thread via
-// `Dispatcher.UIThread`. `InjectUtteranceAsync` is the (UI-thread) logic the tests
-// drive directly, since pumping a real Avalonia dispatcher loop from a unit test is not practical.
+// AC-1013: keeps the microphone open for the assistant behind the indicator's listening mode, pausing
+// while read-aloud plays. AC-543: used to dictate into whichever session was selected; now always targets
+// the assistant (F9 stays the only session route), with no wake word yet, so the indicator warns on switch-on.
 public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonService, IOpenMicState
 {
     private readonly IOpenMicListener _listener;
@@ -101,15 +90,9 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     [ObservableProperty]
     private bool _isListening;
 
-    // Reads settings at startup and resumes listening if it was left on; runtime toggling is via
-    // `ToggleOpenMicCommand`. No-op unless both voice and the assistant are switched on.
-    // Never throws, for the reason `VoicePushToTalkCoordinator.StartAsync` does not: its one caller
-    // discards the task, so anything thrown here lands on a task nobody observes. It still cannot start when the
-    // settings will not read or the microphone will not open — it says which now.
-    //
-    // Gated on *both* switches since AC-543. Voice, because that is the microphone pipeline; and the
-    // assistant, because it is now the only destination — leaving the microphone open for a feature that is
-    // switched off would record the room and send it nowhere.
+    // Reads settings at startup and resumes listening if left on; never throws since the one caller discards
+    // the task (mirrors `VoicePushToTalkCoordinator.StartAsync`), but it still logs which check failed.
+    // Gated on both voice and assistant switches (AC-543): leaving the mic open for a disabled assistant would record the room and send it nowhere.
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -133,12 +116,9 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         }
     }
 
-    // Re-reads both switches and closes the microphone if the assistant was just turned off. Called when the
-    // Options page saves.
-    // The gate in `StartAsync` only runs at launch, so switching the assistant off while open-mic
-    // was listening left the microphone open with nowhere to send what it heard — every utterance was
-    // transcribed and then silently dropped by a host that is off. An open microphone recording a room for no
-    // reason is the one failure here worth closing without being asked to.
+    // Re-reads both switches and closes the mic if the assistant was just turned off (called on Options save).
+    // `StartAsync`'s gate only runs at launch, so without this, switching the assistant off while
+    // listening left the mic recording the room with every utterance silently dropped by a host that is off.
     public async Task ApplyAssistantSettingsAsync(CancellationToken cancellationToken = default)
     {
         var voice = await _voiceSettingsStore.LoadAsync(cancellationToken);
@@ -339,10 +319,9 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     // the gap between you stopping and the assistant starting.
     internal void HandleSpeechEnded() => _assistant.ReportTranscribing(true);
 
-    // Test seam: read-aloud became active or went idle. Active means it is preparing (synthesizing, still silent) — `HandleSpeakingStarted` flips it to speaking once audio actually plays.
-    //
-    // AC-729: the assistant's own reply no longer reaches the pill — the chip already shows it, same reasoning as
-    // AC-697's hold-flow. `_isPlaying` stays unconditional so a barge-in can still stop it too.
+    // Test seam: read-aloud became active or idle (active = preparing/synthesizing; `HandleSpeakingStarted`
+    // flips to speaking once audio plays). AC-729: the assistant's reply no longer reaches the pill, same
+    // reasoning as AC-697's hold-flow; `_isPlaying` stays unconditional so a barge-in can still stop it.
     internal void HandlePlaybackActiveChanged(bool active, VoicePlaybackSource source = VoicePlaybackSource.Session)
     {
         _isPlaying = active;
@@ -375,9 +354,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _overlay.PushLevel(level);
     }
 
-    // Queue rather than inject inline: the injection is awaited one at a time by the consumer, so utterances
-    // land in spoken order.
-    // Nothing is queued while a hold has the microphone: `Pause` cannot stop an utterance already inside the
+    // Queue rather than inject inline, so utterances awaited one at a time by the consumer land in spoken
+    // order. Nothing queues while a hold has the mic: `Pause` can't stop an utterance already inside the
     // transcribe call, which arrives here after the key went down (AC-627).
     private void _OnUtteranceTranscribed(object? sender, string rawText)
     {
@@ -416,30 +394,24 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         }
     }
 
-    // Test seam: the UI-thread logic that hands one finished utterance to the assistant.
-    // The pill is released here rather than on `SpeechEnded`: sending runs between the two, and a spinner
-    // that stops before the text lands would be a spinner that lied about the last part of the wait. Released
-    // in a finally — an utterance that fails to send still ends, and the alternative is a pill spinning over a
-    // sentence that is never coming.
+    // Test seam: the UI-thread logic that hands one finished utterance to the assistant. The pill is released
+    // here, not on `SpeechEnded` — sending runs between the two, so releasing early would lie about the wait.
+    // Released in a finally: an utterance that fails to send still ends, rather than leaving the pill spinning forever.
     internal async Task InjectUtteranceAsync(string rawText)
     {
         try
         {
-            // Nothing to do when the utterance filtered down to nothing (a throat-clear or a bare "um" the STT
-            // noise filter removed) — sending empty text is exactly what "have a normal conversation" must not do.
-            // Nor while a hold has the microphone: the consumer may have taken this one out of the queue before the
-            // key went down, and this is the last point it can still be dropped (AC-627).
+            // Nothing to do when filtered down to nothing (STT noise filter dropped a throat-clear/"um") or
+            // while a hold has the mic: the consumer may have taken this out of the queue before the key
+            // went down, and this is the last point it can still be dropped (AC-627).
             if (string.IsNullOrWhiteSpace(rawText) || _suspendedForHold)
             {
                 return;
             }
 
-            // Straight to the assistant, raw (AC-543 criterion 20). Two things changed here at once and both are
-            // deliberate. The destination: open-mic used to dictate into whichever session happened to be
-            // selected, which made "leave the microphone open" mean something different depending on where you
-            // last clicked; it now always means the assistant, and F9 is left as the only way to dictate into a
-            // session. And the cleanup pass is gone: what Whisper heard is what the assistant gets (decision 10),
-            // because the tidying it did is the system prompt's job now.
+            // Straight to the assistant, raw (AC-543 criterion 20): destination changed from whichever
+            // session was selected to always the assistant, and the cleanup pass is gone — what Whisper
+            // heard is what the assistant gets (decision 10), since tidying is the system prompt's job now.
             await _assistant.SendAsync(rawText);
         }
         finally

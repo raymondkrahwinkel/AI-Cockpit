@@ -5,25 +5,9 @@ using Cockpit.Core.Assistant;
 
 namespace Cockpit.App.Services;
 
-// The one implementation of `IConsentBypassPolicy` (#AC-575): the only place that knows both which
-// pane id is the assistant's and which sources the operator switched the consent card off for.
-// *The first two conditions are always required.* A request is bypassed only when the transport-verified pane is
-// the assistant's and the assistant is switched on at all; either one failing shows the card exactly as before.
-// They are checked in that order because the first is the cheapest and the one an attacker would have to beat
-// first. What follows them is either the "allow all" switch (#AC-637, on by default — every source, both risk
-// classes) or, with that off, the per-source lists: the source in the operator's list, and — for a dangerous
-// action — in the second list as well.
-//
-// *The settings are a snapshot, not a read per request.* `IConsentBypassPolicy.ShouldBypass` is
-// synchronous — the broker calls it in the middle of deciding — and the store reads a file. The snapshot is loaded
-// at construction and replaced whenever Options saves (the shell wires `ApplySettingsAsync` to the
-// same `Saved` event the hotkey and the chip already follow), so switching a source off takes effect on the
-// next request rather than at the next restart. It starts empty, so the window before the first load has finished
-// bypasses nothing.
-//
-// *Case.* Sources are compared ordinally and case-sensitively. They are not typed by a human — the list in
-// Options is filled from host-stamped names — so a case-insensitive match would only ever widen the set of things
-// that count as the same source, and widening is the direction that costs something here.
+// AC-1013: the one `IConsentBypassPolicy` (#AC-575) — checks verified pane id, then assistant-enabled, then
+// "allow all" (#AC-637) or the per-source/dangerous lists, in that cheapest-first order; settings are a
+// synchronous in-memory snapshot (reloaded on Options save, empty until first load) compared case-sensitively.
 public sealed class AssistantConsentBypassPolicy : IConsentBypassPolicy, ISingletonService
 {
     private readonly IAssistantSettingsStore _settings;
@@ -59,10 +43,8 @@ public sealed class AssistantConsentBypassPolicy : IConsentBypassPolicy, ISingle
 
     public bool ShouldBypass(string? verifiedPaneId, string sourceKey, bool dangerous)
     {
-        // 1. The verified pane is the assistant's. Never an ordinary pane, and never a request that arrived on no
-        //    verified session at all — the broker only ever hands the transport-stamped id here, so a request whose
-        //    Source.PaneId was filled in with this constant by the agent itself arrives as a null and stops on this
-        //    line. That is the whole of why the check sits where it does in the broker.
+        // AC-1013: 1. the verified pane must be the assistant's — never an ordinary pane, and never a request
+        // with no verified session (a self-stamped Source.PaneId arrives as null and stops here).
         if (verifiedPaneId is null || !string.Equals(verifiedPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
         {
             return false;

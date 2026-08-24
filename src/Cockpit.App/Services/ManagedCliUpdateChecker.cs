@@ -6,13 +6,9 @@ using Cockpit.Infrastructure.ManagedCli;
 
 namespace Cockpit.App.Services;
 
-// Periodically checks each installed managed CLI (AC-20) against the latest version its provider offers. Per CLI,
-// auto-update (AC-767, default on) installs it and toasts what changed; turned off for that CLI it falls back to
-// the original behaviour — toast that a newer version exists, once, and leave installing to the config view's
-// button. Generic: it iterates the CLI names plugins registered and asks `IManagedCliService.GetStatusAsync`; how a
-// version is discovered stays in the provider's descriptor, never here.
-// Never nags: a given (cli, version) "available" toast fires once per run, an uninstalled or up-to-date CLI says
-// nothing, and an offline/edge failure is swallowed so the timer loop survives — mirroring `PluginUpdateChecker`.
+// Periodically checks each installed managed CLI (AC-20) against its provider's latest version. Auto-update
+// (AC-767, default on) installs and toasts; off, it toasts once and leaves installing to the config button.
+// Never nags: an "available" toast fires once per (cli, version), and offline/edge failures are swallowed.
 public sealed class ManagedCliUpdateChecker(
     IManagedCliService managedCli,
     IManagedCliAutoUpdateStore autoUpdateStore,

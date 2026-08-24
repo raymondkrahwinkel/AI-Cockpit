@@ -10,17 +10,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Services;
 
-// Real `IPluginUpdateChecker` (#59): compares every installed plugin's version against the
-// `latestVersion` its configured store(s) advertise (`PluginVersion.IsNewer`, the same
-// comparison the manual "Browse stores" flow in `PluginManagerViewModel` uses) and toasts a
-// summary once a newly detected update appears. Never toasts twice for the same (plugin, version) pair —
-// only a version bump beyond what was already reported toasts again, so the 15-minute timer in
-// `App` doesn't nag on every tick.
-// The installed-plugin lookup is an injectable delegate (defaulting to the real
-// `PluginBootstrap.DiscoverAsync`) rather than a direct `PluginBootstrap` call,
-// mirroring `AppRestartService`'s delegate-seam pattern — `PluginBootstrap` is a
-// sealed class with no interface, so a test needs this seam to supply a fixed installed set instead of
-// touching the real plugins folder on disk.
+// Real `IPluginUpdateChecker` (#59): compares each plugin's version against its store's `latestVersion`
+// and toasts a summary once, never twice for the same (plugin, version) pair. The installed-plugin lookup
+// is an injectable delegate, not a direct `PluginBootstrap` call, since it's sealed with no interface and tests need a fixed set instead of the real plugins folder.
 public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonService
 {
     private readonly Func<CancellationToken, Task<IReadOnlyList<DiscoveredPlugin>>> _getInstalledPluginsAsync;
@@ -124,10 +116,9 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
                     continue; // not installed — nothing to update
                 }
 
-                // A newer version than what is installed — unless the operator already staged it this session, in
-                // which case it is up to date until the restart and must not re-inflate the badge (AC-76) — and
-                // only when this host can actually run it (AC-181): an update it cannot meet must not toast/badge
-                // as available, the same reason PluginManagerViewModel.CanUpdate excludes it from "Update all".
+                // Newer, unless already staged this session (AC-76: must not re-inflate the badge), and only
+                // when this host can actually run it (AC-181) — same reason
+                // PluginManagerViewModel.CanUpdate excludes it from "Update all".
                 if (PluginVersion.IsNewer(entry.LatestVersion, plugin.Manifest.Version)
                     && !_isUpdateStaged(entry.Id, entry.LatestVersion)
                     && _HostCanRun(entry, _hostVersion))

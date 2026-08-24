@@ -7,22 +7,9 @@ using Cockpit.Core.Abstractions.Voice;
 
 namespace Cockpit.App.Services;
 
-// Routes the desktop-wide push-to-talk key to the currently selected session and the floating voice
-// overlay (#34): a hold starts, the overlay shows "Listening" and the selected session's microphone capture
-// begins; the hold ends, the session's own STT pipeline runs, and the overlay hides once the text has been
-// injected. What the pill says from the release onwards — the spinner, a first-use download, or why the
-// dictation produced nothing — is the session's to report, since the in-window F9 handlers end their hold
-// through that same method and would otherwise have nothing to say at all (AC-557).
-// Whether the key is armed at all is `GlobalHotkeyCoordinator`'s: it registers only what the
-// operator switched on, so with global push-to-talk off nothing arrives here and the per-view local F9
-// handlers keep doing the job untouched.
-//
-// Threading: `GlobalHotkeyCoordinator.Pressed`/`GlobalHotkeyCoordinator.Released`
-// fire on the backend's own thread (the D-Bus loop on Linux, the keyboard-hook thread on Windows),
-// never the UI thread — every touch of `CockpitViewModel` or the overlay is marshaled onto
-// the UI thread via `Dispatcher.UIThread` first. `HandleHoldStarted` and
-// `HandleHoldEndedAsync` are the actual (UI-thread) routing logic and the seam the tests
-// drive directly, since pumping a real Avalonia dispatcher loop from a unit test is not practical.
+// AC-1013: routes the desktop-wide push-to-talk key (#34) to the selected session and floating overlay — a hold
+// starts capture, and on release the session's STT reports the pill (AC-557); global arming is
+// `GlobalHotkeyCoordinator`'s. Hotkey events fire off the UI thread, so the hold handlers marshal onto it.
 public sealed class VoicePushToTalkCoordinator : ISingletonService
 {
     private readonly GlobalHotkeyCoordinator _hotkeys;
@@ -98,10 +85,8 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         var session = _cockpit.SelectedSession;
         var capturing = session?.BeginVoiceHold() ?? false;
 
-        // Resolved before the pill is shown, not after. It used to flip to "Listening" unconditionally and this
-        // very comment admitted that seeing it "says nothing about whether the microphone actually opened" —
-        // and then wrote the truth to the log. An operator holding the key over an empty cockpit watched a flat
-        // waveform and had no way to know why nothing came out.
+        // Resolved before the pill is shown, not after: it used to flip to "Listening" unconditionally, leaving an
+        // operator holding the key over an empty cockpit watching a flat waveform with no idea why nothing came out.
         var blocked = capturing ? null : _WhyNothingIsBeingRecorded(session);
         _isRecording = blocked is null;
 
@@ -130,17 +115,9 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             _cockpit.Sessions.Count);
     }
 
-    // Why a hold is not recording, in words for the pill — or null when there is nothing to explain. A declined
-    // hold with no reason here means `PushToTalkHoldGuard` still has one running: that pill is
-    // already listening and must be left alone.
-    // It is *not* the OS repeating the held key, which this used to say. Key-repeat is real on the local
-    // per-view F9 handlers — Avalonia raises KeyDown for every repeat, which is what the hold guard was written
-    // for — but it cannot reach this coordinator: both hotkey backends collapse a hold to a single edge
-    // (`SharpHookGlobalHotkeyService` and `PortalGlobalHotkeyService` each gate their
-    // `HoldStarted` on an `_isHolding` flag), and the local handlers stand down entirely while global
-    // push-to-talk is on (`PushToTalkKeyGate`). The claim came from the local path and was carried
-    // here, where it is not true — and it later cost a code review a finding chased against a comment rather
-    // than the code.
+    // AC-1013: why a hold is not recording, in words for the pill, or null. A declined hold with no reason here
+    // means `PushToTalkHoldGuard` already has one running and that pill must be left alone — it is NOT OS key-repeat
+    // (both hotkey backends collapse a hold to a single edge, so repeat cannot reach this coordinator).
     private static string? _WhyNothingIsBeingRecorded(SessionPanelViewModel? session) => session switch
     {
         null => "No session selected",
@@ -171,14 +148,9 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             return;
         }
 
-        // What the hold is doing from here — the spinner, a first-use download, and what it produced — is the
-        // session's own report (`SessionPanelViewModel.EndVoiceHoldAsync`), because the in-window F9
-        // handlers end their hold through that same method and had no way to say any of it.
-        //
-        // Which is also why the pill is not taken down here any more. It was, unconditionally, and that is the
-        // defect: a dictation that failed or heard no speech had its explanation hidden the instant it appeared,
-        // leaving an operator who had just talked for a minute with nothing at all (AC-557). The session hides it
-        // on a transcript and leaves its own reason standing when there was none; that message clears itself.
+        // AC-557: what the hold is doing from here is the session's own report (`EndVoiceHoldAsync`), because the
+        // in-window F9 handlers end their hold through that same method. The pill is deliberately not taken down
+        // here any more — it used to be, unconditionally, hiding a failed/empty dictation's explanation instantly.
         await session.EndVoiceHoldAsync();
     }
 }

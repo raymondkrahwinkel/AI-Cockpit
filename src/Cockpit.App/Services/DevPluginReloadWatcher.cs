@@ -7,19 +7,9 @@ using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.App.Services;
 
-// AC-185's dev inner loop: watches `plugins-dev` for a rebuilt first-party plugin and offers one toast
-// action to bring it into the running sandbox — instead of the operator remembering to restart by hand after
-// every build. `Start` is only ever called under DEBUG (see `App.axaml.cs`) and finds nothing
-// to watch off a dev checkout anyway (`DevPluginInstaller.FindPluginsDevRoot`); a release build
-// never watches anything.
-//
-// Not a hot-swap: the toast's action re-runs `DevPluginInstaller.InstallAsync` — the same
-// `installNew: false` restraint the startup pass already uses, a build must never decide what a cockpit
-// carries — and then restarts through `IAppRestartService`, the same "close and relaunch" every
-// other plugin change already goes through, because a loaded plugin assembly cannot be unloaded live.
-// The filesystem watch and the debounce timer are both injectable seams (see the internal test constructor),
-// mirroring `ScheduledResumeCoordinator`'s delegate style — a test drives `_OnBuildOutputChanged`
-// directly and a synchronous debounce, rather than touching real disk events or a real timer.
+// AC-1013: AC-185's dev inner loop — watches `plugins-dev` for a rebuilt first-party plugin and offers a
+// toast to bring it into the running sandbox instead of a manual restart (DEBUG-only). Not a hot-swap: it
+// reruns `DevPluginInstaller.InstallAsync` then restarts via `IAppRestartService`; watch and debounce are injectable.
 public sealed class DevPluginReloadWatcher : ISingletonService, IDisposable
 {
     private static readonly TimeSpan DebounceDelay = TimeSpan.FromMilliseconds(750);
@@ -126,10 +116,8 @@ public sealed class DevPluginReloadWatcher : ISingletonService, IDisposable
         _restartService.Restart();
     }
 
-    // Marshals onto the UI thread regardless of the calling thread (FileSystemWatcher raises off a thread-pool
-    // thread), then restarts one shared timer — the same "stop and restart on every call" coalescing
-    // ScheduledResumeCoordinator's own instance timer would need if it debounced, done here because
-    // DispatcherTimer is tied to the dispatcher of the thread that constructs it.
+    // AC-1013: marshals onto the UI thread (FileSystemWatcher raises off a thread-pool thread), then
+    // restarts one shared timer, because DispatcherTimer is tied to the dispatcher of the thread that creates it.
     private void _DebounceOnUiThread(Action callback)
     {
         Dispatcher.UIThread.Post(() =>

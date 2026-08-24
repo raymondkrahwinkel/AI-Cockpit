@@ -20,10 +20,6 @@ public enum SessionRestoreAvailability
     // Everything needed to resume the earlier conversation is still in place.
     Known,
 
-    // A resume was actually attempted and the provider refused it — the pty exited within its degrade window
-    // (`TtyViewModel._degradeInsteadOfCloseOnExit`), or an SDK turn came back `error_during_execution`
-    // with no result. Distinct from every value above: those describe a conversation nobody tried to reach yet,
-    // this one was tried and told no. The pane's own launch output or the provider's `errors[]` is the
-    // explanation, not a guess.
+    // AC-1013: A resume was attempted and refused (pty exit in its degrade window, or SDK `error_during_execution`); unlike the values above, this one was tried and told no.
     Gone,
 }

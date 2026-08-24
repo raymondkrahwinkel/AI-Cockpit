@@ -5,10 +5,9 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.App.Services;
 
-// Assembles the diagnostics snapshot the Debug tab shows and the tester copies (AC-58). It lives in the App layer
-// because that is the only one that can name the render backend and the toolkit version; the memory and process
-// figures reuse the same readers the resource monitor already uses (#78), so the panel and the status bar cannot
-// disagree about what a session weighs.
+// AC-58: Assembles the diagnostics snapshot the Debug tab shows and the tester copies; lives in App because
+// only that layer can name the render backend and toolkit version, and reuses the resource monitor's own
+// readers (#78) so the panel and the status bar cannot disagree about what a session weighs.
 public sealed class DiagnosticsCollector(IProcessTableReader processTable, ICrashLogReader crashLogReader) : ISingletonService
 {
     private const int MaxCrashEntries = 3;

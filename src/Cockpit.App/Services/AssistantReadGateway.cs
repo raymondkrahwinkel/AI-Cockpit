@@ -116,10 +116,9 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProj
         }
     }
 
-    // A TTY session's transcript, read from the file its own CLI wrote. Off the UI thread — see
-    // `ReadTranscriptAsync`. An empty read is still an answer about a live session, not a missing pane: it means
-    // the session has written nothing yet, or its provider cannot name its record (no statusline snapshot). The
-    // caller can tell the two apart from `totalEntries`, and either way it must not report the session as gone.
+    // AC-1013: A TTY session's transcript, read from the file its own CLI wrote (off the UI thread, see
+    // `ReadTranscriptAsync`); an empty read still answers a live session (nothing written yet, or no statusline
+    // snapshot to name) rather than a missing pane, so the caller must not report it as gone.
     private static AssistantTranscript _ReadTtyTranscript(TtyViewModel tty, int count)
     {
         var slice = tty.ReadTranscriptEntries(count);

@@ -6,16 +6,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.Services;
 
-// AC-656: gives a pane a turn as soon as mail is waiting in its own inbox, rather than leaving it for that pane's
-// next turn or next cockpit-* tool call to pick the mail up on its own (AC-394/AC-527) — the active half AC-395's
-// urgent notify only ever did on a sender's say-so, and only for a recipient that had opted in. Same shape as
-// `CiWatcher`/`SessionWatcher`: no model in the loop, so a tick over panes with nothing waiting costs a handful of
-// in-memory lookups and touches neither the gateway nor the log.
-//
-// *Every pane, always — nothing to arm.* Unlike `SessionWatcher`, no `watch_session` step is needed first: every
-// live pane, the assistant included while one is running, is checked on every tick. The wake this performs is not
-// "a peer may interrupt you" (that is still AC-395's opt-in urgent notify, unchanged) — it is "you get your own
-// already-accepted mail promptly", which is not something to consent to or switch off per session.
+// AC-656: gives a pane a turn as soon as mail is waiting in its own inbox, rather than leaving it for that
+// pane's next turn or tool call (AC-394/AC-527), or requiring opt-in like AC-395's urgent notify does.
+// Every live pane is checked every tick, no `watch_session` arming step needed, same shape as CiWatcher/SessionWatcher.
 public sealed class InboxWakeScheduler(
     IAgentMessageInbox inbox,
     IWorkspaceAgentGateway gateway,
@@ -29,10 +22,8 @@ public sealed class InboxWakeScheduler(
     private readonly ILogger<InboxWakeScheduler> _logger = logger ?? NullLogger<InboxWakeScheduler>.Instance;
 
     // The oldest waiting message id last attempted per pane. The wake send is fire-and-forget (see
-    // WorkspaceAgentGateway._SendWakeAsync), so the pane's status may not have flipped away from Idle by the very
-    // next tick — without this a slow send would be attempted a second time before the first has even landed.
-    // Cleared the moment PeekOldest no longer returns that message: taken by the turn it started, drained by
-    // read_inbox, or the pane itself gone.
+    // WorkspaceAgentGateway._SendWakeAsync), so without this a slow send could be re-attempted before the
+    // first landed. Cleared once PeekOldest no longer returns that message.
     private readonly Dictionary<string, string> _attempted = new(StringComparer.Ordinal);
 
     private DispatcherTimer? _timer;

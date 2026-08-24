@@ -13,15 +13,9 @@ using Cockpit.Core.Toasts;
 
 namespace Cockpit.App.Services;
 
-// Takes a screenshot into the selected session (AC-220): the desktop's own picker opens, and what comes back
-// lands on the session in view as a pending attachment — the operator types the sentence that goes with it
-// and sends when they mean to. The same flow behind the global hotkey and the composer's button.
-// The responsibility is the cockpit's, not the operator's — the same choice push-to-talk makes: the capture
-// goes to `CockpitViewModel.SelectedSession` rather than asking which session it was for.
-//
-// Nothing here is allowed to end in silence. The capture runs the OS picker, so it can be cancelled, refused
-// by a privacy prompt or land on a session that cannot carry an image — each of those gets a toast saying
-// which, because the operator pressed a key and is owed an answer.
+// AC-220: takes a screenshot into the session in view (like push-to-talk, not one the operator picks) as a
+// pending attachment; the global hotkey and the composer's button share this path. Never ends in silence:
+// cancel, privacy-prompt refusal, or an incompatible session each get their own toast.
 public sealed class ScreenshotCoordinator : ISingletonService
 {
     private readonly GlobalHotkeyCoordinator _hotkeys;
@@ -36,12 +30,9 @@ public sealed class ScreenshotCoordinator : ISingletonService
     // Guards against a second capture while the picker is already open — the hotkey is easy to press twice.
     private bool _isCapturing;
 
-    // What puts the selection surface in front of the operator, or null where there is no window to put one
-    // over — a headless or design-time graph, which takes the whole capture rather than losing screenshots
-    // altogether. Swappable so the crop-and-remember path can be tested without a desktop. The destination name
-    // travels alongside the capture rather than being closed over once at construction, because it names
-    // whichever session this particular call is for — the composer button's session, not necessarily the one
-    // selected when the coordinator was built.
+    // Puts the selection surface in front of the operator, or null (headless/design-time) to take the whole
+    // capture instead of losing screenshots; swappable for testing without a desktop. Destination name travels
+    // per-call, not closed over at construction, since it names whichever session this call is for.
     private Func<ScreenCapture, CaptureRect?, string, Task<ScreenshotSelection?>>? _showSelection;
 
     public ScreenshotCoordinator(
@@ -119,9 +110,8 @@ public sealed class ScreenshotCoordinator : ISingletonService
         return CaptureIntoAsync(session, cancellationToken);
     }
 
-    // Runs the picker and puts the result on the given session — the composer button's path, which names its
-    // own panel rather than the selected one: in a grid the button you clicked and the session in view are not
-    // necessarily the same, and the screenshot belongs to the composer it was asked from.
+    // Runs the picker and puts the result on the given session — the composer button's path, naming its own
+    // panel rather than the selected one, since the clicked button and the session in view may differ in a grid.
     // Safe to call from a command or a hotkey; never throws, since both callers discard the task.
     public async Task CaptureIntoAsync(SessionPanelViewModel session, CancellationToken cancellationToken = default)
     {
@@ -178,11 +168,9 @@ public sealed class ScreenshotCoordinator : ISingletonService
         }
     }
 
-    // Puts the selection surface over the frozen capture and returns the region the operator marked out, cropped
-    // (AC-329) — or nothing, when they dismissed it.
-    // The whole capture is used as-is where there is no window to put a surface over: a headless or design-time
-    // graph has nothing to show it on, and failing there would take screenshots away from a test harness that
-    // only ever wanted the bytes.
+    // Puts the selection surface over the frozen capture and returns the marked-out region, cropped (AC-329) —
+    // or nothing if dismissed. The whole capture is used as-is where there is no window to show a surface on,
+    // so a headless/design-time test harness that only wants the bytes doesn't lose screenshots.
     private async Task<byte[]?> _PickAsync(ScreenCapture capture, SessionPanelViewModel session)
     {
         if (_showSelection is not { } show)
@@ -196,30 +184,25 @@ public sealed class ScreenshotCoordinator : ISingletonService
             return null;
         }
 
-        // Cropped first, then marked: the marks are in the crop's coordinates, and doing it the other way round
-        // would obscure part of a picture that is about to be thrown away and leave the kept part bare.
-        // Off the UI thread: a redaction walks every pixel of every box, and "everything" on a multi-monitor
-        // desktop is millions of them. Doing that on the thread that draws would freeze the cockpit at the one
-        // moment the operator is waiting to see their screenshot land.
+        // Cropped first, then marked: marks are in the crop's coordinates, so cropping after would leave the
+        // kept part bare. Off the UI thread: a redaction walks every pixel of every box — millions on a
+        // multi-monitor desktop — which would freeze the cockpit right when the operator is waiting to see it.
         var marked = await Task.Run(() =>
         {
             var cropped = _editor.Crop(capture.Image, chosen.Region);
             return _editor.Burn(cropped, chosen.Marks);
         }).ConfigureAwait(true);
 
-        // Saved after the crop rather than before: a region that turned out not to fit was never restored, and
-        // remembering one the operator never actually got is worse than remembering nothing. The boxes are not
-        // kept — what was worth hiding once is not the same thing next time, and offering yesterday's redaction
-        // over today's screen would be a promise nobody checked.
+        // Saved after cropping, not before, so a region that never fit isn't remembered; boxes are not kept,
+        // since what was worth hiding once may not apply to today's screen.
         await _settings.SaveAsync(settings with { LastRegion = chosen.Region }).ConfigureAwait(true);
 
         return marked;
     }
 
-    // The preview gate behind Confirm() (AC-566): the one place all three ways to confirm run through, so a
-    // setting switched off costs nothing and one switched on cannot be skipped by picking a different key or
-    // click. Renders exactly the bytes the real crop would produce — the same `_editor`, the same
-    // region and marks — and asks before they leave the selection window.
+    // The preview gate behind Confirm() (AC-566): the one place all three confirm paths run through, so it
+    // can't be skipped by a different key or click. Renders the exact bytes the real crop would produce and
+    // asks before they leave the selection window.
     private async Task<bool> _ShowPreviewAsync(ScreenCapture capture, ScreenshotSelection chosen, string destination, Window owner)
     {
         var settings = await _settings.LoadAsync().ConfigureAwait(true);

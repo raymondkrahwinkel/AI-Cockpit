@@ -17,28 +17,9 @@ using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.Services;
 
-// The app-level half of `IAssistantAgentGateway` (AC-545): the one place a session is started or
-// stopped on an agent's behalf, and the place every such request is written down.
-// Sibling of `AssistantReadGateway` and shaped like it on purpose — same UI-thread marshalling, for the
-// same reason: `CockpitViewModel.Sessions` and the workspace settings only ever mutate on the UI thread, and an
-// MCP tool call arrives on a Kestrel request thread.
-//
-// *This class refuses; it does not scope.* The distinction matters and it is not word-play. Which desk a spawn
-// may land on was decided before this is reached, by whichever of `SpawnTarget`'s two doors the caller
-// came through — that is the guardrail. What happens here is the far duller check that the named desk exists and can
-// hold a session at all, which is true of every caller and protects nobody from anything. Do not let the second grow
-// into the first: a coordinator (AC-436) must arrive with a target derived from its own pane, never with one this
-// class validated on its behalf.
-//
-// *Every outcome is recorded, including the refusals.* Criterion 5 asks for the trail; a trail that only holds
-// what got through would show the gate's successes and hide it working. A failure to write the trail never fails the
-// operator's approved action — see `IAssistantSpawnAuditLog`.
-//
-// *What this is not.* It is not the consent gate. Nothing here decides whether the operator agreed: the
-// assistant's session runs in "Ask permissions", so the tool call that reaches this class has already raised an
-// Allow/Deny row in the chat window and been clicked. If a future caller could reach these methods without that,
-// this class would still start the session — which is why the gate belongs where it is and must not be re-implemented
-// here as a second, weaker copy.
+// AC-545/AC-436: app-level half of `IAssistantAgentGateway` — records every spawn/stop outcome (including
+// refusals) and enforces that the named desk exists and can hold a session, but does not scope which desk a
+// spawn may land on (decided upstream via `SpawnTarget`) nor gate operator consent (already raised as an Allow/Deny row before the call reaches here).
 internal sealed class AssistantAgentGateway(
     CockpitViewModel cockpit,
     ISessionProfileStore profiles,
@@ -66,10 +47,9 @@ internal sealed class AssistantAgentGateway(
         }
         catch (Exception exception)
         {
-            // The tool would have caught this and told the assistant either way. What this adds is the record: a
-            // launch that threw is the refusal most worth having in the trail, and it is the one that would
-            // otherwise never reach it. The reason is passed on rather than summarised — the operator reading the
-            // flyout later has no other trace of it.
+            // A launch that threw is the refusal most worth recording — it would otherwise never reach the
+            // trail. The reason is passed on rather than summarised — the operator reading the flyout later
+            // has no other trace of it.
             return await _RefuseSpawnAsync(request, workspaceName: null,
                 $"Starting that session failed: {exception.Message}", cancellationToken).ConfigureAwait(false);
         }
@@ -100,10 +80,8 @@ internal sealed class AssistantAgentGateway(
                     cancellationToken).ConfigureAwait(true);
             }
 
-            // AC-773: the project named by id, if any — looked up the one place a project id becomes a `Project`
-            // (`CockpitViewModel.FindProjectByIdAsync`), never re-derived here. An id that names nothing is refused
-            // before anything else is checked, same as an unknown workspace id above: a caller that named a project
-            // gets told the id was wrong rather than silently falling back to a folder guess.
+            // AC-773: the project named by id, if any — looked up via `CockpitViewModel.FindProjectByIdAsync`,
+            // never re-derived here. An unknown id is refused rather than silently falling back to a folder guess.
             Project? project = null;
             if (request.ProjectId is { Length: > 0 } requestedProjectId)
             {
@@ -153,10 +131,9 @@ internal sealed class AssistantAgentGateway(
                     cancellationToken).ConfigureAwait(true);
             }
 
-            // Checked before anything starts, and against the provider's own declaration rather than a list kept here
-            // (AC-648/AC-649): a key this provider never heard of is refused with a reason instead of reaching the CLI
-            // as a flag it does not take. `permission-mode` is refused whatever the provider says — see
-            // `SpawnOptionOverrides.NeverOverridable`.
+            // AC-648/AC-649: checked against the provider's own declared capabilities, not a list kept here — an
+            // unknown key is refused with a reason instead of reaching the CLI as a flag it doesn't take.
+            // `permission-mode` is always refused — see `SpawnOptionOverrides.NeverOverridable`.
             var registration = profile.ProviderConfig is PluginProviderConfig plugin
                 ? pluginProviders.Resolve(plugin.ProviderId)
                 : null;
@@ -240,12 +217,9 @@ internal sealed class AssistantAgentGateway(
                     .ConfigureAwait(true);
             }
 
-            // Looked up in Sessions and NOT through FindSession, which also reaches embedded panes — an Autopilot
-            // step, a plugin run. Those are sessions but not panes the cockpit closes: CloseSessionAsync starts with
-            // Sessions.IndexOf and returns silently for anything it does not hold. Going through FindSession would
-            // therefore have reported a stop that never happened — trail entry, spoken confirmation and all — while
-            // the session kept running and kept spending. The assistant's own list_sessions shows these panes, so it
-            // is a pane id the model will genuinely offer; it gets a reason instead of a lie.
+            // Looked up in Sessions, NOT via FindSession (which also reaches embedded panes like an Autopilot
+            // step): CloseSessionAsync silently no-ops for panes it doesn't hold, so going through FindSession
+            // would report a stop that never happened while the session kept running and spending.
             if (cockpit.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal)) is not { } session)
             {
                 var elsewhere = cockpit.FindSession(paneId);
@@ -296,10 +270,9 @@ internal sealed class AssistantAgentGateway(
                 return AgentMessageResult.Refused("That is my own session. There is nobody on the other end of a message I send myself.");
             }
 
-            // The agent line's own answer to "is this a live agent session, and does it hear at turn start" — asked of
-            // the addressee's pane rather than of a caller's desk, which is what makes this reach every desk without
-            // changing what any other sender may reach. A pane that is not an agent session (a plain terminal), or
-            // that no longer exists, resolves to nothing here.
+            // Asked of the addressee's own pane rather than a caller's desk, so this reaches every desk without
+            // changing what any other sender may reach. A pane that isn't an agent session (a plain terminal),
+            // or no longer exists, resolves to nothing here.
             if (await agents.GetWorkspaceSnapshotAsync(paneId).ConfigureAwait(false) is not { } snapshot
                 || snapshot.Panes.FirstOrDefault(pane => string.Equals(pane.PaneId, paneId, StringComparison.Ordinal)) is not { } recipient)
             {
@@ -367,10 +340,9 @@ internal sealed class AssistantAgentGateway(
                 return await _RefusePromptAsync(paneId, $"'{session.Title}' is a terminal pane, not an agent session.", cancellationToken).ConfigureAwait(true);
             }
 
-            // Asked before handing anything over, not after: a pane that is still coming up holds exactly one brief,
-            // so a second arriving first would be refused by SubmitPromptWhenReady and reported here as "held" —
-            // about a brief belonging to the earlier call. The model is told plainly instead, which is also what
-            // stops delivered:false from reading as an invitation to try again.
+            // Asked before handing anything over: a pane still coming up holds exactly one brief, so a second
+            // arriving first would otherwise be held by SubmitPromptWhenReady and misread as belonging to this
+            // call. The model is told plainly, so delivered:false doesn't read as an invitation to retry.
             if (session.HasPromptWaitingToBeDelivered)
             {
                 return await _RefusePromptAsync(
@@ -475,13 +447,9 @@ internal sealed class AssistantAgentGateway(
     public Task<IReadOnlyList<AssistantWorkspaceRow>> ListWorkspacesAsync(CancellationToken cancellationToken = default) =>
         _OnUiThreadAsync(() => Task.FromResult(_ListWorkspaces()));
 
-    // The profiles, straight off the store. No UI thread: this reads a file, not the cockpit's collections.
-    //
-    // *What each profile is configured to run at comes with it* (AC-647). The alternative — the assistant reading
-    // `cockpit.json` — is not a route it has at all: it holds MCP tools and nothing else. What is reported is the
-    // provider's own declared schema (AC-649) filled in from the profile, so Claude's permission mode/model/effort
-    // and Codex's sandbox each arrive in their own vocabulary rather than as a settings dump with three Claude-shaped
-    // slots to force them into.
+    // AC-647/AC-649: profiles straight off the store (no UI thread — this reads a file, not the cockpit's
+    // collections). Each profile's config is reported via the provider's own declared schema, so Claude's
+    // permission mode/model/effort and Codex's sandbox arrive in their own vocabulary, not a generic dump.
     public async Task<IReadOnlyList<AssistantProfileRow>> ListProfilesAsync(CancellationToken cancellationToken = default)
     {
         var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -523,23 +491,9 @@ internal sealed class AssistantAgentGateway(
         }).ConfigureAwait(false);
     }
 
-    // Closes an empty sessions desk. Narrower than the tab's ✕, deliberately: it refuses that button's three
-    // reasons, refuses every desk that is not a sessions desk, and does the confirmation dialog's job by refusing
-    // rather than by asking.
-    // *Why the emptiness check is here and not left to `CockpitViewModel.CloseWorkspaceAsync`.*
-    // That method closes the desk *and everything on it*, which is right behind a dialog that first names
-    // what is about to be stopped. There is no dialog on this route: what the operator approves is an Allow row
-    // naming a desk, and taking three running sessions with it is work nobody asked for and nothing showed them.
-    // So the sessions go first, through `stop_agent` and its own approval each, and this refuses until there
-    // are none — at which point, on a sessions desk, the two paths do the same thing to the same desk.
-    //
-    // *Only a sessions desk, and this is where the two paths part.* A dashboard's occupants are widgets and a
-    // plugin desk's are whatever that plugin holds; neither is counted below, so both read as empty and were
-    // closed on the spot, taking an arrangement nobody was shown and nothing can rebuild. The ✕ path names what
-    // goes ("It holds N widgets… this cannot be undone") because it has a dialog to name it in; a consent card
-    // cannot enumerate what is about to be lost, so the honest answer here is not a better warning but a smaller
-    // tool. Whole categories are refused rather than emptiness being redefined per type: what "empty" means on a
-    // desk type this tool has never seen is not something it can be written to know.
+    // AC-1013: closes an empty sessions desk only (narrower than the tab's ✕, which closes the desk and
+    // everything on it behind a dialog naming what's lost). No dialog here, so sessions must be stopped first via
+    // `stop_agent`; non-sessions desks are refused wholesale since a consent card can't enumerate their contents.
     public Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) =>
         _OnUiThreadAsync(async () =>
         {
@@ -578,12 +532,9 @@ internal sealed class AssistantAgentGateway(
             return WorkspaceRemovalResult.Removed(workspace.Name);
         });
 
-    // How many sessions closing this desk would take with it, by the same placement rule the roster reports —
-    // so the number the operator just heard from `list_workspaces` is the number this refuses on.
-    // Wider than that roster in one way, deliberately: it does not filter on `ShowPluginHeaderItems`. A plain
-    // terminal is not an agent session and so is not counted there, but the close would end it just the same, and a
-    // pty killed by a call about a desk is the loss this refusal exists to prevent. The assistant's own pane is
-    // excluded by `SessionWorkspacePlacement` itself, which resolves it to no desk at all.
+    // How many sessions closing this desk would take with it, using the same placement rule `list_workspaces`
+    // reports by. Wider than that roster deliberately: not filtered on `ShowPluginHeaderItems`, so a plain
+    // terminal (not counted in the roster) is still counted here — the close would kill its pty just the same.
     private int _CountEverythingOn(string workspaceId)
     {
         var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(cockpit.Workspaces.Settings);
@@ -596,10 +547,8 @@ internal sealed class AssistantAgentGateway(
         var settings = cockpit.Workspaces.Settings;
         var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(settings);
 
-        // Counted the way the read path places sessions (AC-543), not by trusting each session's own stamp: a session
-        // the placement rule puts on the fallback desk is on that desk to everyone else, and a roster that disagreed
-        // with the sidebar would be a roster nobody could act on. The assistant is excluded — it is the one asking,
-        // and it sits on no desk to be counted on.
+        // AC-543: counted via the same placement rule the read path uses, not each session's own stamp, so this
+        // roster never disagrees with the sidebar. The assistant is excluded — it is the one asking.
         var counts = cockpit.AllSessions()
             .Where(session => session.ShowPluginHeaderItems
                 && !string.Equals(session.PaneId, AssistantIdentity.PaneId, StringComparison.Ordinal))
@@ -796,18 +745,9 @@ internal sealed class AssistantAgentGateway(
         return WorktreeHandoverResult.Refused(reason);
     }
 
-    // AC-798: the "Add to my projects…" dialog's own route, minus the window. Every step is the dialog's —
-    // `PrepareBindingAsync`'s one-time read, `SharedProjectBindingDialogViewModel`'s composition, `ToProject`, and
-    // `ProjectsViewModel`'s own persisting — so what lands in `cockpit.json` is what the operator would have got by
-    // clicking, rather than a second assembly of the same fields that can drift from it.
-    //
-    // *What this refuses, it refuses with the question in it.* The folder, the profile and a machine-specific
-    // resource row's reference are the three things the shared definition deliberately does not carry, and a value
-    // invented here would be a fact about this machine that nobody chose. So each missing one comes back as a
-    // sentence the assistant can put to the operator — not a default, and not a blank field quietly dropped on save.
-    //
-    // *It does not clone* (criterion 7): the folder has to exist. A clone writes a checkout to a path the assistant
-    // picked, which is a different kind of act from registering a project, and it is not on this door.
+    // AC-798: the "Add to my projects…" dialog route minus the window, reusing the dialog's own composition and
+    // persisting so `cockpit.json` matches what clicking would have produced. Folder/profile/resource reference
+    // are never invented — each missing one is refused with a question for the operator; does not clone (folder must already exist).
     public async Task<AssistantProjectBindResult> BindSharedProjectAsync(
         string sharedProjectId,
         string sourceDirectory,
@@ -821,10 +761,9 @@ internal sealed class AssistantAgentGateway(
                 "No connection on this machine offers shared projects, so there is nothing to add from.");
         }
 
-        // The registry and the visibility filter in one UI-thread hop. `SharedProjectSourceRegistry` keeps a plain
-        // dictionary that a plugin's own settings screen adds to on that thread, so enumerating `Sources` from this
-        // Kestrel request thread is a torn read waiting to happen — the same reason `AssistantReadGateway` reads it
-        // there rather than where the call arrives.
+        // Registry and visibility filter read in one UI-thread hop: `SharedProjectSourceRegistry` is a plain
+        // dictionary mutated on the UI thread by plugin settings screens, so reading `Sources` from this Kestrel
+        // request thread would risk a torn read — same reason `AssistantReadGateway` reads it there too.
         var (sources, boundIds, hiddenIds) = await _OnUiThreadAsync(() =>
         {
             var (bound, hidden) = cockpit.Projects.SharedProjectVisibilityFilterIds();
@@ -911,10 +850,9 @@ internal sealed class AssistantAgentGateway(
             .CreateAsync(id, source.SourceName, source, profiles, cancellationToken).ConfigureAwait(false);
         if (viewModel is null)
         {
-            // The definition read failed — unreachable, signed out, or the project gone between list_shared_projects
-            // and this call. The source's own contract says that arrives as `SharedProjectBindingResult.Failed`
-            // rather than as an exception, and it is passed on rather than summarised: the assistant is about to
-            // read it out, and "could not add it" tells the operator nothing they can act on.
+            // Definition read failed — unreachable, signed out, or the project gone since list_shared_projects.
+            // Arrives as `SharedProjectBindingResult.Failed`, not an exception, and is passed on rather than
+            // summarised: "could not add it" tells the operator nothing they can act on.
             return AssistantProjectBindResult.Refused(error ?? "Could not read this project's definition.");
         }
 
@@ -971,11 +909,9 @@ internal sealed class AssistantAgentGateway(
             return AssistantProjectCreateResult.Refused(unknownFieldError);
         }
 
-        // AC-799 review finding 3: validated by label, case-insensitively, against what `list_profiles` actually
-        // reports — the same rule `SpawnAsync` and `BindSharedProjectAsync` already hold `profile` to. Left
-        // unchecked, this would have been a second, looser validation surface than either: the dialog's own
-        // `SelectedProfileLabel` carries no such guard itself — it exists so a human can only ever pick from a
-        // bound combo box, a guarantee this call does not get for free by setting the property directly.
+        // AC-799 review finding 3: validated by label against `list_profiles`, same rule `SpawnAsync` and
+        // `BindSharedProjectAsync` hold `profile` to. Needed because `SelectedProfileLabel` carries no guard of
+        // its own — normally a human can only pick from a bound combo box, a guarantee lost when set directly.
         if (!string.IsNullOrWhiteSpace(defaultProfileLabel))
         {
             var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -1118,15 +1054,9 @@ internal sealed class AssistantAgentGateway(
         return $"'{string.Join("', '", unknown)}' is not a plugin field this cockpit knows. The registered keys are: {knownList}.";
     }
 
-    // Fills the machine-specific resource rows (AC-246) the shared definition names but carries no value for: the
-    // role and the label travel, the reference never does. One reference each, in the order the definition lists
-    // them, or a refusal naming every row — positional rather than keyed because two rows may carry the same label
-    // and a key that collides would fill one row twice and leave the other blank.
-    //
-    // A blank row is not an error the dialog reports either; it is simply dropped on save. That is fine behind a
-    // window where the operator sees the empty box they left — here nobody would see it, and the project would come
-    // out quietly missing a resource. Hence: refused, with the rows spelled out. Returns null when there was
-    // nothing to ask about or everything was answered.
+    // AC-246: fills machine-specific resource rows the shared definition names but carries no reference for.
+    // Positional, not keyed by label, since two rows can share a label. A blank row is silently dropped by the
+    // dialog (fine when the operator sees the empty box); here nobody would, so it's refused with rows spelled out.
     private static string? _FillResourceRows(SharedProjectBindingDialogViewModel viewModel, IReadOnlyList<string>? references)
     {
         var rows = viewModel.ResourceRows;
