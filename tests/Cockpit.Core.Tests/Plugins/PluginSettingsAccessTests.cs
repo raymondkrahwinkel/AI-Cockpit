@@ -48,8 +48,8 @@ public class PluginSettingsAccessTests
         sink.Received(1).AddPluginSettings("test-plugin", "Test Plugin", Arg.Any<Func<Control>>(), "Assistant Plugins");
     }
 
-    // AC-1030 criterion 4: a plugin binary compiled before the category overload existed only implements the
-    // one-arg AddSettings — the interface default keeps it loading by falling back to that.
+    // AC-1030: a plugin binary compiled before the category overload existed only implements the one-arg
+    // AddSettings — the interface default keeps it loading by falling back to that.
     [Fact]
     public void AddSettings_WithACategory_OnAnOlderHost_FallsBackToTheCategorylessOverload()
     {

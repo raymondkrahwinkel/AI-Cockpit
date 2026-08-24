@@ -143,9 +143,9 @@ public partial class OptionsDialog : Window
 
     private const string _DefaultPluginCategory = "PLUGINS";
 
-    // Builds one nav group per declared plugin-settings category (criterion 1/2), appended into the same
-    // CategoryNav/CategoryContent the static categories use, so the sidebar stays one scroll region and
-    // selection scope (criterion 6). Skipped entirely when nothing is installed (criterion 10).
+    // Builds one nav group per declared plugin-settings category, appended into the same CategoryNav/
+    // CategoryContent the static categories use, so the sidebar stays one scroll region and selection scope.
+    // Skipped entirely when no plugin registered a settings view.
     private void _BuildPluginCategories(CockpitViewModel cockpit)
     {
         if (cockpit.PluginOptionsRows.Count == 0)
