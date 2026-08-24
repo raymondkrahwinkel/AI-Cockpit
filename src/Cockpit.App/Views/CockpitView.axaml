@@ -567,10 +567,15 @@
                                      filled card with an accent left-edge, inactive ones stay flat against
                                      the sidebar. Background/border are NOT set inline here — a local value
                                      would beat the style setters and both rows would look identical. -->
+                                <!-- AC-1063: tooltip on the row, not the statusline TextBlock — that block is
+                                     IsVisible-gated on a non-empty statusline, so an empty one has no hover target.
+                                     Also the only way to read the hard-clipped title in full. Repeated as HelpText. -->
                                 <Border Classes="sessionItem" Margin="0,0,0,4" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
                                         Classes.active="{Binding IsSelected}"
                                         Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                         Cursor="Hand"
+                                        ToolTip.Tip="{Binding SidebarCardTooltip}"
+                                        AutomationProperties.HelpText="{Binding SidebarCardTooltip}"
                                         PointerPressed="OnSessionItemPointerPressed">
                                     <Border.ContextMenu>
                                         <!-- Each item's DataContext is the session the menu was opened on; the command

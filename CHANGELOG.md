@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: hovering a session card in the sidebar now shows its full title and status line in a tooltip — both get
+  cut off on the card itself at the default sidebar width, the title with no ellipsis at all, so this is the only
+  way to read either in full. The same text is also available to screen readers without hovering.
 - added: a tool call a session let go of to the background now says so in the transcript, and says how it is
   doing — "Background · running" while it is still going, "done" once it finishes, "failed" when it came back an
   error. A call the session is actually waiting on carries no badge at all, so the two are no longer the same

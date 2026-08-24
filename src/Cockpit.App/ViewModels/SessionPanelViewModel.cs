@@ -85,6 +85,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     // Display title for this session's sidebar/grid panel, e.g. "Session 1". Set by `CockpitViewModel`.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SidebarCardTooltip))]
     private string _title = "Session";
 
     // Whether `Title` is still one the cockpit composed itself — "&lt;profile&gt; - 3", the project's
@@ -102,7 +103,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // hides it. Distinct from `SessionStatusLabel` (the derived Idle/Busy/Needs-attention state) and
     // from the provider's own status bar: this one is set from outside — the agent via MCP, or a workflow.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SidebarCardTooltip))]
     private string _statusline = string.Empty;
+
+    // AC-1063: the sidebar card clips both the title (no ellipsis, hard-clipped by the panel edge) and the
+    // statusline (ellipsis, but ~20-25 chars at the default width) — this is the only place either reads in full.
+    // Null, not "", when there is nothing beyond the title: an empty ToolTip.Tip still renders an empty frame.
+    public string? SidebarCardTooltip => string.IsNullOrEmpty(Statusline)
+        ? (string.IsNullOrEmpty(Title) ? null : Title)
+        : Title + Environment.NewLine + Statusline;
 
     // The session's own connection/activity line (e.g. "Connected (12 tools, …)", "Running", "TTY mode") — the
     // header's activity text when no `Statusline` is set. On the shared base so the one SessionHeaderBar
