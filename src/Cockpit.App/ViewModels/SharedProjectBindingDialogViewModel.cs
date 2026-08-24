@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -235,7 +236,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
             DefaultProfileLabel = SelectedProfileLabel,
             BehaviorPrompt = _behaviorPrompt,
             IsolateInWorktreeByDefault = _isolateInWorktreeByDefault,
-            LogoPath = _WriteTempLogoFileOrNull(),
+            LogoPath = TempLogoFile.WriteOrNull(_logoBytes),
             McpOverlay = overlay,
             Resources =
             [
@@ -248,21 +249,6 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
             // AC-762: the ◆ badge's fallback for a cold start — see Project.SharedSourceName.
             SharedSourceName = SourceName,
         };
-    }
-
-    // AC-763: ProjectsViewModel._WithStoredLogoAsync only reads a local path or URL, not raw bytes — this
-    // bridges the downloaded logo into that shape instead of widening IProjectLogoStore for one caller.
-    // ponytail: the temp file is never deleted — a few KB in the OS temp folder, not a growing leak.
-    private string? _WriteTempLogoFileOrNull()
-    {
-        if (_logoBytes is not { Length: > 0 } bytes)
-        {
-            return null;
-        }
-
-        var path = Path.Combine(Path.GetTempPath(), $"cockpit-shared-logo-{Guid.NewGuid():n}.png");
-        File.WriteAllBytes(path, bytes);
-        return path;
     }
 
     [RelayCommand]

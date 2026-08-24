@@ -303,6 +303,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a project logo added to a shared Depot project after this machine already bound it now arrives on its
+  own, picked up the next time the background sync check runs (every 15 minutes, or "Sync now"). It never
+  overwrites a logo you already set locally.
+
 - fixed: a Slack message sent with a file attached no longer vanishes on the way in. Slack marks any message
   carrying a file as a special kind of message, and the plugin was throwing all of those away together with the
   genuine bot and system traffic — so the sentence you wrote under a screenshot never arrived either, with no
