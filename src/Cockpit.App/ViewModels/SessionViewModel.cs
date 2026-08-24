@@ -351,6 +351,28 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         OnPropertyChanged(nameof(HasBackgroundTasks));
         OnPropertyChanged(nameof(BackgroundTaskCount));
         OnPropertyChanged(nameof(BackgroundTaskSummary));
+
+        foreach (var row in _backgroundToolRows)
+        {
+            row.IsBackgroundTaskLive = liveIds.Contains(row.BackgroundTaskId!);
+        }
+    }
+
+    // The transcript rows whose tool call named a background task (AC-1056), so each one's badge can follow the
+    // same ledger the pop-out above does. Only ever holds rows that carry an id, which is why the read is a `!`.
+    private readonly List<TranscriptEntryViewModel> _backgroundToolRows = [];
+
+    // Starts following a row whose just-arrived result announced a background task, seeding it from the current
+    // ledger: the task is normally already reported by the time its own result lands.
+    private void _TrackBackgroundToolRow(TranscriptEntryViewModel row)
+    {
+        if (row.BackgroundTaskId is null)
+        {
+            return;
+        }
+
+        _backgroundToolRows.Add(row);
+        row.IsBackgroundTaskLive = _backgroundTasks.Any(task => task.TaskId == row.BackgroundTaskId);
     }
 
     // Adds/removes/updates rows in one kind's group to match `tasks`, keeping the
@@ -1094,7 +1116,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             InputJson = "{\"command\":\"dotnet build\"}",
             IsPendingPermission = true,
         });
-
 
         _TrackPendingAttachments();
 
@@ -2533,6 +2554,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     if (nestedToolUseEntry is not null)
                     {
                         nestedToolUseEntry.SetResult(toolResult.Content, toolResult.IsError);
+                        _TrackBackgroundToolRow(nestedToolUseEntry);
                     }
                     else
                     {
@@ -2552,6 +2574,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     // section beneath that call, instead of a detached row that loses which call it
                     // belongs to — the pain with parallel tool calls.
                     toolUseEntry.SetResult(toolResult.Content, toolResult.IsError);
+                    _TrackBackgroundToolRow(toolUseEntry);
                 }
                 else
                 {

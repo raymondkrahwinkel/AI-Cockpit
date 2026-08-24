@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Sessions;
@@ -114,6 +115,26 @@ public partial class TranscriptEntryViewModel : ViewModelBase
             return summary.Length == 0 ? name : $"{name}  ·  {summary}";
         }
     }
+
+    // --- Background tool calls (AC-1056) ----------------------------------------------------------------------
+
+    // True for a call that runs outside the turn: `Bash` asked for it up front with `run_in_background`, or an
+    // MCP tool was moved there once it overran. Both name a task id in their result, which is the same id the
+    // session's `BackgroundTasksChanged` ledger reports on — so the badge can say "still running", not just "was".
+    public bool IsBackgroundTool => _RequestsBackground(InputJson) || BackgroundTaskId is not null;
+
+    // The provider's id for this call's background task, read back out of the result line announcing the
+    // hand-off. Null until that result arrives, and on every ordinary call.
+    public string? BackgroundTaskId { get; private set; }
+
+    // Set by the owning session from its latest background-task snapshot: true while this row's task is still in it.
+    [ObservableProperty]
+    private bool _isBackgroundTaskLive;
+
+    // Running until the ledger stops reporting the task; failed the moment the call itself came back an error.
+    public string BackgroundStatusText => IsResultError
+        ? "Background · failed"
+        : IsBackgroundTaskLive || !HasResult ? "Background · running" : "Background · done";
 
     // The tool result coupled to this tool-use row by tool_use_id (L14), or null until it arrives.
     [ObservableProperty]
@@ -448,7 +469,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     public void SetResult(string content, bool isError)
     {
         IsResultError = isError;
+        BackgroundTaskId = _BackgroundTaskId(content);
         ResultText = content;
+        OnPropertyChanged(nameof(IsBackgroundTool));
     }
 
     [RelayCommand]
@@ -467,7 +490,12 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasResult));
         OnPropertyChanged(nameof(ResultDisplayText));
         OnPropertyChanged(nameof(ResultIsCodeLike));
+        OnPropertyChanged(nameof(BackgroundStatusText));
     }
+
+    partial void OnIsResultErrorChanged(bool value) => OnPropertyChanged(nameof(BackgroundStatusText));
+
+    partial void OnIsBackgroundTaskLiveChanged(bool value) => OnPropertyChanged(nameof(BackgroundStatusText));
 
     // --- Reading levels (AC-138) ------------------------------------------------------------------------------
     // The current reading level of the session this row belongs to, pushed onto every row by the session view model
@@ -648,6 +676,47 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         }
 
         return string.Empty;
+    }
+
+    // Whether the call asked to be run outside the turn (AC-1056) — `Bash`'s own `run_in_background` flag,
+    // read off the same input JSON the header hint above comes from.
+    private static bool _RequestsBackground(string? inputJson)
+    {
+        if (string.IsNullOrWhiteSpace(inputJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(inputJson);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("run_in_background", out var flag)
+                && flag.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    // The two sentences a hand-off to the background is announced with, in the tool result itself: "Command
+    // running in background with ID: <id>" (Bash) and "moved to the background as task <id>" (an MCP tool that
+    // overran, AC-1053). Measured against the real CLI rather than taken from documentation.
+    private static readonly Regex BackgroundTaskIdPattern = new(
+        @"background\s+(?:with\s+ID:\s*|as\s+task\s+)([A-Za-z0-9_-]+)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    // The provider's background-task id from a result that announces one, else null.
+    private static string? _BackgroundTaskId(string? resultText)
+    {
+        if (string.IsNullOrEmpty(resultText))
+        {
+            return null;
+        }
+
+        var match = BackgroundTaskIdPattern.Match(resultText);
+        return match.Success ? match.Groups[1].Value : null;
     }
 
     // Pretty-prints a JSON result for readability; leaves anything else untouched.
