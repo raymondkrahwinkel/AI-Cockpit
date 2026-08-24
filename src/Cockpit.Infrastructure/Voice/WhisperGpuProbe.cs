@@ -3,17 +3,9 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// Answers whether this machine can actually use a GPU backend, before `WhisperRuntimeCache`
-// spends hundreds of megabytes fetching its runtime.
-//
-// The CUDA probe mirrors Whisper.net's own `CudaHelper` (read at tag 1.9.1) deliberately: it decides
-// which runtimes it is willing to load, so any disagreement here means we either fetch a runtime it will
-// refuse or skip one it would have used. It pairs `WhisperRuntimeBackend.Cuda` with CUDA major
-// 13 and `WhisperRuntimeBackend.Cuda12` with major 12, and rejects a mismatch — which is why
-// both exist rather than one: CUDA-13 natives on a CUDA-12.8 host fall silently back to CPU.
-//
-// Probing before the download is not circular: cudart is not in the runtime packages (they hold only the
-// ggml/whisper natives), it comes from a system CUDA install.
+// AC-1013: Answers whether this machine can actually use a GPU backend before `WhisperRuntimeCache` spends
+// hundreds of megabytes fetching a runtime. The CUDA probe deliberately mirrors Whisper.net's own `CudaHelper`
+// (tag 1.9.1: Cuda↔major 13, Cuda12↔major 12, mismatch rejected) so we never fetch/skip against its own choice.
 internal static class WhisperGpuProbe
 {
     private const int CudaSuccess = 0;
@@ -92,10 +84,9 @@ internal static class WhisperGpuProbe
             // is what decides whether whatever it resolves to is the one we want.
             : [$"libcudart.so.{majorVersion}", "libcudart.so"];
 
-    // Whether a Vulkan loader is installed. Whisper.net probes nothing for Vulkan — it just tries the natives —
-    // so this is our own bar, and a deliberately low one: it keeps a machine with no GPU drivers at all from
-    // fetching 151 MB, but a loader present without a usable device still ends up on the CPU floor. Answering
-    // that properly needs a VkInstance, which is a lot of interop to save one download on a rare machine.
+    // AC-1013: Whether a Vulkan loader is installed — our own deliberately low bar since Whisper.net probes
+    // nothing for Vulkan. Keeps a driverless machine from fetching 151 MB; a loader without a usable device
+    // still ends up on the CPU floor (a proper VkInstance check was rejected as too much interop for a rare case).
     private static IEnumerable<string> _VulkanLibraryNames() =>
         OperatingSystem.IsWindows() ? ["vulkan-1"] : ["libvulkan.so.1", "libvulkan.so"];
 

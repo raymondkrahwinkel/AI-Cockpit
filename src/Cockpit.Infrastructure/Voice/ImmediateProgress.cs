@@ -1,9 +1,8 @@
 namespace Cockpit.Infrastructure.Voice;
 
-// Reports on the thread that called `Report`. `Progress{T}` posts to a captured
-// `SynchronizationContext` instead, which reorders steps against the code raising them and turns
-// "did anything report?" into a race with the caller reading it. The voice events are documented as firing off
-// the UI thread anyway — subscribers marshal themselves — so there is nothing here for a context to buy.
+// Reports synchronously on the calling thread, unlike Progress<T> which posts to a captured
+// SynchronizationContext (reordering vs. the caller). Voice events already document firing off the UI
+// thread with subscribers marshaling themselves, so there is nothing here for a context to buy.
 internal sealed class ImmediateProgress<T>(Action<T> report) : IProgress<T>
 {
     public void Report(T value) => report(value);

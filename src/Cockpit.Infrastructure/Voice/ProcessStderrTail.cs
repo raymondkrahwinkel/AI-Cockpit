@@ -1,13 +1,8 @@
 namespace Cockpit.Infrastructure.Voice;
 
-// A bounded tail of a child process's stderr (AC-534): the last `MaxLines` lines, capped at
-// `MaxChars` characters in total, so a chatty native runtime (whisper.cpp, CUDA) can never grow this
-// unbounded. A line longer than the whole budget is cut to fit rather than dropped.
-// Feed it from a `Process.ErrorDataReceived` handler registered after `BeginErrorReadLine` — that
-// combination is what keeps the OS pipe buffer (~64 KB on Linux) draining continuously, since an unread
-// redirected stream blocks the writing child once its buffer fills. This type only remembers; it never logs,
-// so routine stderr chatter never floods the log the way the idle-reaper noise did (AC-533) — a caller reads
-// `Snapshot` only once there is an actual failure to explain.
+// AC-534: Bounded tail of a child process's stderr (last MaxLines, capped MaxChars) so a chatty native
+// runtime (whisper.cpp, CUDA) can't grow this unbounded. Feed it from ErrorDataReceived after
+// BeginErrorReadLine to keep draining the OS pipe. Only remembers, never logs (AC-533) — read Snapshot on failure.
 internal sealed class ProcessStderrTail
 {
     internal const int MaxLines = 20;
@@ -31,10 +26,9 @@ internal sealed class ProcessStderrTail
             return;
         }
 
-        // A single line can be longer than the entire budget — a native runtime that dumps a whole state on one
-        // line is exactly the case this type exists for. Cut it to fit instead of letting the eviction loop below
-        // drop it: evicting to get under the cap would throw away the only line that had the answer in it, and the
-        // lines before it as well, leaving an empty tail at the one moment it was supposed to explain something.
+        // A single line can exceed the whole budget (a native runtime dumping full state on one line) — cut it
+        // to fit rather than let the eviction loop drop it, which would throw away the one line with the
+        // answer and the lines before it, leaving an empty tail exactly when it needed to explain something.
         if (line.Length > MaxChars)
         {
             line = string.Concat(line.AsSpan(0, MaxChars - TruncationMarker.Length), TruncationMarker);

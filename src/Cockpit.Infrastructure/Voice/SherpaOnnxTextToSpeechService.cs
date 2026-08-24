@@ -7,12 +7,9 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// `ITextToSpeechService` backed by sherpa-onnx running the multilingual, multi-speaker
-// SupertonicTTS model. Registered as a singleton — in this single-user desktop cockpit the model is loaded
-// once and reused across every session and language, so no utterance pays the (real) load cost again. The
-// model is downloaded and cached on first use via `SupertonicModelCache`, mirroring the Whisper
-// model's lazy download. One voice covers every language: the speaker (timbre) is a fixed sid and the
-// language is passed per utterance as generation data, so a mixed Dutch/English reply never switches voice.
+// ITextToSpeechService backed by sherpa-onnx running the multilingual, multi-speaker SupertonicTTS
+// model. Singleton — loaded once and reused across every session/language. Model is downloaded/cached
+// via SupertonicModelCache; one fixed-sid voice covers every language, so mixed-language replies never switch voice.
 internal sealed class SherpaOnnxTextToSpeechService(IVoiceSettingsStore settingsStore, ILogger<SherpaOnnxTextToSpeechService> logger)
     : ITextToSpeechService, ISingletonService
 {

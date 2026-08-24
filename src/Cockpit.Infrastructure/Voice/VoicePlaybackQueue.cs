@@ -9,13 +9,9 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// `IVoicePlaybackQueue`: a single background consumer synthesizes and plays queued
-// utterances one sentence at a time via `ITextToSpeechService` and
-// `IAudioPlaybackService`, so nothing ever overlaps. Registered as a singleton — one
-// shared queue for the whole (single-user) cockpit, so a push-to-talk hold on any session can
-// interrupt whichever session is currently talking (#35).
-// A classic constructor rather than the usual primary-constructor style (Code.md §12): the consumer
-// loop must be started once, from real constructor logic, not just capture dependencies.
+// AC-1013: `IVoicePlaybackQueue` — a single background consumer synthesizes and plays queued utterances one
+// sentence at a time so nothing overlaps; a singleton so a push-to-talk hold on any session can interrupt
+// whichever session is talking (#35). Classic (not primary) constructor: the consumer loop starts once, from real ctor logic.
 internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonService
 {
     private readonly ITextToSpeechService _textToSpeech;
@@ -154,10 +150,8 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
 
     private async Task _PlayUtteranceAsync(QueuedUtterance utterance, CancellationToken cancellationToken)
     {
-        // One sentence plays at a time, but the next is synthesized while the current one plays: sherpa-onnx
-        // synthesis is a CPU-bound call, and doing it strictly between plays left an audible gap (the synth time)
-        // between sentences, which read as unnatural. Prefetching one ahead overlaps synth with playback so the
-        // sentences run together.
+        // AC-1013: One sentence plays at a time but the next is synthesized while it plays — synthesizing
+        // strictly between plays left an audible gap, so prefetching one ahead overlaps synth with playback.
         var items = utterance.Segments
             .SelectMany(segment => segment.Sentences.Select(sentence => (Text: sentence, segment.Language)))
             .ToList();

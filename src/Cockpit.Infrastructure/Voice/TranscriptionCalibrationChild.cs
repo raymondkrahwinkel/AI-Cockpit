@@ -6,12 +6,9 @@ using Whisper.net.LibraryLoader;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// The line protocol between the calibration orchestrator (the desktop process) and a measurement child (AC-68).
-// Whisper.net loads its native runtime once per process, so each backend has to be timed in its own process; the
-// orchestrator spawns this exe with `BackendArgument`/`ModelsArgument` and reads these
-// prefixed JSON lines back off stdout. The prefix keeps them apart from the native loader's own chatter. A child
-// times one backend and, since the model is not pinned to the process the way the native is, every model in the
-// comma-separated list on that one backend — one factory build per model.
+// AC-1013: Line protocol between the calibration orchestrator and a measurement child (AC-68); Whisper.net
+// loads its native runtime once per process, so each backend is timed in its own child process via
+// `BackendArgument`/`ModelsArgument` and prefixed stdout lines (one child times every model on one backend).
 internal static class CalibrationChildProtocol
 {
     public const string BackendArgument = "--calibrate-backend";
@@ -85,11 +82,9 @@ internal sealed record CalibrationChildMessage(
     public const string KindError = "error";
 }
 
-// The measurement half of the calibration, run headless in a child process (AC-68). It forces one backend onto
-// Whisper.net, then for each requested model provisions and loads it, warms up, and times a few transcriptions of
-// a synthetic clip — printing a per-model median latency back to the orchestrator. Desktop hitch is *not*
-// measured here — the child has no desktop; the parent samples that while this runs, since GPU contention is
-// system-wide.
+// AC-1013: Measurement half of calibration (AC-68), run headless in a child process: forces one backend, loads
+// each requested model, warms up, and times transcriptions of a synthetic clip, printing median latency back.
+// Desktop hitch is deliberately not measured here since the child has no desktop; the parent samples it instead.
 internal static class TranscriptionCalibrationProbe
 {
     private const int SampleRate = 16000;
@@ -128,10 +123,9 @@ internal static class TranscriptionCalibrationProbe
                     using var factory = WhisperFactory.FromPath(modelPath);
                     await using var processor = factory.CreateBuilder().WithLanguage("auto").Build();
 
-                    // Warm up (untimed): the first pass primes caches — and forces the native runtime to actually
-                    // load, so the backend it settled on is known before we read it. Reading right after FromPath
-                    // can see LoadedLibrary before the first inference has resolved it, which on a GPU that quietly
-                    // fell back to the CPU tail would mislabel a CPU result as the requested GPU.
+                    // AC-1013: Warm up (untimed) to force the native runtime to actually load before we read it —
+                    // reading right after FromPath can see LoadedLibrary before inference resolved it, which on a
+                    // GPU that silently fell back to CPU would mislabel a CPU result as the requested GPU.
                     _Emit(new(CalibrationChildMessage.KindProgress, $"Warming up {model}…"));
                     await _DrainAsync(processor, clip, cancellationToken).ConfigureAwait(false);
                     loadedBackend ??= RuntimeOptions.LoadedLibrary is { } native ? WhisperRuntimeBackendMapping.FromNative(native) : null;

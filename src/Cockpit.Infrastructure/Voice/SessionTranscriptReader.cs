@@ -8,12 +8,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// The generic host-side transcript reader (Fase 4): a session's status tailer asks this by
-// `SessionProfile`, and it dispatches to the profile's provider plugin — whichever registered a
-// `TtyProviderRegistration.CreateTranscriptReader` — so the core carries no provider's transcript
-// format or location. A profile-less session runs the bundled default provider's TUI, mirroring
-// `TtySessionProviderResolver`; a profile whose provider records no transcript (or a local model
-// that has no TUI) yields nothing, and the caller simply gets no status from a transcript.
+// Fase 4: Generic host-side transcript reader — dispatches by SessionProfile to whichever provider
+// plugin registered TtyProviderRegistration.CreateTranscriptReader, so core carries no provider's
+// transcript format. Profile-less sessions use the bundled default provider (mirrors TtySessionProviderResolver).
 internal sealed class SessionTranscriptReader(
     IServiceProvider services,
     IPluginTtyProviderRegistry ttyProviderRegistry) : ISessionTranscriptReader, ISingletonService
@@ -83,10 +80,9 @@ internal sealed class SessionTranscriptReader(
             ? null
             : new TokenUsage(usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens);
 
-    // The provider plugin's own reader for this profile and the config JSON to read it with, or a null reader
-    // when the profile's provider registered none (a TUI that records nothing, or a local model with no TUI).
-    // The profile→provider mapping mirrors `TtySessionProviderResolver`: a profile-less session runs
-    // the bundled default provider, a plugin profile its own provider, and anything else has no TTY transcript.
+    // The provider plugin's reader for this profile plus its config JSON, or null when the provider
+    // registered none (a TUI that records nothing, or a local model with no TUI). Mapping mirrors
+    // TtySessionProviderResolver: profile-less → bundled default, plugin profile → its own provider.
     private (IPluginTranscriptReader? Reader, string ConfigJson) _ResolveReader(SessionProfile? profile)
     {
         var (providerId, configJson) = profile?.ProviderConfig switch

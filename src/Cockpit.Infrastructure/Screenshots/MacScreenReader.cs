@@ -6,16 +6,9 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// Reads the macOS desktop (AC-328): the displays from CoreGraphics, and their pixels from
-// `/usr/sbin/screencapture`, one display at a time.
-// Not ScreenCaptureKit. That framework is for a stream of frames and needs Objective-C interop for a still the
-// system binary already writes to a path. Shelling out also keeps the "the capture is finished" signal clean:
-// the process exits.
-//
-// There is no Mac here to run this against, so — as with `MacScreenLockMonitor` — the interop is kept thin
-// and written to the standard P/Invoke pattern, and everything that decides anything lives above the seam where
-// it is tested. What that leaves unverified is stated rather than glossed: `CGGetActiveDisplayList`'s
-// ordering matching `screencapture -D`'s numbering is the assumption this rests on.
+// AC-1013 (AC-328): Reads the macOS desktop via CoreGraphics (displays) and `/usr/sbin/screencapture` (pixels),
+// not ScreenCaptureKit, which is overkill for a still image the system binary already writes to a path.
+// Trimmed: unverified-on-real-Mac caveat; rests on `CGGetActiveDisplayList` ordering matching `screencapture -D`.
 [SupportedOSPlatform("macos")]
 internal sealed class MacScreenReader(ILogger<MacScreenReader> logger) : IMacScreenReader
 {

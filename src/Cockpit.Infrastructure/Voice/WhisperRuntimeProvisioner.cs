@@ -6,16 +6,9 @@ using Whisper.net.LibraryLoader;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// Settles which native runtime Whisper.net will load, and gets it onto disk, before *anything* builds a
-// Whisper factory. Runs once per process, whoever asks first.
-//
-// It exists because `RuntimeOptions` is read exactly once — when the natives are loaded — and the first
-// thing to load them is not the obvious one. A push-to-talk hold gates its audio through the VAD before it
-// transcribes, so `WhisperVadFactory` is what actually pulls the natives in; by the time the STT service
-// set its options, the loader had already picked, and it silently kept whatever it found next to the exe.
-// While the GPU runtimes were bundled that was harmless (the VAD found the right one anyway). The moment they
-// became a fetch, it meant the GPU was downloaded, cached, and never used — the machine just transcribed
-// slowly. Both callers now come through here first.
+// AC-1013: Settles which native runtime Whisper.net will load before anything builds a Whisper factory, because
+// `RuntimeOptions` is read once and the VAD factory (not the STT service) is actually first to load it.
+// Trimmed: the GPU-fetch regression story (bundled runtimes were harmless, a fetched GPU was silently unused).
 internal sealed class WhisperRuntimeProvisioner(
     IVoiceSettingsStore settingsStore,
     ITranscriptionAdvisor advisor,
@@ -48,10 +41,9 @@ internal sealed class WhisperRuntimeProvisioner(
             var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
             var progress = new ImmediateProgress<VoicePreparationProgress>(step => Preparing?.Invoke(this, step));
 
-            // "Auto" resolves to what this machine measured, if it has been calibrated (AC-68): the calibration
-            // times every usable backend and picks one with a CPU preference, so it overrules the rule-table guess
-            // with real numbers. Before any calibration, the recommendation is the best first guess. An explicit
-            // CPU/GPU choice is honoured as-is.
+            // "Auto" resolves to what this machine measured, if calibrated (AC-68); calibration times every
+            // usable backend and overrules the rule-table guess with real numbers. Before calibration, the
+            // recommendation is the best first guess. An explicit CPU/GPU choice is honoured as-is.
             var preference = settings.BackendPreference;
             if (preference is VoiceBackendPreference.Auto)
             {

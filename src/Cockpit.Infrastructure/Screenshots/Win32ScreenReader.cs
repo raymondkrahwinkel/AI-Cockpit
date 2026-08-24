@@ -5,17 +5,9 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// Reads the Windows desktop through GDI (AC-327): the whole virtual screen in one `BitBlt`, and the
-// monitors behind it from `EnumDisplayMonitors`.
-// `BitBlt` rather than DXGI Desktop Duplication. Duplication is the right tool for a stream of frames and
-// costs a native dependency plus a few hundred lines of device, output and acquire management; for one still of
-// a screen nobody is animating it lands on the same pixels. Both are equally subject to
-// `WDA_EXCLUDEFROMCAPTURE`, which the compositor enforces below either of them, so neither sees a window
-// that opted out.
-//
-// Coordinates come from the same enumeration as the pixels: the virtual-screen metrics say what is blitted, and
-// the monitor rectangles are in that same space, so the image and the layout cannot drift apart the way they
-// can where the layout has to be asked for separately (AC-326).
+// AC-1013 (AC-327): reads via GDI `BitBlt` + `EnumDisplayMonitors`, not DXGI Desktop Duplication — duplication
+// suits a frame stream and costs a native dependency, but lands on the same pixels for one still, and both
+// equally respect `WDA_EXCLUDEFROMCAPTURE`. Coordinates share the same enumeration as the pixels (see AC-326).
 [SupportedOSPlatform("windows")]
 internal sealed class Win32ScreenReader : IWindowsScreenReader
 {
@@ -107,10 +99,9 @@ internal sealed class Win32ScreenReader : IWindowsScreenReader
             var previous = SelectObject(memory, bitmap);
             var copied = BitBlt(memory, 0, 0, bounds.Width, bounds.Height, screen, bounds.X, bounds.Y, SrcCopy | CaptureBlt);
 
-            // Put the device context's own bitmap back. GetDIBits documents that its bitmap must not be
-            // selected into a device context — in practice Windows reads it anyway, so this is not what stands
-            // between here and a black image; what it does buy is the handle below actually being deletable,
-            // since a bitmap still selected into a context is not, and the leak accumulates per capture.
+            // Puts the device context's own bitmap back. Not needed against a black image (Windows reads it
+            // anyway despite GetDIBits' docs) but required for the handle below to be deletable — a bitmap
+            // still selected into a context is not, and the leak accumulates per capture.
             SelectObject(memory, previous);
             if (!copied)
             {

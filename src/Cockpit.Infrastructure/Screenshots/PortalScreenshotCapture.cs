@@ -6,24 +6,9 @@ using Cockpit.Infrastructure.Portal;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// Screen capture on Linux through the XDG desktop portal's `org.freedesktop.portal.Screenshot`
-// interface (AC-326) — the same route push-to-talk takes for its global hotkey, and for the same reason:
-// under Wayland an application cannot read the screen itself, the compositor does it. Asked with
-// `interactive: false`, so what comes back is every display and no UI — the selection is the cockpit's
-// own (AC-329) and the portal is only where the pixels come from.
-// AC-220 asked with `interactive: true` and got the backend's own dialog: on KDE a form with an Area
-// dropdown, a Delay spinner and a Take button, three clicks before anything was captured, and a different UI on
-// every desktop. Measured on Fedora 43 / Plasma 6.7 / Wayland, `interactive: false` prompts once for
-// consent and remembers it — 148 ms unattended afterwards, which is what a hotkey needs. The same call serves
-// X11, so one implementation covers both session types.
-//
-// The portal says nothing about what went into the image it writes, so the layout the contract asks for comes
-// from the desktop separately (`IDesktopDisplays`) and has to be reconciled with the image
-// afterwards — `ComposedCaptureLayout` does that and refuses when the two disagree.
-//
-// The connection is opened per capture rather than held: a screenshot is an occasional, operator-initiated
-// act, and a D-Bus connection kept open for the life of the app to serve it would outlive its usefulness by
-// hours. The hotkey service holds one because it has a subscription to keep alive; this has nothing to keep.
+// AC-1013 (AC-326): Screen capture on Linux via the XDG portal's Screenshot interface, asked with
+// `interactive: false` (AC-220's `interactive: true` cost three clicks through a per-desktop dialog).
+// Trimmed: 148ms Plasma 6.7 measurement; layout reconciliation via `ComposedCaptureLayout`; per-capture D-Bus rationale.
 internal sealed class PortalScreenshotCapture : IScreenshotCapture
 {
     private const string BusName = "org.freedesktop.portal.Desktop";
@@ -184,12 +169,8 @@ internal sealed class PortalScreenshotCapture : IScreenshotCapture
             cancellationToken).ConfigureAwait(false);
     }
 
-    // Reads the image the portal wrote and removes the file. The portal hands back a path rather than bytes,
-    // and nothing else ever comes back for it — leaving them is a screenshot of the operator's screen sitting
-    // in a cache directory for every capture they ever take.
-    // The removal is in a `finally`, not after the read. A read that throws or is cancelled is exactly the
-    // case where the file must still go: it is a picture of whatever was on their screen, and the failure that
-    // left it there is also the reason nobody would think to look for it.
+    // AC-1013: Reads the image the portal wrote (a path, not bytes) and removes it in a `finally` — the failure
+    // path is exactly when the file must still go, since leaving it means a screen capture sitting in a cache dir.
     private async Task<byte[]> _ReadAndDiscardAsync(string uri, CancellationToken cancellationToken)
     {
         if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed) || !parsed.IsFile)

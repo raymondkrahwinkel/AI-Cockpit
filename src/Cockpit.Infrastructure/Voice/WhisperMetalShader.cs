@@ -2,19 +2,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// Points ggml at the Metal shader on macOS — the one thing standing between an Apple Silicon Mac and its GPU.
-//
-// Metal is not a runtime we fetch: it rides inside the bundled CPU runtime
-// (`libggml-metal-whisper.dylib`). But that dylib compiles its kernels from `ggml-metal.metal` at
-// load time — Whisper.net ships no precompiled `default.metallib` — and it looks for that source in
-// three places, in order: `GGML_METAL_PATH_RESOURCES`, the app bundle's `Contents/Resources`, then
-// a bare relative path against the working directory.
-//
-// `Whisper.net.Runtime.Metal` (a transitive dependency of the CPU runtime, so it is already in the
-// publish) copies the shader next to the binary — which in a `.app` is `Contents/MacOS`, not
-// `Resources`, and a Finder-launched app's working directory is `/`. So both fallbacks miss, ggml
-// logs and drops to the CPU, and a Mac with a perfectly good GPU transcribes slowly for no visible reason.
-// Naming the directory we actually ship it in is what closes that.
+// AC-1013: Points ggml at the Metal shader on macOS, the one thing standing between an Apple Silicon Mac and
+// its GPU. Whisper.net compiles kernels from `ggml-metal.metal` at load time with no precompiled metallib, and
+// its two fallback search paths (`Contents/Resources`, working dir) both miss a Finder-launched `.app`, silently dropping to CPU.
 internal static class WhisperMetalShader
 {
     private const string PathVariable = "GGML_METAL_PATH_RESOURCES";

@@ -13,13 +13,9 @@ internal static class VoiceDownloadReporter
 
     private const int BufferSize = 81920;
 
-    // Streams `source` into `target`, reporting progress as it goes.
-    //
-    // `what`: What is being fetched, e.g. "Downloading speech model" — used verbatim in the text.
-    // `totalBytes`:
-    // The expected size when it is known (a Content-Length), so progress can be a fraction. Null reports
-    // megabytes instead: the ggml downloader hands out a stream with no length, and a bar that guesses its
-    // own position tells the operator something we do not know.
+    // Streams `source` into `target`, reporting progress as it goes. `what` is used verbatim in the text
+    // (e.g. "Downloading speech model"). `totalBytes` gives a fraction when known; null reports megabytes
+    // instead, since the ggml downloader's stream has no length to guess a position against.
     public static async Task CopyAsync(
         Stream source,
         Stream target,

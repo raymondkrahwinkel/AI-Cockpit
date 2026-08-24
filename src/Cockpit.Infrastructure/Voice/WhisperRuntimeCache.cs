@@ -9,15 +9,9 @@ using Whisper.net;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// Fetches the GPU runtime this machine can actually use on first dictation and caches it next to the model
-// cache — the same lazy shape as `WhisperModelCache`, and for the same reason: which GPU a
-// machine has is not knowable at build time, so bundling every runtime shipped ~748 MB of CUDA and Vulkan
-// natives to every install — 1.5 GB of publish, since a single-file build carried them twice — to serve
-// whichever one is right for that one machine.
-//
-// Only the first backend in the planner's order that `WhisperGpuProbe` calls usable is fetched —
-// not all three. Nothing usable, or the fetch fails, and the bundled CPU runtime carries transcription. A
-// missing GPU runtime is only ever slower, never fatal: nothing on this path may take dictation down with it.
+// AC-1013: Fetches the GPU runtime this machine can use on first dictation, caching it lazily like
+// `WhisperModelCache` since the GPU is unknowable at build time (bundling all would ship ~748 MB / 1.5 GB
+// published). Only the first usable backend is fetched; a missing/failed GPU runtime falls back to CPU, never fatal.
 internal static class WhisperRuntimeCache
 {
     // One client for the process, like `WhisperGgmlDownloader.Default` keeps: a client per download
@@ -45,14 +39,9 @@ internal static class WhisperRuntimeCache
 
     private static string WhisperLibraryFileName => OperatingSystem.IsWindows() ? "whisper.dll" : "libwhisper.so";
 
-    // Makes sure the best runtime this machine can use is on disk before the factory is built. Walks the
-    // planner's order and stops at the first backend that is both usable here and cached (or fetchable).
-    //
-    // Returns whether a fetched GPU runtime now lives in the cache for this order. The caller needs that answer
-    // because `RuntimeOptions.LibraryPath` may only point at the cache when there is genuinely something
-    // there: Whisper.net searches *only* that path once it is set, so pointing it at a cache that holds no
-    // runtime for the chosen order would hide the bundled CPU natives next to the exe and hard-fail dictation.
-    // A CPU-only resolution (or a GPU whose fetch failed) returns `false` — the bundled CPU is the floor.
+    // AC-1013: Ensures the best usable runtime is on disk before the factory builds, walking the planner's
+    // order to the first cached/fetchable backend. Returns whether a GPU runtime now lives in the cache — the
+    // caller needs this since `LibraryPath` pointed at an empty cache would hide the bundled CPU natives and hard-fail dictation.
     public static async Task<bool> EnsureAvailableAsync(
         IReadOnlyList<WhisperRuntimeBackend> order,
         WhisperHostPlatform platform,
@@ -123,10 +112,8 @@ internal static class WhisperRuntimeCache
 
         try
         {
-            // First use on this machine. Logged loudly for the same reason the model download is: the operator
-            // sees a slow transcription, and without this line there is nothing anywhere saying why. No size
-            // guess here — it runs from 35 MB (Vulkan) to 238 MB (CUDA 12), and the progress steps carry the
-            // real figure from the response's Content-Length a moment later.
+            // AC-1013: First use on this machine, logged loudly so a slow transcription has a visible reason.
+            // No size guess given here (35-238 MB range); progress steps carry the real Content-Length figure.
             logger?.LogInformation(
                 "Whisper {Backend} runtime is not cached yet; fetching {Package} {Version} from NuGet now (first use on this machine — transcription runs on the CPU until it lands)",
                 backend, package.PackageId, RuntimeVersion);

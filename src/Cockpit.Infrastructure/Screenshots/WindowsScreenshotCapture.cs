@@ -3,16 +3,9 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
-// Screen capture on Windows: the whole virtual screen read in one go, with no UI of its own (AC-327). The
-// selection is the cockpit's own (AC-329); this only supplies the pixels and says where each monitor's are.
-// AC-220 launched the `ms-screenclip:` overlay and then watched the clipboard for an image that was not
-// there before, because a protocol activation reports neither completion nor cancellation. Its own documentation
-// listed what that cost: a cancelled snip and a snip nobody got round to were indistinguishable, the operator's
-// clipboard was overwritten, any other image copied within the two-minute window was taken for the snip, and a
-// capture identical to what was already on the clipboard read as a cancel. None of that was a defect to fix —
-// it is what borrowing a fire-and-forget protocol costs. Reading the pixels here removes the whole class, along
-// with the timeout. Nothing here touches the clipboard any more, and since AC-341 nothing downstream does
-// either — a capture reaches a terminal session as a file the agent is handed the path to.
+// AC-1013: Windows capture reads the whole virtual screen in one go, no UI of its own (AC-327); selection is
+// the cockpit's own (AC-329). Replaces AC-220's `ms-screenclip:` clipboard-watch approach, whose fire-and-forget
+// protocol made cancel/timeout/overwrite indistinguishable; reading pixels directly removes that class of bug.
 internal sealed class WindowsScreenshotCapture(IWindowsScreenReader screen, ILogger<WindowsScreenshotCapture> logger)
     : IScreenshotCapture
 {
@@ -58,13 +51,9 @@ internal sealed class WindowsScreenshotCapture(IWindowsScreenReader screen, ILog
         });
     }
 
-    // Each monitor's place in the image. The blit starts at the virtual screen's own corner, which is not the
-    // origin — a second monitor to the left of the primary puts it at a negative x — so the image's coordinates
-    // are the desktop's shifted by that corner, and nothing else.
-    // No scaling enters into it. A per-monitor-aware process is given both the virtual-screen metrics and the
-    // monitor rectangles in real pixels, and the blit copies those same pixels, so a display's width on the
-    // desktop is its width in the image. That the two coordinate spaces coincide here is a fact about Windows,
-    // not an assumption the contract makes — under Wayland they do not (AC-326).
+    // AC-1013: each monitor's place in the image, shifted by the virtual screen's own (possibly negative)
+    // corner and otherwise unscaled — a per-monitor-aware process gets real pixels both for the blit and the
+    // monitor rects, so image and desktop coordinates coincide. That's a Windows fact, not true under Wayland (AC-326).
     private static IReadOnlyList<CapturedDisplay> _Place(WindowsScreenLayout layout) =>
         layout.Displays
             .Select(display => new CapturedDisplay
