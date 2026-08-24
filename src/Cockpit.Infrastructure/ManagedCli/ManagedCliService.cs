@@ -236,7 +236,8 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
                     await File.WriteAllBytesAsync(executablePath, bytes, cancellationToken).ConfigureAwait(false);
                     break;
                 case ManagedCliArchiveFormat.TarGz:
-                    _ExtractExecutableFromTarGz(bytes, plan, executablePath);
+                case ManagedCliArchiveFormat.Zip:
+                    _ExtractExecutableFromArchive(bytes, plan, executablePath);
                     break;
                 default:
                     throw new InvalidOperationException($"Unsupported managed-CLI archive format '{plan.ArchiveFormat}'.");
@@ -299,9 +300,9 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
     }
 
     // Curated extraction (the poison-bug lesson: take only what is needed, not a whole tree). The archive bytes are
-    // already in memory, and a MemoryStream is seekable, so SharpCompress can sniff the format without the rewind
-    // trouble a forward-only network stream causes.
-    private static void _ExtractExecutableFromTarGz(byte[] archiveBytes, ManagedCliDownloadPlan plan, string executablePath)
+    // already in memory, and a MemoryStream is seekable, so SharpCompress can sniff the format (tar.gz or zip)
+    // without the rewind trouble a forward-only network stream causes — one reader serves both archive formats.
+    private static void _ExtractExecutableFromArchive(byte[] archiveBytes, ManagedCliDownloadPlan plan, string executablePath)
     {
         using var archiveStream = new MemoryStream(archiveBytes, writable: false);
         using var reader = ReaderFactory.OpenReader(archiveStream, new ReaderOptions());

@@ -16,4 +16,9 @@ public enum ManagedCliArchiveFormat
     /// A <c>.tar.gz</c> holding the executable (and possibly siblings); extract the entry the plan names (Codex).
     /// </summary>
     TarGz,
+
+    /// <summary>
+    /// A <c>.zip</c> holding the executable (and possibly siblings); extract the entry the plan names (Helm on Windows).
+    /// </summary>
+    Zip,
 }

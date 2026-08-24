@@ -157,6 +157,33 @@ public sealed class ManagedCliServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureInstalled_Zip_ExtractsTheNamedEntry()
+    {
+        var binary = "helm-native-bytes"u8.ToArray();
+        var archive = _Zip("windows-amd64/helm.exe", binary);
+        var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.Bytes(archive));
+        var service = _Service(handler);
+
+        var plan = new ManagedCliDownloadPlan
+        {
+            Url = "https://example.test/helm.zip",
+            ExpectedSha256 = PluginHash.Compute(archive),
+            ExecutableFileName = "helm.exe",
+            ArchiveFormat = ManagedCliArchiveFormat.Zip,
+            ExecutableEntryName = "windows-amd64/helm.exe",
+            NeedsExecutableBit = false,
+        };
+        service.Register(_Descriptor("helm", "4.2.4", plan));
+
+        var result = await service.EnsureInstalledAsync("helm");
+
+        Assert.True(result.Success);
+        var expected = Path.Combine(_root, "cli", "helm", "4.2.4", "helm.exe");
+        Assert.True(File.Exists(expected));
+        Assert.Equal(binary, await File.ReadAllBytesAsync(expected));
+    }
+
+    [Fact]
     public void ResolveInstalledPath_PicksNewestVersion_ByVersionOrder()
     {
         _PlaceInstalled("acme", "1.2.0");
@@ -267,6 +294,19 @@ public sealed class ManagedCliServiceTests : IDisposable
                 DataStream = new MemoryStream(content),
             };
             tar.WriteEntry(entry);
+        }
+
+        return output.ToArray();
+    }
+
+    private static byte[] _Zip(string entryName, byte[] content)
+    {
+        using var output = new MemoryStream();
+        using (var zip = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var entry = zip.CreateEntry(entryName);
+            using var entryStream = entry.Open();
+            entryStream.Write(content);
         }
 
         return output.ToArray();
