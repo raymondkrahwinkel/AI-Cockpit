@@ -256,6 +256,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   screens (login, settings, list + detail, dashboard, form, landing page) to the existing blank screen. The
   whiteboard is unchanged. On the diagram surface, "Insert sample" is now "Insert template…" and opens the same
   list instead of always inserting one fixed sample diagram.
+- added: on a registered Kubernetes cluster, an agent can now read Helm releases straight from their release
+  secrets — list them, read one's status, its revision history, the values it was installed with, and its full
+  rendered manifest — with no `helm` binary needed. This always asks you to approve, the same as reading any
+  other secret. Reading a resource's full details also now says when it was installed by Helm and which release
+  owns it.
 
 ### Changed
 
