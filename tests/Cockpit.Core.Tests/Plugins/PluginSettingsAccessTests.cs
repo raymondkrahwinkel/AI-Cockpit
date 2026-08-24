@@ -36,6 +36,29 @@ public class PluginSettingsAccessTests
         sink.Received(1).AddPluginSettings("test-plugin", "Test Plugin", Arg.Any<Func<Control>>());
     }
 
+    // AC-1030: a plugin can declare which Options sidebar group its settings row lands in.
+    [Fact]
+    public void AddSettings_WithACategory_RegistersItAlongsideTheView()
+    {
+        var sink = Substitute.For<IPluginContributionSink>();
+        var host = NewHost(sink);
+
+        host.AddSettings(() => new TextBlock(), "Assistant Plugins");
+
+        sink.Received(1).AddPluginSettings("test-plugin", "Test Plugin", Arg.Any<Func<Control>>(), "Assistant Plugins");
+    }
+
+    // AC-1030: a plugin binary compiled before the category overload existed only implements the one-arg
+    // AddSettings — the interface default keeps it loading by falling back to that.
+    [Fact]
+    public void AddSettings_WithACategory_OnAnOlderHost_FallsBackToTheCategorylessOverload()
+    {
+        var host = (ICockpitHost)Substitute.ForPartsOf<HostWithoutSettingsAccess>();
+
+        // Not throwing is the assertion (xUnit fails the test on an unhandled exception).
+        host.AddSettings(() => new TextBlock(), "Assistant Plugins");
+    }
+
     [Fact]
     public void ADialogFromAPluginWithSettings_CarriesAGearThatOpensThem()
     {

@@ -136,9 +136,16 @@ public partial class OptionsDialog : Window
         ["workflows"] = "workflows",
     };
 
-    // Builds the PLUGINS group: header (criterion 1) plus one row per plugin with a settings view,
-    // appended into the same CategoryNav/CategoryContent the static categories use, so the sidebar
-    // stays one scroll region and selection scope (criterion 6). Skipped when nothing is installed (criterion 10).
+    // AC-1030: declared plugin-settings groups, in the fixed order they render below the static WORKING/VOICE &
+    // ASSISTANT/SYSTEM groups from the .axaml. A plugin that declares none of these (Category is null) lands in
+    // the trailing "PLUGINS" catch-all, exactly where every plugin landed before this existed.
+    private static readonly string[] _PluginCategoryOrder = ["Assistant Plugins"];
+
+    private const string _DefaultPluginCategory = "PLUGINS";
+
+    // Builds one nav group per declared plugin-settings category, appended into the same CategoryNav/
+    // CategoryContent the static categories use, so the sidebar stays one scroll region and selection scope.
+    // Skipped entirely when no plugin registered a settings view.
     private void _BuildPluginCategories(CockpitViewModel cockpit)
     {
         if (cockpit.PluginOptionsRows.Count == 0)
@@ -146,21 +153,16 @@ public partial class OptionsDialog : Window
             return;
         }
 
-        CategoryNav.Items.Add(new ListBoxItem
-        {
-            Classes = { "navGroupHeader" },
-            Focusable = false,
-            IsHitTestVisible = false,
-            Content = new TextBlock { Classes = { "subnavGroup" }, Text = "PLUGINS" },
-        });
+        var byCategory = cockpit.PluginOptionsRows.ToLookup(row => row.Category ?? _DefaultPluginCategory);
 
-        foreach (var row in cockpit.PluginOptionsRows)
+        foreach (var category in _PluginCategoryOrder.Append(_DefaultPluginCategory))
         {
-            var tag = $"plugin:{row.PluginId}";
-            var keywords = _PluginSearchKeywords.GetValueOrDefault(row.PluginId, row.DisplayName);
+            if (!byCategory[category].Any())
+            {
+                continue;
+            }
 
-            CategoryNav.Items.Add(_BuildPluginNavItem(tag, row.DisplayName, keywords));
-            CategoryContent.Children.Add(_BuildPluginContent(tag, row));
+            _BuildPluginCategory(category, byCategory[category]);
         }
 
         // Criterion 8: a small, non-clickable note pointing at the Plugin Store instead of any discovery or
@@ -178,6 +180,26 @@ public partial class OptionsDialog : Window
                 Foreground = _Brush("CockpitTextFaintBrush"),
             },
         });
+    }
+
+    private void _BuildPluginCategory(string category, IEnumerable<PluginOptionsRowViewModel> rows)
+    {
+        CategoryNav.Items.Add(new ListBoxItem
+        {
+            Classes = { "navGroupHeader" },
+            Focusable = false,
+            IsHitTestVisible = false,
+            Content = new TextBlock { Classes = { "subnavGroup" }, Text = category.ToUpperInvariant() },
+        });
+
+        foreach (var row in rows)
+        {
+            var tag = $"plugin:{row.PluginId}";
+            var keywords = _PluginSearchKeywords.GetValueOrDefault(row.PluginId, row.DisplayName);
+
+            CategoryNav.Items.Add(_BuildPluginNavItem(tag, row.DisplayName, keywords));
+            CategoryContent.Children.Add(_BuildPluginContent(tag, row));
+        }
     }
 
     private static readonly IValueConverter _HasSearchTextConverter =

@@ -89,6 +89,7 @@ public interface ICockpitHost
     ICockpitActions Actions { get; }
     IPluginStorage Storage { get; }
     void AddSettings(Func<Control> createView);
+    void AddSettings(Func<Control> createView, string category);                  // default forwards above
     void AddSideMenuButton(string title, Action onInvoke);
     void AddSideMenuSection(string title, Func<Control> createView);
     void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView);  // default no-op
@@ -156,6 +157,14 @@ is no top-level Options tab per plugin).
   by itself.
 ```csharp
 host.AddSettings(() => new MySettingsControl(host.Storage));
+```
+
+### `void AddSettings(Func<Control> createView, string category)` {#void-addsettingsfunccontrol-createview-string-category}
+Same as above, but declares which Options sidebar group your row lands in — e.g. `"Assistant Plugins"` for a
+chat-channel plugin. Not calling this (or calling the one-argument overload) leaves you in the default
+**PLUGINS** group, unchanged from before this overload existed.
+```csharp
+host.AddSettings(() => new MySettingsControl(host.Storage), "Assistant Plugins");
 ```
 
 ### `void AddSideMenuButton(string title, Action onInvoke)` {#void-addsidemenubuttonstring-title-action-oninvoke}

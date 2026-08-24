@@ -31,7 +31,7 @@ public sealed record PluginMenuEntry(string PluginId, PluginSideButton? Button, 
 // A plugin's settings view: which plugin it belongs to, the plugin's own name (what the dialog is titled,
 // wherever it is opened from — the manager's gear, a left-menu gear, or the plugin itself), and the factory
 // that builds it.
-public sealed record PluginSettingsRegistration(string PluginId, string PluginName, Func<Control> CreateView);
+public sealed record PluginSettingsRegistration(string PluginId, string PluginName, Func<Control> CreateView, string? Category = null);
 
 /// <summary>
 /// Where a plugin's contribution points land in the running UI. Implemented by <c>CockpitViewModel</c>; an
@@ -87,6 +87,14 @@ public interface IPluginContributionSink
     /// Registers <paramref name="pluginId"/>'s settings view, titled after <paramref name="pluginName"/> wherever it is opened from.
     /// </summary>
     void AddPluginSettings(string pluginId, string pluginName, Func<Control> createView);
+
+    /// <summary>
+    /// Same as <see cref="AddPluginSettings(string, string, Func{Control})"/>, carrying the sidebar category
+    /// (AC-1030). A default overload, forwarding to the category-less member, so existing
+    /// <see cref="IPluginContributionSink"/> test fakes keep compiling without wiring a category.
+    /// </summary>
+    void AddPluginSettings(string pluginId, string pluginName, Func<Control> createView, string? category) =>
+        AddPluginSettings(pluginId, pluginName, createView);
 
     /// <summary>
     /// Whether <paramref name="pluginId"/> registered a settings view — what the gears (left menu, dialog chrome) ask before offering to open one.

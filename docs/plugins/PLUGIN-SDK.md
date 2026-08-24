@@ -227,6 +227,12 @@ Register a settings view with `host.AddSettings(() => new MySettingsControl(...)
 next to your plugin in the manager. The host wraps it in a dialog with a **Close** button, and — if your
 control implements `IPluginSettingsView` — a **Save** button too:
 
+Your row lands in Options ▸ the **PLUGINS** group by default. Pass a second argument,
+`host.AddSettings(() => new MySettingsControl(...), "Assistant Plugins")`, to declare a different group —
+today the only other one the host recognises is `"Assistant Plugins"`, for chat-channel plugins (Discord,
+Slack). Group order is fixed by the host (`OptionsDialog._PluginCategoryOrder`, PLUGINS trailing), not by
+which plugin calls `AddSettings` first.
+
 ```csharp
 public sealed class MySettingsControl : UserControl, IPluginSettingsView
 {

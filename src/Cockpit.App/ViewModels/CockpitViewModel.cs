@@ -625,6 +625,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     void IPluginContributionSink.AddPluginSettings(string pluginId, string pluginName, Func<Control> createView) =>
         PluginSettings[pluginId] = new PluginSettingsRegistration(pluginId, pluginName, createView);
 
+    void IPluginContributionSink.AddPluginSettings(string pluginId, string pluginName, Func<Control> createView, string? category) =>
+        PluginSettings[pluginId] = new PluginSettingsRegistration(pluginId, pluginName, createView, category);
+
     public bool HasPluginSettings(string pluginId) => PluginSettings.ContainsKey(pluginId);
 
     // The single way a plugin's settings dialog opens, wherever the gear that opened it sits (#: settings from
@@ -6042,7 +6045,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 var view = registration.CreateView();
                 var body = PluginSettingsBodyBuilder.Build(view);
-                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, body.Content, view, unavailableReason: null));
+                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, body.Content, view, unavailableReason: null, registration.Category));
             }
             else
             {
@@ -6063,7 +6066,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             var view = registration.CreateView();
             var body = PluginSettingsBodyBuilder.Build(view);
-            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, body.Content, view, unavailableReason: null));
+            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, body.Content, view, unavailableReason: null, registration.Category));
         }
     }
 
