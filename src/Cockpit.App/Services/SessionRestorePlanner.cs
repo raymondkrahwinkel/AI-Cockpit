@@ -10,11 +10,9 @@ namespace Cockpit.App.Services;
 // this only answers "with what"; the cockpit's own launch path still owns actually starting a session.
 public sealed class SessionRestorePlanner(ISessionProfileStore profiles) : ISingletonService
 {
-    // Builds the plan for one saved pane. `state` is the latest `SessionStateRecord` for
-    // this pane's id, or null when none was ever written — a pane persisted right before a crash, before its
-    // session got far enough to report anything. A profile that no longer exists degrades the plan rather than
-    // throwing (matches `ProjectQuickStart.ComposeAsync`: a config a pane can no longer resolve is
-    // not a crash).
+    // AC-1013: Builds the plan for one saved pane; `state` may be null (pane persisted right before a
+    // crash) and a missing profile degrades the plan rather than throwing, matching
+    // `ProjectQuickStart.ComposeAsync`'s treatment of an unresolvable config as not a crash.
     public async Task<SessionRestorePlan> ComposeAsync(WorkspacePane pane, SessionStateRecord? state, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(pane.ProfileId))

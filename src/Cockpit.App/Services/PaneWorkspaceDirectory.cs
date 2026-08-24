@@ -5,24 +5,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Services;
 
-// Host-side `IPaneWorkspaceDirectory` (AC-439) over the running session panels — the same seam
-// `WorkspaceAgentGateway` is for one caller's own desk, generalised to every live pane at once. Goes
-// through the same `SessionWorkspacePlacement` as that gateway rather than restating the rule, so a
-// session started before workspaces existed resolves to the same desk here as it does when that session itself
-// calls `list_agents` — and the assistant, which sits on no desk at all, is absent from both.
-//
-// Called from `Cockpit.App.Views.CockpitView`'s own UI-thread timer alongside the idle sweep and the
-// resource sampler, so — unlike `WorkspaceAgentGateway`, which is reached from an MCP request thread
-// and has to marshal — this is never called off the UI thread and takes no dispatch of its own.
-//
-// Takes `IServiceProvider` rather than `CockpitViewModel` directly and resolves it lazily
-// inside `WorkspaceIdsByPane`, not in the constructor: `CockpitViewModel` itself takes
-// `IClaimCollisionMonitor`, whose own dependency chain runs back through here — a straight
-// constructor dependency on `CockpitViewModel` would make the container recurse into building
-// `CockpitViewModel` a second time while still building it the first time (unlike
-// `WorkspaceAgentGateway`, which nothing on `CockpitViewModel`'s own construction path depends
-// on). By the time this is actually called — the 5s timer, well after startup — `CockpitViewModel`'s
-// singleton entry is already cached, so the lazy resolve is just a cache hit, not a second construction.
+// Host-side `IPaneWorkspaceDirectory` (AC-439): `WorkspaceAgentGateway`'s single-desk seam generalised to
+// every live pane, called from the UI-thread timer so it never needs to marshal like the gateway does.
+// AC-1013: resolves `CockpitViewModel` lazily via `IServiceProvider`, not constructor injection, since it depends on `IClaimCollisionMonitor` which chains back through here and would make the container recurse.
 internal sealed class PaneWorkspaceDirectory(IServiceProvider services) : IPaneWorkspaceDirectory, ISingletonService
 {
     public IReadOnlyDictionary<string, string> WorkspaceIdsByPane()

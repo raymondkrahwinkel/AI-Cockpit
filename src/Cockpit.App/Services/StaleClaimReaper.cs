@@ -8,9 +8,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Cockpit.App.Services;
 
 // AC-644: the crash net for claims that worktrees already have (AC-85/AC-643). `Forget` runs on every ordinary
-// session close, so this only ever catches the session that did not close — a crash, a killed process — whose claims
-// would otherwise go on warning neighbours off a worktree nobody is using. A liveness check and nothing else: it asks
-// whether the owner pane still exists, never how long the claim has been held.
+// session close, so this only catches a crashed/killed session whose claims would otherwise keep warning neighbours
+// off an unused worktree. A liveness check only: it asks whether the owner pane still exists, never claim age.
 public sealed class StaleClaimReaper(
     IAgentResourceClaimsAudit claimsAudit,
     IAgentResourceClaims claims,

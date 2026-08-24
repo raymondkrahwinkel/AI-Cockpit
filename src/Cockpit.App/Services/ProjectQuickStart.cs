@@ -12,21 +12,18 @@ using Cockpit.Infrastructure.Projects;
 
 namespace Cockpit.App.Services;
 
-// What a session started straight from a project opens with (AC-162/AC-164) — the answers the New-session dialog
-// would have arrived at, reached without showing it. The launcher's Start button and the sidebar's ▶ both come
-// through here, so the two cannot drift into starting subtly different sessions from the same project.
-// Deliberately composes a `NewSessionResult` and nothing more: starting it stays the cockpit's single
-// launch path, which owns worktree isolation, the pane and the session's lifetime. This only answers "with what".
+// What a session started straight from a project opens with (AC-162/AC-164) — the New-session dialog's
+// answers, reached without showing it. Both the launcher's Start button and the sidebar's ▶ come through
+// here so they can't drift apart. Composes a `NewSessionResult` only; starting it stays the single launch path.
 public sealed class ProjectQuickStart(
     ISessionProfileStore profiles,
     IMcpServerCatalog mcpServers,
     ITtySessionProviderResolver ttyProviders,
     IProjectMemorySourceRegistry memorySources) : ISingletonService
 {
-    // The session `project` starts, or `null` when it names no profile that still
-    // exists. Null is not a failure to report but a fall-back signal: a session needs a profile to run at all, and
-    // picking an arbitrary one would silently start the wrong provider, so the caller opens the dialog instead and
-    // lets the operator say which.
+    // The session `project` starts, or `null` when it names no profile that still exists. Null is a fall-back
+    // signal, not a failure: picking an arbitrary profile would silently start the wrong provider, so the
+    // caller opens the dialog instead and lets the operator say which.
     public async Task<NewSessionResult?> ComposeAsync(Project project, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(project.DefaultProfileLabel))
@@ -59,11 +56,9 @@ public sealed class ProjectQuickStart(
             unresolvedReferences: unresolvedReferences,
             instructionContents: instructionContents);
 
-        // The same rule the dialog opens on, from the same place: the promise here is "the dialog, skipped", so what
-        // starts has to be what pressing Start would have started. That has to be ResolveDefaultKind and not
-        // HasTtyRoute (AC-584): the latter only answers whether a TUI exists at all, which is true for every Claude
-        // profile, so asking it started a TTY however the profile had saved its kind — the one setting this line is
-        // supposed to be reading.
+        // Must be ResolveDefaultKind, not HasTtyRoute (AC-584): the latter is true for every Claude profile
+        // regardless of saved kind, so using it would always start a TTY. The promise here is "the dialog,
+        // skipped", so what starts must be what pressing Start would have started.
         var kind = SessionKindDefaults.ResolveDefaultKind(profile, ttyProviders);
         var isSdk = kind == SessionKind.Sdk;
 
@@ -93,12 +88,9 @@ public sealed class ProjectQuickStart(
         };
     }
 
-    // The servers this session opens with ticked: everything the checklist would have offered, minus the ones the
-    // project switched off. The project's choice, not the profile's — a project says which servers it works with,
-    // and that is the answer wherever it has one (Raymond, 2026-07-24).
-    // Always an explicit set, empty included, and never `null` — which downstream reads as "this
-    // launch made no selection" and answers by falling back to the profile's saved one. That would quietly put the
-    // profile back in charge of a session started from a project.
+    // The servers this session opens with ticked, per the project's own choice, not the profile's (Raymond,
+    // 2026-07-24). Always an explicit set, empty included, never `null` — downstream reads `null` as "no
+    // selection" and falls back to the profile's saved one, which would put the profile back in charge.
     private async Task<IReadOnlySet<string>> _TickedServerNamesAsync(Project project, CancellationToken cancellationToken)
     {
         var catalog = await mcpServers.GetServersForProjectAsync(project.Id, cancellationToken).ConfigureAwait(true);

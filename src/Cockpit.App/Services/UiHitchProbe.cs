@@ -5,11 +5,9 @@ using Cockpit.Core.Abstractions.Voice;
 
 namespace Cockpit.App.Services;
 
-// Measures desktop stutter as UI-thread scheduling jitter (AC-68 slice 3): a background-priority dispatcher timer
-// that should tick every few milliseconds, and the amount by which a tick runs late is how long the UI thread was
-// busy or starved — the visible "hitch". It is a proxy, not a compositor frame-time (Avalonia exposes no public
-// hitch metric), and a completely idle desktop renders no frames to stutter — but during real work it captures the
-// main-thread contention a user actually sees, which is exactly what steers a GPU choice back to the CPU.
+// AC-68 slice 3: measures desktop stutter as UI-thread scheduling jitter — a dispatcher timer that should tick every
+// few ms, where lateness is how long the UI thread was busy or starved. A proxy, not a compositor frame-time
+// (Avalonia exposes none), but it captures the main-thread contention that steers a GPU choice back to the CPU.
 internal sealed class UiHitchProbe : IUiHitchProbe, ISingletonService
 {
     public IUiHitchSession Start() => new Session();

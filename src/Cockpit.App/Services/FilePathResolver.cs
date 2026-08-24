@@ -2,11 +2,9 @@ using Avalonia.Threading;
 
 namespace Cockpit.App.Services;
 
-// Whether a `MarkdownView` code-span is a real file, memoised so a streaming reply's ~30fps repaint never
-// touches disk directly (AC-642, valkuil 1): `Resolve` always answers from the cache and, on a miss, kicks
-// off a background probe and returns null. A positive answer is kept; a negative one expires after
-// `NegativeTtl`, because an agent sometimes announces a file a moment before it writes it. `Exists` is a
-// swappable seam so `FilePathResolverTests` never touches the real disk.
+// AC-642 (valkuil 1): memoised so a streaming reply's ~30fps repaint never touches disk directly. `Resolve`
+// answers from the cache and kicks off a background probe on a miss; negatives expire after `NegativeTtl`
+// since an agent sometimes announces a file before writing it. `Exists` is a swappable seam for tests.
 internal static class FilePathResolver
 {
     private static readonly TimeSpan NegativeTtl = TimeSpan.FromSeconds(30);
@@ -18,10 +16,9 @@ internal static class FilePathResolver
     private static readonly Lock Gate = new();
     private static readonly Dictionary<(string BasePath, string Candidate), (string? Full, DateTimeOffset At)> Cache = [];
 
-    // One shared probe per key, not per caller: two MarkdownView instances with the same BasePath naming the
-    // same still-unresolved path around the same moment used to leave the second caller's callback dropped —
-    // its repaint would only catch up on the *next* rebuild instead of the one this probe was already paying
-    // for. Every waiter registered while a probe is in flight is notified when it lands.
+    // One shared probe per key, not per caller: two MarkdownView instances naming the same unresolved path
+    // around the same moment used to leave the second caller's callback dropped until the next rebuild.
+    // Every waiter registered while a probe is in flight is notified when it lands.
     private static readonly Dictionary<(string BasePath, string Candidate), List<Action>> Pending = [];
 
     internal static Func<string, bool> Exists = path => File.Exists(path) || Directory.Exists(path);

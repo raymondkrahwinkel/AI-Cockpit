@@ -3,13 +3,8 @@ using Cockpit.Core.Workspaces;
 
 namespace Cockpit.App.Services;
 
-// The AI-session panes a start will offer to bring back (AC-410): every `PaneKind.AiSession` pane on
-// a `WorkspaceType.Sessions` workspace. This is the one place that answers "which panes belong to
-// this start" — `Program.cs` hands the startup worktree reconcile the pane ids from here as its live set (a
-// worktree whose owning session merely has not run yet this run must not read as an orphan, or a restore that
-// still needs it would lose the very worktree it is about to reattach), and the same roster is what a session-state
-// compaction prunes against. Both readers go through `Panes` rather than each walking
-// `WorkspaceSettings` on its own, so the two questions cannot quietly drift apart.
+// AC-1013/AC-410: AI-session panes to restore on start; Program.cs uses this live set so a
+// not-yet-run worktree isn't misread as orphaned and pruned before it can be reattached.
 public static class SessionRestoreRoster
 {
     // Every AI-session pane on a Sessions workspace in `settings`, workspace and pane paired.

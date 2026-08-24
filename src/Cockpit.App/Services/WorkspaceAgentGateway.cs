@@ -7,31 +7,9 @@ using Cockpit.Core.Assistant;
 
 namespace Cockpit.App.Services;
 
-// Host-side `IWorkspaceAgentGateway` (AC-391) over the running session panels: there is no existing
-// "find the workspace for this pane id" helper, so this is it — the same seam `SessionVerifyGateway`
-// (AC-86) is for a session's working directory. It resolves the caller's pane via `CockpitViewModel.FindSession`,
-// reads which workspace it is stamped with, and reports every other AI-session pane sharing that same workspace —
-// including an embedded one (`CockpitViewModel.Embed`), which is a full agent session with its own MCP
-// token even though the grid never lists it.
-//
-// A Sessions workspace does persist its AI panes in `Workspace.Panes` now (AC-410), the same as a
-// Dashboard's widgets — but that record is the operator's saved *intention*, read back only to restore a
-// pane after a restart. Which live panel is on which desk right now is still read off the running
-// `SessionPanelViewModel.WorkspaceId` instead, the same live source `CockpitViewModel` itself
-// decides against — through `SessionWorkspacePlacement`, which is where that rule lives for every
-// consumer of it. A pane it places nowhere (the assistant, or an unassigned session at a moment when no
-// Sessions workspace exists to fall back to) is refused rather than handed an invented empty desk. AC-632: that is
-// about the caller — the assistant is refused a desk of its own and still listed on every desk, as an address.
-//
-// `CockpitViewModel.Sessions` is an `System.Collections.ObjectModel.ObservableCollection{T}`
-// that only ever mutates on the UI thread, but an MCP tool call lands on the endpoint's own request thread — the
-// same hazard `Plugins.PluginSessionObserver.GetCurrentTurnImages` guards against, and the same
-// destination (marshal onto the UI thread; inline when already on it, so a caller that is already there — a unit
-// test, say — never pays for a redundant dispatch), but not the same mechanism: like `SessionLabelSink`,
-// this hands back the awaitable from `Dispatcher.UIThread.InvokeAsync` for the caller to await, rather than
-// blocking on `Dispatcher.UIThread.Invoke` —
-// the caller here is a Kestrel request thread, and blocking it with no timeout is the wrong shape for a seam later
-// tickets (notify/inbox, claims, delivery, wake, budget, inspector) all land on top of.
+// AC-1013: host-side `IWorkspaceAgentGateway` (AC-391) — resolves the caller's pane and reports every other
+// AI-session pane sharing its workspace, read live off `SessionWorkspacePlacement` rather than the persisted
+// `Workspace.Panes` intention (AC-410). Returns the UI-thread awaitable rather than blocking, since the caller is a Kestrel request thread with no timeout.
 internal sealed class WorkspaceAgentGateway(
     CockpitViewModel cockpit,
     IWorkspaceAgentCoordinator coordinator,
@@ -69,13 +47,9 @@ internal sealed class WorkspaceAgentGateway(
             return AgentWakeOutcome.PaneGone;
         }
 
-        // The boundary, asked again here rather than trusted from the send that got this far. The snapshot notify
-        // checked was taken on an earlier trip to this thread, and a pane can be moved to another desk — or its
-        // sender's own session can end, which is what makes the snapshot come back null — in between. Everything
-        // below this line starts a turn on someone else's session, so the last word on whether that session is a
-        // neighbour has to be spoken here, at the moment it happens. Skipped for a host-triggered wake: there is no
-        // live sender to re-check a desk against, and the assistant's own address never resolves to one anyway
-        // (AC-632) — this is what lets the assistant be woken by its own waiting mail at all.
+        // The boundary, asked again here rather than trusted from the earlier snapshot, since a pane can move desks
+        // or its sender's session can end in between. Skipped for a host-triggered wake: there is no live sender to
+        // re-check, and the assistant's own address never resolves to one anyway (AC-632).
         if (checkDesk
             && (_GetWorkspaceSnapshot(fromPaneId) is not { } desk
                 || !desk.Panes.Any(pane => string.Equals(pane.PaneId, targetPaneId, StringComparison.Ordinal))))
@@ -84,25 +58,16 @@ internal sealed class WorkspaceAgentGateway(
         }
 
         // A question is open in front of a human on this pane. Nothing an agent labels urgent outranks that, and
-        // the status flags do not cover it: opening a consent banner sets PendingConsent and leaves SessionStatus
-        // alone, so a pane with a decision waiting on screen still reads as Idle or Done — both of which are woken.
-        // The cockpit already treats an open banner as untouchable one layer up, where a second consent request is
-        // refused rather than allowed to replace the first; this is the same rule for a different intruder.
+        // the status flags do not cover it: a consent banner sets PendingConsent but leaves SessionStatus reading
+        // as Idle or Done, both wakeable — same rule the cockpit already applies one layer up for a second consent.
         if (target.PendingConsent is not null)
         {
             return AgentWakeOutcome.AwaitingOperator;
         }
 
-        // Written as the list of states that may be woken, not the list that may not. A status added later then
-        // arrives as "not woken" and has to be argued into the set deliberately — where a deny-list would have made
-        // it wakeable the day it was declared, silently, by whoever was thinking about something else entirely.
-        //
-        // WaitingForInput was in the wakeable set until AC-615 and is not any more. It reads as standing still, and
-        // it is not: it means a tool-use permission decision is pending, or the CLI asked for something — a question
-        // in front of the operator, exactly like NeedsAttention, which the enum's own docs call the same signal. It
-        // was survivable while wake was opt-in, because only a session that had chosen it could be interrupted that
-        // way. Now that the operator's setting makes wake the default, it would reach every session on the desk, and
-        // the first thing an agent would do with it is talk over the decision its operator is standing at.
+        // AC-1013: written as an allow-list of wakeable states, not a deny-list, so a status added later defaults
+        // to "not woken" rather than silently becoming wakeable. AC-615: WaitingForInput was removed from the
+        // wakeable set — it looks idle but means a decision is pending on the operator, same as NeedsAttention.
         if (target.SessionStatus switch
             {
                 SessionStatus.Idle or SessionStatus.Done => (AgentWakeOutcome?)null,
@@ -123,11 +88,9 @@ internal sealed class WorkspaceAgentGateway(
         // about the pane as some earlier snapshot described it.
         var notice = new AgentWakeTurnNotice(fromPaneId, kind, target.DeliversInboxAtTurnStart, trigger);
 
-        // Deliberately not awaited, unlike the scheduled-resume path that shares this method. An SDK pane's send does
-        // not complete until its whole turn does, and the caller here is an agent waiting on its own notify call —
-        // awaiting would hold that call open for the length of another agent's answer. So what Woken claims is that a
-        // turn was started on a pane that could take one, which is settled by everything above this line; how the
-        // turn goes is between the recipient and its own runtime, and its own surfaces report that.
+        // Deliberately not awaited: an SDK pane's send does not complete until its whole turn does, and the caller
+        // here is an agent waiting on its own notify call — awaiting would hold that open for another agent's answer.
+        // Woken claims only that a turn was started; how it goes is the recipient's own runtime to report.
         _ = _SendWakeAsync(target, notice);
 
         return AgentWakeOutcome.Woken;
@@ -150,11 +113,9 @@ internal sealed class WorkspaceAgentGateway(
 
     private WorkspaceAgentSnapshot? _GetWorkspaceSnapshot(string paneId)
     {
-        // A plain terminal pane (ShowPluginHeaderItems=false) has TtyLauncher's COCKPIT_PANE_ID/COCKPIT_MCP_KEY
-        // stamped into it just like an agent session — any TTY, including a kept-plain shell the operator or a
-        // profile started — but it has no CLI on the other end to read a list_agents result. Refusing it here (not
-        // only filtering it out of the sibling list below) means it can neither enroll itself nor learn a
-        // workspace's roster by being handed its own pane id back on a first call.
+        // A plain terminal pane (ShowPluginHeaderItems=false) is stamped with COCKPIT_PANE_ID/COCKPIT_MCP_KEY just
+        // like an agent session but has no CLI to read a list_agents result. Refused here, not only filtered from
+        // the sibling list below, so it cannot enroll itself or learn a roster via its own pane id.
         if (cockpit.FindSession(paneId) is not { ShowPluginHeaderItems: true } caller)
         {
             return null;
@@ -173,16 +134,13 @@ internal sealed class WorkspaceAgentGateway(
         }
 
         var panes = cockpit.AllSessions()
-            // Only real agent sessions share the roster: see the caller-side refusal above for why a plain
-            // terminal pane is excluded on both sides of this call.
-            // The assistant resolves to null here and so matches no desk — it is never reported as a neighbour,
-            // which is the half of the third-session-kind rule that a caller-side refusal alone would not cover.
+            // Only real agent sessions share the roster (see the caller-side refusal above). The assistant resolves
+            // to null here and matches no desk, so it is never reported as a neighbour — the other half of the
+            // third-session-kind rule that the caller-side refusal alone would not cover.
             .Where(candidate => candidate.ShowPluginHeaderItems
                 && SessionWorkspacePlacement.Resolve(candidate, firstSessionsWorkspaceId) == workspaceId)
-            // Whether a pane gets passive delivery is asked of the pane, not decided here by its type: the pane that
-            // implements turn-start delivery is the one that can honestly claim it, and a check on the type here
-            // would be a second, separate answer to the same question — free to drift from the first the moment a
-            // pane kind is added.
+            // Whether a pane gets passive delivery is asked of the pane, not decided here by its type — a type
+            // check here would be a second answer to the same question, free to drift the moment a pane kind is added.
             .Select(candidate => new WorkspaceAgentPane(
                 candidate.PaneId,
                 candidate.Title,
@@ -203,16 +161,9 @@ internal sealed class WorkspaceAgentGateway(
                 assistant.DeliversInboxAtTurnStart));
         }
 
-        // AC-613: the host writing down the panes it knows about, which is what makes the roster measure presence
-        // instead of tool use. Done here rather than at session start because this is the one place that already
-        // answers "which agent sessions are on this desk" — the same rule, from the same source, applied at the only
-        // moment the answer is asked for. A pane created a second ago and a pane that has run all night are on the
-        // roster identically, and neither has to have called anything.
-        //
-        // Deliberately not the same thing as the pane having reached the cockpit-agents server: that is
-        // RecordContact, and keeping the two apart is what preserves the gap that AC-156's silent injection failure
-        // shows up as. Enroll never clears what a pane has already said, so running this on every snapshot is safe
-        // to repeat.
+        // AC-613: the host writing down the panes it knows about, so the roster measures presence, not tool use.
+        // Not the same as reaching the cockpit-agents server (that is RecordContact); keeping them apart preserves
+        // the gap AC-156's silent injection failure shows up as. Enroll never clears prior state, so safe to repeat.
         foreach (var pane in panes)
         {
             coordinator.Enroll(pane.PaneId);

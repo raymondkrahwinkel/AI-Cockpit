@@ -9,23 +9,9 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.App.Services;
 
-// Routes the assistant hotkey (F10) to the assistant instance (AC-543) — the twin of
-// `VoicePushToTalkCoordinator`, which routes F9 to the selected session and is left untouched.
-// *Why not one coordinator with a flag.* The two paths differ in every step that matters: F9 puts text in a
-// session's composer for you to read before you send it, F10 hands it straight to the assistant. Folding them
-// together would mean a branch at each of those steps, and the failure mode of getting one branch wrong is the
-// exact thing the indicator exists to prevent — words landing in the wrong place.
-//
-// *Straight through, no cleanup.* What Whisper heard is what the assistant gets (decision 10): this
-// coordinator hands `IVoicePushToTalkService.EndHoldAsync`'s transcript to
-// `IAssistantSessionHost.SendAsync` unaltered. Tidying it is the system prompt's job, and a pass here
-// would be a second copy of it — running on every utterance, for a model that reads through filler words on its
-// own.
-//
-// Threading matches `VoicePushToTalkCoordinator`'s: the hotkey events arrive on the backend's own
-// thread and everything touching the view models is marshalled onto the UI thread first. The
-// `Handle…` methods are the UI-thread logic and the seam the tests drive, since pumping a real Avalonia
-// dispatcher loop from a unit test is not practical.
+// AC-1013: routes the assistant hotkey (F10) to the assistant instance (AC-543) — twin of
+// `VoicePushToTalkCoordinator` (F9, untouched). Not one coordinator with a flag: F9 puts text in a composer
+// to review, F10 hands it straight to the assistant unaltered; `Handle…` is the UI-thread test seam.
 public sealed class AssistantPushToTalkCoordinator : ISingletonService
 {
     private readonly GlobalHotkeyCoordinator _hotkeys;
@@ -143,22 +129,16 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _pushToTalk.AudioLevelSampled -= _OnAudioLevelSampled;
         _pushToTalk.AudioLevelSampled += _OnAudioLevelSampled;
 
-        // Talking over the assistant means "listen to me instead" — stop the read-aloud rather than let it narrate
-        // through your sentence.
-        //
-        // This line is the one that was missing while the comment above it claimed otherwise, and it is the whole
-        // bug: holding the key to interrupt left the assistant reading its previous answer out over the top of the
-        // next question. Unconditional, unlike open-mic's barge-in (AC-9), which weighs a VAD threshold because it
-        // has to tell speech from a cough. A held hotkey is not ambiguous — somebody pressed a key to talk.
+        // AC-1013: stop the read-aloud — talking over the assistant means "listen to me instead". This line
+        // was once missing, letting the assistant narrate its previous answer over the next question.
+        // Unconditional, unlike open-mic's barge-in (AC-9) which needs a VAD threshold: a held key isn't ambiguous.
         _playbackQueue.StopAll();
 
         _isRecording = _pushToTalk.BeginHold();
 
-        // A hold that is actually recording says so on the chip (below) and nowhere else — the pill stopped
-        // carrying the assistant's own states on 2026-08-08, since the chip has a line for every one of them and
-        // two places saying the same thing is one place too many. A hold that could *not* open the microphone is
-        // the exception that stays: it is a failure with words, and those still belong on the floating pill, which
-        // is visible when the cockpit is not.
+        // A hold that is recording says so only on the chip below — the pill stopped duplicating assistant
+        // states on 2026-08-08. A hold that could *not* open the microphone is the exception that stays on
+        // the pill: it's a failure with words, and the pill is visible when the cockpit is not.
         if (!_isRecording)
         {
             _overlay.SetPushToTalk(VoiceOverlayState.Unavailable, "The microphone could not be opened");
@@ -176,12 +156,9 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _logger.LogInformation("Assistant push-to-talk hold started: capturing={Capturing}", _isRecording);
     }
 
-    // Starts everything this hold is going to need while the operator is still talking into it (AC-602, AC-603):
-    // the session, the transcriber, and the voice that will read the answer back.
-    // The press is the only free window there is. Afterwards the operator has stopped speaking and every one of
-    // these is a silence they are waiting through — which is the same silence the assistant is built to avoid.
-    // None of it is awaited and none of it is reported: a warm-up that fails leaves first use to do what it
-    // already does, including saying what went wrong.
+    // AC-602/AC-603: warms the session, transcriber, and TTS voice while the operator is still talking — the
+    // press is the only free window before every one of these becomes a silence they wait through. Not
+    // awaited or reported: a failed warm-up just leaves first use to do what it already does, errors included.
     private void _WarmUpWhileTheySpeak()
     {
         _ = _assistant.EnsureStartedAsync();
@@ -219,16 +196,9 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
             var text = await _pushToTalk.EndHoldAsync();
             if (string.IsNullOrWhiteSpace(text))
             {
-                // The most common way this fails, and until now the only one that said nothing at all. A hold
-                // shorter than a second or two gives the voice-activity detector too little to find speech in, so
-                // it discards the capture and returns nothing — correctly. What was missing is anyone telling the
-                // operator: the chip flicked back to Ready, no words appeared, and there is no composer here to
-                // show an empty result the way the dictation path does. Held against a live microphone that is
-                // indistinguishable from an assistant that ignored you, and it costs an attempt every time.
-                //
-                // Only on this path, deliberately. F9 hands its transcript straight to a session's composer, where
-                // "nothing appeared in the box" is at least visible; there is no shared point below this one where
-                // both could be told, because that path never sees the text at all.
+                // AC-1013: most common failure, and until now silent. A sub-second hold starves the VAD, which
+                // correctly returns nothing — but the operator only saw Ready, indistinguishable from being
+                // ignored. F9's transcript goes to a composer where empty is visible; this path never shows text.
                 _ShowThenClear("No speech heard — keep holding the key while you talk, then let go.");
                 return;
             }
@@ -254,11 +224,9 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         }
     }
 
-    // Puts a failed hold's explanation on the pill and clears it after `_messageLinger` — unless a newer report
-    // has since taken the pill over. Without the clear this message never went away on its own: read-aloud
-    // starting afterwards is masked (`VoiceOverlayCoordinator` puts a hold's own report ahead of
-    // read-aloud's) and stayed that way for good, since nothing else in this file writes to the pill until the
-    // next hold.
+    // Puts a failed hold's explanation on the pill and clears it after `_messageLinger`, unless a newer report
+    // took it over. Without the clear it stuck for good: `VoiceOverlayCoordinator` puts a hold's report ahead
+    // of read-aloud's, and nothing else here writes to the pill until the next hold.
     private void _ShowThenClear(string message) =>
         _overlay.ShowPushToTalkThenClear(VoiceOverlayState.Unavailable, message, _messageLinger);
 

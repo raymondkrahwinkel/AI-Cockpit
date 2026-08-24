@@ -3,19 +3,9 @@ using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.Services;
 
-// The one thing that decides what the voice overlay says. Three sources report into it — a push-to-talk hold,
-// open-mic dictation, and read-aloud — and none of them may write the pill directly: they each know their own
-// half and nothing about the others, so left to themselves they overwrite each other. The pill vanishing
-// mid-transcription because an unrelated source went idle is the failure this exists to make impossible.
-// The rule, in one line: *speech-to-text owns the pill, and a hold owns it over open-mic.*
-//   - *STT before TTS* (Raymond, 2026-07-15). What you are saying outranks what the cockpit is saying:
-//     dictation is a thing you are doing right now and read-aloud is a thing you can hear anyway. In practice they
-//     rarely collide — open-mic pauses itself while playback runs (barge-in) — but a hold during read-aloud is
-//     exactly the barge-in case, and there the hold has to win.
-//   - *A hold before open-mic.* Both are dictation, but one of them you asked for by holding a key.
-//
-// Sources report their own state and nothing else. Whether that state is the one on screen is not their
-// business, which is what keeps this rule in one place instead of spread across three coordinators.
+// The one thing that decides what the voice overlay says. Three sources (push-to-talk, open-mic, read-aloud) report
+// into it rather than writing the pill directly, since left to themselves they overwrite each other. Rule: STT owns
+// the pill over TTS (a hold during read-aloud is the barge-in case and must win), and a hold owns it over open-mic.
 public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoiceOverlayPresenter presenter) : ISingletonService
 {
     private VoiceOverlayState? _pushToTalk;
@@ -63,10 +53,9 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
         }
     }
 
-    // What open-mic dictation has to say, or null while it is listening to nothing in particular.
-    // Null is the resting state, not "off": open-mic listens continuously, and a pill that sat there the whole
-    // time would say nothing except that the feature is on. It appears when the VAD hears speech start, which is
-    // the moment it has something to report.
+    // What open-mic dictation has to say, or null while listening to nothing in particular. Null is the resting
+    // state, not "off": a pill sitting there the whole time would say nothing but that the feature is on, so it
+    // appears only once the VAD hears speech start.
     public void SetOpenMic(VoiceOverlayState? state)
     {
         _openMic = state;
@@ -93,10 +82,9 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
         LevelSampled?.Invoke(this, level);
     }
 
-    // The same level, for anything that draws the microphone besides the pill — today the assistant chip's own
-    // line (AC-543). Announced from here rather than subscribed at each of the three sources, because all three
-    // already funnel through `PushLevel`: a second set of subscriptions would be three places to keep in step
-    // with what "the microphone is open" means.
+    // The same level, for anything that draws the microphone besides the pill (AC-543: the assistant chip's line).
+    // Announced from here rather than subscribed at each source, since all three already funnel through
+    // `PushLevel` — a second set of subscriptions would be three places to keep in step.
     public event EventHandler<double>? LevelSampled;
 
     // Some states carry words (`VoiceOverlayViewModel.CarriesWords`); the view model drops them the

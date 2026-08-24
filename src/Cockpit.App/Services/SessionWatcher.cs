@@ -10,12 +10,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.Services;
 
-// One watched pane as a tick finds it. Null from `SessionWatcher.Probe` is the pane being gone, which is itself one
-// of the events rather than an error.
-//
-// `NewRows`: the transcript rows added since the row count the tick came in with, bounded — what `pattern` matches
-// against, and what makes a tick with no output free.
-// `LastRows`: the last few rows whatever happened, so every report can carry content rather than a label.
+// One watched pane as a tick finds it. Null from `SessionWatcher.Probe` is the pane being gone, itself one of the
+// events rather than an error. `NewRows` is the bounded set of rows added since the tick's row count — what
+// `pattern` matches against; `LastRows` is the last few rows regardless, so every report carries content.
 public sealed record WatchedPane(
     string Title,
     SessionStatus Status,
@@ -41,18 +38,9 @@ public static class SessionWatchEvents
     public static readonly IReadOnlyList<string> All = [BusyToIdle, NeedsAttention, Gone, Stuck, Pattern];
 }
 
-// AC-640: watches the panes the assistant armed it for and puts a message in the assistant's inbox when one of them
-// finishes, gets stuck on a permission, stops producing output or prints something it asked to hear about. Same
-// shape as `CiWatcher` and for the same reason — no model in the loop, so a tick over panes that did nothing costs
-// a walk of a few in-memory collections and nothing else.
-//
-// *Only what was armed.* `CiWatcher` watches every live checkout because every open checkout is worth checking; a
-// session's status is not — the operator starts sessions the assistant was never asked to follow. So nothing is
-// watched until `watch_session` says so, which is also why there is no settings toggle to switch this off.
-//
-// *The inbox and nothing else.* No `IAttentionNotifier` here on purpose: a CI failure is news to the operator, but
-// an agent the assistant armed a watch on is the assistant's own business, and a toast per status change would be
-// the cockpit shouting about work nobody asked to be told about twice.
+// AC-640: watches the panes the assistant armed it for and puts a message in its inbox when one finishes, gets
+// stuck, stops producing output, or matches a pattern. Unlike `CiWatcher` (watches every checkout), nothing is
+// watched until `watch_session` says so. No `IAttentionNotifier`: it is the assistant's own business, not a toast.
 public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatcher>? logger = null)
     : ISingletonService, IDisposable
 {

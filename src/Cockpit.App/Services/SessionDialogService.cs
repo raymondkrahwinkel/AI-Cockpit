@@ -25,15 +25,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
 
-// Hosts the cockpit's dialogs. Constructs each dialog's view model with the profile store/login checker
-// it injects, so the dialogs get their data without a service locator, then shows it and relays the
-// typed result back to the caller.
-//
-// Two kinds, and the difference is deliberate (AC-367). A *surface* — projects, MCP servers, the
-// plugin store, options — is something the operator works in for minutes, so it opens beside the cockpit
-// through `SurfaceWindows` and leaves every running session reachable. A *question* —
-// confirm a removal, type a password, trust a plugin — is answered in seconds and nothing may carry on
-// half-answered, so it stays a modal `ShowDialog`. Either way the caller awaits the same task.
+// Hosts the cockpit's dialogs: builds each dialog's view model, shows it, relays the typed result back.
+// AC-367: a *surface* (projects, MCP servers, plugin store, options) is minutes of work so it opens beside
+// the cockpit via `SurfaceWindows`, leaving sessions reachable; a *question* is a modal `ShowDialog`.
 public sealed class SessionDialogService : ISessionDialogService, ISingletonService
 {
     private readonly ISessionProfileStore _profileStore;
@@ -111,18 +105,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
     {
-        // Topmost window, not always the main one (AC-297): a plugin opens this from its own window — an issue
-        // dialog's "New session" button — and owned by the main window it would open behind the very window that
-        // asked for it. Same reasoning as PluginDialogHost's owner pick.
+        // AC-297: topmost window, not always the main one — a plugin's own window (e.g. an issue dialog's
+        // "New session" button) would otherwise open this behind itself if owned by the main window.
         if (_ActiveOwnerWindow() is not { } owner)
         {
             return null;
         }
 
-        // One at a time (AC-367): you can only start one session, and a second copy would let two half-filled
-        // forms compete over the same folder. A prefill that arrives while one is open is dropped along with the
-        // duplicate — the operator is looking at a form they are already filling in, and overwriting it under
-        // their hands is worse than ignoring a button they can press again.
+        // AC-367: one at a time — a second copy would let two half-filled forms compete over the same folder.
+        // A prefill arriving while one is open is dropped with the duplicate rather than overwritten under
+        // the operator's hands.
         if (_surfaces.TryActivateAsync(typeof(NewSessionDialog)) is Task<NewSessionResult?> open)
         {
             return await open;
@@ -136,22 +128,19 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             _projectStore, _oauthCoordinator, _memorySources, _loginStarter);
         await viewModel.LoadAsync();
 
-        // The project (AC-164) before the prefill, and by identity out of the loaded list rather than the caller's
-        // instance: selecting it runs the dialog's own project handling (folder, profile, worktree, MCP overlay), and
-        // a prefill naming a field explicitly is the more specific answer, so it is applied over the result.
+        // AC-164: project before prefill, matched by id from the loaded list — selecting it runs the dialog's
+        // own project handling (folder, profile, worktree, MCP overlay); a prefill field is more specific and
+        // applied over the result.
         if (project is not null)
         {
             viewModel.SelectedProject = viewModel.Projects.FirstOrDefault(candidate => candidate.Id == project.Id);
 
-            // Selecting a project rebuilds the checklist from its overlay, and that is a read. Await it before the
-            // dialog is on screen: a dialog that can be started while the rebuild is in flight can start a session
-            // on the servers of no project at all.
+            // Await the checklist rebuild before the dialog shows, or a session can start on no project's servers.
             await viewModel.McpChecklistRefresh;
         }
 
-        // Prefill (#AC-96): seed the dialog's fields *after* LoadAsync — the profile lookup needs the loaded list,
-        // and setting properties earlier would be overwritten by the load's own defaulting. Every field is optional
-        // and the operator can still change all of them; a profile label that matches nothing leaves the default pick.
+        // AC-96: seed fields *after* LoadAsync so they aren't overwritten by the load's own defaulting. Every
+        // field is optional; a profile label matching nothing leaves the default pick.
         if (prefill is not null)
         {
             if (!string.IsNullOrWhiteSpace(prefill.ProfileLabel)
@@ -179,10 +168,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
                 viewModel.InitialPrompt = prefill.InitialPrompt;
             }
 
-            // Only a Claude profile keeps a resumable history; the dialog hides the resume controls for every other
-            // provider (ShowResumeOptions). Gate the prefill the same way — otherwise a plugin could push the dialog
-            // into resume-by-id on a provider that ignores it, or silently start a resume the operator never saw the
-            // controls for. Resolved against whichever profile is selected now (the prefilled one, or the default).
+            // Only a Claude profile keeps resumable history (ShowResumeOptions hides the controls for others),
+            // so gate the prefill the same way — otherwise a plugin could silently start a resume-by-id on
+            // a provider that ignores it, with no controls the operator ever saw.
             if (!string.IsNullOrWhiteSpace(prefill.ResumeSessionId) && viewModel.IsClaudeProfile)
             {
                 viewModel.ResumeSessionId = prefill.ResumeSessionId;
@@ -197,23 +185,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             viewModel.IsolateInWorktree = true;
         }
 
-        // The answer, read once the window has closed: a surface is not shown with ShowDialog, and the value
-        // handed to Close() is only readable from that. Closing the window any other way — the X, Escape — never
-        // raises the event, which is the cancel the caller expects.
-        //
-        // ⚠️ Subscribed BEFORE the DataContext is set, and that order is the whole thing. The dialog's own
-        // code-behind subscribes from OnDataContextChanged, and its handler calls Close() — which raises Closed
-        // synchronously, which is where the answer is read. Subscribed second, this line runs after the answer
-        // has already been read as null: every Start session would return "cancelled" and start nothing.
+        // Subscribe BEFORE DataContext is set. The dialog's code-behind subscribes in OnDataContextChanged and
+        // calls Close() synchronously; subscribing after DataContext would read the answer as null every time,
+        // so every Start session would return "cancelled".
         NewSessionResult? chosen = null;
         viewModel.CloseRequested += result => chosen = result;
 
         var dialog = new NewSessionDialog { DataContext = viewModel };
 
-        // Managing profiles from within the New-session dialog opens the Manage dialog over it, then
-        // reloads the picker so any added/edited/removed profile (and its defaults) shows immediately.
-        // async void via the Action event: guard it so a dialog/store failure can't tear the process
-        // down — worst case the picker just doesn't refresh.
+        // Opens Manage over the dialog, then reloads the picker so profile changes show immediately.
+        // async void via the Action event: guard it so a dialog/store failure can't tear the process down.
         viewModel.ManageProfilesRequested += async () =>
         {
             try
@@ -227,10 +208,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             }
         };
 
-        // Clone from a Git URL (AC-90): open the clone dialog over the New-session dialog, and on success drop the
-        // local clone path into the folder field, from where isolation (AC-85) and the session start pick it up. The
-        // clone dialog owns the failure path, so nothing is set here unless a real directory came back.
-        // async void via the event: guard it so a clone/dialog failure can't tear the process down.
+        // AC-90: on success drop the clone path into the folder field for isolation (AC-85) and session start
+        // to pick up; the clone dialog owns the failure path. async void: guard against tearing the process down.
         viewModel.CloneFromUrlRequested += async () =>
         {
             try
@@ -304,12 +283,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // retyping one. Read fresh rather than cached — this dialog opens far less often than the store changes.
         var knownCategories = (await _projectStore.LoadAsync()).CategoryOrder;
 
-        // AC-247: a fresh read, not the claim-time snapshot _ClaimBoundProjects made — that snapshot can be hours
-        // old by the time the operator presses Save, and its checksum has to be the one that read actually saw for
-        // WriteBackAsync's own optimistic-concurrency check to mean anything. Read failing (offline, no longer a
-        // member) leaves sharedWriteBack null below: the editor still opens, its claimed fields render locked (no
-        // ProjectFieldOwnership override to unlock them without a checksum to write against), same as a project
-        // whose source never claimed it editable at all.
+        // AC-247: a fresh read, not the claim-time snapshot — its checksum must be the one WriteBackAsync's
+        // optimistic-concurrency check actually saw. A failed read leaves sharedWriteBack null: the editor still
+        // opens with claimed fields locked, same as a project whose source never claimed it editable.
         ProjectSharedWriteBackContext? sharedWriteBack = null;
         if (project is not null && sharedSource is not null)
         {
@@ -336,11 +312,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             sharedWriteBack: sharedWriteBack,
             worktreeManager: _worktreeManager);
 
-        // Read once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
-        // window's own X both leave this null, which is the same answer.
-        //
-        // ⚠️ Subscribed BEFORE the DataContext is set — see ShowNewSessionDialogAsync for why. Second in line
-        // this runs after the answer has been read, and every Save would come back as a cancel.
+        // Subscribed BEFORE DataContext is set — see ShowNewSessionDialogAsync for why; subscribed second,
+        // every Save would come back as a cancel.
         Project? saved = null;
         viewModel.CloseRequested += result => saved = result;
 
@@ -350,11 +323,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // own and the manager that runs it, both of which live on this service.
         viewModel.CloneRequested += () => _ = _CloneIntoProjectAsync(viewModel, dialog);
 
-        // AC-247: same split as cloning — SaveAsync raises the request, this service owns showing the window (a
-        // Func so SaveAsync can await the operator's answer and act on it, rather than firing an event and hoping
-        // something eventually calls back). `sharedWriteBack` is the same context CreateAsync above already
-        // received, so its own Baseline is exactly what the conflict view needs to tell "the operator touched
-        // this field" apart from "this only differs because Depot moved" — never re-derived, never re-read.
+        // AC-247: SaveAsync raises the request, this service owns showing the window (a Func so SaveAsync can
+        // await the answer). `sharedWriteBack.Baseline` is what the conflict view needs to tell an operator
+        // edit apart from a Depot-side change — never re-derived, never re-read.
         if (sharedWriteBack is { } writeBack)
         {
             viewModel.ConflictRequested += (edit, latest) => _ResolveConflictAsync(edit, writeBack.Baseline, latest, dialog);
@@ -390,10 +361,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var (viewModel, error) = await SharedProjectBindingDialogViewModel.CreateAsync(sharedProject.Id, sourceName, source, _profileStore);
         if (viewModel is null)
         {
-            // The definition read failed (unreachable, not signed in, the project vanished between the list and
-            // this click) — surfaced through the confirmation dialog's own single-button shape rather than opening
-            // an unusable binding dialog. There is no plain one-button "OK" message dialog in this codebase yet;
-            // "OK" in place of "Remove" is this call's whole adaptation, its return value unread.
+            // Definition read failed (unreachable, not signed in, project vanished) — surfaced via the
+            // confirmation dialog's single-button shape rather than an unusable binding dialog; no plain
+            // one-button "OK" dialog exists yet, so "OK" replaces "Remove" here, return value unread.
             await ShowConfirmationDialogAsync("Couldn't finish setting up", error ?? "Could not read this project's definition.", confirmLabel: "OK");
             return null;
         }
@@ -515,10 +485,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         });
     }
 
-    // Most dialogs are only ever opened from the main window, so they hardcode it as the owner. The store
-    // dialog can itself be a step below another window (Options → Store), so it — and anything the store
-    // opens in turn, like plugin consent — needs the topmost active window instead, or it centres behind
-    // the window it was opened from rather than over it (#62 design-doc caveat).
+    // Most dialogs hardcode MainWindow as owner. The store dialog can itself sit below another window
+    // (Options → Store), so it and anything it opens (plugin consent) need the topmost active window
+    // instead, or they centre behind the window they were opened from rather than over it (#62 caveat).
     private static Window? _ActiveOwnerWindow()
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main } lifetime)
@@ -630,10 +599,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     public async Task<string?> PickPluginZipAsync()
     {
-        // The active window, not always MainWindow (AC-456), matching the folder picker below. Owned by the main
-        // window this picker left the store dialog it was launched from clickable, so its install buttons stayed
-        // live while the operator browsed. The store is a surface now rather than a modal, so it no longer holds
-        // the cockpit either way — but the picker still belongs to the window it was opened from.
+        // AC-456: active window, not always MainWindow, matching the folder picker below — the picker belongs
+        // to the window (e.g. the store dialog) it was opened from, not the main window.
         if (_ActiveOwnerWindow() is not { } owner)
         {
             return null;
@@ -698,10 +665,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return;
         }
 
-        // Read once on opening, so the window is never blank on the way in; the Refresh button is how it is brought
-        // up to date after that. Not a live subscription: this is a read-only look at an append-only trail, and a
-        // window that redrew itself under the operator's eyes while they were reading a line is harder to read, not
-        // easier.
+        // Read once on opening so the window isn't blank; Refresh brings it up to date after that. Not a live
+        // subscription — redrawing under the operator's eyes mid-read would be harder to read, not easier.
         await inspector.RefreshAsync();
         await _ShowSurfaceAsync(typeof(AgentLineInspectorDialog), owner, () => new AgentLineInspectorDialog { DataContext = inspector });
     }

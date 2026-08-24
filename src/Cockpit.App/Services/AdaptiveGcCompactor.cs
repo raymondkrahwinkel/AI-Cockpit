@@ -5,21 +5,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.Services;
 
-// AC-733: catches a heap that grows large fast (seconds, not the hours the original ticket took) by checking
-// cheaply and often (~0.2 microseconds/check, measured) instead of waiting on a slow timer, so a compact catches
-// the heap small and cheap (tens of ms) instead of large and catastrophic (283 s measured at ~24M objects).
-//
-// ponytail: the growth this compacts is largely an Avalonia 12.1.1 issue, not our own — the compositor keeps
-// detached transcript-row views rooted (a VirtualizingStackPanel dematerialising a row, or a pane closing, leaves
-// its view tree + composition visuals behind). Our side detaches cleanly (the views end up with a null parent).
-// That growth is live and rooted, so compaction cannot free it — it only hands emptied segments back to the OS,
-// measured at ~2% of RSS (100 MB off a 4.6 GB heap). Recheck on an Avalonia upgrade; the real fix belongs there.
-//
-// Hard-won (Raymond on Windows + Rick on Fedora, 2026-08-15): a blocking compacting gen2 collect of a MULTI-GB
-// live heap is a 5-12 s stop-the-world pause — every one of Rick's logged UI-freeze hangs timestamps to one of
-// these compacts. So this only compacts while the heap is still small enough for the pause to be a hitch
-// (CompactCeilingBytes); above that it leaves the heap alone and tells the operator a restart is what clears it.
-// Full repro/analysis under cockpit-diag (VERIFY-fixed.md).
+// AC-733: checks cheaply/often (~0.2us) instead of a slow timer, catching heap growth small (tens of ms) not
+// catastrophic (283 s at ~24M objects). ponytail: growth is mostly Avalonia 12.1.1 retaining detached views live
+// and rooted (compaction only reclaims ~2% RSS); only compacts below CompactCeilingBytes — see cockpit-diag VERIFY-fixed.md.
 public sealed class AdaptiveGcCompactor(
     ILogger<AdaptiveGcCompactor>? logger = null,
     Func<long>? heapBytesProbe = null,
@@ -29,12 +17,9 @@ public sealed class AdaptiveGcCompactor(
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMilliseconds(200);
 
-    // A compact still stops the world for its duration, so even a sub-200 ms one is a visible micro-stutter if it
-    // lands mid-keystroke, mid-scroll or mid-stream. So only compact in a lull: when allocation over the last check
-    // was low, the app is idle and the pause overlaps time nobody is watching. Active work (streaming a reply,
-    // scrolling the transcript) allocates far more than this per 200 ms tick, so a compact is deferred until it
-    // stops — which is what keeps the GC from ever being felt. The leak still can't be compacted away either way;
-    // this just decides *when* the harmless small-heap compacts happen.
+    // A compact still stops the world, so even a sub-200 ms one is a visible micro-stutter mid-keystroke/scroll/stream.
+    // Only compact in a lull: low recent allocation means the pause overlaps time nobody is watching, while active
+    // work (streaming, scrolling) defers it. This only decides *when* the harmless small-heap compacts happen.
     private const long QuietAllocBytesPerCheck = 8L * 1024 * 1024;
 
     // Compact once the heap crosses this — low enough that catching it here keeps the pause under ~100 ms even
@@ -46,13 +31,9 @@ public sealed class AdaptiveGcCompactor(
     // Raymond's instance: 133 compacts/minute of ~250 ms each, freeing under 1 MB, for 40 minutes.
     private const long GrowthBeforeNextCompactBytes = 100L * 1024 * 1024;
 
-    // Never compact above this. A blocking compacting gen2 collect relocates the whole live set, so its pause
-    // scales with heap size: ~100 ms at the 300 MB floor, but 5-12 s at ~4 GB (measured cross-platform — every one
-    // of Rick's UI-freeze hangs on Fedora timestamps to a compact at 3.7-4.1 GB, and Raymond's Windows log shows
-    // the same). Kept close to the floor so every compact we do run stays a sub-200 ms hitch rather than a freeze;
-    // above it the growth is the live, rooted Avalonia retention compaction can't free anyway (it returned ~2% of
-    // RSS), so we leave the heap alone. This is the pause-budget knob: raise it to reclaim more RSS in exchange for
-    // a longer per-compact pause, lower it if even this hitches on slower hardware.
+    // Never compact above this: pause scales with heap size (~100ms at the 300MB floor, 5-12s at ~4GB — every
+    // Rick/Fedora and Raymond/Windows UI-freeze traced to a compact at 3.7-4.1 GB). Above it the live, rooted
+    // Avalonia retention compaction can't free (~2% RSS reclaimed) anyway, so raise/lower this as the pause-budget knob.
     private const long CompactCeilingBytes = 512L * 1024 * 1024;
 
     // Well past any legitimate working set: tell the operator a restart is what clears it (the underlying leak is
@@ -169,10 +150,9 @@ public sealed class AdaptiveGcCompactor(
         }
     }
 
-    // Throttled operator warning for a heap that has climbed well past any legitimate working set. Escalates to a
-    // single error once it has stayed up there for over a minute. No compact happens here — see CheckOnce: at this
-    // size the pause would be a multi-second freeze for a live leak compaction can't reclaim, so a restart, not a
-    // compact, is the remedy.
+    // Throttled operator warning for a heap well past any legitimate working set, escalating to a single error
+    // after staying up over a minute. No compact happens here — at this size the pause would be a multi-second
+    // freeze for a live leak compaction can't reclaim, so a restart, not a compact, is the remedy.
     private void _WarnAboutProbableLeak(long heapBytes)
     {
         if (_loggedLeakError)
