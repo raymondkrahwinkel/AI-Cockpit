@@ -1,11 +1,8 @@
 namespace Cockpit.Core.Abstractions.Screenshots;
 
-// A display as the desktop itself reports it (AC-326): where it sits and what it is scaled by, with nothing yet
-// said about pixels. The half of `CapturedDisplay` that is knowable before a capture exists.
-// A capture that composes its own image — Windows' virtual-screen blit, macOS' per-display files — knows where
-// every display's pixels landed because it put them there. The Linux portal does not: it hands back one image
-// and says nothing about what went into it, so the layout has to come from the desktop separately and be
-// reconciled with the image afterwards. This is what comes back from that ask.
+// AC-326: display layout as the desktop reports it, before pixels exist — the half of `CapturedDisplay`
+// knowable pre-capture. Needed because the Linux portal (unlike Windows/macOS) hands back one image with no
+// layout info, so layout must be reconciled with the image separately.
 public sealed record DesktopDisplay
 {
     // Where this display sits on the virtual desktop, in that desktop's own coordinates — the same space as `CapturedDisplay.DesktopBounds`.

@@ -1,10 +1,7 @@
 namespace Cockpit.Core.Abstractions.Screenshots;
 
-// What a capture hands back (AC-333): the pixels, and the desktop they came off. Raw image bytes on their own
-// are enough to attach to a session but not to select from — a selection UI has a pointer position on the
-// desktop and needs the pixel underneath it, which nothing in a PNG can answer.
-// The image spans every display at once, so the displays are what make sense of it. Where one contributed which
-// part of it, and by how much the desktop scaled it, is `CapturedDisplay`'s.
+// AC-333: what a capture hands back — pixels plus the desktop they came off. Raw bytes alone suffice to attach
+// to a session but not to select from, since nothing in a PNG maps a pointer position to its pixel.
 public sealed record ScreenCapture
 {
     // The whole desktop as PNG bytes — every display, composed into one image.

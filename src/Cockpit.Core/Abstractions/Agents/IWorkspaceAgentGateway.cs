@@ -1,26 +1,11 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
-// One AI-session pane as the agent coordination line reports it: what `list_agents` and the coordinator's roster key on and describe a sibling by.
-//
-// `PaneId`: The pane's stable id — the value of its own `COCKPIT_PANE_ID`.
-// `Name`: The name shown on the pane's tab/sidebar row.
-// `Profile`: The profile label the session was started under, or null before it is known.
-// `Statusline`: The free-text line the session set via `cockpit-session__set_status`, or empty when none is set.
-// `DeliversAtTurnStart`:
-// Whether a message addressed to this pane reaches it on its own, carried by its next turn (AC-394), or only when
-// that pane thinks to call `read_inbox`. Required rather than defaulted on purpose: a pane kind added later
-// has to answer it, and a default would answer for it — wrongly and silently, in whichever direction the default
-// happened to be written.
+// AC-1013: One AI-session pane as the agent coordination line reports it. DeliversAtTurnStart is required, not
+// defaulted, so a pane kind added later must answer it explicitly rather than get a silently wrong default.
 public sealed record WorkspaceAgentPane(string PaneId, string Name, string? Profile, string Statusline, bool DeliversAtTurnStart);
 
-// A caller's workspace as the agent coordination line sees it: which workspace it is, and every AI-session pane sharing it (the caller included).
-//
-// `WorkspaceId`:
-// The workspace this caller's own pane resolved to. This is the boundary `IWorkspaceAgentGateway` itself
-// enforces — only panes sharing it are ever included in `Panes` — not something
-// `IWorkspaceAgentCoordinator`'s roster partitions by; that roster is keyed on pane id alone and does
-// not know which workspace a pane is in at all.
-// `Panes`: Every AI-session pane in this workspace, in no particular order.
+// AC-1013: A caller's workspace as the agent coordination line sees it. WorkspaceId is the boundary
+// `IWorkspaceAgentGateway` itself enforces on `Panes` — unlike the coordinator's roster, which is keyed on pane id alone.
 public sealed record WorkspaceAgentSnapshot(string WorkspaceId, IReadOnlyList<WorkspaceAgentPane> Panes);
 
 /// <summary>
@@ -62,9 +47,8 @@ public enum AgentWakeOutcome
     // The recipient has not opted in to being woken. The message is delivered and waiting; nothing was started.
     NotOptedIn,
 
-    // The identical message was already waiting unread, so this send added nothing and nothing was woken. A wake
-    // fires when a message arrives, not every time a sender says it again — otherwise re-sending in a loop is a
-    // loop of turns on someone else's session.
+    // AC-1013: Identical message already waiting unread, so nothing was woken — a wake fires when a message
+    // arrives, not every re-send, or a resend loop becomes a loop of turns on someone else's session.
     AlreadyWaiting,
 
     // The recipient was working — a turn in flight, or background work still running. The message waits.
@@ -86,9 +70,7 @@ public enum AgentWakeOutcome
     // The attempt threw. The message is delivered either way; only the turn did not happen.
     Failed,
 
-    // The sender has woken agents as often in the last window as one session may (AC-396), so no turn was started.
-    // The message is delivered and waiting. This is the one refusal in this list that is about the *sender*
-    // rather than the recipient: everything else here says something about the pane being woken, and this says the
-    // caller is going too fast. Appended last so the values already on the trail keep meaning what they meant.
+    // AC-1013: Sender hit its wake rate limit (AC-396) — the one refusal here about the sender, not the
+    // recipient. Appended last so values already on the trail keep meaning what they meant.
     RateLimited,
 }

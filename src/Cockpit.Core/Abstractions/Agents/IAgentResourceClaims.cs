@@ -1,10 +1,7 @@
 namespace Cockpit.Core.Abstractions.Agents;
 
-// One agent session's standing claim on a piece of work (AC-393).
-//
-// `Resource`: What was claimed, in the claiming agent's own words — a worktree path, a branch, a file. The host never interprets it.
-// `OwnerPaneId`: The pane holding it. Stamped from the transport-verified caller, never from anything the claimer declared.
-// `ClaimedAtUtc`: When the claim was taken. Reported back so an old claim — the shape a crashed agent leaves behind — is recognisable as old.
+// AC-1013: One agent session's standing claim on a piece of work (AC-393). OwnerPaneId is stamped from the
+// transport-verified caller, never the claimer's own declaration.
 public sealed record AgentResourceClaim(string Resource, string OwnerPaneId, DateTimeOffset ClaimedAtUtc);
 
 // What became of one `IAgentResourceClaims.Claim` call.
@@ -23,14 +20,8 @@ public enum AgentClaimOutcome
     TooManyClaims,
 }
 
-// The result of a claim attempt: what happened, and the claim that now stands on the resource.
-//
-// `Outcome`: Taken, already the caller's, held by a neighbour, or refused because the caller holds too many.
-// `Claim`:
-// The claim standing on the resource — the new one on `AgentClaimOutcome.Claimed`, the caller's original on
-// `AgentClaimOutcome.AlreadyHeldByYou`, and the neighbour's on `AgentClaimOutcome.HeldByAnother`,
-// which is what lets the second claimer be told *who* holds it and since when. Null only when nothing stands and
-// nothing was taken (`AgentClaimOutcome.TooManyClaims`).
+// AC-1013: The result of a claim attempt. Claim is the standing claim on the resource — including the
+// neighbour's on HeldByAnother, so the second claimer can be told who holds it and since when — null only on TooManyClaims.
 public sealed record AgentClaimResult(AgentClaimOutcome Outcome, AgentResourceClaim? Claim);
 
 // What became of one `IAgentResourceClaims.Release` call.
@@ -46,13 +37,8 @@ public enum AgentReleaseOutcome
     HeldByAnother,
 }
 
-// The result of a release attempt: what happened, and which claim it happened to.
-//
-// `Outcome`: Released, nothing there to release, or held by a neighbour.
-// `Claim`:
-// The claim the outcome is about — the one just given up on `AgentReleaseOutcome.Released` (so the caller
-// can be told how long it had held it), and the neighbour's on `AgentReleaseOutcome.HeldByAnother` (so it
-// can be told who to ask). Null only on `AgentReleaseOutcome.NotClaimed`, where there is no claim to name.
+// AC-1013: The result of a release attempt. Claim is the one just given up on Released, the neighbour's on
+// HeldByAnother (so the caller knows who to ask), null only on NotClaimed.
 public sealed record AgentReleaseResult(AgentReleaseOutcome Outcome, AgentResourceClaim? Claim);
 
 /// <summary>

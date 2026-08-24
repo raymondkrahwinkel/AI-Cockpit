@@ -1,19 +1,12 @@
 namespace Cockpit.Core.Abstractions.Secrets;
 
-// What the cockpit knows about its own credential protection before anything is unlocked.
-//
-// `Enabled`: Whether the operator turned encryption on.
-// `Unlocked`: Whether the key for this session has been derived, so the settings can be read.
-// `ShouldWarnUnprotected`:
-// Whether the awareness banner (AC-41) should show: encryption is off, the settings hold at least one credential
-// in the clear, and the operator has not dismissed the warning for this exact set of credential fields. Defaults
-// off, so a status built without it (a test, a design-time stand-in) simply does not nag.
+// AC-1013 (AC-41): what the cockpit knows pre-unlock — `Enabled`, `Unlocked`, and `ShouldWarnUnprotected`
+// (banner shows when encryption is off, a credential is in the clear, and it wasn't dismissed for this field
+// set; defaults off so tests/stand-ins don't nag).
 public readonly record struct SecretProtectionStatus(bool Enabled, bool Unlocked, bool ShouldWarnUnprotected = false);
 
 // How far a migration has come, so the operator watches it happen instead of watching nothing happen.
-//
-// `Completed`: Fields converted so far.
-// `Total`: Fields to convert.
+// `Completed`/`Total`: fields converted so far / to convert.
 public readonly record struct SecretMigrationProgress(int Completed, int Total);
 
 /// <summary>

@@ -36,9 +36,8 @@ public enum AgentNotifyOutcome
     // The caller addressed its own pane.
     RefusedSelf,
 
-    // The addressee, kind or body was missing, or longer than one message may be. The bound is the recipient's
-    // protection: the body becomes text in another agent's context, and an unbounded one is both a way to fill host
-    // memory and a way to spend a neighbour's whole context window.
+    // AC-1013: Missing/oversized addressee, kind or body — the bound protects the recipient, since the body
+    // becomes text in another agent's context and an unbounded one could fill host memory or a neighbour's context.
     RefusedInvalidContent,
 
     // The addressed pane was in the caller's workspace when it was checked, but no longer by the time the message had
@@ -52,32 +51,14 @@ public enum AgentNotifyOutcome
     // The attempt failed unexpectedly (a race on a closing session, say) and no message was accepted. Recorded so the trail holds every attempt, not only the ones the host reached a verdict on.
     RefusedError,
 
-    // The sender has sent as many messages in the last window as one session may (AC-396), so this one was not
-    // accepted. Temporary and per sender: the sender is sending again as soon as its oldest message falls out of
-    // the window, and nobody else's sending is affected. Appended after `RefusedError` rather than
-    // filed among the other refusals so the numbers already written to the trail keep meaning what they meant.
+    // AC-1013: Sender hit its rate limit (AC-396) — temporary and per sender. Appended after RefusedError,
+    // not filed among the other refusals, so numbers already on the trail keep meaning what they meant.
     RefusedRateLimited,
 }
 
-// One line of the agent-notify trail (AC-392).
-//
-// `At`: When the attempt was handled.
-// `Outcome`: What the host did with it — accepted, deduplicated, or the reason it was refused.
-// `FromPaneId`: The transport-verified sender, or null when the request carried no verified pane (the one case where there is nobody to name).
-// `ToPaneId`: The pane the sender addressed, exactly as given — including one it was not allowed to reach.
-// `Kind`: The sender's label for the message, trimmed.
-// `Body`: The message text, trimmed: the trail is for recognising an attempt later, not for keeping a second copy of every message.
-// `MessageId`: The id of the message now waiting for the recipient, or null when nothing is.
-// `Urgent`: Whether the sender asked for the recipient to be woken (AC-395) — what it asked for, kept separate from what it got.
-// `Wake`:
-// What became of that wake, or null when none was attempted — an ordinary message, or one refused before it
-// ever reached the question. The trail is the only place a refused wake is written down: the sender is told, but
-// the sender is not who this record is for. Without it the operator can see that agents talked and never that
-// one tried to start a turn on another's session.
-//
-// Defaulted rather than required, and last, so the lines already on disk from before wake existed still read
-// back. A trail that stops parsing its own history the day a field is added is not append-only in any sense
-// that matters.
+// AC-1013: One line of the agent-notify trail (AC-392). Wake is the only place a refused wake gets written
+// down — the sender is told, but isn't who this record is for. Wake is defaulted and last so pre-wake lines
+// on disk still parse; a trail that stops reading its own history isn't append-only in any sense that matters.
 public sealed record AgentNotifyAuditEntry(
     DateTimeOffset At,
     AgentNotifyOutcome Outcome,

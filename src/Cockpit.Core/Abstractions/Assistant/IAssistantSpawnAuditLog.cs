@@ -18,24 +18,9 @@ public interface IAssistantSpawnAuditLog
     Task<IReadOnlyList<AssistantSpawnAuditEntry>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default);
 }
 
-// One line of the trail. Criterion 5 names four things it must carry — caller, target workspace, profile and
-// working directory — and each is here as its own field rather than folded into a sentence, so the trail stays
-// something you can grep and the window can lay out in columns.
-//
-// `At`: When it happened.
-// `Action`: What was asked for: `AssistantSpawnAction.Start` or `AssistantSpawnAction.Stop`.
-// `Caller`: Which authority asked — the assistant, or a coordinator (AC-436). See `SpawnTarget`.
-// `CallerPaneId`: The verified pane of a host-derived caller; null for the assistant, which has none.
-// `WorkspaceId`: The desk it landed on (or would have).
-// `WorkspaceName`: That desk's label at the time, kept because a workspace can be renamed or closed and the id then names nothing a reader recognises.
-// `Profile`: The profile the session runs under — the field that says what it costs.
-// `WorkingDirectory`: The folder it was started in, or null when the profile's default was used.
-// `PaneId`: The pane that resulted, or null for a refusal.
-// `SessionName`: What the pane is called, so the trail is readable without cross-referencing pane ids.
-// `Refusal`: Why it did not happen, or null when it did. A trail without its refusals hides the gate working.
-// `ProjectId` (AC-773): The project a start resolved to, by id — via `AgentSpawnRequest.ProjectId` or the folder's
-// own map-match, whichever supplied it — or null when neither did. Recorded so the trail can tell which route a
-// project came in by, not only that BehaviorPrompt/isolation/etc. were applied.
+// AC-1013: One line of the trail. Criterion 5's four required fields (caller, target workspace, profile,
+// working directory) are each their own field, not folded into a sentence, so the trail stays greppable and
+// columnar. ProjectId (AC-773) records which route (explicit or folder map-match) supplied the project.
 public sealed record AssistantSpawnAuditEntry(
     DateTimeOffset At,
     AssistantSpawnAction Action,

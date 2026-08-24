@@ -3,11 +3,8 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.Core.Abstractions.Sessions;
 
-// The dedupe behind AC-775: N sessions running under the same underlying credential (not the same profile
-// label — two profiles can share one API key/ConfigDir) used to each poll their provider for usage
-// independently. The first session to see a fresh reading writes it here; every other session under that
-// credential reads it back within the TTL instead of triggering its own fetch. Keyed on the credential a
-// `ProviderConfig` identifies, never on `SessionProfile.Label`.
+// AC-775: dedupes usage polling across N sessions sharing one credential (not profile label — profiles can
+// share a key/ConfigDir). First session to get a fresh reading writes it; others reuse it within the TTL.
 public interface ISharedUsageCache
 {
     /// <summary>The freshest status recorded for <paramref name="config"/>'s credential, or null when there is

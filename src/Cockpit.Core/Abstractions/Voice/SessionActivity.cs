@@ -1,9 +1,8 @@
 namespace Cockpit.Core.Abstractions.Voice;
 
-// A TTY session's coarse turn-activity, as the generic transcript façade reports it to the host — the core
-// mirror of the plugin's own signal (the core does not reference the plugin abstraction, so the infra façade
-// maps one to the other). Provider-neutral: the plugin owns the format-specific classification, the host maps
-// these to its status dot.
+// AC-1013: A TTY session's coarse turn-activity as the generic transcript façade reports it to the host —
+// the core's own mirror of the plugin's signal (core never references the plugin abstraction; the infra
+// façade maps one to the other). Provider-neutral: plugin classifies, host maps to its status dot.
 public enum SessionActivity
 {
     // The line carries no turn-progress signal (metadata) — leave the status unchanged.

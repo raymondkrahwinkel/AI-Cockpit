@@ -14,20 +14,9 @@ public enum HighlightBlend
     Lighten,
 }
 
-// A wash of colour over part of the picture (AC-361) — emphasis without hiding, which is the whole of what makes
-// it a different tool from the box that obscures.
-//
-// `Area`: The band it covers, in the pixels of whichever image it is being spoken about in.
-// `Colour`: What it is drawn in as 0xAARRGGBB, carried for the same reason the other marks carry it.
-// `Blend`: Which way it moves what is under it, decided from what is under it when the wash is placed.
-// The blend is on the mark rather than worked out where it is drawn, because it is drawn twice: once as a preview
-// on the surface and once into the delivered picture. Deciding it in each place means two decisions that can
-// disagree, and the one the operator checks would then not be the one they send.
-//
-// Plain transparency was the obvious implementation and is the wrong one. Compositing a colour at even a third of
-// its strength drags black text and white page towards each other — over 20:1 of contrast falls to about 3:1, and
-// what the tool exists for is emphasis *without* costing legibility. Multiplying keeps the ratio nearly
-// intact, because it scales both ends rather than pulling them to a middle.
+// AC-361: colour wash over part of the picture, `Area`/`Colour`/`Blend` (decided when placed, stored on the
+// mark since it's drawn twice — preview and delivered picture — and must agree). Plain transparency was
+// rejected: it drags black text and white page together (20:1 contrast to ~3:1); multiplying keeps ratio intact.
 public sealed record HighlightMark(CaptureRect Area, uint Colour, HighlightBlend Blend) : Mark
 {
     // How far the colour is mixed towards the end it is blending against — white for a wash that darkens, black

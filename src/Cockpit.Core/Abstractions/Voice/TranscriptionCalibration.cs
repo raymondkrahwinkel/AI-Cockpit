@@ -13,10 +13,9 @@ public sealed record BackendMeasurement(VoiceBackendPreference Backend, double L
 // child on the chosen backend can time the whole ladder by rebuilding the factory per model.
 public sealed record ModelMeasurement(string Model, double LatencyMs);
 
-// A measured first-use calibration (AC-68): the per-backend results and the backend the verdict chose from them,
-// plus a per-model latency ladder on that backend and the model it recommends. Where slice 3 measured only the one
-// backend that happened to be loaded, this measures every backend the machine can use — each in its own process —
-// and then times a spread of models on the winner, so both the backend and the model advice rest on real numbers.
+// AC-1013: A measured first-use calibration (AC-68) — per-backend results, the chosen backend, a per-model
+// latency ladder on that backend, and the recommended model. Trimmed: unlike slice 3 (which measured only
+// the one backend that happened to be loaded), this measures every usable backend, each in its own process, and times a model spread on the winner, so both the backend and model advice rest on real numbers.
 public sealed record TranscriptionCalibration(
     IReadOnlyList<BackendMeasurement> Measurements,
     VoiceBackendPreference ChosenBackend,
@@ -63,13 +62,9 @@ public interface IUiHitchSession : IDisposable
     double MaxHitchMs { get; }
 }
 
-// Turns the per-backend measurements into a verdict and words (AC-68). Pure, so the "prefer the CPU unless it is
-// meaningfully slower" reasoning is unit-testable without running a real transcription.
-//
-// The governing rule is *CPU preference, decided on measurements*: the CPU keeps the desktop perfectly
-// smooth, so it wins as long as it is not much slower than the GPU. "Much" is `CpuPreferenceFactor`
-// when the GPU stays smooth, and the more forgiving `CpuPreferenceFactorWhenGpuHitches` when the GPU
-// hitches the desktop — a GPU that stutters has to be that much faster still to be worth leaving the CPU for.
+// AC-1013: Turns per-backend measurements into a verdict and words (AC-68); pure, so the CPU-preference
+// reasoning is unit-testable without a real transcription. Trimmed: governing rule is CPU-preferred unless
+// meaningfully slower — CpuPreferenceFactor when the GPU stays smooth, the more forgiving CpuPreferenceFactorWhenGpuHitches when it doesn't, since a stuttering GPU must be that much faster to be worth leaving the CPU for.
 public static class TranscriptionCalibrationReport
 {
     // A stall at or under roughly one 60 Hz frame reads as smooth; beyond it the desktop visibly hitches.

@@ -42,12 +42,8 @@ public interface INodeSessionsClient
 }
 
 // One node, as the controller last read it. A non-null `Error` means nothing else here is current.
-//
-// AC-796, criterion 2: `Error` itself carries the distinction between "the connection is down" and "the node
-// looks stopped" where that can be told apart — see `NodeSessionsClient.Classify` for the exception shapes each
-// wording comes from — and the same honest "could not reach" as before for a failure that cannot be classified.
-// No separate typed field for it: nothing on this cockpit reads a node's failure kind as anything but text for the
-// operator, so a taxonomy alongside the sentence would be a second thing to keep in sync with the first.
+// AC-796, criterion 2: `Error` carries the distinction between "connection down" and "node looks stopped"
+// where classifiable (see `NodeSessionsClient.Classify`); no separate typed field for it.
 public sealed record NodeSessionsSnapshot(
     string NodeName,
     IReadOnlyList<NodeSessionRow> Sessions,

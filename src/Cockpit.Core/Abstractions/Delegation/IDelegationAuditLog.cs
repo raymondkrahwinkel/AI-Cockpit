@@ -49,10 +49,9 @@ public enum DelegationAuditAction
     PermissionElevationDenied,
 }
 
-// One line of the delegation audit trail (#67).
-//
-// `Prompt`: The prompt, trimmed: enough to recognise the task later without turning the log into a transcript.
-// `Reason`: Why a task was refused, or how it failed. Empty for the ordinary path.
+// One line of the delegation audit trail (#67). `Prompt` is trimmed: enough to recognise the task later
+// without turning the log into a transcript. `Reason` is why a task was refused or how it failed, empty
+// for the ordinary path.
 public sealed record DelegationAuditEntry(
     DateTimeOffset At,
     DelegationAuditAction Action,

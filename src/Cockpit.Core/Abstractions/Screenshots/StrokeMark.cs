@@ -4,16 +4,8 @@ namespace Cockpit.Core.Abstractions.Screenshots;
 // piece before it finished (AC-362).
 public readonly record struct StrokeCurve(MarkPoint FirstControl, MarkPoint SecondControl, MarkPoint End);
 
-// A line drawn freehand on the capture (AC-362) — circling a thing, crossing something out, following a path no
-// rectangle or arrow can describe.
-//
-// `Points`: Where the pointer went, in the pixels of whichever image it is being spoken about in, in the order it went there.
-// `Colour`: What it is drawn in as 0xAARRGGBB, carried for the same reason the other marks carry it.
-// `Thickness`: How thick the line is, in the image's pixels.
-// The first mark whose size is not fixed by its shape, and the first whose fidelity depends on how often the
-// pointer was heard from. A hand moving quickly over a window that is repainting slowly leaves samples far apart,
-// and joining those with straight lines draws a polygon where a curve was made — which is why what is kept is
-// `Curve` rather than the points themselves.
+// AC-362: freehand line, `Points`/`Colour`/`Thickness`. First mark whose fidelity depends on pointer sampling
+// rate — deleted: fast drags leave samples far apart, so straight-line joins draw a polygon; `Curve` fixes this.
 public sealed record StrokeMark(IReadOnlyList<CapturePoint> Points, uint Colour, int Thickness) : Mark
 {
     // How far the pointer must travel before another point is worth keeping, in the image's pixels. Points closer
@@ -52,11 +44,8 @@ public sealed record StrokeMark(IReadOnlyList<CapturePoint> Points, uint Colour,
         return kept;
     }
 
-    // The stroke as a run of curves through the points it kept, or nothing where the gesture never left its
-    // starting place. Both the surface's preview and the picture that is sent are drawn from this, so the line the
-    // operator watches being made is the line they hand over.
-    // A curve through the points rather than lines between them. The alternative is visible and cannot be tuned
-    // away: at a fast drag the samples are tens of pixels apart, and a circle drawn quickly comes out a hexagon.
+    // AC-1013: curves through kept points, shared by preview and delivered picture. Deleted: worked example —
+    // straight-line joins at a fast drag turn a circle into a visible hexagon.
     public IReadOnlyList<StrokeCurve> Curve()
     {
         if (Thinned() is not { Count: > 1 } points)

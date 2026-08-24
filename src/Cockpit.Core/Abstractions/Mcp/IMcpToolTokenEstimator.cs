@@ -1,9 +1,8 @@
 namespace Cockpit.Core.Abstractions.Mcp;
 
-// A pre-flight estimate of the prompt tokens a single MCP server's tool definitions add to a session (AC-134):
-// how many tools it exposes and roughly how many tokens their names, descriptions and JSON schemas take up.
-// `Available` is false when the server could not be enumerated (unreachable, or it needs an
-// auth the estimate step does not perform), so the UI can show "unknown" rather than a misleading zero.
+// A pre-flight estimate of the prompt tokens a single MCP server's tools add to a session (AC-134). `Available`
+// is false when the server could not be enumerated (unreachable, or needs auth the estimate step doesn't do),
+// so the UI shows "unknown" rather than a misleading zero.
 public sealed record McpServerToolEstimate(string ServerName, int ToolCount, int EstimatedTokens, bool Available)
 {
     // An unknown estimate for a server that could not be enumerated.

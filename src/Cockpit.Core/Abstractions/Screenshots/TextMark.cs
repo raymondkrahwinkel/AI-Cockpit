@@ -1,19 +1,8 @@
 namespace Cockpit.Core.Abstractions.Screenshots;
 
-// A note typed onto the capture (AC-363) — the only mark that carries meaning rather than emphasis. Every other
-// one says *look here*; this one says what to think when you do.
-//
-// `At`: The top-left corner of its backing plate, in the pixels of whichever image it is being spoken about in.
-// `Text`: What it says. Never empty — a label with nothing on it is an invisible mark, and the surface refuses to place one.
-// `Colour`: The colour of the letters as 0xAARRGGBB, carried for the same reason the other marks carry it.
-// `Size`: How tall the letters are, in the image's pixels.
-// Placed by its corner rather than by its baseline. A baseline is where a typographer puts text and a corner is
-// where an operator points: they click a spot and expect the note to start there, not to hang above it.
-//
-// The plate is part of the mark rather than a second one. Bare letters over a screenshot are the same problem the
-// arrow has, one step worse — a stroke can be ringed, but ringing every glyph turns them to mud at the sizes a
-// label is read at. A plate behind them gives one known background, and then the letters only have to contrast
-// with that.
+// AC-1013 (AC-363): note typed onto the capture, the only mark carrying meaning rather than emphasis;
+// `At`/`Text`/`Colour`/`Size`, placed by corner not baseline. Deleted: rationale for the backing plate (bare
+// letters would turn to mud at label sizes, unlike a ringed stroke) and why an empty `Text` is refused.
 public sealed record TextMark(CapturePoint At, string Text, uint Colour, int Size) : Mark
 {
     // How much room is left around the letters inside the plate, in multiples of their height. Enough that the plate reads as a label rather than as a box someone forgot to size.
@@ -25,11 +14,8 @@ public sealed record TextMark(CapturePoint At, string Text, uint Colour, int Siz
     // How far the letters sit in from the plate's edge, in the image's pixels.
     public double Padding => Size * PaddingInSizes;
 
-    // Moved into the crop's space and left whole, like the arrow and the stroke. A label trimmed at the edge is a
-    // label that says something other than what was typed, which is worse than one that runs off the picture.
-    // Dropped only when its corner is well outside the region. How wide the plate is depends on the font that
-    // draws it, which is not known here — so what is asked is whether the label starts anywhere near the picture,
-    // and a label that starts inside it and runs off the right-hand edge keeps the part that fits.
+    // AC-1013: left whole rather than trimmed (a trimmed label says something other than typed) and dropped
+    // only when clearly outside the region, since plate width depends on a font not known here.
     public override Mark? ClipTo(CaptureRect region) =>
         At.X < region.Right && At.Y < region.Bottom
         && At.X + Size > region.X && At.Y + Size > region.Y
