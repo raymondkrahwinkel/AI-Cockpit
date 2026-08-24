@@ -12,6 +12,7 @@ internal sealed class HelmRunner : IHelmRunner
     {
         var startInfo = new ProcessStartInfo(command.FileName)
         {
+            RedirectStandardInput = command.StandardInput is not null,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -36,6 +37,14 @@ internal sealed class HelmRunner : IHelmRunner
         {
             // The executable is not there — the "helm is not installed" case, which is the only way to learn it.
             return HelmResult.NotStarted;
+        }
+
+        if (command.StandardInput is { } input)
+        {
+            // Values reach helm on stdin (`-f -`), never through a file: a values document an agent composed can
+            // carry secrets, and writing it to disk is the very thing this plugin promises not to do.
+            await process.StandardInput.WriteAsync(input);
+            process.StandardInput.Close();
         }
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

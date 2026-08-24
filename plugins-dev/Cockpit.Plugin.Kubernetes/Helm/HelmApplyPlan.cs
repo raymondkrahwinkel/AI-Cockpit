@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json.Nodes;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
@@ -7,26 +6,26 @@ using Cockpit.Plugin.Kubernetes.Mcp;
 
 namespace Cockpit.Plugin.Kubernetes.Helm;
 
-// What happened to one resource in a rollback.
+// What happened to one resource of an applied manifest change.
 internal sealed record ManifestApplyResult(string Resource, string Action, string? Error);
 
-// One resource of a rollback, resolved against the apiserver: what the manifest says, and the REST plural and scope
-// discovery says it is.
+// One resource of a manifest change, resolved against the apiserver: what the manifest says, and the REST plural
+// and scope discovery says it is.
 internal sealed record PlannedResource(ManifestResourceChange Change, string Plural, bool Namespaced);
 
-// Turns a manifest diff into the calls that carry it out (AC-1061 fase 2). Everything that can refuse the rollback
-// is decided in `ResolveAsync`, before the operator is asked: a kind the cluster does not know, a resource outside
-// the release namespace, a cluster-scoped resource on a cluster where that is off. Nothing half-approved.
-internal sealed class HelmRollbackPlan(IKubernetes client, string releaseNamespace, IReadOnlyList<PlannedResource> resources)
+// Turns a manifest diff into the calls that carry it out, for a rollback and for an upgrade alike (AC-1061).
+// Everything that can refuse it is decided in `ResolveAsync`, before the operator is asked: a kind the cluster does
+// not know, a resource outside the release namespace, a cluster-scoped one where that is off. Nothing half-approved.
+internal sealed class HelmApplyPlan(IKubernetes client, string releaseNamespace, IReadOnlyList<PlannedResource> resources)
 {
-    // Every write claims helm's own field manager: the apiserver only reconciles an Update entry with helm's
-    // server-side Apply when the manager name matches. Measured on a cluster — under any other name the next
-    // `helm rollback` fails with `conflict with "unknown"`.
+    // Every write claims helm's own field manager and helm's own operation. Measured on a cluster: under any other
+    // manager name helm's server-side apply refuses with a conflict, and a field another controller owns makes this
+    // apply fail for that resource rather than be forced away.
     private const string FieldManager = "helm";
 
     public IReadOnlyList<PlannedResource> Resources => resources;
 
-    public static async Task<(HelmRollbackPlan? Plan, string? Error)> ResolveAsync(
+    public static async Task<(HelmApplyPlan? Plan, string? Error)> ResolveAsync(
         IKubernetes client, ManifestDiff diff, string releaseNamespace, bool allowClusterScoped, CancellationToken cancellationToken)
     {
         var catalog = new ApiResourceCatalog(client);
@@ -55,12 +54,12 @@ internal sealed class HelmRollbackPlan(IKubernetes client, string releaseNamespa
             planned.Add(new PlannedResource(change, resolved.Plural, resolved.Namespaced));
         }
 
-        return (new HelmRollbackPlan(client, releaseNamespace, planned), null);
+        return (new HelmApplyPlan(client, releaseNamespace, planned), null);
     }
 
     // Applies the target manifest, then removes what the target revision no longer has. Every resource is attempted:
-    // a rollback is not a transaction, and stopping at the first refusal would leave a state that is neither
-    // revision AND hide the rest of what is wrong from the operator.
+    // this is not a transaction, and stopping at the first refusal would leave a state that is neither revision AND
+    // hide the rest of what is wrong from the operator.
     public async Task<IReadOnlyList<ManifestApplyResult>> ApplyAsync(CancellationToken cancellationToken)
     {
         var results = new List<ManifestApplyResult>();
@@ -86,39 +85,21 @@ internal sealed class HelmRollbackPlan(IKubernetes client, string releaseNamespa
         }
 
         var reference = ApiVersionRef.Parse(document.ApiVersion);
+        var action = resource.Change.Change == ManifestChangeKind.Created ? "created" : "updated";
         try
         {
-            // A JSON merge patch, not a server-side apply: it sets what the target revision spells out and leaves
-            // every other field alone, so no controller loses a field it owns. The cost is in the tool description.
-            var patch = new V1Patch(json.ToJsonString(), V1Patch.PatchType.MergePatch);
+            // A server-side apply under helm's own manager, not a merge patch: measured on a cluster, a merge patch
+            // leaves a second `helm/Update` entry beside helm's `helm/Apply` one, and the next real `helm upgrade`
+            // then fails with `conflict with "helm"`. One Apply entry, and helm keeps working. Never forced.
+            var patch = new V1Patch(json.ToJsonString(), V1Patch.PatchType.ApplyPatch);
             _ = resource.Namespaced
                 ? await client.CustomObjects.PatchNamespacedCustomObjectWithHttpMessagesAsync(patch, reference.Group, reference.Version, releaseNamespace, resource.Plural, document.Name, fieldManager: FieldManager, cancellationToken: cancellationToken)
                 : await client.CustomObjects.PatchClusterCustomObjectWithHttpMessagesAsync(patch, reference.Group, reference.Version, resource.Plural, document.Name, fieldManager: FieldManager, cancellationToken: cancellationToken);
-            return new ManifestApplyResult(document.Display, "updated", null);
-        }
-        catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
-        {
-            return await _CreateAsync(reference, resource, json, cancellationToken);
+            return new ManifestApplyResult(document.Display, action, null);
         }
         catch (HttpOperationException exception)
         {
-            return new ManifestApplyResult(document.Display, "apply", _Describe(exception));
-        }
-    }
-
-    private async Task<ManifestApplyResult> _CreateAsync(ApiVersionRef reference, PlannedResource resource, JsonObject json, CancellationToken cancellationToken)
-    {
-        var document = resource.Change.Document;
-        try
-        {
-            _ = resource.Namespaced
-                ? await client.CustomObjects.CreateNamespacedCustomObjectWithHttpMessagesAsync(json, reference.Group, reference.Version, releaseNamespace, resource.Plural, fieldManager: FieldManager, cancellationToken: cancellationToken)
-                : await client.CustomObjects.CreateClusterCustomObjectWithHttpMessagesAsync(json, reference.Group, reference.Version, resource.Plural, fieldManager: FieldManager, cancellationToken: cancellationToken);
-            return new ManifestApplyResult(document.Display, "created", null);
-        }
-        catch (HttpOperationException exception)
-        {
-            return new ManifestApplyResult(document.Display, "create", _Describe(exception));
+            return new ManifestApplyResult(document.Display, action, _Describe(exception));
         }
     }
 

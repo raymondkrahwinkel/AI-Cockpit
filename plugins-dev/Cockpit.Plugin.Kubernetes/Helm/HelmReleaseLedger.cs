@@ -4,13 +4,14 @@ using k8s.Models;
 
 namespace Cockpit.Plugin.Kubernetes.Helm;
 
-// The release-secret bookkeeping a rollback owes helm (AC-1061 fase 2). Helm never resurrects an old revision: it
-// writes a NEW one carrying the target's manifest and values, and supersedes the one that was deployed. Getting this
-// wrong is worse than not rolling back at all — the next `helm upgrade` diffs against whatever is recorded here.
+// The release-secret bookkeeping a rollback or an upgrade owes helm (AC-1061). Helm never resurrects an old
+// revision: it writes a NEW one carrying that revision's manifest and values, and supersedes the deployed one.
+// Getting this wrong is worse than not changing anything — the next `helm upgrade` diffs against what is here.
 internal static class HelmReleaseLedger
 {
     public const string SecretType = "helm.sh/release.v1";
     public const string PendingRollback = "pending-rollback";
+    public const string PendingUpgrade = "pending-upgrade";
     public const string Deployed = "deployed";
     public const string Superseded = "superseded";
     public const string Failed = "failed";
@@ -21,9 +22,11 @@ internal static class HelmReleaseLedger
     public static string? StatusOf(V1Secret secret) =>
         secret.Metadata?.Labels?.TryGetValue("status", out var status) == true ? status : null;
 
-    // The secret for the revision a rollback creates: the target revision's release JSON, renumbered, restamped and
-    // relabelled. `info.first_deployed` deliberately stays as it was — it belongs to the release, not the revision.
-    public static (V1Secret Secret, JsonObject Payload) NewRevision(JsonObject targetRelease, string release, string @namespace, int revision, int fromRevision, DateTimeOffset now)
+    // The secret for the revision a rollback or an upgrade creates: the target release JSON, renumbered, restamped
+    // and relabelled. `info.first_deployed` deliberately stays as it was — it belongs to the release, not the
+    // revision. `pendingStatus` is what it says until the resources have actually landed.
+    public static (V1Secret Secret, JsonObject Payload) NewRevision(
+        JsonObject targetRelease, string release, string @namespace, int revision, string description, string pendingStatus, DateTimeOffset now)
     {
         var payload = (JsonObject)targetRelease.DeepClone();
         payload["version"] = revision;
@@ -35,8 +38,8 @@ internal static class HelmReleaseLedger
         }
 
         info["last_deployed"] = _Timestamp(now);
-        info["description"] = $"Rollback to {fromRevision}";
-        SetStatus(payload, PendingRollback);
+        info["description"] = description;
+        SetStatus(payload, pendingStatus);
 
         var secret = new V1Secret
         {
@@ -47,7 +50,7 @@ internal static class HelmReleaseLedger
             {
                 Name = SecretName(release, revision),
                 NamespaceProperty = @namespace,
-                Labels = _Labels(release, revision, PendingRollback, now),
+                Labels = _Labels(release, revision, pendingStatus, now),
             },
             Data = new Dictionary<string, byte[]> { ["release"] = HelmReleaseSecretCodec.Encode(payload) },
         };

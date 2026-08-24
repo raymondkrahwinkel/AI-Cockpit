@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.Kubernetes.Helm;
 // One helm invocation, built as argv (never a shell string — a release name or value comes from an agent) plus a
 // locked-down environment (AC-1061 phase 5, AC 5): `--kube-context`/`--kubeconfig` are always derived from
 // `cluster`, and the env vars that `helm env` shows can hijack the target cluster are cleared or pinned here.
-internal sealed record HelmCommand(string FileName, IReadOnlyList<string> Arguments, IReadOnlyDictionary<string, string> Environment)
+internal sealed record HelmCommand(string FileName, IReadOnlyList<string> Arguments, IReadOnlyDictionary<string, string> Environment, string? StandardInput = null)
 {
     // HELM_DRIVER is pinned to helm's own default rather than cleared to "": an ambient override here would point
     // release storage at a different backend entirely, not just a different cluster.
@@ -28,7 +28,8 @@ internal sealed record HelmCommand(string FileName, IReadOnlyList<string> Argume
         ClusterRegistration cluster,
         string @namespace,
         string verb,
-        IReadOnlyList<string> arguments)
+        IReadOnlyList<string> arguments,
+        string? standardInput = null)
     {
         if (string.IsNullOrWhiteSpace(cluster.KubeconfigPath))
         {
@@ -48,6 +49,6 @@ internal sealed record HelmCommand(string FileName, IReadOnlyList<string> Argume
         argv.Add(@namespace);
         argv.AddRange(arguments);
 
-        return (new HelmCommand(helmExecutablePath, argv, _LockedEnvironment), null);
+        return (new HelmCommand(helmExecutablePath, argv, _LockedEnvironment, standardInput), null);
     }
 }
