@@ -24,7 +24,7 @@ public class RealWorkflowsTests
         var verdicts = _VerdictsFor("ci.yml");
 
         Assert.Equal(
-            ["changes", "build", "plugins", "plugin-versions", "xmldoc-scope", "descendant-selector-scope"],
+            ["changes", "build", "plugins", "plugin-versions", "xmldoc-scope", "comment-length", "descendant-selector-scope"],
             verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));
     }
 
