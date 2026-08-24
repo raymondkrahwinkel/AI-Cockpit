@@ -102,6 +102,19 @@ public sealed class DockerAccessGateTests
         Assert.DoesNotContain(escape, asked[1].Action, StringComparison.Ordinal);
     }
 
+    // AC-1062, criterion 3 (mirrors ClusterAccessGate): the multi-line ingress still holds the AC-92 invariant — a
+    // detail line carrying a raw newline of its own comes out escaped on its own line, not as a second line.
+    [Fact]
+    public async Task Mutation_ADetailLineWithAnEmbeddedNewline_ComesOutAsOneEscapedLine_NotTwoLines()
+    {
+        var (gate, asked) = _Gate(ConsentOutcome.Approved);
+
+        await gate.AuthorizeMutationAsync("remove container \"web\"", Session, detailLines: ["exec: sh -c echo hi #harmless\nrm -rf /data"]);
+
+        Assert.Equal(2, asked[1].Action.Split('\n').Length);
+        Assert.Contains("#harmless\\nrm -rf /data", asked[1].Action, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task WhenOperatorDeclines_ReturnsDenyWithReason()
     {

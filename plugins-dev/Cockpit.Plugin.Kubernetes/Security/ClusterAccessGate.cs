@@ -34,7 +34,9 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
     }
 
     // A change to a namespaced resource: connection, namespace jail, then an always-fresh Dangerous consent.
-    public async Task<GateResult> AuthorizeNamespacedMutationAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId)
+    // `detailLines` (AC-1062) is the multi-line ingress: each line is escaped on its own and joined with a real
+    // newline, rather than the whole composed body being flattened as one — see `_ComposeAction`.
+    public async Task<GateResult> AuthorizeNamespacedMutationAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId, IReadOnlyList<string>? detailLines = null)
     {
         var namespaced = await AuthorizeNamespacedReadAsync(cluster, @namespace, operation, paneId);
         if (!namespaced.IsAllowed)
@@ -42,7 +44,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             return namespaced;
         }
 
-        return await _AuthorizeMutationAsync(cluster, operation, paneId);
+        return await _AuthorizeMutationAsync(cluster, operation, paneId, detailLines);
     }
 
     // A read against a cluster-scoped resource (nodes, PVs, namespaces): blocked unless the cluster opted in, then
@@ -163,7 +165,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             paneId: paneId);
     }
 
-    private Task<GateResult> _AuthorizeMutationAsync(ClusterRegistration cluster, string operation, string? paneId) =>
+    private Task<GateResult> _AuthorizeMutationAsync(ClusterRegistration cluster, string operation, string? paneId, IReadOnlyList<string>? detailLines = null) =>
         _RequestAsync(
             title: "Kubernetes: change a resource",
             operation: operation,
@@ -171,16 +173,18 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             scope: $"k8s.mutate:{cluster.Id}",
             risk: ConsentRisk.Dangerous,
             allowRemember: false,
-            paneId: paneId);
+            paneId: paneId,
+            detailLines: detailLines);
 
-    private async Task<GateResult> _RequestAsync(string title, string operation, ClusterRegistration cluster, string scope, ConsentRisk risk, bool allowRemember, string? paneId)
+    private async Task<GateResult> _RequestAsync(string title, string operation, ClusterRegistration cluster, string scope, ConsentRisk risk, bool allowRemember, string? paneId, IReadOnlyList<string>? detailLines = null)
     {
         var request = new ConsentRequest(
             Title: title,
             // The Action is rendered verbatim and parts of it (a pod name, a command, a patch) are agent-supplied.
             // Collapse control characters so an agent cannot smuggle newlines into the consent body and pad it with
-            // reassuring extra lines — the operator must see one clearly-bounded line.
-            Action: _SingleLine(operation),
+            // reassuring extra lines — the operator must see one clearly-bounded line, or (with detailLines) a
+            // clearly-bounded set of them.
+            Action: _ComposeAction(operation, detailLines),
             Source: new ConsentSource(paneId, PluginId: null, Label: SourceLabel),
             Scope: scope,
             Risk: risk,
@@ -192,10 +196,17 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             : GateResult.Deny($"The operator did not approve this action on cluster \"{cluster.Label}\".");
     }
 
+    // AC-1062: escapes each fragment on its own — the operation summary, then each detail line — before joining
+    // with a real newline, instead of joining first and escaping the whole body (which is what let a plugin-computed
+    // diff collapse to one line). Not shared with DockerAccessGate/ProxmoxAccessGate — same shape, on purpose.
+    private static string _ComposeAction(string operation, IReadOnlyList<string>? detailLines) =>
+        detailLines is null or { Count: 0 }
+            ? _SingleLine(operation)
+            : string.Join('\n', new[] { operation }.Concat(detailLines).Select(_SingleLine));
+
     // Rendered verbatim to the operator; parts (a pod name, a command, a patch) are agent-supplied. Escape line
-    // breaks and tabs VISIBLY (so a multi-line command reads as multi-line and cannot be disguised as commented-out
-    // — echo hi #harmless\nrm -rf /data must not collapse to one reassuring line) and neutralize every other control
-    // character, keeping the consent body a single bounded line. Mirrors the Docker plugin's DockerAccessGate (AC-92).
+    // breaks and tabs VISIBLY (echo hi #harmless\nrm -rf /data must not collapse to one reassuring line) and
+    // neutralize every other control character, keeping each fragment one bounded line. Mirrors DockerAccessGate (AC-92).
     private static string _SingleLine(string operation)
     {
         var builder = new StringBuilder(operation.Length);

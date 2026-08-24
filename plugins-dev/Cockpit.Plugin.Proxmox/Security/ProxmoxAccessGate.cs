@@ -22,7 +22,9 @@ internal sealed class ProxmoxAccessGate(ICockpitHost host)
             paneId);
 
     // Authorize a change (start/stop/shutdown/reboot/snapshot). Layered on connection auth, then always Dangerous and never remembered.
-    public async Task<GateResult> AuthorizeMutationAsync(string operation, string? paneId)
+    // `detailLines` (AC-1062) is the multi-line ingress: each line is escaped on its own and joined with a real
+    // newline, rather than the whole composed body being flattened as one — see `_ComposeAction`.
+    public async Task<GateResult> AuthorizeMutationAsync(string operation, string? paneId, IReadOnlyList<string>? detailLines = null)
     {
         var connection = await AuthorizeConnectionAsync(operation, paneId);
         if (!connection.IsAllowed)
@@ -36,7 +38,8 @@ internal sealed class ProxmoxAccessGate(ICockpitHost host)
             "proxmox.mutate:default",
             ConsentRisk.Dangerous,
             allowRemember: false,
-            paneId);
+            paneId,
+            detailLines);
     }
 
     // Authorize a dangerous capability (rollback/delete). Blocked with a settings hint when off — a policy block,
@@ -64,12 +67,13 @@ internal sealed class ProxmoxAccessGate(ICockpitHost host)
             paneId);
     }
 
-    private async Task<GateResult> _RequestAsync(string title, string operation, string scope, ConsentRisk risk, bool allowRemember, string? paneId)
+    private async Task<GateResult> _RequestAsync(string title, string operation, string scope, ConsentRisk risk, bool allowRemember, string? paneId, IReadOnlyList<string>? detailLines = null)
     {
         var request = new ConsentRequest(
             Title: title,
-            // Rendered verbatim; parts are agent-supplied, so flatten to a single bounded line with control chars escaped.
-            Action: _SingleLine(operation),
+            // Rendered verbatim; parts are agent-supplied, so flatten each fragment to a single bounded line with
+            // control chars escaped, then join with a real newline.
+            Action: _ComposeAction(operation, detailLines),
             Source: new ConsentSource(paneId, PluginId: null, Label: SourceLabel),
             Scope: scope,
             Risk: risk,
@@ -91,8 +95,16 @@ internal sealed class ProxmoxAccessGate(ICockpitHost host)
             : GateResult.Deny("The operator did not approve this Proxmox action.");
     }
 
+    // AC-1062: escapes each fragment on its own — the operation summary, then each detail line — before joining
+    // with a real newline, instead of joining first and escaping the whole body. Not shared with
+    // ClusterAccessGate/DockerAccessGate — same shape, on purpose.
+    private static string _ComposeAction(string operation, IReadOnlyList<string>? detailLines) =>
+        detailLines is null or { Count: 0 }
+            ? _SingleLine(operation)
+            : string.Join('\n', new[] { operation }.Concat(detailLines).Select(_SingleLine));
+
     // Rendered verbatim to the operator; parts (a VM/LXC id, a snapshot name) are agent-supplied. Escape line breaks
-    // and tabs VISIBLY and neutralize every other control character, keeping the consent body a single physical
+    // and tabs VISIBLY and neutralize every other control character, keeping each fragment a single physical
     // line — an agent cannot smuggle extra lines into what the operator approves. Mirrors DockerAccessGate.
     private static string _SingleLine(string text)
     {

@@ -1,5 +1,6 @@
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugin.Kubernetes.Helm;
 using Cockpit.Plugin.Kubernetes.Model;
 using Cockpit.Plugin.Kubernetes.Security;
 using NSubstitute;
@@ -175,6 +176,64 @@ public class ClusterAccessGateTests
         Assert.NotNull(danger);
         Assert.DoesNotContain("#harmless rm -rf /data", danger!.Action, StringComparison.Ordinal);
         Assert.Contains("#harmless\\nrm -rf /data", danger.Action, StringComparison.Ordinal);
+    }
+
+    // AC-1062, criterion 1: a rollback's manifest diff (one updated and one deleted resource) reaches the operator
+    // as one line per rendered line, not as one flattened line with visible `\n` escapes standing in for real breaks.
+    [Fact]
+    public async Task Mutation_WithDetailLines_RendersOneLinePerManifestDiffLine_NoEscapedNewlineSubstring()
+    {
+        var current = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\ndata:\n  value: old\n"
+            + "---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: b\n";
+        var target = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a\ndata:\n  value: new\n";
+        var lines = ManifestDiff.Compute(current, target).ToConsentLines(3_500);
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+        var gate = new ClusterAccessGate(host);
+
+        await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "default", "roll back Helm release \"demo\"", PaneId, lines);
+
+        var mutate = _WithScopePrefix(asked, "k8s.mutate:");
+        Assert.NotNull(mutate);
+        Assert.Equal(1 + lines.Count, mutate!.Action.Split('\n').Length);
+        Assert.DoesNotContain("\\n", mutate.Action, StringComparison.Ordinal);
+    }
+
+    // AC-1062, criterion 3: the multi-line ingress still holds the AC-92 invariant — a detail line carrying a raw
+    // newline of its own cannot turn into a second physical line, it comes out escaped on the one line it was given.
+    [Fact]
+    public async Task Mutation_ADetailLineWithAnEmbeddedNewline_ComesOutAsOneEscapedLine_NotTwoLines()
+    {
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+        var gate = new ClusterAccessGate(host);
+
+        await gate.AuthorizeNamespacedMutationAsync(
+            _Cluster(["default"]), "default", "roll back Helm release \"demo\"", PaneId,
+            detailLines: ["+ CREATE v1 ConfigMap default/evil\nrm -rf /data"]);
+
+        var mutate = _WithScopePrefix(asked, "k8s.mutate:");
+        Assert.NotNull(mutate);
+        Assert.Equal(2, mutate!.Action.Split('\n').Length);
+        Assert.Contains("evil\\nrm -rf /data", mutate.Action, StringComparison.Ordinal);
+    }
+
+    // AC-1062, criterion 5: a diff bigger than MaxConsentDiffLength still lands on a bounded Action with the
+    // "… and N more resource(s)" tail, so Approve/Deny stays reachable instead of the card growing without limit.
+    [Fact]
+    public async Task Mutation_WithDetailLinesPastTheBudget_KeepsTheComposedActionBounded_WithTheMoreResourcesTail()
+    {
+        var current = string.Join("\n---\n", Enumerable.Range(0, 40).Select(index => $"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: c{index}\ndata:\n  value: old"));
+        var target = string.Join("\n---\n", Enumerable.Range(0, 40).Select(index => $"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: c{index}\ndata:\n  value: new"));
+        var lines = ManifestDiff.Compute(current, target).ToConsentLines(400);
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+        var gate = new ClusterAccessGate(host);
+
+        var result = await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "default", "roll back Helm release \"demo\"", PaneId, lines);
+
+        Assert.True(result.IsAllowed, "a bounded diff must still let Approve/Deny be reached");
+        var mutate = _WithScopePrefix(asked, "k8s.mutate:");
+        Assert.NotNull(mutate);
+        Assert.True(mutate!.Action.Length < 700, $"composed action must stay bounded, got {mutate.Action.Length} characters");
+        Assert.Contains("more resource(s)", mutate.Action);
     }
 
     [Fact]

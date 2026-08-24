@@ -100,8 +100,10 @@ internal sealed partial class KubernetesMcpTools
             return McpText.Error(planError!);
         }
 
-        var operation = $"roll back Helm release \"{release}\" in namespace \"{@namespace}\" from revision {currentRevision} to revision {revision} — {diff.ToConsentText(MaxConsentDiffLength)}";
-        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, @namespace, operation, session);
+        // AC-1062: the diff goes to the gate as separate lines, not pre-joined with `\n`, so the gate can escape
+        // and join them itself instead of collapsing the whole block to one unreadable line.
+        var operation = $"roll back Helm release \"{release}\" in namespace \"{@namespace}\" from revision {currentRevision} to revision {revision}";
+        var decision = await gate.AuthorizeNamespacedMutationAsync(registration, @namespace, operation, session, diff.ToConsentLines(MaxConsentDiffLength));
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
         {
             return McpText.Error(reason);

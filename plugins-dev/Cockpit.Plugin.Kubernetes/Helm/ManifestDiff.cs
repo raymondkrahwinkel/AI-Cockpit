@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.Kubernetes.Helm;
@@ -67,43 +66,56 @@ internal sealed record ManifestDiff(
         return new ManifestDiff(changes, unchanged, warnings);
     }
 
-    // The line the operator reads on the consent card. It is rendered as one wrapped block, so the whole diff goes in
-    // but bounded: past `maxLength` it says how much it left out instead of pushing the decision off the card.
-    public string ToConsentText(int maxLength)
+    // The text the operator reads on the consent card, as one wrapped block. Built from `ToConsentLines` — see
+    // there for the bounding rule.
+    public string ToConsentText(int maxLength) => string.Join('\n', ToConsentLines(maxLength));
+
+    // The lines the operator reads on the consent card (AC-1062): one element per rendered line, so a gate can
+    // escape and join them itself instead of receiving one block with the breaks already baked in as `\n`.
+    // Bounded: past `maxLength` it says how much it left out instead of pushing the decision off the card.
+    public IReadOnlyList<string> ToConsentLines(int maxLength)
     {
-        var builder = new StringBuilder(_Headline());
+        var lines = new List<string> { _Headline() };
+        var length = lines[0].Length;
+
         // A document that would not parse may hide a resource this rollback should have touched, so it belongs on
-        // the card the operator decides from — not only in the result the agent reads afterwards.
+        // the card the operator decides from — not only in the result the agent reads afterwards. Not subject to
+        // the budget below: a parse warning must never be the thing truncation drops.
         foreach (var warning in Warnings)
         {
-            builder.Append("\n! ").Append(warning);
+            var line = $"! {warning}";
+            lines.Add(line);
+            length += 1 + line.Length;
         }
 
         var truncated = 0;
         foreach (var change in Changes)
         {
-            var entry = change.Change switch
+            var entryLines = change.Change switch
             {
-                ManifestChangeKind.Created => $"\n+ CREATE {change.Document.Display}",
-                ManifestChangeKind.Deleted => $"\n- DELETE {change.Document.Display}",
-                _ => $"\n~ UPDATE {change.Document.Display} (+{change.AddedLines}/-{change.RemovedLines})\n{change.Diff}",
+                ManifestChangeKind.Created => new[] { $"+ CREATE {change.Document.Display}" },
+                ManifestChangeKind.Deleted => new[] { $"- DELETE {change.Document.Display}" },
+                _ => new[] { $"~ UPDATE {change.Document.Display} (+{change.AddedLines}/-{change.RemovedLines})" }
+                    .Concat(change.Diff!.Split('\n')).ToArray(),
             };
+            var entryLength = entryLines.Sum(line => line.Length) + entryLines.Length;
 
-            if (builder.Length + entry.Length > maxLength)
+            if (length + entryLength > maxLength)
             {
                 truncated++;
                 continue;
             }
 
-            builder.Append(entry);
+            lines.AddRange(entryLines);
+            length += entryLength;
         }
 
         if (truncated > 0)
         {
-            builder.Append($"\n… and {truncated} more resource(s) — read both revisions with helm_manifest to see everything");
+            lines.Add($"… and {truncated} more resource(s) — read both revisions with helm_manifest to see everything");
         }
 
-        return builder.ToString();
+        return lines;
     }
 
     public JsonObject ToJson() => new()

@@ -316,6 +316,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the Kubernetes, Docker and Proxmox plugins now show a multi-line approval — such as a Helm rollback's
+  resource-by-resource diff — as actual separate lines instead of collapsing the whole thing into one line with
+  visible `\n` markers standing in for the breaks. A line an agent supplies is still escaped on its own, so it can
+  never fake a break of its own; only the plugin's own line breaks now render as real ones.
+
 - fixed: a project logo added to a shared Depot project after this machine already bound it now arrives on its
   own, picked up the next time the background sync check runs (every 15 minutes, or "Sync now"). It never
   overwrites a logo you already set locally.
