@@ -65,13 +65,17 @@ public sealed class ManagedCliUpdateChecker(
                 return; // up to date
             }
 
-            if (await autoUpdateStore.IsEnabledAsync(cliName, cancellationToken).ConfigureAwait(false))
+            // A major jump changes the CLI's own behavior (e.g. helm 3 -> 4), so it never auto-installs —
+            // it only toasts and waits for a manual click, regardless of the auto-update setting.
+            var isMajorJump = latest.Major > installed.Major;
+
+            if (!isMajorJump && await autoUpdateStore.IsEnabledAsync(cliName, cancellationToken).ConfigureAwait(false))
             {
                 await _AutoUpdateAsync(cliName, status.InstalledVersion, status.LatestVersion, cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                _ToastAvailable(cliName, status.InstalledVersion, status.LatestVersion);
+                _ToastAvailable(cliName, status.InstalledVersion, status.LatestVersion, isMajorJump);
             }
         }
         catch (OperationCanceledException)
@@ -97,17 +101,20 @@ public sealed class ManagedCliUpdateChecker(
             // EnsureInstalledAsync never throws — offline, a checksum mismatch, a network hiccup — and reports it
             // rather than leaving the operator with no explanation. Fall back to the plain "available" toast; the
             // next tick tries the install again.
-            _ToastAvailable(cliName, installedVersion, latestVersion);
+            _ToastAvailable(cliName, installedVersion, latestVersion, isMajorJump: false);
         }
     }
 
-    private void _ToastAvailable(string cliName, string installedVersion, string latestVersion)
+    private void _ToastAvailable(string cliName, string installedVersion, string latestVersion, bool isMajorJump)
     {
-        if (_notified.Add((cliName, latestVersion)))
+        if (!_notified.Add((cliName, latestVersion)))
         {
-            toastService.Show(
-                $"A newer {cliName} is available: {installedVersion} → {latestVersion}. Update it in a {cliName} profile's settings.",
-                ToastSeverity.Information);
+            return;
         }
+
+        var message = isMajorJump
+            ? $"{cliName} {latestVersion} is available — this is a major version change. Update it in a {cliName} profile's settings."
+            : $"A newer {cliName} is available: {installedVersion} → {latestVersion}. Update it in a {cliName} profile's settings.";
+        toastService.Show(message, ToastSeverity.Information);
     }
 }
