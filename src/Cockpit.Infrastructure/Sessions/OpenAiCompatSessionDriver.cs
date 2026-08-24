@@ -15,12 +15,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// `ISessionDriver` for the local OpenAI-compatible providers (Ollama, LM Studio) via
-// Microsoft.Extensions.AI's `IChatClient`. It streams assistant text, holds the conversation
-// history itself (HTTP is stateless), and — when the shared MCP registry has servers — runs an agentic
-// tool-loop (#26): the model's tool calls are gated through the cockpit's PermissionRequested flow and
-// executed via MCP only on approval. The Claude-CLI-specific control operations (permission mode, thinking
-// budget) remain no-ops; `Capabilities` tells the UI which controls to show.
+// `ISessionDriver` for the local OpenAI-compatible providers (Ollama, LM Studio) via Microsoft.Extensions.AI's
+// `IChatClient`; streams text and owns conversation history itself (HTTP is stateless), and when MCP servers
+// are registered runs an agentic tool-loop (#26) gated through PermissionRequested; Claude-CLI-only controls (permission mode, thinking) stay no-ops.
 internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientService
 {
     private readonly IChatClientFactory _chatClientFactory;
@@ -45,10 +42,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     private string? _sessionId;
     private CancellationTokenSource? _turnCancellation;
 
-    // Set once a turn makes at least one tool call (AC-132), so a turn that ends with no assistant text and no
-    // tool activity can be surfaced as "no response" rather than a silent success. Reset at each turn start;
-    // turns are serialised (one _RunTurnAsync in flight at a time), and the tool loop can run the call on a
-    // pool thread, so a volatile flag rather than a local.
+    // AC-132: set once a turn makes a tool call, so a turn with no text and no tool activity surfaces as "no
+    // response" instead of a silent success. Reset at each turn start; volatile because the tool loop can run
+    // the call on a pool thread even though turns themselves are serialised.
     private volatile bool _turnHadToolActivity;
 
     // The shared approval gate (AC-964): the same decision path the plugin-provider tool loop runs, so the one
@@ -72,11 +68,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             (toolUseId, content, isError) => _events.Writer.TryWrite(new ToolResult { SessionId = _sessionId, ToolUseId = toolUseId, Content = content, IsError = isError }));
     }
 
-    // Tool support is set once the MCP servers connect (below); permission mode / model switch / thinking
-    // stay off — the local model is fixed by its profile and tool approval is per-call, not a Claude mode.
-    // SupportsVision stays false too: SendUserMessageAsync below ignores the images parameter entirely, so
-    // advertising vision support here would be the exact dead promise #64 exists to prevent (fase 2 adds
-    // real image-block support before this ever flips true).
+    // Tool support flips true once MCP servers connect; permission mode/model switch/thinking stay off since the
+    // local model is fixed by its profile. SupportsVision stays false too — SendUserMessageAsync ignores images
+    // entirely, so advertising vision here would be the dead promise #64 exists to prevent (fase 2 adds it for real).
     public SessionCapabilities Capabilities { get; private set; } = new(
         SupportsTools: false,
         SupportsPermissions: false,
@@ -104,12 +98,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _model = string.IsNullOrWhiteSpace(model) ? _ModelFrom(config) : model;
         _sessionId = Guid.NewGuid().ToString();
 
-        // Wrap the chat client in the agentic function-invocation loop; each MCP tool is gated so a tool
-        // call is executed only after the operator approves it (the gate is this driver). The first-registered
-        // .Use* is the outermost layer, so the order is: UseFunctionInvocation (outer) → HermesToolCallChatClient
-        // (middle) → model client (inner). The Hermes shim turns a local model's text tool-call (AC-192) into a
-        // structured FunctionCallContent before UseFunctionInvocation sees it, so it runs the tool exactly as it
-        // would a natively-structured call; a model that already emits structured calls flows through untouched.
+        // AC-192: .Use* registration order = outer→inner, so below is UseFunctionInvocation (outer) →
+        // HermesToolCallChatClient (middle) → model client (inner). The Hermes shim turns local-model text
+        // tool-calls into structured FunctionCallContent before UseFunctionInvocation sees them; already-structured calls pass through.
         _agent = new ChatClientBuilder(_chatClientFactory.Create(config))
             .UseFunctionInvocation()
             .Use(inner => new HermesToolCallChatClient(inner))
@@ -119,11 +110,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         // the id the local model declares.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
 
-        // Confinement (AC-174, Raymond 2026-07-22): the host sets this flag when it isolates the session in a worktree.
-        // A local model reaches files only through MCP servers, so honour it by asking the tool provider to confine file
-        // tools to the working directory — re-root the filesystem server there and drop every escape channel. Only a
-        // session that actually gets confined here may then vouch it (the capability below), so the flag alone is never
-        // enough — it needs a real working directory to confine to.
+        // AC-174 (Raymond 2026-07-22): confine file tools to the working directory when the host isolates this
+        // session in a worktree — re-root the filesystem server and drop every escape channel. Only a session
+        // actually confined here may vouch the capability below; the flag alone is never enough.
         var confineRoot = launchOptions is not null
             && launchOptions.TryGetValue(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory, out var confineFlag)
             && string.Equals(confineFlag, "true", StringComparison.OrdinalIgnoreCase)
@@ -176,10 +165,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _gate.ToolClasses = _toolSession.ToolClasses;
         _gatedTools = [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, _gate) })];
         _turnTools = _BuildTurnTools();
-        // SupportsTools flips true once servers connected. ConfinesFileAccessToWorkingDirectory is vouched only when we
-        // actually confined this session (confineRoot set → the tool provider re-rooted file access to the worktree and
-        // dropped every escape channel); the host's fail-closed isolation gate reads it, so it must never read true on a
-        // session that was not confined.
+        // SupportsTools flips true once servers connected. ConfinesFileAccessToWorkingDirectory is vouched only when
+        // confineRoot re-rooted file access and dropped every escape channel — the host's fail-closed isolation gate
+        // reads this, so it must never read true for a session that was not actually confined.
         Capabilities = Capabilities with
         {
             SupportsTools = _turnTools.Count > 0,
@@ -195,11 +183,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
         }
 
-        // Report the actual tool names (not the server names) so the session's "N tools" count is real and
-        // the UI can show exactly which tools — e.g. read_file — the local model has, making it verifiable
-        // whether a file tool is even available before wondering why the model didn't call one.
-        // In search mode the catalogue is reachable through `call_tool` rather than preloaded, so this still names
-        // every tool the model can get to — plus the two proxies it gets there with.
+        // Report the actual tool names (not server names) so the session's "N tools" count is real and verifiable —
+        // e.g. confirming read_file is actually available. In search mode the catalogue rides through `call_tool`
+        // rather than preloaded, so this still names every reachable tool plus the two proxies it gets there with.
         _events.Writer.TryWrite(new SessionInitialized
         {
             SessionId = _sessionId,
@@ -256,22 +242,18 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // A genuine user interrupt — the token this turn runs under was cancelled. Keep the clean
-            // "interrupted" turn with no error row. An OperationCanceledException the SDK throws while ABORTING
-            // the stream on a non-2xx response leaves the token uncancelled, so it fails this filter and falls
-            // through to an error branch rather than masquerading as an interrupt (AC-132).
+            // A genuine user interrupt: the token this turn runs under was cancelled, so keep a clean "interrupted"
+            // turn with no error row. An OperationCanceledException the SDK throws while aborting on a non-2xx response
+            // leaves the token uncancelled, so it fails this filter and falls through as an error instead (AC-132).
             _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt" });
         }
         catch (Exception ex)
         {
             var message = _DescribeError(ex);
 
-            // AC-135: the model rejected the request because it cannot do tool-calling in this runtime — a GGUF
-            // chat template whose tool-parser generation fails the moment `tools` are sent (seen with mistral-nemo
-            // in LM Studio). Rather than fail the turn, note it and retry once with no tools, so a plain question
-            // still gets an answer. The note is streamed as assistant text, NOT a SessionError: a SessionError
-            // reads to the UI as the turn ending (it clears the busy state), which would let a second turn start
-            // against this turn's history while the retry is still streaming.
+            // AC-135: some local runtimes can't tool-call at all (a GGUF chat-template whose tool-parser fails once
+            // `tools` are sent) — retry once with no tools instead of failing the turn. The note streams as assistant
+            // text, not SessionError, since a SessionError ends the turn and could let a second turn start mid-retry.
             if (toolsAvailable && _IsToolTemplateError(message))
             {
                 _logger.LogWarning(ex, "Local model rejected tools ({Message}); retrying without tools", message);
@@ -314,11 +296,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         }
     }
 
-    // Streams one model turn under `tools` (null = no tools), emitting the assistant deltas and a
-    // terminal `TurnCompleted`. A turn that produces no visible text and no tool call surfaces a
-    // "no response" notice rather than a silent success, and only a turn with text is carried into the history so a
-    // blank assistant message never rides along in later requests (AC-132). Exceptions propagate to the caller,
-    // which decides between an interrupt, a tool-unsupported retry, and a plain error.
+    // Streams one model turn under `tools` (null = no tools). A turn with no text and no tool call surfaces as
+    // "no response" rather than a silent success, and only text-bearing turns are added to history so a blank
+    // assistant message never rides along later (AC-132); exceptions propagate for the caller to classify.
     private async Task _StreamTurnAsync(IReadOnlyList<AITool>? tools, CancellationToken cancellationToken)
     {
         var options = new ChatOptions { ModelId = _model, Tools = tools is { Count: > 0 } ? [.. tools] : null };
@@ -344,10 +324,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             return;
         }
 
-        // AC-192 no-progress net: a turn that ends carrying an unprocessed Hermes tool-call marker with no tool ever
-        // run means the parser shim missed an edge — the model asked to call a tool as text and it was never executed.
-        // Surface that as a visible error rather than the silent "success" a pseudo-tool-call text used to end as (the
-        // hang the ticket exists to kill), mirroring the no-response vangnet above.
+        // AC-192 no-progress net: a turn ending with an unprocessed Hermes tool-call marker means the parser shim
+        // missed an edge and the model's tool request was never executed — surface that as a visible error instead
+        // of the silent "success" (and hang) this used to end as, mirroring the no-response net above.
         if (!_turnHadToolActivity && _ContainsUnprocessedToolCallMarker(reply))
         {
             _events.Writer.TryWrite(new SessionError
@@ -385,10 +364,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
     }
 
-    // Whether a failed request looks like the local runtime refusing tool-calling itself — a GGUF/chat-template
-    // tool-parser that cannot be generated, or a server saying tools are unsupported — as opposed to an ordinary
-    // request error. A heuristic over the response body (AC-135): the message wording is the only signal a local
-    // OpenAI-compatible server gives, and only weighed when tools were actually sent this turn.
+    // Whether a failed request looks like the runtime refusing tool-calling itself (a GGUF tool-parser failure,
+    // or "tools unsupported") rather than an ordinary error. Heuristic over the response body (AC-135) since
+    // message wording is the only signal a local server gives; only weighed when tools were sent this turn.
     internal static bool _IsToolTemplateError(string message) =>
         _ToolTemplateErrorSignals.Any(signal => message.Contains(signal, StringComparison.OrdinalIgnoreCase));
 
@@ -411,10 +389,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         text.Contains("<function=", StringComparison.OrdinalIgnoreCase)
         || text.Contains("</tool_call>", StringComparison.OrdinalIgnoreCase);
 
-    // The most useful message for a failed turn: the exception message, plus — for a
-    // `ClientResultException` from the OpenAI SDK — the HTTP response body. A local server puts the
-    // real reason there (an `exceed_context_size_error`, a tool-template parser failure, …), which the
-    // exception's own "HTTP 400 (Bad Request)" message hides (AC-132).
+    // The most useful message for a failed turn: the exception message plus, for a ClientResultException from
+    // the OpenAI SDK, the HTTP response body — a local server puts the real reason there (e.g.
+    // exceed_context_size_error), which the exception's own "HTTP 400 (Bad Request)" message hides (AC-132).
     internal static string _DescribeError(Exception ex)
     {
         if (ex is ClientResultException clientError)

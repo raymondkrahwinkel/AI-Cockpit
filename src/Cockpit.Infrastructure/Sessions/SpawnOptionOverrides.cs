@@ -3,16 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// What a programmatic spawn may change about a profile's start options, and what it may never (AC-648). The New-session
-// dialog is where a human overrides these; a spawn has no dialog, so this is the same door with the checks written down.
-//
-// *Per key, never wholesale.* The result is the profile's own `OptionDefaults` with the named keys replaced — a caller
-// that says `effort` and nothing else keeps every other value the profile was configured with, including the ones it
-// may not name at all.
-//
-// *The provider's declaration decides what is nameable* (AC-649). A key this provider does not declare is refused with
-// a reason rather than passed on: `effort` means nothing to Codex, and a spawn that accepted it would come up looking
-// like it had worked.
+// What a programmatic spawn may change about a profile's start options, and what it may never (AC-648) — the
+// same checks the New-session dialog applies for a human. Overrides are per-key on top of the profile's own
+// defaults, and only keys the provider declares (AC-649) may be named; anything else is refused with a reason.
 public static class SpawnOptionOverrides
 {
     // Refused whatever a provider declares, and refused outright rather than gated (Raymond, 2026-08-08): these decide

@@ -5,14 +5,9 @@ using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// The generic host-side login gate (Fase 4): dispatches a profile's login check to its provider plugin —
-// whichever registered an `IsLoggedIn` delegate — so the core carries no knowledge of any provider's credential
-// file. A profile whose provider declares no gate (a local model, or a plugin that self-manages auth) is treated
-// as always ready, so it is never falsely reported logged out.
-//
-// Both registries are consulted (AC-629): the gate started on `TtyProviderRegistration` alone, so an SDK-only
-// provider (Gemini, GitHub Models, Kimi) could declare none and read as ready. TTY keeps first say, so a provider
-// filling both gets one answer rather than two gates disagreeing.
+// The generic host-side login gate (Fase 4): dispatches a profile's login check to its provider plugin's
+// `IsLoggedIn` delegate; no gate means always ready. AC-629: both `TtyProviderRegistration` and the session
+// registry are consulted (TTY wins ties), so an SDK-only provider can't fall through and read as falsely ready.
 internal sealed class ProfileLoginChecker(
     IPluginTtyProviderRegistry ttyProviderRegistry,
     IPluginProviderRegistry? sessionProviderRegistry = null)

@@ -7,11 +7,9 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-// Default `ITtySessionProviderResolver`: a plugin's own TTY provider for a plugin profile that
-// registered one (Claude and Codex both do), the bundled Claude provider plugin for a profile-less session (which
-// runs the host's own CLI), and nothing for a provider that has no TUI to run.
-// Fase 4: Claude is a provider plugin like every other — a Claude profile is migrated to a
-// `PluginProviderConfig` on load, so it resolves through the plugin arm.
+// Default `ITtySessionProviderResolver`: a plugin's own TTY provider for a plugin profile that registered one
+// (Claude and Codex both do), the bundled Claude provider plugin for a profile-less session, and nothing for a
+// provider with no TUI to run. Claude is a provider plugin like every other — migrated to `PluginProviderConfig` on load.
 internal sealed class TtySessionProviderResolver(
     IServiceProvider services,
     IPluginTtyProviderRegistry ttyProviderRegistry) : ITtySessionProviderResolver, ISingletonService

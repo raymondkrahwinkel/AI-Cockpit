@@ -21,22 +21,9 @@ internal sealed class PortaPtyProcess : IConPtyProcess
         _connection = connection;
     }
 
-    // Spawns `executablePath` inside a fresh pty of the given size, in
-    // `workingDirectory`, with `arguments` as its argv (Porta.Pty's
-    // Unix provider builds `execvp`'s argv as `[executablePath, ...arguments, null]` — see
-    // `Porta.Pty.Unix.PtyProvider.GetExecvpArgs`) and exactly `environment` as
-    // its environment (Porta.Pty overlays this onto the inherited process environment; since
-    // `environment` already carries that base plus our overrides, the result is
-    // the same dictionary reaching the child).
-    //
-    // On Linux the launch goes through `PtyTerminalModes.WrapForSaneModes` first: a shell that fixes
-    // the pty's line disciplines and then `exec`s this executable, because the pty is handed to us with them
-    // all cleared (AC-129). The `exec` keeps the pid, the signals and the process tree as they were.
-    // `PtyProvider.SpawnAsync` is only genuinely asynchronous on its Windows path; the
-    // Linux/macOS `forkpty()` syscall it wraps is synchronous. `ITtyLauncher.Launch`
-    // is itself a synchronous contract (mirrors `ConPtyProcess.Start`, called from a UI
-    // event handler before the terminal control exists to await anything), so we block on the
-    // already-fast spawn here rather than threading `Task` through the whole call chain.
+    // AC-1013: Spawns `executablePath` with `arguments` as argv and `environment` as its exact environment. On
+    // Linux, `PtyTerminalModes.WrapForSaneModes` first execs a shell that fixes the pty's line disciplines (handed
+    // to us all cleared — AC-129); `SpawnAsync`'s Linux `forkpty()` is synchronous, matching `ITtyLauncher.Launch`'s own synchronous contract, so we block here rather than threading `Task` through the call chain.
     public static PortaPtyProcess Start(
         string executablePath,
         IReadOnlyList<string> arguments,

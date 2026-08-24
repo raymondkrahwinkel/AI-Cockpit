@@ -5,16 +5,9 @@ using Cockpit.Core.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-// Hosts a child process inside a Windows ConPTY (pseudo console) via `CreatePseudoConsole`,
-// so the child sees a real interactive terminal. Exposes the pty's input pipe (write keystrokes)
-// and output pipe (read rendered ANSI/VT output), and forwards resizes to `ResizePseudoConsole`.
-// The child receives exactly the environment we build (ConPTY has no implicit inheritance), passed
-// as a UTF-16 double-null-terminated block with `CREATE_UNICODE_ENVIRONMENT`. This is the whole
-// reason the cockpit hosts the pty itself rather than using a turnkey terminal control: it is the
-// only way to inject `CLAUDE_CONFIG_DIR` and `TERM` alongside the inherited parent env.
-// Windows-only by construction (P/Invokes kernel32 ConPTY, available Windows 10 1809+). The
-// Linux/macOS counterpart is `PortaPtyProcess` (Porta.Pty); `ConPtyHostFactory`
-// and `PortaPtyHostFactory` are selected per platform behind `IPtyHostFactory`.
+// Hosts a child process inside a Windows ConPTY via `CreatePseudoConsole`, exposing its input/output pipes
+// and forwarding resizes. The child gets exactly the environment we build (no implicit inheritance) — the
+// reason the cockpit hosts the pty itself instead of a turnkey terminal control: to inject `CLAUDE_CONFIG_DIR`/`TERM`.
 internal sealed class ConPtyProcess : IConPtyProcess
 {
     private const int ProcThreadAttributePseudoConsole = 0x00020016;
@@ -32,11 +25,9 @@ internal sealed class ConPtyProcess : IConPtyProcess
     // callback below) or on Dispose, whichever comes first, and both run on unrelated threads.
     private readonly object _closeLock = new();
 
-    // Watches the child process handle so the pseudo console is closed the moment the child exits. This
-    // is the whole Windows-only fix for the hung TTY panel: unlike a Unix pty master (which EOFs its
-    // reader when the child dies), ConPTY keeps the output pipe's write end open after the child exits,
-    // so a reader would block forever and the panel would never learn the process is gone. Closing the
-    // pseudo console on exit signals that EOF, exactly as the Unix side gets for free.
+    // Watches the child process handle so the pseudo console closes the moment the child exits — the
+    // Windows-only fix for the hung TTY panel: unlike a Unix pty master, ConPTY keeps the output pipe's
+    // write end open after exit, so closing the console here signals EOF the Unix side gets for free.
     private RegisteredWaitHandle? _exitWait;
     private readonly ProcessWaitHandle? _processWaitHandle;
 
@@ -69,10 +60,9 @@ internal sealed class ConPtyProcess : IConPtyProcess
             _processWaitHandle, OnChildExited, null, Timeout.Infinite, executeOnlyOnce: true);
     }
 
-    // Fired by the thread pool once the child process terminates. Closes the pseudo console so the
-    // output pipe reaches EOF and the output pump stops (which is how the panel learns to close). On
-    // Windows this is the only signal of the exit — the reader never sees EOF on its own while ConPTY
-    // holds the pipe's write end open.
+    // Fired by the thread pool once the child process terminates. Closes the pseudo console so the output
+    // pipe reaches EOF and the pump stops — how the panel learns to close. On Windows this is the only
+    // exit signal; the reader never sees EOF on its own while ConPTY holds the pipe's write end open.
     private void OnChildExited(object? state, bool timedOut) => ClosePseudoConsole();
 
     private void ClosePseudoConsole()
@@ -126,14 +116,9 @@ internal sealed class ConPtyProcess : IConPtyProcess
 
         var attributeList = BuildPseudoConsoleAttributeList(pseudoConsole);
 
-        // Bind the child's std handles to the pseudo console, not to whatever this process inherited. When the
-        // cockpit is launched so that its own standard handles are pipes (dotnet run / dotnet test, or any parent
-        // that captures the app's stdout), a child spawned with no explicit std handles inherits those pipe
-        // handles for stdin/stdout/stderr — so the CLI sees isatty(stdin)=false and claude drops to --print mode,
-        // erroring "Input must be provided ... when using --print" and closing the TTY the instant it opens. It
-        // reproduced only when the parent's handles were pipes (a shell/terminal launch hands down console
-        // handles, which is why it worked there). STARTF_USESTDHANDLES with null handles forces the child to take
-        // its std handles from the pseudo console the attribute list attaches instead of inheriting the pipes.
+        // Bind the child's std handles to the pseudo console, not whatever this process inherited: when the
+        // cockpit's own handles are pipes (dotnet run/test), a child with no explicit std handles inherits them,
+        // so the CLI sees isatty(stdin)=false and drops to --print mode, erroring and closing the TTY instantly.
         var startupInfo = new StartupInfoEx
         {
             StartupInfo =
@@ -267,10 +252,9 @@ internal sealed class ConPtyProcess : IConPtyProcess
         return Encoding.Unicode.GetBytes(builder.ToString());
     }
 
-    // A `WaitHandle` over a raw Windows process handle, which the OS signals when the process
-    // terminates. Wraps the handle with `ownsHandle: false` so disposing this (on Dispose) never
-    // closes the process handle — `ConPtyProcess` owns it in `_processInfo.Process` and
-    // closes it separately after the wait is unregistered.
+    // A `WaitHandle` over a raw Windows process handle, signaled by the OS when the process terminates.
+    // Wrapped with `ownsHandle: false` so disposing this never closes the process handle —
+    // `ConPtyProcess` owns it in `_processInfo.Process` and closes it separately after the wait is unregistered.
     private sealed class ProcessWaitHandle : WaitHandle
     {
         public ProcessWaitHandle(IntPtr processHandle)

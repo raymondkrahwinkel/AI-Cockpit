@@ -6,10 +6,9 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// `IChatClientFactory` that targets a local server's OpenAI-compatible `/v1` endpoint
-// via the OpenAI SDK with a custom `OpenAIClientOptions.Endpoint`. Ollama ignores the API
-// key entirely; LM Studio needs one only behind a key-protected proxy — so a placeholder is sent when
-// none is configured, which both accept.
+// `IChatClientFactory` that targets a local server's OpenAI-compatible `/v1` endpoint via the OpenAI SDK
+// with a custom `OpenAIClientOptions.Endpoint`. Ollama ignores the API key entirely; LM Studio needs one only
+// behind a key-protected proxy — so a placeholder is sent when none is configured, which both accept.
 internal sealed class OpenAiCompatChatClientFactory : IChatClientFactory, ISingletonService
 {
     public IChatClient Create(ProviderConfig config)

@@ -2,19 +2,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-// Housekeeping for the `--mcp-config` files earlier cockpit versions wrote for a TTY session.
-//
-// This host-side writer (`Write`/`Delete`) is gone (AC-380: it had no production caller once the
-// provider plugins started building their own spawn config — e.g. `ClaudeMcpConfig` — from the servers the
-// plugin adapter resolves, each writing and owning its own session-scoped file). What remains is the sweep: an
-// operator who upgrades from a version that still wrote here, or whose machine still carries the pre-owner-only
-// generation's leftovers, must not be left with a stale file holding a live token.
-//
-// Those files carried whatever the MCP registry carried — which includes `Authorization: Bearer` headers,
-// i.e. real credentials. The oldest generation wrote to `Path.GetTempPath` at the umask's
-// permissions and never deleted, so a live token could sit world-readable in a 1777 directory for as long as the
-// machine stood; the next generation moved the write beside the rest of the cockpit's state, owner-only, deleted
-// on session end. This sweep still claims both generations' leftovers on every start.
+// AC-1013: Housekeeping for the `--mcp-config` files earlier cockpit versions wrote for a TTY session. The
+// host-side writer is gone (AC-380: provider plugins now build and own their own spawn config); what remains is
+// the sweep, since these files carried real `Authorization: Bearer` credentials and must not linger stale.
 internal static class TtyMcpConfigFile
 {
     private const string FilePrefix = "tty-mcp-";
