@@ -17,11 +17,9 @@ public sealed record PluginManifest(
     string? Author,
     IReadOnlyList<string>? SecretKeys = null)
 {
-    // The storage keys this plugin keeps a credential in (`"secretKeys": ["pat"]`). The host recognises the
-    // usual names by itself (token, apiKey, secret, password, webhook); this is for the ones it cannot guess, and
-    // it is read before the plugin loads — so a value stored under such a name is decrypted on the way in rather
-    // than handed to the plugin as ciphertext. It also says, at install time, which credentials a plugin intends
-    // to keep.
+    // AC-1013: storage keys the host can't guess as credentials (beyond token/apiKey/secret/password/
+    // webhook); read before load so matching values decrypt on the way in instead of reaching the plugin
+    // as ciphertext. (Omitted: the install-time credential-intent framing; see ticket.)
     public IReadOnlyList<string> SecretKeys { get; } = SecretKeys ?? [];
 
     public static bool TryParse(string json, out PluginManifest? manifest, out string? error)

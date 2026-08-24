@@ -8,19 +8,9 @@ using Cockpit.Core.Shortcuts;
 
 namespace Cockpit.App.Controls;
 
-// Lays the session panels out as an adaptive, draggable grid (Lionear's request, #54 follow-up). One
-// visible pane fills the area; two or more tile in two columns (3–4 → 2×2) unless
-// `StackVertically` transposes it to two rows. The gaps between columns and rows are splitters
-// (drag to re-weight a column's width or a row's height), and each pane's header grip drags it to *any*
-// cell — including an empty one, which leaves a hole where it came from (dropping onto an occupied cell
-// swaps the two). Single-pane mode (#24 / Zoom) collapses all but the selected pane, which then fills.
-// Cells are a sparse list (`_cells`): each entry is a pane's data context or `null` for a
-// hole, so a pane's position survives a reorder and the free-placement holes are first-class. It is kept
-// separate from the bound collection because moving an item there rebuilds its container (a fresh
-// `TtyView` with no pty → a black terminal). Column/row weights are *positional* (a column
-// keeps its width as panes move through it). The geometry (weighting, gutter and cell hit-testing, cell
-// placement) lives in `StackPaneMath` / `PlaceInCells` so it stays unit-testable;
-// this panel owns only the pointer plumbing and the weight/cell stores.
+// AC-1013 (#54 follow-up, Lionear's request): adaptive draggable session grid — splitters re-weight
+// columns/rows, header grips drag panes between cells (including empty ones, leaving/filling holes),
+// single-pane Zoom (#24) collapses to the selected pane. Rationale (sparse `_cells`, off-collection moves to avoid pty rebuilds, positional weights) belongs on the ticket.
 public sealed class SessionTilePanel : Panel
 {
     // The draggable gap (px) left between cells; also a splitter's resting thickness.
@@ -48,12 +38,9 @@ public sealed class SessionTilePanel : Panel
     public static readonly StyledProperty<bool> StackVerticallyProperty =
         AvaloniaProperty.Register<SessionTilePanel, bool>(nameof(StackVertically));
 
-    // When true, one visible pane (the focus candidate, see `IsFocusCandidateProperty`) fills most of the
-    // panel and the rest auto-fit into a scrolling miniature rail beside it (AC-441/444), instead of the
-    // adaptive grid. `RailLayoutMath`/`StackPaneMath` do the geometry, the same math
-    // `FocusRailPanel`/`RailTilePanel` (AC-443) proved in isolation — reapplied here directly over this
-    // panel's own children instead of a second, nested `ItemsControl`, because a session's pane can never
-    // change container without rebuilding its view (AC-442) and promoting one to focus must not do that.
+    // AC-1013: when true, the focus candidate fills most of the panel and the rest auto-fit into a
+    // scrolling rail (AC-441/444), using `RailLayoutMath`/`StackPaneMath` directly over this panel's own
+    // children (not a nested `ItemsControl`) because promoting a pane to focus must not rebuild it (AC-442).
     public static readonly StyledProperty<bool> FocusRailLayoutProperty =
         AvaloniaProperty.Register<SessionTilePanel, bool>(nameof(FocusRailLayout));
 
@@ -61,12 +48,9 @@ public sealed class SessionTilePanel : Panel
     public static readonly StyledProperty<double> RailWeightProperty =
         AvaloniaProperty.Register<SessionTilePanel, double>(nameof(RailWeight), LayoutSettings.DefaultFocusRailWeight);
 
-    // Set (via a Style Setter in `CockpitView.axaml`, the same pattern `IsPaneVisible` already uses)
-    // from the pane's `SessionPanelViewModel.IsSelected` — the panel reads it to pick the one child that
-    // fills the focus slot, without knowing what a `SessionPanelViewModel` is. `AffectsParentArrange`/
-    // `AffectsParentMeasure` (not `AffectsMeasure`/`AffectsArrange`, which apply to a property on this
-    // panel itself) is the same Avalonia mechanism `Grid.Row`/`Grid.Column` use to invalidate their owner
-    // when a child's attached value changes.
+    // AC-1013: set via a Style Setter (`CockpitView.axaml`, like `IsPaneVisible`) from
+    // `SessionPanelViewModel.IsSelected`, so the panel picks its focus child without knowing the view model
+    // type. `AffectsParentArrange`/`AffectsParentMeasure` invalidate the owner on an attached-value change.
     public static readonly AttachedProperty<bool> IsFocusCandidateProperty =
         AvaloniaProperty.RegisterAttached<SessionTilePanel, Control, bool>("IsFocusCandidate");
 
@@ -298,10 +282,8 @@ public sealed class SessionTilePanel : Panel
         return new Rect(grid.Cols[col].Top, grid.Rows[row].Top, grid.Cols[col].Height, grid.Rows[row].Height);
     }
 
-    // Places the pane `draggedKey` into cell `cell` and re-arranges:
-    // onto a hole it just moves (leaving a hole behind), onto another pane it swaps. Reorders the internal
-    // cell list only — the bound collection and the ItemsControl containers are untouched, so no pane is
-    // rebuilt.
+    // AC-1013: places `draggedKey` into `cell` — onto a hole it moves (leaving a hole behind), onto a
+    // pane it swaps. Reorders the internal cell list only; bound collection/containers stay untouched.
     public void PlacePane(object draggedKey, int cell)
     {
         if (PlaceInCells(_cells, draggedKey, cell))
@@ -311,10 +293,8 @@ public sealed class SessionTilePanel : Panel
         }
     }
 
-    // The pane spatially adjacent to `active` in `direction` — the one whose
-    // cell sits next to the active pane's in the grid, skipping holes — or null when there is none (a grid edge,
-    // or `active` is not placed). A read of the geometry only: the caller moves the selection,
-    // nothing is re-parented (a `PlacePane`-style move would rebuild the pty).
+    // AC-1013: the pane spatially adjacent to `active` in `direction`, skipping holes, or null at a grid
+    // edge / if `active` isn't placed. A geometry read only — the caller moves selection, nothing reparents.
     public object? NeighbourInDirection(object active, PaneDirection direction)
     {
         if (FocusRailLayout)
@@ -339,10 +319,8 @@ public sealed class SessionTilePanel : Panel
     }
 
     // --- Focus + rail (AC-441/444) -----------------------------------------------------------------------
-    // One child fills the focus slot, the rest auto-fit into the rail slot beside it. Cached from the last
-    // measure pass (the same handoff `RailTilePanel.Geometry` documents) so arrange, the wheel scroll and
-    // keyboard nav all agree with what was actually measured — a child measured at one scale and arranged
-    // at another would resize its pty a second time, which is the one thing AC-442 exists to prevent.
+    // AC-1013: cached from the last measure pass (like `RailTilePanel.Geometry`) so arrange, wheel scroll
+    // and keyboard nav agree with what was measured — a mismatch would resize a pty twice (AC-442 forbids).
     private readonly record struct FocusRailLayoutResult(
         Control Focus,
         IReadOnlyList<Control> Rail,
@@ -514,10 +492,8 @@ public sealed class SessionTilePanel : Panel
         e.Handled = true;
     }
 
-    // The rail's spatial-nav counterpart to `NeighbourCell`: the focus pane sits left of a tile
-    // grid, so Right from focus enters the rail's first tile, Left from a tile in its first column leaves
-    // it for focus, and Up/Down/Left/Right within the rail walk `RailLayoutMath`'s own row-major columns —
-    // the same "nearest actual pane, no separate keys" contract the grid's nav gives (AC-444 #5).
+    // AC-1013 (AC-444 #5): rail's spatial-nav counterpart to `NeighbourCell` — Right from focus enters the
+    // rail's first tile, Left from its first column returns to focus, other directions walk row-major.
     private object? _NeighbourInFocusRail(object active, PaneDirection direction)
     {
         if (_focusRailLayout is not { } layout)
@@ -601,12 +577,9 @@ public sealed class SessionTilePanel : Panel
         }
     }
 
-    // Removes the cells of panes that have closed, compacting the ones that remain: a closed session's tile is
-    // gone, not a hole, so the survivors re-flow to the minimal grid — two left of a 2×2 fall back to the
-    // natural 1×2 / 2×1 rather than sitting in a 2×2 with a gap (Raymond, 2026-07-21). A deliberate
-    // free-placement hole (a `null` tied to no pane, left by dragging a pane onto an empty cell) is not a
-    // closed session and is kept. `live` is the set of panes still present. Returns whether
-    // any cell was removed.
+    // AC-1013: removes closed panes' cells and compacts survivors to the minimal grid (a closed tile is
+    // gone, not a hole — two left of a 2×2 fall back to 1×2/2×1) while keeping deliberate free-placement
+    // holes. `live` is the set of panes still present; returns whether any cell was removed.
     internal static bool DropClosedCells(List<object?> cells, IReadOnlySet<object> live)
     {
         var removed = false;
@@ -847,10 +820,8 @@ public sealed class SessionTilePanel : Panel
         return count;
     }
 
-    // Columns/rows for a cell count. Adaptive default: one fills, two+ cap at two *columns* and grow
-    // downwards, filling row by row (3–4 → 2×2). `stackVertically` is the exact transpose —
-    // it caps at two *rows* and grows sideways, filling column by column. The fill order that pairs with
-    // this lives in `CellOf`.
+    // AC-1013: columns/rows for a cell count. One fills; two+ cap at two columns, growing downward
+    // (3-4 -> 2x2). `stackVertically` transposes: caps at two rows, grows sideways. Fill order in `CellOf`.
     public static (int Columns, int Rows) Dimensions(int cellCount, bool stackVertically = false)
     {
         if (cellCount <= 0)
@@ -868,11 +839,8 @@ public sealed class SessionTilePanel : Panel
         return (columns, (cellCount + columns - 1) / columns);
     }
 
-    // The cell holding the pane spatially adjacent to `fromCell` in
-    // `direction`, or null when the grid edge is reached first. Walks cell by cell along the
-    // direction and returns the first occupied one, so it skips holes (an emptied cell, or the gap a 3-pane
-    // 2×2 leaves) and lands on the nearest actual pane — "the pane to my left", never an empty slot.
-    // `occupied` is the cell list, true where a pane sits.
+    // AC-1013: the cell adjacent to `fromCell` in `direction`, or null at a grid edge. Walks cell by cell,
+    // skipping holes, and returns the first occupied one — the nearest actual pane, never an empty slot.
     internal static int? NeighbourCell(IReadOnlyList<bool> occupied, int fromCell, PaneDirection direction, bool stackVertically)
     {
         var count = occupied.Count;

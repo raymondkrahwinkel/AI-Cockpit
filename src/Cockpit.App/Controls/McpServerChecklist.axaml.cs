@@ -9,12 +9,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Controls;
 
-// The MCP-server checklist as one control, shared by the profile editor, the New-session dialog and the project
-// editor (AC-140). The three used to carry their own copy of the same rows, which is how the project editor ended
-// up listing servers the other two had long stopped offering.
-//
-// Collapsed by default behind a live "N of M selected" count: the list runs to a dozen rows in a dialog that is
-// about something else, and someone who is not a developer should not have to read past it to reach Save.
+// AC-1013: The MCP-server checklist as one control shared by the profile editor, New-session dialog and
+// project editor (AC-140) — the three used to keep their own copy, which is how the project editor ended up
+// listing stale servers. Collapsed by default behind a live "N of M selected" count so it doesn't block Save.
 public partial class McpServerChecklist : UserControl
 {
     public static readonly StyledProperty<IEnumerable?> ServersProperty =

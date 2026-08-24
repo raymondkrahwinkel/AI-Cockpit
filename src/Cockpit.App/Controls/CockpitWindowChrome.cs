@@ -17,12 +17,9 @@ namespace Cockpit.App.Controls;
 // ones because `BorderOnly`'s resize border was a visible margin; macOS/Windows keep them, see AC-755/AC-934).
 internal static class CockpitWindowChrome
 {
-    // The mockup's two title bars (cockpit-projects-flow-2026-07-21.html: .titlebar and .titlebar.dlg).
-    // Weights are the closest real ones: the reference asks for 600/660, which a variable web font can hit
-    // and the desktop UI font rounds to SemiBold either way.
-    //
-    // The dialog sizes below deliberately depart from it: transcribed literally they gave 97px of bar on a
-    // dialog 229px tall, so the header outweighed what it introduced. Judged on rendered dialogs (AC-426).
+    // AC-1013: Sizes approximate the mockup's two title bars (600/660 weight -> SemiBold); dialog sizes
+    // deliberately depart from a literal transcription, which gave 97px of bar on a 229px dialog (AC-426).
+    // Details: dropped the mockup filename and font-weight rounding rationale.
     private const double DialogTitleFontSize = 15;
     private const double DialogSubtitleFontSize = 11.5;
     private const double WindowTitleFontSize = 15.5;
@@ -44,15 +41,9 @@ internal static class CockpitWindowChrome
     private static readonly Lazy<Bitmap> AppMark = new(() =>
         new Bitmap(AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/BrandMark.png"))));
 
-    // `title`:
-    // The name in the bar. Ignored by `CockpitTitleBar.Window`: the app's own window is not named by
-    // its caller, it carries the product's name and mark (AC-430).
-    // `subtitle`:
-    // The line under a dialog's name saying what it is for (the mockup's .tsub). Left out, the header is just
-    // the name. Ignored by `CockpitTitleBar.Window`, which has no room for a second line.
-    // `onSettings`:
-    // When given, a gear appears left of the caption buttons and runs this — how a plugin's dialog offers its own
-    // settings (#: settings from anywhere). Omitted, the title bar looks exactly as it did.
+    // AC-1013: `title`/`subtitle` are ignored by `CockpitTitleBar.Window` (app window carries its own
+    // name/mark, AC-430, and has no room for a subtitle); `onSettings`, when given, adds a settings gear
+    // to a plugin dialog. Details: dropped per-param elaboration on omitted behaviour.
     public static void Apply(Window window, string? title = null, string? subtitle = null, CockpitTitleBar titleBar = CockpitTitleBar.Dialog, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null)
     {
         window.ExtendClientAreaToDecorationsHint = true;
@@ -64,10 +55,9 @@ internal static class CockpitWindowChrome
 
         if (titleBar == CockpitTitleBar.Dialog)
         {
-            // Every dialog, rather than the three that remembered to ask (AC-428). A dialog is centred on its
-            // owner and has nothing to drag it back by, so one that opens taller than the screen has put its
-            // own buttons past the bottom edge — which is the same failure as a footer laid out past the right
-            // edge, on the other axis. The app's own window is left alone: it is meant to fill the screen.
+            // AC-1013: Applied to every dialog, not just the three that remembered to ask (AC-428) — a
+            // dialog is centred with nothing to drag it back by if it opens taller than the screen.
+            // Details: dropped the footer/right-edge analogy and the app-window-is-excluded rationale.
             DialogScreenClamp.Apply(window);
         }
 

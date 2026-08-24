@@ -3,10 +3,9 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.App.Controls;
 
-// Builds icons from the bundled Material Design set for code-built controls; the XAML side uses
-// &lt;materialIcons:MaterialIcon&gt; directly. A path drawn by the pack inherits `Foreground` like any
-// other content, so it reads as part of the theme on every platform — unlike a typed "⚙" glyph, which the
-// machine's emoji font renders in its own colour (on Linux a blue Noto gear in a dark sidebar).
+// AC-1013: Builds icons from the bundled Material Design set (not a typed glyph) so they inherit
+// `Foreground` and stay theme-consistent, instead of rendering in the platform's own emoji-font
+// colour (e.g. a blue Noto gear on Linux). Details: dropped the concrete Linux/dark-sidebar example.
 internal static class CockpitIcons
 {
     public static MaterialIcon Icon(MaterialIconKind kind, double size = 14) => new()

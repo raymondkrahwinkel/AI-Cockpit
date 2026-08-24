@@ -8,10 +8,9 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.App.Controls;
 
-// A collapsible left-menu section for a plugin contribution (#14), built in code to match the cockpit
-// theme. It deliberately replaces Avalonia's `Expander`, whose header is an internal ToggleButton
-// that inherits the app's accent-on-checked style (a stray accent-coloured header). Here the header is a plain
-// themed row — secondary background, hairline border, a chevron and the title — that toggles the content.
+// AC-1013: collapsible left-menu section for a plugin contribution (#14), replacing Avalonia's
+// `Expander` — its header is an internal ToggleButton with a stray accent-coloured checked style — with
+// a plain themed row (secondary background, hairline border, chevron, title) that toggles the content.
 internal sealed class PluginSectionControl : UserControl
 {
     private readonly MaterialIcon _chevron;

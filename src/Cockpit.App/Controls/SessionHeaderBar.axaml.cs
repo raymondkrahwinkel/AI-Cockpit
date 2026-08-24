@@ -4,11 +4,9 @@ using Avalonia.Markup.Xaml;
 
 namespace Cockpit.App.Controls;
 
-// The one session-header identity strip for every session kind (AC-37): status dot · name · kind chip ·
-// activity (the flexible, truncating column) · cwd icon · branch · usage pill. Bound to the shared
-// `ViewModels.SessionPanelViewModel` base, so the SDK (`SessionView`) and TTY (`TtyView`)
-// headers are one definition rather than two near-identical copies — the copies were why the V1 redesign first
-// landed on only one of them. Each view keeps its own provider-specific controls, docked beside this bar.
+// AC-37: the one session-header identity strip for every session kind (status dot, name, kind chip,
+// activity, cwd icon, branch, usage pill), bound to the shared `SessionPanelViewModel` base so SDK and
+// TTY views share one definition instead of near-identical copies (why the V1 redesign missed one).
 public partial class SessionHeaderBar : UserControl
 {
     // The content shown on hover of the kind chip — provider-specific, so each view supplies its own (the SDK

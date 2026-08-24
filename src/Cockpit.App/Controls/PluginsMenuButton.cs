@@ -7,14 +7,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Controls;
 
-// AC-937: the sidebar's single collapsed-plugins launcher — shown only while at least one plugin's contribution is
-// not pinned top-level, opening a right-hand flyout over the same PluginLauncherButton/PluginSectionControl
-// instances the sidebar would otherwise have drawn directly. A plain Flyout, not a MenuFlyout: a MenuFlyout cannot
-// host those controls' own gear and badge, the same reason CockpitView.axaml's workspace "+" uses one.
-//
-// The accent dot follows the same attach/detach subscribe pattern as PluginLauncherButton's own badge, just summed
-// across every collapsed badge (AC-516) rather than showing one: the badges are not the same unit — 19 PRs plus 3
-// issues is 22 of nothing — so this renders "something changed" rather than a number.
+// AC-937/AC-1013: sidebar's collapsed-plugins launcher, opening a plain Flyout (not MenuFlyout, which can't
+// host a control's own gear/badge) over the PluginLauncherButton/PluginSectionControl instances that would
+// otherwise be drawn directly. Accent dot sums every collapsed badge (AC-516) rather than a count, since mixed units don't add to a meaningful number.
 internal sealed class PluginsMenuButton : Button
 {
     protected override Type StyleKeyOverride => typeof(Button);

@@ -4,15 +4,9 @@ using Avalonia.Media;
 
 namespace Cockpit.App.Controls;
 
-// One limit in a session's header: a name, a short bar, and the percentage — `ctx ▓░░░░ 5%`.
-//
-// A bar rather than a number alone because the number is not what the operator is after: they want to know
-// whether something is running out, and a filled strip answers that without being read. The colour carries the
-// same message twice (a bar that is nearly full is also amber, then red), since a length is hard to judge at
-// four pixels and colour alone is no good to anyone who cannot see it.
-//
-// Hidden entirely when there is nothing to report: Claude says nothing about the rate limits before the first
-// response, and an empty bar reading "0%" would be a claim rather than a silence.
+// AC-1013: One limit in a session's header (`ctx ▓░░░░ 5%`) — a bar rather than a number alone since a
+// filled strip signals "running out" without being read, colour doubling the message for accessibility;
+// hidden entirely when nothing to report so an empty "0%" bar isn't a false claim before Claude's first response.
 public sealed class LimitBar : TemplatedControl
 {
     private const double TrackWidth = 34;
@@ -161,10 +155,9 @@ public sealed class LimitBar : TemplatedControl
 
     private IBrush CriticalBrush => Brush("CockpitStatusErrorBrush", "#D64545");
 
-    // Looked up from this control outwards, so a panel that overrides the palette for what it hosts is honoured.
-    // The fallback hex is only reached where there are no resources at all (designer, headless test) and is held
-    // equal to its token by the repository's theme guard — a named framework colour there would paint a grey, an
-    // orange or a red the palette has never contained, and nothing anywhere would say so.
+    // AC-1013: Looked up from this control outwards so a hosting panel's palette override is honoured;
+    // the fallback hex is only reached with no resources at all (designer/headless test) and is kept equal
+    // to its token by the repo's theme guard. Details: dropped the "named framework colour" failure mode.
     private IBrush Brush(string key, string fallbackHex) =>
         this.TryGetResource(key, ActualThemeVariant, out var resource) && resource is IBrush brush
             ? brush

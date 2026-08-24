@@ -20,11 +20,9 @@ public enum ShortcutCaptureMode
     SingleKey,
 }
 
-// A click-to-record keyboard field (#: shortcuts). Instead of typing "Ctrl+N", the operator clicks it and
-// presses the keys; what they press becomes the bound `Gesture`. `ShortcutCaptureMode.Chord`
-// records a full chord as an Avalonia gesture string ("Ctrl+Shift+P"); `ShortcutCaptureMode.SingleKey`
-// records one bare key as its `Key` name ("F9"), for the push-to-talk key. Escape cancels the
-// capture, and — in chord mode — the ✕ clears the binding. Two-way bindable so a row view model updates live.
+// AC-1013: click-to-record keyboard field — the operator clicks it and presses keys, which become the
+// bound `Gesture`; `Chord` mode records a full gesture string ("Ctrl+Shift+P"), `SingleKey` records one
+// bare key name ("F9") for push-to-talk. Escape cancels; the ✕ clears in chord mode. Two-way bindable.
 public sealed class ShortcutCaptureControl : UserControl
 {
     public static readonly StyledProperty<string> GestureProperty =
@@ -150,10 +148,9 @@ public sealed class ShortcutCaptureControl : UserControl
         e.Handled = true;
     }
 
-    // How a captured key is stored: single-key mode keeps the bare `Key` name ("F9"), which is what
-    // `Services.PushToTalkKeyGate` parses back with `Enum.TryParse&lt;Key&gt;`; chord mode keeps
-    // the full Avalonia gesture with its modifiers ("Ctrl+Shift+P"). Pulled out of the key handler so the stored
-    // form is unit-testable without simulating focus and a key press through a window.
+    // AC-1013: single-key mode stores the bare `Key` name ("F9"), parsed back by `PushToTalkKeyGate` via
+    // `Enum.TryParse&lt;Key&gt;`; chord mode stores the full gesture with modifiers ("Ctrl+Shift+P"). Pulled out
+    // of the key handler so the stored form is unit-testable without simulating focus/keypress.
     internal static string FormatCapturedKey(Key key, KeyModifiers modifiers, ShortcutCaptureMode mode) =>
         mode == ShortcutCaptureMode.SingleKey
             ? key.ToString()

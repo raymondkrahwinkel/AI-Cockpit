@@ -1,9 +1,8 @@
 namespace Cockpit.App.Controls;
 
-// Pure, UI-free geometry for the miniature rail (AC-443): turning a rail's pixel width/height and a tile
-// count into columns, rows, tile size and how many tiles are visible before a scrollbar kicks in. Width
-// alone decides the column count (the rail's one dial), height alone decides how many rows show — there
-// is no separate tile-count setting, so that rule lives here, not in `ArrangeOverride`.
+// AC-443/AC-1013: pure, UI-free geometry for the miniature rail — pixel width/height and a tile count
+// into columns, rows, tile size and visible-tile count before a scrollbar kicks in. Width alone drives
+// column count, height alone drives row count; kept out of `ArrangeOverride` for unit-testability.
 internal static class RailLayoutMath
 {
     // `TileWidth`/`TileHeight` share the focus pane's aspect ratio — a tile is a scaled mirror of it, not

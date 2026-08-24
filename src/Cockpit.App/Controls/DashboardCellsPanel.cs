@@ -3,16 +3,9 @@ using Avalonia.Controls;
 
 namespace Cockpit.App.Controls;
 
-// The dashboard's cells: a `Grid` that builds its own column and row definitions from
-// `Columns` and `Rows`.
-// The definitions used to be built by the view, which had to find this panel first — and could not, until a
-// layout pass had created it. At startup the dashboard sits behind whichever workspace is active, so switching
-// to it was the first time the panel existed, and by then nothing was looking any more: the first widget spanned
-// the whole dashboard, because a Grid with no definitions is one big cell. Every event the view could have
-// hung on is too early (measured): a control that starts hidden never raises Loaded at all, and both
-// AttachedToVisualTree and TemplateApplied fire while ItemsPanelRoot is still null. Owning the definitions here
-// removes the question — the panel cannot be told its shape before it exists, and a binding delivers it the
-// moment it does.
+// AC-1013: The dashboard's cells: a `Grid` owning its own column/row definitions from `Columns`/`Rows`,
+// not built by the view, because every candidate lifecycle event fires too early/not at all on a panel
+// starting hidden behind an inactive workspace. Details: dropped the measured failure mode and per-event analysis.
 public sealed class DashboardCellsPanel : Grid
 {
     public static readonly StyledProperty<int> ColumnsProperty =

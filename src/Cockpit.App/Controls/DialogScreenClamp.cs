@@ -2,10 +2,9 @@ using Avalonia.Controls;
 
 namespace Cockpit.App.Controls;
 
-// Shrinks a dialog to fit its screen when its designed size does not. Dialogs sized for a desktop (the
-// plugin store's catalogue grid, the manage-profiles form) are larger than a small screen; a fixed size
-// larger than the screen is not a bigger dialog — it is one whose buttons are past the bottom edge,
-// centred on its owner with nothing to drag it back by.
+// AC-1013: Shrinks a dialog to fit its screen when its desktop-sized layout doesn't, because a dialog
+// larger than the screen is centred with nothing to drag it back by and puts its buttons past the bottom
+// edge. Details: dropped the plugin store/manage-profiles examples of oversized dialogs.
 internal static class DialogScreenClamp
 {
     // How much of the screen's working area the dialog may take when its designed size does not fit.
@@ -28,11 +27,9 @@ internal static class DialogScreenClamp
             window.MinWidth, window.MinHeight,
             available.Width / screen.Scaling, available.Height / screen.Scaling);
 
-        // A window that measures itself has no height for the line above to clamp, and measures itself again
-        // every time its content changes — a git error arriving in the clone dialog, a plugin's install path in
-        // the consent prompt. It gets a ceiling instead, which outlives this call. A window with a height of its
-        // own does not: the operator can still drag it larger than the screen, as they always could, and taking
-        // that away is not what fitting on the screen means.
+        // AC-1013: A self-measuring window (SizeToContent) gets a MaxHeight ceiling instead of a clamped
+        // Height, since it re-measures on every content change; a fixed-height window keeps its Height clamp
+        // and stays user-resizable. Details: dropped the clone-dialog/consent-prompt content-change examples.
         if (window.SizeToContent is not SizeToContent.Manual)
         {
             window.MaxHeight = Math.Min(

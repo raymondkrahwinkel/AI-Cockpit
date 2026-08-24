@@ -8,18 +8,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Controls;
 
-// A plugin's left-menu launcher (#14): the button that runs the plugin's action, with a gear at its right end
-// when the plugin has settings. The button the operator already reaches for is the shortest way to what
-// configures it — shorter than the walk through the plugin store to find the same gear there.
-//
-// The gear is a button inside a button, so the press has to stop there: `Button.Click` is a bubbling
-// routed event, and left alone it would reach the launcher and open the plugin's dialog behind its own settings.
-//
-// `badge` (AC-516) draws the same accent count-pill the plugin store's own update badge already
-// uses (`CockpitView.axaml`'s "Plugin store" row), so a counter here reads as the same kind of indicator
-// rather than a one-off look. It follows `SideMenuButtonBadge.Changed` for as long as this button is
-// in the visual tree — subscribed on attach, unsubscribed on detach, so a menu rebuild (a plugin order/visibility
-// change) never accumulates a second handler on the badge the old button instance held.
+// AC-1013: A plugin's left-menu launcher (#14) with an optional settings gear nested inside it — the
+// gear's `Button.Click` must be stopped from bubbling to the launcher's own click. `badge` (AC-516) reuses
+// the plugin store's count-pill look, subscribing on attach/unsubscribing on detach to avoid duplicate handlers.
 internal sealed class PluginLauncherButton : Button
 {
     // Avalonia's "Button" selector matches the type exactly, so without this a derived button is styled by nothing at

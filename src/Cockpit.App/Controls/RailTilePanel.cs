@@ -3,10 +3,9 @@ using Avalonia.Controls;
 
 namespace Cockpit.App.Controls;
 
-// Arranges the miniature-session tiles inside the rail (AC-443), using `RailLayoutMath` for every bit of
-// the geometry — columns, tile size, and the row count a wrapping `ScrollViewer` scrolls through. Meant
-// as an `ItemsControl.ItemsPanel`, one tile per child, the same role `SessionTilePanel` plays for the
-// main session grid.
+// AC-443: arranges the miniature-session tiles inside the rail using `RailLayoutMath` for all geometry
+// (columns, tile size, scrollable row count). Used as an `ItemsControl.ItemsPanel`, one tile per child —
+// the rail's counterpart to `SessionTilePanel` for the main session grid.
 public sealed class RailTilePanel : Panel
 {
     private const double Gutter = 8;

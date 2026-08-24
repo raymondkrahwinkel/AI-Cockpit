@@ -1,9 +1,7 @@
 namespace Cockpit.Core.Plugins;
 
-// Resolves a store URL a user enters into the absolute `index.json` URL, and resolves a version's
-// repo-relative zip path against it (#14). Auto-detects the three shapes: a GitHub repo URL
-// (`github.com/owner/repo`, optionally `/tree/branch`) → the raw `index.json`; a direct
-// `.json` URL → itself; any other http(s) URL → treated as the base directory holding `index.json`.
+// Resolves a store URL a user enters into the absolute `index.json` URL (#14), auto-detecting a GitHub
+// repo URL, a direct `.json` URL, or a base directory http(s) URL holding `index.json`.
 public static class PluginStoreUrl
 {
     public static bool TryResolveIndexUrl(string entered, out string indexUrl, out string? error)
@@ -57,10 +55,9 @@ public static class PluginStoreUrl
     public static string ResolveZipUrl(string indexUrl, string relativePath) =>
         new Uri(new Uri(indexUrl), relativePath).ToString();
 
-    // Parses a `github.com/owner/repo` URL (optionally `/tree/branch`) into its parts (AC-7). A
-    // private store is fetched through the authenticated Contents API rather than `raw.githubusercontent.com`,
-    // which does not serve a private repo with a bearer token; this is how the client knows it is a GitHub repo
-    // and on which branch.
+    // AC-1013: Parses a `github.com/owner/repo` URL into its parts (AC-7), used to fetch a private
+    // store via the authenticated Contents API instead of `raw.githubusercontent.com`, which cannot
+    // serve a private repo with a bearer token.
     public static bool TryParseGitHubRepo(string entered, out string owner, out string repo, out string branch)
     {
         owner = string.Empty;
@@ -87,10 +84,9 @@ public static class PluginStoreUrl
         return true;
     }
 
-    // The GitHub Contents API URL for a repo-relative file (AC-7), fetched with an Authorization header and
-    // `Accept: application/vnd.github.raw` so it returns the raw bytes rather than the metadata envelope.
-    // Each path segment is URL-encoded so a store-index path cannot inject a query (`?`/`#`) or otherwise
-    // escape the `contents/` route; validate the path with `IsSafeRelativePath` first.
+    // AC-1013: GitHub Contents API URL for a repo-relative file (AC-7); each segment is URL-encoded
+    // so the path cannot inject a query or escape the `contents/` route — validate with
+    // `IsSafeRelativePath` first.
     public static string GitHubContentsUrl(string owner, string repo, string relativePath, string branch)
     {
         var encoded = string.Join('/', relativePath.TrimStart('/').Split('/').Select(Uri.EscapeDataString));

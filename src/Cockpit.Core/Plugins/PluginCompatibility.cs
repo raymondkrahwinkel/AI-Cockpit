@@ -2,11 +2,9 @@ using Cockpit.Core.Configuration;
 
 namespace Cockpit.Core.Plugins;
 
-// Whether this host can run a specific store-advertised `PluginStoreVersion` (AC-181): the same
-// contract-major and `minHostVersion` gate as `PluginLoadPolicy`, applied to a version still in
-// the catalogue rather than an on-disk manifest. Shared by the store dialog's pre-download "Incompatible" badge
-// (`StorePluginRowViewModel.IsIncompatible`) and `PluginProvisioningService`'s pre-download
-// refusal, so the two can never disagree about the same version.
+// AC-181: Same contract-major/minHostVersion gate as PluginLoadPolicy, applied to a catalogue version
+// instead of an on-disk manifest, shared by the store's "Incompatible" badge and the provisioning
+// refusal so both agree. (Omitted: the specific callers named; see ticket for detail.)
 public static class PluginCompatibility
 {
     public static bool IsCompatible(PluginStoreVersion version, int hostAbstractionsMajor, Version hostVersion) =>

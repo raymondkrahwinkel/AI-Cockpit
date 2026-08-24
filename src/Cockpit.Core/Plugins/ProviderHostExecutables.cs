@@ -1,17 +1,8 @@
 namespace Cockpit.Core.Plugins;
 
-// Which PATH command `HostExecutableProbe` should look for on behalf of each AI-provider store
-// plugin (AC-510[b] criterion 1) — a CLI provider's own manifest names the binary it wraps (e.g. cli-agent-
-// provider's says "Requires the codex CLI"), but that text is free-form prose nobody has checked, so the actual
-// command to probe is kept here instead of parsed out of it. A provider not listed here has nothing local to
-// find — `gemini-provider` and `github-models-provider` are cloud endpoints behind an API key entered
-// after install, not a CLI on this machine — and the first-run provider step shows those without a found/not-
-// found claim rather than guessing.
-//
-// Deliberately a lookup by plugin id, not a manifest field: the probe only ever answers "is a file with this
-// name on PATH", never "does it work" (see `HostExecutableProbe`'s own remarks) — adding a field
-// that a plugin author fills in would let a plugin claim a probe result about itself, which is exactly the kind
-// of unverified claim criterion 1 exists to not repeat.
+// AC-1013: PATH command `HostExecutableProbe` looks for per AI-provider plugin (AC-510[b] criterion
+// 1), kept here rather than parsed from a manifest's free-form prose, and deliberately a lookup by
+// plugin id rather than a self-reported manifest field, so a plugin cannot claim its own probe result.
 public static class ProviderHostExecutables
 {
     private static readonly IReadOnlyDictionary<string, string> _CommandsByPluginId = new Dictionary<string, string>(StringComparer.Ordinal)

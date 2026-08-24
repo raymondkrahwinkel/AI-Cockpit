@@ -5,10 +5,9 @@ using Avalonia.Media;
 
 namespace Cockpit.App.Controls;
 
-// The focus pane and the miniature rail, split by one draggable divider (AC-443): an extension of
-// SessionTilePanel's gutter-drag, reusing `StackPaneMath` rather than a second resize mechanism. Expects
-// exactly two children — index 0 is the focus content, index 1 the rail content (typically a
-// ScrollViewer wrapping an ItemsControl whose ItemsPanel is `RailTilePanel`).
+// The focus pane and the miniature rail, split by one draggable divider (AC-443): reuses `StackPaneMath`
+// (SessionTilePanel's gutter-drag) rather than a second resize mechanism. Expects exactly two children —
+// index 0 focus content, index 1 rail content (typically a ScrollViewer/`RailTilePanel` ItemsControl).
 public sealed class FocusRailPanel : Panel
 {
     private const double Gutter = 8;
