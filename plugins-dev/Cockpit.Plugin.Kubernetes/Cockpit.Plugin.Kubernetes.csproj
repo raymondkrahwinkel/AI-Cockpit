@@ -44,7 +44,9 @@
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- The plugin's own runtime dependency: the official Kubernetes C# client. Not compile-only — it and its
-         transitive deps ship in the plugin folder. -->
+         transitive deps ship in the plugin folder. One of those transitive deps is YamlDotNet, which the Helm
+         rollback's manifest reader uses directly (AC-1061 fase 2): the same assembly at the same version the client
+         already pins, so there is no second copy and still no runtime dependency beyond this one. -->
     <PackageReference Include="KubernetesClient" Version="19.0.2" />
   </ItemGroup>
 
