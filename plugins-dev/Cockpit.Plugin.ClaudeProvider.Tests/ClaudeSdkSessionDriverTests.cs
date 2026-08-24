@@ -495,6 +495,32 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.DoesNotContain("--strict-mcp-config", fake.Arguments!);
     }
 
+    // AC-1058: the model is told its plugin MCP tools are gone, so a skill naming one is not followed blind.
+    [Fact]
+    public async Task Start_Unattended_AppendsThePluginMcpNoticeToTheSystemPrompt()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Unattended(), mcpServers: null, CancellationToken.None);
+
+        var promptIndex = fake.Arguments!.ToList().IndexOf("--append-system-prompt-file");
+        Assert.True(promptIndex >= 0, "an unattended session must always carry the flag, even with no brief");
+        Assert.Contains(ClaudeSdkArguments.UnattendedPluginMcpNotice, File.ReadAllText(fake.Arguments![promptIndex + 1]));
+    }
+
+    // The attended mirror: an operator-driven pane gets no unrequested addition to its prompt.
+    [Fact]
+    public async Task Start_Attended_OmitsThePluginMcpNotice()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Attended(), mcpServers: null, CancellationToken.None);
+
+        Assert.DoesNotContain("--append-system-prompt-file", fake.Arguments!);
+    }
+
     [Fact]
     public async Task ARealTurnPushedDownTheStdoutPump_ReachesTheDriversStatusFeed()
     {
