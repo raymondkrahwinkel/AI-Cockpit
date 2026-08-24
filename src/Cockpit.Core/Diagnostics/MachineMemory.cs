@@ -1,11 +1,8 @@
 namespace Cockpit.Core.Diagnostics;
 
-// How much memory this machine has. Needed because "the cockpit is using four gigabytes" means nothing on its own —
-// it is a problem on a laptop with eight and unremarkable on a workstation with sixty-four.
-//
-// .NET knows this already (`GC.GetGCMemoryInfo` reports the total available to the process), so this is a
-// small class rather than three platform readers: what it mostly is, is the honest zero it returns when the runtime
-// will not say. A share of an unknown total is not a fact, and nothing is warned about on a guess.
+// AC-1013: Machine total memory, needed since "4 GB used" means nothing without context (a problem on 8 GB,
+// unremarkable on 64 GB). Uses `GC.GetGCMemoryInfo` rather than platform readers; returns 0 honestly when the
+// runtime won't say, since a share of an unknown total is not a fact worth warning on.
 public static class MachineMemory
 {
     public static long TotalBytes()

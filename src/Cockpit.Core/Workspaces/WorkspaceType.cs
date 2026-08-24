@@ -1,15 +1,8 @@
 namespace Cockpit.Core.Workspaces;
 
-// What a workspace hosts. Three host types ship built in — `Sessions`, `Dashboard` and
-// `Projects` — and a plugin can register its own (`ICockpitHost.AddWorkspaceType`), each identified by a stable,
-// namespaced `Id`. A host type gates which `PaneKind`s may live in it, its "+"
-// affordance and its empty state; a plugin type owns its whole body instead and holds no grid panes. The type
-// is an invariant, fixed when the workspace is created.
-// A value over an enum so the set is open: the host cannot enumerate the types a plugin will bring. The
-// original two host `Id`s are the same strings the enum used to serialize to (`"Sessions"`,
-// `"Dashboard"`), so a `cockpit.json` written before this change loads unchanged. Use
-// `FromId` when reading an id from disk so the host types keep matching case-insensitively as
-// the enum's `TryParse` did; a plugin id is treated as the API surface it is and matched exactly.
+// What a workspace hosts: `Sessions`, `Dashboard`, `Projects` built in, plus plugin-registered types.
+// AC-1013: trimmed — a value over an enum so the set stays open to plugins; `Id`s match the old enum's
+// serialized strings for back-compat, `FromId` matches built-ins case-insensitively — see ticket.
 public readonly record struct WorkspaceType(string Id)
 {
     // Hosts AI sessions and plain terminals — the working context.

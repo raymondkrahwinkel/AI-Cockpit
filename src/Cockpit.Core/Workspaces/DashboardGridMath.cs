@@ -1,23 +1,13 @@
 namespace Cockpit.Core.Workspaces;
 
-// Where a newly added widget lands on a dashboard, and how tall the dashboard has to be to show what it
-// holds. Pure math over rectangles — no Avalonia, no view models — so the placement rules are testable on
-// their own, the same way `StackPaneMath` keeps the session grid's arithmetic out of the panel.
-// The rule is row-major first-fit: scan left-to-right, top-to-bottom, take the first free rectangle that
-// fits within the column count. When nothing fits, the grid gains a row (Raymond's "2x2" is a starting
-// shape, not a cap — see `DashboardLayout.Rows`). Free placement with holes is preserved:
-// dragging a widget elsewhere leaves a gap, and first-fit will reuse that gap for the next widget rather
-// than always appending at the bottom.
+// AC-1013: where a new widget lands, and how tall the dashboard must be. Pure rectangle math (no Avalonia/view
+// models), same split as `StackPaneMath`. Rule: row-major first-fit, growing rows when full (Rows is a starting
+// shape not a cap); holes from moved widgets are reused rather than always appending at the bottom. (Full text on ticket.)
 public static class DashboardGridMath
 {
-    // The cell a widget spanning `columnSpan`×`rowSpan` should occupy,
-    // given what is already placed. Never returns an overlapping cell; grows past
-    // `layout`'s row count when the existing rows are full.
-    //
-    // `occupied`: The rectangles already on the dashboard.
-    // `layout`: The dashboard's grid settings — only `DashboardLayout.Columns` constrains placement.
-    // `columnSpan`: Requested width in cells; clamped to at least 1 and at most the column count.
-    // `rowSpan`: Requested height in cells; clamped to at least 1.
+    // AC-1013: the cell a `columnSpan`×`rowSpan` widget should occupy given `occupied`; never overlaps, grows
+    // past `layout`'s row count when full. Only `DashboardLayout.Columns` constrains placement; spans are
+    // clamped to at least 1 (columnSpan also to at most the column count).
     public static GridCell PlaceNext(IReadOnlyCollection<GridCell> occupied, DashboardLayout layout, int columnSpan = 1, int rowSpan = 1)
     {
         var columns = layout.Clamped().Columns;
@@ -51,16 +41,9 @@ public static class DashboardGridMath
         return occupied.Count == 0 ? configured : Math.Max(configured, occupied.Max(cell => cell.RowEnd));
     }
 
-    // The cell the pointer is over, from a position inside the grid. The inverse of the view's layout: the
-    // grid draws equal columns and rows, so which cell a drop lands in is arithmetic rather than hit-testing —
-    // and doing it here keeps the drag's rules testable instead of buried in a pointer handler.
-    //
-    // `x`: Pointer X within the grid.
-    // `y`: Pointer Y within the grid.
-    // `width`: The grid's width.
-    // `height`: The grid's height.
-    // `columns`: How many columns it draws.
-    // `rows`: How many rows it draws.
+    // AC-1013: the cell the pointer is over, given position/size/columns/rows. Inverse of the view's equal-cell
+    // layout, so a drop's target cell is arithmetic rather than hit-testing — keeps the drag rules testable
+    // instead of buried in a pointer handler.
     public static (int Column, int Row)? CellAt(double x, double y, double width, double height, int columns, int rows)
     {
         if (columns <= 0 || rows <= 0 || width <= 0 || height <= 0 || x < 0 || y < 0 || x >= width || y >= height)
@@ -72,17 +55,9 @@ public static class DashboardGridMath
                 Math.Clamp((int)(y / (height / rows)), 0, rows - 1));
     }
 
-    // Where every pane ends up when `paneId` is dropped on `target`. Free
-    // placement with holes, the same as the session grid: an empty cell simply takes the pane, and an occupied
-    // one swaps the two. Dropping a pane on itself changes nothing.
-    //
-    // Null when the drop is refused — the same answer `Resize` gives at an obstacle, and for the
-    // same reason: the pane stops and keeps its last good place rather than the gesture inventing an answer
-    // nobody asked for. Refused when the pane would leave the grid, when it would cover more than one pane, or
-    // when the pane it swaps with cannot fit where the dragged one came from.
-    // Returns the whole new arrangement rather than mutating, so the caller persists one settled state — and a
-    // swap can never half-apply, leaving two panes stacked on one cell. The view asks this for its drop ghost as
-    // well as for the release, so what the ghost promises and what the release writes cannot drift apart.
+    // AC-1013: where every pane ends up when `paneId` is dropped on `target` — empty cell takes it, occupied
+    // cell swaps. Null (like `Resize`) when refused: off-grid, covers more than one pane, or the swap partner
+    // can't fit the vacated spot. Returns the whole new arrangement (never mutates) so a swap can't half-apply.
     public static IReadOnlyList<(string Id, GridCell Cell)>? Drop(
         IReadOnlyList<(string Id, GridCell Cell)> panes,
         string paneId,
@@ -103,10 +78,8 @@ public static class DashboardGridMath
         var columns = layout.Clamped().Columns;
         var landing = dragged.Cell with { Column = target.Column, Row = target.Row };
 
-        // Only the columns are a wall. Rows grow to fit what is on the dashboard (RequiredRows), so dragging past
-        // the last one is how the operator makes it taller — the same asymmetry Resize already keeps. Without this
-        // a pane wider than one cell, dropped against the right edge, was written down reaching past the last
-        // column and drawn clipped ever after.
+        // AC-1013: only columns are a wall — rows grow via RequiredRows (same asymmetry as Resize), so dragging
+        // past the last row is how the operator grows the dashboard.
         if (landing.ColumnEnd > columns)
         {
             return null;
@@ -143,12 +116,9 @@ public static class DashboardGridMath
             : pane)];
     }
 
-    // The size a pane takes when its corner is dragged to `corner` — the cell the pointer is
-    // over becomes the pane's new bottom-right. Null when the result would not be a legal size: off the grid,
-    // inverted (dragged above or left of the pane's own origin), or overlapping a neighbour.
-    // Refusing rather than clamping is what makes the drag feel solid: the pane simply stops growing at the
-    // obstacle and keeps its last good size, instead of jumping over a neighbour or snapping to a size the
-    // pointer is nowhere near.
+    // AC-1013: pane size when its corner is dragged to `corner` (pointer cell becomes new bottom-right). Null
+    // when illegal: off-grid, inverted, or overlapping a neighbour. Refusing (not clamping) makes the drag feel
+    // solid — it stops at the obstacle instead of jumping over a neighbour or snapping to a distant size.
     public static GridCell? Resize(
         IReadOnlyList<(string Id, GridCell Cell)> panes, string paneId, (int Column, int Row) corner, DashboardLayout layout)
     {

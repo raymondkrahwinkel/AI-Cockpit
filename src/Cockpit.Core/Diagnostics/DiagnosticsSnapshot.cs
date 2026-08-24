@@ -1,10 +1,8 @@
 namespace Cockpit.Core.Diagnostics;
 
-// Everything the diagnostics panel reports at one moment (AC-58): what the cockpit runs on, how it draws, what it
-// is holding in native and managed memory, the sessions open, and the crash artifacts the OS left behind. It is
-// assembled in the App layer (the only one that can see the render backend, the toolkit version and the live
-// sessions) and exists so the tester can copy one block of text instead of hunting through Activity Monitor and
-// crash-report folders — the exact gap that made AC-57 hard to diagnose.
+// Everything the diagnostics panel reports at one moment (AC-58): platform, rendering, memory, open sessions,
+// and crash artifacts. Assembled in the App layer, the only layer that can see the render backend, toolkit
+// version and live sessions, so the tester can copy one block of text instead of hunting through OS tools (AC-57).
 public sealed record DiagnosticsSnapshot(
     DateTimeOffset CapturedAt,
     PlatformInfo Platform,
@@ -15,9 +13,7 @@ public sealed record DiagnosticsSnapshot(
     IReadOnlyList<SessionDiagnostic> Sessions,
     IReadOnlyList<CrashLogEntry> CrashLogs);
 
-// One open session's contribution (AC-58): a managed climb can hide in a session's child tree, so each is
-// named with the resident memory of its whole process tree — the same figure the status bar's per-session number uses.
-//
-// `Kind`: What kind of session it is — "Agent" (a CLI-backed provider) or "Terminal" — so a leak that only shows with one kind open is visible.
-// `ProcessId`: The session's own process id, or null for an HTTP-backed provider with nothing local to weigh.
+// One open session's contribution (AC-58): named with the resident memory of its whole process tree — the same
+// figure the status bar's per-session number uses — since a managed climb can hide in a session's child tree.
+// `Kind` is "Agent" or "Terminal"; `ProcessId` is null for an HTTP-backed provider with nothing local to weigh.
 public sealed record SessionDiagnostic(string Title, string Kind, int? ProcessId, long ResidentBytes);

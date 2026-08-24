@@ -2,10 +2,9 @@ using System.Globalization;
 
 namespace Cockpit.Core.Diagnostics;
 
-// One line of `ps -axo pid=,ppid=,time=,rss=` — how macOS's process table is read (#78). Pure, and tested,
-// because it is the only part of the macOS path this codebase can verify without a Mac: the parsing is where it
-// would go wrong, and the time format is the trap (`MM:SS.ss`, or `HH:MM:SS` once a process has run
-// for an hour, or `D-HH:MM:SS` after a day).
+// AC-1013 (was #78): One line of `ps -axo pid=,ppid=,time=,rss=` — the only part of the macOS path verifiable
+// without a Mac, so it's pure and tested. Time format is the trap: `MM:SS.ss`, `HH:MM:SS` past an hour, or
+// `D-HH:MM:SS` past a day.
 public static class PsLine
 {
     public static ProcessRow? Parse(string line)

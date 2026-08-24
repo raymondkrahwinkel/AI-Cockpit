@@ -1,18 +1,8 @@
 namespace Cockpit.Core.Workspaces;
 
-// One placed pane in a workspace, as persisted: what it is, where it sits, and the minimum needed to
-// rebuild it after a restart. Deliberately thin — a widget's own configuration is *not* here but in
-// the plugin's per-instance storage keyed by `Id` (`IWidgetContext.Storage`), so the host
-// never has to know the shape of a plugin's config and `cockpit.json` never grows plugin blobs.
-// For an `PaneKind.AiSession` pane specifically (AC-410): this record carries the operator's
-// *intention* — where the session was put, which profile and kind it was started with — not what the
-// running session actually did. What it actually did (the resolved worktree, the reported conversation id) lives
-// in `SessionStateRecord`/`session-state.jsonl` instead, keyed by the same pane id. The two can
-// legitimately disagree — a worktree relocates the working directory the session runs in — and a restore reads
-// both rather than trusting either alone.
-//
-// `Id`: This instance's stable id — the widget's `InstanceId`, and the key its config is stored under.
-// `Kind`: What the pane holds; must be accepted by the owning workspace's type (`WorkspaceTypeRules`).
+// One placed pane in a workspace, as persisted: what it is, where it sits, and the minimum to rebuild it.
+// AC-1013: trimmed — deliberately thin, widget config lives in plugin storage not here; for AiSession (AC-410)
+// this record carries operator *intention* only, not actual outcome — see ticket for full rationale.
 public sealed record WorkspacePane(string Id, PaneKind Kind)
 {
     // Where the pane sits in the grid.
@@ -40,10 +30,9 @@ public sealed record WorkspacePane(string Id, PaneKind Kind)
     // restored session still tells a later name suggestion (#AC-310) apart from one somebody typed.
     public bool NameIsChosen { get; init; }
 
-    // For `PaneKind.AiSession`: which factory rebuilds this pane after a restart — an SDK chat panel
-    // or a TTY terminal panel (AC-410). Defaults to `PaneSessionKind.Sdk`, the same fallback
-    // `Kind` itself gets from an unparseable value, so a hand-edited or older `cockpit.json`
-    // degrades to a session kind rather than failing to load.
+    // For `PaneKind.AiSession`: which factory rebuilds this pane after a restart — SDK chat panel or TTY
+    // terminal (AC-410). Defaults to `PaneSessionKind.Sdk`, the same fallback `Kind` gets from an unparseable
+    // value, so a hand-edited or older `cockpit.json` degrades to a session kind rather than failing to load.
     public PaneSessionKind SessionKind { get; init; }
 
     // For `PaneKind.AiSession`: the project this session works on (AC-410), or null for one belonging to none. Mirrors `NewSessionResult.ProjectId`.

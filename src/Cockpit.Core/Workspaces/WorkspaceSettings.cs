@@ -11,12 +11,9 @@ public sealed record WorkspaceSettings
     // The active workspace's `Workspace.Id`. Null, or an id no workspace carries, resolves to the first one.
     public string? ActiveWorkspaceId { get; init; }
 
-    // A Sessions workspace and the projects overview, with the sessions one active — so the cockpit still opens
-    // on the grid it always opened on, with the overview a tab away rather than something to go and find.
-    // One instance, not a fresh one per access. As a getter that called `Workspace.Create` it
-    // minted a new id every time it was read — so the view model's default and the store's default were two
-    // different workspaces, and a session stamped with one of them belonged to a workspace nothing else knew
-    // about. A default has to be the same default every time it is asked for.
+    // A Sessions workspace and the projects overview, sessions active. One instance, not minted fresh per access.
+    // AC-1013: trimmed — a getter calling `Workspace.Create` minted a new id per read, so view-model and store
+    // defaults diverged — see ticket.
     public static WorkspaceSettings Default { get; } = _CreateDefault();
 
     private static WorkspaceSettings _CreateDefault()
@@ -36,14 +33,9 @@ public sealed record WorkspaceSettings
     public Workspace? Active =>
         Workspaces.FirstOrDefault(workspace => workspace.Id == ActiveWorkspaceId) ?? Workspaces.FirstOrDefault();
 
-    // These settings made safe to bind to: at least one workspace, exactly one projects overview, an
-    // `ActiveWorkspaceId` that actually resolves, and every dashboard layout clamped. Applied on
-    // load, so a hand-edited or truncated `cockpit.json` yields a working cockpit instead of an empty window.
-    // The overview is a fixture rather than something to add (Raymond, 2026-07-24): it always exists, exactly
-    // once, and cannot be closed. Guaranteeing it here rather than at the view model is what makes that true of
-    // every cockpit — an older `cockpit.json` written before it existed, and a hand-edited one that removed
-    // it or holds two, all come back with one. It sits at the end of the strip: the first workspace is what a
-    // session with no workspace of its own falls back to, and that has to stay a desk which can show one.
+    // These settings made safe to bind to: one workspace, one projects overview, a resolving `ActiveWorkspaceId`.
+    // AC-1013: trimmed — overview is a fixture (Raymond, 2026-07-24), always exactly one, un-closable, enforced
+    // here not the view model, placed last as the no-workspace fallback — see ticket.
     public WorkspaceSettings Normalized()
     {
         if (Workspaces.Count == 0)
@@ -77,10 +69,9 @@ public sealed record WorkspaceSettings
             ? this
             : new() { Workspaces = [.. Workspaces, workspace], ActiveWorkspaceId = workspace.Id };
 
-    // These settings with `workspaceId` removed. Removing the active one selects its
-    // neighbour (the next, else the previous), matching how closing a session picks the next selection.
-    // Removing the last workspace is refused — a cockpit with no workspace has nothing to show — and so is
-    // removing the projects overview, which is a fixture of the cockpit rather than one of the operator's desks.
+    // These settings with `workspaceId` removed. Removing the active one selects its neighbour (next, else
+    // previous), matching how closing a session picks the next selection. Removing the last workspace, or the
+    // AC-1013: trimmed — projects overview, is refused; overview is a fixture, not one of the operator's desks — see ticket.
     public WorkspaceSettings WithoutWorkspace(string workspaceId)
     {
         var index = _IndexOf(workspaceId);
@@ -105,10 +96,9 @@ public sealed record WorkspaceSettings
     public WorkspaceSettings WithActive(string workspaceId) =>
         _IndexOf(workspaceId) < 0 ? this : this with { ActiveWorkspaceId = workspaceId };
 
-    // These settings with `workspaceId` moved to `targetIndex` in the tab
-    // strip, the rest closing the gap behind it. The selection is untouched — reordering rearranges the desks,
-    // it does not walk you to a different one. Out-of-range targets are clamped rather than refused, so a drag
-    // past either end lands on the end.
+    // These settings with `workspaceId` moved to `targetIndex` in the tab strip, closing the gap behind it.
+    // Selection is untouched — reordering rearranges the desks, it does not walk you to a different one.
+    // Out-of-range targets are clamped rather than refused, so a drag past either end lands on the end.
     public WorkspaceSettings WithMoved(string workspaceId, int targetIndex)
     {
         var from = _IndexOf(workspaceId);

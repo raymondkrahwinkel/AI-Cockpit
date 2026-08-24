@@ -11,25 +11,13 @@ public sealed record ProjectSettings
     // The projects, in the order the manager and launcher show them.
     public IReadOnlyList<Project> Projects { get; init; } = [];
 
-    // Ids of shared projects (`SharedProject.Id`, AC-245) hidden from the Projects workspace on this machine
-    // — a per-machine visibility flag on a project that lives in a shared definition elsewhere, never written into
-    // that definition itself, so hiding one here never hides it for a colleague. Nothing in this build ever adds to
-    // this list yet (that UI is a deliberate later step); it exists so the read path already honours it once
-    // something does.
+    // AC-1013: Ids of shared projects (AC-245) hidden on this machine only, never written into the shared
+    // definition. Nothing in this build adds to this list yet (a later UI step); the read path already honours it.
     public IReadOnlyList<string> HiddenSharedProjectIds { get; init; } = [];
 
-    // The categories in use (AC-618), in the order the manager shows their headings — not alphabetical, "Privé"
-    // before "Werk" is a choice the operator gets to keep even though nothing yet lets them drag a heading. Each
-    // entry is also the casing that category is shown under: the first project that typed it wins, and a later
-    // project typing the same name differently (`StringComparison.OrdinalIgnoreCase`) still joins the same
-    // group rather than starting a second one under its own casing — see `Project.Category`.
-    //
-    // Deliberately its own list rather than derived from `Projects` on the fly: a category is a
-    // preference about the list, not a property of any one project, and deriving it fresh every time would have
-    // no way to remember that "Privé" was typed before "Werk" once both have at least one project. Kept in sync
-    // by `Normalized` — an entry drops out the moment no project carries its category any more (a
-    // category "disappears when the last project lets go of it"), and a category typed onto a project the first
-    // time is appended here, in the order its first project appears in `Projects`.
+    // AC-1013: Categories in use (AC-618), in the order the manager shows their headings — operator-preserved
+    // order, not alphabetical. Each entry is also the shown casing (first typed wins). Its own list rather than
+    // derived from Projects on the fly, since order is a preference, not a project property; kept in sync by Normalized.
     public IReadOnlyList<string> CategoryOrder { get; init; } = [];
 
     // The project `projectId` names, or null — including for a session that belongs to a project the operator has since deleted.
@@ -40,10 +28,8 @@ public sealed record ProjectSettings
     public bool IsSharedProjectHidden(string sharedProjectId) =>
         HiddenSharedProjectIds.Contains(sharedProjectId, StringComparer.Ordinal);
 
-    // These settings made safe to bind to: nothing without an id or a name, no id twice, and no blank information
-    // row. Applied on load and before save, so a hand-edited or half-written `cockpit.json` costs the operator
-    // an entry rather than the whole list. An entry missing either field cannot be shown or referenced, so keeping
-    // it only means a blank row nothing can start.
+    // AC-1013: These settings made safe to bind to (no missing id/name, no duplicate id, no blank info row).
+    // Applied on load/before save so a hand-edited or half-written cockpit.json costs one entry, not the whole list.
     public ProjectSettings Normalized()
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -75,12 +61,9 @@ public sealed record ProjectSettings
         return categoryOrder.SequenceEqual(result.CategoryOrder) ? result : result with { CategoryOrder = categoryOrder };
     }
 
-    // `order` kept to exactly the categories `projects` still uses — each kept
-    // entry keeps the casing already on record (that *is* the "shown as first typed" promise), and a
-    // category some project carries that `order` has never recorded (newly typed, or a project
-    // saved by a build from before this list existed) is appended in the order its first project appears, using
-    // that project's own casing. Comparison throughout is `StringComparison.OrdinalIgnoreCase` — see
-    // `Project.Category`'s own remarks on why the culture-sensitive default is never an option here.
+    // AC-1013: `order` kept to exactly the categories `projects` still uses, keeping each entry's recorded
+    // casing; a category not yet in `order` is appended using its first project's casing. Always OrdinalIgnoreCase
+    // (never culture-sensitive) — see Project.Category's own remarks.
     private static IReadOnlyList<string> _NormalizedCategoryOrder(IReadOnlyList<string> order, IReadOnlyList<Project> projects)
     {
         var used = new List<string>();
@@ -116,16 +99,9 @@ public sealed record ProjectSettings
         return kept;
     }
 
-    // `project` with its information rows trimmed onto one line and the empty ones gone — a row the
-    // operator added and left alone carries nothing, and saving it would put a blank line on the project's card.
-    //
-    // Returning the *same instance* when there is nothing to tidy is what makes the caller's
-    // `SequenceEqual` safe, and that is worth stating: a record's generated equality compares
-    // `Project.AdditionalInfo` with the default comparer, which for a list is reference equality, not
-    // content. Because this method only ever hands back either the original reference or a new project whose rows
-    // genuinely differ (the inner `SequenceEqual` compares `ProjectInfoField` by value), there is no
-    // third case where two references differ while the content matches. Simplify this to an unconditional
-    // `project with` and the caller starts rebuilding the whole list on every load.
+    // AC-1013: `project` with info rows trimmed and blank ones dropped. Returns the *same instance* when
+    // nothing changed — required because the caller's SequenceEqual on Project.AdditionalInfo is reference
+    // equality for a list, not content; an unconditional `project with` would make the caller rebuild the whole list on every load.
     private static Project _WithTidyInfo(Project project)
     {
         var fields = project.AdditionalInfo
@@ -135,10 +111,8 @@ public sealed record ProjectSettings
 
         var tidied = fields.SequenceEqual(project.AdditionalInfo) ? project : project with { AdditionalInfo = fields };
 
-        // Same reasoning as the information rows above, and the same reason this drops a blank Reference here
-        // rather than only in ProjectResourceEntry: Normalized() is what runs before every save and after every
-        // load (ProjectStore), so a row an operator cleared or a hand edit left half-written costs the operator
-        // that one row rather than silently persisting a reference nothing points at.
+        // AC-1013: Same reasoning as the info rows above — Normalized() runs before every save/load (ProjectStore),
+        // so a cleared or half-written row costs one row, not a silently persisted reference to nothing.
         var resources = project.Resources.Where(resource => !string.IsNullOrWhiteSpace(resource.Reference)).ToList();
         tidied = resources.SequenceEqual(project.Resources) ? tidied : tidied with { Resources = resources };
 

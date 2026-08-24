@@ -2,12 +2,9 @@ using System.Runtime.InteropServices;
 
 namespace Cockpit.Core.Diagnostics;
 
-// What this install is running on (AC-58): the operating system, the CPU architecture the OS and this process
-// were built for, and the runtime and toolkit versions. The macOS blind spot that started AC-58 was as much about
-// not knowing the tester's arch (Apple Silicon vs Intel) as about memory — so the panel says it plainly.
-//
-// The Avalonia and app versions come from the App layer, which is the only one that references the toolkit; this
-// type reads the rest from `RuntimeInformation`, which needs no platform code.
+// AC-1013 (AC-58): What this install runs on — OS, CPU arch, runtime/toolkit versions — since AC-58's macOS
+// blind spot was as much about not knowing the tester's arch (Apple Silicon vs Intel) as about memory. Avalonia
+// and app versions come from the App layer (the only one referencing the toolkit); the rest from `RuntimeInformation`.
 public sealed record PlatformInfo(
     string OperatingSystem,
     Architecture OsArchitecture,

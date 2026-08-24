@@ -1,12 +1,7 @@
 namespace Cockpit.Core.Projects;
 
-// Which project answers to an identifier from somewhere else (AC-419) — the YouTrack project an issue lives in, the
-// repository an issue is on. The reverse of `Project.LinkedAs`: that asks what one project is called over
-// there, this asks which project is called that.
-//
-// The companion to `ProjectDirectoryMatch`, which places a session by the folder it runs in. A plugin
-// opening the New-session dialog has no folder yet — the whole point is that the operator has not picked one — but it
-// does know the ticket it is acting on, and that ticket names a tracker project the operator already linked.
+// AC-1013: Which project answers to an identifier from somewhere else (AC-419) — reverse of Project.LinkedAs.
+// Companion to ProjectDirectoryMatch for a plugin with no folder yet but a ticket naming a linked tracker project.
 public static class ProjectLinkMatch
 {
     // The project linked as `value` under `fieldKey` — checked against every value the field names (AC-884, e.g.

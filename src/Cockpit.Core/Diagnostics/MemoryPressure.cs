@@ -1,27 +1,8 @@
 namespace Cockpit.Core.Diagnostics;
 
-// When to warn that the cockpit and its sessions together are using enough memory for the operating system to start
-// killing things.
-//
-// A Claude session is 300–700 MB of Node; three of them is more memory than the whole cockpit. So the number worth
-// watching is not ours, it is the tree's — and this warning is the one thing that turns "the app disappeared" into
-// "you were warned, and you could close a session".
-//
-// An earlier version of this comment explained the macOS behaviour by *coalitions* — that macOS charges a
-// process for everything it spawns and kills the coalition leader. That was wrong, and it is corrected here rather
-// than deleted, because it is the kind of plausible story that gets re-derived. macOS does not use the jetsam bands
-// for this at all (they are iOS); under memory pressure it runs `no_paging_space_action()`, which kills the
-// process holding the most compressed pages — "killing largest compressed process", in the kernel's own words.
-// Nobody is charged for their children, and the leader is not singled out. Which also means the obvious mitigation
-// (spawn the sessions outside our coalition) would have bought exactly nothing.
-//
-// The lever that does exist is `POSIX_SPAWN_PCONTROL_KILL`: a child can be spawned volunteering itself as the
-// one to kill when memory runs out. Not done yet — and it should not be, until a jetsam log actually shows the
-// cockpit dying this way rather than something else entirely. See the macOS section of Memory/Cockpit/Todo.md.
-//
-// The rule below is written to be ignorable exactly once. It warns on the way up, and it does not warn again until
-// memory has fallen well back — a warning that repeats every ten seconds while you are deciding what to close is a
-// warning you turn off, and then it is not there on the day it matters.
+// AC-1013: Warns when the cockpit+sessions tree nears the OS's memory-kill threshold (a Claude session is
+// 300-700 MB; three exceed the whole cockpit); fires once on the way up, stays quiet till usage falls well back
+// so it doesn't nag every ten seconds. Was: macOS-coalitions explanation (wrong, corrected) & POSIX_SPAWN_PCONTROL_KILL — see Memory/Cockpit/Todo.md.
 public static class MemoryPressure
 {
     // Warn when the cockpit's whole tree passes this share of the machine's memory. Two thirds: enough headroom left to act, close enough to trouble to mean something.
@@ -50,12 +31,9 @@ public static class MemoryPressure
             : share >= CalmAtShare ? MemoryPressureLevel.Elevated : MemoryPressureLevel.Calm;
     }
 
-    // Whether to warn now. `warned` is whether the operator has already been told and not yet been
-    // let off the hook — the caller keeps that between calls.
-    //
-    // `usedBytes`: What the cockpit's tree is using: itself, and every session it spawned.
-    // `totalBytes`: The machine's memory. Zero when it could not be read, which means no warning: a share of an unknown total is not a fact.
-    // `warned`: Whether a warning is already standing.
+    // AC-1013: Whether to warn now; `warned` tracks whether the operator has already been told and not yet let
+    // off the hook (caller keeps this between calls). `totalBytes` of 0 means "unreadable" and suppresses the
+    // warning, since a share of an unknown total is not a fact.
     public static MemoryPressureDecision Decide(long usedBytes, long totalBytes, bool warned)
     {
         if (totalBytes <= 0 || usedBytes <= 0)

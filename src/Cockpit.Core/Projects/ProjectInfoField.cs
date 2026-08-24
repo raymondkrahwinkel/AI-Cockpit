@@ -1,24 +1,12 @@
 namespace Cockpit.Core.Projects;
 
-// One line of whatever else an operator wants to keep beside a project (AC-295): a label they chose and the value
-// under it — a repository link, the customer's website, a contact, a licence number. Named by the operator rather
-// than by the model on purpose: the cockpit cannot know which kinds of information a project needs, and a typed
-// field per kind means a code change for every new one.
-//
-// A list of these rather than a dictionary, because the operator types the order and it is the order they read it
-// back in; and because two rows may honestly carry the same label (two contacts) where a dictionary key may not.
-//
-// A row is plain text unless the operator marks it a secret (AC-318): then the value is stored encrypted, masked
-// wherever a project is shown, and kept out of anything a session is told.
-//
-// `Label`: What the operator calls this — free text, shown before the value.
-// `Value`: What it says. A single line: it is read at a glance beside a project, not written in.
+// AC-1013: One line of whatever else an operator wants to keep beside a project (AC-295) — operator-named
+// label/value, list (not dictionary) for order and dupes. Marked secret (AC-318): encrypted, masked, never sent.
+// `Label`: What the operator calls this. `Value`: what it says, one line, read at a glance.
 public sealed record ProjectInfoField(string Label, string Value)
 {
-    // Whether a session started on this project is told this row (AC-314), off unless the operator says so. Off by
-    // default on purpose: these rows arrived as reference material for the operator to read (AC-295), so sending
-    // every one of them into a system prompt would change what already-entered rows do without anyone asking for it
-    // — and a row costs prompt budget at every session start, which is worth deciding per row rather than in bulk.
+    // AC-1013: Whether a session is told this row (AC-314), off by default — these rows arrived as reference
+    // material for the operator (AC-295), so sending them all would silently change existing rows' behavior.
     public bool IsSharedWithSessions { get; init; }
 
     // Whether `Value` is a credential (AC-318). A secret row is stored encrypted, masked wherever a
@@ -57,12 +45,9 @@ public sealed record ProjectInfoField(string Label, string Value)
         Uri.TryCreate(Value, UriKind.Absolute, out var uri) &&
         (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
-    // This row as it will be stored and shown: trimmed, on one line, and without the invisible marks that make text
-    // read as something it is not. Pasting out of a document brings line breaks the row cannot hold — and a wrapping
-    // text block over a value with newlines in it is what crashed the issue dialogs on Avalonia 12.0.5.
-    // A `with` rather than a fresh `new(Label, Value)`: the positional form carries only those two, so it
-    // silently dropped every other member — and this runs on load and on save, so a row the operator had ticked to
-    // share would have quietly unticked itself.
+    // AC-1013: Trimmed to one line without invisible marks — a value with newlines crashed the issue dialogs
+    // on Avalonia 12.0.5. Uses `with` rather than `new(Label, Value)`, whose positional form would
+    // silently drop every other member (e.g. an operator's IsSharedWithSessions tick) on every load/save.
     public ProjectInfoField Tidied() => this with
     {
         Label = ProjectPromptText.OneLine(Label),
