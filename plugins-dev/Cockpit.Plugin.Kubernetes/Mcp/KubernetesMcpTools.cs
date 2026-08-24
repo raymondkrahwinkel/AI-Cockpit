@@ -20,8 +20,21 @@ namespace Cockpit.Plugin.Kubernetes.Mcp;
 // apiVersion/plural, and passes its own `COCKPIT_PANE_ID` as `session` so a remembered approval is scoped
 // to the session that asked. Whether a resource is namespaced or cluster-scoped is decided by its real REST scope
 // (`ResourceScope`), never by whether the agent left the namespace blank.
-internal sealed partial class KubernetesMcpTools(KubernetesSettings settings, ClusterAccessGate gate, ClusterConnectionFactory connections, PortForwardManager portForwards)
+internal sealed partial class KubernetesMcpTools(
+    KubernetesSettings settings,
+    ClusterAccessGate gate,
+    ClusterConnectionFactory connections,
+    PortForwardManager portForwards,
+    IHelmRunner? helmRunner = null,
+    Func<string, string?>? resolveManagedCli = null)
 {
+    private readonly IHelmRunner _helm = helmRunner ?? new HelmRunner();
+
+    // A cockpit-managed helm (AC-1061 phase 3) wins over PATH when there is one; without it the bare name is left
+    // for the process start to resolve, so a machine with its own helm keeps working untouched.
+    private string _HelmExecutablePath() =>
+        resolveManagedCli?.Invoke(HelmManagedCli.CliName) is { Length: > 0 } managed ? managed : HelmManagedCli.CliName;
+
     private static readonly TimeSpan PortForwardMaxLifetime = TimeSpan.FromMinutes(30);
     private const int MaxLogTailLines = 10_000;
     private const int ListPageLimit = 200;

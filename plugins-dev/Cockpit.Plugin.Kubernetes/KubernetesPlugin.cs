@@ -21,7 +21,7 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         Id: "kubernetes",
         DisplayName: "Kubernetes",
         Author: "Cockpit",
-        Description: "Register Kubernetes clusters and give agents scoped, human-approved access to them through an mcp__cockpit-k8s__* server. The plugin talks to the cluster itself and keeps the credentials — an agent never gets a kubeconfig. Opening a cluster asks for consent, a namespace outside the cluster's allowed list asks each session (reads included), and every change asks afresh. Cluster-scoped resources and exec/port-forward/attach are off until you turn them on per cluster. Helm releases can be read straight from their release secrets and rolled back to an earlier revision, no helm binary needed; the rollback approval shows the manifest diff, and there is no install or uninstall.");
+        Description: "Register Kubernetes clusters and give agents scoped, human-approved access to them through an mcp__cockpit-k8s__* server. The plugin talks to the cluster itself and keeps the credentials — an agent never gets a kubeconfig. Opening a cluster asks for consent, a namespace outside the cluster's allowed list asks each session (reads included), and every change asks afresh. Cluster-scoped resources and exec/port-forward/attach are off until you turn them on per cluster. Helm releases can be read straight from their release secrets and rolled back to an earlier revision without a helm binary; an upgrade renders the chart with a cockpit-managed helm and applies that. Both approvals show the manifest diff, and there is no install or uninstall.");
 
     private ClusterConnectionFactory? _connections;
     private PortForwardManager? _portForwards;
@@ -38,10 +38,10 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         var portForwards = new PortForwardManager();
         _portForwards = portForwards;
         var gate = new ClusterAccessGate(host);
-        var tools = new KubernetesMcpTools(settings, gate, connections, portForwards);
+        var tools = new KubernetesMcpTools(settings, gate, connections, portForwards, new HelmRunner(), host.ResolveManagedCliPath);
 
-        // The cockpit can install and manage the helm binary itself (AC-20/AC-1061 phase 3); helm_upgrade (a later
-        // phase) prefers the managed copy over PATH via host.ResolveManagedCliPath, same as codex/claude.
+        // The cockpit can install and manage the helm binary itself (AC-20/AC-1061 phase 3); helm_upgrade prefers
+        // that copy over PATH via host.ResolveManagedCliPath, same as codex/claude.
         host.AddManagedCli(HelmManagedCli.Descriptor);
 
         host.AddSettings(() => new KubernetesSettingsControl(host, settings));

@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: agents can upgrade a Helm release. The chart is rendered with a helm dry run and the operator approves the
+  literal manifest diff — what changes, resource by resource — before anything is applied; a cluster registered by
+  pasting its config instead of a file path is refused rather than staging that config to disk. There is still no
+  install or uninstall, and it is deliberately not full helm parity: no three-way merge and no chart hooks.
 - added: hovering a session card in the sidebar now shows its full title and status line in a tooltip — both get
   cut off on the card itself at the default sidebar width, the title with no ellipsis at all, so this is the only
   way to read either in full. The same text is also available to screen readers without hovering.

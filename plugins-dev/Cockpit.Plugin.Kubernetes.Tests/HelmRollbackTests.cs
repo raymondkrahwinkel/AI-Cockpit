@@ -100,7 +100,7 @@ public class HelmRollbackTests
     {
         var now = DateTimeOffset.FromUnixTimeSeconds(1_770_000_000);
 
-        var (secret, payload) = HelmReleaseLedger.NewRevision(TargetRelease, "traefik", "system-ingress", 8, 6, now);
+        var (secret, payload) = HelmReleaseLedger.NewRevision(TargetRelease, "traefik", "system-ingress", 8, "Rollback to 6", HelmReleaseLedger.PendingRollback, now);
 
         Assert.Equal("sh.helm.release.v1.traefik.v8", secret.Metadata.Name);
         Assert.Equal(HelmReleaseLedger.SecretType, secret.Type);
@@ -121,7 +121,7 @@ public class HelmRollbackTests
     public void Restamp_MovesTheStatusInThePayloadAndTheLabelTogether()
     {
         var now = DateTimeOffset.FromUnixTimeSeconds(1_770_000_000);
-        var (secret, payload) = HelmReleaseLedger.NewRevision(TargetRelease, "traefik", "system-ingress", 8, 6, now);
+        var (secret, payload) = HelmReleaseLedger.NewRevision(TargetRelease, "traefik", "system-ingress", 8, "Rollback to 6", HelmReleaseLedger.PendingRollback, now);
 
         HelmReleaseLedger.Restamp(secret, payload, HelmReleaseLedger.Deployed, now.AddMinutes(1));
 
@@ -139,7 +139,7 @@ public class HelmRollbackTests
         var withOffset = (JsonObject)TargetRelease.DeepClone();
         withOffset["info"]!["first_deployed"] = "2026-08-24T15:35:43.887449942+02:00";
 
-        var (secret, _) = HelmReleaseLedger.NewRevision(withOffset, "traefik", "system-ingress", 8, 6, DateTimeOffset.UnixEpoch);
+        var (secret, _) = HelmReleaseLedger.NewRevision(withOffset, "traefik", "system-ingress", 8, "Rollback to 6", HelmReleaseLedger.PendingRollback, DateTimeOffset.UnixEpoch);
 
         // Helm's own time type parses the JSON string's raw bytes without undoing escapes, so a "+" written as
         // "\u002B" — what System.Text.Json does by default — leaves a revision helm silently drops from its history.
@@ -158,7 +158,7 @@ public class HelmRollbackTests
     [Fact]
     public void Encode_RoundTripsThroughTheSameUnpackHelmWrote()
     {
-        var (secret, _) = HelmReleaseLedger.NewRevision(TargetRelease, "traefik", "system-ingress", 8, 6, DateTimeOffset.UnixEpoch);
+        var (secret, _) = HelmReleaseLedger.NewRevision(TargetRelease, "traefik", "system-ingress", 8, "Rollback to 6", HelmReleaseLedger.PendingRollback, DateTimeOffset.UnixEpoch);
 
         var release = HelmReleaseSecretCodec.TryDecode(secret, out var error);
 
