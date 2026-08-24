@@ -32,7 +32,7 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
         _host = host;
         _settings = new DiscordChannelSettings(host.Storage);
 
-        host.AddSettings(() => new DiscordChannelSettingsControl(host, _settings));
+        host.AddSettings(() => new DiscordChannelSettingsControl(host, _settings), "Assistant Plugins");
         host.OnSettingsSaved(_Reconnect);
 
         _Reconnect();

@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Options sidebar now sorts plugin settings into their own group instead of one flat PLUGINS list —
+  Discord and Slack show under a new "Assistant Plugins" group, separate from tool plugins like Docker and
+  Kubernetes.
+
 - added: you can send the assistant a picture from Slack or Discord. Attach a screenshot of the error you are
   looking at, write your question underneath it, and both arrive as one message — the same thing pasting an
   image into the chat window does, from your phone. A picture on its own, with nothing typed, is a message too.

@@ -76,6 +76,9 @@ internal sealed class CockpitHost(
     public void AddSettings(Func<Control> createView) =>
         contributionSink.AddPluginSettings(pluginId, pluginName, createView);
 
+    public void AddSettings(Func<Control> createView, string category) =>
+        contributionSink.AddPluginSettings(pluginId, pluginName, createView, category);
+
     public IAssistantChannelGateway? OpenAssistantChannel(AssistantChannelContribution contribution)
     {
         ArgumentNullException.ThrowIfNull(contribution);

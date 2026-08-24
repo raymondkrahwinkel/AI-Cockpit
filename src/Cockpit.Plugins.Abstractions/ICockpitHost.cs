@@ -37,6 +37,17 @@ public interface ICockpitHost
     void AddSettings(Func<Control> createView);
 
     /// <summary>
+    /// Same as <see cref="AddSettings(Func{Control})"/>, but declares which Options sidebar group the plugin's
+    /// settings row lands in (AC-1030), e.g. "Assistant Plugins" for a chat-channel plugin.
+    /// </summary>
+    /// <remarks>
+    /// Default forwards to the category-less overload, so an already-compiled plugin still loads and lands in
+    /// the default PLUGINS group. Group order is fixed by the host, not by call order — see
+    /// <c>OptionsDialog._BuildPluginCategories</c>.
+    /// </remarks>
+    void AddSettings(Func<Control> createView, string category) => AddSettings(createView);
+
+    /// <summary>
     /// Adds a launcher button to the left menu; clicking runs <paramref name="onInvoke"/> — typically opening a dialog via <see cref="ShowDialogAsync"/>.
     /// </summary>
     void AddSideMenuButton(string title, Action onInvoke);

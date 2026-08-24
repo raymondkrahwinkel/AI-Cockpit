@@ -406,7 +406,13 @@
          under a `Docs` folder and the host finds it by scanning, so a plugin that ships none is unchanged in
          every way — nothing was added to a constructor and nothing became required. Additions only — a minor;
          major and abstractionsVersion stay put. -->
-    <Version>1.58.0</Version>
+    <!-- 1.59.0 (AC-1030): added ICockpitHost.AddSettings(Func<Control>, string category) and
+         IPluginContributionSink.AddPluginSettings(..., string? category) — declares which Options sidebar group
+         a plugin's settings row lands in (e.g. "Assistant Plugins" for a chat-channel plugin). Both are default
+         interface methods forwarding to their category-less overload, so an existing plugin binary keeps
+         compiling and keeps landing in the default PLUGINS group untouched. Additions only — a minor; major and
+         abstractionsVersion stay put. -->
+    <Version>1.59.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
