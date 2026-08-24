@@ -9,12 +9,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-// Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and
-// spawns it in a pseudo console. Platform-agnostic — the pty host itself (ConPTY on Windows, Porta.Pty on
-// Linux/macOS) is `IPtyHostFactory`.
-// Nothing here knows which agent is running. That is the point of the split: the pieces that were provider-
-// specific (executable, flags, config directory, status relay) moved into `ITtySessionProvider`,
-// and what is left is the part every TUI needs identically.
+// Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and spawns it in a
+// pseudo console (`IPtyHostFactory`, platform-agnostic). Provider-specific pieces (executable, flags, config
+// directory, status relay) live in `ITtySessionProvider`; what's left here is what every TUI needs identically.
 internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
@@ -74,20 +71,9 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
             };
         }
 
-        // AC-40: this run's MCP auth key, so a cockpit-hosted server's --mcp-config can reference COCKPIT_MCP_KEY
-        // (Claude's Bearer ${COCKPIT_MCP_KEY}, Codex's bearer_token_env_var) instead of embedding a literal, and the
-        // child presents it to the 401 gate. It has to go on the base, not a provider overlay: an overlay value is
-        // scrubbed as host-controlled (a profile/provider must not override the key and lock the session out with a
-        // self-inflicted 401), and a base value the host sets itself is what survives Compose down to the child. The
-        // host owns it here for the same reason it owns the pane id above — set after the profile's variables, which
-        // Compose has already laid down, so no profile can shadow it. Without this the env reference expands to empty
-        // and every cockpit-hosted MCP endpoint answers 401 (unlike the in-process local-model loop and the SDK
-        // spawn, which hand the key straight to the client and so were never affected).
-        // AC-89: when this session has a pane id, hand it its own per-session token instead of the shared app key, so
-        // a request from it can be attributed to this pane and the consent broker cannot be tricked by another pane's
-        // agent claiming this session's id. Without a pane id (no session to name) it falls back to the shared key.
-        // AC-143: the minted token is kept so it can be revoked at this route's own teardown below, in
-        // TtyProcessOwningSessionFiles — the pty's end is otherwise invisible to the keyring.
+        // AC-1013: AC-40's MCP auth key must sit on the base environment, not a provider overlay (an overlay value is
+        // scrubbed as host-controlled), so no profile/provider can override it and self-lock the session out with a
+        // 401. AC-89: a pane id gets its own per-session token instead of the shared key, for attribution; AC-143 keeps it so this route's own teardown (TtyProcessOwningSessionFiles) can revoke it.
         var mintedToken = string.IsNullOrEmpty(paneId) ? null : keyring.TokenFor(paneId);
         baseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase)
         {
@@ -129,10 +115,9 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         // so everything it starts later is born inside it.
         var memoryCap = memoryLimiter.Apply(process.ProcessId, SessionMemoryCap.ResolveBytes(profile, options));
 
-        // The files the launch wrote live exactly as long as the session that needs them: an MCP config holds the
-        // registry's bearer headers, and the limits of a session that has ended are nobody's business. AC-143: a
-        // minted pane token needs the same wrapping so its revoke runs when this process is disposed, even when the
-        // provider itself wrote no session-scoped files.
+        // The files this launch wrote live exactly as long as the session needing them (an MCP config holds bearer
+        // headers, no business surviving the session that ends). AC-143: a minted pane token needs the same
+        // wrapping so its revoke runs on dispose, even when the provider itself wrote no session-scoped files.
         return spec.SessionScopedFiles.Count is 0 && spec.StatusFile is null && mintedToken is null && memoryCap is null
             ? process
             : new TtyProcessOwningSessionFiles(process, spec.SessionScopedFiles, spec.StatusFile, mintedToken is null ? null : keyring, paneId, mintedToken, memoryCap);

@@ -17,11 +17,9 @@ internal sealed class ConPtyHostFactory : IPtyHostFactory
         short rows) =>
         ConPtyProcess.Start(BuildCommandLine(executablePath, arguments), workingDirectory, environment, columns, rows);
 
-    // Builds the single command-line string `CreateProcessW` expects: the executable followed by
-    // each argument, quoted where needed. `CreateProcessW` parses argv out of one string — unlike
-    // Unix's `execvp`, which takes the path and argv array separately (see
-    // `PortaPtyProcess`'s `PtyOptions.CommandLine` usage) — so this is a Windows-only
-    // concern.
+    // Builds the single command-line string `CreateProcessW` expects: the executable followed by each argument,
+    // quoted where needed. `CreateProcessW` parses argv out of one string, unlike Unix's `execvp` (path + argv
+    // array separately, see `PortaPtyProcess`'s `PtyOptions.CommandLine`) — so this is Windows-only.
     internal static string BuildCommandLine(string executablePath, IReadOnlyList<string> arguments)
     {
         var commandLine = new StringBuilder(QuoteArgument(executablePath));
@@ -33,14 +31,9 @@ internal sealed class ConPtyHostFactory : IPtyHostFactory
         return commandLine.ToString();
     }
 
-    // Escapes a single token the way `CommandLineToArgvW` (which is how the child parses argv back
-    // out of the one string `CreateProcessW` receives) expects — Microsoft's canonical algorithm.
-    // A token is left bare when it needs no quoting; otherwise it is wrapped in quotes, embedded
-    // `"` are escaped as `\"`, and any run of backslashes that precedes a quote (or the
-    // closing quote) is doubled. This is not optional prettiness: TTY arguments now include
-    // `--settings &lt;json&gt;` (the statusline relay) and `--append-system-prompt`, whose
-    // values carry spaces *and* double quotes. The old "quote only when it has a space" check
-    // split that JSON at its first space and handed the child broken argv, which exited on the spot.
+    // Escapes a token the way `CommandLineToArgvW` expects (Microsoft's canonical algorithm): bare when it needs
+    // no quoting, else quoted with embedded `"` as `\"` and runs of backslashes before a quote doubled. Not
+    // optional prettiness — `--settings &lt;json&gt;` and `--append-system-prompt` values carry spaces and quotes.
     internal static string QuoteArgument(string value)
     {
         // A non-empty token with nothing the parser treats specially needs no quoting at all.

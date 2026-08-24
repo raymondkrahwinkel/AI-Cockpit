@@ -46,14 +46,9 @@ internal sealed class SharedUsageCache : ISharedUsageCache, ISingletonService
         }
     }
 
-    // The underlying credential a reading belongs to — never the profile's label, so two profiles sharing one
-    // account share one entry (the regression AC-775 exists to close). Ollama/LmStudio and a profile-less
-    // session identify no cacheable credential: neither reports usage worth deduping.
-    //
-    // A plugin provider's own credential fields are opaque to the host (#45 fase B1), so its whole ConfigJson
-    // stands in for them rather than being parsed per plugin — two profiles genuinely sharing an account share
-    // an identical ConfigJson today; a plugin whose config varies without the credential changing is a
-    // narrower follow-up, not a blocker (AC-775 grooming, point 10).
+    // The underlying credential a reading belongs to, not the profile's label — so two profiles sharing one
+    // account share one entry (the AC-775 regression). Ollama/LmStudio and a profile-less session report nothing
+    // cacheable. A plugin's whole ConfigJson stands in for its opaque credential fields (#45 fase B1).
     private static string? _KeyFor(ProviderConfig? config) => config switch
     {
         ClaudeConfig claude => $"claude:{claude.ConfigDir}",

@@ -9,15 +9,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// Appends `SessionStateRecord`s to `session-state.jsonl` next to `cockpit.json` (AC-409).
-//
-// Shares the append/read idiom of `JsonlAuditLog{T}` — `FileMode.Append` with
-// `FileShare.Read`, owner-only creation, a write lock, and a never-throws-to-the-caller append — but
-// does not derive from it: that base's whole point is that a trail, once written, cannot be erased, and
-// `CompactAsync` rewrites this file on purpose. Session state is derived, not a trail; it is expected
-// to shrink. The tail-reading block reader that base class uses to answer "the last N" is not reused either —
-// this store needs "the last record per pane across the whole file" instead, and the file stays small through
-// compaction, so a plain forward read is both correct and simpler.
+// Appends `SessionStateRecord`s to `session-state.jsonl` next to `cockpit.json` (AC-409). Shares the
+// append/read idiom of `JsonlAuditLog{T}` but does not derive from it: that base assumes a trail that is
+// never erased, while `CompactAsync` rewrites this file on purpose, and needs "last per pane", not "last N".
 internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -138,24 +132,18 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
         return latest is null ? null : [.. latest.Values];
     }
 
-    // The read `CompactAsync` and `TryLoadAsync` share: a read failure and "the file has
-    // bytes but no line in it parsed" both come back as `null` rather than an empty dictionary —
-    // neither caller may treat "could not tell" as "there is nothing here" (see each method's own doc for why).
-    // `LoadAsync` does not use this: its contract is the opposite on purpose, collapsing both into
-    // empty for a restore that has no write to protect and nothing better to fall back on.
+    // Shared by `CompactAsync` and `TryLoadAsync`: a read failure and "bytes but nothing parsed" both come
+    // back as `null`, not an empty dictionary — neither caller may treat "could not tell" as "nothing here".
+    // `LoadAsync` does not use this: it collapses both into empty, having no write to protect.
     private async Task<IReadOnlyDictionary<string, SessionStateRecord>?> _TryReadLatestPerPaneAsync(CancellationToken cancellationToken)
     {
         try
         {
             var latest = await _ReadLatestPerPaneAsync(cancellationToken).ConfigureAwait(false);
 
-            // The per-line parse never throws — a line it cannot make sense of is simply skipped — so a file this
-            // build cannot understand at all (written by a newer one, re-encoded, hand-mangled) arrives here as an
-            // empty set rather than as an error. Parsing nothing out of a file that has something in it is the same
-            // situation as failing to read it, and gets the same answer. The length check sits inside this try
-            // rather than after it because FileInfo.Length throws for a file that has gone since File.Exists said
-            // otherwise: CompactAsync used to catch that in its own outer try, but TryLoadAsync has none, and its
-            // contract is to answer null when it cannot tell — not to throw at a caller composing a write.
+            // The per-line parse never throws, so a file this build cannot understand at all arrives here as an
+            // empty set rather than an error — same as a read failure, and gets the same answer. The length check
+            // sits inside this try because FileInfo.Length can throw if the file vanished since File.Exists checked.
             if (latest.Count == 0 && new FileInfo(_filePath).Length > 0)
             {
                 _logger.LogWarning(
@@ -192,10 +180,9 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
         await stream.WriteAsync(Encoding.UTF8.GetBytes(line), cancellationToken).ConfigureAwait(false);
     }
 
-    // Reads every parseable record forward, keeping only the last one seen per pane — a later line for the same
-    // pane overwrites an earlier one in the dictionary, which is exactly "last record per pane wins". A blank or
-    // half-written line (a crash mid-append, or a hand edit) fails to parse and is skipped rather than losing
-    // every record before it.
+    // Reads every parseable record forward, keeping the last one seen per pane — a later line overwrites an
+    // earlier one, i.e. "last record per pane wins". A blank or half-written line (crash mid-append, hand
+    // edit) fails to parse and is skipped rather than losing every record before it.
     private async Task<Dictionary<string, SessionStateRecord>> _ReadLatestPerPaneAsync(CancellationToken cancellationToken)
     {
         var latest = new Dictionary<string, SessionStateRecord>(StringComparer.Ordinal);
@@ -214,12 +201,9 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
         return latest;
     }
 
-    // A line that does not parse into a record with a pane to key it on is skipped. The pane check is not
-    // belt-and-braces: `SessionStateRecord.PaneId` is a positional parameter, and the serializer
-    // passes null for one a line omits rather than refusing the line — so a hand-edited or truncated-but-still-valid
-    // object would reach the caller with no key, and the dictionary it is being put into would throw on that null.
-    // That throw escapes the whole read, which would turn one bad line into "there is no session state at all" —
-    // the opposite of what skipping a bad line is for.
+    // A line that parses but has no PaneId is still skipped: the serializer passes null for an omitted field
+    // rather than refusing the line, so a hand-edited or truncated record could reach the caller keyless and
+    // throw when used as a dictionary key — turning one bad line into "no session state at all".
     private static SessionStateRecord? _TryParse(string line)
     {
         try

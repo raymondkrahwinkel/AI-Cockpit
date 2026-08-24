@@ -3,17 +3,9 @@ using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
-// A TTY session that owns what was minted or written for it: the provider's session-scoped files (an MCP config
-// handed to the CLI), its status snapshot, and — when this session had a pane id — its per-session MCP keyring
-// token (AC-89, AC-143). All are dropped when the session is disposed.
-//
-// An MCP config carries the registry's bearer headers and the CLI only reads it while starting up. Tying a
-// file's lifetime to the session's is what keeps a credential from outliving the thing that needed it — the
-// version before this wrote one per session and deleted none.
-//
-// The keyring token is revoked here — `TtyLauncher`'s own mint site — rather than through any shared
-// cross-component teardown path: the pty's end is otherwise only visible to the app layer, which cannot reach
-// `SessionMcpKeyring`, so this wrapper is where the TTY route's own teardown lives.
+// AC-1013: A TTY session that owns what was minted or written for it — the provider's session-scoped files, its
+// status snapshot, and (when it had a pane id) its per-session MCP keyring token (AC-89, AC-143) — dropping all
+// of it on dispose, so a credential never outlives the session, and revoking the token here since the pty's end is otherwise unreachable from `SessionMcpKeyring`.
 internal sealed class TtyProcessOwningSessionFiles(
     IConPtyProcess inner,
     IReadOnlyList<string> sessionScopedFiles,

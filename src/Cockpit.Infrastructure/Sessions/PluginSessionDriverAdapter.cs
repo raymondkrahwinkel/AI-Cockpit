@@ -479,12 +479,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         return inner.SetAutoApproveToolsAsync(enabled, cancellationToken);
     }
 
-    // AC-79: a delegated session has no operator to prompt, so its ceiling has to reach the gate that decides.
-    // Without this the host-run loop would raise a prompt nobody answers — and the ceiling would bind nothing.
-    //
-    // AC-971: and the same for the driver's OWN permission stream. A CLI-backed provider runs its built-in
-    // Write/Edit/Bash itself and only asks over its control protocol, so the ceiling used to bind the host's tools
-    // and nothing the agent actually writes files with.
+    // AC-79: a delegated session has no operator to prompt, so its ceiling must reach the deciding gate — otherwise
+    // the host-run loop raises a prompt nobody answers. AC-971: the same applies to the driver's own permission
+    // stream, since a CLI-backed provider runs its built-in Write/Edit/Bash itself and asks only over its control protocol.
     public Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default)
     {
         _hostToolset?.Gate.SetDelegatedGate(ceiling, allowedTools);
@@ -501,13 +498,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     private volatile string? _delegatedCeiling;
     private volatile IReadOnlySet<string>? _delegatedAllowList;
 
-    // Answers one permission request for a delegated session (AC-971) — never a prompt, never a hang. A CLI built-in
-    // is graded by name; an `mcp__` tool is allowed, since the host never connected that server and cannot grade it,
-    // and what bounds it is the enabled-server set the profile resolved (AC-136/AC-378); anything else fails closed.
-    //
-    // ponytail: a writing MCP tool (a terminal server) is therefore a way past a read-only ceiling — which is why a
-    // read-only task's workspace is read afterwards too (DelegatedWorkspaceChanges) and a change fails the task.
-    // Close it by carrying the CLI's own MCP annotations to the host, as SessionToolApprovalGate already grades its own.
+    // AC-971: answers one delegated permission request — never a prompt, never a hang. A CLI built-in is graded by
+    // name; an `mcp__` tool is allowed (host can't grade it), bounded by the enabled-server set (AC-136/AC-378).
+    // ponytail: a writing MCP tool bypasses a read-only ceiling (caught after via DelegatedWorkspaceChanges) — fix: carry the CLI's own MCP annotations to the host, as SessionToolApprovalGate already does.
     private async Task _DecideDelegatedPermissionAsync(string ceiling, PluginPermissionRequested permission, CancellationToken cancellationToken)
     {
         var onAllowList = _delegatedAllowList?.Contains(permission.ToolName) == true;

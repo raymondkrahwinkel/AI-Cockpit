@@ -6,10 +6,8 @@ using Cockpit.Core.Sessions.Permissions;
 namespace Cockpit.Infrastructure.Sessions;
 
 // Owns one session's driver and pumps its events on a plain task — no Dispatcher, no ObservableCollection,
-// nothing that assumes a UI is watching. Every consumer sits on the same runtime: the session panel
-// subscribes to `EventAppended` and marshals to the UI thread itself, a delegated task (#67)
-// polls `EventsSince`. That is the whole point of the split — one session implementation, two
-// kinds of watcher, rather than a headless copy of the interactive one.
+// nothing that assumes a UI is watching. The session panel subscribes to `EventAppended`; a delegated task
+// (#67) polls `EventsSince` — one session implementation serving both watchers.
 internal sealed class SessionRuntime : ISessionRuntime
 {
     // How many events the log keeps. A long-running session would otherwise grow without bound, since every
@@ -211,10 +209,9 @@ internal sealed class SessionRuntime : ISessionRuntime
         }
     }
 
-    // A turn can produce several assistant-text blocks (text, tool call, more text), so the reply is folded as
-    // the blocks complete and only published once the turn ends — a consumer asking for "the result" then gets
-    // the whole answer, not whichever fragment happened to be last. TurnCompleted.Result is preferred when the
-    // driver reports one (the CLI's own final result), falling back to the prose we collected.
+    // A turn can produce several assistant-text blocks, so the reply is folded as they complete and published
+    // once the turn ends, giving "the result" as the whole answer rather than a fragment. TurnCompleted.Result
+    // is preferred when the driver provides one, falling back to the collected prose.
     private void _Append(SessionEvent evt)
     {
         switch (evt)

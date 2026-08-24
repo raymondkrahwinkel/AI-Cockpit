@@ -5,19 +5,9 @@ using Microsoft.Extensions.AI;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// A `DelegatingChatClient` that rescues the Hermes/XML text tool-calls some local models emit as plain
-// assistant text instead of the OpenAI structured `tool_calls` field (AC-192). qwen-coder via Ollama, for one,
-// writes `&lt;function=read_file&gt;&lt;parameter=path&gt;/x&lt;/parameter&gt;&lt;/function&gt;&lt;/tool_call&gt;`
-// straight into its content, where `UseFunctionInvocation` never sees it — so the call is never run, the run
-// hangs, and the turn "succeeds" with the nonsense text as its answer.
-//
-// This client sits between `UseFunctionInvocation` (the outer layer) and the model client (the inner). It buffers
-// the streamed text and, whenever a complete `&lt;function=NAME&gt;…&lt;/function&gt;` block (optionally trailed by
-// the `&lt;/tool_call&gt;` wrapper) has arrived, replaces it with a synthesised `FunctionCallContent`
-// carrying a unique call id and the `&lt;parameter=key&gt;value&lt;/parameter&gt;` pairs as its arguments — the
-// exact shape `UseFunctionInvocation` recognises and executes through the gated tools. Plain text flows through
-// untouched, and a model that already emits a real `FunctionCallContent` is left completely alone: this
-// client only ever rewrites Hermes text in the content field.
+// AC-192: rewrites Hermes-style XML tool-calls (e.g. qwen-coder via Ollama) in plain text into structured
+// FunctionCallContent before UseFunctionInvocation sees them, else the call is silently skipped and the turn
+// "succeeds" with raw XML as its answer; plain text and real structured calls pass through untouched.
 internal sealed class HermesToolCallChatClient(IChatClient innerClient) : DelegatingChatClient(innerClient)
 {
     private const string FunctionOpen = "<function=";
@@ -121,10 +111,9 @@ internal sealed class HermesToolCallChatClient(IChatClient innerClient) : Delega
         return _DrainCompleteBlocks(buffer, flushAll: true);
     }
 
-    // Pulls every complete Hermes block out of <paramref name="buffer"/>, in order, returning the emissions (plain
-    // TextContent for the text between/around blocks, a synthesised FunctionCallContent per block) and leaving the
-    // still-incomplete tail in the buffer. With <paramref name="flushAll"/> the tail is emitted as text too (end of
-    // stream); otherwise a tail that could be the start of a marker split across updates is held back.
+    // Pulls every complete Hermes block out of <paramref name="buffer"/> in order, returning the emissions
+    // (text between/around blocks plus a synthesised FunctionCallContent per block) and leaving the still-incomplete
+    // tail in the buffer; with <paramref name="flushAll"/> the tail is emitted as text too (end of stream).
     private static List<AIContent> _DrainCompleteBlocks(StringBuilder buffer, bool flushAll)
     {
         var emissions = new List<AIContent>();

@@ -7,15 +7,9 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// `ISessionDriverFactory` that resolves a fresh driver per session from the container. It is
-// an orchestrator building a runtime-parameterized child (the driver chosen by the profile's provider),
-// which is the sanctioned use of `IServiceProvider` (Code.md §2). A local provider is an in-tree
-// OpenAI-compatible driver; every other session — a plugin profile, and a profile-less default session — runs
-// a plugin-registered driver resolved from `IPluginProviderRegistry` and wrapped in a
-// `PluginSessionDriverAdapter`.
-// Fase 4: Claude is a provider plugin like every other. A Claude profile is migrated to a
-// `PluginProviderConfig` on load, so it takes the plugin arm; a profile-less default session runs the
-// bundled Claude provider plugin with a default config.
+// `ISessionDriverFactory` resolves a fresh driver per session from the container — the sanctioned use of
+// `IServiceProvider` (Code.md §2), building a runtime-parameterized child chosen by the profile's provider.
+// AC-1013: local (Ollama/LmStudio) uses the in-tree OpenAI-compat driver; everything else, incl. Claude (Fase 4, migrated to `PluginProviderConfig` on load), runs a plugin-registered driver wrapped in `PluginSessionDriverAdapter`.
 internal sealed class SessionDriverFactory(IServiceProvider services, IPluginProviderRegistry pluginProviderRegistry) : ISessionDriverFactory, ISingletonService
 {
     public ISessionDriver Create(SessionProfile? profile)
@@ -41,18 +35,15 @@ internal sealed class SessionDriverFactory(IServiceProvider services, IPluginPro
 
         var driver = registration.CreateDriverFactory(services).Create(configJson);
 
-        // The adapter resolves the operator's per-session MCP selection (#44) against the shared registry before
-        // handing the endpoints to the plugin driver — the registry stays host-side (plugin isolation). GetService,
-        // not GetRequiredService: the store is always registered in the running app, and its absence (a unit test
-        // that wires only the registry) simply means no fan-out, which the adapter already handles. Same GetService
-        // reasoning for the conversation sink (AC-408): a unit test that wires none simply gets no reporting.
+        // MCP selection (#44) resolves against the shared registry host-side (plugin isolation) before reaching the
+        // driver. GetService, not GetRequiredService: the store is always registered in the running app; its absence
+        // (a unit test wiring only the registry) means no fan-out — same reasoning for the conversation sink (AC-408).
         return new PluginSessionDriverAdapter(driver, registration.Capabilities, services.GetRequiredService<Mcp.McpAuthKey>(), services.GetService<IMcpServerCatalog>(), services.GetService<ILogger<PluginSessionDriverAdapter>>(), services.GetService<Mcp.SessionMcpKeyring>(), sessionResources: null, oauthCoordinator: services.GetService<IMcpOAuthCoordinator>(), conversationSink: services.GetService<Core.Sessions.ISessionConversationSink>(), oauthProxy: services.GetService<IMcpOAuthProxy>(), worktreeManager: services.GetService<Core.Abstractions.Worktrees.IWorktreeManager>(), mcpMounts: services.GetService<Core.Sessions.SessionMcpMounts>(), mcpToolProvider: services.GetService<Mcp.IMcpToolProvider>());
     }
 
-    // A provider going missing is almost never "no such provider" — it is a provider plugin that did not load:
-    // disabled, or awaiting re-approval after an update changed its bytes (its consent pin no longer matches), or
-    // built against a different contract. The raw "not registered for 'claude'" reads like a bug in the app; this
-    // says where to look and what is actually available instead, so a vanished provider is a pointer, not a wall.
+    // A provider going missing is almost never "no such provider" — it is a plugin that did not load: disabled,
+    // awaiting re-approval after an update changed its bytes (consent pin mismatch), or built against a different
+    // contract. The raw "not registered" error reads like a bug in the app; this says where to look instead.
     private string _ProviderNotRegisteredMessage(string providerId)
     {
         var available = pluginProviderRegistry.Registrations
