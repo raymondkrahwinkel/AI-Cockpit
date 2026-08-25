@@ -1,11 +1,6 @@
 namespace Cockpit.Core.Voice;
 
-// The endpointing state machine for open-mic dictation (#PLANNED open-mic/VAD): fed a stream of
-// per-frame "is this speech?" observations, it decides where one spoken utterance begins and ends —
-// start once enough contiguous speech has accumulated, end once the trailing silence reaches the
-// timeout. Pure and deterministic (no audio, no clock, no threading): the caller supplies each
-// observation and its duration, which makes the boundary logic fully unit-testable in isolation from
-// the mic capture and the VAD model that produce those observations.
+// AC-1013: Endpointing state machine for open-mic dictation (#PLANNED open-mic/VAD): fed per-frame "is this speech?" observations, decides where an utterance starts (enough contiguous speech) and ends (trailing silence timeout). Pure/deterministic — no audio, clock, or threading — so boundary logic is unit-testable apart from mic capture and the VAD model.
 public sealed class VadEndpointDetector
 {
     private readonly TimeSpan _silenceTimeout;

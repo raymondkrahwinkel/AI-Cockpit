@@ -2,15 +2,9 @@ using System.Reflection;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// The plugins this build ships, carried inside the executable rather than in a folder beside it.
-//
-// A single-file build is one file — that is the whole promise, and a bundled-plugins directory that has to
-// travel with it is a second thing to lose. So the same files are embedded as resources and unpacked to a temp
-// directory at startup, from which the ordinary installer takes over: nothing downstream needs to know which
-// kind of build it is running in.
-//
-// Only used when the folder is absent. A normal build keeps its folder, and the folder wins — it is what a
-// developer edits and rebuilds, and an embedded copy quietly overriding it would be a mystery to debug.
+// AC-1013: bundled plugins carried inside a single-file executable — embedded as resources and unpacked to
+// temp at startup so the ordinary installer takes over unchanged. Only used when the folder is absent; a
+// normal build's folder always wins, since silently overriding a developer's edits would be hard to debug.
 internal static class BundledPluginResources
 {
     // Every embedded plugin file is named `bundled-plugins/&lt;id&gt;/&lt;file&gt;` — the folder layout, kept as a name.

@@ -5,10 +5,9 @@ using Cockpit.Core.Markdown;
 
 namespace Cockpit.Core.Voice;
 
-// Turns an assistant transcript entry's markdown into the sentences worth reading aloud: prose from
-// headings, paragraphs and list items, skipping fenced code and tables — literal syntax and pipe
-// characters read poorly aloud and carry no spoken meaning. Pure and testable: no dependency on the
-// TTS engine itself.
+// Turns an assistant transcript entry's markdown into the sentences worth reading aloud: prose from headings,
+// paragraphs and list items, skipping fenced code and tables — literal syntax and pipe characters read poorly
+// aloud. Pure and testable: no dependency on the TTS engine itself.
 public static partial class TtsProseExtractor
 {
     public static IReadOnlyList<string> Extract(string assistantMarkdown)
@@ -78,10 +77,7 @@ public static partial class TtsProseExtractor
             .ToList();
     }
 
-    // Strips the characters that read poorly (or as nothing) aloud — emoji and pictographs (the "✅ 🌙 👋"
-    // noise the model sprinkles through prose) plus their joiners/skin-tone modifiers — then collapses the
-    // whitespace the removal leaves behind so a stripped emoji never turns "word 🌙." into "word ." with a
-    // dangling space. Currency and maths symbols are deliberately kept: "€5" and "2 + 2" carry spoken meaning.
+    // AC-1013: Strips characters that read poorly aloud — emoji/pictographs plus joiners/skin-tone modifiers — then collapses leftover whitespace so a stripped emoji doesn't leave a dangling space. Currency/maths symbols are kept: "€5" and "2 + 2" carry spoken meaning.
     private static string _StripNonSpeech(string text)
     {
         // Replace things that read terribly aloud with a short natural stand-in before stripping symbols:

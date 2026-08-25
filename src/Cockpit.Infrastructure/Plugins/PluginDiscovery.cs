@@ -3,11 +3,9 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// Scans the plugins root (a `plugins/` folder next to `cockpit.json`) for plugin subfolders,
-// parses each `plugin.json`, hashes its whole load closure and runs the pure `PluginLoadPolicy`
-// to decide what should happen with it. Pure discovery — it loads no assemblies; the loader acts on the
-// results. A folder with a missing/invalid manifest or a missing entry assembly is skipped silently
-// (it is not a valid plugin).
+// Scans the plugins root for plugin subfolders, parses each `plugin.json`, hashes its load closure and
+// runs the pure `PluginLoadPolicy` to decide what to do. Pure discovery — loads no assemblies, the loader
+// acts on the results. A folder with a missing/invalid manifest or entry assembly is skipped silently.
 internal sealed class PluginDiscovery : ISingletonService
 {
     public async Task<IReadOnlyList<DiscoveredPlugin>> DiscoverAsync(
@@ -34,10 +32,8 @@ internal sealed class PluginDiscovery : ISingletonService
                 continue;
             }
 
-            // Marked for removal: gone as far as anything that asks is concerned, even though the folder itself
-            // survives until the next start deletes it. Discovery is the only thing that can say so now that it
-            // no longer does the deleting — and if that deletion ever fails (a locked file), this is what keeps
-            // the plugin the operator removed from quietly loading again on every start after it.
+            // Marked for removal: treated as gone even though the folder survives until next start deletes it —
+            // this keeps a removed plugin from reloading if that deletion ever fails (e.g. a locked file).
             if (File.Exists(Path.Combine(folder, PluginInstaller.RemovalMarker)))
             {
                 continue;

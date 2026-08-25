@@ -5,10 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// Persists the `plugins` section of `cockpit.json` (#14) via the shared
-// `CockpitConfigFileAccess` read-modify-write, so it never clobbers a sibling section.
-// Registered as a singleton for the plugin manager; also instantiable directly (default ctor) for the
-// pre-container-build load pass in `Program.Main`.
+// Persists the `plugins` section of `cockpit.json` (#14) via the shared read-modify-write, so it never
+// clobbers a sibling section. Also instantiable directly (default ctor) for the pre-container-build
+// load pass in `Program.Main`, besides its normal singleton registration.
 internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;

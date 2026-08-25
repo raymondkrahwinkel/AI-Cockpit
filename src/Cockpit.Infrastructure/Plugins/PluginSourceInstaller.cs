@@ -4,24 +4,14 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// The shared "bring a plugins directory into line with a set of source folders" routine, used by both
-// `BundledPluginInstaller` (the plugins this build ships) and `DevPluginInstaller`
-// (a developer's freshly built first-party plugins, DEBUG only). Each source folder holds one plugin's
-// `plugin.json` and its files; the rule is the same for both callers, which is why it lives once here:
-// - a plugin the operator disabled is left exactly as it is — shipping or rebuilding is not a reason to
-// reinstate a decision they made;
-// - a version they updated past the source (from the store) is not rolled back;
-// - a newer source version, or the same version built from different bytes (a rebuild has no version to
-// bump to), replaces the installed one and re-pins its consent to the new bytes.
+// Shared "bring a plugins directory into line with a set of source folders" routine used by both
+// `BundledPluginInstaller` and `DevPluginInstaller`, since both must honor the same rule — an operator-disabled
+// or store-updated-past-source plugin is left alone, and only a newer or rebuilt source replaces + re-pins it.
 internal sealed class PluginSourceInstaller(IPluginRegistrationStore registrations, ILogger? logger)
 {
-    // Installs/refreshes each source folder into `pluginsRoot` under the rule above.
-    //
-    // `installNew`:
-    // True to install a plugin that is not there yet (a bundled plugin ships, so it should simply be present);
-    // false to only refresh ones already installed (a dev sync must not silently install everything in the repo
-    // — the operator still chooses what their cockpit carries).
-    // The ids installed or refreshed, for logging.
+    // Installs/refreshes each source folder into `pluginsRoot` under the rule above. `installNew`: true to
+    // install a not-yet-present plugin (bundled ships as present); false to only refresh already-installed
+    // ones — a dev sync must not silently install everything in the repo. Returns ids touched, for logging.
     public async Task<IReadOnlyList<string>> InstallFromSourceFoldersAsync(
         IEnumerable<string> sourceFolders,
         string pluginsRoot,
@@ -108,11 +98,9 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
             return false;
         }
 
-        // Same version, which does not mean the same plugin: a rebuild never bumps one, because there is nothing
-        // to bump it to. The version was standing in for "is this different" and answering for the wrong thing —
-        // so ask what the question actually meant. "Different" now spans the whole closure, not just the entry
-        // assembly (AC-43): a rebuild that only changed a dependency DLL must still be re-installed and re-pinned,
-        // or discovery would later find a closure that no longer matches the pin and drop it to needs-consent.
+        // Same version doesn't mean same plugin: a rebuild never bumps it. "Different" (AC-43) now spans the
+        // whole closure, not just the entry assembly, so a changed dependency DLL is still re-installed and
+        // re-pinned — otherwise discovery later finds a mismatched closure and drops it to needs-consent.
         return !await _IsSameClosureAsync(source, target, cancellationToken).ConfigureAwait(false);
     }
 
@@ -151,11 +139,9 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
         {
             var name = Path.GetFileName(file);
 
-            // One predicate decides what counts as a copied plugin file, shared with the closure hash that later
-            // verifies the install (AC-43) so the two cannot drift. It leaves out the shared abstractions assembly
-            // — a copy in a plugin folder gives that plugin's ICockpitPlugin a second identity and the loader then
-            // rejects it as having "no usable entry type"; a plugin references it Private=false and never carries
-            // it — and reserved dot-prefixed markers.
+            // One predicate decides what counts as a copied plugin file, shared with the closure hash (AC-43) so
+            // the two cannot drift. Excludes the shared abstractions assembly — a copy would give the plugin's
+            // ICockpitPlugin a second identity and the loader would reject it — and dot-prefixed markers.
             if (!PluginClosureHash.IsCopiedSourceFile(name))
             {
                 continue;

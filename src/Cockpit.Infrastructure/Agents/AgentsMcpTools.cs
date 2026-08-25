@@ -7,44 +7,9 @@ using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Agents;
 
-// The `cockpit-agents` MCP tools: the agent-to-agent communication line. `list_agents` (AC-391) lets a
-// session see the other agents sharing its own workspace — the desk/tab the operator put it on; `notify` and
-// `read_inbox` (AC-392) are the line itself, a message with an addressee, a kind and a sender the sending
-// agent cannot choose; `claim`, `release` and `list_claims` (AC-393) say who is working on what, so
-// two agents stop finding out they share a worktree only when an edit fails to compile.
-//
-// The workspace is never something an agent names: it is derived, host-side, from the transport-verified pane the
-// request actually came from (`McpRequestContext.CurrentPaneId`), through `IWorkspaceAgentGateway`.
-// No tool here takes a session/pane argument for the *caller* — the same defence `cockpit-verify` uses
-// (`VerifyMcpTools.VerifyAsync`) — so there is nothing an agent could declare to reach another workspace's
-// roster, stamp a message with another pane's id, or read an inbox that is not its own. A request that carries no
-// verified pane — the shared app-lifetime key path (the in-process tool loop, or a session `McpAuthMiddleware`
-// authorized without naming a pane) — is refused outright rather than given something to name instead.
-//
-// <strong>Where that stops.</strong> "The sender cannot be forged" is a claim about the transport, and it holds there:
-// the pane is stamped from the per-session bearer `McpAuthMiddleware` matched in the
-// `SessionMcpKeyring`, and no argument on any tool here can move it. It is not a claim about the machine.
-// Every session runs as the same OS user, and a session's `COCKPIT_MCP_KEY` is in its process environment — which
-// on Linux the same user can read out of `/proc/&lt;pid&gt;/environ`. An agent with a shell can therefore borrow a
-// neighbour's token and send as it. That is a property of AC-89's per-session tokens, shared with everything scoped on
-// them (the consent broker included), not something this line adds, and it is not fixable from here: the trust boundary
-// of the cockpit is the operator's user account, and an agent already inside it can do far worse than send mail. What
-// the design does buy is that forging a sender takes deliberate theft off the filesystem rather than a parameter — and
-// the attempt to send is on the append-only trail either way.
-//
-// `notify` moves information, never authority. Whatever the body asks for happens only if the recipient's own
-// session decides to do it and passes its own gates, exactly as it would for text from anywhere else. That holds
-// for an urgent message too: `set_wake_optin` and the wake it enables (AC-395) change *when* a message
-// is read, never what reading it permits. A woken agent has been handed a labelled envelope and a turn to read it
-// in — not an instruction, and not a decision made on its behalf.
-//
-// <strong>What a wake can and cannot reach.</strong> It is off until the recipient itself turns it on, and the
-// opt-in is the consent: a session that never called `set_wake_optin` cannot be woken by anyone, and there is
-// no argument on `notify` that overrides that. Beyond consent, the host refuses on its own account — a
-// recipient mid-turn is never interrupted, one with a question open in front of its operator is never talked over,
-// and the desk boundary is re-checked at the moment of waking rather than trusted from the send that reached it.
-// Every one of those outcomes, refusals included, goes on the append-only trail, because a wake is the one thing on
-// this line that spends the recipient operator's money without the recipient having asked.
+// AC-1013: `cockpit-agents` MCP tools — list_agents (AC-391), notify/read_inbox (AC-392), claim/release/
+// list_claims (AC-393). Caller workspace/pane always derived host-side from the verified transport pane,
+// never an argument. See ticket comment for the full forgery-boundary and wake-consent analysis.
 internal sealed class AgentsMcpTools(
     IWorkspaceAgentGateway workspaces,
     IWorkspaceAgentCoordinator coordinator,
@@ -55,46 +20,22 @@ internal sealed class AgentsMcpTools(
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
-    // The most messages one `read_inbox` hands over, the rest staying put for the next call. The bound is the
-    // recipient's, not the senders': a drained batch becomes one tool result in the recipient's own context, so
-    // "everything waiting" would let neighbours on the same desk decide how much of that context — and how much of its
-    // operator's money — the recipient spends on reading its mail. With
-    // `AgentMessageContent.MaxBodyLength` that caps one read at roughly 50 000 characters, a large tool
-    // result but not a session-ending one, and `remaining` in the reply is what keeps the tail from being silently
-    // unread.
+    // AC-1013: bound is the recipient's, not the senders' — draining everything waiting would let neighbours
+    // decide how much context/money the recipient spends reading mail. `remaining` in the reply avoids silent loss.
     internal const int MaxMessagesPerRead = 25;
 
-    // The most of a neighbour's name or statusline `list_agents` will repeat. Both are short lines by intent and
-    // neither is the host's text: an agent writes its own statusline, and proposes its own name, through
-    // `cockpit-session__set_status` — where neither is bounded, because there the audience is the operator's own
-    // header and Avalonia decides how much of a long line to draw. Repeating them into a *sibling's* tool result
-    // is a different audience with a different cost: unbounded, one agent's 10 MB statusline is 10 MB in the context of
-    // every neighbour that asks who else is on the desk, which is the same thing the message body's bound exists to
-    // stop, one field further along. Bounded here rather than at `set_status` so the operator's own header keeps
-    // showing what the agent actually wrote.
+    // AC-1013: bounds a neighbour's name/statusline as repeated into `list_agents`, unlike at `set_status`
+    // (unbounded there — the audience is the operator's own header) — a sibling's tool result is a different,
+    // costlier audience for the same unbounded text.
     internal const int MaxRosterTextLength = 200;
 
-    // The longest resource name a claim may carry. A claim names a thing — a worktree path, a branch, a file — and the
-    // longest of those still fits several times over, so this refuses a mistake rather than a legitimate name. It is
-    // bounded for the same reason a message body is: the string is the claiming agent's own text, and it is repeated
-    // into the tool result of every neighbour that calls `list_agents` or `list_claims`. Refused rather than
-    // truncated, because a silently shortened resource is a claim on something other than what the agent asked for,
-    // and the neighbour it was meant to warn would never match it.
+    // AC-1013: refused, not truncated — a claim's resource string is repeated into every neighbour's
+    // `list_agents`/`list_claims` result, and a silently shortened resource would warn the wrong name.
     internal const int MaxResourceLength = 500;
 
-    // Rides along with every drained message so the recipient's model reads it as reported speech from another
-    // agent rather than as something the operator asked for. The line carries information, not permission.
-    //
-    // This is a mitigation and not a control: it cannot stop a body from asking for something, only frame it so the
-    // recipient's model can recognise what it is looking at. The bodies themselves are bounded and stripped of terminal
-    // control sequences (`AgentMessageContent`), which is a different problem from this one — a body that
-    // argues is still a body that argues. See `AgentMessageContent` for why that residual risk is accepted
-    // rather than solved.
-    //
-    // The part that says what the cockpit vouches for is `AgentInboxTurnNotice.TrustStatement`, not a
-    // second copy of it: AC-394 made a body something that arrives inside a turn as well as inside a tool result, and
-    // the framing a recipient reads must not depend on which of the two brought it. Only the opening clause differs,
-    // because only the way it got here differs — this one was asked for.
+    // AC-1013: rides along with drained messages so the recipient's model reads them as reported speech, not
+    // instructions — a mitigation, not a control (see `AgentMessageContent`). Shares
+    // `AgentInboxTurnNotice.TrustStatement` with AC-394's turn-delivery framing rather than duplicating it.
     private const string InboxOrigin =
         "These messages were sent by other agent sessions on your desk. " + AgentInboxTurnNotice.TrustStatement;
 
@@ -137,34 +78,22 @@ internal sealed class AgentsMcpTools(
                 return new
                 {
                     paneId = pane.PaneId,
-                    // The two fields on this row the described agent wrote itself, so the two that get the same
-                    // treatment a message body does on its way into someone else's context: bounded, and stripped of
-                    // the terminal control sequences that would otherwise let one session repaint the tool output of
-                    // every neighbour that asks who is here. The profile and the pane id are the host's, not the
-                    // agent's, and are passed on as they are.
+                    // AC-1013: name/statusline are the described agent's own text, so bounded and stripped of
+                    // terminal control sequences like a message body — profile and pane id are host-owned, passed as-is.
                     name = _ForRoster(pane.Name),
                     profile = pane.Profile,
                     statusline = _ForRoster(pane.Statusline),
-                    // True for every pane on this list. The host puts the panes it knows about on the roster while it
-                    // works out who shares your desk (AC-613), so this says the cockpit knows this session is here —
-                    // it no longer says anything about whether that session has ever called a tool. Kept rather than
-                    // dropped so a reader written against the old shape does not lose a field, but `gap` below is
-                    // what carries the information now.
+                    // AC-1013: true for everyone here — since AC-613 no longer implies the session called a tool.
+                    // Kept so old readers keep the field; `gap` below carries the real information now.
                     enrolled = coordinator.IsEnrolled(pane.PaneId),
-                    // When this pane last reached the cockpit-agents server itself. Null means it never has — which
-                    // used to be reported as not being on the roster at all, and wrongly: until AC-613 the roster
-                    // was filled in by panes calling tools, so a neighbour that worked all night without calling one
-                    // was indistinguishable from a neighbour that was not there.
+                    // AC-1013: null means never contacted — pre-AC-613 that looked like not being on the roster
+                    // at all, so a neighbour that worked all night without calling a tool was indistinguishable from absent.
                     lastContactUtc,
-                    // When this pane last collected mail — by calling read_inbox, or by having a batch carried out
-                    // with one of its own turns (AC-394). Null means nobody has ever picked up. That is the
-                    // difference between "your message will be read later" and "your message will not be read", and
-                    // before AC-614 a sender could not see it: both looked like a successful delivery.
+                    // AC-1013: null means mail has never been picked up — the gap between "will be read later"
+                    // and "will not be read" that, before AC-614, both looked like a successful delivery to the sender.
                     lastInboxReadUtc = coordinator.LastInboxReadUtc(pane.PaneId),
-                    // Deliberately not diagnosed further than this: a neighbour that has simply not looked around yet
-                    // looks identical to one whose MCP injection silently failed (AC-156) or that does not have this
-                    // server mounted at all, and this host has no cheap way to tell those apart from here. Naming one
-                    // specific cause would be a diagnosis this cannot actually make.
+                    // AC-1013: deliberately undiagnosed further — "hasn't looked yet", silent MCP injection
+                    // failure (AC-156), and "not mounted" look identical from here; naming one would be a guess.
                     gap = lastContactUtc is not null
                         ? null
                         : "This pane is on your desk — the cockpit can see it — but it has never called a cockpit-agents tool itself. That can mean it simply has not looked yet, that cockpit-agents is not mounted for it, or that the MCP injection failed silently (AC-156); there is no way to tell which from here. You can still send to it, and it will still be listed: this says only that nothing has been heard from it.",
@@ -178,23 +107,15 @@ internal sealed class AgentsMcpTools(
                             claimedAtUtc = claim.ClaimedAtUtc,
                             heldForSeconds = HeldForSeconds(claim.ClaimedAtUtc, now),
                         }),
-                    // Whether a message you send this pane arrives on its own. A session the host composes turns for
-                    // gets its mail carried out with its next turn (AC-394); a CLI running inside a terminal has no
-                    // turn the host can add to, so it only ever sees mail it asks for with read_inbox. Reported
-                    // rather than left to be assumed: a sender that believes its message will surface by itself, and
-                    // is wrong, waits for an answer that was never going to come — and the message looks delivered
-                    // from every side.
+                    // AC-1013: whether mail arrives unasked — a hosted session gets it on its next turn (AC-394),
+                    // a terminal CLI has no turn to add to and only sees read_inbox mail. Reported so a wrong assumption
+                    // doesn't leave a sender waiting for an answer that was never coming.
                     deliversAtTurnStart = pane.DeliversAtTurnStart,
-                    // Which route a message to this pane actually travels (AC-527). deliversAtTurnStart above is one
-                    // bit of the same question and is kept for readers written against it; this is the whole answer,
-                    // including the case that bit could never express — a pane with no passive delivery that is still
-                    // reachable, because it calls cockpit tools and the host can hand it mail on the results.
+                    // AC-1013: full route a message travels (AC-527) — deliversAtTurnStart is one bit of this,
+                    // kept for old readers; this also covers panes with no passive delivery reachable via tool results.
                     reachableVia = _ReachableVia(coordinator, snapshot, pane.PaneId),
-                    // Whether this pane has agreed to be woken (AC-395). Read from the roster rather than from the
-                    // pane, because it is a thing the agent said about itself and not a property of its session —
-                    // and reported to neighbours for the same reason deliversAtTurnStart is: urgent on a pane that
-                    // never opted in is a message that waits exactly as long as any other, and a sender that does
-                    // not know that reads the silence as an answer.
+                    // AC-1013: wake consent (AC-395), read from the roster since it's self-reported, not a
+                    // session property. Reported so a sender doesn't mistake silence on an opted-out pane for an answer.
                     wakeOptIn = coordinator.HasWakeConsent(pane.PaneId),
                 };
             });
@@ -220,12 +141,9 @@ internal sealed class AgentsMcpTools(
         // Read before the try so the trail can still name the sender if something further down throws.
         var caller = McpRequestContext.CurrentPaneId;
 
-        // Normalised before anything is checked, delivered or recorded, so every path below — the refusals with it —
-        // works on one bounded, control-character-free version of what the sender sent rather than on the raw arguments.
-        // A non-nullable MCP parameter still arrives null when a caller sends an explicit JSON null, and null is not
-        // merely untidy here: it reaches the trail's surrogate-safe trim, which reads .Length, and the resulting
-        // NullReferenceException is swallowed by the never-throws audit write — so a null body would have been a message
-        // delivered with no line on the trail, which is the one thing an append-only trail may not permit.
+        // AC-1013: normalised before anything else so every path works on bounded, control-free text — an
+        // explicit JSON null must not reach the trail's `.Length` trim, whose NullReferenceException a
+        // never-throws audit write would silently swallow, leaving no line for a delivered message.
         var addressee = AgentMessageContent.Normalize(toPaneId, out _);
         var label = AgentMessageContent.Normalize(kind, out var strippedKind);
         var text = AgentMessageContent.Normalize(body, out var strippedBody);
@@ -242,10 +160,8 @@ internal sealed class AgentsMcpTools(
                     "This request could not be attributed to a session.", urgent).ConfigureAwait(false);
             }
 
-            // Before the workspace lookup, so garbage costs no dispatch onto the UI thread and never enrolls its sender
-            // on the roster. The bounds are the recipient's protection, not politeness: an unbounded body is host memory
-            // one agent can grow inside another's inbox, and a share of the recipient's context window it never agreed
-            // to spend.
+            // AC-1013: checked before the workspace lookup so garbage never dispatches to the UI thread or
+            // enrolls its sender. Bounds protect the recipient — unbounded body is host memory and context window spend.
             if (AgentMessageContent.Reject(addressee, label, text) is { } rejection)
             {
                 return await _RefuseNotifyAsync(
@@ -265,10 +181,8 @@ internal sealed class AgentsMcpTools(
             // Sending is contact too: an agent that talks to its neighbours has demonstrably reached this server.
             coordinator.RecordContact(caller);
 
-            // Checked before the workspace membership below, and separately from it, because the caller is always in
-            // its own snapshot — membership would wave this through. An agent that could address itself could use
-            // the line to put text of its own choosing into its own next turn, which is a self-trigger loop, not
-            // communication.
+            // AC-1013: checked separately before membership, which would wave a self-address through (caller is
+            // always in its own snapshot) — self-notify would be a self-trigger loop, not communication.
             if (string.Equals(addressee, caller, StringComparison.Ordinal))
             {
                 return await _RefuseNotifyAsync(
@@ -281,11 +195,8 @@ internal sealed class AgentsMcpTools(
             // not in this snapshot, so it cannot be addressed.
             if (!_IsOnTheDesk(snapshot, addressee))
             {
-                // AC-614: a pane that was here and left is a different situation from a pane id that never named
-                // anything, and only the sender can act on the difference — the first means the recipient is gone
-                // (find another route, or the operator), the second means the address is wrong (look it up again).
-                // One refusal for both let a sender that had held a listing for twenty minutes conclude it had
-                // mistyped something.
+                // AC-1013 (AC-614): distinguishes "recipient left" from "address never existed" — one refusal for
+                // both used to make a sender with a stale listing wrongly conclude it had mistyped the id.
                 return await _RefuseNotifyAsync(
                     AgentNotifyOutcome.RefusedNotInWorkspace, caller, addressee, label, text,
                     coordinator.DepartedAtUtc(addressee) is { } departedAt
@@ -294,15 +205,9 @@ internal sealed class AgentsMcpTools(
                     urgent).ConfigureAwait(false);
             }
 
-            // The rate limit (AC-396), charged last of all the checks — a message the host was going to refuse on its
-            // own account is not the sender's quota to spend, or one mistyped pane id would eat the budget an agent
-            // needs for the message it got right. Charged before the delivery rather than after, so a refusal here
-            // means nothing was put in anyone's inbox and there is nothing to take back.
-            //
-            // Per sender, deliberately: RefusedRecipientInboxFull already bounds what one recipient holds across all
-            // senders, and that bound is what lets one looping neighbour fill an inbox and have every legitimate
-            // sender refused for something it did not do. This one stops the loop at its source and leaves an
-            // uninvolved third party's send untouched — the second half of AC-119's scenario S10.
+            // AC-1013 (AC-396, AC-119 scenario S10): rate limit is charged last (a host-refused message shouldn't
+            // spend the sender's quota) and before delivery (so a refusal takes nothing back), per-sender so one
+            // looping neighbour's send doesn't cost an uninvolved third party's budget.
             var charged = budget.Charge(caller, AgentLineActivity.Message);
             if (!charged.Allowed)
             {
@@ -319,23 +224,9 @@ internal sealed class AgentsMcpTools(
                     $"'{addressee}' has not read its inbox and it is full, so this message was not accepted. Nothing was dropped to make room for it.", urgent).ConfigureAwait(false);
             }
 
-            // The membership check above ran against a snapshot taken before the delivery, and the recipient's session
-            // can end in that window — the gateway call marshals onto the UI thread, which is also where a closing pane
-            // runs the Forget that empties its inbox. Deliver landing after that Forget leaves a message waiting under a
-            // pane id no session answers to, for the life of the app, with the sender told it arrived. Re-asking closes
-            // it rather than narrowing it: this second look is on the UI thread too, so either the pane is already gone
-            // and the message is taken back here, or it is still live and the Forget that is yet to run will clear it.
-            // Only a message this call actually created is retracted — a deduplicated one belongs to an earlier
-            // delivery that stood on its own, and Forget is deliberately not used, because the recipient's other mail
-            // came from other senders and is not this caller's to drop.
-            //
-            // A snapshot that does not come back at all is deliberately not treated as the recipient having left. It is
-            // derived from the caller's own pane, so a null answer is a statement about the caller: the sender's session
-            // ended mid-call. Taking a message away from a recipient that is, as far as anything here knows, still live
-            // and still able to read it would be losing mail on the strength of something that happened to the sender —
-            // and if the recipient has gone too, its own Forget is what clears the inbox, exactly as for any other
-            // unread mail. Only a snapshot that comes back and does not hold the recipient is evidence about the
-            // recipient.
+            // AC-1013: re-checks membership after delivery to close the race where the recipient's Forget (on the
+            // UI thread) runs between the pre-delivery snapshot and Deliver — see ticket comment for the full
+            // race analysis and why a null re-snapshot is not treated as the recipient having left.
             if (delivery.Outcome == AgentMessageDeliveryOutcome.Delivered
                 && await workspaces.GetWorkspaceSnapshotAsync(caller).ConfigureAwait(false) is { } afterDelivery
                 && !_IsOnTheDesk(afterDelivery, addressee))
@@ -381,22 +272,14 @@ internal sealed class AgentsMcpTools(
                 // assuming its message went as written.
                 sanitized,
                 deliveredTo = message.ToPaneId,
-                // Whether the recipient will see this without going to look. Said at the moment of sending, not only
-                // in list_agents, because this is the moment a sender forms its expectation: "delivered" on a pane
-                // that has no passive delivery means the message is waiting, not that anyone has been told. A sender
-                // that then waits for a reply is waiting on nothing, and every field around this one reads like
-                // success.
+                // AC-1013: whether the recipient sees this unasked, reported here (not just list_agents) at the
+                // moment a sender forms its expectation — else it waits on a reply that isn't coming.
                 deliversAtTurnStart = _DeliversAtTurnStart(snapshot, addressee),
-                // AC-614: null on an ordinary send, and a sentence when nothing is going to come and collect this.
-                // Every other field on this reply reads like success, and for a pane with no passive delivery, no
-                // wake consent and no history of reading its mail, success means the message is sitting somewhere
-                // nobody opens. A sender that cannot see that waits for an answer instead of finding another route —
-                // which is precisely what happened on the night this ticket came from.
+                // AC-1013 (AC-614): warns when nothing will collect this — otherwise every field reads like
+                // success while the message sits unopened. See ticket comment for the origin incident.
                 unreachable = _UnreachableWarning(coordinator, snapshot, addressee),
-                // Null when nothing was asked for, so an ordinary send reads exactly as it did before. When something
-                // was asked for it is always here — including every reason it did not happen. A wake that quietly did
-                // not fire is the failure this whole line exists to avoid, one turn further along: a sender that
-                // believes it woke someone stops waiting, and a recipient that was never woken never answers.
+                // AC-1013: null only when unrequested; always present when a wake was asked for, including why it
+                // didn't fire — a silent non-wake would leave the sender believing it worked while nobody answers.
                 wake = wake is { } outcome
                     ? new { woken = outcome == AgentWakeOutcome.Woken, outcome = outcome.ToString(), reason = _WakeReason(outcome) }
                     : null,
@@ -535,16 +418,9 @@ internal sealed class AgentsMcpTools(
 
             var result = claims.Claim(caller, wanted, _Desk(snapshot));
 
-            // The same window NotifyAsync closes on its own delivery, and here it is the caller's own session that can
-            // end in it: the gateway call marshals onto the UI thread, which is also where a closing pane runs the
-            // Forget that drops its claims. A claim written after that Forget is owned by a pane no desk holds any
-            // more, so nothing can ever list, match, release or forget it again — it is permanent, invisible to every
-            // agent and to the operator, and phase 1 has no expiry sweeping up behind it. Re-asking closes that rather
-            // than narrowing it: this second look is on the UI thread too, so either the caller is already gone and
-            // what it just wrote is taken back here, or it is still live and the Forget yet to run will clear it.
-            // A snapshot that does not come back is evidence about the caller, because it is derived from the caller's
-            // own pane — which is the pane in question. Forget rather than a narrower retraction for the same reason:
-            // if that pane has gone, everything it holds should have gone with it.
+            // AC-1013: re-checks the caller's own snapshot after Claim to close the same race NotifyAsync closes —
+            // without it, a claim written after the caller's closing-pane Forget would be a permanent, unreachable
+            // leak. See ticket comment for the full race analysis.
             if (result.Outcome == AgentClaimOutcome.Claimed
                 && await workspaces.GetWorkspaceSnapshotAsync(caller).ConfigureAwait(false) is null)
             {
@@ -700,10 +576,8 @@ internal sealed class AgentsMcpTools(
         }
     }
 
-    // How long a claim has stood, in whole seconds. Clamped at zero rather than reported negative: the two ends come
-    // from separate `DateTimeOffset.UtcNow` reads and a clock the OS steps backwards between them would
-    // otherwise hand an agent a claim taken in the future, which reads as nonsense exactly where the number is meant
-    // to make a stale claim obvious.
+    // AC-1013: claim age in seconds, clamped at zero — separate clock reads with a backwards step would
+    // otherwise report a claim taken in the future.
     internal static long HeldForSeconds(DateTimeOffset claimedAtUtc, DateTimeOffset now) =>
         (long)Math.Max(0d, (now - claimedAtUtc).TotalSeconds);
 
@@ -739,15 +613,8 @@ internal sealed class AgentsMcpTools(
         snapshot.Panes.FirstOrDefault(pane => string.Equals(pane.PaneId, paneId, StringComparison.Ordinal))
             ?.DeliversAtTurnStart ?? false;
 
-    // Why nothing is going to come and read this message, or null when something will (AC-614).
-    //
-    // Three things have to be false at once: the pane has no passive delivery, it has not agreed to be woken, and
-    // it has never collected mail. Any one of them being true is a route — the third is the weakest but it is the
-    // empirical one, because a pane that has collected before is a pane whose agent knows the inbox exists.
-    //
-    // A warning and not a refusal. The message is delivered either way: the recipient may still start reading its
-    // mail, and a host that decided on the sender's behalf that a delivery was pointless would be making exactly
-    // the guess this field exists to hand back to the sender instead.
+    // AC-1013 (AC-614): warns, doesn't refuse, when no route will read this — all three must be false (no
+    // passive delivery, no wake consent, never collected mail); refusing would be the host guessing on the sender's behalf.
     private static string? _UnreachableWarning(
         IWorkspaceAgentCoordinator coordinator, WorkspaceAgentSnapshot snapshot, string addressee) =>
         _ReachableVia(coordinator, snapshot, addressee) == ReachableOperatorOnly
@@ -766,15 +633,9 @@ internal sealed class AgentsMcpTools(
     // No route the host can take. The message waits until that pane thinks to look, which may be never.
     internal const string ReachableOperatorOnly = "operatorOnly";
 
-    // How a message actually reaches this pane (AC-527, criterion 6) — the strongest route that applies, where
-    // "strongest" means "asks least of the recipient".
-    //
-    // The order is not the epic's layer numbering, and deliberately: `turnStart` comes first because it needs
-    // nothing from the pane at all, where the piggyback needs it to call something. Piggyback is reported on
-    // evidence rather than on capability — a pane that has reached this server has demonstrably got the tools
-    // mounted, and one that never has may have no MCP surface at all (AC-156), which is exactly the case a claim of
-    // reachability must not paper over. A pane that says `mcpPiggyback` and receives nothing would be a worse
-    // failure than one that honestly says `operatorOnly`.
+    // AC-1013 (AC-527 criterion 6): strongest applicable route ("asks least of the recipient"), ordered by
+    // that rather than epic layer numbering. Piggyback is reported on evidence (has reached this server), not
+    // capability, since a pane that never has may have no MCP surface at all (AC-156).
     private static string _ReachableVia(
         IWorkspaceAgentCoordinator coordinator, WorkspaceAgentSnapshot snapshot, string paneId)
     {
@@ -791,11 +652,8 @@ internal sealed class AgentsMcpTools(
         return coordinator.HasWakeConsent(paneId) ? ReachableWake : ReachableOperatorOnly;
     }
 
-    // Records the refusal on the append-only trail and returns it in the same `{ok:false,error}` shape every
-    // tool here refuses with — a tool result, never an MCP protocol error.
-    // `urgent` is written even though no wake was attempted: a refused message never reaches the
-    // wake, but what the sender *asked* for is part of the attempt, and an operator reading the trail for a
-    // pane that kept trying to wake a neighbour would otherwise see only ordinary refusals.
+    // AC-1013: records the refusal (tool result, never an MCP protocol error). `urgent` is written even though
+    // no wake was attempted — it's part of what the sender asked for, so the trail shows repeated wake attempts.
     private async Task<string> _RefuseNotifyAsync(
         AgentNotifyOutcome outcome, string? caller, string toPaneId, string kind, string body, string error, bool urgent = false)
     {
@@ -804,44 +662,27 @@ internal sealed class AgentsMcpTools(
         return _Serialize(new { ok = false, error });
     }
 
-    // Decides and performs the wake for an urgent message that was accepted, and answers with what became of it.
-    //
-    // Consent is read here rather than in the gateway: it is a fact about the pane and not about the moment, so a
-    // session that never opted in never has a turn composed for it at all. Everything after it is a question about
-    // the pane *right now* — busy, mid-question, still on this desk — and only the UI thread can answer those.
+    // AC-1013: decides/performs the wake. Consent is checked here, not the gateway, since it's a fact about the
+    // pane, not the moment; everything after is about right-now pane state, which only the UI thread can answer.
     private async Task<AgentWakeOutcome> _WakeAsync(string caller, string addressee, string kind, bool deduplicated)
     {
-        // The opt-in is the consent, and this is where it is honoured. Nothing the sender passes can stand in for it.
-        //
-        // Asked before the de-duplication below, though either order refuses. What differs is what the sender is
-        // told: consent is a standing fact about the recipient and de-duplication is a fact about this one send, so
-        // a sender re-sending to a pane that never opted in should keep hearing why it will never be woken rather
-        // than have that replaced by "you already said that" on the second try.
+        // AC-1013: consent checked before de-dup — both refuse either order, but a sender re-sending to a pane
+        // that never opted in should keep hearing why, not have that replaced by "you already said that".
         if (!coordinator.HasWakeConsent(addressee))
         {
             return AgentWakeOutcome.NotOptedIn;
         }
 
-        // A deduplicated send added nothing — the identical message is already waiting, unread — so there is nothing
-        // new to wake anyone about. Deliberately not a claim that it was already woken for: de-duplication is on
-        // content alone, so an ordinary send followed by an urgent copy of the same text lands here too, and no wake
-        // ever happened. The reason given to the sender says what is true either way.
-        //
-        // This is a brake on repetition, not a rate limit, and it is worth being exact about how weak it is: a sender
-        // that varies a single character is past it. The cap that does bound the rate is the charge below (AC-396);
-        // this one still earns its place because it answers a different question — the sender is told that this
-        // particular message added nothing, which "too fast" would not say.
+        // AC-1013: deduplicated sends skip waking (nothing new to wake about) without claiming it was already
+        // woken for — dedup is content-only. This is a weak repetition brake (one changed char defeats it), not
+        // the rate limit (AC-396 below); it answers a different question than "too fast".
         if (deduplicated)
         {
             return AgentWakeOutcome.AlreadyWaiting;
         }
 
-        // Counted apart from the message that carries it, and against a much lower cap: a message waits in an inbox
-        // until its recipient chooses to read it, while a wake spends a turn belonging to somebody else's operator.
-        //
-        // Charged after consent and de-duplication so those two keep their own explanation — a sender that will never
-        // wake this pane should hear that rather than "too fast" — and so a wake that was never going to happen costs
-        // the sender nothing.
+        // AC-1013: counted apart from the message, against a much lower cap — a wake spends someone else's
+        // operator turn. Charged after consent/de-dup so a wake that was never going to happen costs nothing.
         if (!budget.Charge(caller, AgentLineActivity.Wake).Allowed)
         {
             return AgentWakeOutcome.RateLimited;

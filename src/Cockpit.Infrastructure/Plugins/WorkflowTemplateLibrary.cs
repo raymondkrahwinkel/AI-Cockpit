@@ -5,14 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// The workflow templates installed from a store (#69), kept as files beside the plugins. A template is a flow as
-// text, so installing one is writing a file — there is no assembly to load and nothing to consent to running. The
-// cockpit reads them at startup and offers them in the editor's picker next to the ones the plugins ship, because to
-// the operator they are the same thing: a flow somebody already drew.
-//
-// Each one is stored with what the store said about it (name, description, who published it, which plugins its steps
-// come from), so the picker can say where a template came from and refuse to open one whose steps this build does not
-// have — rather than opening a canvas of nodes the editor cannot resolve.
+// Workflow templates installed from a store (#69), kept as plain flow files — no assembly to load, nothing to
+// consent to. Stored with the store's metadata (name, publisher, source plugins) so the picker can attribute
+// origin and refuse to open a template whose steps this build cannot resolve.
 internal sealed class WorkflowTemplateLibrary : IWorkflowTemplateLibrary, ISingletonService
 {
     private static readonly JsonSerializerOptions Options = new()

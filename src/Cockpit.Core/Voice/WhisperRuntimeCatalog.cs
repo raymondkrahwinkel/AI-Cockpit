@@ -1,13 +1,8 @@
 namespace Cockpit.Core.Voice;
 
-// Resolves which NuGet package carries a backend's native libraries and the layout Whisper.net's loader
-// expects to find them in. Sits next to `WhisperBackendPlanner` on purpose: the planner decides
-// the try-order, this decides what has to be on disk for an entry in that order to be tryable at all.
-//
-// The GPU runtimes are fetched on first use instead of shipped — they cannot be picked at build time, since
-// which GPU a machine has is not knowable then, and bundling all of them cost a win-x64 publish 1.5 GB (the
-// natives weigh ~748 MB and a single-file publish carried them twice). The CPU runtimes are not here because
-// they stay bundled: small, work everywhere, and the floor transcription always falls back to.
+// Resolves which NuGet package carries a backend's native libraries and the layout Whisper.net's loader expects.
+// Sits next to `WhisperBackendPlanner`: the planner decides the try-order, this decides what must be on disk.
+// AC-1013: GPU runtimes fetch on first use (unpickable at build time, and bundling all cost 1.5 GB); CPU stays bundled since it's small and always the fallback.
 public static class WhisperRuntimeCatalog
 {
     public static WhisperRuntimePackage? Resolve(WhisperRuntimeBackend backend, WhisperHostPlatform platform, string architecture)
@@ -34,10 +29,9 @@ public static class WhisperRuntimeCatalog
         _ => throw new ArgumentOutOfRangeException(nameof(platform), platform, "Unmapped Whisper host platform."),
     };
 
-    // Turns the directory holding the cached `runtimes/` tree into the value Whisper.net wants as
-    // `RuntimeOptions.LibraryPath`. It reads that option as a path to a *file* and takes its
-    // directory, so the trailing separator is what makes it resolve to this folder instead of its parent —
-    // and a parent lookup finds no runtime at all, silently, on the CPU.
+    // Turns the cached `runtimes/` directory into `RuntimeOptions.LibraryPath`: Whisper.net treats that
+    // option as a file path and takes its directory, so the trailing separator is what makes it resolve
+    // here instead of the parent — without it, lookup silently falls back to the CPU.
     public static string ToLibrarySearchPath(string runtimeRoot) =>
         runtimeRoot.EndsWith(Path.DirectorySeparatorChar) ? runtimeRoot : runtimeRoot + Path.DirectorySeparatorChar;
 

@@ -5,12 +5,9 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// Fetches a store's `index.json` and downloads a version's zip (#14, AC-7). A store is resolved by its
-// `PluginStoreConfig`: a local folder is read from disk; a public remote over a plain GET; a private
-// remote with an `Authorization: Bearer` header — and a private `github.com` repo through the
-// authenticated Contents API, since `raw.githubusercontent.com` will not serve a private repo with a token.
-// A published SHA-256 is verified against the downloaded bytes before the zip is written; a mismatch is rejected.
-// The zip then goes through the normal installer — the store never bypasses consent.
+// Fetches a store's `index.json` and downloads a version's zip (#14, AC-7): local folder, plain GET, or
+// bearer-auth remote — a private `github.com` repo goes through the Contents API since raw.githubusercontent.com
+// won't serve it with a token. Published SHA-256 is verified before writing; mismatch is rejected.
 internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 {
     private static readonly HttpClient Http = new();
@@ -360,11 +357,9 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         return !string.Equals(PluginHash.Compute(bytes), expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
-    // A non-fatal advisory when the store's index published no per-artifact SHA-256 (AC-46). The store URL is
-    // fully operator-settable and a published hash, when present, rides in the same index as the payload — so the
-    // checksum defends transit, not a compromised store. An index without one leaves the download's integrity
-    // unverifiable. We still allow the install — plenty of simple/local stores publish no hash, and a mismatch on
-    // a published one is already a hard reject — but say so rather than let an unverified artifact land silently.
+    // Non-fatal advisory when the store's index published no per-artifact SHA-256 (AC-46). The checksum only
+    // defends transit, not a compromised store, so we still allow the install (many stores publish no hash) —
+    // but say so rather than let an unverified artifact land silently.
     private static string? _UnverifiedWarning(string? expectedSha256, string artifact) =>
         string.IsNullOrWhiteSpace(expectedSha256)
             ? $"The store published no checksum for this {artifact}, so its integrity could not be verified before install."

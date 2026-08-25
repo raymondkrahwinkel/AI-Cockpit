@@ -3,21 +3,9 @@ using Cockpit.Core.Abstractions.Agents;
 
 namespace Cockpit.Infrastructure.Agents;
 
-// The concrete rate limit behind `IAgentLineBudget` (AC-396): one sliding window per (sender, activity),
-// holding the moments that are still inside it.
-//
-// A sliding window rather than a counter reset on the hour, because a fixed window lets a sender spend its whole
-// allowance at the end of one and the whole of the next immediately after — twice the limit back to back, which is
-// precisely the burst this exists to catch. The queue costs no more than the counter would: it never grows past
-// `MaxMessagesPerWindow` entries, since that is the point at which nothing more is added.
-//
-// Everything is behind one lock, like the inbox and the claims: charging is a check-then-act (is there room, and
-// take it) and two MCP request threads for the same pane would otherwise both find the last slot free.
-//
-// <strong>The numbers are constructor parameters, not constants read at the use site.</strong> Raymond asked for a
-// defensive default that can be adjusted, because the right value is not knowable in advance. What is not built here
-// is a settings surface for the operator to turn them from — that hangs off one registration and is deliberately
-// left until there is a reason to move them.
+// AC-1013: AC-396 rate limit, one sliding window per (sender, activity). Sliding rather than fixed-reset
+// stops the double-burst a boundary reset would allow; locked like the inbox/claims since charging is
+// check-then-act. Limits are constructor params (not constants) so an operator settings surface can wire in later.
 internal sealed class AgentLineBudget : IAgentLineBudget, ISingletonService
 {
     // Messages one pane may send inside `DefaultWindow`. Generous against real use — an agent that tells
@@ -72,10 +60,8 @@ internal sealed class AgentLineBudget : IAgentLineBudget, ISingletonService
 
             if (spent.Count >= limit)
             {
-                // The oldest attempt still counted is the one whose expiry frees a slot. Clamped at zero because the
-                // two ends are separate clock reads and an OS that steps the clock forward between them would
-                // otherwise hand back a negative wait, which reads as nonsense exactly where a number is meant to
-                // tell an agent how long to hold off.
+                // AC-1013: oldest attempt's expiry frees the next slot. Clamped at zero — separate clock reads
+                // could otherwise yield a nonsensical negative wait.
                 var retryAfter = spent.Peek() + _window - now;
                 return new AgentLineBudgetVerdict(
                     Allowed: false,

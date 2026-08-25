@@ -2,18 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Core.Voice;
 
-// Deterministic noise removal for a raw dictation transcript, so a normal spoken sentence reaches the agent as
-// intent rather than as everything the microphone happened to catch. Runs on every dictation path (push-to-talk
-// and open-mic, SDK and TTY) — unlike the LLM cleanup, which is SDK-only and skips short utterances, exactly the
-// cases ("um", a throat-clear) this has to catch. Two kinds of noise are dropped:
-// - *Whisper's non-speech tags* — sound events it heard but that were not speech, wrapped in asterisks,
-// square brackets or parentheses: `*Clears throat*`, `[BLANK_AUDIO]`, `(coughs)`. Whisper does not
-// use those wrappers for dictated words, so removing the wrapped spans is safe.
-// - *Hesitation fillers* — standalone "um", "uh", "uhm", "erm", "ehm", "hmm", "mmm" (and their drawn-out
-// spellings). The set is deliberately cross-language-safe: it excludes tokens that are real words in English or
-// Dutch (notably "er" and "eh"), and word boundaries keep it from touching "umbrella" or "summary".
-// Returns the cleaned text, trimmed — empty when the utterance was nothing but noise, which the caller drops
-// instead of injecting or auto-submitting.
+// AC-1013: Deterministic noise removal for a raw dictation transcript, run on every dictation path (unlike the LLM cleanup, which is SDK-only and skips short utterances like "um"). Drops Whisper's non-speech tags (`*Clears throat*`, `[BLANK_AUDIO]`, `(coughs)`) and cross-language-safe hesitation fillers ("um", "uh", …, excluding real words like "er"/"eh"). Returns cleaned text, empty when the utterance was nothing but noise.
 public static partial class DictationNoiseFilter
 {
     public static string Strip(string text)
@@ -31,11 +20,7 @@ public static partial class DictationNoiseFilter
         return LeadingPunctuation().Replace(stripped, string.Empty).Trim();
     }
 
-    // A span wrapped in *...* or [...] (Whisper only ever uses those for sound events, never for dictated words, so
-    // any content is safe to drop), or a *single-token* parenthesis like "(coughs)"/"(laughs)". The parenthesis arm
-    // is deliberately narrower — a person genuinely speaks multi-word parentheticals ("the result (about ten
-    // percent) is fine"), and those must survive, whereas Whisper's parenthesised cues are single words. None cross a
-    // line break, so a stray bracket cannot swallow a whole paragraph.
+    // AC-1013: A span wrapped in *...* or [...] (always sound events for Whisper, safe to drop), or a *single-token* parenthesis like "(coughs)" — narrower than *...*/[...] because people genuinely speak multi-word parentheticals that must survive. None cross a line break.
     [GeneratedRegex(@"\*[^*\r\n]*\*|\[[^\]\r\n]*\]|\([^)\s\r\n]+\)")]
     private static partial Regex NonSpeechTag();
 

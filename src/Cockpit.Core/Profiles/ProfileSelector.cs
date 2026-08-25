@@ -5,15 +5,9 @@ namespace Cockpit.Core.Profiles;
 // none logged in signals that `claude /login` is needed first.
 public static class ProfileSelector
 {
-    // Decides what a "new session" UI should do given the known profiles and their login
-    // state. Only logged-in profiles are eligible — an unauthenticated profile cannot spawn
-    // a usable session, so it is excluded from the choice/silent-use candidates.
-    //
-    // `statuses`: Every known profile with its current login state.
-    // `lastUsedLabel`:
-    // Label of the last-used profile, if any. When it is among the logged-in candidates and
-    // there is more than one, it is moved to the front of `ProfileSelectionOutcome.Candidates`
-    // as the suggested default — the caller still asks, per the UX rule for >1 profile.
+    // Decides what a "new session" UI should do given known profiles and login state. Only logged-in profiles are
+    // eligible — unauthenticated ones can't spawn a session, so excluded from choice/silent-use candidates.
+    // `lastUsedLabel`, if among the logged-in candidates with >1 present, is moved to front of `Candidates` as the suggested default; the caller still asks per the UX rule for >1 profile.
     public static ProfileSelectionOutcome Select(IReadOnlyList<SessionProfileStatus> statuses, string? lastUsedLabel = null)
     {
         var loggedIn = statuses.Where(s => s.IsLoggedIn).Select(s => s.Profile).ToList();

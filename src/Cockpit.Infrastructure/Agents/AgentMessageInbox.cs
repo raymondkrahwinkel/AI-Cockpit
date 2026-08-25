@@ -3,28 +3,20 @@ using Cockpit.Core.Abstractions.Agents;
 
 namespace Cockpit.Infrastructure.Agents;
 
-// The concrete inbox store behind `IAgentMessageInbox` (AC-392): one list of waiting messages per
-// recipient pane. Everything is behind one lock rather than a concurrent dictionary — unlike the roster, a
-// delivery is a check-then-act (is an identical message already waiting? is the inbox full?) that has to be
-// atomic, or two notifies landing on different MCP request threads at the same moment both see "no duplicate"
-// and both add one. The state is small and every call is short, so a single lock is the simpler correct answer.
+// AC-1013: AC-392 inbox store, one waiting-message list per recipient. Locked (not a concurrent dict, unlike
+// the roster) because delivery is check-then-act — dedup and fullness checks must be atomic against two
+// concurrent notifies both seeing "no duplicate" and both adding one.
 internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
 {
-    // Cap on one pane's waiting messages. A recipient that never calls `read_inbox` — an agent that has this
-    // server mounted but never looks — would otherwise let a neighbour on the same desk grow host memory without
-    // bound, one distinct body at a time, and make the duplicate scan below linear in that. Past the cap the
-    // sender is told outright rather than the oldest message being dropped: silently discarding mail the sender
-    // was told had arrived is the failure this line exists to avoid.
+    // AC-1013: cap on one pane's waiting messages, so a recipient that never reads bounds host memory and the
+    // duplicate scan. Past the cap the sender is told, rather than the oldest message being silently dropped.
     internal const int MaxWaitingPerPane = 500;
 
     private readonly object _lock = new();
     private readonly Dictionary<string, List<AgentMessage>> _inboxes = new(StringComparer.Ordinal);
 
-    // Per pane, the messages taken for a turn that has not reported back yet (AC-394). Held separately from
-    // `_inboxes` rather than as a flag on the message, because the two states differ in what may
-    // happen next: a waiting message can be drained, retracted or deduplicated onto, and an in-flight one can
-    // only be confirmed or returned. A flag would leave every reader of the waiting list responsible for
-    // remembering to skip it, which is the shape of guard that holds until someone adds the next reader.
+    // AC-1013: messages taken for an unreported turn (AC-394). Separate dict rather than a flag on the message,
+    // because the two states allow different next actions and a flag would need every reader to remember to skip it.
     private readonly Dictionary<string, List<AgentMessage>> _inFlight = new(StringComparer.Ordinal);
 
     public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body)
@@ -34,12 +26,9 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
             _inboxes.TryGetValue(toPaneId, out var waiting);
             _inFlight.TryGetValue(toPaneId, out var inFlight);
 
-            // Dedup is on the message's content, not on an id the sender chose: the sender re-sending because it
-            // did not see an answer yet is the case this is for, and it has no id from the first attempt to repeat.
-            // Only messages the recipient has not read count — one it has already read and acted on is not a
-            // duplicate, and a sender must be able to say the same thing again later. An in-flight message has not
-            // been read yet, so it counts too: without that, the window between taking a batch for a turn and that
-            // turn landing is a window in which the same sentence gets through twice.
+            // AC-1013: dedup is on content, not a sender-chosen id (a resend has no id to repeat). Only unread
+            // messages count — read ones aren't duplicates and can be said again — and in-flight ones count too,
+            // or the window between draining a turn's batch and it landing lets the same message through twice.
             var duplicate = _FirstMatch(waiting, fromPaneId, toPaneId, kind, body)
                 ?? _FirstMatch(inFlight, fromPaneId, toPaneId, kind, body);
             if (duplicate is not null)
@@ -184,10 +173,8 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         }
     }
 
-    // Pulls the named messages out of `paneId`'s in-flight list and returns the ones that were
-    // actually there, in the order they were held. Ids that are not in flight are skipped rather than reported:
-    // both callers are saying what became of a batch they were handed, and a batch that a `Forget`
-    // has since dropped has no outcome left to record. Call under `_lock`.
+    // AC-1013: pulls named messages out of `paneId`'s in-flight list, held order preserved. Missing ids are
+    // skipped, not reported — a batch a `Forget` already dropped has no outcome left to record. Call under `_lock`.
     private List<AgentMessage> _TakeInFlight(string paneId, IReadOnlyList<string> messageIds)
     {
         if (messageIds.Count == 0 || !_inFlight.TryGetValue(paneId, out var held))
@@ -241,10 +228,8 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         {
             _inboxes.Remove(paneId);
 
-            // In flight goes with it. The turn those messages were riding on belonged to the session that has just
-            // ended, so there is nothing left for them to arrive in — and leaving them held would mean a
-            // ReturnUndelivered from that turn's failing send could rebuild an inbox under a pane id no session
-            // answers to any more, which is the residue this method exists to remove.
+            // AC-1013: in-flight goes with it — its turn ended, so leaving it held would let a
+            // ReturnUndelivered rebuild an inbox under a pane id no session answers to any more.
             _inFlight.Remove(paneId);
         }
     }

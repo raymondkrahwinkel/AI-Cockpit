@@ -5,15 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// Persists the `pluginStores` list of `cockpit.json` (#14, AC-7) via the shared read-modify-write, so
-// it never clobbers a sibling section. A store is a `PluginStoreConfig` — remote (public or private)
-// or local. Add replaces an entry at the same location (so a token can be updated) and is otherwise additive;
-// remove drops the store at that location.
-// `LoadAsync` also owns the #43 seed-once behavior for `DefaultStoreUrl`: on a
-// genuine first run (empty list, unmarked) it adds the default store and sets the marker; on an existing
-// install that already had stores when this shipped (non-empty list, unmarked) it only sets the marker,
-// so nothing is added behind the operator's back. Once marked, removing the default store is durable —
-// the next load never re-adds it.
+// Persists `pluginStores` in `cockpit.json` (#14, AC-7) via the shared read-modify-write. Add replaces
+// an entry at the same location (token update); remove drops it. `LoadAsync` also seed-once's
+// `DefaultStoreUrl` (#43): only a genuine first run adds it, and the marker keeps removal durable.
 internal sealed class PluginStoreConfigStore : IPluginStoreConfigStore, ISingletonService
 {
     // Cockpit's own public plugin store (#43), seeded once so it is available out of the box.
