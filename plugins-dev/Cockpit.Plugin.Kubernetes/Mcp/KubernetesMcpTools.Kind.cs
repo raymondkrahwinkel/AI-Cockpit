@@ -22,7 +22,7 @@ internal sealed partial class KubernetesMcpTools
         }
 
         // AC-179 pitfall: the agent-supplied `session` is never the ownership record — the transport-verified
-        // caller is, exactly as WorktreeTools.RemoveAsync uses McpRequestContext instead of its own `session` arg.
+        // caller is, same fallback shape as WorktreeTools.CreateAsync's `McpRequestContext.CurrentPaneId ?? session`.
         var owner = host.CurrentMcpCallerPaneId ?? session;
         var (record, error) = await kindClusters.CreateAsync(name, owner, cancellationToken);
         if (record is null)
