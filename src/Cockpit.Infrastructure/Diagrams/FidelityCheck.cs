@@ -4,20 +4,9 @@ using Cockpit.Core.Abstractions.Diagrams;
 
 namespace Cockpit.Infrastructure.Diagrams;
 
-// Counts connections and notes on both sides of the render and reports the shortfall (AC-808). Deliberately
-// a dumb line scan of the Mermaid text, not a second parser: comparing against the engine's own model is
-// useless when that model is where the construct was lost. The output side is free — Mermaider tags every
-// connection it draws with data-from/data-to (data-entity1/2 for ER) and every note with class="note".
-//
-// The count is the hard signal; naming the dropped lines is best-effort pair matching on top, and is only
-// reported when it agrees exactly with the count. A detector that cries wolf gets clicked away and is then
-// worse than none, so an ambiguous match degrades to the count rather than guessing at a line.
-//
-// Known blind spot: only the diagram types whose markers have actually been read off Mermaider's output are
-// checked. The rest stay silent — quadrantChart writes its axis captions with an arrow and would read as a
-// dropped connection, and requirementDiagram and block-beta draw relations with no data-* on them at all.
-// Guessing at an unverified type produces exactly the false alarm this check exists to stay clear of, so a
-// new type earns coverage by having its markers checked, not by being assumed to follow the convention.
+// Counts connections and notes on both sides of the render (AC-808) via a dumb line scan, not a second
+// parser, since comparing against the engine's own model is useless when that model lost the construct.
+// Dropped-line naming is best-effort (kept only when it matches the count); only verified diagram types are checked.
 internal static partial class FidelityCheck
 {
     // The diagram types whose connection and note markers were read off Mermaider 0.12.2's own output.
@@ -146,11 +135,9 @@ internal static partial class FidelityCheck
             {
                 notes++;
 
-                // A note without ':' opens a free-text block that runs until 'end note'. Its body is prose
-                // and may well contain an arrow, so it must not be scanned for connections. Only skip when
-                // that terminator is actually there: a classDiagram's note has none, and swallowing the
-                // rest of the file would silently drop every connection below it — the very failure this
-                // check exists to catch.
+                // A note without ':' opens a free-text block running until 'end note'; its prose body may
+                // contain an arrow, so it must not be scanned. Only skip when that terminator exists — a
+                // classDiagram's note has none, and swallowing the rest of the file would drop connections.
                 if (!text.Contains(':', StringComparison.Ordinal) && EndOfNote(lines, i) is { } close)
                 {
                     i = close;

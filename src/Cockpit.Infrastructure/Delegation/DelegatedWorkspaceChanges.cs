@@ -2,12 +2,9 @@ using Cockpit.Infrastructure.Worktrees;
 
 namespace Cockpit.Infrastructure.Delegation;
 
-// What a delegated task changed on disk, told by the host rather than by the task (AC-971). A closing summary is
-// exactly where an overstep goes missing — the fork that wrote 68 files mentioned none of them — so the host takes
-// its own porcelain reading at start and at finish, and the difference rides with the result.
-//
-// A directory that is not a work tree yields null — "could not be established" — never an empty list, which would
-// read as "changed nothing".
+// What a delegated task changed on disk, told by the host rather than by the task (AC-971): a closing summary is
+// where an overstep goes missing — a fork that wrote 68 files mentioned none of them. A directory that is not
+// a work tree yields null ("could not be established"), never an empty list ("changed nothing").
 internal static class DelegatedWorkspaceChanges
 {
     // A shorter guard than GitCli's default: this runs on the path that reports a finished task, and a wedged index

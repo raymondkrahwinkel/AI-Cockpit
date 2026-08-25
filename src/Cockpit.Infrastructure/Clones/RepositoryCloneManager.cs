@@ -43,10 +43,9 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
             ? _CombineTarget(await _resolveRoot(cancellationToken).ConfigureAwait(false), parsed)
             : System.IO.Path.GetFullPath(targetPath.Trim());
 
-        // De-dup: the slug is already occupied. If it holds the same repository, reuse it (fetch it up to date)
-        // rather than cloning again; if it holds a *different* one, refuse — never clobber a checkout that might
-        // hold work. Authoritative on the filesystem (the repo's own origin remote), so it is right even if the
-        // registry drifted from disk.
+        // De-dup: the slug is already occupied. Same repository → reuse it (fetch up to date) instead of cloning
+        // again; a different one → refuse, never clobber a checkout that might hold work. Authoritative on the
+        // filesystem (the repo's own origin remote), so it is right even if the registry drifted from disk.
         if (Directory.Exists(resolvedTarget))
         {
             if (await _IsSameRepositoryAsync(resolvedTarget, parsed, cancellationToken).ConfigureAwait(false))
@@ -54,10 +53,9 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
                 return await _ReuseAsync(parsed, resolvedTarget, cancellationToken).ConfigureAwait(false);
             }
 
-            // Not the same repository — but tell the operator which of the two it is. A valid git work tree is another
-            // project they must not lose; a folder that is not a git repository at all (an empty leftover, a clone that
-            // failed halfway) is broken, and saying "a different repository" there sends them looking for work that was
-            // never there. Both refuse to clobber; only the wording differs.
+            // Not the same repository — but tell the operator which of the two it is. A valid git work tree is
+            // another project they must not lose; a folder that isn't a git repository at all is broken, and
+            // calling it "a different repository" would send them looking for work that was never there.
             throw new InvalidOperationException(
                 await _IsGitWorkTreeAsync(resolvedTarget, cancellationToken).ConfigureAwait(false)
                     ? $"A different repository is already cloned at '{resolvedTarget}'. Remove it first to clone {parsed.Slug} there."

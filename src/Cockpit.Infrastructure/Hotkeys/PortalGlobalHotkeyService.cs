@@ -5,17 +5,9 @@ using Cockpit.Infrastructure.Portal;
 
 namespace Cockpit.Infrastructure.Hotkeys;
 
-// Global hotkeys via the XDG desktop portal's `org.freedesktop.portal.GlobalShortcuts` interface — the
-// sandboxed-safe way for a desktop app to get system-wide keys on Wayland, where nothing can install a raw
-// keyboard hook. Ported 1:1 from the working spike (`spike1_portal_hotkey.py`, live-confirmed on KDE
-// Plasma 6.7/KWin): CreateSession, then BindShortcuts with a preferred-trigger hint, then listen for
-// Activated/Deactivated on that session — Activated fires on physical key-down, Deactivated on key-up,
-// exactly the hold semantics push-to-talk needs. The actual key bindings are owned by the compositor's own
-// shortcut settings; the preferred trigger is only a hint the portal may or may not honour (KDE binds it
-// directly).
-// One session carries every binding. BindShortcuts has always taken an array, so the second hotkey (the
-// screenshot capture, AC-220) costs nothing here — and, more to the point, does not show up as a second
-// application in the operator's shortcut settings.
+// Global hotkeys via the XDG desktop portal's `org.freedesktop.portal.GlobalShortcuts` interface, the
+// sandboxed-safe way to get system-wide keys on Wayland: CreateSession, BindShortcuts with a preferred
+// trigger, then listen for Activated/Deactivated — the hold semantics push-to-talk needs. One session carries every binding, so the screenshot hotkey (AC-220) costs nothing extra.
 internal sealed class PortalGlobalHotkeyService(ILogger<PortalGlobalHotkeyService> logger) : IGlobalHotkeyService
 {
     private const string BusName = "org.freedesktop.portal.Desktop";
@@ -28,10 +20,9 @@ internal sealed class PortalGlobalHotkeyService(ILogger<PortalGlobalHotkeyServic
     private IDisposable? _shortcutsChangedWatch;
     private IReadOnlyDictionary<string, string> _triggerDescriptions = new Dictionary<string, string>();
 
-    // Which hotkeys are down, so a hold collapses to one edge whatever the desktop repeats.
-    // Behind a lock for the reason `SharpHookGlobalHotkeyService`'s is: it is written from the D-Bus main
-    // loop on every Activated/Deactivated and cleared from the caller's thread on every arm. A hold whose
-    // key-up finds nothing to remove is push-to-talk never hearing the release, with the microphone still open.
+    // Which hotkeys are down, so a hold collapses to one edge whatever the desktop repeats. Behind a lock,
+    // same reason as `SharpHookGlobalHotkeyService`: written from the D-Bus main loop on every
+    // Activated/Deactivated and cleared from the caller's thread on every arm.
     private readonly HashSet<string> _held = [];
 
     // Guards the two pieces of state the D-Bus loop and the caller's thread both reach: `_held` and the published trigger descriptions.
@@ -124,12 +115,9 @@ internal sealed class PortalGlobalHotkeyService(ILogger<PortalGlobalHotkeyServic
     private void _OnShortcutsChanged((ObjectPath Session, (string Id, IDictionary<string, object> Options)[] Shortcuts) changed) =>
         _SetTriggerDescriptions(_TriggersFromShortcuts(changed.Shortcuts));
 
-    // Publishes what the compositor says it bound, and reports it only when it actually moved.
-    // Under the same lock as the held set, because this is reached from both threads too: the desktop can send
-    // a ShortcutsChanged at any moment on the D-Bus loop while an arm is clearing it from the caller's. The
-    // dictionary itself is built fresh and swapped, so nothing can tear — what needs the lock is the
-    // compare-then-swap, or a rebind the operator just made can be dropped as "unchanged" against a value that
-    // was already on its way out.
+    // Publishes what the compositor bound, only when it actually moved. Under the same lock as the held
+    // set: ShortcutsChanged can arrive on the D-Bus loop at any moment while an arm clears it from the
+    // caller's thread, so the compare-then-swap needs the lock or a fresh rebind can be dropped as unchanged.
     private void _SetTriggerDescriptions(IReadOnlyDictionary<string, string> descriptions)
     {
         lock (_stateGate)
@@ -220,10 +208,9 @@ internal sealed class PortalGlobalHotkeyService(ILogger<PortalGlobalHotkeyServic
         }
     }
 
-    // The two-step portal call itself lives in PortalRequestChannel, shared with the screenshot capture
-    // (AC-220). What is this service's own is what a non-success code means: arming a hotkey has no
-    // "the operator changed their mind" — anything but success is a key that will not fire, and saying so is
-    // what lets the caller log it rather than leave a dead key nobody was told about.
+    // The two-step portal call lives in PortalRequestChannel, shared with the screenshot capture (AC-220).
+    // Own to this service: a non-success code always means a key that will not fire, so the caller can
+    // log it rather than leave a dead key nobody was told about.
     private async Task<T> _CallPortalRequestAsync<T>(
         Func<string, Task<ObjectPath>> invoke,
         Func<IDictionary<string, object>, T> project)

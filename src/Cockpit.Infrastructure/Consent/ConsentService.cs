@@ -7,23 +7,17 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Consent;
 
-// The host's consent gate (#AC-47). Holds each waiting request as a `TaskCompletionSource{TResult}`
-// the UI resolves, the session's set of remembered low-risk approvals, and writes every decision to the audit
-// trail. Single instance so all callers share one remember-set and one list of open prompts.
-// `bypassPolicy` is the assistant's consent bypass (#AC-575) and is optional: with none
-// registered — the design-time graph, every test that does not ask for one — nothing is ever bypassed and this
-// class behaves exactly as it did before. Fail-closed by construction rather than by a flag someone has to
-// remember to leave off.
+// The host's consent gate (#AC-47). Holds each waiting request as a `TaskCompletionSource{TResult}` the UI
+// resolves, the session's remembered low-risk approvals, and writes every decision to the audit trail. Single
+// instance so all callers share one remember-set. `bypassPolicy` (#AC-575) is optional: unregistered, nothing is ever bypassed — fail-closed by construction, not by a flag someone forgets to leave off.
 internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPolicy? bypassPolicy = null)
     : IConsentBroker, ISingletonService
 {
     private readonly ConcurrentDictionary<Guid, _Pending> _pending = new();
 
     // Actions the operator chose to stop being asked about this session. Keyed on the whole approved request —
-    // pane, the host-stamped plugin id, scope, AND the literal action — never on the caller-controlled pane+scope
-    // alone: keying on a subset let a remembered "GET the issues" silently approve a later "GET evil.com/exfil" the
-    // operator never saw, and let one plugin ride another's remembered approval. Only ever low-risk entries — the
-    // dangerous class is never added, so it is always asked afresh.
+    // pane, host-stamped plugin id, scope, AND literal action — never a caller-controlled subset, so a remembered
+    // "GET the issues" can't silently approve "GET evil.com/exfil". Only low-risk entries are ever added.
     private readonly ConcurrentDictionary<(string? PaneId, string? PluginId, string Scope, string Action), byte> _remembered = new();
 
     public event EventHandler<ConsentPrompt>? PromptOpened;
@@ -32,11 +26,9 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
 
     public async Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken = default)
     {
-        // AC-89: a request that arrived over a per-session MCP token carries a transport-verified pane id. Make it the
-        // authoritative identity — the agent's declared session (which it could forge to ride another pane's remembered
-        // approvals) is overridden here, so the remember key and the prompt routing use the session the request truly
-        // came from. Off that path (the in-process tool loop, the app's own UI-side consent) the verified id is null
-        // and the request is used exactly as given.
+        // AC-89: a request over a per-session MCP token carries a transport-verified pane id — made authoritative
+        // here so the remember key and prompt routing use the session the request truly came from, not one the
+        // agent could forge to ride another pane's remembered approvals. Off that path, the verified id is null.
         var verifiedPaneId = McpRequestContext.CurrentPaneId;
         if (verifiedPaneId is not null)
         {
@@ -49,20 +41,8 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
         }
 
         // AC-575: the operator can switch the card off ahead of time, per source, for the assistant only. Placed
-        // here on purpose — after the override above, so the policy is handed the transport-verified pane id and
-        // never the one the request carries (an agent that writes the assistant's pane id into its own
-        // Source.PaneId gets a null verified id here and cannot talk its way in), and before the _remembered check
-        // below, because a bypass is the stronger statement of the two and must not quietly become a remembered
-        // approval the operator never gave.
-        //
-        // The contract this puts on callers: McpRequestContext identifies the flow, not the party whose action is
-        // being gated, and it is inherited by everything that flow awaits. Anything that does work on behalf of a
-        // *different* owner has to restamp it first, or the wrong identity decides both the bypass and the remember
-        // key below — see DelegationService._StartAsync, which is where the queue drainer did exactly that.
-        //
-        // "Not low risk" rather than "is dangerous": the polarity has to fail closed. A third risk value added later
-        // arrives here as dangerous:false under the equality test, which would make it bypassable on the everyday
-        // switch — the one an operator ticks freely — instead of the deliberate second one.
+        // after the pane-id override (an agent can't fake its way in) and before the _remembered check (a bypass
+        // is stronger and mustn't become a remembered approval). "Not low risk" so a future risk value fails closed.
         if (verifiedPaneId is not null
             && bypassPolicy?.ShouldBypass(verifiedPaneId, _SourceKey(request), request.Risk != ConsentRisk.LowRisk) == true)
         {
@@ -172,14 +152,9 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
     private static (string? PaneId, string? PluginId, string Scope, string Action) _Key(ConsentRequest request) =>
         (request.Source.PaneId, request.Source.PluginId, request.Scope, request.Action);
 
-    // Who asked, for the bypass switches (#AC-575) — the host-stamped plugin id (`CockpitHost` sets it and a
-    // plugin cannot ask under another's name) under its own prefix, or the label, which for a host-internal caller
-    // is a compile-time constant in `ConsentSourceCatalog`. The prefixing rule lives there, next to
-    // those constants, because the Options list has to build the identical key.
-    // Scope and Action are absent for the same reason `_remembered` includes them: they are text an
-    // agent influences. There the whole request is the key so a remembered "GET the issues" cannot approve a later
-    // "GET evil.com/exfil"; here the operator is switching off a *source*, so agent-authored text must not
-    // be able to name a source that is not its own.
+    // Who asked, for the bypass switches (#AC-575) — the host-stamped plugin id (a plugin can't ask under
+    // another's name) or the host-internal label constant from `ConsentSourceCatalog`. Scope and Action are
+    // excluded on purpose: the operator is switching off a *source*, and agent-authored text must not name one that isn't its own.
     private static string _SourceKey(ConsentRequest request) =>
         ConsentSourceCatalog.KeyFor(request.Source.PluginId, request.Source.Label);
 

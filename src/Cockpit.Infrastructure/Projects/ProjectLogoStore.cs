@@ -134,11 +134,9 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
         return await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
     }
 
-    // The file name this project's logo is stored under: its id when that is already nothing but letters, digits,
-    // dashes and underscores — which is what `Cockpit.Core.Projects.Project.Create` mints — and
-    // otherwise a hash of it. An id is data off disk, and a hand-written or shared `cockpit.json` can put
-    // anything in it, including a path that climbs out of this folder. Hashing keeps such an id usable (the
-    // project still gets its logo) without ever letting it decide where the file lands.
+    // The file name this project's logo is stored under: its id when that's already letters/digits/-/_, else a
+    // hash of it. An id is data off disk and a shared `cockpit.json` could put a path-climbing value in it,
+    // so hashing keeps such an id usable without ever letting it decide where the file lands.
     private static string _FileKey(string projectId)
     {
         var safe = projectId.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');

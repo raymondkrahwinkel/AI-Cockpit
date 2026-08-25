@@ -2,19 +2,9 @@ using Cockpit.Core.Abstractions.Hotkeys;
 
 namespace Cockpit.Infrastructure.Hotkeys;
 
-// Claims a hotkey with a named, per-user `Mutex` — the same mechanism and reasoning as
-// `SingleInstanceGuard`, one level narrower. That guard keeps a second production cockpit from
-// starting at all, but a development build intentionally runs beside it (`SingleInstanceGuard.TryAcquire(bool)`)
-// — which is exactly the AC-71 scenario: two live instances, each arming the same key and neither aware of the
-// other. Neither `IGlobalHotkeyService` backend can see the other instance; a mutex per hotkey id
-// is what can, on all three platforms, and the kernel releases it the moment a process dies without disposing
-// it — a crash included — so a waiting instance never needs a restart to pick the key back up.
-// A `Mutex` is owned by the thread that acquired it, and only that thread may release it — but
-// `TryAcquire` is called from an async continuation (whichever thread-pool thread happens to
-// resume `GlobalHotkeyCoordinator.ApplyAsync`) and the matching release can land on a different one
-// entirely. Each claim therefore gets its own small, long-lived `_ClaimThread` that does the
-// acquiring and, later, the releasing itself — `TryAcquire`/the returned claim's
-// `IDisposable.Dispose` only ever signal it across a wait handle.
+// Claims a hotkey with a named, per-user `Mutex` (AC-71: two live instances, e.g. prod + dev build,
+// each arming the same key with neither aware of the other). A mutex per hotkey id sees across instances
+// on all three platforms, and the kernel releases it on process death; each claim gets its own long-lived `_ClaimThread`, since a `Mutex` may only be released by the thread that acquired it.
 internal sealed class MutexHotkeyExclusivityGuard : IHotkeyExclusivityGuard
 {
     private readonly Lock _gate = new();
@@ -69,10 +59,9 @@ internal sealed class MutexHotkeyExclusivityGuard : IHotkeyExclusivityGuard
         }
     }
 
-    // Owns one named `Mutex` for its entire lifetime, on one dedicated OS thread: the thread waits
-    // on the mutex as its very first action, so the acquire and — once `Dispose` signals it to stop
-    // — the release both run on that same thread, satisfying the mutex's thread affinity regardless of which
-    // thread-pool thread called in from either side.
+    // Owns one named `Mutex` for its entire lifetime on one dedicated OS thread: the thread waits on the
+    // mutex first, so acquire and (once `Dispose` signals it) release both run on that same thread,
+    // satisfying the mutex's thread affinity regardless of which thread-pool thread called in.
     private sealed class _ClaimThread : IDisposable
     {
         private readonly Thread _thread;

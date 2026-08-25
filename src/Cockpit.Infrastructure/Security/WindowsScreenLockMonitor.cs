@@ -4,16 +4,9 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Infrastructure.Security;
 
-// Watches Windows session lock/unlock via `SystemEvents.SessionSwitch`
-// (`SessionLock`/`SessionUnlock`) for AC-5.
-//
-// The research weighed this against a bespoke message-only window plus `WTSRegisterSessionNotification`. The
-// deciding factor for this codebase is that `WindowsPresenceDetector` already reads the exact same
-// `SessionSwitch` source in shipping code and it works: Avalonia's Win32 backend runs a real message pump for
-// its own windows, which is what `SystemEvents` needs to deliver. Adding a second, hand-rolled native window
-// to detect the same event would be untested surface duplicating a proven one. The tradeoff the research flagged —
-// that the pump is Avalonia's internal detail rather than a guaranteed contract — is accepted, and is the same bet
-// the presence detector already makes. Windows is not a platform we can live-verify here, so this stays thin.
+// Watches Windows session lock/unlock via `SystemEvents.SessionSwitch` (`SessionLock`/`SessionUnlock`, AC-5).
+// Chosen over a bespoke `WTSRegisterSessionNotification` window because `WindowsPresenceDetector` already
+// reads the same source, relying on Avalonia's Win32 message pump — the same bet the detector already makes.
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsScreenLockMonitor : IScreenLockMonitor
 {

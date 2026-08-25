@@ -15,11 +15,8 @@ using Cockpit.Infrastructure.Mcp;
 namespace Cockpit.Infrastructure.Delegation;
 
 // Hosts the `cockpit-orchestrator` MCP server (#67): one Kestrel endpoint on loopback exposing the
-// delegation tools, running for the app's lifetime. Same shape as the permission server, which is the
-// in-process MCP hosting this app already proves works against the real CLI.
-// The server is hosted whether or not anything uses it; a session only gets these tools if it was started with
-// delegation enabled, which is what keeps a delegated sub-agent from being handed the very tools it would need
-// to delegate on.
+// delegation tools, running for the app's lifetime. Hosted whether or not anything uses it; a session only
+// gets these tools if started with delegation enabled, which stops a sub-agent from delegating itself.
 internal sealed class OrchestratorMcpServer
     : IHostedService, IOrchestratorServerState, ICockpitInternalMcpProvider, IDelegationMcpToggle, ISingletonService, IAsyncDisposable
 {

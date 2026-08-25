@@ -5,10 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Projects;
 
-// Persists `ProjectSettings` under the `projects` section of `cockpit.json` (same
-// file/pattern as `WorkspaceSettingsStore`). Reads-modifies-writes the whole file via
-// `CockpitConfigFileAccess` so it leaves the other sections untouched. Nothing saved yet means no
-// projects — the cockpit then starts sessions exactly as it did before projects existed.
+// Persists `ProjectSettings` under the `projects` section of `cockpit.json` (same file/pattern as
+// `WorkspaceSettingsStore`), reading-modifying-writing via `CockpitConfigFileAccess` so other sections
+// stay untouched. Nothing saved yet means no projects — sessions start exactly as before projects existed.
 internal sealed class ProjectStore : IProjectStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
