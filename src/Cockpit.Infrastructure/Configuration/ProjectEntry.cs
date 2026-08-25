@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Cockpit.Core.Projects;
 
 namespace Cockpit.Infrastructure.Configuration;
@@ -7,7 +8,7 @@ namespace Cockpit.Infrastructure.Configuration;
 // On-disk shape of a `Project` in the `projects` section of `cockpit.json`. Carries the
 // profile as the label the project points at, never the profile itself: the two are separate sections, and a
 // project that embedded a copy would drift the moment that profile is edited.
-internal sealed class ProjectEntry
+internal sealed partial class ProjectEntry
 {
     public string Id { get; set; } = string.Empty;
 
@@ -34,6 +35,11 @@ internal sealed class ProjectEntry
     public string? DefaultProfileLabel { get; set; }
 
     public string? BehaviorPrompt { get; set; }
+
+    // AC-1071: which assistant/persona this project's sessions run as. Absent for a project that leaves it to
+    // its profile, which is most of them. Always local — a shared definition never carries it.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Assistant { get; set; }
 
     public bool IsolateInWorktreeByDefault { get; set; }
 
@@ -90,6 +96,7 @@ internal sealed class ProjectEntry
         GitUrl = project.GitUrl,
         DefaultProfileLabel = project.DefaultProfileLabel,
         BehaviorPrompt = project.BehaviorPrompt,
+        Assistant = string.IsNullOrWhiteSpace(project.Assistant) ? null : project.Assistant,
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault,
         McpOverlay = ProjectMcpOverlayEntry.FromDomain(project.McpOverlay),
         // AC-485: mirrored, not retired yet — writes the same value twice under two names as temporary
@@ -110,40 +117,74 @@ internal sealed class ProjectEntry
         SharedSourceName = project.SharedSourceName,
     };
 
-    public Project ToDomain() => new(Id, Name)
+    public Project ToDomain()
     {
-        Description = Description,
-        Category = Category,
-        // Migration: an old cockpit.json only has the flat SourceDirectory field — read as its single repository,
-        // same fallback ToDomain applies to MemoryRef above. Present-but-empty ([]) is not absent, so it must not
-        // fall back to SourceDirectory — that means a newer build already saved this project with no repository.
-        SourceDirectories = SourceDirectories is not null
-            ? [.. SourceDirectories.Select(entry => entry.ToDomain())]
-            : !string.IsNullOrWhiteSpace(SourceDirectory)
-                ? [new ProjectRepository(SourceDirectory)]
-                : [],
-        GitUrl = GitUrl,
-        DefaultProfileLabel = DefaultProfileLabel,
-        BehaviorPrompt = BehaviorPrompt,
-        IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
-        McpOverlay = McpOverlay?.ToDomain() ?? ProjectMcpOverlay.None,
-        LogoPath = LogoPath,
-        LastOpenedAt = LastOpenedAt,
-        AdditionalInfo = AdditionalInfo is null ? [] : [.. AdditionalInfo.Select(entry => entry.ToDomain())],
-        // AC-483: a pre-Resources file's flat MemoryRef reads as one Memory row; a file with both trusts
-        // Resources as the fuller, current answer. Present-but-empty is not absent: an explicit "Resources":
-        // [] means a newer build already saved with none, and must not fall back to MemoryRef instead.
-        Resources = Resources is not null
-            ? [.. Resources.Select(entry => entry.ToDomain())]
-            : !string.IsNullOrWhiteSpace(MemoryRef)
-                ? [new ProjectResource(MemoryRef, ProjectResourceRole.Memory)]
-                : [],
-        // Copied rather than handed over: this entry's own property stays settable, and a project is a record whose
-        // links nothing is supposed to be able to change behind its back.
-        PluginFields = PluginFields is null
-            ? ReadOnlyDictionary<string, string>.Empty
-            : new Dictionary<string, string>(PluginFields, StringComparer.Ordinal),
-        ProjectPassword = ProjectPassword,
-        SharedSourceName = SharedSourceName,
-    };
+        var assistant = _MigratedAssistant(out var behaviorPrompt);
+
+        return new Project(Id, Name)
+        {
+            Description = Description,
+            Category = Category,
+            // Migration: an old cockpit.json only has the flat SourceDirectory field — read as its single repository,
+            // same fallback ToDomain applies to MemoryRef above. Present-but-empty ([]) is not absent, so it must not
+            // fall back to SourceDirectory — that means a newer build already saved this project with no repository.
+            SourceDirectories = SourceDirectories is not null
+                ? [.. SourceDirectories.Select(entry => entry.ToDomain())]
+                : !string.IsNullOrWhiteSpace(SourceDirectory)
+                    ? [new ProjectRepository(SourceDirectory)]
+                    : [],
+            GitUrl = GitUrl,
+            DefaultProfileLabel = DefaultProfileLabel,
+            BehaviorPrompt = behaviorPrompt,
+            Assistant = assistant,
+            IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
+            McpOverlay = McpOverlay?.ToDomain() ?? ProjectMcpOverlay.None,
+            LogoPath = LogoPath,
+            LastOpenedAt = LastOpenedAt,
+            AdditionalInfo = AdditionalInfo is null ? [] : [.. AdditionalInfo.Select(entry => entry.ToDomain())],
+            // AC-483: a pre-Resources file's flat MemoryRef reads as one Memory row; a file with both trusts
+            // Resources as the fuller, current answer. Present-but-empty is not absent: an explicit "Resources":
+            // [] means a newer build already saved with none, and must not fall back to MemoryRef instead.
+            Resources = Resources is not null
+                ? [.. Resources.Select(entry => entry.ToDomain())]
+                : !string.IsNullOrWhiteSpace(MemoryRef)
+                    ? [new ProjectResource(MemoryRef, ProjectResourceRole.Memory)]
+                    : [],
+            // Copied rather than handed over: this entry's own property stays settable, and a project is a record whose
+            // links nothing is supposed to be able to change behind its back.
+            PluginFields = PluginFields is null
+                ? ReadOnlyDictionary<string, string>.Empty
+                : new Dictionary<string, string>(PluginFields, StringComparer.Ordinal),
+            ProjectPassword = ProjectPassword,
+            SharedSourceName = SharedSourceName,
+        };
+    }
+
+    // AC-1071: before this ticket the persona lived in `BehaviorPrompt` ("Gebruik Zyra"), which travels with a
+    // shared project and imposed one operator's assistant on everyone who bound it. Read back as the assistant it
+    // always was — but only when the whole field is that sentence and nothing else.
+    private string? _MigratedAssistant(out string? behaviorPrompt)
+    {
+        behaviorPrompt = BehaviorPrompt;
+        if (!string.IsNullOrWhiteSpace(Assistant) || string.IsNullOrWhiteSpace(BehaviorPrompt))
+        {
+            return string.IsNullOrWhiteSpace(Assistant) ? null : Assistant;
+        }
+
+        // Whole-field only, deliberately: a mixed prompt keeps real project conventions after the persona
+        // sentence, and guessing where one ends and the other begins would silently throw those away.
+        var match = LegacyAssistantPromptRegex().Match(BehaviorPrompt.Trim());
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        behaviorPrompt = null;
+        return match.Groups[1].Value;
+    }
+
+    // "Gebruik Zyra", "laad Aura", "use Vex" — a verb and a single name, nothing else. Anchored at both ends so
+    // a prompt that merely opens with one of these keeps every word of it.
+    [GeneratedRegex(@"^(?:gebruik|laad|use|load)\s+(\p{L}[\p{L}\d_-]{1,31})\.?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LegacyAssistantPromptRegex();
 }
