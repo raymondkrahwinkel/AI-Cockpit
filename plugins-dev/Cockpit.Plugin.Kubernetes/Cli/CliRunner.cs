@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.Kubernetes.Cli;
 // cannot fill a pipe and deadlock, plus the command's own Environment layered onto the inherited one so its
 // locked-down vars win without wiping PATH/HOME. Extracted from HelmRunner so helm and kind share one engine
 // instead of a second 89-line copy.
-internal sealed class CliRunner
+internal sealed class CliRunner : ICliRunner
 {
     public async Task<CliResult> RunAsync(CliCommand command, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
