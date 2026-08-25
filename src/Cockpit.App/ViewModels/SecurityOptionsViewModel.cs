@@ -8,9 +8,11 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Secrets;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Secrets;
+using Cockpit.Core.Shell;
 using Cockpit.Core.Terminal;
 
 namespace Cockpit.App.ViewModels;
@@ -26,6 +28,8 @@ public sealed partial class SecurityOptionsViewModel(
     IScreenLockSettingsStore? screenLockSettings = null,
     ITerminalAccessSwitch? terminalAccessSwitch = null,
     ITerminalAccessSettingsStore? terminalAccessSettings = null,
+    IShellAccessSwitch? shellAccessSwitch = null,
+    IShellAccessSettingsStore? shellAccessSettings = null,
     INodeEndpointSettingsStore? nodeEndpointSettings = null,
     IEnumerable<ICockpitInternalMcpProvider>? mcpEndpointHosts = null,
     INodePairingBroker? nodePairing = null,
@@ -55,6 +59,9 @@ public sealed partial class SecurityOptionsViewModel(
     // write the same value straight back.
     private bool _loadingTerminalAccess;
 
+    // Same guard, same reason, for the shell-access toggle (AC-1066) below.
+    private bool _loadingShellAccess;
+
     // True only while RefreshAsync seeds the node toggle from disk (AC-790) — same guard, same reason, as
     // _loadingTerminalAccess above.
     private bool _loadingNodeEndpoint;
@@ -77,6 +84,11 @@ public sealed partial class SecurityOptionsViewModel(
     // change without a restart.
     [ObservableProperty]
     private bool _terminalAccessEnabled;
+
+    // The shell-access master switch (AC-1066): off by default. While off, `cockpit-shell` is not advertised to
+    // any session; once on, what runs is decided by the session's own permission mode, not a command list.
+    [ObservableProperty]
+    private bool _shellAccessEnabled;
 
     // The network-node master switch (AC-790): off by default. While off, every mounted MCP endpoint stays
     // loopback-only. Turning it on takes effect on the next launch — unlike the terminal-access toggle above, this
@@ -253,6 +265,19 @@ public sealed partial class SecurityOptionsViewModel(
             if (terminalAccessSwitch is not null)
             {
                 terminalAccessSwitch.Enabled = terminal.Enabled;
+            }
+        }
+
+        // AC-1066: same "absent in design-time/unit-test graph" shape as terminal access above.
+        if (shellAccessSettings is not null)
+        {
+            var shell = await shellAccessSettings.LoadAsync().ConfigureAwait(true);
+            _loadingShellAccess = true;
+            ShellAccessEnabled = shell.Enabled;
+            _loadingShellAccess = false;
+            if (shellAccessSwitch is not null)
+            {
+                shellAccessSwitch.Enabled = shell.Enabled;
             }
         }
 
@@ -509,6 +534,16 @@ public sealed partial class SecurityOptionsViewModel(
             await terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = TerminalAccessEnabled }).ConfigureAwait(true);
         }
 
+        if (shellAccessSettings is not null)
+        {
+            if (shellAccessSwitch is not null)
+            {
+                shellAccessSwitch.Enabled = ShellAccessEnabled;
+            }
+
+            await shellAccessSettings.SaveAsync(new ShellAccessSettings { Enabled = ShellAccessEnabled }).ConfigureAwait(true);
+        }
+
         if (nodeEndpointSettings is not null)
         {
             // Read-modify-write off disk for the same reason `OnNodeEndpointEnabledChanged` does it (AC-792): the
@@ -537,6 +572,7 @@ public sealed partial class SecurityOptionsViewModel(
     {
         LockWithOperatingSystem = new ScreenLockSettings().LockWhenOperatingSystemLocks;
         TerminalAccessEnabled = new TerminalAccessSettings().Enabled;
+        ShellAccessEnabled = new ShellAccessSettings().Enabled;
         NodeEndpointEnabled = new NodeEndpointSettings().Enabled;
         AllowedDiscoveryRangesText = string.Join(", ", new NodeEndpointSettings().AllowedDiscoveryRanges);
     }
@@ -567,6 +603,22 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         await terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = value }).ConfigureAwait(true);
+    }
+
+    // Same shape as OnTerminalAccessEnabledChanged above, for the shell-access toggle (AC-1066).
+    async partial void OnShellAccessEnabledChanged(bool value)
+    {
+        if (_loadingShellAccess || SuspendPersistence || shellAccessSettings is null)
+        {
+            return;
+        }
+
+        if (shellAccessSwitch is not null)
+        {
+            shellAccessSwitch.Enabled = value;
+        }
+
+        await shellAccessSettings.SaveAsync(new ShellAccessSettings { Enabled = value }).ConfigureAwait(true);
     }
 
     // The node toggle changed (AC-790). Unlike terminal access above, this never flips anything live — the

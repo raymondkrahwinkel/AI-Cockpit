@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
@@ -167,6 +168,68 @@ public class NewSessionDialogViewModelTests
         Assert.True(vm.CanStart);
         Assert.False(vm.ShowSessionOptions);
         Assert.Equal("Ollama", vm.SelectedProviderLabel);
+    }
+
+    [Fact]
+    public async Task ToolPermissionSummary_ForAClaudeProfile_StaysHidden()
+    {
+        // Claude declares its own permission modes (SupportsPermissions: true) and shows its own picker —
+        // this line would only duplicate it.
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("claude").Returns(new SessionProviderRegistration(
+            "claude", "Claude",
+            _ => Substitute.For<IPluginSessionDriverFactory>(),
+            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
+            _ => Substitute.For<IPluginProviderConfigView>()));
+        var profile = new SessionProfile("work", new PluginProviderConfig("claude", "{}"));
+        var vm = NewVmWithSessionProvider([profile], registry);
+
+        await vm.LoadAsync();
+
+        Assert.False(vm.ShowToolPermissionSummary);
+        Assert.Equal(string.Empty, vm.ToolPermissionSummaryText);
+    }
+
+    [Fact]
+    public async Task ToolPermissionSummary_ForALocalOllamaProfile_NamesAutoApproveAndShellAvailability()
+    {
+        // Built-in Ollama/LM Studio profiles are never a PluginProviderConfig, so there is no registration to
+        // resolve — they always run through the host's OpenAiCompatSessionDriver, SupportsPermissions: false.
+        var profile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"),
+            Defaults: new ProfileDefaults(string.Empty, string.Empty, string.Empty) { AutoApproveTools = true });
+        var shellAccess = Substitute.For<IShellAccessSwitch>();
+        shellAccess.Enabled.Returns(true);
+        var vm = NewVmWithSessionProvider([profile], Substitute.For<IPluginProviderRegistry>(), shellAccess);
+
+        await vm.LoadAsync();
+
+        Assert.True(vm.ShowToolPermissionSummary);
+        Assert.Contains("Auto-approve is on", vm.ToolPermissionSummaryText);
+        Assert.Contains("cockpit-shell is available", vm.ToolPermissionSummaryText);
+    }
+
+    [Fact]
+    public async Task ToolPermissionSummary_ForAPluginProfileWithNoPermissionModes_NamesApprovalAndMissingShell()
+    {
+        // A plugin like Gemini/OpenRouter also declares SupportsPermissions: false — same route as Ollama above,
+        // reached through the registry instead of a built-in config type. Auto-approve off (the default) and the
+        // shell master switch off (the default) is the state a fresh profile actually starts in.
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("gemini-provider.gemini").Returns(new SessionProviderRegistration(
+            "gemini-provider.gemini", "Gemini",
+            _ => Substitute.For<IPluginSessionDriverFactory>(),
+            new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
+            _ => Substitute.For<IPluginProviderConfigView>()));
+        var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", "{}"));
+        var vm = NewVmWithSessionProvider([profile], registry);
+
+        await vm.LoadAsync();
+
+        Assert.True(vm.ShowToolPermissionSummary);
+        Assert.Contains("Every tool call asks for approval", vm.ToolPermissionSummaryText);
+        Assert.Contains("cockpit-shell is not available", vm.ToolPermissionSummaryText);
     }
 
     [Fact]
@@ -1036,7 +1099,8 @@ public class NewSessionDialogViewModelTests
             ResolveOptionsAsync = resolveOptionsAsync,
         };
 
-    private static NewSessionDialogViewModel NewVmWithSessionProvider(SessionProfile[] profiles, IPluginProviderRegistry sessionProviderRegistry)
+    private static NewSessionDialogViewModel NewVmWithSessionProvider(
+        SessionProfile[] profiles, IPluginProviderRegistry sessionProviderRegistry, IShellAccessSwitch? shellAccessSwitch = null)
     {
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles.ToList());
@@ -1048,7 +1112,9 @@ public class NewSessionDialogViewModelTests
 
         return new NewSessionDialogViewModel(
             store, loginChecker, mcpServerCatalog: null, workingPathStore: null, conversationPickers: null,
-            ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry);
+            ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry,
+            worktreeManager: null, tokenEstimator: null, projectStore: null, oauthCoordinator: null,
+            memorySourceRegistry: null, loginStarter: null, shellAccessSwitch);
     }
 
     [Fact]

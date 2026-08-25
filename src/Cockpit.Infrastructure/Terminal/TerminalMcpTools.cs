@@ -45,7 +45,7 @@ internal sealed class TerminalMcpTools
         _consent = consent;
     }
 
-    [McpServerTool(Name = "list_terminals")]
+    [McpServerTool(Name = "list_terminals", ReadOnly = true)]
     [Description("Lists the shell panes the operator has open that you could ask to use: each with a stable id and the name the operator sees (e.g. \"zsh-5\"), and whether you are already coupled to it. Only the operator's shell panes are offered — a pane the cockpit started as an agent session is not one of them, whatever its name. Reading or driving a pane needs the operator to approve it first (see read_terminal / send_terminal); this list only names the panes so you can reference one.")]
     public string ListTerminals(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session)
@@ -65,7 +65,7 @@ internal sealed class TerminalMcpTools
         return _Serialize(new { ok = true, terminals });
     }
 
-    [McpServerTool(Name = "read_terminal")]
+    [McpServerTool(Name = "read_terminal", ReadOnly = true)]
     [Description("Returns the output of a terminal pane the operator has open — you name it by the id or name from list_terminals (e.g. \"zsh-5\"). The first time you read a pane the operator gets an Approve/Deny prompt asking to let you watch it; only after Approve do you get its output, and only what is printed from that moment on (never the earlier history). Reading does not let you type — send_terminal asks for that separately. One agent at a time per pane. Read again to see newer output.")]
     public async Task<string> ReadTerminal(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -95,7 +95,7 @@ internal sealed class TerminalMcpTools
         });
     }
 
-    [McpServerTool(Name = "send_terminal")]
+    [McpServerTool(Name = "send_terminal", ReadOnly = false, Destructive = true)]
     [Description("Types input into a terminal pane the operator has open — you name it by the id or name from list_terminals. Set submit=true to press Enter after it (run the line). To interrupt a running command send the text \"\\u0003\" (Ctrl-C). Typing needs its own Approve from the operator, asked the first time you send to a pane — so if you were only reading it, expect one more prompt here. The operator watches live and can type alongside or Disconnect at any time. One agent at a time per pane. Use read_terminal to see the result.")]
     public async Task<string> SendTerminal(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -120,7 +120,7 @@ internal sealed class TerminalMcpTools
             : _Serialize(new { ok = false, error = "The terminal could not be written to — it may have closed or been disconnected." });
     }
 
-    [McpServerTool(Name = "run_in_terminal")]
+    [McpServerTool(Name = "run_in_terminal", ReadOnly = false, Destructive = true)]
     [Description("Runs one command in a terminal pane the operator has open and waits for it to finish, returning its output and exit code — the wait-for-me version of send_terminal. Needs the same Approve as typing. It only works when the shell publishes shell-integration marks (OSC 133; fish 4+ has them, bash/zsh/PowerShell need the snippet their terminal ships) and when the shell is idle at a prompt: without a mark there is no honest way to tell a finished command from a slow one, and a full-screen program like vim or htop being open means the shell is not at a prompt. In either case this refuses and tells you so — use send_terminal plus read_terminal and judge for yourself.")]
     public async Task<string> RunInTerminal(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,

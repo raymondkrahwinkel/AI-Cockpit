@@ -50,6 +50,15 @@ public static class DependencyInjection
             typeof(Terminal.TerminalMcpTools),
             () => provider.GetRequiredService<Terminal.TerminalAccessState>().Enabled));
 
+        // cockpit-shell (AC-1066): the shell a session with none of its own otherwise lacks (Bash is a Claude Code
+        // CLI feature, not something the cockpit supplies). AlwaysMounted, like cockpit-session/cockpit-agents, so a
+        // delegated task gets it too and it stays preloaded above the search_tools threshold. Off by default.
+        services.AddSingleton(provider => new CockpitMcpEndpoint(
+            "cockpit-shell",
+            typeof(Shell.ShellMcpTools),
+            () => provider.GetRequiredService<Shell.ShellAccessState>().Enabled,
+            AlwaysMounted: true));
+
         // cockpit-agents (AC-391, AC-392): the agent-to-agent communication line — list_agents to see who else is on
         // your desk, notify/read_inbox to send them a message and collect your own. AlwaysMounted, like
         // cockpit-session and unlike cockpit-verify/cockpit-worktrees, because this one is now a delivery route

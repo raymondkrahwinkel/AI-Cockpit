@@ -48,7 +48,7 @@ internal sealed class VerifyMcpTools
         _consent = consent;
     }
 
-    [McpServerTool(Name = "verify")]
+    [McpServerTool(Name = "verify", ReadOnly = false, Destructive = true)]
     [Description("Runs the visual verify loop for this session's project so you can see the UI you changed instead of guessing: it runs the verify command the operator registered for this project (you cannot choose the command — only trigger it), then hands the rendered UI back to you as a text snapshot on this tool result, and for image-capable providers also adds a screenshot to the session. Use it after a UI/layout change, before calling the work done. The operator approves the run each time. It runs for the session you call it from — you do not name one.")]
     public async Task<string> VerifyAsync()
     {

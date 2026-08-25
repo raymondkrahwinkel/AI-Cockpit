@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
@@ -49,6 +50,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
     private readonly IPluginTtyProviderRegistry? _ttyProviderRegistry;
     private readonly IPluginProviderRegistry? _sessionProviderRegistry;
+    private readonly IShellAccessSwitch? _shellAccessSwitch;
     private readonly IWorktreeManager? _worktreeManager;
     private readonly IProjectStore? _projectStore;
 
@@ -133,6 +135,38 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // The legacy typed permission/model/effort block is retired: Claude renders its options through the generic
     // plugin-option rows now, like every provider. Kept false until that block and SessionOptionCatalog are removed.
     public bool ShowSessionOptions => false;
+
+    // AC-1066: whether the profile's provider declares its own permission modes (Claude, Codex's app-server route)
+    // — those already show their own picker. One that declares none (Ollama/LM Studio, or a plugin like Gemini
+    // with `SupportsPermissions: false`) runs through the host's own approval gate instead.
+    private bool _ProviderDeclaresPermissionModes() =>
+        SelectedProfile?.ProviderConfig is PluginProviderConfig plugin
+        && (_sessionProviderRegistry?.Resolve(plugin.ProviderId)?.Capabilities.SupportsPermissions ?? false);
+
+    // Shown only for a profile whose provider declares no permission modes (see above) — a Claude/Codex profile's
+    // own picker already says as much, so this would be redundant there.
+    public bool ShowToolPermissionSummary => SelectedProfile is not null && !_ProviderDeclaresPermissionModes();
+
+    // What actually decides whether a tool call runs for this profile's kind of session (AC-79/AC-971): the
+    // profile's auto-approve default, and whether `cockpit-shell` — off by default — would come along.
+    public string ToolPermissionSummaryText
+    {
+        get
+        {
+            if (!ShowToolPermissionSummary)
+            {
+                return string.Empty;
+            }
+
+            var toolLine = (SelectedProfile?.Defaults?.AutoApproveTools ?? false)
+                ? "Auto-approve is on — every tool call runs without asking."
+                : "Every tool call asks for approval.";
+            var shellLine = _shellAccessSwitch?.Enabled == true
+                ? "cockpit-shell is available for this session."
+                : "cockpit-shell is not available for this session.";
+            return $"{toolLine} {shellLine}";
+        }
+    }
 
     // The SDK "stays live-switchable" hint, shown only for a Claude SDK session (a local session has no such dropdowns).
     public bool ShowSdkStartHint => IsSdk && IsClaudeProfile;
@@ -543,8 +577,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IProjectStore? projectStore = null,
         IMcpOAuthCoordinator? oauthCoordinator = null,
         IProjectMemorySourceRegistry? memorySourceRegistry = null,
-        IProfileLoginStarter? loginStarter = null)
+        IProfileLoginStarter? loginStarter = null,
+        IShellAccessSwitch? shellAccessSwitch = null)
     {
+        _shellAccessSwitch = shellAccessSwitch;
         _projectStore = projectStore;
         _memorySources = memorySourceRegistry?.Sources.ToMemorySources();
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
@@ -1085,6 +1121,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(ShowSessionOptions));
+        OnPropertyChanged(nameof(ShowToolPermissionSummary));
+        OnPropertyChanged(nameof(ToolPermissionSummaryText));
         OnPropertyChanged(nameof(ShowSdkStartHint));
         OnPropertyChanged(nameof(ShowTtyStartHint));
 

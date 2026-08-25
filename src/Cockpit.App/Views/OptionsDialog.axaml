@@ -1691,6 +1691,20 @@
                                   IsChecked="{Binding Security.TerminalAccessEnabled}"
                                   IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='let agent read terminal'}"/>
 
+                        <!-- AC-1066: a session on a provider with no built-in shell (every non-Claude, non-ACP
+                             provider) otherwise cannot run rg/git/dotnet/python3 at all. Off by default, like
+                             terminal access above; the permission ceiling (not a command list) decides what runs. -->
+                        <TextBlock Classes="optionsSectionHeader" Text="3. SHELL ACCESS"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='let agent run shell commands'}">
+                            <TextBlock Text="Let an agent run shell commands" FontWeight="SemiBold"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="When on, any session — including a delegated one on a provider with no built-in shell (Bash is a Claude Code CLI feature, not something the cockpit supplies) — can run a command such as rg, git, dotnet or python3 and read its exit code, stdout and stderr. There is no command allow-list: what runs is decided by the session's permission mode, exactly as for any other write/destructive tool. Off by default: while off the feature is not offered to any agent at all."/>
+                        </StackPanel>
+                        <CheckBox Content="Allow agents to run shell commands"
+                                  IsChecked="{Binding Security.ShellAccessEnabled}"
+                                  IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='let agent run shell commands'}"/>
+
                         <!-- AC-575: the assistant may skip the Cockpit consent card, per source. Two
                              checkboxes per row rather than one three-state picker, and the rows come from
                              sources the host has stamped — there is no field to type a source name into,
@@ -1698,7 +1712,7 @@
                              both risk classes. The per-source rows are hidden while it is on — they are
                              still stored, so switching it off shows them exactly as they were left.
                              Moved in from the old Assistant page (AC-1000: "consent naar Security"). -->
-                        <TextBlock Classes="optionsSectionHeader" Text="3. ASSISTANT CONSENT BYPASS"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="4. ASSISTANT CONSENT BYPASS"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Skip Cockpit's consent card" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"

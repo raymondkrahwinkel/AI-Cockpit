@@ -77,6 +77,7 @@ internal static class OptionsStaging
         "Security.AllowedDiscoveryRangesText",
         "Security.LockWithOperatingSystem",
         "Security.NodeEndpointEnabled",
+        "Security.ShellAccessEnabled",
         "Security.TerminalAccessEnabled",
         "AssistantOptions.AlwaysOnTop",
         "AssistantOptions.ConsentBypassAll",

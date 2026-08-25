@@ -13,6 +13,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Verify;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
@@ -38,6 +39,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IMcpToolTokenEstimator _tokenEstimator;
     private readonly IMcpOAuthCoordinator _oauthCoordinator;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
+    private readonly IShellAccessSwitch _shellAccessSwitch;
     private readonly IWorkingPathHistoryStore _workingPathStore;
     private readonly IConversationPickerRegistry _conversationPickers;
     private readonly DelegatedTasksViewModel _delegatedTasks;
@@ -63,6 +65,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IMcpToolTokenEstimator tokenEstimator,
         IMcpOAuthCoordinator oauthCoordinator,
         IPluginProviderRegistry pluginProviderRegistry,
+        IShellAccessSwitch shellAccessSwitch,
         IWorkingPathHistoryStore workingPathStore,
         IConversationPickerRegistry conversationPickers,
         DelegatedTasksViewModel delegatedTasks,
@@ -91,6 +94,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _tokenEstimator = tokenEstimator;
         _oauthCoordinator = oauthCoordinator;
         _pluginProviderRegistry = pluginProviderRegistry;
+        _shellAccessSwitch = shellAccessSwitch;
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
         _ttyProviderRegistry = ttyProviderRegistry;
@@ -125,7 +129,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
             _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator,
-            _projectStore, _oauthCoordinator, _memorySources, _loginStarter);
+            _projectStore, _oauthCoordinator, _memorySources, _loginStarter, _shellAccessSwitch);
         await viewModel.LoadAsync();
 
         // AC-164: project before prefill, matched by id from the loaded list — selecting it runs the dialog's
