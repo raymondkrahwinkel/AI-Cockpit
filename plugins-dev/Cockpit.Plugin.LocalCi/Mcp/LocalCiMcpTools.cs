@@ -34,7 +34,9 @@ internal sealed class LocalCiMcpTools(
         + "starts. The verdict is about this machine: act's images are not GitHub's, so it predicts the "
         + "pull-request check and does not replace it. `AlreadyRunning` is a verdict, not something to retry: "
         + "another local run already has this machine, it is not stuck, and calling this again will not change "
-        + "that — try again later, or ask the operator to stop it.")]
+        + "that — try again later, or ask the operator to stop it. A long run keeps going even if this call never "
+        + "returns an answer (a dropped connection does not stop it) — if that happens, call local_check_status "
+        + "instead of running this again; it has the verdict this call could not deliver.")]
     public async Task<string> RunLocalChecks(
         [Description("The job to run, named as it is in the workflow (e.g. \"build\"). Leave it out to run the first job in this project that can run here.")]
         string? job = null,
@@ -65,7 +67,11 @@ internal sealed class LocalCiMcpTools(
 
         var startedAt = DateTimeOffset.UtcNow;
         var commit = await head.ReadAsync(resolved, cancellationToken);
-        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        // AC-1053: not linked to `cancellationToken` — that tracks the request/transport, not operator intent.
+        // Only the Kill button (tracker.Begin's stopAsync below) may cancel `stopping` now; a run also outlives
+        // a client that died mid-call, on purpose — losing finished work is worse than `act` running unsupervised.
+        using var stopping = new CancellationTokenSource();
 
         tracker.Begin(resolved, chosen.JobId, startedAt, () =>
         {
@@ -108,7 +114,9 @@ internal sealed class LocalCiMcpTools(
         "Reports what this project's workflow jobs are — which of them can run on this machine and, for each that "
         + "cannot, why — plus the last local run in that checkout and whether it was on the commit that is checked "
         + "out now. The project is the calling session's own checkout by default; pass `checkout` for a worktree "
-        + "this session made for itself with worktree_create instead.")]
+        + "this session made for itself with worktree_create instead. This is also the recovery path when "
+        + "run_local_checks itself never returned an answer: the run kept going regardless, so `lastRun` here "
+        + "carries its verdict without needing to run it again.")]
     public async Task<string> LocalCheckStatus(
         [Description(
             "The worktree to report on, when it is not this session's own checkout. Must be a path from "

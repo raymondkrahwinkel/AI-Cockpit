@@ -349,6 +349,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a local CI run that took a while no longer loses its result if the connection to the session that
+  started it drops before it is delivered. The run itself used to be cancelled the moment that connection went
+  away — discarding whatever it had built — even though nobody had actually asked to stop it; now only the
+  status bar's Kill button can do that, and checking local CI status afterwards shows the real verdict instead
+  of a false "cancelled".
+
 - fixed: the Kubernetes, Docker and Proxmox plugins now show a multi-line approval — such as a Helm rollback's
   resource-by-resource diff — as actual separate lines instead of collapsing the whole thing into one line with
   visible `\n` markers standing in for the breaks. A line an agent supplies is still escaped on its own, so it can

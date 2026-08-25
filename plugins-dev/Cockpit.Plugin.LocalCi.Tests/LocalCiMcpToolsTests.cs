@@ -236,6 +236,31 @@ public class LocalCiMcpToolsTests : IDisposable
     }
 
     [Fact]
+    public async Task ADroppedConnectionDoesNotAbortTheRunOnlyKillDoes()
+    {
+        // AC-1053: a transport that drops mid-run used to cancel the run itself via a linked cancellationToken
+        // and discard the work. It must keep running; only Kill (tracker's registered stopAsync) may stop it.
+        _host.CallerPaneId = "pane-caller";
+        var running = new TaskCompletionSource();
+        var act = FakeStreamingCliRunner.Blocking(running);
+        var tools = _Tools(act);
+        using var request = new CancellationTokenSource();
+
+        var runTask = tools.RunLocalChecks(cancellationToken: request.Token);
+        await running.Task;
+
+        request.Cancel();
+        await Task.Delay(50);
+        Assert.Null(_tracker.LastFor(_caller.Root));
+
+        await _tracker.Snapshot().Single().StopAsync();
+        var answer = _Read(await runTask);
+
+        Assert.Equal(nameof(LocalRunOutcome.Cancelled), answer.GetProperty("verdict").GetString());
+        Assert.Equal(nameof(LocalRunOutcome.Cancelled), _tracker.LastFor(_caller.Root)!.Result.Outcome.ToString());
+    }
+
+    [Fact]
     public async Task TheStatusListsEveryJobWithItsReasonAndTheLastRun()
     {
         _caller.AddWorkflow("nightly.yml", TemporaryProject.MatrixJob);
