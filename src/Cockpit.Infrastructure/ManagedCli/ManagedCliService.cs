@@ -8,12 +8,9 @@ using SharpCompress.Readers;
 
 namespace Cockpit.Infrastructure.ManagedCli;
 
-// The generic managed-CLI installer (AC-20). Holds the descriptors plugins register and turns any one of them into
-// an on-disk executable: resolve latest version → build the download plan → download → verify SHA-256 → unpack →
-// place atomically under `&lt;StateRoot&gt;/cli/&lt;name&gt;/&lt;version&gt;/`. Reuses the project's proven
-// building blocks — `PluginHash` for the checksum (same as the plugin store), the download-to-temp-then-
-// move discipline of the voice caches so a failed install never leaves a half copy, and SharpCompress for the same
-// tar extraction the voice caches do. Names no provider: Claude and Codex differ only in the descriptor they hand in.
+// The generic managed-CLI installer (AC-20): resolve latest version → build download plan → download → verify
+// SHA-256 → unpack → place atomically under `&lt;StateRoot&gt;/cli/&lt;name&gt;/&lt;version&gt;/`. Reuses
+// `PluginHash` and the voice caches' download-to-temp-then-move discipline. Names no provider.
 internal sealed class ManagedCliService : IManagedCliService, ISingletonService
 {
     // Owner rwx + group/other rx (0755) — a launcher the user runs; mirrors what the official installers set.
@@ -171,11 +168,9 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
                 return ManagedCliInstallResult.Fail($"Could not determine the latest version of '{cliName}'.");
             }
 
-            // The version string comes from the provider's own channel (a compromised/edge-poisoned origin is exactly
-            // the supply-chain threat this feature courts), and it becomes a path segment and a URL component. Require
-            // it to be a plain dotted-numeric Version: that rejects any traversal (`..`, separators) outright, and it
-            // is also the shape ResolveInstalledPath parses — so an install can never land in a directory resolution
-            // would not find. Anything else is refused rather than trusted.
+            // The version string comes from the provider's channel and becomes a path segment and URL component,
+            // so a compromised origin is a supply-chain threat. Require a plain dotted-numeric Version: rejects
+            // traversal outright, and matches the shape ResolveInstalledPath parses. Anything else is refused.
             if (!Version.TryParse(version, out _))
             {
                 return ManagedCliInstallResult.Fail($"'{cliName}' reported an unexpected version format ('{version}') and was not installed.");
@@ -376,9 +371,8 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         && cliName != "..";
 
     // After a successful install, a managed CLI keeps only its current version on disk — otherwise auto-update
-    // (AC-767) grows the cli root unboundedly and invisibly (~264 MB per claude version). Best-effort: a version
-    // directory a running session still has open fails to delete on Windows (IOException) and is left for a later
-    // pass, which is not an error, just a retry.
+    // (AC-767) grows the cli root unboundedly (~264 MB per claude version). Best-effort: a version directory
+    // still open on Windows fails to delete (IOException) and is left for a later retry, not an error.
     private void _CleanupOldVersions(string cliName, string keepVersion)
     {
         var cliDirectory = Path.Combine(_cliRoot, cliName);

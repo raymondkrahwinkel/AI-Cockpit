@@ -6,10 +6,8 @@ using Cockpit.Infrastructure.Configuration;
 namespace Cockpit.Infrastructure.WorkingPaths;
 
 // Persists the New-session dialog's remembered working directories under the `workingPaths` section of
-// `cockpit.json` (same file/pattern as the other settings stores). Reads-modifies-writes the whole file
-// via `CockpitConfigFileAccess` so sibling sections are left untouched. When nothing was ever
-// saved, `LoadAsync` returns `WorkingPathHistory.Empty`. The recent-list capping and
-// de-duplication live in `WorkingPathHistory` so this store is just load / apply / save.
+// `cockpit.json` (same file/pattern as the other settings stores), reading-modifying-writing the whole
+// file so sibling sections stay untouched. Recent-list capping and de-duplication live in `WorkingPathHistory`.
 internal sealed class WorkingPathHistoryStore : IWorkingPathHistoryStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;

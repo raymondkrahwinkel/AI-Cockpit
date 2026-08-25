@@ -5,9 +5,8 @@ using Cockpit.Infrastructure.Collab;
 namespace Cockpit.Infrastructure.Whiteboard;
 
 // The live coupling state behind the whiteboard-access MCP (AC-823) — the whiteboard counterpart to
-// DiagramAccessRegistry (AC-810), but holding a rendered PNG snapshot per surface instead of text, and a write path
-// (AC-854) that only ever adds: it remembers which objects each session put there, so an agent can take back its
-// own and nothing else.
+// DiagramAccessRegistry (AC-810), holding a rendered PNG snapshot per surface instead of text. The write
+// path (AC-854) only ever adds, remembering which objects each session put there so it can take back its own.
 internal sealed class WhiteboardAccessRegistry : IWhiteboardAccessRegistry, ISingletonService
 {
     private readonly object _lock = new();

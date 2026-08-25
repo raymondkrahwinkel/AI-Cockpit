@@ -7,11 +7,8 @@ using CoreAudioDeviceInfo = Cockpit.Core.Audio.AudioDeviceInfo;
 namespace Cockpit.Infrastructure.Audio;
 
 // The single serialized gateway to the shared `AudioEngine`'s device enumeration. Capture,
-// playback and the Options device list all query the same engine instance, potentially from different
-// threads at once — a push-to-talk hold or TTS playback resolves its device on a background thread while
-// the Options dialog enumerates on the UI thread. The engine gives no concurrency guarantee, so every
-// `UpdateAudioDevicesInfo` + device-array read runs under one lock here rather than being duplicated
-// (and raced) across the three call sites.
+// playback and the Options device list can all query it concurrently from different threads.
+// The engine gives no concurrency guarantee, so every read runs under one lock here.
 internal sealed class AudioDeviceEnumerator(AudioEngine engine) : ISingletonService
 {
     private readonly object _gate = new();

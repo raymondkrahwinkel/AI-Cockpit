@@ -5,9 +5,8 @@ using Cockpit.Core.Audio;
 namespace Cockpit.Infrastructure.Audio;
 
 // `IAudioDeviceProvider` for the Options UI: a thin adapter over
-// `AudioDeviceEnumerator`, which owns the (serialized) access to the shared SoundFlow engine
-// and the mapping to framework-free `AudioDeviceInfo`. Keeps SoundFlow types out of the App
-// layer.
+// `AudioDeviceEnumerator`, mapping to framework-free `AudioDeviceInfo`.
+// Keeps SoundFlow types out of the App layer.
 internal sealed class SoundFlowAudioDeviceProvider(AudioDeviceEnumerator enumerator) : IAudioDeviceProvider, ISingletonService
 {
     public IReadOnlyList<AudioDeviceInfo> GetInputDevices() => enumerator.GetInputDevices();

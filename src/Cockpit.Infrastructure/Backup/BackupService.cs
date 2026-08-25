@@ -12,12 +12,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Backup;
 
-// Makes and restores a backup of the whole cockpit (#70): the settings, the profiles, the plugins and everything they
-// stored — one zip, one manifest.
-//
-// A restore is destructive and therefore all-or-nothing: the archive is unpacked to a temporary directory and read
-// there, and only when the whole of it is sound does anything on disk move. The cockpit directory is kept aside until
-// the swap has finished, so a restore that dies halfway leaves you with what you had rather than with half of each.
+// Makes and restores a backup of the whole cockpit (#70) — one zip, one manifest. A restore is destructive
+// and therefore all-or-nothing: the archive is unpacked to a temp directory and read there, and only when
+// it's sound does anything on disk move, so a restore that dies halfway leaves you with what you had.
 internal sealed class BackupService(
     ISessionProfileStore profiles,
     ILogger<BackupService> logger) : IBackupService, ISingletonService
@@ -26,11 +23,9 @@ internal sealed class BackupService(
 
     private static string CockpitDirectory => CockpitConfigPath.Root;
 
-    // Backup and restore both stage under the cockpit's own state root, never Path.GetTempPath() (AC-45): on Linux
-    // that is a world-readable 1777 /tmp, and a restore necessarily unpacks the whole archive — every credential,
-    // including the credential-bearing files the backup-time scrubber only ever touches inside cockpit.json — to the
-    // staging directory for the length of the restore. Staged here, in an owner-only directory, that window is not
-    // readable by other users on the machine.
+    // Backup and restore stage under the cockpit's own state root, never Path.GetTempPath() (AC-45): on Linux
+    // that is a world-readable 1777 /tmp, and a restore unpacks the whole archive — every credential — there
+    // for its duration. Staged here, in an owner-only directory, that window is not readable by other users.
     internal static string StagingRoot => Path.Combine(CockpitConfigPath.Root, BackupContents.StagingFolder);
 
     // Offloaded to the thread pool (AC-747): CreateEntryFromFile has no async form, so archiving every file froze
@@ -132,26 +127,9 @@ internal sealed class BackupService(
 
     private static readonly TimeSpan MoveContentionInterval = TimeSpan.FromMilliseconds(100);
 
-    // Puts the finished archive where the operator asked for it, waiting out a file that is briefly busy — the
-    // same shape as `CockpitConfigFileAccess.ReadWhenNotBeingReplacedAsync`, for the same reason.
-    // Windows hands a freshly closed file straight to whatever is watching it, and a new .zip is exactly what a
-    // virus scanner opens and unpacks before anything else may touch it. This move lands microseconds after the
-    // archive's own handle closes, so it loses that race — the bigger the backup, the longer the scan, and the
-    // more reliably it loses. The operator saw "the process cannot access the file … because it is being used by
-    // another process", naming a staging path they have never heard of, and got no backup. Nothing here can stop
-    // the scan; it only has to outlast it.
-    //
-    // The two files fail differently, which is the only reason the refusal can say which one is stuck: a held
-    // *source* is an `IOException` naming the staging file, a held *destination* an
-    // `UnauthorizedAccessException` naming nothing at all. Both are waited out — the destination is a
-    // path the operator chose, so it can just as well be an earlier backup open in an archive tool.
-    //
-    // A destination that is genuinely not writable looks identical to one that is merely held, so that case now
-    // spends the window before failing. It is worth it: the message at the end says both possibilities rather
-    // than picking one, and a folder the operator cannot write to is not what the file picker usually hands back.
-    //
-    // `contentionWindow`:
-    // Overridable so the test that proves the refusal does not have to sit out the real five seconds to see it.
+    // Puts the finished archive where the operator asked for it, waiting out a file that is briefly busy —
+    // a fresh .zip is exactly what a virus scanner opens right after it closes. A held source and a held
+    // destination fail differently, so the refusal can say which is stuck. `contentionWindow` is overridable.
     internal static async Task MoveIntoPlaceAsync(
         string staging,
         string archivePath,

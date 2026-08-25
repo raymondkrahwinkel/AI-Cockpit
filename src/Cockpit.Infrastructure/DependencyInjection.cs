@@ -25,10 +25,8 @@ public static class DependencyInjection
         services.AddSingleton<AudioEngine, MiniAudioEngine>();
 
         // Built-in cockpit MCP endpoints (#AC-13): CockpitMcpEndpointHost hosts each and auto-publishes it to the
-        // registry as its own MCP server. cockpit-session carries set_status and is always mounted: telling the
-        // operator what a session is working on is cockpit plumbing, not a capability to weigh up, so it is kept out
-        // of the pickers rather than offered as something to untick. Available to every session (including delegated
-        // sub-agents, unlike the orchestrator). A plugin adds its own the same way (#AC-12).
+        // registry as its own MCP server. cockpit-session is always mounted: telling the operator what a session
+        // is working on is plumbing, not a capability to weigh up, so it's kept out of the pickers (#AC-12).
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-session", typeof(SessionStatusTools), AlwaysMounted: true));
 
         // cockpit-worktrees (AC-104): the tools an agent uses to isolate a subtask in its own git worktree and clean
@@ -36,15 +34,13 @@ public static class DependencyInjection
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-worktrees", typeof(Worktrees.WorktreeTools)));
 
         // cockpit-verify (AC-86): the visual verify loop — runs the project's registered render command behind an
-        // operator consent and feeds the rendered UI back into the session as a text snapshot (plus a screenshot
-        // where the provider can see it), so UI work is not delivered blind (Iron Law #9). Its own server, like
-        // cockpit-worktrees; the agent can only trigger a registered runner, never choose the command.
+        // operator consent and feeds the rendered UI back to the session as a snapshot, so UI work is not
+        // delivered blind (Iron Law #9). The agent can only trigger a registered runner, never choose the command.
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-verify", typeof(Verify.VerifyMcpTools)));
 
         // cockpit-terminal (AC-34, phase 1): lets an agent read a terminal pane the operator has open, live and gated
-        // by an Approve/Deny consent. Behind the master switch — while it is off (the default) the endpoint is hosted
-        // but not advertised to any session, so for an agent the feature does not exist. Registered via a factory so
-        // the IsEnabled gate can read the live TerminalAccessState singleton.
+        // by an Approve/Deny consent. Behind the master switch, off by default. Registered via a factory so the
+        // IsEnabled gate can read the live TerminalAccessState singleton.
         services.AddSingleton(provider => new CockpitMcpEndpoint(
             "cockpit-terminal",
             typeof(Terminal.TerminalMcpTools),
@@ -59,47 +55,30 @@ public static class DependencyInjection
             () => provider.GetRequiredService<Shell.ShellAccessState>().Enabled,
             AlwaysMounted: true));
 
-        // cockpit-agents (AC-391, AC-392): the agent-to-agent communication line — list_agents to see who else is on
-        // your desk, notify/read_inbox to send them a message and collect your own. AlwaysMounted, like
-        // cockpit-session and unlike cockpit-verify/cockpit-worktrees, because this one is now a delivery route
-        // rather than a capability each session weighs up on its own: while it was tickable, a profile that had ever
-        // saved an explicit MCP selection (McpServerRegistryFilter.ApplySessionSelection) — including an empty one —
-        // silently did not get it, and a message line that is absent for some of the sessions on a desk is not a
-        // line. The sender is told its message was delivered and the recipient has no tool to read it with, which is
-        // worse than not having the feature. The cost is the tool definitions in every session's context; the
-        // alternative is a route whose reliability depends on a checkbox nobody remembers ticking.
+        // cockpit-agents (AC-391, AC-392): agent-to-agent communication — list_agents, notify/read_inbox.
+        // AlwaysMounted because it is a delivery route, not a capability to opt into: when it was tickable, a
+        // profile with any saved MCP selection could silently miss it, so a message could be sent but unreadable.
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-agents", typeof(Agents.AgentsMcpTools), AlwaysMounted: true));
 
-        // cockpit-assistant (AC-544): the voice assistant's read path across every workspace — the reach no ordinary
-        // session has, and the reason this one is Internal rather than AlwaysMounted like its neighbour above. An
-        // internal endpoint stays out of every picker and out of the no-selection fan-out, so it reaches only a launch
-        // that names it by name, and AssistantSessionHost is the single place that does. That is the first of the two
-        // gates; the second is in the tools themselves, which refuse any caller whose transport-verified pane is not
-        // the assistant's. Deliberately both: the mount is configuration, and configuration widens by accident.
+        // cockpit-assistant (AC-544): the voice assistant's read path across every workspace — the reach no
+        // ordinary session has, so it's Internal rather than AlwaysMounted: it reaches only a launch that names
+        // it by name (AssistantSessionHost). Second gate is in the tools, which check the caller's pane.
         services.AddSingleton(new CockpitMcpEndpoint(
             Cockpit.Core.Assistant.AssistantIdentity.McpServerName,
             typeof(Assistant.AssistantReadMcpTools),
             Internal: true));
 
-        // cockpit-assistant-agents (AC-545): the acting half — start_agent and stop_agent. Internal for exactly the
-        // same two-gate reason as its read neighbour above, and a second endpoint rather than two more tools on that
-        // one because the read server's documented promise is that nothing on it changes anything (see
-        // AssistantIdentity.ActMcpServerName). Internal is load-bearing, not tidiness: delete it and these tools fan
-        // out to every session that named no selection, where the only thing left between an ordinary agent and a
-        // spawn on any desk is the per-tool pane check.
+        // cockpit-assistant-agents (AC-545): the acting half — start_agent and stop_agent. Internal for the same
+        // two-gate reason as its read neighbour, and a separate endpoint because the read server promises nothing
+        // on it changes anything. Internal is load-bearing: without it, these tools fan out to any session.
         services.AddSingleton(new CockpitMcpEndpoint(
             Cockpit.Core.Assistant.AssistantIdentity.ActMcpServerName,
             typeof(Assistant.AssistantAgentMcpTools),
             Internal: true));
 
-        // cockpit-node (AC-795): the sessions on this machine, as the cockpit paired to it as its controller may
-        // see and drive them. The inverse of the two endpoints above and for the mirror-image reason: those are
-        // Internal, hosted but reachable only from a launch that names them, while this one must *not* be Internal
-        // — an Internal endpoint binds no network listener at all (AC-791), which is the one thing this endpoint
-        // exists to have. `IsEnabled` returning false is what keeps it off this machine instead: hosted, so the node
-        // listener stands in front of it, and advertised to no local session, so nothing here can call it. The gate
-        // that holds is neither of those but the per-tool check in `NodeSessionMcpTools`, which refuses any caller
-        // whose transport-verified pane is not the node's reserved one.
+        // cockpit-node (AC-795): sessions on this machine, as its paired controller cockpit may see and drive
+        // them. Must NOT be Internal — an Internal endpoint binds no network listener (AC-791), which is the one
+        // thing this needs. `IsEnabled: false` keeps it off; the real gate is the per-tool pane check below.
         services.AddSingleton(new CockpitMcpEndpoint(
             "cockpit-node",
             typeof(Mcp.NodeSessionMcpTools),
@@ -120,11 +99,9 @@ public static class DependencyInjection
         return services;
     }
 
-    // OS screen-lock detection (AC-5) is registered by platform here rather than via the Scrutor marker scan, for the
-    // same reason the pty host and hotkey are: the scan would bind whichever implementation it saw last to the single
-    // IScreenLockMonitor registration. Windows reads SystemEvents.SessionSwitch; macOS the CoreFoundation distributed
-    // notification; Linux systemd-logind over D-Bus. Anything else gets the null monitor, so the feature is simply
-    // inert there rather than a missing registration — the runtime selection always yields a working object.
+    // OS screen-lock detection (AC-5) is registered by platform here rather than via the Scrutor marker scan,
+    // which would bind whichever implementation it saw last. Windows: SessionSwitch; macOS: CoreFoundation;
+    // Linux: systemd-logind over D-Bus. Anything else gets the null monitor, so the feature is simply inert.
     private static void AddScreenLockMonitor(IServiceCollection services)
     {
 #pragma warning disable CA1416
@@ -147,15 +124,9 @@ public static class DependencyInjection
 #pragma warning restore CA1416
     }
 
-    // Global push-to-talk (#34) is registered by platform here rather than via the Scrutor marker scan, for the
-    // same reason the pty host is: the scan would bind whichever implementation it saw last to the single
-    // IGlobalHotkeyService registration.
-    //
-    // Windows gets a SharpHook low-level keyboard hook. Linux depends on the session and not only the OS: under
-    // Wayland nothing may install a keyboard hook, so the XDG GlobalShortcuts portal is the only route — but
-    // under X11 the same hook Windows uses works, and routing every Linux to the portal threw that away. It
-    // costs an X11 desktop the hotkey outright wherever its portal has no GlobalShortcuts implementation, which
-    // is most of them. Anything else (macOS) has neither, and says so rather than pretending.
+    // Global push-to-talk (#34) is registered by platform here rather than via the Scrutor marker scan, which
+    // would bind whichever implementation it saw last. Windows uses a SharpHook keyboard hook. Linux splits on
+    // session type: Wayland needs the XDG GlobalShortcuts portal, X11 uses the same hook as Windows.
     private static void AddGlobalHotkey(IServiceCollection services)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -179,13 +150,9 @@ public static class DependencyInjection
         }
     }
 
-    // Screen capture (AC-220) is registered by platform for the same reason the hotkey above is: one
-    // registration, three implementations, and the Scrutor marker scan would bind whichever it saw last.
-    //
-    // Unlike the hotkey, Linux does not split on the session type. The Screenshot portal is served by
-    // xdg-desktop-portal on X11 as well as Wayland — it predates GlobalShortcuts and every desktop that ships a
-    // screenshot tool backs it — so there is no X11 hole here to route around. Windows reads the virtual screen
-    // through GDI, macOS through screencapture, and anything else says it cannot rather than pretending.
+    // Screen capture (AC-220) is registered by platform for the same reason the hotkey above is. Unlike the
+    // hotkey, Linux does not split on session type: the Screenshot portal serves both X11 and Wayland. Windows
+    // reads the virtual screen through GDI, macOS through screencapture, anything else says it cannot.
     private static void AddScreenshotCapture(IServiceCollection services)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -206,10 +173,9 @@ public static class DependencyInjection
         {
             services.AddSingleton<IScreenshotCapture, PortalScreenshotCapture>();
 
-            // Window picking splits on the session type where capture does not (AC-330). X11 publishes window
-            // geometry and stacking; Wayland deliberately does not, and this app is an XWayland client there —
-            // which sees only other XWayland windows, so the property that works on X11 would list a fraction of
-            // the operator's windows and quietly omit the rest.
+            // Window picking splits on session type where capture does not (AC-330): X11 publishes window
+            // geometry/stacking, Wayland does not, and this app is an XWayland client there, seeing only a
+            // fraction of the operator's windows via the X11 property.
             if (_IsWaylandSession())
             {
                 services.AddSingleton<IDesktopWindows, UnsupportedDesktopWindows>();
@@ -233,11 +199,9 @@ public static class DependencyInjection
             Environment.GetEnvironmentVariable("XDG_SESSION_TYPE"),
             Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
 
-    // TTY mode's pty host (#9) is OS-specific for the same reason presence/toast are: it is
-    // registered by platform here rather than via the Scrutor marker scan, which would otherwise
-    // bind whichever of ConPtyHostFactory/PortaPtyHostFactory the assembly scan happened to see last
-    // to the single IPtyHostFactory registration. TtyLauncher itself stays cross-platform and
-    // just depends on whichever factory lands here.
+    // TTY mode's pty host (#9) is OS-specific, registered by platform here rather than via the Scrutor marker
+    // scan, which would bind whichever of ConPtyHostFactory/PortaPtyHostFactory it saw last. TtyLauncher stays
+    // cross-platform and just depends on whichever factory lands here.
     private static void AddPtyHost(IServiceCollection services)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -296,10 +260,9 @@ public static class DependencyInjection
 #pragma warning restore CA1416
     }
 
-    // Presence detection and the toast channel are OS-specific, so they are registered by platform
-    // here rather than via the Scrutor marker scan (which would bind the Windows implementations on
-    // Linux too). The cross-platform pieces — the Discord webhook notifier, the settings store, and
-    // the AttentionNotifier orchestrator — carry ISingletonService and register through the scan.
+    // Presence detection and the toast channel are OS-specific, registered by platform here rather than via
+    // the Scrutor marker scan (which would bind the Windows implementations on Linux too). Cross-platform
+    // pieces (Discord notifier, settings store, AttentionNotifier) carry ISingletonService and use the scan.
     private static void AddNotifications(IServiceCollection services)
     {
         // A single shared HttpClient for the webhook POST — the recommended lifetime for a long-lived
