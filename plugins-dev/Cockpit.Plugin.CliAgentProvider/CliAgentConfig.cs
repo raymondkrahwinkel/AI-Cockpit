@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Cockpit.Plugin.CliAgentProvider;
 
 // This plugin's own provider config — never seen by the host, only (de)serialized here and via
-// `ConfigJson` the host round-trips (#45 fase B1). SandboxMode defaults to "read-only"; AuthEnvVar
+// `ConfigJson` the host round-trips (#45 phase B1). SandboxMode defaults to "read-only"; AuthEnvVar
 // keeps the API key out of the process argument list.
 internal sealed record CliAgentConfig(
     string Command = "codex",

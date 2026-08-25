@@ -2,7 +2,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// The `claude` CLI as a TTY provider (Fase 4, weg A) — port of the host's `ClaudeTtySessionProvider`.
+// The `claude` CLI as a TTY provider (Phase 4, route A) — port of the host's `ClaudeTtySessionProvider`.
 // Never adds `-p`/stream-json: this is the genuine interactive TUI, which owns its own live switching
 // (`/model`, Shift+Tab) since TTY mode has no control channel.
 internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver = null) : IPluginTtyProvider

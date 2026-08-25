@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 
 // Fase B1 provider-plugin (#45): registers "Codex (CLI)" as a session provider backed by
 // `CliSubprocessPluginSessionDriverFactory` — a proces-per-turn subprocess driver, unlike the
-// Gemini/OpenAI provider plugin's persistent `IChatClient`. Experimental — fase B2 still owes live verification.
+// Gemini/OpenAI provider plugin's persistent `IChatClient`. Experimental — phase B2 still owes live verification.
 public sealed class CliAgentProviderPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(
@@ -38,7 +38,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex (CLI)",
             // The app-server driver replaces the headless exec driver as the interactive Codex provider (#45
-            // fase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals.
+            // phase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals.
             CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(host.ResolveManagedCliPath),
             // ConfinesFileAccessToWorkingDirectory (AC-174) and DeclaredOptions (AC-649, Codex's own sandbox
             // vocabulary) are declared here because the host honours the registration, not the driver instance.

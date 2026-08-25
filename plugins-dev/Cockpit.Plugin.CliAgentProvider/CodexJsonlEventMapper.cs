@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// Parses a single JSONL stdout line from `codex exec --json` into typed `PluginSessionEvent`s (#45 fase B1).
+// Parses a single JSONL stdout line from `codex exec --json` into typed `PluginSessionEvent`s (#45 phase B1).
 // B2 caveat: `item.*` shapes are a best-effort reconstruction from public docs, no captured transcript was
 // available; unrecognized `type`/`item_type` values are ignored so schema drift degrades gracefully.
 internal static class CodexJsonlEventMapper

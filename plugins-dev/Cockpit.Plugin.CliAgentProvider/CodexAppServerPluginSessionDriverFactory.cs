@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// `IPluginSessionDriverFactory` for the interactive Codex provider (#45 fase 3). Replaces
+// `IPluginSessionDriverFactory` for the interactive Codex provider (#45 phase 3). Replaces
 // `CliSubprocessPluginSessionDriverFactory` as the registered Codex driver — the app-server
 // route supports live approvals the headless exec route cannot.
 internal sealed class CodexAppServerPluginSessionDriverFactory(Func<string, string?>? managedResolver = null) : IPluginSessionDriverFactory

@@ -5,7 +5,7 @@ using System.Threading.Channels;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// Newline-delimited JSON-RPC 2.0 client over one persistent `codex app-server` process (Fase 3): unlike the
+// Newline-delimited JSON-RPC 2.0 client over one persistent `codex app-server` process (Phase 3): unlike the
 // process-per-turn CLI driver, this process lives for the session and is bidirectional, so the server can
 // send its own requests (approvals). One read loop classifies by `id`/`method`; writes serialize behind a lock.
 internal sealed class CodexAppServerConnection : IAsyncDisposable

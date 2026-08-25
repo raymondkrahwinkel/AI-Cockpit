@@ -5,7 +5,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// `IPluginSessionDriver` for Codex over the persistent `codex app-server` JSON-RPC protocol (#45 fase 3),
+// `IPluginSessionDriver` for Codex over the persistent `codex app-server` JSON-RPC protocol (#45 phase 3),
 // replacing the headless `CliSubprocessPluginSessionDriver`. Unlike `codex exec`, the app-server sends a
 // request per shell command/file edit and blocks the turn for the operator's answer — hence `SupportsPermissions`.
 internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver

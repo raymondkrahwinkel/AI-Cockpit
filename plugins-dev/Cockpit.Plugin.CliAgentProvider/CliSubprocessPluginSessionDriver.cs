@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// `IPluginSessionDriver` for the Codex CLI provider, spawning a fresh subprocess per turn (#45 fase
+// `IPluginSessionDriver` for the Codex CLI provider, spawning a fresh subprocess per turn (#45 phase
 // B1) instead of Claude's single persistent process. `PluginSessionInitialized` is emitted lazily,
 // once the real thread id arrives with the first turn's `thread.started`.
 internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
