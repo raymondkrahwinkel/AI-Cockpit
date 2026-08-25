@@ -3,10 +3,9 @@ using ModelContextProtocol.Server;
 
 namespace Cockpit.Plugin.Kubernetes.Mcp;
 
-// AC-179: the kind-cluster lifecycle tools, exposed alongside the rest of mcp__cockpit-k8s__*. A cluster this creates
-// is registered with the plugin's own KindClusterManager and shows up immediately in list_clusters/list_resources —
-// no separate connection step. It is a disposable test environment: non-pinned clusters are torn down on session
-// close, cockpit exit, or the configured TTL, never kept around for unsaved work the way a worktree is.
+// AC-179: the kind-cluster lifecycle tools, exposed alongside the rest of mcp__cockpit-k8s__*. A created cluster
+// registers immediately with the rest of this plugin's tools — no separate connection step. Disposable: non-pinned
+// clusters are torn down on session close, cockpit exit, or TTL, never kept for unsaved work like a worktree is.
 internal sealed partial class KubernetesMcpTools
 {
     [McpServerTool(Name = "kind_create", ReadOnly = false, Destructive = false)]

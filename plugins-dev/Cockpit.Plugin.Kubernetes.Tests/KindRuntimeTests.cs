@@ -3,9 +3,8 @@ using Cockpit.Plugin.Kubernetes.Kind;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-// Detection of the `kind` binary (AC-179 criterion 2) — a PATH-probe with a deadline, mirroring
-// Cockpit.Plugin.LocalCi's ActRuntimeStatus/LocalCiRuntime._DetectActAsync. Real process (no fake runner needed):
-// the probe target is `kind --version` itself, and "kind is not installed" is exactly the not-started case
+// Detection of the `kind` binary (AC-179 criterion 2) — a PATH-probe with a deadline, mirroring LocalCiRuntime's
+// act-detection. Real process, no fake runner needed: "kind is not installed" is exactly the not-started case
 // CliRunner already proves in CliRunnerTests.
 public class KindRuntimeTests
 {

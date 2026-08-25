@@ -2,10 +2,9 @@ using Cockpit.Plugin.Kubernetes.Cli;
 
 namespace Cockpit.Plugin.Kubernetes.Kind;
 
-// PATH-probe for `kind` (AC-179 criterion 2), mirroring Cockpit.Plugin.LocalCi's LocalCiRuntime._DetectActAsync:
-// same 5s deadline, same "only a successful probe is cached" rule (a machine where kind gets installed mid-session
-// must not stay stuck on a stale "not installed" answer). `executableName`/`probeArguments` are a test seam only —
-// production callers always take the defaults ("kind", "--version").
+// PATH-probe for `kind` (AC-179 criterion 2), mirroring LocalCiRuntime._DetectActAsync: same 5s deadline, same
+// "only a successful probe is cached" rule. `executableName`/`probeArguments` are a test seam only — production
+// callers always take the defaults ("kind", "--version").
 internal sealed class KindRuntime(ICliRunner runner, string executableName = "kind", IReadOnlyList<string>? probeArguments = null)
 {
     internal static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);

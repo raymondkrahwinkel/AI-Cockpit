@@ -3,10 +3,9 @@ using System.Diagnostics;
 
 namespace Cockpit.Plugin.Kubernetes.Cli;
 
-// Runs a CliCommand as a real process (AC-179) — argv, both pipes read while the process runs so a chatty command
-// cannot fill a pipe and deadlock, plus the command's own Environment layered onto the inherited one so its
-// locked-down vars win without wiping PATH/HOME. Extracted from HelmRunner so helm and kind share one engine
-// instead of a second 89-line copy.
+// Runs a CliCommand as a real process (AC-179) — argv, both pipes read while running so a chatty command cannot
+// deadlock a pipe, plus the command's Environment layered onto the inherited one. Extracted from HelmRunner so
+// helm and kind share one engine instead of a second 89-line copy.
 internal sealed class CliRunner : ICliRunner
 {
     public async Task<CliResult> RunAsync(CliCommand command, TimeSpan timeout, CancellationToken cancellationToken = default)

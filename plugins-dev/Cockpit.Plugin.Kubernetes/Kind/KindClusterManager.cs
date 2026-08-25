@@ -7,9 +7,7 @@ namespace Cockpit.Plugin.Kubernetes.Kind;
 
 // Owns the kind-cluster lifecycle (AC-179): the registry (KubernetesSettings.KindClusters, not the containers on
 // disk) is the source of truth for cleanup, mirroring WorktreeManager. Create also writes a matching
-// ClusterRegistration so the rest of this plugin can reach the cluster with no manual step. Every sweep — orphan
-// (ReconcileAsync), TTL (SweepExpiredAsync), shutdown (StopAllAsync) — routes through the same DeleteAsync and the
-// same pin exemption, so "only what is registered gets touched" holds in one place rather than three.
+// ClusterRegistration so the rest of this plugin can reach the cluster with no manual step.
 internal sealed class KindClusterManager(
     KubernetesSettings settings,
     ICliRunner runner,

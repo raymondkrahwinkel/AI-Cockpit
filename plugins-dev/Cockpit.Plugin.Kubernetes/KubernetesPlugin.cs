@@ -66,10 +66,9 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         host.AddSupervisedActivityProvider(portForwards);
         host.AddSupervisedActivityProvider(kindClusters);
 
-        // AC-179 criterion 8: a kind cluster whose owning pane is not among the sessions this start actually
-        // offers back is orphaned — a crash or a hard close that missed Dispose(). Self-contained in the plugin
-        // (AC-885): ICockpitHost.Sessions already gives a live-session view, so no Cockpit.App/Core change is
-        // needed the way the worktree sweep needs one. Fire-and-forget: this must not delay plugin startup.
+        // AC-179 criterion 8: a kind cluster whose owning pane is not among this start's live sessions is orphaned
+        // — self-contained in the plugin (AC-885) since ICockpitHost.Sessions already gives that view.
+        // Fire-and-forget: this must not delay plugin startup.
         _ = kindClusters.ReconcileAsync(host.Sessions.OpenSessions.Select(session => session.PaneId).ToList(), CancellationToken.None);
 
         // A settings save may have changed a cluster's kubeconfig or context; drop the cached clients so the next

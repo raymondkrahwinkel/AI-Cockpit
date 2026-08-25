@@ -2,10 +2,9 @@ using Cockpit.Plugin.Kubernetes.Cli;
 
 namespace Cockpit.Plugin.Kubernetes.Helm;
 
-// `IHelmRunner` backed by the generic `CliRunner` (AC-179 pulled the process-handling out of here so kind could
-// reuse it instead of getting a second 89-line copy). This class only translates between helm's own
-// `HelmCommand`/`HelmResult` shapes and `CliRunner`'s generic ones — every existing caller and test keeps working
-// against the same `IHelmRunner` contract as before.
+// `IHelmRunner` backed by the generic `CliRunner` (AC-179 pulled the process-handling out so kind could reuse it).
+// Only translates between helm's `HelmCommand`/`HelmResult` shapes and `CliRunner`'s generic ones — every existing
+// caller and test keeps working against the same `IHelmRunner` contract as before.
 internal sealed class HelmRunner : IHelmRunner
 {
     private readonly CliRunner _cli = new();

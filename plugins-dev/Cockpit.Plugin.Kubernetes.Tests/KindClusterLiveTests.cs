@@ -6,10 +6,9 @@ using Cockpit.Plugin.Kubernetes.Settings;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-// The half of kind_create no unit test can reach: what a real kind binary and a real container runtime produce, and
-// whether the rest of the Kubernetes plugin can use the result with zero manual steps (AC-179 criteria 1, 5, 14).
-// Off unless kind is on PATH — never guessed at, same skip shape as HelmUpgradeClusterTests: return, not a failed
-// assertion, so a machine without kind still reports this suite as passing.
+// The half of kind_create no unit test can reach: what a real kind + container runtime produce, and whether the
+// rest of the plugin can use the result with zero manual steps (AC-179 criteria 1, 5, 14). Off unless kind is on
+// PATH — same skip shape as HelmUpgradeClusterTests: return, not a failed assertion.
 public class KindClusterLiveTests
 {
     private const string ClusterName = "cockpit-ac179-live";
