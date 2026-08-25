@@ -39,7 +39,7 @@ internal sealed record AutopilotStep(
     public int AgentCount { get; init; } = 1;
 
     // A short human-readable note on the step's latest outcome (AC-174) — why it failed, or a status line while
-    // it runs. Surfaced on the pipeline block so a failed step is not a silent red dot. Empty until the run has something to say.
+    // it runs. Surfaced on the pipeline block so a failed step is not a silent red dot.
     public string Note { get; init; } = string.Empty;
 
     // This step with a new status — the run advances a step without rebuilding the rest of the plan.

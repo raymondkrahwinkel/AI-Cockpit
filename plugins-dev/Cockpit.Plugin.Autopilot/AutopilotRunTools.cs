@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.Autopilot;
 
 // The in-process MCP tools a step agent uses (AC-174): report done, or consult its manager (the CEO) via
 // `autopilot_blocked` (AC-201), which answers or escalates rather than the worker reaching the operator
-// directly. The CEO's own tools live on a separate endpoint (least-privilege); pane-scoped so a step only reports for its own session.
+// directly. Pane-scoped so a step only reports for its own session.
 internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunManager manager)
 {
     // The in-process MCP server name the plugin mounts these tools under — dark once a run has settled.

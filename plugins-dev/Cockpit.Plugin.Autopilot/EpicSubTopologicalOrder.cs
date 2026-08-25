@@ -2,11 +2,11 @@ namespace Cockpit.Plugin.Autopilot;
 
 // Orders an epic's subs by their `depends on` links (AC-346), Kahn's algorithm: among candidates with no unmet
 // dependency left, the lowest issue id is picked next — deterministic ordering (the ticket's "willekeurige
-// maar deterministische volgorde"). A cyclic chain still produces an order: the lowest remaining id is taken anyway, breaking the cycle at the same point every time.
+// maar deterministische volgorde"). A cyclic chain still produces an order, breaking the cycle at the same point.
 internal static class EpicSubTopologicalOrder
 {
-    // `issueIds`: Every sub in the epic, once each.
-    // `dependsOn`: For a sub id, the sibling ids it depends on (a dependency outside `issueIds` is ignored — only order among the epic's own subs is this class's job).
+    // `issueIds`: every sub in the epic, once each. `dependsOn`: for a sub id, the sibling ids it depends on
+    // (a dependency outside `issueIds` is ignored — only order among the epic's own subs is this class's job).
     public static IReadOnlyList<string> Resolve(IReadOnlyList<string> issueIds, IReadOnlyDictionary<string, IReadOnlyList<string>> dependsOn)
     {
         var remaining = new HashSet<string>(issueIds, StringComparer.OrdinalIgnoreCase);

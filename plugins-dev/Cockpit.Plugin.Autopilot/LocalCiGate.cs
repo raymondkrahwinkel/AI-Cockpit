@@ -4,7 +4,7 @@ namespace Cockpit.Plugin.Autopilot;
 
 // Asks the Local CI plugin whether this checkout has earned a pull request, if it is installed at all. Addressed
 // by manifest id and an agreed action string — nothing here references that plugin's types, so a cockpit
-// without it answers nothing and a run delivers exactly as before. The GitHub pull-requests plugin repeats the same three strings since the two assemblies must not depend on each other.
+// without it answers nothing and a run delivers exactly as before.
 internal static class LocalCiGate
 {
     private const string PluginId = "local-ci";

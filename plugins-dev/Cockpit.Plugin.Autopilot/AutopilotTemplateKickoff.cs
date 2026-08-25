@@ -2,7 +2,7 @@ namespace Cockpit.Plugin.Autopilot;
 
 // The CEO's opening kickoff for a planning round when a template is (or is not) chosen (AC-189, slice 3). No
 // template keeps current behaviour (tracker kickoff, or idle for a CEO-first run); a chosen template's
-// `Body` resolved through `AutopilotTemplateResolver` becomes the kickoff instead. Kept a pure builder so the rule is unit-testable without a live session or UI.
+// `Body` resolved through `AutopilotTemplateResolver` becomes the kickoff instead.
 internal sealed record AutopilotKickoff(string? Message, IReadOnlyList<string> MissingPlaceholders);
 
 internal static class AutopilotTemplateKickoff

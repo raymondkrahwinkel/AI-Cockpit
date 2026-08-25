@@ -2,7 +2,7 @@ namespace Cockpit.Plugin.Autopilot;
 
 // What git itself reported changed in a run's worktree over one step (AC-255) — the raw observation, kept apart
 // from the wording and spot-checks built on it. `AddedFromBeforeTheMark`: files staged this step whose
-// *contents* are an earlier step's work. `HeadCommit` is not optional (AC-1037): a result without the tree it ran on is not real proof.
+// *contents* are an earlier step's work. `HeadCommit` is not optional (AC-1037).
 internal sealed record AutopilotWorktreeChange(
     IReadOnlyList<string> FilesChanged,
     IReadOnlyList<string> UntrackedFiles,

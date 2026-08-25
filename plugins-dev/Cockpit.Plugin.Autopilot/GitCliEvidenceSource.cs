@@ -19,7 +19,7 @@ internal sealed class GitCliEvidenceSource : IAutopilotEvidenceSource
 
         // `stash create` records the worktree as-is into a commit stored nowhere (no ref, no index entry), which
         // pins work an earlier step left uncommitted so this step isn't later credited with it. The identity is
-        // supplied only for this call, so a machine with none configured doesn't fail here, and it never reaches a visible commit.
+        // supplied only for this call, so a machine with none configured doesn't fail here.
         var snapshot = await GitCommandLine.RunAsync(
             "git",
             ["-c", "user.name=cockpit-autopilot", "-c", "user.email=autopilot@localhost", "stash", "create"],

@@ -2,7 +2,7 @@ namespace Cockpit.Plugin.Autopilot;
 
 // The turns the autonomous run hands its sessions (AC-174): a step agent's opening instruction — its brief plus
 // how to report done — and the validation turn the CEO judges a finished step by. Kept a pure builder off the
-// coordinator so wording is tested without a live session. Unlike the CEO's hidden planning brief, the step brief is the agent's *visible* opening turn.
+// coordinator so wording is tested without a live session.
 internal static class AutopilotStepBrief
 {
     public static string For(AutopilotStep step, int agentCount, int agentNumber)
@@ -35,7 +35,7 @@ internal static class AutopilotStepBrief
 
         // The execution mandate: a lighter/local model handed a coding step too often "analyses" the repo or asks
         // what the goal is, ending its turn without writing code, which stalls the step. The concrete end state
-        // (change, tests, commit, report done) is spelled out so no model reads it as "go analyse this" — it does not weaken AC-193/AC-201.
+        // is spelled out so no model reads it as "go analyse this".
         const string executionMandate =
             "This is an execution task, not an analysis or planning task — actually make the change. Write and edit the "
             + "code, add and run the tests, and COMMIT your work in this worktree as you complete it. Do NOT instead "
@@ -76,8 +76,8 @@ internal static class AutopilotStepBrief
         + "step done. If you are still working, ignore this and call it once you finish.";
 
     // The turn the CEO judges a finished step by. With `evidence` — an independent account produced by the
-    // harness (AC-255) — the CEO validates against that instead of re-reading the worktree. Without it (evidence
-    // could not be observed), it degrades loudly back to the deep inspection rather than quietly to trusting the summary.
+    // harness (AC-255) — the CEO validates against that instead of re-reading the worktree. Without it, it
+    // degrades loudly back to the deep inspection rather than quietly to trusting the summary.
     public static string ValidationTurn(
         AutopilotStep step,
         IReadOnlyList<string> summaries,
@@ -129,7 +129,7 @@ internal static class AutopilotStepBrief
 
         // The observation is composed by the harness, but its contents are the step's own files — a diff line could
         // read like an instruction to the CEO inside the block it was told to trust. Fencing and stripping any
-        // copy of the fence is the guard; the agent's summary gets the same treatment since it is even more directly under the step's control.
+        // copy of the fence is the guard; the agent's summary gets the same treatment.
         var observation = _WithoutFence(evidence.Observation);
         reported = _WithoutFence(reported);
 
