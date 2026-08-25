@@ -13,4 +13,8 @@ internal static class DiscordUserId
         IsValid(userId)
             ? null
             : $"\"{userId}\" is not a Discord user id — it should be a string of 17-20 digits (a snowflake). {HowToFind}";
+
+    // AC-1074: the first error in a stored access list, or null when every id has the right shape.
+    public static string? ValidateAll(IEnumerable<string> userIds) =>
+        userIds.Select(Validate).FirstOrDefault(error => error is not null);
 }

@@ -58,6 +58,13 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
             return;
         }
 
+        // AC-1074: same gap as Slack's — the shape check runs on save, so an id stored before it survives every load
+        // and then matches nothing Discord can ever send. Said out loud here; the relay still opens.
+        if (DiscordUserId.ValidateAll(configured.Access.UserIds) is { } accessError)
+        {
+            host.ShowToast($"Discord: no message will reach the assistant — {accessError}", PluginToastSeverity.Error);
+        }
+
         var contribution = new AssistantChannelContribution
         {
             Id = "discord",

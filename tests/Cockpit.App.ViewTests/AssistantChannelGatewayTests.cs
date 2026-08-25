@@ -5,6 +5,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -48,6 +49,29 @@ public class AssistantChannelGatewayTests
         Assert.True(result.Ignored);
         Assert.Null(result.Error);
         await host.DidNotReceive().SendAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
+    });
+
+    /// <summary>
+    /// AC-1074: silence towards the sender, never towards the operator. This drop is the whole reason a Slack
+    /// message could vanish for two hours with nothing anywhere to show for it.
+    /// </summary>
+    [Fact]
+    public Task AnIgnoredSender_LeavesTheReasonAndTheSenderIdInTheLog() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var logger = new _RecordingLogger();
+        var host = Substitute.For<IAssistantSessionHost>();
+        host.Session.Returns(_Session());
+        var gateway = _Open(host, Substitute.For<IConsentBroker>(), [], logger);
+
+        await gateway.SendAsync("118", "let me in");
+
+        var (level, message) = Assert.Single(logger.Entries);
+
+        // Below Information is the same as not logging at all: FileLoggerProvider drops it, which is exactly how
+        // the original Debug line managed to exist and still leave the operator with nothing.
+        Assert.True(level >= LogLevel.Information, $"logged at {level}, which never reaches cockpit.log");
+        Assert.Contains("118", message, StringComparison.Ordinal);
+        Assert.Contains("access list", message, StringComparison.Ordinal);
     });
 
     /// <summary>
@@ -304,7 +328,11 @@ public class AssistantChannelGatewayTests
         return _Open(host, broker, rows);
     }
 
-    private static AssistantChannelGateway _Open(IAssistantSessionHost host, IConsentBroker broker, List<AssistantChannelRow> rows)
+    private static AssistantChannelGateway _Open(
+        IAssistantSessionHost host,
+        IConsentBroker broker,
+        List<AssistantChannelRow> rows,
+        ILogger<AssistantChannelGateway>? logger = null)
     {
         var channel = new AssistantChannelContribution
         {
@@ -312,7 +340,7 @@ public class AssistantChannelGatewayTests
             Name = "Test channel",
             Access = AssistantChannelAccess.ForSingleUser(Allowed).Access!,
         };
-        var gateway = new AssistantChannelGateway(channel, host, broker, NullLogger<AssistantChannelGateway>.Instance);
+        var gateway = new AssistantChannelGateway(channel, host, broker, logger ?? NullLogger<AssistantChannelGateway>.Instance);
         gateway.RowChanged += (_, row) => rows.Add(row);
 
         return gateway;
@@ -326,5 +354,19 @@ public class AssistantChannelGatewayTests
         var rows = new List<AssistantChannelRow>();
 
         return (_Open(host, Substitute.For<IConsentBroker>(), rows), host, session, rows);
+    }
+
+    private sealed class _RecordingLogger : ILogger<AssistantChannelGateway>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Entries.Add((logLevel, formatter(state, exception)));
     }
 }
