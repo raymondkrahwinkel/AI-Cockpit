@@ -3,13 +3,9 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Core.Backup;
 
-// Takes the secrets out of the settings before they go into an archive (#70). A backup without credentials is the
-// default, and this is what makes that claim true rather than merely intended.
-//
-// Which fields count as secret (`SecretFields`) and how the settings are traversed
-// (`SecretJsonWalker`) are shared with the encryption layer, which encrypts exactly the fields this
-// empties. Two lists would drift, and a field the protector encrypts but the scrubber misses is a token in a
-// backup that says it carries none.
+// Takes the secrets out of the settings before they go into an archive (#70). Which fields count as
+// secret (`SecretFields`) and how settings are traversed (`SecretJsonWalker`) are shared with the
+// encryption layer, so the two lists can't drift and leave a token behind.
 public static class SecretScrubber
 {
     // Empties every secret-looking field in `settings`, in place, and returns the paths it emptied — which is what the restore tells the operator they must type in again.

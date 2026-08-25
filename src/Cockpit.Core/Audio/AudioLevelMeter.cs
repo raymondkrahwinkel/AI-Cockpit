@@ -1,10 +1,8 @@
 namespace Cockpit.Core.Audio;
 
-// Pure loudness measurement for the voice overlay's live meter: turns a raw signed-16-bit
-// little-endian PCM frame into a 0..1 level. Uses a decibel (dBFS) scale rather than raw RMS because
-// speech sits far below full scale — a linear RMS meter leaves the bars hugging the floor, while
-// mapping a soft-speech-to-near-clip dB window onto 0..1 makes ordinary talking fill most of the meter.
-// The read-only mirror of `PcmSampleConverter` — bytes in, one level out, no allocation.
+// Pure loudness measurement for the voice overlay's live meter: turns a raw PCM frame into a 0..1
+// level. Uses a decibel (dBFS) scale rather than raw RMS because speech sits far below full scale —
+// a linear RMS meter leaves the bars hugging the floor.
 public static class AudioLevelMeter
 {
     // RMS at/below this dBFS reads as silence (0). Roughly the level of a quiet room.

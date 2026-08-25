@@ -5,10 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.TranscriptDisplay;
 
-// Persists `TranscriptDisplaySettings` under the `transcriptDisplay` section of
-// `cockpit.json` (same file/pattern as `SessionSwitchSettingsStore`). Reads-modifies-writes
-// the whole file via `CockpitConfigFileAccess` so it leaves the other sections untouched.
-// When no settings were ever saved, `LoadAsync` returns the defaults.
+// Persists `TranscriptDisplaySettings` under the `transcriptDisplay` section of `cockpit.json`
+// (same file/pattern as `SessionSwitchSettingsStore`), reading-modifying-writing the whole file
+// so other sections stay untouched. When nothing was ever saved, `LoadAsync` returns the defaults.
 internal sealed class TranscriptDisplaySettingsStore : ITranscriptDisplaySettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;

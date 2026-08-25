@@ -1,7 +1,6 @@
 namespace Cockpit.Core.Audio;
 
 // A selectable audio input or output device, surfaced to the Options UI so the operator can pick which
-// microphone the voice pipeline captures from and which output read-aloud plays to. Identified by
-// `Name` — the native device handle is a per-run pointer, so the name is what gets persisted
-// and matched back on the next launch.
+// microphone/output is used. Identified by `Name` — the native device handle is a per-run pointer,
+// so the name is what gets persisted and matched back on the next launch.
 public sealed record AudioDeviceInfo(string Name, bool IsSystemDefault);

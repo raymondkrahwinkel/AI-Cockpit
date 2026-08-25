@@ -5,10 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.SessionBehavior;
 
-// Persists `SessionBehaviorSettings` under the `sessionBehavior` section of
-// `cockpit.json` (same file/pattern as `TranscriptDisplaySettingsStore`). Reads-modifies-
-// writes the whole file via `CockpitConfigFileAccess` so it leaves the other sections
-// untouched. When no settings were ever saved, `LoadAsync` returns the defaults.
+// Persists `SessionBehaviorSettings` under the `sessionBehavior` section of `cockpit.json`
+// (same file/pattern as `TranscriptDisplaySettingsStore`), reading-modifying-writing the whole
+// file so other sections stay untouched. When nothing was ever saved, `LoadAsync` returns the defaults.
 internal sealed class SessionBehaviorSettingsStore : ISessionBehaviorSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;

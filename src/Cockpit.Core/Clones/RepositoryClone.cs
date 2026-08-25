@@ -1,11 +1,8 @@
 namespace Cockpit.Core.Clones;
 
-// A git repository the cockpit cloned from a URL into its own managed area (AC-90), so a session can be started on
-// a repository that is not yet on this machine. The registry of these — not the folders on disk — is the source of
-// truth for reuse and cleanup: a later start finds an already-cloned repository by its record rather than by
-// re-scanning the disk, and startup reconciliation forgets a record whose folder disappeared.
-// A clone is a repository *root*, not a session's working tree: several sessions isolate off it with their
-// own worktrees (AC-85). So it is deliberately not owned by one session — it is shared, and outlives any single one.
+// A git repository the cockpit cloned from a URL into its own managed area (AC-90). The registry of
+// these — not the folders on disk — is the source of truth for reuse and cleanup. A clone is a
+// repository *root*, shared across sessions' own worktrees (AC-85), not owned by any single one.
 public sealed record RepositoryClone(
     string Slug,
     string RemoteUrl,

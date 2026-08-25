@@ -6,21 +6,9 @@ using Cockpit.Infrastructure.Formatting;
 
 namespace Cockpit.Infrastructure.Auditing;
 
-// The shared machinery behind the cockpit's audit trails (the consent trail #AC-47, the delegation trail #67):
-// an append-only, one-JSON-object-per-line file next to `cockpit.json` that survives a restart, can be
-// tailed while the app runs, and stays readable in a text editor. Append-only by contract — there is no write
-// path here that rewrites or truncates the file, so a record, once logged, cannot be erased by a later action,
-// which is the whole point of a trail a plugin (or an agent through it) cannot clear.
-//
-// Extracted so the two trails share one implementation of the parts that must never drift (AC-59): the
-// never-throws append, the owner-only file it appends to (a trail holds whatever the recorded action's free text held,
-// so it is not a file to leave at the umask — see `_AppendPrivateAsync`), the JSON-per-line parse that
-// skips a half-written or hand-edited line rather than losing the whole trail, and the surrogate-safe trim. A derived log supplies only what actually differs — its file
-// path, a human name for the warning, and how one entry is trimmed before it is written. The public
-// `RecordAsync`/`ReadRecentAsync` match the audit-log interfaces' shape, so a derived
-// class satisfies its interface simply by inheriting them.
-//
-// `T`: The entry record. A reference type so a failed parse can be a null the reader filters out.
+// Shared machinery behind the cockpit's audit trails (consent #AC-47, delegation #67): an append-only,
+// one-JSON-object-per-line file next to `cockpit.json`. No write path here rewrites or truncates, so a
+// record, once logged, cannot be erased (AC-59). `T`: reference type so a failed parse can be null.
 internal abstract class JsonlAuditLog<T>
     where T : class
 {
@@ -98,28 +86,9 @@ internal abstract class JsonlAuditLog<T>
         }
     }
 
-    // Appends `line`, creating the file owner-only if it is not there yet.
-    //
-    // The permission matters because a trail is a record of what was said and done: the consent trail keeps the command
-    // an operator approved, the delegation trail the prompt a sub-agent was given, the agent-notify trail (AC-392) the
-    // text one agent sent another — free text that nothing stops from containing a token, a path or a customer's name.
-    // `File.AppendAllText` creates at the process umask, which on a stock Fedora is world-readable, and that is
-    // exactly the default `Configuration.CockpitConfigPath` exists to stop every writer of a sensitive file
-    // from re-inventing. `FileMode.Append` with a create mode is used rather than that class's
-    // `CreatePrivateFile`, because that one truncates: on an append-only trail, a create that could truncate is the
-    // one thing this file may never do. The mode only applies when the file is created — an existing trail keeps its
-    // permissions, and is not silently loosened or tightened underneath a reader tailing it.
-    //
-    // The containing directory is created but deliberately not restricted here. It is the state root, which
-    // `Configuration.CockpitConfigPath` already makes owner-only when it writes the config next to this —
-    // and a derived log pointed at a shared directory (a test's temp folder) must not chmod that directory on the way
-    // past. On Windows there is no create mode to set: the protection there is the per-user profile directory the state
-    // root sits in, which is the same answer `Configuration.CockpitConfigPath` gives.
-    //
-    // `FileShare.Read`, matching what `File.AppendAllText` allowed before this: a second process
-    // appending at the same moment is turned away with an `IOException`, which the caller logs and moves
-    // past. That is the outcome to want here — a line lost with a warning beats two writers interleaving inside one
-    // line, which is how an append-only trail acquires an entry that belongs to neither of them.
+    // Appends `line`, creating the file owner-only if it is not there yet — a trail holds free text
+    // (a command, a prompt, a message) that may contain a token or path, and the default umask is
+    // world-readable. `FileShare.Read` turns away a concurrent writer with a logged `IOException`.
     private async Task _AppendPrivateAsync(string line, CancellationToken cancellationToken)
     {
         var options = new FileStreamOptions
@@ -138,13 +107,9 @@ internal abstract class JsonlAuditLog<T>
         await stream.WriteAsync(Encoding.UTF8.GetBytes(line), cancellationToken).ConfigureAwait(false);
     }
 
-    // Reads up to `limit` parseable entries from the end of the file, newest first, without
-    // loading the whole log (C6): the append-only trail can grow to many MB on a long-lived install, so reading
-    // it whole and reversing it every call to keep the last N is the cost this avoids. Fixed blocks are read
-    // backward and split on `'\n'` — a byte that never occurs inside a multi-byte UTF-8 sequence, so a block
-    // boundary can never cut a character — and each complete line is decoded and parsed newest-first until enough
-    // valid entries are in hand or the file is exhausted. A blank or corrupt line is skipped and does not count
-    // toward the limit, matching the previous whole-file read.
+    // Reads up to `limit` parseable entries from the end of the file, newest first, without loading the
+    // whole log (C6). Fixed blocks are read backward and split on `'\n'`, a byte that never occurs inside
+    // a multi-byte UTF-8 sequence, so a block boundary can never cut a character. A blank or corrupt line is skipped.
     private async Task<IReadOnlyList<T>> _ReadRecentValidAsync(int limit, CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(
@@ -153,10 +118,8 @@ internal abstract class JsonlAuditLog<T>
         var results = new List<T>(Math.Min(limit, 1024));
         var position = stream.Length;
 
-        // The bytes of a line whose left boundary (an earlier '\n', or the start of the file) has not been reached
-        // yet — they sit to the right of the block currently being read, so they are carried onto the next, earlier
-        // block. A trimmed JSON line is tiny, so this stays a few hundred bytes even though a pathological long line
-        // would grow it to that line's length.
+        // Bytes of a line whose left boundary (an earlier '\n', or file start) has not been reached yet
+        // are carried onto the next, earlier block. Stays a few hundred bytes for a normal trimmed line.
         var carry = Array.Empty<byte>();
 
         while (position > 0 && results.Count < limit)
@@ -236,9 +199,8 @@ internal abstract class JsonlAuditLog<T>
         }
     }
 
-    // Trims `text` to `maxLength` characters plus an ellipsis — the trail is for
-    // recognising an action later, not for keeping a full copy of it. The surrogate-safe cut itself lives in
-    // `BoundedText`, shared with the other places the cockpit bounds agent-authored free text, so the rule
-    // has one implementation rather than one per caller that needs it.
+    // Trims `text` to `maxLength` characters plus an ellipsis — the trail is for recognising an action
+    // later, not keeping a full copy. The surrogate-safe cut lives in `BoundedText`, shared with other
+    // callers so the rule has one implementation.
     protected static string TrimText(string text, int maxLength) => BoundedText.Trim(text, maxLength);
 }

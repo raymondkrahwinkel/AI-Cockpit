@@ -4,9 +4,8 @@ using SkiaSharp;
 namespace Cockpit.Infrastructure.Pdf;
 
 // Rasterises page 1 of a PDF for FilePreviewWindow's preview (AC-730) — mirrors SvgRasterizer.Rasterize:
-// PDFium (native, the renderer Chrome ships) + SkiaSharp turn PDF bytes into a decodable PNG. Page 1 only in
-// this round; browsing further pages is a second design question (paging, memory on a 400-page PDF) and does
-// not belong in the same round as this one — PageCount is returned so the caller can at least show the total.
+// PDFium + SkiaSharp turn PDF bytes into a decodable PNG. Page 1 only for now; browsing further pages is
+// a separate design question. PageCount is returned so the caller can at least show the total.
 public static class PdfRasterizer
 {
     // Matches SvgRasterizer's SvgRasterSize cap, so an image/SVG/PDF preview scales similarly either way.

@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Workspaces;
 
-// Persists `WorkspaceSettings` under the `workspaces` section of `cockpit.json` (same
-// file/pattern as `LayoutSettingsStore`). Reads-modifies-writes the whole file via
-// `CockpitConfigFileAccess` so it leaves the other sections untouched. When nothing was ever
-// saved, `LoadAsync` returns the default single Sessions workspace — an operator who never
-// touched workspaces gets the cockpit exactly as it behaves today.
+// Persists `WorkspaceSettings` under the `workspaces` section of `cockpit.json` (same file/pattern
+// as `LayoutSettingsStore`), reading-modifying-writing the whole file so other sections stay untouched.
+// When nothing was ever saved, `LoadAsync` returns the default single Sessions workspace, unchanged behavior.
 internal sealed class WorkspaceSettingsStore : IWorkspaceSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
