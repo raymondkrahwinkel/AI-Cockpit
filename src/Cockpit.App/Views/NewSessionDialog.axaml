@@ -405,6 +405,14 @@
                            Foreground="{StaticResource CockpitTextFaintBrush}"
                            IsVisible="{Binding ShowSdkStartHint}"/>
 
+                <!-- AC-1066: a profile whose provider declares no permission modes of its own (no picker above,
+                     ShowSessionOptions false there too) runs its tool calls through the host's own approval gate —
+                     say what that means before Start, since nothing else on this dialog does. -->
+                <TextBlock Text="{Binding ToolPermissionSummaryText}"
+                           FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           IsVisible="{Binding ShowToolPermissionSummary}"/>
+
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

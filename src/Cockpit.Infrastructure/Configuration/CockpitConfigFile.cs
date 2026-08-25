@@ -59,6 +59,9 @@ internal sealed class CockpitConfigFile
     // The terminal-access master switch (AC-34); owned by the terminal-access settings store. Absent/false means the cockpit-terminal MCP is not advertised to any session.
     public TerminalAccessSettingsEntry? TerminalAccess { get; set; }
 
+    // The shell-access master switch (AC-1066); owned by the shell-access settings store. Absent/false means the cockpit-shell MCP is not advertised to any session.
+    public ShellAccessSettingsEntry? ShellAccess { get; set; }
+
     // The network-node master switch and its persistent shared secret (AC-790); owned by the node-endpoint settings
     // store. Absent/false means every mounted MCP endpoint stays loopback-only.
     public NodeEndpointSettingsEntry? NodeEndpoint { get; set; }

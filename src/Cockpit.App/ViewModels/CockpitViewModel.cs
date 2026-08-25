@@ -46,6 +46,7 @@ using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shortcuts;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.UsagePill;
@@ -2662,6 +2663,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IScreenLockSettingsStore? screenLockSettingsStore = null,
         ITerminalAccessSwitch? terminalAccessSwitch = null,
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
+        IShellAccessSwitch? shellAccessSwitch = null,
+        IShellAccessSettingsStore? shellAccessSettingsStore = null,
         ITerminalAccessRegistry? terminals = null,
         IDiagramAccessRegistry? diagrams = null,
         IWhiteboardAccessRegistry? whiteboards = null,
@@ -2751,6 +2754,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             screenLockSettingsStore,
             terminalAccessSwitch,
             terminalAccessSettingsStore,
+            shellAccessSwitch,
+            shellAccessSettingsStore,
             nodeEndpointSettingsStore,
             internalMcpProviders,
             nodePairingBroker,

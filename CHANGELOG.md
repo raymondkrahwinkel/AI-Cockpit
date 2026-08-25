@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a new "Allow agents to run shell commands" toggle under Options → Security lets a session on a provider
+  with no built-in shell of its own (every provider except Claude and the other CLI/ACP agents) run a command such
+  as `rg`, `git`, `dotnet` or `python3` and read its exit code, output and errors — off by default, and gated by the
+  session's own permission mode rather than a fixed list of allowed commands. The New-session dialog now also says,
+  for such a profile, whether tool calls run unattended or ask for approval, and whether this comes along.
 - added: agents can upgrade a Helm release. The chart is rendered with a helm dry run and the operator approves the
   literal manifest diff — what changes, resource by resource — before anything is applied; a cluster registered by
   pasting its config instead of a file path is refused rather than staging that config to disk. There is still no

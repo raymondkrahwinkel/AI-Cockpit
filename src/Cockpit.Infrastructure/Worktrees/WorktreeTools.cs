@@ -35,7 +35,7 @@ internal sealed class WorktreeTools
         _consent = consent;
     }
 
-    [McpServerTool(Name = "worktree_create")]
+    [McpServerTool(Name = "worktree_create", ReadOnly = false, Destructive = false)]
     [Description("Create a git worktree to isolate a task on its own branch. The source branch is fetched and fast-forwarded first where that is safe, so the worktree starts on the latest state of the repository at `directory` rather than on whatever was last pulled. Returns the new worktree's path and branch — run the task's commands with that path — plus `sourceNotice` when the fork base is not the latest (offline, uncommitted changes, or a diverged branch). Pass your session id (the COCKPIT_PANE_ID environment variable) as `session` so the worktree is tied to this session and cleaned up when it closes. Marked as made through this tool, so worktree_remove lets you clean it up yourself later — for example when the task is done — even while your own session is still running; that is unlike the worktree your session runs in, which stays off limits to worktree_remove no matter who asks.")]
     public async Task<string> CreateAsync(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
@@ -76,7 +76,7 @@ internal sealed class WorktreeTools
         }
     }
 
-    [McpServerTool(Name = "worktree_list")]
+    [McpServerTool(Name = "worktree_list", ReadOnly = true)]
     [Description("List the git worktrees the cockpit is managing, each with its branch, path, repository, owning session, and git state (clean, whether it has uncommitted changes, and how many commits exist only here — not in the base branch and not pushed anywhere). `ownerLive` tells apart the three things a bare `session` id cannot: true with an ordinary session id means that session is still running (never remove or reassign it); false means the owner is gone and any work is only kept if `retained` says so; true with `session` equal to `cockpit-assistant` means the assistant owns it directly — the assistant is always live by construction, so this stays true until worktree_handover or worktree_remove moves it, never because a sweep missed it. Null when liveness cannot be determined here.")]
     public async Task<string> ListAsync()
     {
@@ -100,7 +100,7 @@ internal sealed class WorktreeTools
         return _Serialize(new { ok = true, worktrees });
     }
 
-    [McpServerTool(Name = "worktree_remove")]
+    [McpServerTool(Name = "worktree_remove", ReadOnly = false, Destructive = true)]
     [Description("Remove a git worktree the cockpit created — for example when a task is done. A clean worktree is removed right away; a worktree that still holds uncommitted changes or untracked files is removed only after the operator approves a consent prompt (which discards them — any committed history stays on the branch). You may remove a worktree worktree_create made for you even while your own session is still running — that is exactly the case this tool exists for. Refused either way: the worktree your own session actually runs in (made when the session started or was reattached, never through this tool), and any worktree owned by a *different* session that is still live — that cross-session cleanup is the operator's, from the managed-worktrees panel, not an agent's. The response carries `notice` when the removal left something behind that the repository could no longer be asked about — its worktree folder is never deleted in that case, only untracked from the cockpit — worth relaying rather than treating as a bare success. Use worktree_list to get the path.")]
     public async Task<string> RemoveAsync(
         [Description("The worktree's path, as returned by worktree_create or worktree_list.")] string path)

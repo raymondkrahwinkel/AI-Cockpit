@@ -17,6 +17,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Configuration;
@@ -541,6 +542,10 @@ public partial class App : Application
         // session that launches before the operator ever opens Options still reflects the saved choice (default off).
         Program.Services.GetRequiredService<ITerminalAccessSwitch>().Enabled =
             Program.Services.GetRequiredService<ITerminalAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
+
+        // AC-1066: same seeding, for the shell-access master switch.
+        Program.Services.GetRequiredService<IShellAccessSwitch>().Enabled =
+            Program.Services.GetRequiredService<IShellAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
 
         var actions = new PluginActions(
             cockpit,
