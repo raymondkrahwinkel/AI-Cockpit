@@ -34,6 +34,11 @@ public sealed record Project(string Id, string Name)
     // differently per project without a second profile existing. Null/blank appends nothing.
     public string? BehaviorPrompt { get; init; }
 
+    // AC-1071: which assistant/persona this project's sessions run as, overriding `SessionProfile.Assistant`.
+    // Always local, never shared (see `Category` for the same rule): a colleague binding this project keeps
+    // their own assistant. Null/blank falls back to the profile's.
+    public string? Assistant { get; init; }
+
     // Whether new sessions here isolate in their own git worktree (AC-85) when `SourceDirectory` is
     // a repository. A default only: worktree stays a per-session choice, still overridable in the dialog.
     public bool IsolateInWorktreeByDefault { get; init; }
@@ -121,7 +126,7 @@ public sealed record Project(string Id, string Name)
         builder.Append($"IsolateInWorktreeByDefault = {IsolateInWorktreeByDefault}, McpOverlay = {McpOverlay}, Resources = {Resources}, ");
         builder.Append($"MemoryRef = {MemoryRef}, LogoPath = {LogoPath}, LastOpenedAt = {LastOpenedAt}, AdditionalInfo = {AdditionalInfo}, ");
         builder.Append($"HasAdditionalInfo = {HasAdditionalInfo}, ProjectPassword = {(ProjectPassword is null ? null : ProjectInfoField.Mask)}, ");
-        builder.Append($"Category = {Category}, PluginFields = {PluginFields}, SharedSourceName = {SharedSourceName} }}");
+        builder.Append($"Category = {Category}, Assistant = {Assistant}, PluginFields = {PluginFields}, SharedSourceName = {SharedSourceName} }}");
         return builder.ToString();
     }
 

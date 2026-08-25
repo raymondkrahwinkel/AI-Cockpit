@@ -76,10 +76,33 @@ public sealed record SessionStartDefaults(
             _FirstNonBlank(project?.DefaultProfileLabel, profile?.Label),
             profile?.EnabledMcpServerNames,
             // Order matters, most binding first — the same reasoning _JoinPrompts always applied ("identity first,
-            // then the task"): the profile says who the session is, the heading-and-block that follows what it is
-            // working on and what this project already knows.
-            _JoinPrompts(profile?.SystemPrompt, attributedProjectBlock));
+            // then the task"): the assistant says who is answering, the profile the rest of who the session is,
+            // the heading-and-block that follows what it is working on and what this project already knows.
+            _JoinPrompts(_AssistantNote(project, profile), profile?.SystemPrompt, attributedProjectBlock));
     }
+
+    // AC-1071: the assistant this session runs as — the project's own overrides the profile's, the same
+    // precedence `WorkingDirectory` and `ProfileLabel` above already resolve by. Null when neither names one.
+    public static string? ResolveAssistant(Project? project, SessionProfile? profile) =>
+        _FirstNonBlank(project?.Assistant, profile?.Assistant);
+
+    // AC-1071: what a resolved assistant is said as. Named `assistant` is only half of it — a bare "Gebruik Zyra"
+    // named a persona without closing the question an instruction file asks first, and sessions stalled on that
+    // question unseen (AC-920: a prose question reads as Idle, not NeedsYou). This closes it in so many words.
+    // The cap covers the name alone, never the clause after it: a hand-edited cockpit.json with an absurdly long
+    // assistant must lose its own name to truncation, not the sentence that closes the question.
+    public static string AssistantNote(string assistant) =>
+        $"{_CappedSentence("This session runs as ", ProjectPromptText.OneLine(assistant.Trim()), ".")} {AssistantChoiceIsMade}";
+
+    // AC-1071: the half that cancels the question, pinned by name so it reads as a decision rather than wording
+    // anyone may trim — without it the note names an assistant but leaves "ask first, and wait" standing.
+    public const string AssistantChoiceIsMade =
+        "That choice is already made here, so do not ask which assistant, persona or brain to load and do not " +
+        "wait for an answer before starting — load it as your own instruction files describe, and carry on.";
+
+    // Null unless one of the two actually names an assistant — an empty note must never reach `_JoinPrompts`.
+    private static string? _AssistantNote(Project? project, SessionProfile? profile) =>
+        ResolveAssistant(project, profile) is { } assistant ? AssistantNote(assistant) : null;
 
     // AC-714: names the project, not the operator — a bound shared project's `BehaviorPrompt` can come from a
     // colleague's definition (see `SharedProjectBindingDialogViewModel`/`DepotSharedProjectSource`). Bounded to
