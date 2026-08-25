@@ -7,13 +7,9 @@ using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Delegation;
 
-// The MCP tools a session uses to hand work to another profile (#67), exposed as
-// `mcp__cockpit-orchestrator__*`. Deliberately thin: every rule about what may be delegated to whom lives
-// in `IDelegationService`, so this class only translates calls and reports refusals honestly — a
-// tool that swallowed a rejection would leave the calling agent guessing why nothing happened.
-// Asynchronous by design: `delegate_task` returns a task id straight away rather than blocking until the
-// sub-agent is done. A delegated task can run for minutes, which no MCP call should sit through, and the caller
-// keeps the choice between polling progress and just asking for the result.
+// The MCP tools a session uses to hand work to another profile (#67), exposed as `mcp__cockpit-orchestrator__*`.
+// Deliberately thin: every delegation rule lives in `IDelegationService`, this class only translates calls
+// and reports refusals honestly. `delegate_task` returns a task id right away, not blocking for minutes.
 internal sealed class OrchestratorTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
@@ -234,10 +230,9 @@ internal sealed class OrchestratorTools
         return JsonSerializer.Serialize(_delegation.ListTasks(filter, McpRequestContext.CurrentPaneId), SerializerOptions);
     }
 
-    // Only the events worth reading back to an agent carry text; the rest are reported by type alone, so a
-    // progress poll stays small. A tool result carries its content — above all a gate denial or tool error, which
-    // is otherwise invisible (AC-100/AC-113): without it a caller sees a tool ran and a result came back, but not
-    // why write_file was refused. An error result is marked so a poll can tell a failure from a normal return.
+    // Only events worth reading back to an agent carry text, keeping a progress poll small. A tool result
+    // carries its content — above all a gate denial or tool error (AC-100/AC-113) — else a caller sees a
+    // tool ran but not why it was refused. An error result is marked so a poll can tell failure from success.
     private static string? _Describe(Cockpit.Core.Sessions.SessionEvent evt) => evt switch
     {
         Cockpit.Core.Sessions.AssistantTextCompleted text => text.Text,

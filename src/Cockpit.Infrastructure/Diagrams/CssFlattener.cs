@@ -3,11 +3,9 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Infrastructure.Diagrams;
 
-// Mermaider themes its SVG output through CSS custom properties and color-mix() in the emitted <style>
-// block — none of which Svg.Skia's CSS support understands, so an unresolved use falls back to the SVG spec
-// default (no stroke, black fill). This walks the string with paren-depth tracking rather than a regex — a
-// regex cannot match balanced/nested calls like color-mix(in srgb, var(--accent, var(--fg)) 8%, var(--bg))
-// — and flattens every var()/color-mix() to a literal value, then converts any leftover rem to px.
+// Resolves CSS custom properties and color-mix() in Mermaider's SVG output, which Svg.Skia cannot parse
+// (unresolved uses fall back to no stroke, black fill). Uses paren-depth tracking instead of a regex, since
+// a regex cannot match balanced/nested calls like color-mix(in srgb, var(--accent, var(--fg)) 8%, var(--bg)).
 internal static partial class CssFlattener
 {
     private const double RootFontSizePx = 16;
@@ -27,10 +25,9 @@ internal static partial class CssFlattener
         return ConvertRemToPx(flattened);
     }
 
-    // Mermaider 0.12.2 never emits a :root selector. The base roles (--bg, --fg, ...) live in the root
-    // <svg>'s own style="" attribute, and the derived ones (--_*, --fs-*) live in a `svg { }` rule inside the
-    // <style> block, referencing the base roles by var(). :root is parsed too in case a future Mermaider
-    // version (or a hand-authored source) starts using it, but it is dead against today's output.
+    // Mermaider 0.12.2 never emits a :root selector; base roles live on the root <svg>'s style="" attribute
+    // and derived ones in a `svg { }` rule. :root is still parsed for a future Mermaider version or
+    // hand-authored source, though it is dead against today's output.
     private static Dictionary<string, string> ParseRootCustomProperties(string svg)
     {
         var properties = new Dictionary<string, string>();
@@ -262,10 +259,9 @@ internal static partial class CssFlattener
             $"CssFlattener: custom property '{name}' has no declared value and no var() fallback.");
     }
 
-    // color-mix(in srgb, colorA [p1%], colorB [p2%]) — the colorspace keyword is ignored and channels are
-    // blended linearly in sRGB.
-    // ponytail: sRGB channel lerp, not perceptual color-space mixing — upgrade to true CSS Color 4 mixing
-    // if a theme ever visibly bands.
+    // color-mix(in srgb, colorA [p1%], colorB [p2%]) — colorspace keyword ignored, channels blended linearly.
+    // ponytail: sRGB channel lerp, not perceptual mixing — upgrade to true CSS Color 4 mixing if a theme
+    // ever visibly bands.
     private static string ResolveColorMix(string args)
     {
         var stops = SplitTopLevel(args, ',').ConvertAll(p => p.Trim()).Skip(1).Select(ParseColorStop).ToList();

@@ -10,15 +10,9 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Verify;
 
-// The `cockpit-verify` MCP tool (AC-86): closes the visual verify loop so UI work is not delivered blind
-// (Iron Law #9). The agent triggers the runner registered for its project; the tool runs that registered command
-// behind an operator consent, then hands back the text snapshot it produced on the tool result — the channel every
-// provider already reads — and, only for a screenshot a tool result cannot carry, feeds an image into the session.
-//
-// The agent can only trigger a *registered* runner, never supply a command: the command lives in the
-// registry the operator wrote, so "verify" cannot become a path to arbitrary command execution. Each run is still
-// gated by the shared AC-47 consent broker (Dangerous, the verbatim command), which fails closed when no operator
-// can be asked.
+// The `cockpit-verify` MCP tool (AC-86): closes the visual verify loop so UI work is not delivered blind (Iron
+// Law #9). The agent can only trigger a *registered* runner, never supply a command, so "verify" cannot become
+// a path to arbitrary command execution; each run is still gated by the shared AC-47 consent broker, fail-closed.
 internal sealed class VerifyMcpTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
@@ -94,10 +88,8 @@ internal sealed class VerifyMcpTools
         try
         {
             // Clear the previous run's output first, then only read a file this run actually wrote (written at or
-            // after runStartedUtc). Together that means a command which fails before it writes fresh output — a broken
-            // build exiting non-zero — can never have a leftover snapshot read back and vouched for as the current UI,
-            // even if the delete itself was refused (a locked file). That is the one thing this loop exists to prevent
-            // (Iron Law #9).
+            // after runStartedUtc), so a command failing before it writes fresh output can never have a leftover
+            // snapshot read back and vouched for as the current UI — the one thing this loop exists to prevent (Iron Law #9).
             _ClearStaleOutputs(runner);
             var runStartedUtc = DateTime.UtcNow;
 
@@ -257,10 +249,8 @@ internal sealed class VerifyMcpTools
         value.Length <= maxChars ? value : value[^maxChars..];
 
     // Fold any character a consent surface could render as a line break out of the runner's fields before they go
-    // verbatim into the Dangerous prompt, so an odd stored value cannot smuggle in reassuring extra lines and bury
-    // what the operator is approving (cf. AC-80/AC-92, the same flattening the terminal and worktree tools do). The
-    // Unicode line/paragraph/next-line separators (0x2028/0x2029/0x0085) are compared numerically so no raw separator
-    // sits in this source.
+    // verbatim into the Dangerous prompt, so an odd stored value cannot smuggle in extra lines and bury what the
+    // operator is approving (cf. AC-80/AC-92). Unicode separators are compared numerically so none sit in source.
     private static string _SingleLine(string value) =>
         new(value.Select(character =>
             char.IsControl(character) || character == 0x2028 || character == 0x2029 || character == 0x0085

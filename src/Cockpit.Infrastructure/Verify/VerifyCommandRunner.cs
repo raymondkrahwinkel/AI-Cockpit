@@ -7,11 +7,9 @@ using Cockpit.Core.Verify;
 
 namespace Cockpit.Infrastructure.Verify;
 
-// Runs a verify runner's registered command as a child process (AC-86). The command and its arguments go through
-// `ProcessStartInfo.ArgumentList` — never a shell string — so nothing the operator wrote is re-parsed,
-// and both output pipes are drained concurrently so a chatty child cannot deadlock by filling one while we wait on
-// the other. A run that outlives the timeout has its whole process tree killed; everything is fail-soft, so the
-// tool gets a `VerifyRunResult` to report rather than an exception to handle.
+// Runs a verify runner's registered command as a child process (AC-86), via `ProcessStartInfo.ArgumentList`
+// (never a shell string) so nothing the operator wrote is re-parsed. Both output pipes are drained concurrently
+// so a chatty child cannot deadlock; everything is fail-soft, so the tool gets a `VerifyRunResult` to report.
 internal sealed class VerifyCommandRunner : IVerifyCommandRunner, ISingletonService
 {
     private static readonly TimeSpan RunTimeout = TimeSpan.FromMinutes(5);
@@ -24,11 +22,9 @@ internal sealed class VerifyCommandRunner : IVerifyCommandRunner, ISingletonServ
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            // Same reason as GitCli's (AC-339): unset, .NET decodes a redirected stream with the console code page,
-            // which on Windows is not UTF-8. Build and test tools write UTF-8 — an accented path in a compiler error,
-            // the ✓/✗ a test runner prints — and the operator would read the mangling as their tool being broken.
-            // Only the panel's text is at stake here, not a decision, so a tool that still emits the ANSI code page
-            // renders a wrong glyph rather than anything worse; UTF-8 is the better bet by a wide margin.
+            // Same reason as GitCli's (AC-339): unset, .NET decodes a redirected stream with the console code
+            // page, not UTF-8 on Windows, and build/test tools write UTF-8 (accented paths, ✓/✗). Only the
+            // panel's text is at stake, not a decision, so UTF-8 is the better bet by a wide margin.
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
             CreateNoWindow = true,

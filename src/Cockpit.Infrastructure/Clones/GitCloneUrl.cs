@@ -2,16 +2,9 @@ using System.Text;
 
 namespace Cockpit.Infrastructure.Clones;
 
-// Parses a git remote URL into the pieces the clone manager needs (AC-90): the URL git is actually handed, the
-// managed slug/folder `host/org/repo` the clone lives under, and a normalized identity two URLs are compared
-// by for de-duplication. A pure value with no I/O, so the fiddly parsing — scp-style SSH, nested groups, a trailing
-// `.git`, credentials in an HTTPS URL — is testable on its own.
-// Security (a binding project rule): for an `http`/`https` URL any `user:password@` credentials are
-// stripped from `RemoteUrl` before it ever reaches git, the registry, or a log. A token in the URL
-// would otherwise land in `.git/config`, the process arguments and the logs — the exact leak the design
-// forbids — and dropping it forces git down the host credential-helper path instead, which is v1's whole auth
-// model. An SSH URL keeps its `git@` user — that is the SSH login the clone needs, not a secret — but any
-// password after it (`user:secret@host`) is stripped just the same, so no scheme smuggles a credential through.
+// Parses a git remote URL into the pieces the clone manager needs (AC-90): the URL git is handed, the
+// managed slug/folder the clone lives under, and a normalized identity used for de-duplication.
+// Security: `user:password@` credentials are stripped from `RemoteUrl` for HTTP(S); an SSH `git@` login user is kept, only its password stripped.
 internal sealed class GitCloneUrl
 {
     private GitCloneUrl(string remoteUrl, string host, IReadOnlyList<string> segments)
@@ -154,9 +147,8 @@ internal sealed class GitCloneUrl
 
         var isHttp = scheme is "http" or "https";
 
-        // Rebuild the URL git is handed. For HTTP(S), drop any userinfo — a token there is the forbidden leak — so
-        // git falls back to the host credential helper. For SSH (and any other scheme) keep the login user but strip
-        // any password after it: the git@ user is the SSH login, not a secret, whereas a "user:secret@host" password
+        // Rebuild the URL git is handed. For HTTP(S), drop any userinfo so git falls back to the host credential
+        // helper. For SSH (and any other scheme) keep the login user but strip any password after it — that
         // would otherwise reach argv, .git/config and the registry verbatim.
         var remoteUrl = isHttp
             ? _BuildHttpRemoteUrl(scheme, uri, segments)
@@ -165,10 +157,9 @@ internal sealed class GitCloneUrl
         return new GitCloneUrl(remoteUrl, uri.Host.ToLowerInvariant(), segments);
     }
 
-    // Removes a "user:password@" password from a scheme URL's userinfo while keeping the login user and everything
-    // else — the repository path included — verbatim. String surgery rather than a Uri rebuild so an SSH path (which
-    // may be absolute or ~-relative) is handed to git exactly as the operator gave it. The last '@' inside the
-    // authority is the userinfo/host separator, so a password that itself contains '@' is still cut correctly.
+    // Removes a "user:password@" password from a scheme URL's userinfo, keeping everything else verbatim.
+    // String surgery rather than a Uri rebuild so an SSH path (absolute or ~-relative) reaches git unchanged.
+    // The last '@' in the authority is the userinfo/host separator, so an '@' inside the password is handled too.
     private static string _StripUrlPassword(string url)
     {
         var schemeSep = url.IndexOf("://", StringComparison.Ordinal);
@@ -220,9 +211,8 @@ internal sealed class GitCloneUrl
     }
 
     // Splits a repository path into sanitized, lowercased segments, dropping a trailing ".git" on the last one.
-    // Lowercased so a host that treats case as equal (GitHub) does not clone the same repository twice under two
-    // folders; sanitized so nothing an operator pastes can escape the managed root (no "..", no separators inside a
-    // segment). Empty when the path names no repository.
+    // Lowercased so a host that treats case as equal does not clone the same repository twice under two folders;
+    // sanitized so nothing an operator pastes can escape the managed root. Empty when the path names no repository.
     private static List<string> _Segments(string path)
     {
         var raw = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

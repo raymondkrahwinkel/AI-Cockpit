@@ -5,12 +5,9 @@ using Cockpit.Core.Abstractions.Hotkeys;
 
 namespace Cockpit.Infrastructure.Hotkeys;
 
-// Global hotkeys via SharpHook's low-level keyboard hook (`WH_KEYBOARD_LL` on Windows, X11's input on
-// Linux) — the counterpart of `PortalGlobalHotkeyService`. Filters every raw key event down to
-// the registered keys and reports their press/release edges; unlike Win32's `RegisterHotKey`
-// (press-only), the low-level hook sees both edges, which push-to-talk's hold needs.
-// One hook serves every binding: it is installed once and reads the current key map per event, so re-arming
-// on a changed key is an assignment rather than a second hook on the same keyboard.
+// Global hotkeys via SharpHook's low-level keyboard hook (Windows, X11) — the counterpart of
+// `PortalGlobalHotkeyService`. Unlike Win32's `RegisterHotKey` (press-only), the low-level hook sees
+// both press/release edges, which push-to-talk's hold needs. One hook serves every binding; re-arming is just an assignment, not a second hook.
 internal sealed class SharpHookGlobalHotkeyService(ILogger<SharpHookGlobalHotkeyService> logger) : IGlobalHotkeyService
 {
     private readonly SimpleGlobalHook _hook = new(GlobalHookType.Keyboard);
@@ -20,11 +17,9 @@ internal sealed class SharpHookGlobalHotkeyService(ILogger<SharpHookGlobalHotkey
 
     private IReadOnlyDictionary<string, string> _triggerDescriptions = new Dictionary<string, string>();
 
-    // Which hotkeys are down, so a hold collapses to one edge whatever the OS repeats.
-    // Behind a lock, and not out of habit: it is written from the hook's own thread on every key event and
-    // cleared from the caller's thread on every arm. While this was a single `bool` — one key, one hold —
-    // that pairing was harmless, because a bool write cannot tear. A set can, and the failure it buys is a hold
-    // whose key-up finds nothing to remove: push-to-talk never hears the release and the microphone stays open.
+    // Which hotkeys are down, so a hold collapses to one edge whatever the OS repeats. Behind a lock:
+    // written from the hook's own thread on every key event and cleared from the caller's thread on every
+    // arm. Unlike a single bool, a set write can tear, and a torn write leaves a key-up finding nothing to remove.
     private readonly HashSet<string> _held = [];
     private readonly Lock _heldGate = new();
 
@@ -39,9 +34,8 @@ internal sealed class SharpHookGlobalHotkeyService(ILogger<SharpHookGlobalHotkey
         _triggerDescriptions.GetValueOrDefault(hotkeyId);
 
     // Arms the hook on exactly the given keys. Safe to call again: it replaces the key map, which is how
-    // changing a key in Options takes effect without a restart.
-    // The key used to be read exactly once, at startup, and nothing re-armed. Changing it in Options saved the
-    // new key and left the hook listening for the old one — with nothing anywhere to say so.
+    // changing a key in Options takes effect without a restart (previously the key was read once at
+    // startup and never re-armed, silently leaving the hook listening for the old key).
     public Task StartAsync(IReadOnlyList<GlobalHotkeyBinding> bindings, CancellationToken cancellationToken = default)
     {
         var armed = new Dictionary<KeyCode, GlobalHotkeyBinding>();
@@ -127,12 +121,9 @@ internal sealed class SharpHookGlobalHotkeyService(ILogger<SharpHookGlobalHotkey
         TriggerDescriptionsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    // The OS repeats a held key, so a hold has to collapse to one edge: the id is only reported as pressed
-    // when it was not already down. Push-to-talk depends on this — a repeat would restart the recording.
-    //
-    // The subscriber is called outside the lock. Everything it goes on to do — marshalling to the UI thread,
-    // opening a microphone — is not work to hold a lock through, and a lock held across a hand-off to other
-    // people's code is how a deadlock starts.
+    // The OS repeats a held key, so a hold has to collapse to one edge: reported as pressed only when not
+    // already down. Push-to-talk depends on this — a repeat would restart the recording. The subscriber is
+    // called outside the lock, since a lock held across a hand-off to other people's code is how a deadlock starts.
     private void _OnKeyPressed(object? sender, KeyboardHookEventArgs e)
     {
         if (!_armed.TryGetValue(e.Data.KeyCode, out var binding))
@@ -171,10 +162,9 @@ internal sealed class SharpHookGlobalHotkeyService(ILogger<SharpHookGlobalHotkey
         }
     }
 
-    // SharpHook's KeyCode enum mirrors libuiohook's naming ("Vc" + the key name), which lines up with
-    // Avalonia's Key enum names for the simple function/alphanumeric keys these hotkeys support (e.g.
-    // Avalonia's "F9" -> libuiohook's "VcF9") — good enough for the documented defaults and similarly
-    // named keys; an exotic configured key name that has no "Vc"-prefixed match just logs and no-ops.
+    // SharpHook's KeyCode mirrors libuiohook's naming ("Vc" + key name), matching Avalonia's Key names
+    // for simple function/alphanumeric keys (e.g. "F9" -> "VcF9") — good enough for documented defaults;
+    // an exotic key name with no "Vc"-prefixed match just logs and no-ops.
     private static KeyCode? _ParseKeyCode(string avaloniaKeyName) =>
         Enum.TryParse<KeyCode>("Vc" + avaloniaKeyName, ignoreCase: true, out var keyCode) ? keyCode : null;
 }

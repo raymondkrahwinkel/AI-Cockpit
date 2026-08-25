@@ -5,10 +5,9 @@ using Cockpit.Infrastructure.Auditing;
 
 namespace Cockpit.Infrastructure.Delegation;
 
-// Appends the delegation audit trail (#67) to `delegation-audit.jsonl` next to `cockpit.json`. The
-// append-only, never-throws, JSON-per-line machinery — and the tail-read that keeps the last N without loading
-// the whole file — lives in `JsonlAuditLog{T}`; this only names the file and trims the prompt so the
-// log stays a record of what was handed out, not a copy of every transcript.
+// Appends the delegation audit trail (#67) to `delegation-audit.jsonl` next to `cockpit.json`. The append-only,
+// never-throws, tail-read machinery lives in `JsonlAuditLog{T}`; this only names the file and trims the prompt
+// so the log stays a record of what was handed out, not a copy of every transcript.
 internal sealed class DelegationAuditLog : JsonlAuditLog<DelegationAuditEntry>, IDelegationAuditLog, ISingletonService
 {
     // Prompts are trimmed: the log is for recognising a task later, not for keeping a copy of every transcript.

@@ -4,22 +4,9 @@ using Cockpit.Core.Secrets;
 
 namespace Cockpit.Infrastructure.Security;
 
-// Watches systemd-logind for this session's lock/unlock on the D-Bus system bus (AC-5). This is the
-// desktop-environment-independent source the research recommended: GNOME, KDE and anything else that integrates with
-// logind expose the operator's lock state as the session's `LockedHint` property.
-//
-// Two things make this work from a real desktop launch, both of which the first cut got wrong. First, the session is
-// resolved from `XDG_SESSION_ID` (falling back to logind's `"auto"`), not from this process's PID: a cockpit
-// started as an AppImage or `.desktop` entry runs under `app.slice` and belongs to no session of its own, so
-// `GetSessionByPID` answered `NoSessionForPID` and the feature never came up. Second, it reacts to
-// `LockedHint` via `PropertiesChanged` rather than the session's `Lock` signal, which GNOME raises only
-// for `loginctl lock-session` and not for an interactive Super+L.
-//
-// Best-effort by nature: on a minimal window manager with no logind lock integration nothing sets the hint, and there
-// is then no portable notification to have. A connection or lookup that fails is logged once and left — the app keeps
-// running with the feature simply inert, never crashed. This half cannot be unit-tested (it needs a live system bus
-// and a real desktop lock), so it is deliberately thin; the gate that decides what a lock means lives in the testable
-// coordinator above it. Raymond live-verifies this on Linux.
+// Watches systemd-logind's `LockedHint` over D-Bus (AC-5), the desktop-independent source across GNOME/KDE.
+// Session resolved from `XDG_SESSION_ID`, not PID — an AppImage/.desktop launch owns no PID-based session.
+// Watches `PropertiesChanged`, not `Lock`, since GNOME only raises `Lock` for `loginctl`, not Super+L.
 internal sealed class LinuxScreenLockMonitor(ILogger<LinuxScreenLockMonitor> logger) : IScreenLockMonitor
 {
     private const string BusName = "org.freedesktop.login1";
