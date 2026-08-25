@@ -5,19 +5,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// The Claude plugin's own transcript reader (weg A) for the host's status (#39): a TTY session runs the real
-// interactive TUI, so there is no parsed event stream — but `claude` writes every session live to
-// `&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;session-id&gt;.jsonl`, so tailing that file gets the
-// turn's activity cleanly without touching the ANSI/TUI stream. Ported from the host's former in-tree reader
-// so the core carries no Claude-format knowledge; the config directory is resolved from this plugin's own
-// opaque `ConfigJson` rather than a host-supplied path.
-//
-// The session id is *not* forced on the launch (undocumented for interactive sessions and does not
-// persist a transcript), so the file is identified as the new transcript that appears after launch — see
-// `SnapshotTranscripts`. It is tailed from its current end via manual byte-level buffering rather
-// than `StreamReader.ReadLine`, which cannot tell a real end-of-file apart from "more is coming"
-// and would emit a partial line the writer has not finished; a stateful `Decoder` carries any
-// UTF-8 multi-byte sequence split across a poll boundary.
+// The Claude plugin's own transcript reader for the host's status (#39): a TTY session runs the real interactive
+// TUI, so there is no parsed event stream, but `claude` writes every session live to a JSONL transcript, tailed
+// via manual byte-level buffering (not `StreamReader.ReadLine`) so a partial line mid-write is never emitted.
 internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
@@ -25,12 +15,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
     public IReadOnlySet<string> SnapshotTranscripts(string configJson) =>
         EnumerateTranscripts(_ResolveStateDirectory(configJson)).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    // AC-276 replaced a 30-second mtime window over <session>/subagents/agent-*.jsonl with the count the CLI
-    // states itself on each turn's turn_duration line. The window was not merely imprecise, it was wrong most of
-    // the time: measured over 547 real sub-agent transcripts, 82.8% fell silent for longer than 30s at least once
-    // while still running (median longest silence 56s, p95 368s, max 3142s). Every one of those silences read as
-    // "finished" and dropped the session to Done until the agent wrote again — the reported flicker. A thinking
-    // pause is indistinguishable from completion by mtime alone, so no choice of window fixes it.
+    // AC-276 replaced a 30-second mtime window over sub-agent transcripts with the count the CLI states itself
+    // on each turn's turn_duration line — measured 82.8% of real sub-agent transcripts went silent past 30s
+    // while still running, each silence misread as "finished" (the reported flicker); mtime can't fix that.
 
     public IAsyncEnumerable<PluginTranscriptActivity> ReadActivityAsync(
         string configJson,
@@ -38,12 +25,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         CancellationToken cancellationToken) =>
         ReadActivityAsync(configJson, knownTranscriptsAtLaunch, statusFile: null, cancellationToken);
 
-    // Tails this session's transcript (AC-609): the file `claude` names in its own statusline snapshot when
-    // the host has one, and only otherwise the pre-launch-snapshot guess the older overload is stuck with.
-    //
-    // The tail is re-resolved whenever the file stops producing, so a session that starts a fresh conversation
-    // mid-pane (`/clear` mints a new session id, and with it a new transcript) is followed across the change
-    // instead of sitting forever on the end of the file it has stopped writing to.
+    // Tails this session's transcript (AC-609): the file `claude` names in its statusline snapshot when the host
+    // has one, else the pre-launch-snapshot guess. Re-resolved whenever the file stops producing, so a fresh
+    // `/clear` conversation (new session id, new transcript) is followed rather than left on a stalled file.
     public async IAsyncEnumerable<PluginTranscriptActivity> ReadActivityAsync(
         string configJson,
         IReadOnlySet<string> knownTranscriptsAtLaunch,
@@ -60,10 +44,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                 yield break;
             }
 
-            // The first file is read from its end — a resumed session continues the record it had, and replaying an
-            // afternoon of history as fresh activity would be worse than the silence it replaces. A file we moved
-            // to is a conversation that started after we were already watching, so it is read whole: it is short by
-            // definition, and its opening lines are the ones that say a new turn is under way.
+            // The first file is read from its end — a resumed session continues its record, and replaying old
+            // history as fresh activity would be worse than the silence it replaces. A file we moved to is read
+            // whole: it's short by definition, and its opening lines say a new turn is under way.
             await foreach (var reading in _TailAsync(transcriptPath, statusFile, fromStart: !first, cancellationToken).ConfigureAwait(false))
             {
                 yield return reading;
@@ -95,10 +78,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         var pendingLine = new StringBuilder();
         var mainTurnComplete = false;
         var lastEmitted = PluginSessionActivity.None;
-        // Work that outlives the turn (AC-276), read from two different signals because the CLI reports them
-        // differently. Sub-agents: a count it states itself on every turn_duration line, so this only ever mirrors
-        // what the provider last said. Shells: no such total exists, so those are tallied by id from their own
-        // start/end lines — see ClaudeTranscriptLineParser for why that asymmetry is safe here.
+        // Work that outlives the turn (AC-276): sub-agents mirror the count the CLI states each turn_duration
+        // line, while shells have no such total and are tallied by id from their own start/end lines — see
+        // ClaudeTranscriptLineParser for why that asymmetry is safe here.
         var pendingSubAgents = 0;
         var outstandingShells = new HashSet<string>(StringComparer.Ordinal);
         // The CLI can write more than one transcript line for the same assistant API response (progressive
@@ -189,12 +171,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                     }
                     else
                     {
-                        // The same notification shape closes sub-agents too, but an end naming an id this reader
-                        // never saw start is not evidence of anything: the tail begins at the end of the file, so a
-                        // session resumed mid-turn legitimately sees ends for work it never saw begin. Inferring a
-                        // sub-agent finished from that would decrement a count belonging to a different, still-live
-                        // agent — reintroducing this ticket's own flicker by another route. Sub-agents are left
-                        // entirely to the count the CLI restates each turn.
+                        // The same notification shape closes sub-agents too, but an unseen-start end is not
+                        // evidence of anything — the tail starts mid-file, so a resumed session legitimately sees
+                        // ends it never saw begin. Sub-agents are left entirely to the CLI's own restated count.
                         outstandingShells.Remove(shellId);
                     }
                 }
@@ -228,16 +207,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         }
     }
 
-    // Reads back what this session has already written (AC-609) — the tail of the very file
-    // `ReadActivityAsync(string, IReadOnlySet{string}, string?, CancellationToken)` follows, named by
-    // the session itself. A TTY session hosts the real TUI, so this file is the only record of it that exists;
-    // without it the cockpit's read surfaces have nothing to answer with but a guess about a pane they can see is
-    // alive.
-    //
-    // Held to `count` rows as it reads rather than after: a session that has been running all day
-    // writes a transcript in the tens of megabytes, and materialising it whole to keep the last thirty rows is a
-    // cost nobody would notice until the day it matters. The whole file is still walked — the total is the thing a
-    // caller needs in order not to report a tail as a conversation.
+    // Reads back what this session has already written (AC-609) — a TTY session hosts the real TUI, so this
+    // file is the only record of it that exists. Held to `count` rows as it reads rather than after: a
+    // day-long session's transcript can run tens of megabytes, so materialising it whole would be wasteful.
     public PluginTranscriptSlice ReadEntries(string? statusFile, int count)
     {
         if (count <= 0 || TranscriptPathFrom(statusFile) is not { } transcriptPath)
@@ -289,14 +261,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         public string? ToolUseId { get; init; }
     }
 
-    // The rows one transcript line contributes — none for the CLI's own bookkeeping lines (mode changes, titles,
-    // file-history deltas), and more than one for a message whose content holds several blocks, which is the
-    // ordinary shape of a turn: some prose, a thinking block, three tool calls.
-    //
-    // A tool result is folded onto the call it belongs to rather than shown as a row of its own, matching how the
-    // SDK path reports one. It is looked up in `pending`, the rows still in hand: results follow
-    // their call immediately, so the only ones that miss are calls made before the slice began — and those become
-    // a row of their own rather than being dropped, since a result with no visible call still says what happened.
+    // The rows one transcript line contributes — none for the CLI's bookkeeping lines, and more than one for a
+    // message with several content blocks. A tool result is folded onto its call (found in `pending`, the rows
+    // still in hand) rather than shown as its own row; a result with no visible call becomes a row of its own.
     private static IEnumerable<_Row> _RowsFrom(string line, List<_Row> pending)
     {
         JsonDocument document;
@@ -406,10 +373,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
             : name;
     }
 
-    // What a tool returned, as text. The CLI writes it as a plain string or as a list of blocks; the blocks that
-    // carry text are joined, and anything else is handed over as the JSON it is rather than silently dropped —
-    // the caller reading this is trying to work out what a session did, and a blank is the one answer that helps
-    // with nothing.
+    // What a tool returned, as text. The CLI writes it as a plain string or a list of blocks; text blocks are
+    // joined, and anything else is handed over as the JSON it is rather than silently dropped — a blank is the
+    // one answer that helps nobody trying to work out what a session did.
     private static string _ResultText(JsonElement block)
     {
         if (!block.TryGetProperty("content", out var content))
@@ -507,27 +473,14 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
             Environment.GetEnvironmentVariable(ClaudeConfigPaths.EnvironmentVariable),
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
-    // How long a session that has a statusline snapshot is given to write one before the guess below is used
-    // anyway. The CLI renders its statusline as it comes up, so this is not a wait anyone sees — it is the bound
-    // on how long a *broken* relay (a settings merge that failed, a script the shell refused to run) costs
-    // before the session falls back to the old behaviour rather than silently getting no status at all.
+    // How long a session with a statusline snapshot is given to write one before the guess below is used
+    // anyway — not a wait anyone sees, but the bound on how long a *broken* relay costs before falling back
+    // to the old behaviour rather than silently getting no status at all.
     private static readonly TimeSpan StatusFilePatience = TimeSpan.FromSeconds(30);
 
-    // This session's transcript: the path `claude` states in its own statusline snapshot, and only failing
-    // that the newest file that was not on disk at launch.
-    //
-    // **Why the snapshot and not the guess (AC-609).** The guess is a race the session frequently loses, and
-    // losing it is silent and permanent. Every other invocation of the CLI on the machine writes a new transcript
-    // too — another pane, an SDK session, a delegated task, a `-p` one-shot, the operator's own terminal —
-    // and several of those are short-lived files that appear, are written once and are never touched again. A
-    // launch that latches onto one of those tails a file that has stopped growing: no line ever arrives, so the
-    // host is handed no activity at all, and its tracker reports the "before any signal" status — Idle — for the
-    // entire life of a session that is working normally. Measured on the reported case, the foreign file was
-    // created 18 seconds before the session's own. There is no window that fixes this, because the reader is
-    // guessing at an identity the CLI is willing to state outright.
-    //
-    // The snapshot's `transcript_path` is that statement. It is also re-read while tailing, so a
-    // `/clear` — which mints a new session id and a new file — is followed rather than lost.
+    // This session's transcript: the path `claude` states in its statusline snapshot, else the newest file not
+    // on disk at launch. AC-609: the guess can silently, permanently latch onto another CLI invocation's
+    // short-lived transcript and report Idle forever — the snapshot states identity outright, and is re-read on `/clear`.
     private static async Task<string?> _WaitForTranscriptAsync(
         string configDir, IReadOnlySet<string> knownTranscriptsAtLaunch, string? statusFile, CancellationToken cancellationToken)
     {
@@ -593,10 +546,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         }
     }
 
-    // Every `&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;id&gt;.jsonl` transcript currently on disk (session-id subfolders
-    // holding tool-results/subagents are skipped — only the flat transcript files count). Internal so
-    // `ClaudeTtyProvider` shares the one definition of what counts as a transcript; the policy for
-    // picking one out of several is deliberately not shared, because the two callers need opposite answers.
+    // Every transcript currently on disk (session-id subfolders holding tool-results/subagents are skipped).
+    // Internal so `ClaudeTtyProvider` shares this one definition; the picking policy is deliberately not
+    // shared, because the two callers need opposite answers.
     internal static IEnumerable<string> EnumerateTranscripts(string configDir)
     {
         var projectsDir = Path.Combine(configDir, "projects");

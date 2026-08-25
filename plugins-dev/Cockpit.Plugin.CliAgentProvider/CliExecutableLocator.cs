@@ -1,30 +1,15 @@
 namespace Cockpit.Plugin.CliAgentProvider;
 
 // Resolves the configured `CliAgentConfig.Command` to a spawnable executable path (#45 fase B1).
-// B2 caveat (design doc §4 "cross-platform exe-detectie"): unlike Claude's bundled `claude.exe`
-// (`ClaudeExecutableLocator` finds it under a known `%APPDATA%` path), Codex/Gemini typically come
-// from `npm i -g` — a `.cmd` shim on Windows, a plain script on *nix. `Process` with
-// `UseShellExecute=false` does not consult `PATHEXT` the way a shell does, so a bare `"codex"`
-// will fail to launch a `codex.cmd` shim even though it is on PATH. This best-effort resolver probes for
-// `.cmd`/`.exe`/`.bat` siblings on Windows; it has not been verified against a real
-// npm-global install location — B2 is to confirm/adjust the discovered path there, not restructure this class.
+// B2 caveat: Codex/Gemini typically come from `npm i -g` — a `.cmd` shim on Windows that `Process`
+// with `UseShellExecute=false` won't find via PATHEXT, so this probes `.cmd`/`.exe`/`.bat` siblings.
 internal static class CliExecutableLocator
 {
     private static readonly string[] _WindowsExecutableExtensions = [".cmd", ".exe", ".bat"];
 
-    // Resolves `command` to a path `ProcessCliSubprocess` can spawn directly.
-    // An absolute/rooted path (including one that already has an extension) is returned unchanged. Then, if a
-    // `managedResolver` is given, a cockpit-managed install of the command (AC-20) wins over PATH.
-    // Otherwise a bare command name is probed against every PATH directory (Windows: trying `.cmd`/`.exe`/`.bat`
-    // per directory, since `System.Diagnostics.Process` does not do PATHEXT resolution itself);
-    // if nothing is found, `command` is returned unchanged so `System.Diagnostics.Process.Start()`
-    // still gets a real attempt (and a real, diagnosable "file not found" if it truly is not installed).
-    //
-    // `command`: The configured command — an absolute pin, or a bare name like `codex`.
-    // `managedResolver`:
-    // Optional lookup for a cockpit-managed copy of the command (typically `name =&gt; host.ResolveManagedCliPath(name)`).
-    // Consulted only for a bare name, after a rooted pin and before PATH — so a pin always wins and a null result
-    // (nothing installed, offline, or the operator removed it) simply falls through to PATH.
+    // Resolves `command` to a path `ProcessCliSubprocess` can spawn directly: a rooted path wins outright,
+    // then a cockpit-managed install (AC-20) beats PATH, then PATH itself (trying `.cmd`/`.exe`/`.bat` per
+    // directory on Windows). If nothing resolves, `command` is returned unchanged for a real, diagnosable attempt.
     public static string Resolve(string command, Func<string, string?>? managedResolver = null)
     {
         if (string.IsNullOrWhiteSpace(command) || Path.IsPathRooted(command))
@@ -50,10 +35,9 @@ internal static class CliExecutableLocator
             }
         }
 
-        // Linux/macOS: an npm/bun/pipx CLI installed into ~/.local/bin (or ~/.bun/bin) is on a login shell's PATH
-        // but not on a GUI or AppImage launch's — so a bare "codex" fails to resolve and the session cannot spawn
-        // even though it is installed. Fall back to the standard user-local bins before giving up. Only for a bare
-        // command name (no separator); a relative path the operator typed is theirs to own.
+        // Linux/macOS: an npm/bun/pipx CLI in ~/.local/bin (or ~/.bun/bin) is on a login shell's PATH but
+        // not on a GUI or AppImage launch's, so fall back there before giving up — only for a bare command
+        // name; a relative path the operator typed is theirs to own.
         if (!OperatingSystem.IsWindows()
             && command.IndexOf(Path.DirectorySeparatorChar) < 0
             && _TryUnixUserBin(command) is { } fromUserBin)

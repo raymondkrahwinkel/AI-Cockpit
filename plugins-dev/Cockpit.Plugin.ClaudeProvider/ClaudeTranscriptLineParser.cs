@@ -3,21 +3,14 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// Parses one line of a `claude` session's live JSONL transcript
-// (`&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;session-id&gt;.jsonl`), extracting the turn-activity,
-// usage and background-work signals the host's TTY status dot (#39) needs. The plugin owns this format
-// knowledge (weg A: it cannot reference the core, and the core must know nothing of Claude's JSONL shape).
+// Parses one line of a `claude` session's live JSONL transcript, extracting the turn-activity, usage and
+// background-work signals the host's TTY status dot (#39) needs. The plugin owns this format knowledge —
+// the core must know nothing of Claude's JSONL shape.
 internal static class ClaudeTranscriptLineParser
 {
-    // Reads the CLI's own count of sub-agents still running, which it writes on the
-    // `{"type":"system","subtype":"turn_duration"}` line that closes every turn (AC-276). The field is only
-    // present when something is pending, so its absence is the count zero — measured across 232 transcripts:
-    // 677 of 2475 turn_duration lines carry it, with values 1..19 and never 0.
-    //
-    // This is a count the provider states, not one this reader keeps: every turn restates it, so a line missed
-    // mid-write costs one stale reading rather than desynchronising a ledger. It counts *sub-agents only* —
-    // measured on 608 turn endings that had a shell but no agent open, 594 carried no field at all — so shells are
-    // tracked separately by `TryReadBackgroundShellTransition`.
+    // Reads the CLI's own count of sub-agents still running, written on the turn_duration line closing every
+    // turn (AC-276); absence means zero. A count the provider states, not one this reader keeps, so a missed
+    // line costs one stale reading rather than desynchronising a ledger. Sub-agents only; shells are separate.
     public static bool TryReadPendingSubAgentCount(string transcriptLine, out int count)
     {
         count = 0;
@@ -52,15 +45,9 @@ internal static class ClaudeTranscriptLineParser
         }
     }
 
-    // Reads a backgrounded shell starting or ending (AC-276), keyed on the `tool_use` id that both ends of
-    // the exchange carry. A start is a `Bash` tool call with `run_in_background: true`; an end is the
-    // `{"type":"queue-operation"}` line whose content holds the CLI's `&lt;task-notification&gt;` block,
-    // naming the same `&lt;tool-use-id&gt;`.
-    //
-    // Unlike the sub-agent count above there is no provider-stated total for shells, so this one *is* a
-    // ledger and carries a ledger's risk: a missed end leaves a shell counted forever. That is deliberate and
-    // bounded — an outstanding shell only withholds the "session finished" notification, never the status, so the
-    // worst case is a missing notification rather than a session stuck on "working".
+    // Reads a backgrounded shell starting or ending (AC-276), keyed on the `tool_use` id both ends carry.
+    // Unlike the sub-agent count above, there is no provider-stated total for shells, so this one *is* a ledger:
+    // a missed end leaves a shell counted forever — bounded, since that only withholds a notification, not the status.
     public static bool TryReadBackgroundShellTransition(string transcriptLine, out string toolUseId, out bool started)
     {
         toolUseId = string.Empty;
@@ -156,14 +143,9 @@ internal static class ClaudeTranscriptLineParser
         return true;
     }
 
-    // Extracts the `usage` object off an assistant transcript line (AC-398) — the same token buckets
-    // `ClaudeStreamJson` reads off the SDK path's `result` event. `messageId` is the
-    // API response (`message.id`) this usage belongs to: the CLI can write more than one transcript line for
-    // the same response (progressive content-block saves within one turn), and every one of those lines repeats
-    // the identical usage figure — the caller must dedupe on this id before summing, or it double- (sometimes
-    // 2-3x-) counts a single API call, the same class of bug as AC-481's cumulative-cost mis-sum. Returns false
-    // (with a null `usage` and `messageId`) for a non-assistant line, one with
-    // no `usage` object, a blank line, or a line that fails to parse as JSON (a tail read landing mid-write).
+    // Extracts the `usage` object off an assistant transcript line (AC-398). `messageId` (`message.id`) is
+    // needed because the CLI can write more than one line for the same API response, each repeating the
+    // identical usage figure — the caller must dedupe on this id before summing, or double-counts a call (AC-481).
     public static bool TryExtractUsage(string transcriptLine, out PluginTokenUsage? usage, out string? messageId)
     {
         usage = null;

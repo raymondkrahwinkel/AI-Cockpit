@@ -4,14 +4,9 @@ using System.Text;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// Real `IClaudeSdkSubprocess` backed by `System.Diagnostics.Process` (Fase 4) — mirrors the
-// host's `ClaudeCliProcess` spawn/UTF-8/dispose discipline (that class is the blueprint; this plugin cannot
-// reference it — weg A). Pure spawn+IO: the driver builds the arguments and environment (including dropping any
-// inherited `ANTHROPIC_*` credential and setting `CLAUDE_CONFIG_DIR`) and hands them in, exactly as the
-// CLI-agent plugin splits `ProcessCliSubprocess` from its driver.
-// Never exercised against a real `claude` process in this sandbox (no logged-in CLI here) — kept as a thin,
-// mockable seam so the driver's turn-taking is unit-tested against a fake; the live end-to-end run requires a
-// logged-in environment.
+// Real `IClaudeSdkSubprocess` backed by `System.Diagnostics.Process` — mirrors the host's `ClaudeCliProcess`
+// spawn/UTF-8/dispose discipline (blueprint only, unreferenceable from this plugin). Never exercised against
+// a real `claude` process here (no logged-in CLI); kept as a thin, mockable seam for the driver's unit tests.
 internal sealed class ProcessClaudeSdkSubprocess : IClaudeSdkSubprocess
 {
     private Process? _process;

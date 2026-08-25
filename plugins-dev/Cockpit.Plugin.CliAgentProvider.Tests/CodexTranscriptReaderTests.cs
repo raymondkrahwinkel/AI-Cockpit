@@ -3,13 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-// `CodexTranscriptReader` (AC-171): before this reader existed, `CliAgentProviderPlugin`
-// registered no `CreateTranscriptReader` for the Codex TTY provider, so the host had no way to tail a
-// Codex session's rollout file — the status dot was set to Idle once at launch and never moved again, no
-// matter how much the session actually did. Locates the session's live rollout file as the new
-// `configDir/sessions/yyyy/MM/dd/rollout-*.jsonl` that appears after launch, waits for it if the launch
-// has not written it yet, tails it from its current end so history is never replayed, and buffers a partial
-// line across polls. Fixture lines below are taken verbatim from real `codex-cli 0.144.4` rollout files.
+// AC-171: without a transcript reader wired up, the host had no way to tail a Codex session's
+// rollout file, so the status dot was set to Idle once at launch and never moved again. This reader
+// locates `configDir/sessions/yyyy/MM/dd/rollout-*.jsonl`, waits for it, and tails from its current end.
 public class CodexTranscriptReaderTests : IDisposable
 {
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-codex-transcript-reader-tests-").FullName;
@@ -72,13 +68,9 @@ public class CodexTranscriptReaderTests : IDisposable
     [Fact]
     public async Task ReadActivityAsync_WhenTheFileAppearsAlreadyContainingTaskStarted_StillYieldsBusy()
     {
-        // The bug this guards (found by adversarial review): unlike Claude's transcript, which is created empty
-        // at launch, codex does not create the rollout file until the operator's first turn actually starts —
-        // by the time the poll in _WaitForNewTranscriptAsync notices the file, it can already contain both
-        // "session_meta" and the first turn's "task_started". Seeking to the end (as the first cut of this
-        // reader did) silently drops that opening Busy signal for exactly the common single-turn session —
-        // reproducing AC-171's own symptom instead of fixing it. This writes the file in one shot, as codex
-        // does, rather than empty-then-append like the other tests here.
+        // Unlike Claude's transcript, codex does not create the rollout file until the first turn starts, so
+        // by the time the poll notices it, it can already contain both "session_meta" and "task_started".
+        // Seeking to the end (the reader's first cut) silently dropped that opening Busy signal.
         var sessionDayDir = Path.Combine(_configDir, "sessions", "2026", "07", "30");
         Directory.CreateDirectory(sessionDayDir);
         var transcriptPath = Path.Combine(sessionDayDir, $"rollout-2026-07-30T12-00-00-{Guid.NewGuid()}.jsonl");

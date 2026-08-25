@@ -1,9 +1,7 @@
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-// `CliAgentConfig`'s `ToString()` override (#45 fase B1, mirrors the Gemini/OpenAI plugin's
-// own `OpenAiCompatConfigTests`): a plain `record`'s auto-generated `ToString()` would print
-// `CliAgentConfig.ApiKey` in the clear — a leak surface anywhere this config lands in a log line
-// or exception message.
+// A plain `record`'s auto-generated `ToString()` would print `CliAgentConfig.ApiKey` in the
+// clear — a leak surface anywhere this config lands in a log line or exception message.
 public class CliAgentConfigTests
 {
     [Fact]
