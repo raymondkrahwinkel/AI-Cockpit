@@ -93,6 +93,37 @@ public class ClusterAccessGateTests
         Assert.NotNull(_WithScopePrefix(asked, "k8s.mutate:"));
     }
 
+    // AC-576 phase 4: a refresh is a write, but Raymond's review of the phase asked that it not share
+    // the generic "k8s.mutate" bucket a real change (a future argo_sync) would use — the difference must show
+    // up in the classification, not just in the operation text.
+    [Fact]
+    public async Task ArgoRefresh_AsksDangerous_NeverRemembered_OnItsOwnScope_NotTheGenericMutationBucket()
+    {
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+        var gate = new ClusterAccessGate(host);
+
+        var result = await gate.AuthorizeArgoRefreshAsync(_Cluster(["argocd"]), "argocd", "refresh Application \"cert-manager\"", PaneId);
+
+        Assert.True(result.IsAllowed);
+        var refresh = _WithScopePrefix(asked, "k8s.argo.refresh:");
+        Assert.NotNull(refresh);
+        Assert.Equal(ConsentRisk.Dangerous, refresh!.Risk);
+        Assert.False(refresh.AllowRemember, "a refresh is never remembered, same as every other write");
+        Assert.Null(_WithScopePrefix(asked, "k8s.mutate:"));
+    }
+
+    [Fact]
+    public async Task ArgoRefresh_OutsideTheAllowedNamespace_AsksNamespaceThenRefresh()
+    {
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+        var gate = new ClusterAccessGate(host);
+
+        await gate.AuthorizeArgoRefreshAsync(_Cluster(["default"]), "argocd", "refresh Application \"cert-manager\"", PaneId);
+
+        Assert.NotNull(_WithScopePrefix(asked, "k8s.namespace:"));
+        Assert.NotNull(_WithScopePrefix(asked, "k8s.argo.refresh:"));
+    }
+
     [Fact]
     public async Task DeniedConnection_BlocksTheAction()
     {

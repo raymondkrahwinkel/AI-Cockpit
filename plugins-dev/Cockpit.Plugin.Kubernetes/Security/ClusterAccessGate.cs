@@ -134,6 +134,27 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             paneId: paneId);
     }
 
+    // AC-576 phase 4: a refresh is idempotent and changes nothing by itself (Argo just re-reads Git and updates
+    // status), but it is still a write, so it gets its own scope — separate from the generic mutation bucket a
+    // real change (e.g. a future argo_sync) would share — and still asks Dangerous, never remembered.
+    public async Task<GateResult> AuthorizeArgoRefreshAsync(ClusterRegistration cluster, string @namespace, string operation, string? paneId)
+    {
+        var namespaced = await AuthorizeNamespacedReadAsync(cluster, @namespace, operation, paneId);
+        if (!namespaced.IsAllowed)
+        {
+            return namespaced;
+        }
+
+        return await _RequestAsync(
+            title: "Kubernetes: refresh an Argo CD Application",
+            operation: operation,
+            cluster: cluster,
+            scope: $"k8s.argo.refresh:{cluster.Id}",
+            risk: ConsentRisk.Dangerous,
+            allowRemember: false,
+            paneId: paneId);
+    }
+
     private async Task<GateResult> _AuthorizeConnectionAsync(ClusterRegistration cluster, string? paneId) =>
         await _RequestAsync(
             title: "Kubernetes: open a connection to a cluster",
