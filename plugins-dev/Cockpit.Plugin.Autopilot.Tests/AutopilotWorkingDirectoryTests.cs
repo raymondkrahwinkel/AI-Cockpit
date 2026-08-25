@@ -8,10 +8,9 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 // cockpit's own — so a run planned from a tracker issue (no session in view) still resolves a folder to work in.
 public class AutopilotWorkingDirectoryTests
 {
-    // Resolve ends in Path.GetFullPath, so a bare "/chosen" comes back drive-rooted on Windows and the test read
-    // as a failure of code that was doing exactly what it promises. These are already-absolute paths on either
-    // platform, so normalising them is a no-op and the expectation stays a literal rather than a second call to
-    // the method under test.
+    // Resolve ends in Path.GetFullPath, so a bare "/chosen" comes back drive-rooted on Windows. These are
+    // already-absolute paths on either platform, so normalising is a no-op and the expectation stays a literal
+    // rather than a second call to the method under test.
     private static readonly string ChosenFolder = Path.Combine(Path.GetTempPath(), "chosen");
     private static readonly string ActiveSession = Path.Combine(Path.GetTempPath(), "active", "session");
 
@@ -38,12 +37,9 @@ public class AutopilotWorkingDirectoryTests
     [Fact]
     public void Resolve_AnswersAnAbsolutePath_EvenWhenItWasGivenARelativeOne()
     {
-        // The normalising is the point of this method, not a detail of it: the git-status check, the worktree and
-        // the confinement each resolve what comes out, and a relative path would let them resolve against different
-        // working directories. Nothing held that — dropping the Path.GetFullPath left all 231 tests green.
-        //
-        // Both sources, because they are separate branches: normalising only the one the operator types would still
-        // leave the session's directory going through raw, and that mutant passed everything.
+        // The normalising is the point of this method: the git-status check, the worktree and the confinement each
+        // resolve what comes out, and a relative path would let them resolve against different working directories
+        // — dropping Path.GetFullPath left all 231 tests green. Both sources are covered because they are separate branches.
         var relative = Path.Combine(".", "a", "..", "b");
         var expected = Path.Combine(Directory.GetCurrentDirectory(), "b");
 

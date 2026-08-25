@@ -3,17 +3,9 @@ using Avalonia.Headless;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-// An Avalonia runtime without a screen (#69). A control cannot be built or attached without a platform, so this gives
-// the tests one, once, letting the workspace body's render path be observed by a test rather than only by the operator.
-//
-// It runs the real `Cockpit.App.App` (not a bare `Application`) so the workspace body resolves
-// the actual Cockpit theme brushes and fonts — the render tests then observe the surface as an operator sees it, and
-// the screenshot render (`AutopilotScreenshotTests`) captures real, themed pixels. `SetupWithoutStarting`
-// runs only `App.Initialize` (the XAML/theme load), never `OnFrameworkInitializationCompleted`, so
-// none of the app's real startup (secrets, cockpit, plugins) fires. Skia with headless drawing on is what lets a
-// frame be captured; the text-only render tests do not need it but share the process-global platform.
-//
-// Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.
+// An Avalonia runtime without a screen (#69), letting the workspace body's render path be observed by a test.
+// Runs the real `Cockpit.App.App` (not a bare `Application`) so it resolves the real theme brushes/fonts, via
+// `SetupWithoutStarting` (XAML/theme load only, no real app startup). Set up by hand since Avalonia.Headless.XUnit needs xunit v3, and this repo is on v2.
 public sealed class HeadlessAvalonia
 {
     private static readonly Lock Gate = new();

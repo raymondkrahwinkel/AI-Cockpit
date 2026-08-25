@@ -23,11 +23,9 @@ public class AutopilotEpicRunnerTests
         public void AddChild(string epicId, string childId, string title, string stage) =>
             _Add(epicId, new TrackerLinkedIssue("parent for", TrackerLinkDirection.Outward, childId, title, stage));
 
-        // Matches the real, empirically-confirmed YouTrack shape (see YouTrackClientLinkedIssuesTests): reading a
-        // sub's OWN links reports its "depends on" targets under Direction.Inward, not Outward — the source side of
-        // that link type sees the mirrored "is required for" name instead. Building the fake with the wrong (Outward)
-        // direction was exactly how the AC-346 review's blocking finding stayed hidden: the fake matched the (buggy)
-        // production filter instead of the real tracker's shape.
+        // Matches the real YouTrack shape (see YouTrackClientLinkedIssuesTests): reading a sub's OWN links reports
+        // "depends on" targets under Direction.Inward, not Outward. Building the fake with the wrong (Outward)
+        // direction was exactly how the AC-346 review's blocking finding stayed hidden.
         public void AddDependsOn(string subId, string dependsOnId) =>
             _Add(subId, new TrackerLinkedIssue("depends on", TrackerLinkDirection.Inward, dependsOnId, string.Empty, null));
 
@@ -214,10 +212,9 @@ public class AutopilotEpicRunnerTests
         Assert.Equal(string.Empty, run.EpicId);
     }
 
-    // AC-346 review, HIGH 4: a sub that itself has "parent for" children (a nested epic) must not be handed unchanged
-    // into the single-issue pipeline — the existing AC-217 CEO-brief text would then fold its whole subtree into one
-    // ungated run, bypassing the one-sub-at-a-time/stop-at-merge-ready gate one level down. The safer of the two
-    // options the review asked to choose between: pause explicitly rather than silently unroll or bypass.
+    // AC-346 review, HIGH 4: a sub that itself has "parent for" children (nested epic) must not be handed unchanged
+    // into the single-issue pipeline — that would fold its whole subtree into one ungated run, bypassing the
+    // one-sub-at-a-time gate. The safer choice: pause explicitly rather than silently unroll or bypass.
     [Fact]
     public async Task ResolveAsync_WhenTheNextSubIsItselfAnEpic_PausesRatherThanHandingItToTheSingleIssuePipeline()
     {
@@ -305,12 +302,9 @@ public class AutopilotEpicRunnerTests
         Assert.True(checker.RefreshCalled);
     }
 
-    // MUTATION TEST (DoD): the "stop bij merge-klaar" gate is that ResolveAsync never advances past a sub until
-    // origin/main actually shows it merged — a second call while the picked sub is still unmerged must return the
-    // SAME sub again, never silently skip ahead to the next one as if the first had already landed. Removing the
-    // `switch (mergeChecker.IsMerged(subId)) { case true: continue; ... }` gate in AutopilotEpicRunner.ResolveAsync (or
-    // replacing it with something that ignores the checker) turns this red: the second call would then advance to
-    // "AC-2" instead of staying on "AC-1", because nothing would still be gating on "is it actually merged".
+    // MUTATION TEST (DoD): the "stop at merge-ready" gate means ResolveAsync never advances past a sub until
+    // origin/main shows it merged — a second call while the picked sub is still unmerged must return the SAME sub
+    // again. Removing the `IsMerged` gate in ResolveAsync turns this red: it would advance to "AC-2" instead of staying on "AC-1".
     [Fact]
     public async Task ResolveAsync_CalledAgainBeforeThePickedSubIsMerged_ReturnsTheSameSub_NeverAutoAdvancing()
     {

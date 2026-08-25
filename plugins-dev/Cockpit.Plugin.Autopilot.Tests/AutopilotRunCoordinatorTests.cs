@@ -8,9 +8,8 @@ using NSubstitute;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The executeStep adapter behind the run-driver (AC-174): per step it embeds an agent session, awaits its
-// done-report, has the still-live CEO validate the result, and returns pass/fail. The MCP tools report through it, so
-// the coordinator also guards which pane may report done, validate, or raise a blockade. The driver's own loop is
-// tested separately; here it is the coordination and the pane gates.
+// done-report, has the still-live CEO validate the result, and returns pass/fail. The driver's own loop is tested
+// separately; here it is the coordination and the pane gates (which pane may report done, validate, or raise a blockade).
 [Collection("avalonia")]
 public class AutopilotRunCoordinatorTests
 {
@@ -125,10 +124,9 @@ public class AutopilotRunCoordinatorTests
     [Fact]
     public async Task RunAsync_CeoSessionEndsBeforeValidating_FailsTheStep_RatherThanHangingOnAVerdictThatCannotCome()
     {
-        // AC-191. The host refuses to start a CEO whose provider does not vouch that it confines its file tools — and
-        // several shipped providers do not vouch it — so the validation turn is sent to a pane that is already gone and
-        // is dropped in silence. Waiting on the verdict alone would hang the run on step one with nothing on screen to
-        // say why. The step must fail with the host's own reason instead, exactly as a step worker that ends early does.
+        // AC-191. The host refuses to start a CEO whose provider does not vouch it confines its file tools, so the
+        // validation turn is sent to a pane that is already gone and dropped in silence. Waiting on the verdict
+        // alone would hang the run with nothing on screen — the step must fail with the host's own reason instead.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
         var context = _Context(_Session("step-pane"));
@@ -330,11 +328,9 @@ public class AutopilotRunCoordinatorTests
     [Fact]
     public async Task RunAsync_AStepSessionThatEndsBeforeReporting_ThenASuccessfulRetry_CountsTheAttemptButNotARework()
     {
-        // AC-347 FIX J: the coordinator's own fault path — a session the host refused to isolate, ending before it
-        // ever reports done — reaches _ExecuteStepAsync's general catch, which must return Faulted, not Rejected: no
-        // CEO ever saw this step's work on the first attempt. With attempts left the step reworks; a passing retry
-        // must then show Attempts == 2 but Reworks == 0, proving the distinction holds through the real coordinator
-        // wiring, not just AutopilotRunDriver's own loop with a fake executeStep.
+        // AC-347 FIX J: the coordinator's fault path — a session the host refused to isolate, ending before it ever
+        // reports done — must return Faulted, not Rejected: no CEO ever saw the work. A passing retry must then show
+        // Attempts == 2 but Reworks == 0, proving the distinction holds through the real coordinator wiring.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
         var ended = new TaskCompletionSource<string?>();
@@ -373,10 +369,9 @@ public class AutopilotRunCoordinatorTests
     [Fact]
     public async Task RunAsync_StepNeverReportsDone_StallDeadlineElapses_FailsTheStep_SettlesBlocked()
     {
-        // AC-192: a step agent that keeps its session live but never reports done (a local model stuck emitting a text
-        // tool-call it never runs) used to hang the whole run after its one nudge — the wait was unbounded. With a hard
-        // stall deadline the step fails, and with no attempts left the run settles Blocked instead of hanging forever.
-        // Short reminder/stall values are injected so the test does not actually wait minutes.
+        // AC-192: a step agent that keeps its session live but never reports done used to hang the whole run after
+        // its one nudge — the wait was unbounded. With a hard stall deadline the step fails and the run settles
+        // Blocked. Short reminder/stall values are injected so the test does not actually wait minutes.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
         var context = _Context(_Session("step-pane"));
@@ -404,11 +399,9 @@ public class AutopilotRunCoordinatorTests
     [Fact]
     public async Task RunAsync_StepMakesToolProgress_IsNotStalled_EvenPastTheStallWindow()
     {
-        // A step that is slow because it is working hard — a long turn with many tool calls — keeps
-        // resetting the stall window through its tool activity, so it is never failed as stalled (unlike AC-192, the
-        // silent agent above). Tool progress is raised across a span well past the stall window; the step is then handed
-        // to the CEO to validate rather than failed. Timing-based: the 30ms progress gap is well under the 100ms stall
-        // window (so each reset lands), while the total span is past it (so only the reset keeps the step alive).
+        // A step that is slow because it is working hard keeps resetting the stall window through its tool
+        // activity, so it is never failed as stalled (unlike AC-192's silent agent). Timing-based: the 30ms progress
+        // gap is well under the 100ms stall window (so each reset lands), while the total span is past it.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
         var stepSession = new ProgressingSession("step-pane");
@@ -446,10 +439,9 @@ public class AutopilotRunCoordinatorTests
     [Fact]
     public async Task ReportValidation_AfterABlockadeLeftRunning_IsRejected_UntilTheRunResumes()
     {
-        // AC-207: after AC-201 a blockade no longer comes from the CEO — it is a worker's consult the CEO escalates to
-        // the operator. This exercises the same validate-after-block race guard through that live mechanism: during the
-        // validation window a consult is escalated, moving the run off Running, so the pending validate must not resolve
-        // mid-blockade and corrupt the run.
+        // AC-207: after AC-201 a blockade no longer comes from the CEO — it is a worker's consult the CEO escalates
+        // to the operator. This exercises the validate-after-block race guard: during the validation window a
+        // consult is escalated, moving the run off Running, so the pending validate must not resolve mid-blockade.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
         var context = _Context(_Session("step-pane"));
@@ -895,10 +887,9 @@ public class AutopilotRunCoordinatorTests
     [Fact]
     public async Task RunAsync_ForAReviewGateStep_ForksAFreshWorktreeOffTheRunBranch_InsteadOfTheSharedOne()
     {
-        // AC-434: a review-gate step never writes to the run's shared worktree — it forks its own throwaway copy off
-        // the run's own branch tip, so two gates reading concurrently can never collide with each other or with the
-        // fix step that later writes there. WorktreePath null (fresh worktree) + WorkingDirectory the run branch
-        // (not the stale base repository) is exactly that request shape.
+        // AC-434: a review-gate step never writes to the run's shared worktree — it forks its own throwaway copy
+        // off the run's branch tip, so concurrent gates never collide with each other or the later fix step.
+        // WorktreePath null (fresh worktree) + WorkingDirectory the run branch is exactly that request shape.
         var plan = _RunningPlan(_HardStep("1") with { IsReviewGate = true });
         var context = _Context(_Session("step-pane"));
         var coordinator = new AutopilotRunCoordinator(_Host(), plan);
@@ -941,11 +932,9 @@ public class AutopilotRunCoordinatorTests
     [Fact]
     public async Task RunAsync_ForAReviewGroup_SerializesCeoValidation_SoEachGateSettlesOnItsOwnVerdict()
     {
-        // Adversarial-review fix (AC-434): two gates' agent work runs fully concurrently, but the coordinator holds
-        // exactly one CEO-validation slot (_validationGate) — the second gate's validation turn must not fire until
-        // the first gate's verdict is resolved and cleared, and each gate must settle on the verdict actually given
-        // for IT. Before the fix, both gates shared one _validation TaskCompletionSource: the second gate's turn
-        // could overwrite the first's, hanging or cross-wiring a verdict — exactly what this proves does not happen.
+        // Adversarial-review fix (AC-434): two gates' agent work runs concurrently, but the coordinator holds
+        // exactly one CEO-validation slot (_validationGate) — each gate must settle on the verdict actually given
+        // for IT. Before the fix, both gates shared one TaskCompletionSource, letting one overwrite the other's turn.
         var stepA = _HardStep("gate-a") with { Title = "Gate A", IsReviewGate = true };
         var stepB = _HardStep("gate-b") with { Title = "Gate B", IsReviewGate = true };
         var plan = _RunningPlanSteps(stepA, stepB);

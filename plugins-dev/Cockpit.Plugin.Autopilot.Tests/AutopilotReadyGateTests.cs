@@ -37,10 +37,9 @@ public class AutopilotReadyGateTests
     [InlineData("\n\n")]
     public void Decide_WithoutAReportedStage_RefusesAndSaysItCouldNotRead(string? reported)
     {
-        // Fail-closed: a tracker that reports nothing has not shown the item is executable, and "cannot tell" must not
-        // read as "go ahead" — that is the whole point of keying on the tracker instead of on the ticket text. The
-        // wording is asserted, not just the refusal: without it this case falls through to the stage-mismatch branch,
-        // which refuses too but tells the operator the item is on "" — true, and useless.
+        // Fail-closed: a tracker that reports nothing has not shown the item is executable, and "cannot tell" must
+        // not read as "go ahead". The wording is asserted, not just the refusal: without it this falls through to
+        // the stage-mismatch branch, which refuses too but tells the operator the item is on "" — true, and useless.
         var decision = AutopilotReadyGate.Decide("A title", reported, "Ready");
 
         Assert.False(decision.IsAllowed);

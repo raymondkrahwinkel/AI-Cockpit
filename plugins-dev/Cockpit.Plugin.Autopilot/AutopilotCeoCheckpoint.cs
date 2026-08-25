@@ -21,8 +21,7 @@ internal static class AutopilotCeoCheckpoint
 
         // The step's own account of what it changed is deliberately not summarised back in: saying "their diffs are
         // gone" while quietly keeping a paraphrase would be the same growing tail under another name.
-        // AC-1051: a raw string literal takes the source file's own line endings, which are CRLF on a Windows
-        // checkout — normalise to '\n' so the carried-over text doesn't depend on how the plugin was checked out.
+        // AC-1051: normalise CRLF to '\n' so the carried-over text doesn't depend on how the plugin was checked out.
         return $"""
             Steps of this run that were already validated, and how they settled:
             {ledger}

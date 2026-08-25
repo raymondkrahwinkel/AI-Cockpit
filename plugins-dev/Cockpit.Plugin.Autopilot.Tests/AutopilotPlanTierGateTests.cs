@@ -6,10 +6,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-// The cost ceiling as the CEO meets it (AC-256): through `AutopilotPlanTools.SetPlan`, not through the
-// rule class. `AutopilotModelTierTests` proves the rule decides correctly; these prove the rule is
-// actually consulted when a plan is emitted — delete that call and the rule stays green while nothing enforces it,
-// which is exactly the shape of defect this ticket was about.
+// The cost ceiling as the CEO meets it (AC-256): through `AutopilotPlanTools.SetPlan`, not the rule class.
+// `AutopilotModelTierTests` proves the rule decides correctly; these prove it is actually consulted when
+// a plan is emitted — delete that call and the rule stays green while nothing enforces it.
 public class AutopilotPlanTierGateTests
 {
     private static readonly IReadOnlyList<PluginProfileInfo> Roster =

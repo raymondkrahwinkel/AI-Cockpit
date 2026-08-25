@@ -1,9 +1,8 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The plan-flow kickoff (AC-189, slice 3): the operator's template choice becomes the CEO's opening turn. A chosen
-// template's body is resolved (its {{issue.*}} tokens filled from the triggering item) and used as the kickoff instead
-// of the hardcoded source kickoff; no template keeps the current behaviour exactly — the source kickoff for a
-// tracker-triggered run, or no kickoff for a CEO-first run.
+// template's body (its {{issue.*}} tokens filled) replaces the hardcoded source kickoff; no template keeps the
+// current behaviour — the source kickoff for a tracker-triggered run, or none for a CEO-first run.
 public class AutopilotTemplateKickoffTests
 {
     private static readonly AutopilotPlanSource _Source =

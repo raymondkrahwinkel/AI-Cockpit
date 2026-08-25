@@ -27,11 +27,9 @@ public class AutopilotCeoBriefTests
     [Fact]
     public void For_ATriggeredRun_TellsTheCeoToReadTheTracker_ButNotToWriteToItWhilePlanning()
     {
-        // AC-212 read/write split: while planning the CEO may READ the tracker (open the issue, pull an epic's "parent
-        // for" children — AC-217), but must NOT move the issue's stage or post notes yet — that is the run's job (the CEO
-        // validator plus the coordinator's auto-advance, AC-202). The write tools autopilot_tracker_stage /
-        // autopilot_tracker_note live on the run-only CEO endpoint and must never be named in the planning brief, or the
-        // CEO searches for, and reports missing, tools it does not have while planning.
+        // AC-212 read/write split: planning may READ the tracker but must NOT move stage or post notes — that is
+        // the run's job (CEO validator + coordinator auto-advance, AC-202). The write tools live on the run-only
+        // CEO endpoint and must never be named in the planning brief, or the CEO reports missing tools while planning.
         var plan = new AutopilotPlan(
             "Ship reading levels in the chat view",
             new AutopilotPlanSource("youtrack", "AC-138", "Reading levels"),
@@ -238,11 +236,9 @@ public class AutopilotCeoBriefTests
     [Fact]
     public void For_SplitsAReviewGatesVerification_NarrowWhileFixing_FullOnTheRoundThatFindsNothing()
     {
-        // AC-433: the expensive half is tied to the round that carries the verdict, and only to that one. Each round is
-        // asserted together with the scope it owns, in one span — asserting the two round descriptions and the two
-        // scopes separately would stay green with the scopes swapped, which is the instruction inverted rather than
-        // weakened. The sentence carrying "a narrow round's regression is caught by the full one" is pinned too: that
-        // is the ticket's fourth criterion, and it is the reason the cheap half is safe to allow at all.
+        // AC-433: each round is asserted with the scope it owns, in one span — asserting descriptions and scopes
+        // separately would stay green with the scopes swapped. The "narrow round's regression is caught by the full
+        // one" sentence is pinned too: it is the ticket's fourth criterion, the reason the cheap half is safe at all.
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
 
         var brief = _Unwrapped(AutopilotCeoBrief.For(plan));

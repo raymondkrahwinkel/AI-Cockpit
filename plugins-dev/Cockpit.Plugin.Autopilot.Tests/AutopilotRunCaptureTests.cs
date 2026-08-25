@@ -1,13 +1,8 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-// `AutopilotRunRecord.Capture` — the write path from live `AutopilotPlan` state to the
-// persisted `AutopilotRunRecord` shape, extracted out of `AutopilotPlanWorkspaceBody._RecordAndNotify`
-// so it is unit-testable without a UI. This is the one place these mappings were previously untested: a mutation
-// replacing the `AutopilotCorrection.Classify` call with a fixed `AutopilotCorrectionKind.None`,
-// dropping `AutopilotStep.Attempts` to 0, hard-coding `AutopilotCorrectionSource.Operator`, or
-// blanking `Ticket`/`RunId`/`BlockadeAnswers`/`PullRequestMissing` all left every existing test
-// green. Every fixture below gives each step and each field its own distinct, recognisable value, so a swapped or
-// hard-coded value cannot hide behind two fixtures happening to share one.
+// `AutopilotRunRecord.Capture` — the write path from live plan state to the persisted record shape, extracted out
+// of `_RecordAndNotify` so it is unit-testable. Previously untested: mutations like a fixed `None` or hard-coded
+// `Operator`/blanked fields left every test green. Each fixture gives each field its own distinct value so a swap can't hide.
 public class AutopilotRunCaptureTests
 {
     private static readonly DateTimeOffset FinishedAt = new(2026, 7, 28, 12, 30, 0, TimeSpan.Zero);

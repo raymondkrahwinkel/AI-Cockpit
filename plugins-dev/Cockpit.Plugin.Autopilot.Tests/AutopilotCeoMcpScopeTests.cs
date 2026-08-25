@@ -19,11 +19,9 @@ public class AutopilotCeoMcpScopeTests
     [Fact]
     public void PlanningCeo_SourceTriggeredRun_AddsTheTrackerReadServers_ButNotTheWriteEndpoint()
     {
-        // AC-212 read/write split: a source-triggered run scopes the planning CEO to the plan endpoint plus the tracker's
-        // READ-only MCP servers (so it can read the issue and, for an epic, pull its children — AC-217). The CEO (write)
-        // endpoint that hosts autopilot_tracker_stage / autopilot_tracker_note is NEVER in the planning scope: it is only
-        // mounted while a run is active, and moving the issue before approval would be premature — stage/notes stay the
-        // run's job (the CEO validator plus the coordinator's auto-advance, AC-202).
+        // AC-212 read/write split: a source-triggered run scopes the planning CEO to the plan endpoint plus the
+        // tracker's READ-only MCP servers. The write endpoint is NEVER in the planning scope — it mounts only while
+        // a run is active, since moving the issue before approval would be premature (stage/notes are the run's job, AC-202).
         var scope = AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: ["YouTrack: Personal"]);
 
         Assert.Equivalent(new[] { AutopilotPlanTools.EndpointName, "YouTrack: Personal" }, scope);

@@ -1,15 +1,8 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-// The AC-174 run driver's bounded loop: steps run in order, a failed step reworks up to the cap and then settles, a
-// hard failure blocks the run, and a step whose execution throws is a failed attempt rather than a crashed run.
-//
-// AC-347: this is also where the `AutopilotStepOutcome.Rejected`/`AutopilotStepOutcome.Faulted`
-// distinction has to hold in the wired system, not just in a direct call to `AutopilotCorrection.Classify`.
-// Before this type existed, `executeStep` returned a plain `bool`, so every failed attempt — a genuine CEO
-// rejection or a session that crashed before any verdict — reworked the same way, which made `Reworks` always
-// equal `Attempts - 1` whenever a step ever left Pending, and left the `attempts &gt; 1` branch of
-// `AutopilotCorrection.Classify` unreachable through the driver. The two tests below run the actual
-// `AutopilotRunDriver` loop (not a hand-built state) to prove the branch is reachable.
+// The AC-174 run driver's bounded loop: steps run in order, a failed step reworks up to the cap and then settles,
+// a hard failure blocks the run, and a throwing step is a failed attempt rather than a crashed run. AC-347: also
+// where Rejected/Faulted must hold in the wired system — `executeStep` used to return a plain `bool`.
 public class AutopilotRunDriverTests
 {
     private static AutopilotStep Step(string id, GateMode mode = GateMode.Skip) =>
@@ -90,10 +83,9 @@ public class AutopilotRunDriverTests
     [Fact]
     public async Task RunAsync_AFaultedAttempt_ThenPassed_CountsTheAttemptButNotARework_AndClassifiesAsRunRestart()
     {
-        // AC-347: the first attempt never reached a verdict (a crash, a stall, a refused isolation, a dead CEO — here
-        // stood in for by Faulted), the retry passes. Attempts must be 2 (both starts counted) but Reworks must stay 0
-        // (no verdict ever sent this step back) — the exact shape AutopilotCorrection.Classify reads as a run restart,
-        // proven by running the actual driver loop rather than calling Classify with a hand-picked state.
+        // AC-347: the first attempt never reached a verdict (stood in for by Faulted), the retry passes. Attempts
+        // must be 2 but Reworks must stay 0 — the exact shape `Classify` reads as a run restart, proven by running
+        // the actual driver loop rather than calling Classify with a hand-picked state.
         var controller = Approved(Step("1"));
         var attempt = 0;
         var driver = new AutopilotRunDriver(controller, maxAttempts: 2);

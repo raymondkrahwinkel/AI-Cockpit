@@ -5,19 +5,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-// The start gate as it is actually wired (AC-345): the "plan" intent a tracker sends, through the handler the plugin
-// registers. `AutopilotReadyGateTests` covers the decision itself; this covers that the decision is
-// consulted at all, and what a refusal does — without it, deleting the gate call leaves every test green.
-// Asserted with xunit's own Assert rather than the FluentAssertions the older files in this project use: that
-// package is commercially licensed from v8 on.
-//
-// Every launch here is pointed at a throwaway origin+clone rather than at whatever directory the test process
-// happens to run in. The plugin wires the real `GitEpicSubMergeChecker` against
-// `host.Sessions.ActiveSessionWorkingDirectory`, falling back to `Directory.GetCurrentDirectory`;
-// leaving that fallback in play made the epic tests depend on the ambient repository. Where git cannot answer at all
-// — a copied tree whose `.git` points somewhere unreachable, as a container that receives the working directory
-// rather than a checkout gets — `IsMerged` answers null for every sub and the epic-runner pauses the chain by
-// design, so the epic test failed there while passing on a developer's machine. The repository is now the test's own.
+// The start gate as it is actually wired (AC-345), through the handler the plugin registers; `AutopilotReadyGateTests`
+// covers the decision itself. Uses xunit's own Assert, not FluentAssertions (commercially licensed from v8 on).
+// Every launch is pointed at a throwaway origin+clone: the plugin's `Directory.GetCurrentDirectory` fallback made epic tests depend on the ambient repository.
 public class AutopilotPlanIntentTests : IDisposable
 {
     // A bare "origin" plus a clone pushed to it, the same shape GitEpicSubMergeCheckerTests uses — enough for
@@ -235,10 +225,9 @@ public class AutopilotPlanIntentTests : IDisposable
     public async Task Plan_OnAnEpicWithAReadySub_GoesThroughToPlanningOnTheSub_NotTheEpic()
     {
         var (handler, tracker) = Started();
-        // The merge check runs against this class's own throwaway origin/main (see the type's remarks), whose only
-        // commit subject is "seed commit" — so no sub id can read as already merged, and no ambient repository's
-        // history or reachability can decide this test. The distinctive id is kept anyway: it costs nothing and keeps
-        // the assertion honest if someone ever seeds that repository with real-looking commits.
+        // The merge check runs against this class's own throwaway origin/main, whose only commit is "seed commit" —
+        // so no sub id can read as already merged, and no ambient repository can decide this test. The distinctive
+        // id is kept anyway: it costs nothing and keeps the assertion honest.
         tracker.AddChild("AC-345", "ZZ-999901", "The first sub", "Ready");
 
         var result = await handler(Plan("Backlog")); // the epic's own stage is irrelevant — only the sub's is checked

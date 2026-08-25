@@ -10,11 +10,8 @@ using NSubstitute;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // This plugin's half of the AC-338 theme-palette baseline: what its own surfaces actually paint, held against a
-// committed file the same way `Cockpit.App.ViewTests.ThemePaletteBaselineTests` holds the host's. Two
-// surfaces stand in for the plugin — the plan-flow workspace (in its default, no-run state) and the settings
-// dialog (on the section it opens on).
-// To re-record after an intended change: run with `COCKPIT_UPDATE_THEME_BASELINES=1`, review the diff, then
-// run again without it. The rewriting run still fails on purpose.
+// committed file the same way `Cockpit.App.ViewTests.ThemePaletteBaselineTests` holds the host's, using the
+// plan-flow workspace and settings dialog. To re-record: run with `COCKPIT_UPDATE_THEME_BASELINES=1`, then rerun without it.
 [Collection("avalonia")]
 public class ThemePaletteBaselineTests
 {
@@ -41,9 +38,8 @@ public class ThemePaletteBaselineTests
         ThemePaletteBaseline.VerifyNoOrphans(BaselineDirectory, SceneNames);
 
     // Proves the harness is honest before any baseline built on it is believed (AC-337): the theme's text colour
-    // arrives through a selector, which only runs once a control reaches a shown window's styling root. A tree
-    // that is only measured, never shown, would still resolve its resource lookups and pass a plausible-looking
-    // but wrong report.
+    // arrives through a selector that only runs once a control reaches a shown window's styling root — a tree
+    // only measured, never shown, would still resolve resource lookups and pass a plausible but wrong report.
     [Fact]
     public void TheHarness_ShowsItsWindow_SoTheThemesSelectorsHaveRun()
     {

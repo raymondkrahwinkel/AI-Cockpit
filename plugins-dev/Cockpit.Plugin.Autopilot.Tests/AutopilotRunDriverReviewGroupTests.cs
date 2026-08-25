@@ -100,10 +100,9 @@ public class AutopilotRunDriverReviewGroupTests
     [Fact]
     public async Task RunAsync_HoldsTheSynthesizedFixStepToTheCostCeiling_BeforeItIsInserted()
     {
-        // AC-256: the fix step copies the gate's profile and model, and a review gate is exempt from the run's cost
-        // ceiling — so this is the one step that reaches the worktree without plan emission ever having checked its
-        // tier. The hook has to be applied, and applied before the step is inserted, or the plan carries the
-        // unchecked model even if the executed one was fine.
+        // AC-256: the fix step copies the gate's profile and model, and a review gate is exempt from the run's
+        // cost ceiling — so this is the one step that reaches the worktree without plan emission ever checking its
+        // tier. The hook must be applied before the step is inserted, or the plan carries the unchecked model.
         var controller = Approved(Gate("code-review"));
         var driver = new AutopilotRunDriver(
             controller,
@@ -271,10 +270,9 @@ public class AutopilotRunDriverReviewGroupTests
     [Fact]
     public async Task RunAsync_TwoNonAdjacentReviewGateGroups_ProduceDistinctFixSteps_NoIdCollision()
     {
-        // Adversarial-review fix: AC-434's contiguity rule (AutopilotPlan.NextPendingGroup) can turn two non-adjacent
-        // review gates into two SEPARATE single-gate groups. Each group's _RunReviewGroupAsync starts counting
-        // rounds at 1 independently — the fix step's id must stay unique across both, or the second group's fix step
-        // silently reads (and overwrites) the first's.
+        // Adversarial-review fix: AC-434's contiguity rule can turn two non-adjacent review gates into two SEPARATE
+        // single-gate groups, each counting rounds from 1 independently — the fix step's id must stay unique across
+        // both, or the second group's fix step silently reads (and overwrites) the first's.
         var implement = new AutopilotStep("implement", "Implement", "d", "Claude", "Sonnet", "brief", "acc", GateMode.Hard, AutopilotStepStatus.Passed);
         var controller = Approved(Gate("gate-a"), implement, Gate("gate-b"));
         var driver = new AutopilotRunDriver(controller, maxAttempts: 3);

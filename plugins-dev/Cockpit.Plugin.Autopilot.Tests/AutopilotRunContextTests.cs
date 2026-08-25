@@ -2,10 +2,9 @@ using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-// The pure decision logic a run context carries: the edge guard that fires the "needs you" toast exactly once when a
-// run enters the AwaitingOperator wait (AC-194), and the settled-outcome classification that decides a run is recorded
-// in history rather than silently dropped — including a run the operator stopped (AC-196). Both are extracted as pure
-// statics precisely so they can be exercised here without a host or a UI thread.
+// The pure decision logic a run context carries: the edge guard that fires the "needs you" toast exactly once when
+// a run enters AwaitingOperator (AC-194), and the settled-outcome classification that records a run in history
+// rather than silently dropping it — including an operator-stopped run (AC-196). Both are pure statics.
 public class AutopilotRunContextTests
 {
     [Fact]
@@ -195,11 +194,9 @@ public class AutopilotRunContextTests
     [Fact]
     public void ValidatorCeoRequest_NamesItsOwnPermissionMode_SoAProfileSavedInBypassCannotDecideIt()
     {
-        // The confinement the request above asks for is only granted if the provider vouches for it, and a
-        // permission-based provider stops vouching in a bypass mode. Naming a mode here is what drops whatever the CEO
-        // profile has stored (the host keeps the profile's default when a request names none) — without it, a profile
-        // saved on bypassPermissions makes the host's fail-closed gate refuse the validator, and the run waits on a CEO
-        // that never starts (AC-191).
+        // Confinement is only granted if the provider vouches for it, and a permission-based provider stops
+        // vouching in a bypass mode. Naming a mode here drops whatever the CEO profile has stored — without it, a
+        // profile saved on bypassPermissions makes the host refuse the validator and the run waits on a CEO that never starts (AC-191).
         var storage = new FakeStorage();
         var settings = new AutopilotSettings(storage);
         settings.SetAutonomyMode("bypassPermissions");
