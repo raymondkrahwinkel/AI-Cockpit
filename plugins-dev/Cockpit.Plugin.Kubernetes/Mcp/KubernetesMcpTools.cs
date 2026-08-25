@@ -5,8 +5,10 @@ using System.Text.Json.Nodes;
 using ModelContextProtocol.Server;
 using k8s;
 using k8s.Models;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugin.Kubernetes.Cluster;
 using Cockpit.Plugin.Kubernetes.Helm;
+using Cockpit.Plugin.Kubernetes.Kind;
 using Cockpit.Plugin.Kubernetes.Model;
 using Cockpit.Plugin.Kubernetes.Security;
 using Cockpit.Plugin.Kubernetes.Settings;
@@ -25,6 +27,8 @@ internal sealed partial class KubernetesMcpTools(
     ClusterAccessGate gate,
     ClusterConnectionFactory connections,
     PortForwardManager portForwards,
+    KindClusterManager kindClusters,
+    ICockpitHost host,
     IHelmRunner? helmRunner = null,
     Func<string, string?>? resolveManagedCli = null)
 {

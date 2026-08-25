@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Kubernetes plugin can now spin up a disposable local kind cluster on your own machine
+  (`kind_create`), list what it made (`kind_list`) and tear one down again (`kind_delete`) — registered
+  automatically, so the plugin's other tools can reach it right away with no manual kubeconfig step. A cluster you
+  don't pin is torn down on its own when the session that made it closes, when the cockpit exits, or after a
+  configurable lifetime (default 4 hours), so a forgotten one never lingers. Needs the `kind` binary and Docker or
+  Podman already on the machine; a missing one is reported, not guessed at.
 - added: a project and a profile can now name the assistant a session runs as — Zyra, Aura, whoever you work
   with — as its own field instead of a sentence buried in the behaviour prompt. The project's answer wins where
   both name one, and a session started without a project still gets the profile's. It stays on this machine: it

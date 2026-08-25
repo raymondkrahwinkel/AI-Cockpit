@@ -35,7 +35,7 @@ public class KubernetesMcpToolsTests
 
         var gate = new ClusterAccessGate(host);
         var connections = new ClusterConnectionFactory(settings);
-        return (new KubernetesMcpTools(settings, gate, connections, new PortForwardManager()), asked);
+        return (new KubernetesMcpTools(settings, gate, connections, new PortForwardManager(), TestKindClusters.Unused(settings), host), asked);
     }
 
     private static ClusterRegistration _Cluster(bool exec = false, bool clusterScoped = false, bool portForward = false) =>

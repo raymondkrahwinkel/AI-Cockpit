@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugin.Kubernetes.Cluster;
+using Cockpit.Plugin.Kubernetes.Kind;
 using Cockpit.Plugin.Kubernetes.Model;
 using Cockpit.Plugin.Kubernetes.Settings;
 
@@ -21,6 +22,8 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
     private readonly List<ClusterRowControl> _rows = [];
     private readonly CheckBox _mcpEnabled;
     private readonly IReadOnlyList<string> _originalClusterIds;
+    private readonly List<(KindClusterRecord Record, CheckBox Pinned)> _kindClusterRows = [];
+    private readonly NumericUpDown _kindClusterMaxLifetimeHours;
 
     public KubernetesSettingsControl(ICockpitHost host, KubernetesSettings settings)
     {
@@ -46,6 +49,39 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
 
         _mcpEnabled = new CheckBox { Content = "Let sessions use the Kubernetes MCP tools", IsChecked = settings.McpEnabled };
 
+        // AC-179: the kind-cluster registry is agent-managed (kind_create/kind_delete) — this panel is read-only
+        // except for the one operator-only control, Pinned, which an agent has no tool to set (D2).
+        var kindClustersPanel = new StackPanel { Spacing = 4 };
+        foreach (var record in settings.KindClusters)
+        {
+            var pinned = new CheckBox { Content = "Pinned (kept even if the owning session closes or its lifetime expires)", IsChecked = record.IsPinned };
+            _kindClusterRows.Add((record, pinned));
+            kindClustersPanel.Children.Add(new Border
+            {
+                Padding = new Thickness(0, 4, 0, 8),
+                Child = new StackPanel
+                {
+                    Spacing = 2,
+                    Children =
+                    {
+                        new TextBlock { Text = record.Name, FontWeight = FontWeight.Bold },
+                        _Hint($"owner {record.OwnerPaneId} · created {record.CreatedAt:yyyy-MM-dd HH:mm} · {record.KubeconfigPath}"),
+                        pinned,
+                    },
+                },
+            });
+        }
+
+        _kindClusterMaxLifetimeHours = new NumericUpDown
+        {
+            Value = (decimal)settings.KindClusterMaxLifetime.TotalHours,
+            Minimum = 1,
+            Maximum = 168,
+            Increment = 1,
+            FormatString = "0",
+            Width = 120,
+        };
+
         // AC-1033: the `?` beside the heading, pointing at this plugin's own settings page — adding a cluster,
         // the file-vs-pasted kubeconfig, and the pitfall of a context left on "(current-context)".
         var clustersHeading = new StackPanel
@@ -66,6 +102,15 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
                 _Hint("Each cluster is a kubeconfig kept under the secret layer. An agent never gets the kubeconfig — it reaches the cluster only through the gated MCP tools. Namespaces you list here are free to read; anything outside asks each session, and every change asks each time."),
                 _clustersPanel,
                 addCluster,
+                _Label("Kind clusters"),
+                _Hint("Disposable local clusters an agent spun up with kind_create. Torn down automatically when the owning session closes, the cockpit exits, or the lifetime below expires — pin one to keep it regardless."),
+                kindClustersPanel.Children.Count == 0 ? _Hint("None right now.") : kindClustersPanel,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children = { new TextBlock { Text = "Maximum lifetime (hours)", VerticalAlignment = VerticalAlignment.Center }, _kindClusterMaxLifetimeHours },
+                },
                 _Label("MCP"),
                 _mcpEnabled,
             },
@@ -156,6 +201,11 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
 
         _settings.Clusters = registrations;
         _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
+
+        // AC-179: Pinned is the only field this view can change on a kind-cluster record — everything else (name,
+        // owner, kubeconfig path) is set at kind_create time and stays that way.
+        _settings.KindClusters = _kindClusterRows.Select(row => row.Record with { IsPinned = row.Pinned.IsChecked ?? false }).ToList();
+        _settings.KindClusterMaxLifetime = TimeSpan.FromHours((double)(_kindClusterMaxLifetimeHours.Value ?? 4m));
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };

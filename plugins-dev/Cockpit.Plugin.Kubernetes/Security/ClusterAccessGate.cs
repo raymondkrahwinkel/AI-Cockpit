@@ -66,7 +66,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         return await _RequestAsync(
             title: "Kubernetes: read a cluster-scoped resource",
             operation: operation,
-            cluster: cluster,
+            clusterLabel: cluster.Label,
             // Per-kind, not per-cluster: a remembered approval binds to the exact kind shown, so it cannot carry over
             // to a different cluster-scoped kind the operator never saw.
             scope: $"k8s.clusterscoped:{cluster.Id}:{resourceKey}",
@@ -106,7 +106,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         return await _RequestAsync(
             title: $"Kubernetes: {capability} — this reaches past the namespace boundary",
             operation: operation,
-            cluster: cluster,
+            clusterLabel: cluster.Label,
             scope: $"k8s.{capability.ToString().ToLowerInvariant()}:{cluster.Id}",
             risk: ConsentRisk.Dangerous,
             allowRemember: false,
@@ -127,7 +127,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         return await _RequestAsync(
             title: "Kubernetes: read credential material",
             operation: operation,
-            cluster: cluster,
+            clusterLabel: cluster.Label,
             scope: $"k8s.secret:{cluster.Id}",
             risk: ConsentRisk.Dangerous,
             allowRemember: false,
@@ -148,7 +148,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         return await _RequestAsync(
             title: "Kubernetes: refresh an Argo CD Application",
             operation: operation,
-            cluster: cluster,
+            clusterLabel: cluster.Label,
             scope: $"k8s.argo.refresh:{cluster.Id}",
             risk: ConsentRisk.Dangerous,
             allowRemember: false,
@@ -163,7 +163,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             operation: cluster.UsesExecAuth
                 ? $"Connect to cluster \"{cluster.Label}\" ({_ContextDisplay(cluster)}) — connecting runs an external credential command from the kubeconfig"
                 : $"Connect to cluster \"{cluster.Label}\" ({_ContextDisplay(cluster)})",
-            cluster: cluster,
+            clusterLabel: cluster.Label,
             scope: $"k8s.connect:{cluster.Id}",
             risk: ConsentRisk.LowRisk,
             allowRemember: true,
@@ -179,7 +179,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         return await _RequestAsync(
             title: "Kubernetes: reach a namespace outside the allowed list",
             operation: $"{operation} — namespace \"{@namespace}\" is not on the allowed list for cluster \"{cluster.Label}\"",
-            cluster: cluster,
+            clusterLabel: cluster.Label,
             scope: $"k8s.namespace:{cluster.Id}:{@namespace}",
             risk: ConsentRisk.LowRisk,
             allowRemember: true,
@@ -190,14 +190,27 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         _RequestAsync(
             title: "Kubernetes: change a resource",
             operation: operation,
-            cluster: cluster,
+            clusterLabel: cluster.Label,
             scope: $"k8s.mutate:{cluster.Id}",
             risk: ConsentRisk.Dangerous,
             allowRemember: false,
             paneId: paneId,
             detailLines: detailLines);
 
-    private async Task<GateResult> _RequestAsync(string title, string operation, ClusterRegistration cluster, string scope, ConsentRisk risk, bool allowRemember, string? paneId, IReadOnlyList<string>? detailLines = null)
+    // AC-179: kind create/delete has no ClusterRegistration to authorize against, so this always asks Dangerous,
+    // never remembered, with the literal kind argv as the operation. `scope` differs between create and delete so
+    // a create approval never doubles as a delete one.
+    public Task<GateResult> AuthorizeKindLifecycleAsync(string operation, string scope, string? paneId) =>
+        _RequestAsync(
+            title: "Kubernetes: kind cluster lifecycle",
+            operation: operation,
+            clusterLabel: "kind",
+            scope: scope,
+            risk: ConsentRisk.Dangerous,
+            allowRemember: false,
+            paneId: paneId);
+
+    private async Task<GateResult> _RequestAsync(string title, string operation, string clusterLabel, string scope, ConsentRisk risk, bool allowRemember, string? paneId, IReadOnlyList<string>? detailLines = null)
     {
         var request = new ConsentRequest(
             Title: title,
@@ -214,7 +227,7 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         var decision = await host.RequestConsentAsync(request);
         return decision.IsApproved
             ? GateResult.Allow
-            : GateResult.Deny($"The operator did not approve this action on cluster \"{cluster.Label}\".");
+            : GateResult.Deny($"The operator did not approve this action on cluster \"{clusterLabel}\".");
     }
 
     // AC-1062: escapes each fragment on its own — the operation summary, then each detail line — before joining

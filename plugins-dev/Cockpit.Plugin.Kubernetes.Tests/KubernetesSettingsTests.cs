@@ -1,3 +1,4 @@
+using Cockpit.Plugin.Kubernetes.Kind;
 using Cockpit.Plugin.Kubernetes.Model;
 using Cockpit.Plugin.Kubernetes.Settings;
 
@@ -58,5 +59,45 @@ public class KubernetesSettingsTests
             .Where(property => property.Name.Contains("Token", StringComparison.OrdinalIgnoreCase));
 
         Assert.Empty(tokenLikeProperties);
+    }
+
+    // AC-179 criterion 3/8/11: the kind-cluster registry round-trips through the same Get<List<T>>/Set idiom as
+    // `Clusters` — no separate storage mechanism needed.
+    [Fact]
+    public void KindClusters_NoneSet_ReturnsEmpty()
+    {
+        var settings = new KubernetesSettings(new FakePluginStorage());
+
+        Assert.Empty(settings.KindClusters);
+    }
+
+    [Fact]
+    public void KindClusters_RoundTrips()
+    {
+        var settings = new KubernetesSettings(new FakePluginStorage());
+        var record = new KindClusterRecord("cockpit-ac179", "pane-1", "/state/kind/cockpit-ac179.kubeconfig", DateTimeOffset.UtcNow);
+
+        settings.KindClusters = [record];
+
+        Assert.Single(settings.KindClusters);
+        Assert.Equal(record, settings.KindClusters[0]);
+    }
+
+    [Fact]
+    public void KindClusterMaxLifetime_DefaultsToFourHours()
+    {
+        var settings = new KubernetesSettings(new FakePluginStorage());
+
+        Assert.Equal(TimeSpan.FromHours(4), settings.KindClusterMaxLifetime);
+    }
+
+    [Fact]
+    public void KindClusterMaxLifetime_RoundTrips()
+    {
+        var settings = new KubernetesSettings(new FakePluginStorage());
+
+        settings.KindClusterMaxLifetime = TimeSpan.FromHours(8);
+
+        Assert.Equal(TimeSpan.FromHours(8), settings.KindClusterMaxLifetime);
     }
 }
