@@ -1,12 +1,8 @@
 namespace Cockpit.Plugin.Depot.Model;
 
-// A membership role Depot's own `list_projects` reports for one project (AC-245), parsed defensively rather
-// than shown as whatever raw text the server sent. `Unknown` is ordinal 0 — the least powerful
-// reading, not the most — so a role this build does not recognise (a server ahead of it, a field renamed) never
-// reads as anything more permissive than "cannot tell", the same discipline an on-disk enum in this codebase
-// already follows (see `ProjectResourceEntry`'s own remarks). Not persisted anywhere today — this only
-// normalizes a value read live and shown next to a shared project's row — but the same rule applies the day
-// something (AC-247's write gating) starts deciding on it.
+// A membership role Depot's `list_projects` reports for one project (AC-245), parsed defensively rather than
+// shown as raw server text. `Unknown` is ordinal 0 — the least powerful reading, not the most — so an
+// unrecognised role never reads as more permissive than "cannot tell".
 internal enum DepotProjectRole
 {
     Unknown = 0,

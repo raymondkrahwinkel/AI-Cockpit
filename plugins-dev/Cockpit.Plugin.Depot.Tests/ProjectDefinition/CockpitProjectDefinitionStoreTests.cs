@@ -242,9 +242,8 @@ public class CockpitProjectDefinitionStoreTests
     public async Task WriteAsync_ChecksumMismatch_ClassifiesAsChecksumConflict()
     {
         // The exact sentence Depot's own WriteFileCommandHandler sends back on a baseChecksum mismatch — measured
-        // live against a real Depot server (AC-247), not guessed: write, read, write-with-correct-baseChecksum,
-        // then a stale-baseChecksum write was rejected (content unchanged on re-read) and cross-checked against
-        // Depot's own source (Depot.Application/Modules/Storage/Commands/WriteFile/WriteFileCommand.cs).
+        // live against a real Depot server (AC-247) and cross-checked against Depot's own source
+        // (Depot.Application/Modules/Storage/Commands/WriteFile/WriteFileCommand.cs), not guessed.
         var host = Substitute.For<ICockpitHost>();
         host.CallMcpToolAsync(Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpToolCallResult.Failed(
@@ -261,9 +260,8 @@ public class CockpitProjectDefinitionStoreTests
     public async Task WriteAsync_RoleBelowEditor_ClassifiesAsPermissionDenied()
     {
         // Depot's own ProjectMemberAccessGuard phrasing for a role-too-low write (source:
-        // Depot.Infrastructure/Access/ProjectMemberAccessGuard.cs) — this store's own callerRole pre-check (below)
-        // never reaches Depot at all, so this is the case where Depot's own enforcement is the only line of defense
-        // (e.g. a stale/unsupplied callerRole).
+        // Depot.Infrastructure/Access/ProjectMemberAccessGuard.cs) — this store's own callerRole pre-check never
+        // reaches Depot, so this is the case where Depot's enforcement is the only line of defense.
         var host = Substitute.For<ICockpitHost>();
         host.CallMcpToolAsync(Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("This action requires the Editor role on project 'cockpit'.")));

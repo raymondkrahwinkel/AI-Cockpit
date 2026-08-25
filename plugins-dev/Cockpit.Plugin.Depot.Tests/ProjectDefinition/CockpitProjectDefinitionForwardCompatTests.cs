@@ -2,22 +2,9 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-// AC-246 (Raymond, 2026-08-02): the one place a placeholder row can do damage — an older build that has never
-// heard of `CockpitProjectResourceEntry.Placeholder`, reading a definition a newer Cockpit wrote.
-// Measured through the real deserializer (`CockpitProjectDefinitionJson.TryDeserialize`), the same
-// technique `CockpitProjectDefinitionSecrecyTests.ExtensionData_ForwardsUnknownFieldsUnread_WhichIsTheGapAnEncryptionDesignMustClose`
-// already uses for the top-level case: this build cannot literally run an older assembly, so a field this build
-// itself does not recognise stands in for one an older build would not recognise either — the same
-// `CockpitProjectResourceEntry.ExtensionData` mechanism catches both.
-//
-// What has to hold, and what these tests measure rather than assume: no exception, no lost `Reference`
-// property (it is a required-shaped C# string with a default, never a nullable the deserializer could refuse to
-// populate), and the unknown field forwarded rather than silently dropped on a later re-write. None of this
-// reaches `cockpit.json` (the *local* on-disk file, a completely different type in
-// `Cockpit.Infrastructure.Configuration`) at all — `CockpitProjectResourceEntry` is
-// `.cockpit/project.json`'s own wire shape, read from Depot, so the "unknown enum value costs the whole
-// local config a `.damaged-` fallback" risk this repo's own build traps warn about for local entries simply
-// does not apply here: nothing here is an enum, and nothing here is local.
+// AC-246: covers an older build reading a definition a newer Cockpit wrote with a placeholder row it doesn't
+// know. Since this build cannot literally run an older assembly, an unrecognized field stands in via
+// `ExtensionData`; these tests assert no exception, no lost `Reference`, unknown field forwarded on re-write.
 public class CockpitProjectDefinitionForwardCompatTests
 {
     [Fact]

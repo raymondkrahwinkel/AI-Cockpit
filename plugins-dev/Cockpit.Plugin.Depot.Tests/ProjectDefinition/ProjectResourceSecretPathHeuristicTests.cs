@@ -4,9 +4,7 @@ namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
 // AC-612: pins this plugin's own mirrored `ProjectResourceSecretPathHeuristic` in isolation — the same
 // table `Cockpit.Core.Tests.Projects.ProjectResourceSecretPathHeuristicTests` pins on the host side.
-// `ProjectResourceSecretPathParityTests` is what actually guarantees the two agree; this file exists so
-// a change made only here (this plugin cannot reference `Cockpit.Core`, so the two copies can never share one
-// test file) still has its own red-without-fix coverage.
+// `ProjectResourceSecretPathParityTests` guarantees the two agree; this covers a change made only here.
 public class ProjectResourceSecretPathHeuristicTests
 {
     [Theory]

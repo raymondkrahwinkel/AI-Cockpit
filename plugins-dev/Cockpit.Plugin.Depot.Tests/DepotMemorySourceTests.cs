@@ -8,11 +8,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-// `DepotMemorySource.BuildRegistrationPairs` (AC-501) — one registration per connection instead of the
-// single fixed one this plugin handed the host before. The registry that receives it
-// (`ProjectMemorySourceRegistry.Register`) refuses a blank scheme, title or instruction, so this is not
-// cosmetic: a registration that regresses to blank here is one the host silently drops, and the operator would
-// never learn why a connection stopped appearing as a memory source.
+// `DepotMemorySource.BuildRegistrationPairs` (AC-501): one registration per connection. Not cosmetic —
+// `ProjectMemorySourceRegistry.Register` refuses a blank scheme/title/instruction, so a regression to
+// blank here is silently dropped by the host and the operator never learns why.
 public class DepotMemorySourceTests
 {
     private static DepotConnectionRegistration Connection(string id, string name, string url = "https://depot.example.com") =>
@@ -146,11 +144,9 @@ public class DepotMemorySourceTests
         Assert.Equal(pairs.Select(pair => pair.Registration), registrations);
     }
 
-    // --- AC-503/AC-499: CheckReachability wiring -----------------------------------------------------------------
-    // Rebuilt for AC-499: the original "outline" probe (ProbeMcpToolAsync) was measured against a real Depot server
-    // and found to always fail — outline is a single-document tool requiring {project, path}, called here with only
-    // {project}. This now asks list_projects (the same tool ListLocationsAsync already uses) and matches the typed
-    // slug against the returned list — see DepotMemorySource._CheckReachabilityAsync's own remarks.
+    // AC-503/AC-499: rebuilt because the original "outline" probe always failed against a real Depot server
+    // (outline needs {project, path}, called here with only {project}). Now asks list_projects and matches
+    // the typed slug against the returned list.
 
     [Fact]
     public void NoHostPassed_LeavesCheckReachabilityNull()

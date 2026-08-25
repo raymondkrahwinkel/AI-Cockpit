@@ -8,9 +8,8 @@ namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 public class CockpitProjectDefinitionSensitiveFieldsTests
 {
     // AC1: without a project password, a secret row's plaintext must never reach the serialized bytes. Proved
-    // rood-zonder-fix manually (see AC-607-progress.md): CockpitProjectSensitiveFieldFilter.Apply was temporarily
-    // made a no-op that always encrypted-or-passed-through, this test went red, then the fix was restored and it
-    // went green again.
+    // red-without-fix manually (see AC-607-progress.md) by temporarily making
+    // CockpitProjectSensitiveFieldFilter.Apply a no-op, then restoring the fix.
     [Fact]
     public void Serialize_NoDataKey_SecretRowPlaintextNeverAppearsInTheBytes()
     {

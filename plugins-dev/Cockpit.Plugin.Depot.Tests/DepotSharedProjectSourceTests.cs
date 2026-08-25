@@ -6,12 +6,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-// `DepotSharedProjectSource` (AC-245): what the Projects workspace's "Shared via Depot — …" group is
-// built from. Every fixture below is the actual JSON text a Depot server would send — parsed by the real
-// `list_projects` parser and the real `Cockpit.Plugin.Depot.ProjectDefinition.CockpitProjectDefinitionJson`
-// deserializer, not a fake that hands back an already-built `SharedProject` — the exact naad AC-604's
-// own comment on this ticket named as the one worth measuring against a real-looking response rather than trusting
-// a shortcut fake.
+// `DepotSharedProjectSource` (AC-245): what the Projects workspace's "Shared via Depot — …" group is built
+// from. Every fixture is the actual JSON text a Depot server would send, parsed by the real `list_projects`
+// and definition deserializers — never a fake handing back an already-built `SharedProject` (AC-604).
 public class DepotSharedProjectSourceTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
@@ -251,10 +248,9 @@ public class DepotSharedProjectSourceTests
         await host.DidNotReceive().CallMcpToolAsync(Arg.Any<string>(), "read", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
-    // --- Depot's own access guard: read requires at least Editor today (measured against origin/dev,
-    // ReadFileQuery.cs); list_projects has no such gate. Intended to change so a Viewer gets read access too
-    // (Raymond, 2026-08-02) — until then, a Viewer/Unknown-role project whose read fails is a named, visible
-    // degradation rather than a silent drop. ------------------------------------------------------------------
+    // Depot's own access guard: read requires at least Editor today; list_projects has no such gate. Until
+    // that changes (Raymond, 2026-08-02), a Viewer/Unknown-role project whose read fails must be a named,
+    // visible degradation, not a silent drop.
 
     [Fact]
     public async Task ListAsync_AViewersProjectWhoseReadFails_IsReportedAsVisibleButUnreadable()

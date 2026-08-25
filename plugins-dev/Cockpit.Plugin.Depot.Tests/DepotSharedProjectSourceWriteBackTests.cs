@@ -8,9 +8,8 @@ using NSubstitute;
 namespace Cockpit.Plugin.Depot.Tests;
 
 // `DepotSharedProjectSource.WriteBackAsync` (AC-247): the operator's edit to a bound project's claimed fields,
-// landing back in Depot. Every fixture is the actual JSON text Depot's `read`/`write` tools would send, the same
-// "measure against a real-looking response" discipline `DepotSharedProjectSourcePrepareBindingTests` already
-// documents.
+// landing back in Depot. Every fixture is the actual JSON text Depot's `read`/`write` tools would send, per
+// the "measure against a real-looking response" discipline `DepotSharedProjectSourcePrepareBindingTests` sets.
 public class DepotSharedProjectSourceWriteBackTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
@@ -218,10 +217,9 @@ public class DepotSharedProjectSourceWriteBackTests
     [Fact]
     public async Task WriteBackAsync_APlaceholderResourceRow_SurvivesTheRoundTripRatherThanBeingDropped()
     {
-        // The exact byte-fidelity risk this write path exists to avoid: SharedProjectBinding's own read shape
-        // blanks a placeholder row's Reference (AC-246 idiom), so reconstructing resources from that shape would
-        // hand CockpitProjectResourceEntry.Create a blank reference — which returns null, silently dropping the
-        // row. WriteBackAsync must instead carry the pre-write read's own Resources list through unchanged.
+        // SharedProjectBinding's read shape blanks a placeholder row's Reference (AC-246 idiom); reconstructing
+        // resources from that shape would hand Create a blank reference and silently drop the row. WriteBackAsync
+        // must instead carry the pre-write read's own Resources list through unchanged.
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
         var placeholder = CockpitProjectResourceEntry.Create("Reference", "/home/erik/work/notes.md", "Notes")!;
@@ -241,10 +239,9 @@ public class DepotSharedProjectSourceWriteBackTests
     [Fact]
     public async Task WriteBackAsync_NullEnabledMcpServerNames_ClearsAnExistingRemoteOverlayRatherThanKeepingIt()
     {
-        // Adversarial review finding: SharedProjectDefinitionEdit.EnabledMcpServerNames == null means "no
-        // opinion, every server ticked" (the same idiom SharedProjectBinding's own read-direction property
-        // documents) — the operator re-ticking every server to clear a remote restriction sends exactly this.
-        // Falling back to current.McpOverlay on null would silently keep Depot's existing restriction instead.
+        // Adversarial review finding: EnabledMcpServerNames == null means "no opinion, every server ticked" —
+        // the operator re-ticking every server to clear a remote restriction sends exactly this. Falling back
+        // to current.McpOverlay on null would silently keep Depot's existing restriction instead.
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
         _StubRead(host, "cockpit", _ReadEnvelope("""{"schemaVersion":1,"name":"Cockpit","mcpOverlay":{"enabled":["github"]}}"""));
