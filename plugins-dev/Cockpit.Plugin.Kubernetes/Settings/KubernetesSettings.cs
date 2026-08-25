@@ -36,5 +36,17 @@ internal sealed class KubernetesSettings(IPluginStorage storage)
     public void ClearKubeconfig(string clusterId) =>
         storage.SetSecret(_KubeconfigKey(clusterId), string.Empty);
 
+    // AC-576 phase 3: a read-only Argo CD project-role token, stored the same way as the kubeconfig — through
+    // the secret layer, keyed to the cluster. Null (no token set) means the Argo API tools are unavailable.
+    public string? GetArgoToken(string clusterId) =>
+        storage.GetSecret(_ArgoTokenKey(clusterId)) is { Length: > 0 } content ? content : null;
+
+    public void SetArgoToken(string clusterId, string token) =>
+        storage.SetSecret(_ArgoTokenKey(clusterId), token);
+
+    public void ClearArgoToken(string clusterId) =>
+        storage.SetSecret(_ArgoTokenKey(clusterId), string.Empty);
+
     private static string _KubeconfigKey(string clusterId) => $"cluster.{clusterId}.kubeconfig";
+    private static string _ArgoTokenKey(string clusterId) => $"cluster.{clusterId}.argoToken";
 }

@@ -31,18 +31,18 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
         _originalClusterIds = clusters.Select(cluster => cluster.Id).ToList();
         if (clusters.Count == 0)
         {
-            _AddRow(existing: null, hasStoredKubeconfig: false);
+            _AddRow(existing: null, hasStoredKubeconfig: false, hasStoredArgoToken: false);
         }
         else
         {
             foreach (var cluster in clusters)
             {
-                _AddRow(cluster, settings.GetKubeconfig(cluster.Id) is not null);
+                _AddRow(cluster, settings.GetKubeconfig(cluster.Id) is not null, settings.GetArgoToken(cluster.Id) is not null);
             }
         }
 
         var addCluster = new Button { Content = "+ Add cluster" };
-        addCluster.Click += (_, _) => _AddRow(existing: null, hasStoredKubeconfig: false);
+        addCluster.Click += (_, _) => _AddRow(existing: null, hasStoredKubeconfig: false, hasStoredArgoToken: false);
 
         _mcpEnabled = new CheckBox { Content = "Let sessions use the Kubernetes MCP tools", IsChecked = settings.McpEnabled };
 
@@ -72,9 +72,9 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
         };
     }
 
-    private void _AddRow(ClusterRegistration? existing, bool hasStoredKubeconfig)
+    private void _AddRow(ClusterRegistration? existing, bool hasStoredKubeconfig, bool hasStoredArgoToken)
     {
-        var row = new ClusterRowControl(existing, hasStoredKubeconfig);
+        var row = new ClusterRowControl(existing, hasStoredKubeconfig, hasStoredArgoToken);
         row.RemoveRequested += () =>
         {
             _rows.Remove(row);
@@ -127,6 +127,12 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
                 _settings.SetKubeconfig(row.Id, pasted);
             }
 
+            var pastedToken = row.ArgoTokenInput.Trim();
+            if (pastedToken.Length > 0)
+            {
+                _settings.SetArgoToken(row.Id, pastedToken);
+            }
+
             // Detect exec-auth on the effective kubeconfig (the file at the path, or the pasted/stored content) so
             // the row can warn that connecting will run an external process.
             var content = pasted.Length > 0 ? pasted : _settings.GetKubeconfig(row.Id);
@@ -145,6 +151,7 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
         foreach (var goneId in _originalClusterIds.Where(id => !savedIds.Contains(id)))
         {
             _settings.ClearKubeconfig(goneId);
+            _settings.ClearArgoToken(goneId);
         }
 
         _settings.Clusters = registrations;
