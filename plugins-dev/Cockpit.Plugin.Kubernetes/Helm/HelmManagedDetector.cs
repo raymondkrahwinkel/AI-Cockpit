@@ -10,8 +10,11 @@ internal static class HelmManagedDetector
     public const string PropertyName = "helmManaged";
 
     private const string ManagedByLabel = "app.kubernetes.io/managed-by";
-    private const string ReleaseNameAnnotation = "meta.helm.sh/release-name";
-    private const string ReleaseNamespaceAnnotation = "meta.helm.sh/release-namespace";
+
+    // Internal, not private: ArgoManagedDetector checks these too, to tell a genuine Helm release apart from
+    // Argo's own `app.kubernetes.io/instance` fallback tracking label — the two share that label by convention.
+    internal const string ReleaseNameAnnotation = "meta.helm.sh/release-name";
+    internal const string ReleaseNamespaceAnnotation = "meta.helm.sh/release-namespace";
 
     private const string InstalledNote = "Read off this resource's own release annotations — call helm_history to confirm the release still exists.";
     private const string RenderedNote = "Labeled managed-by: Helm but carries no meta.helm.sh/release-* annotations — rendered without being installed (e.g. Argo CD's `helm template`), not a queryable Helm release.";
