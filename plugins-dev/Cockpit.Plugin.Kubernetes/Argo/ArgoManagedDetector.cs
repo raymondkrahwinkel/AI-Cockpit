@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Cockpit.Plugin.Kubernetes.Helm;
 
 namespace Cockpit.Plugin.Kubernetes.Argo;
 
@@ -19,6 +20,15 @@ internal static class ArgoManagedDetector
         {
             var application = trackingId.Split(':', 2)[0];
             return string.IsNullOrWhiteSpace(application) ? null : new JsonObject { ["application"] = application, ["source"] = "tracking-id" };
+        }
+
+        // `app.kubernetes.io/instance` is a generic recommended label, not an Argo one — most Helm charts set
+        // it to the release name too. Reading it as Argo ownership on a genuine Helm release (both release
+        // annotations present) would be AC-1068's exact mistake, the other way around.
+        if (_String(annotations?[HelmManagedDetector.ReleaseNameAnnotation]) is not null
+            && _String(annotations?[HelmManagedDetector.ReleaseNamespaceAnnotation]) is not null)
+        {
+            return null;
         }
 
         var labels = resource?["metadata"]?["labels"] as JsonObject;

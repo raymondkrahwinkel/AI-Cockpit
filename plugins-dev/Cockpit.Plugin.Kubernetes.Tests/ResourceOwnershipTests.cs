@@ -58,7 +58,10 @@ public class ResourceOwnershipTests
         var node = JsonNode.Parse("""
             {
               "metadata": {
-                "labels": { "app.kubernetes.io/managed-by": "Helm" },
+                "labels": {
+                  "app.kubernetes.io/managed-by": "Helm",
+                  "app.kubernetes.io/instance": "cert-manager"
+                },
                 "annotations": {
                   "meta.helm.sh/release-name": "cert-manager",
                   "meta.helm.sh/release-namespace": "system-secrets"
@@ -69,6 +72,8 @@ public class ResourceOwnershipTests
 
         ResourceOwnership.Annotate(node);
 
+        // `app.kubernetes.io/instance` is a generic recommended label a Helm chart sets too — a real Helm
+        // release must not fall back into being read as Argo-owned just because it also carries it.
         Assert.NotNull(node["helmManaged"]);
         Assert.Null(node["argoManaged"]);
     }

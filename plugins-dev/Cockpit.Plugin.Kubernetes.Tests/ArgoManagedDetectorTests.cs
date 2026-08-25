@@ -57,6 +57,41 @@ public class ArgoManagedDetectorTests
     }
 
     [Fact]
+    public void Detect_GenuineHelmReleaseWithInstanceLabelButNoTrackingId_ReturnsNull()
+    {
+        // AC-1068's mistake in reverse: app.kubernetes.io/instance is a generic recommended label most Helm
+        // charts also set to the release name — a real Helm release must not be misread as Argo-owned.
+        var resource = JsonNode.Parse("""
+            {
+              "metadata": {
+                "labels": { "app.kubernetes.io/instance": "cert-manager" },
+                "annotations": {
+                  "meta.helm.sh/release-name": "cert-manager",
+                  "meta.helm.sh/release-namespace": "system-secrets"
+                }
+              }
+            }
+            """);
+
+        Assert.Null(ArgoManagedDetector.Detect(resource));
+    }
+
+    [Fact]
+    public void Detect_InstanceLabelWithOnlyOneHelmAnnotation_StillFallsBackToInstanceLabel()
+    {
+        var resource = JsonNode.Parse("""
+            {
+              "metadata": {
+                "labels": { "app.kubernetes.io/instance": "cert-manager" },
+                "annotations": { "meta.helm.sh/release-name": "cert-manager" }
+              }
+            }
+            """);
+
+        Assert.NotNull(ArgoManagedDetector.Detect(resource));
+    }
+
+    [Fact]
     public void Detect_NeitherPresent_ReturnsNull()
     {
         var resource = JsonNode.Parse("""{ "metadata": { "labels": { "app": "web" } } }""");
