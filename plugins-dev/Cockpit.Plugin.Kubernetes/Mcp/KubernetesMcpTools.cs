@@ -95,7 +95,7 @@ internal sealed partial class KubernetesMcpTools(
     }
 
     [McpServerTool(Name = "get_resource")]
-    [Description("Reads one resource in full. apiVersion like \"v1\" or \"apps/v1\", plural like \"pods\"/\"deployments\". A namespaced kind needs its namespace (outside the allowed list asks first; a secret always asks); a cluster-scoped kind needs cluster-scoped access on. Returns the resource as JSON, with a \"helmManaged\" field (release name/namespace) added when the resource was installed by Helm.")]
+    [Description("Reads one resource in full. apiVersion like \"v1\" or \"apps/v1\", plural like \"pods\"/\"deployments\". A namespaced kind needs its namespace (outside the allowed list asks first; a secret always asks); a cluster-scoped kind needs cluster-scoped access on. Returns the resource as JSON, with a \"helmManaged\" field added when the resource carries Helm's managed-by label — \"installed\": true with a release name/namespace when Helm itself installed it, \"installed\": false when it was only rendered by something else with that label set (e.g. Argo CD's `helm template`).")]
     public async Task<string> GetResource(
         [Description("The cluster label.")] string cluster,
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
