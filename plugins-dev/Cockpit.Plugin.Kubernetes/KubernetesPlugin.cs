@@ -1,8 +1,10 @@
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.Kubernetes.Cli;
 using Cockpit.Plugin.Kubernetes.Cluster;
 using Cockpit.Plugin.Kubernetes.Helm;
+using Cockpit.Plugin.Kubernetes.Kind;
 using Cockpit.Plugin.Kubernetes.Mcp;
 using Cockpit.Plugin.Kubernetes.Security;
 using Cockpit.Plugin.Kubernetes.Settings;
@@ -25,6 +27,7 @@ public sealed class KubernetesPlugin : ICockpitPlugin
 
     private ClusterConnectionFactory? _connections;
     private PortForwardManager? _portForwards;
+    private KindClusterManager? _kindClusters;
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -38,7 +41,17 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         var portForwards = new PortForwardManager();
         _portForwards = portForwards;
         var gate = new ClusterAccessGate(host);
-        var tools = new KubernetesMcpTools(settings, gate, connections, portForwards, new HelmRunner(), host.ResolveManagedCliPath);
+
+        // No ManagedCli for kind (AC-179, deliberate): the heavy half of the chain — a container runtime plus a
+        // 1.3+ GB node image — is not something the cockpit can manage either, so a managed binary would not
+        // deliver "it just works". PATH-probe only, mirroring ActRuntimeStatus's "say what to install" approach.
+        var kindCliRunner = new CliRunner();
+        var kindRuntime = new KindRuntime(kindCliRunner);
+        var kindKubeconfigDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit", "kubernetes-kind");
+        var kindClusters = new KindClusterManager(settings, kindCliRunner, kindRuntime, "kind", kindKubeconfigDirectory);
+        _kindClusters = kindClusters;
+
+        var tools = new KubernetesMcpTools(settings, gate, connections, portForwards, kindClusters, host, new HelmRunner(), host.ResolveManagedCliPath);
 
         // The cockpit can install and manage the helm binary itself (AC-20/AC-1061 phase 3); helm_upgrade prefers
         // that copy over PATH via host.ResolveManagedCliPath, same as codex/claude.
@@ -48,8 +61,16 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         host.AddToolbarAction(new ToolbarAction("Kubernetes settings", MaterialIconKind.Kubernetes, () => host.ShowSettingsAsync()));
         _ = host.AddMcpEndpoint("cockpit-k8s", tools, isEnabled: () => settings.McpEnabled);
 
-        // The open tunnels appear in the status bar with an operator-only Kill (AC-82).
+        // The open tunnels and the running kind clusters both appear in the status bar with an operator-only Kill
+        // (AC-82, AC-179).
         host.AddSupervisedActivityProvider(portForwards);
+        host.AddSupervisedActivityProvider(kindClusters);
+
+        // AC-179 criterion 8: a kind cluster whose owning pane is not among the sessions this start actually
+        // offers back is orphaned — a crash or a hard close that missed Dispose(). Self-contained in the plugin
+        // (AC-885): ICockpitHost.Sessions already gives a live-session view, so no Cockpit.App/Core change is
+        // needed the way the worktree sweep needs one. Fire-and-forget: this must not delay plugin startup.
+        _ = kindClusters.ReconcileAsync(host.Sessions.OpenSessions.Select(session => session.PaneId).ToList(), CancellationToken.None);
 
         // A settings save may have changed a cluster's kubeconfig or context; drop the cached clients so the next
         // call rebuilds from the new config.
@@ -62,6 +83,17 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         try
         {
             _portForwards?.StopAllAsync().Wait(TimeSpan.FromSeconds(2));
+        }
+        catch (Exception)
+        {
+            // Best-effort teardown on shutdown; never block or throw out of Dispose.
+        }
+
+        // AC-179 criterion 9 (D2): non-pinned kind clusters are disposable test environments, torn down on close.
+        // Separate try/catch from the tunnels above so one hanging teardown cannot block the other.
+        try
+        {
+            _kindClusters?.StopAllAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(2));
         }
         catch (Exception)
         {
