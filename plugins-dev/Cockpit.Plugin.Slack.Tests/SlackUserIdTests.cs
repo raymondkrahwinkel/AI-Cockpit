@@ -36,4 +36,29 @@ public class SlackUserIdTests
     [Fact]
     public void AValidId_ValidatesClean() =>
         Assert.Null(SlackUserId.Validate("U0123ABCDE"));
+
+    // AC-1074: the live config held "D0BNYEX539D" — a DM conversation id in the member-id field. Telling the
+    // operator which object they actually pasted is what stops them pasting it straight back in.
+    [Theory]
+    [InlineData("D0BNYEX539D", "a DM conversation id")]
+    [InlineData("C0BRZNHGFEJ", "a public channel id")]
+    [InlineData("G0123ABCDEF", "a private channel id")]
+    [InlineData("B0123ABCDEF", "a bot id")]
+    [InlineData("T0123ABCDEF", "a workspace id")]
+    public void AnotherSlackObjectId_IsNamedForWhatItActuallyIs(string userId, string expected)
+    {
+        var error = SlackUserId.Validate(userId);
+
+        Assert.NotNull(error);
+        Assert.Contains(expected, error, StringComparison.Ordinal);
+        Assert.Contains("not a Slack member id", error, StringComparison.Ordinal);
+    }
+
+    // AC-1074: what SlackChannelPlugin checks a stored access list with at load, not only at save.
+    [Fact]
+    public void ValidateAll_ReportsTheFirstBadIdAndPassesACleanList()
+    {
+        Assert.Null(SlackUserId.ValidateAll(["U0123ABCDE", "W0123ABCDE"]));
+        Assert.Contains("a DM conversation id", SlackUserId.ValidateAll(["U0123ABCDE", "D0BNYEX539D"])!, StringComparison.Ordinal);
+    }
 }

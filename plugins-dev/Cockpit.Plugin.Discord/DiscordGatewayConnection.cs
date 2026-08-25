@@ -21,7 +21,7 @@ internal sealed class DiscordGatewayConnection : IDisposable
         ulong channelId,
         AssistantChannelAccess access,
         Func<AssistantChannelVerbosity> verbosity,
-        Action<string> reportConnectionError)
+        Action<string> reportError)
     {
         _channelId = channelId;
 
@@ -32,15 +32,15 @@ internal sealed class DiscordGatewayConnection : IDisposable
 
         var sink = new DiscordChannelSink(_ResolveChannelAsync);
         _files = new DiscordFileFetcher();
-        _bridge = new DiscordChannelBridge(gateway, sink, _files, access, verbosity);
+        _bridge = new DiscordChannelBridge(gateway, sink, _files, access, verbosity, reportError);
 
         _client.MessageReceived += _OnMessageReceived;
         _client.ButtonExecuted += _OnButtonExecutedAsync;
 
-        _ = _ConnectAsync(botToken, reportConnectionError);
+        _ = _ConnectAsync(botToken, reportError);
     }
 
-    private async Task _ConnectAsync(string botToken, Action<string> reportConnectionError)
+    private async Task _ConnectAsync(string botToken, Action<string> reportError)
     {
         try
         {
@@ -49,7 +49,7 @@ internal sealed class DiscordGatewayConnection : IDisposable
         catch (Exception exception)
         {
             // AC-1024 criterion 5: reported once, and StartAsync below never runs — no reconnect loop to run away.
-            reportConnectionError($"Discord: could not connect — {exception.Message}");
+            reportError($"Discord: could not connect — {exception.Message}");
             return;
         }
 

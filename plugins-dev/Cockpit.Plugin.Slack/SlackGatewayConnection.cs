@@ -24,7 +24,7 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
         string channelId,
         AssistantChannelAccess access,
         Func<AssistantChannelVerbosity> verbosity,
-        Action<string> reportConnectionError)
+        Action<string> reportError)
     {
         _channelId = channelId;
 
@@ -36,13 +36,13 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
 
         var sink = new SlackChannelSink(builder.GetApiClient(), channelId);
         _files = new SlackFileFetcher(botToken);
-        _bridge = new SlackChannelBridge(gateway, sink, _files, access, verbosity);
+        _bridge = new SlackChannelBridge(gateway, sink, _files, access, verbosity, reportError);
         _client = builder.GetSocketModeClient();
 
-        _ = _ConnectAsync(reportConnectionError);
+        _ = _ConnectAsync(reportError);
     }
 
-    private async Task _ConnectAsync(Action<string> reportConnectionError)
+    private async Task _ConnectAsync(Action<string> reportError)
     {
         try
         {
@@ -51,7 +51,7 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
         catch (Exception exception)
         {
             // AC-1025 criterion 5: reported once, no reconnect loop.
-            reportConnectionError($"Slack: could not connect — {SlackConnectionErrorFormatter.Explain(exception)}");
+            reportError($"Slack: could not connect — {SlackConnectionErrorFormatter.Explain(exception)}");
         }
     }
 

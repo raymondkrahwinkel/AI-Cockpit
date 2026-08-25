@@ -10,18 +10,20 @@ public class DiscordChannelBridgeImageTests
     private const string _StrangerUserId = "222";
     private const string _Url = "https://cdn.discordapp.com/attachments/1/2/photo.png";
 
+    private const string _OtherUrl = _Url + "?second";
+
     private static readonly byte[] _Bytes = [1, 2, 3, 4];
 
     private static AssistantChannelAccess _SingleUserAccess(string userId) =>
         AssistantChannelAccess.ForSingleUser(userId).Access!;
 
-    private static (DiscordChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeDiscordChannelSink Sink, FakeDiscordFileFetcher Files) _Build()
+    private static (DiscordChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeDiscordChannelSink Sink, FakeDiscordFileFetcher Files) _Build(Action<string>? reportError = null)
     {
         var gateway = new FakeAssistantChannelGateway();
         var sink = new FakeDiscordChannelSink();
         var files = new FakeDiscordFileFetcher();
         var bridge = new DiscordChannelBridge(
-            gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => AssistantChannelVerbosity.Everything);
+            gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => AssistantChannelVerbosity.Everything, reportError);
         return (bridge, gateway, sink, files);
     }
 
@@ -136,5 +138,47 @@ public class DiscordChannelBridgeImageTests
 
         Assert.Empty(sink.Reactions);
         Assert.Empty(sink.Posted);
+    }
+
+    // AC-1074: a dropped attachment is a dropped piece of the message, so it says so through the host. It used
+    // to go to Trace, which nothing in this app listens to, so the reason reached nobody at all.
+    [Fact]
+    public async Task AnAttachmentThatCannotBeFetched_IsReportedWithItsNameAndReason()
+    {
+        var reported = new List<string>();
+        var (bridge, _, _, _) = _Build(reported.Add);
+
+        await bridge.HandleInboundMessageAsync(_AllowedUserId, "look at this", 1ul, [_Image()]);
+
+        var report = Assert.Single(reported);
+        Assert.Contains("photo.png", report, StringComparison.Ordinal);
+        Assert.Contains("Discord", report, StringComparison.Ordinal);
+    }
+
+    // One report for the message, not one per file: a bad token fails every attachment at once, and that would
+    // be a burst of identical toasts for a single problem.
+    [Fact]
+    public async Task SeveralUnfetchableAttachments_AreReportedOnceForTheWholeMessage()
+    {
+        var reported = new List<string>();
+        var (bridge, _, _, _) = _Build(reported.Add);
+
+        await bridge.HandleInboundMessageAsync(
+            _AllowedUserId, "look", 1ul, [_Image(), _Image(_OtherUrl)]);
+
+        Assert.Single(reported);
+    }
+
+    // Nothing to report when every attachment arrives — the operator hears about failures only.
+    [Fact]
+    public async Task AnAttachmentThatArrives_ReportsNothing()
+    {
+        var reported = new List<string>();
+        var (bridge, _, _, files) = _Build(reported.Add);
+        files.Files[_Url] = _Bytes;
+
+        await bridge.HandleInboundMessageAsync(_AllowedUserId, "look", 1ul, [_Image()]);
+
+        Assert.Empty(reported);
     }
 }

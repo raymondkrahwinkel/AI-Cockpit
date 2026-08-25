@@ -60,6 +60,13 @@ public sealed class SlackChannelPlugin : ICockpitPlugin
             return;
         }
 
+        // AC-1074: shape-checked on save since AC-1048, but a value stored before that check survives every load and
+        // then matches nothing Slack can ever send. Said out loud here; the relay still opens, outbound is unharmed.
+        if (SlackUserId.ValidateAll(configured.Access.UserIds) is { } accessError)
+        {
+            host.ShowToast($"Slack: no message will reach the assistant — {accessError}", PluginToastSeverity.Error);
+        }
+
         var contribution = new AssistantChannelContribution
         {
             Id = "slack",

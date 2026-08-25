@@ -74,9 +74,9 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
 
         if (!_channel.Access.IsAllowed(senderUserId))
         {
-            // AC-1048: silent to the sender on purpose (a stranger gets no sign the bot is listening) — this is
-            // the one place an operator debugging "nothing comes in" can find out why.
-            _logger.LogDebug(
+            // AC-1074: Information, not Debug — `FileLoggerProvider` drops everything below it, so the Debug this
+            // used to be could never reach the log an operator debugging "nothing comes in" actually reads.
+            _logger.LogInformation(
                 "Channel {ChannelId} ({ChannelName}) ignored a message from {SenderUserId}: not on the access list.",
                 _channel.Id,
                 _channel.Name,

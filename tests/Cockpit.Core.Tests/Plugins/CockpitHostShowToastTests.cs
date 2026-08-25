@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
@@ -9,59 +10,79 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
-/// <summary>
-/// <see cref="CockpitHost.ShowToast"/> (#74): a plugin's toast reaches the app's own in-app toast surface
-/// (<see cref="IToastService"/>, #61), action button and all. The severity mapping is asserted per member
-/// because the two enums are declared independently (plugin isolation) and are mapped by name, not ordinal —
-/// a silent mis-map would show the wrong colour and timeout.
-/// </summary>
+// CockpitHost.ShowToast (AC-1074): an error toast also lands in the log. A toast is gone in seconds, and a channel
+// plugin reporting "nothing will ever come in" is exactly what someone reads back an hour later.
 public class CockpitHostShowToastTests
 {
     [Fact]
-    public void ShowToast_WithAnAction_PassesTheMessageAndActionToTheToastService()
+    public void AnErrorToast_IsAlsoLogged_TaggedWithThePluginId()
     {
-        var toastService = Substitute.For<IToastService>();
-        var host = _BuildHost(toastService);
-        var onAction = () => { };
+        var logger = new _RecordingLogger();
+        ICockpitHost host = _BuildHost(logger);
 
-        host.ShowToast("Review requested — #7 Fix the pump (acme/api)", PluginToastSeverity.Information, "Open in browser", onAction);
+        host.ShowToast("no message will reach the assistant", PluginToastSeverity.Error);
 
-        toastService.Received(1).Show(
-            "Review requested — #7 Fix the pump (acme/api)",
-            ToastSeverity.Information,
-            "Open in browser",
-            onAction);
+        var (level, message) = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Error, level);
+        Assert.Contains("slack", message, StringComparison.Ordinal);
+        Assert.Contains("no message will reach the assistant", message, StringComparison.Ordinal);
     }
 
+    // Only errors: an information toast is chatter, and logging every one of them would bury the errors that matter.
     [Theory]
-    [InlineData(PluginToastSeverity.Success, ToastSeverity.Success)]
-    [InlineData(PluginToastSeverity.Warning, ToastSeverity.Warning)]
-    [InlineData(PluginToastSeverity.Information, ToastSeverity.Information)]
-    [InlineData(PluginToastSeverity.Error, ToastSeverity.Error)]
-    public void ShowToast_MapsEachSeverityToItsHostCounterpart(PluginToastSeverity plugin, ToastSeverity expected)
+    [InlineData(PluginToastSeverity.Information)]
+    [InlineData(PluginToastSeverity.Success)]
+    [InlineData(PluginToastSeverity.Warning)]
+    public void AToastBelowError_IsNotLogged(PluginToastSeverity severity)
     {
-        var toastService = Substitute.For<IToastService>();
-        var host = _BuildHost(toastService);
+        var logger = new _RecordingLogger();
+        ICockpitHost host = _BuildHost(logger);
 
-        host.ShowToast("Something happened", plugin);
+        host.ShowToast("saved", severity);
 
-        toastService.Received(1).Show("Something happened", expected, null, null);
+        Assert.Empty(logger.Entries);
     }
 
-    // Typed as the contract a plugin actually holds, so the call goes through ICockpitHost's defaulted
-    // parameters — the same way a plugin invokes it.
-    private static ICockpitHost _BuildHost(IToastService toastService)
+    [Fact]
+    public void AToast_StillReachesTheToastService()
     {
-        var services = new ServiceCollection().AddSingleton(toastService).BuildServiceProvider();
+        var toasts = Substitute.For<IToastService>();
+        ICockpitHost host = _BuildHost(new _RecordingLogger(), toasts);
+
+        host.ShowToast("no message will reach the assistant", PluginToastSeverity.Error);
+
+        toasts.Received(1).Show("no message will reach the assistant", Arg.Any<ToastSeverity>(), null, null);
+    }
+
+    private static CockpitHost _BuildHost(ILogger<CockpitHost> logger, IToastService? toasts = null)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(toasts ?? Substitute.For<IToastService>());
+        services.AddSingleton(logger);
+
         return new CockpitHost(
-            "github-pull-requests",
-            "GitHub Pull Requests",
-            services,
+            "slack",
+            "Slack",
+            services.BuildServiceProvider(),
             Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
             Substitute.For<IPluginDialogHost>(),
             NullCockpitSessionObserver.Instance,
             new PluginDiagnostics());
+    }
+
+    private sealed class _RecordingLogger : ILogger<CockpitHost>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Entries.Add((logLevel, formatter(state, exception)));
     }
 }

@@ -33,4 +33,13 @@ public class DiscordUserIdTests
     [Fact]
     public void AValidId_ValidatesClean() =>
         Assert.Null(DiscordUserId.Validate("123456789012345678"));
+
+    // AC-1074: what DiscordChannelPlugin checks a stored access list with at load, not only at save — the same
+    // gap that let a Slack DM conversation id sit in the member-id field unnoticed.
+    [Fact]
+    public void ValidateAll_ReportsTheFirstBadIdAndPassesACleanList()
+    {
+        Assert.Null(DiscordUserId.ValidateAll(["123456789012345678", "987654321098765432"]));
+        Assert.NotNull(DiscordUserId.ValidateAll(["123456789012345678", "@Raymond Krahwinkel"]));
+    }
 }

@@ -122,8 +122,16 @@ internal sealed class CockpitHost(
     public void AddShortcut(PluginShortcut shortcut) =>
         contributionSink.AddPluginShortcut(shortcut);
 
-    public void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction) =>
+    public void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction)
+    {
+        // AC-1074: a toast is gone in seconds, and an error nobody was looking at is exactly what the log is for.
+        if (severity is PluginToastSeverity.Error)
+        {
+            services.GetService<ILogger<CockpitHost>>()?.LogError("Plugin {PluginId}: {Message}", pluginId, message);
+        }
+
         services.GetRequiredService<IToastService>().Show(message, _ToToastSeverity(severity), actionLabel, onAction);
+    }
 
     public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) =>
         // The plugin's identity is stamped here, not taken from the request — a plugin cannot ask under another's name.
