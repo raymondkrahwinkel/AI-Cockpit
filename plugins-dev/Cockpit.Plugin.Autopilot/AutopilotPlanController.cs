@@ -1,18 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// The single place a CEO-planned run's state lives (AC-174): the living plan, the phase, and the blockade state. It
-// mirrors `AutopilotRunController`'s shape — a `Changed` event and thread-guarded state — so
-// the workspace body tracks it the same way, and the plan-based flow can grow up alongside the shipped gate-based one
-// rather than replacing it in one move.
-//
-// The planning round edits the plan freely through `UpdatePlan` (the CEO re-emits it, the operator tweaks a
-// step); `Approve` freezes it and starts the run; `StartStep`/`SettleStep` drive the
-// steps; `Block`/`ResumeRunning`/`Park` handle the blockade; and `Settle`
-// ends the run merge-ready or blocked by the per-step hard/skip policy.
-//
-// Every mutable field is read and written under `_lock`: the plan and the phase are touched from the CEO's
-// report tools on background MCP-call threads, the driver loop, and the UI thread at once. `Changed` is
-// always raised outside the lock so a re-entrant render cannot deadlock or run while the state is half-updated.
+// The single place a CEO-planned run's state lives (AC-174): the living plan, the phase, and the blockade state.
+// Every mutable field is read and written under `_lock`, since it is touched from the CEO's report tools, the
+// driver loop, and the UI thread at once. `Changed` is always raised outside the lock so a re-entrant render cannot deadlock.
 internal sealed class AutopilotPlanController
 {
     private readonly Lock _lock = new();
@@ -122,10 +112,9 @@ internal sealed class AutopilotPlanController
         plan.Steps.Count > 0 &&
         plan.Steps.All(step => step.Status is not (AutopilotStepStatus.Pending or AutopilotStepStatus.Running));
 
-    // Opens the planning round on `plan` (typically an empty or freshly drafted plan). Refuses (returns
-    // false, leaving the existing run untouched) while a run is live — `AutopilotPlanPhase.Running` or
-    // `AutopilotPlanPhase.AwaitingOperator` — so a second trigger cannot overwrite a run in flight and strand
-    // its agents. A settled run (merge-ready/blocked) or an idle controller starts fresh.
+    // Opens the planning round on `plan`. Refuses (returns false, leaving the existing run untouched) while a
+    // run is live — Running or AwaitingOperator — so a second trigger cannot overwrite a run in flight and
+    // strand its agents. A settled run or an idle controller starts fresh.
     public bool BeginPlanning(AutopilotPlan plan)
     {
         lock (_lock)
@@ -200,17 +189,9 @@ internal sealed class AutopilotPlanController
     public void StartStep(string stepId) =>
         _MutateStep(stepId, step => step.WithAttempt().WithStatus(AutopilotStepStatus.Running));
 
-    // Records what a step's execution actually produced (AC-347): `AutopilotStepOutcome.Passed` settles the
-    // step; `AutopilotStepOutcome.Rejected` — the CEO judged the output against its acceptance and turned
-    // it down — or `AutopilotStepOutcome.Faulted` — no verdict was ever reached (a crash, a stall, a
-    // refused session, a dead CEO) — both send it back to rework (`AutopilotStepStatus.Pending`) while it
-    // still has attempts left under `maxAttempts`, and settle it
-    // `AutopilotStepStatus.Failed` once those run out — so a rework loop is bounded and never becomes an
-    // endless loop. Only a `AutopilotStepOutcome.Rejected` rework counts as a rework
-    // (`AutopilotStep.WithRework`): a `AutopilotStepOutcome.Faulted` restart is a run restart,
-    // never a review finding, because nobody judged the work — this is the one place that distinction is recorded, the
-    // distinction a plain `bool` could not carry. Returns true when the step goes back to rework (the driver
-    // re-runs it), false when it settled (passed, or gave up after the last attempt).
+    // Records what a step's execution actually produced (AC-347): Passed settles it; Rejected or Faulted send it
+    // back to rework while attempts remain, else settle it Failed. Only Rejected counts as a `WithRework` rework
+    // — Faulted is a run restart, never a review finding, since nobody judged the work.
     public bool ValidateStep(string stepId, AutopilotStepOutcome outcome, int maxAttempts)
     {
         AutopilotStep? step;
@@ -236,11 +217,9 @@ internal sealed class AutopilotPlanController
             return false;
         }
 
-        // Attempts left: back to rework — the driver re-runs the step, and StartStep records the next attempt. Only a
-        // Rejected outcome (an actual CEO verdict) counts as a rework; a Faulted one (no verdict at all) moves the step
-        // back to Pending too, but without WithRework() — it is a run restart, not a review finding. Each branch is one
-        // mutation that records the status and (for Rejected) the rework together, so a re-entrant read never sees the
-        // rework count bumped without the status having moved (or vice versa).
+        // Attempts left: back to rework. Only Rejected (an actual CEO verdict) counts as a rework; Faulted moves
+        // the step back to Pending too, but without WithRework() — a run restart, not a review finding. Each
+        // branch mutates status and (for Rejected) rework together, atomically.
         if (outcome == AutopilotStepOutcome.Rejected)
         {
             _MutateStep(stepId, target => target.WithRework().WithStatus(AutopilotStepStatus.Pending));
@@ -329,10 +308,9 @@ internal sealed class AutopilotPlanController
         _Raise();
     }
 
-    // The operator stopped the run mid-flight (AC-196): settle it `AutopilotPlanPhase.Stopped` with
-    // `reason` so it is recorded as a deliberate stop rather than vanishing while still Running. Set
-    // before the run's cancellation tears the driver down, so the settled phase the surface snapshots is Stopped — the
-    // driver only calls `Settle` when every step finished, which a mid-run stop never reaches.
+    // The operator stopped the run mid-flight (AC-196): settle it Stopped with `reason` so it is recorded as a
+    // deliberate stop rather than vanishing while still Running. Set before the run's cancellation tears the
+    // driver down, since `Settle` is only called when every step finished — a mid-run stop never reaches it.
     public void Stop(string reason)
     {
         lock (_lock)
@@ -355,13 +333,9 @@ internal sealed class AutopilotPlanController
         }
     }
 
-    // Counts a blockade question the operator answered (AC-347) — a blockade the run itself raised and the operator
-    // resolved is explicitly *not* a correction, so it is tracked as its own figure rather than folded into
-    // `AutopilotCorrectionKind`. Called only from `AutopilotRunCoordinator.AnswerBlockadeAsync` —
-    // the one place an operator answers a blockade. Deliberately not raised from inside `ResumeRunning`
-    // itself: that would make any future second caller of `ResumeRunning` silently count too, whether or not
-    // it was actually an operator answering. Does not raise `Changed` — `ResumeRunning` already
-    // does, right after this is called.
+    // Counts a blockade question the operator answered (AC-347) — explicitly *not* a correction, tracked apart
+    // from `AutopilotCorrectionKind`. Called only from `AnswerBlockadeAsync`, never from `ResumeRunning` itself,
+    // so a future second caller of `ResumeRunning` won't silently count too. Does not raise `Changed`.
     public void RecordBlockadeAnswer()
     {
         lock (_lock)
@@ -371,10 +345,8 @@ internal sealed class AutopilotPlanController
     }
 
     // Marks that this merge-ready run could not deliver its pull request (AC-347) — no `gh`, no remote, or
-    // `PublishAsync` itself failed. Called only from `AutopilotRunCoordinator._FinalizeMergeReadyAsync`,
-    // the one place delivery is decided. Does not raise `Changed`: it changes no visible run state (the
-    // phase stays MergeReady, the operator already sees the finalization's own toast/note) — it is read later, from
-    // history, once the run has settled.
+    // `PublishAsync` itself failed. Called only from `AutopilotRunCoordinator._FinalizeMergeReadyAsync`. Does
+    // not raise `Changed` — no visible run state changes; it is read later, from history, once settled.
     public void RecordPullRequestMissing()
     {
         lock (_lock)

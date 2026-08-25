@@ -11,11 +11,9 @@ internal enum AutopilotEpicOutcomeKind
     // The next executable sub was found and Ready; `AutopilotEpicOutcome.Run` is what to plan.
     Ready,
 
-    // The chain cannot proceed right now and pauses — `AutopilotEpicOutcome.PausedSubId` (when a specific
-    // sub is the reason) and `AutopilotEpicOutcome.Reason` say why. Covers every "do not silently guess"
-    // case alike: the next sub is not Ready, it is itself a nested epic, its merge status could not be determined, or
-    // the epic's own link structure could not be read — all of these get a comment on the epic and no run, rather than
-    // either skipping ahead or (worse) re-running something that may already be done.
+    // The chain cannot proceed right now and pauses — `PausedSubId`/`Reason` say why (not Ready, a nested epic,
+    // merge status undetermined, or link structure unreadable) — rather than skipping ahead or re-running
+    // something that may already be done.
     Paused,
 
     // Every sub is already merged into `origin/main` — the epic is done, nothing to plan.
@@ -31,30 +29,9 @@ internal sealed record AutopilotEpicOutcome(AutopilotEpicOutcomeKind Kind, Autop
     public static AutopilotEpicOutcome Paused(string? subId, string reason) => new(AutopilotEpicOutcomeKind.Paused, null, subId, reason);
 }
 
-// The AC-346 orchestration layer: starting Autopilot on an epic (an issue with subs) instead of a single item. Sits
-// entirely ahead of the existing single-issue pipeline — `ResolveAsync` either says "not an epic" (the
-// caller's existing path is untouched) or hands back the one `AutopilotRun` to plan next, built exactly
-// the way `AutopilotRun.FromIntent` would have built it for that sub if it had been clicked directly.
-// Nothing here changes how a run itself executes — this only decides *which* run to start, once, per call.
-//
-// Reads the epic's children via `"parent for"` links (YouTrack: `has: {parent for}`), the order among them
-// via `"depends on"` links (`EpicSubTopologicalOrder`), skips a sub already in `origin/main`
-// (`IEpicSubMergeChecker` — merge-ready is not the same as merged), and gates the first sub left standing
-// through the same `AutopilotReadyGate` a single-issue run already passes through — an epic's own
-// stage/text says nothing about which sub is executable, only the sub's own does.
-//
-// The `ResolveAsync → one Run → the caller plans it → the pipeline stops at merge-ready` shape *is* the
-// "stop bij merge-klaar" gate the ticket's DoD calls out: this method returns after the first Ready sub it finds and
-// never looks past it, so one call can never produce more than one run. Nothing outside a fresh call to this method
-// (i.e. a fresh trigger, after the human merged) ever asks it for a second sub.
-//
-// Nested epics (AC-346 review finding): a sub that itself has "parent for" children would, if handed unchanged into
-// the single-issue pipeline, be planned by the CEO under the existing AC-217 behaviour that pulls *all* of an
-// epic's children into one plan — silently absorbing a whole subtree into one run and bypassing this class's
-// one-sub-at-a-time, stop-at-merge-ready gate one level down. Rather than unroll nested epics too (out of this
-// ticket's scope) or risk that silent bypass, a sub found to have its own children is treated as not executable —
-// the chain pauses on it, explicitly, the same as a sub that failed the Ready gate. The safer of the two failure
-// modes the independent review asked to choose between.
+// The AC-346 orchestration layer: starting Autopilot on an epic instead of a single item. `ResolveAsync`
+// returns "not an epic" or the one next `AutopilotRun` to plan, gated and stopping after the first Ready sub
+// (the ticket's "stop at merge-ready"). A nested epic pauses rather than being absorbed by AC-217 CEO behaviour.
 internal static class AutopilotEpicRunner
 {
     // Exactly the link-type strings YouTrack (and any future tracker) reports for these two relationships, resolved
@@ -63,12 +40,9 @@ internal static class AutopilotEpicRunner
     private const string ChildLinkType = "parent for";
     private const string DependsOnLinkType = "depends on";
 
-    // Resolves what a "plan" intent on `clicked` should actually run. Reads `clicked`'s
-    // links once; when it has no `"parent for"` children this is `AutopilotEpicOutcome.NotEpic` and
-    // costs the caller nothing beyond that one read. An epic reads each child's own links in turn (bounded by the
-    // epic's own sub count — never large) to build the depends-on order and to check for a nested epic, refreshes
-    // `mergeChecker` once, then walks the order asking it whether each sub is already delivered
-    // before gating the first one that is not.
+    // Resolves what a "plan" intent on `clicked` should actually run. No `"parent for"` children costs the caller
+    // just the one link read (`NotEpic`); otherwise reads each child's links to build the depends-on order and
+    // detect nested epics, then walks the order to gate the first sub not already delivered.
     public static async Task<AutopilotEpicOutcome> ResolveAsync(
         ITrackerProvider provider,
         AutopilotRun clicked,
@@ -120,11 +94,9 @@ internal static class AutopilotEpicRunner
                 return AutopilotEpicOutcome.Paused(childId, $"Autopilot could not read {childId}'s links while resolving this epic's chain. Try again once the tracker is reachable.");
             }
 
-            // A "depends on" link is read from the depending issue's own side (its target — YouTrack reports it
-            // INWARD there; the source side sees the mirrored "is required for" name instead). Confirmed against a
-            // real YouTrack instance: querying the depending sub's own links returns "depends on" under Direction ==
-            // Inward, never Outward — the combination this used to filter on (Outward) does not occur for this link
-            // type at all, which silently made the whole depends-on ordering a no-op.
+            // Read from the depending issue's own side: YouTrack reports "depends on" as Inward there (the source
+            // side sees the mirrored "is required for" instead). Confirmed against a real instance — filtering on
+            // Outward never matches this link type and silently made the whole ordering a no-op.
             dependsOn[childId] = childLinks
                 .Where(link => link.Direction == TrackerLinkDirection.Inward
                     && string.Equals(link.LinkType, DependsOnLinkType, StringComparison.OrdinalIgnoreCase)

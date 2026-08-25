@@ -1,13 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// The targeted spot-checks the harness computes for itself (AC-255) — chosen over deeply validating a fixed
-// percentage of steps, which was the other candidate for this gate. The failure it guards against is an
-// honest-but-wrong summary, not a lying one; against an honest mistake, sampling p% of steps catches p% of the
-// mistakes, while these catch the shapes that are wrong in a way the harness can see without reading anything.
-//
-// Every one of these raises a concern and never returns a verdict. They are heuristics: a false positive costs the CEO
-// one look at the files — which is what it did for every step before this gate existed — and a step is never rejected
-// on one. That asymmetry is why they may be as blunt as they are.
+// Targeted spot-checks the harness computes for itself (AC-255), chosen over sampling a fixed percentage of
+// steps — these catch honest-but-wrong summaries without reading anything. Each raises a concern only, never
+// a verdict: a false positive costs the CEO one look at the files, and no step is ever rejected on one.
 internal static class AutopilotEvidenceSignals
 {
     public static IReadOnlyList<string> For(AutopilotWorktreeChange change, AutopilotStep step, IReadOnlyList<string> summaries)
@@ -43,11 +38,9 @@ internal static class AutopilotEvidenceSignals
                 + "read the change rather than the summary.");
         }
 
-        // Deliberately not an "else" on the rework above: a rework always implies a second attempt, and it is exactly
-        // there that this caveat matters most. The mark is retaken per attempt, so the change below is only the latest
-        // attempt's slice while the acceptance spans the whole step — and the rework concern does not say that.
-        // Attempts also grows on an attempt no CEO ever judged (a crashed or stalled session, see AutopilotCorrection),
-        // which is the case where nothing else would fire at all.
+        // Not an "else" on the rework above: a rework implies a second attempt, exactly where this caveat matters
+        // most — the mark is retaken per attempt, so the change below is only the latest attempt's slice while
+        // acceptance spans the whole step, which the rework concern above doesn't say.
         if (step.Attempts > 1)
         {
             concerns.Add(

@@ -1,27 +1,16 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// Drives an approved plan to completion (AC-174) — the bounded agentic loop: pick the next pending
-// step, run it, have the CEO validate its output against the step's acceptance, and either advance, send it back to
-// rework (re-run), or give up once the attempt cap is hit — then settle the run merge-ready or blocked.
-//
-// The actual work of a step — embedding a session on the step's profile/model/minimal-MCP, handing it the brief, and
-// getting the CEO's pass/fail — is injected as `executeStep`, so the sequencing here (advance / rework / bound /
-// settle) is a pure, testable loop and the session integration is a thin adapter around it.
+// Drives an approved plan to completion (AC-174) — the bounded agentic loop: pick the next pending step, run it,
+// have the CEO validate it, and either advance, rework, or give up once the attempt cap is hit, then settle merge-
+// ready or blocked. The actual work of a step is injected as `executeStep`, so this stays a pure, testable loop.
 internal sealed class AutopilotRunDriver(
     AutopilotPlanController controller,
     int maxAttempts,
     Func<AutopilotStep, Task<AutopilotStep>>? holdToCostCeiling = null)
 {
-    // Runs the plan: while the run is `AutopilotPlanPhase.Running` and a step is still pending, it starts
-    // the step (recording the attempt), executes it, validates the outcome, and lets a rework re-run the same step
-    // until it passes or its attempts run out. It stops early if the run leaves Running (a blockade parks it), and
-    // settles once no step is pending. `executeStep` returns whether a verdict was ever reached and,
-    // if so, what it was (`AutopilotStepOutcome`) — `AutopilotStepOutcome.Rejected` (the CEO
-    // judged and turned it down) and `AutopilotStepOutcome.Faulted` (no verdict at all: a crash, a stall,
-    // a refused session) both rework or bound the same way, but only the former is ever a review finding.
-    //
-    // AC-434: when the next pending work is a review-gate pair (`AutopilotPlan.NextPendingGroup` returns
-    // more than one step), `_RunReviewGroupAsync` runs them concurrently instead of one at a time.
+    // Runs the plan: starts/executes/validates each pending step, reworking until it passes or attempts run out,
+    // settling once no step is pending. `Rejected` and `Faulted` both rework/bound the same way, but only the
+    // former is a review finding. AC-434: a review-gate pair runs concurrently via `_RunReviewGroupAsync`.
     public async Task RunAsync(Func<AutopilotStep, Task<AutopilotStepOutcome>> executeStep, CancellationToken cancellationToken = default)
     {
         while (controller.Phase == AutopilotPlanPhase.Running && !cancellationToken.IsCancellationRequested)
@@ -33,10 +22,9 @@ internal sealed class AutopilotRunDriver(
                 return;
             }
 
-            // AC-434: a single pending review-gate step (the CEO's other gate already settled, or the operator dropped
-            // one) still runs through _RunReviewGroupAsync rather than the plain single-step path below — a lone gate's
-            // rejection still needs the shared fix step, not a rework that fixes nothing (its own worktree is a
-            // throwaway fork, never the run's real one; see AutopilotRunCoordinator).
+            // AC-434: a single pending review-gate step still runs through _RunReviewGroupAsync rather than the plain
+            // single-step path — a lone gate's rejection still needs the shared fix step, not a rework that fixes
+            // nothing (its own worktree is a throwaway fork, never the run's real one).
             if (group.Count == 1 && !group[0].IsReviewGate)
             {
                 await _DriveStepToSettledAsync(group[0], executeStep, cancellationToken).ConfigureAwait(false);
@@ -47,10 +35,9 @@ internal sealed class AutopilotRunDriver(
         }
     }
 
-    // Runs one step through start/execute/validate, reworking it in place while ValidateStep says to, until it settles
-    // (passed, or gave up after the last attempt) or the run leaves Running. Extracted so a review group's shared fix
-    // pass (AC-434) drives its synthesized step through the identical cycle an ordinary plan step gets — this is the
-    // original single-step loop body, unchanged, just given a name so both callers share it.
+    // Runs one step through start/execute/validate, reworking it while ValidateStep says to, until it settles or
+    // the run leaves Running. Extracted so a review group's shared fix pass (AC-434) drives its synthesized step
+    // through the identical cycle an ordinary plan step gets.
     private async Task _DriveStepToSettledAsync(AutopilotStep step, Func<AutopilotStep, Task<AutopilotStepOutcome>> executeStep, CancellationToken cancellationToken)
     {
         var stepId = step.Id;
@@ -83,15 +70,9 @@ internal sealed class AutopilotRunDriver(
         }
     }
 
-    // AC-434: read-parallel, write-serial. Every gate still open this round runs concurrently (each in its own
-    // throwaway worktree — AutopilotRunCoordinator never lets a review-gate step touch the run's shared one), keeping
-    // its own verdict — the coordinator queues their CEO validations one at a time internally, so this stays a plain
-    // concurrent execute+validate from here. A gate that comes back clean settles immediately and never reruns for the
-    // other's sake. When at least one gate is genuinely REJECTED (the CEO judged it, AC-347) with attempts left, one
-    // shared fix step — the run's only writer — applies every rejected gate's finding before it re-verifies. A gate
-    // that only FAULTED (no verdict at all — a crash, a stall) is not a finding and contributes nothing to the fix
-    // brief; it is simply retried next round like an ordinary rework. Bounded by the ordinary attempt cap on both the
-    // gates and the fix pass, so this can never loop forever.
+    // AC-434: read-parallel, write-serial. Every gate still open this round runs concurrently in its own throwaway
+    // worktree. When at least one gate is genuinely REJECTED, one shared fix step applies every finding before
+    // re-verifying; a gate that only FAULTED is not a finding and is simply retried next round.
     private async Task _RunReviewGroupAsync(IReadOnlyList<AutopilotStep> group, Func<AutopilotStep, Task<AutopilotStepOutcome>> executeStep, CancellationToken cancellationToken)
     {
         var lead = group[0];
@@ -145,10 +126,9 @@ internal sealed class AutopilotRunDriver(
             round++;
             var fixStep = AutopilotReviewFixStep.Build(lead, rejected, round);
 
-            // AC-256: this step inherits the gate's profile and model, and a review gate is exempt from the run's cost
-            // ceiling — so an expensive model legitimately assigned to a reviewer would otherwise carry straight into
-            // the one step that actually writes code, without ever passing the gate that plan emission applies. Null in
-            // a bare test graph, where there is no roster to hold anything to.
+            // AC-256: this step inherits the gate's profile and model, and a review gate is exempt from the run's
+            // cost ceiling — without this, an expensive reviewer model would carry straight into the code-writing
+            // step. Null in a bare test graph, where there is no roster to hold anything to.
             if (holdToCostCeiling is not null)
             {
                 try
@@ -157,10 +137,9 @@ internal sealed class AutopilotRunDriver(
                 }
                 catch (Exception)
                 {
-                    // Reading the profile roster is the only thing that can fault in there, and it is the same
-                    // best-effort treatment the coordinator's own roster reads get. A run that dies silently because a
-                    // config file was briefly unreadable is a far worse outcome than one fix pass costing a tier more
-                    // than the ceiling wanted.
+                    // Reading the profile roster is the only thing that can fault here, same best-effort treatment
+                    // as the coordinator's own roster reads: a fix pass costing a tier more beats the run dying
+                    // silently because a config file was briefly unreadable.
                 }
             }
 

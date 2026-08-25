@@ -5,13 +5,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// The in-process MCP tools (`mcp__cockpit-autopilot-ceo__*`) only the run's CEO validator uses (AC-174):
-// report a step's validation verdict (`autopilot_validate`), answer or escalate a worker's mid-step
-// consult (`autopilot_answer_worker`/`autopilot_escalate_to_operator`, AC-201), and keep the source issue in
-// sync (`autopilot_tracker_stage`/`autopilot_tracker_note`). Split off the step agents' own endpoint
-// (`AutopilotRunTools`) so a step agent never even sees the CEO's tools — tighter least-privilege, and a
-// weaker (local) model is not distracted into calling a validate/tracker tool it has no business calling. Each is still
-// pane-scoped through `ICockpitHost.CurrentMcpCallerPaneId`, so only the run's CEO session can call them.
+// Split off from the step agents' own endpoint (`AutopilotRunTools`, AC-174/AC-201) so a step agent
+// never even sees the CEO's tools — tighter least-privilege, and a weaker local model isn't distracted
+// into calling a validate/tracker tool it has no business calling. Pane-scoped, so only the CEO session can call them.
 internal sealed class AutopilotCeoTools(ICockpitHost host, AutopilotRunManager manager)
 {
     // The in-process MCP server name the plugin mounts the CEO's tools under — dark once a run has settled.

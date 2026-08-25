@@ -1,9 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// Where a CEO-planned run sits (AC-174). `Planning` is the interactive round with the CEO — the plan is a
-// living artifact being shaped; `Running` is the autonomous execution after the single approval;
-// `AwaitingOperator` and `Blocked` cover the AC-155 blockade; `MergeReady` is the
-// settled end (every hard step passed — the merge itself stays with the human).
+// Where a CEO-planned run sits (AC-174). `Planning` is the interactive round with the CEO; `Running` is the
+// autonomous execution after the single approval; `AwaitingOperator`/`Blocked` cover the AC-155 blockade;
+// `MergeReady` is the settled end (every hard step passed — the merge itself stays with the human).
 internal enum AutopilotPlanPhase
 {
     // The interactive planning round: the CEO drafts and revises the plan with the operator, no run yet.
@@ -21,9 +20,8 @@ internal enum AutopilotPlanPhase
     // Every hard step passed — the PR is merge-ready and the merge is left to the human.
     MergeReady,
 
-    // The operator stopped the run mid-flight (AC-196) — it settled by their choice, not by the step policy;
-    // any unmerged work is left as-is. Recorded in history with a neutral outcome, distinct from a blocked run. Kept
-    // last so its underlying value is appended — existing persisted history (which stores the phase as its integer
-    // value) keeps deserializing MergeReady/Blocked unchanged.
+    // The operator stopped the run mid-flight (AC-196) — settled by their choice, not the step policy; any
+    // unmerged work is left as-is. Kept last so its integer value is appended — persisted history keeps
+    // deserializing MergeReady/Blocked unchanged.
     Stopped,
 }

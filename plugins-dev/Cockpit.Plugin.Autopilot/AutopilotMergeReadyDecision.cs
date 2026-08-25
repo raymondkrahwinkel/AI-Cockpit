@@ -21,16 +21,11 @@ internal enum AutopilotPrDelivery
     CanCreatePr,
 }
 
-// The pure decision (and its operator-facing message) for a merge-ready run's pull request (AC-216) — kept static and
-// side-effect-free so the outcome/fallback is exhaustively unit-testable without a live run, a git repo or the network,
-// and so the exact same rule decides the pre-run preflight (AC-215) and the post-run finalization. It only decides
-// *what* to do; the coordinator's `IAutopilotPrPublisher` does it.
+// Kept static and side-effect-free so the outcome is exhaustively unit-testable without a live run, git repo, or
+// network — the same rule decides both the pre-run preflight (AC-215) and post-run finalization (AC-216).
 internal static class AutopilotMergeReadyDecision
 {
-    // Decides the delivery for a run. `deliversPullRequest` is the template signal (a code run);
-    // `isGitRun` is whether the run has a git branch at all (a git-repo run, not a plain folder);
-    // `hasRemote` and `ghAvailable` are what the environment probed. A run that expects
-    // no PR is always `AutopilotPrDelivery.NotExpected`, whatever the environment — so an administrative run
+    // A run that expects no PR is always `NotExpected`, whatever the environment, so an administrative run
     // never reports a missing-PR fault. The rest degrade fail-soft: no git run &gt; no remote &gt; no gh &gt; ready.
     public static AutopilotPrDelivery Decide(bool deliversPullRequest, bool isGitRun, bool hasRemote, bool ghAvailable)
     {
@@ -52,10 +47,8 @@ internal static class AutopilotMergeReadyDecision
         return ghAvailable ? AutopilotPrDelivery.CanCreatePr : AutopilotPrDelivery.PushOnly;
     }
 
-    // The operator-facing line for a *preflight* warning (AC-215), told before the run starts so a code run that
-    // cannot deliver its PR is flagged up front rather than discovered at the end. Null when there is nothing to warn
-    // about — the PR can be created, or none was expected. `worktreePath` is not known yet at preflight,
-    // so the message names only what is missing.
+    // Preflight warning (AC-215), told before the run starts so a code run that cannot deliver its PR is flagged
+    // up front. Null when nothing to warn about. `worktreePath` isn't known yet, so the message names only what's missing.
     public static string? PreflightWarning(AutopilotPrDelivery delivery) => delivery switch
     {
         AutopilotPrDelivery.NoGitRun => "This run works in a plain folder (not a git repository), so it cannot open the pull request the template expects — it will run, but you will get no PR.",
@@ -64,10 +57,8 @@ internal static class AutopilotMergeReadyDecision
         _ => null,
     };
 
-    // The operator-facing line describing the *final* outcome (AC-216), shown on the run once it settled
-    // merge-ready — never a silent "done" for a code run that could not produce its PR. `branch` and
-    // `worktreePath` tell the operator where the work is so it does not evaporate;
-    // `prUrl` is the PR that was opened (for `AutopilotPrDelivery.CanCreatePr`).
+    // Final outcome line (AC-216) — never a silent "done" for a code run that could not produce its PR.
+    // `branch`/`worktreePath` tell the operator where the work is so it doesn't evaporate.
     public static string Outcome(AutopilotPrDelivery delivery, string? branch, string? worktreePath, string? prUrl)
     {
         var where = _Where(branch, worktreePath);

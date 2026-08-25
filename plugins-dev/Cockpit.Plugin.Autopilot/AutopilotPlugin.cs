@@ -9,8 +9,7 @@ namespace Cockpit.Plugin.Autopilot;
 
 // Autopilot (AC-94/AC-174): the operator-triggered "issue → merge-ready PR" plugin. The CEO plans the work, the
 // operator approves it once, then an autonomous run drives each step — embedding an isolated session per step,
-// validating it against its acceptance, and settling merge-ready or blocked. A tracker's "Plan in Autopilot" hands an
-// issue to the CEO with its source to draft from.
+// validating it, and settling merge-ready or blocked. A tracker's "Plan in Autopilot" hands the issue to the CEO.
 public sealed class AutopilotPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(
@@ -27,9 +26,9 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     {
         var settings = new AutopilotSettings(host.Storage);
 
-        // The planning controller (AC-174): the CEO's live draft during one planning round. Planning is decoupled from
-        // executing — a frozen plan goes to the run queue, and runs execute on their own controllers — so the operator
-        // can plan a new run while others run.
+        // The planning controller (AC-174): the CEO's live draft during one planning round. Planning is decoupled
+        // from executing — a frozen plan goes to the run queue and runs execute on their own controllers — so the
+        // operator can plan a new run while others run.
         var planController = new AutopilotPlanController();
 
         // The queue of approved runs (persistent) and the manager that runs them up to the concurrency cap.
@@ -40,33 +39,28 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // it is recorded here to be shown in the history section rather than vanishing.
         var history = new AutopilotRunHistory(host.Storage);
 
-        // The template store (AC-189): the operator's own templates and their edits of the plugin/builtin ones, persisted
-        // like the queue and history above. It follows the same IPluginStorage pattern; List() merges the passed-in
-        // in-memory plugin registrations (host.RegisteredAutopilotTemplates) with those persisted user/override templates
-        // into the one list both the settings beheer-UI and the plan-flow picker read from.
+        // The template store (AC-189): the operator's own templates and their edits of the plugin/builtin ones,
+        // persisted like the queue and history above. List() merges the in-memory plugin registrations with the
+        // persisted user/override templates into the one list the settings UI and the plan-flow picker read from.
         var templates = new AutopilotTemplateStore(host.Storage);
 
-        // The gear next to the plugin in the manager opens this — the global-level settings. Handed the host so the
-        // CEO-profile picker can list the cockpit's profiles and offer each one's models, and the template store so the
-        // Templates section lists/creates/edits/resets the combined templates.
+        // The gear next to the plugin in the manager opens this — the global-level settings. Handed the host so
+        // the CEO-profile picker can list profiles/models, and the template store for the Templates section.
         host.AddSettings(() => new AutopilotSettingsControl(settings, host, templates));
 
-        // The CEO's plan-emit tool during the planning round (AC-174): live only while planning, and pane-scoped so only
-        // the bound CEO session may set the plan. The workspace body briefs the CEO to call it; approving submits the plan.
-        // Internal-only (AC-204): the run's own agents scope to these endpoints by name (McpServers), so they must
-        // stay mountable — but a normal operator must never see or tick them in the New-session/profile MCP selection,
-        // nor have them fan into an unrelated no-selection session while a run is live.
+        // The CEO's plan-emit tool during the planning round (AC-174): live only while planning, pane-scoped so
+        // only the bound CEO session may set the plan. Internal-only (AC-204): the run's own agents scope to it
+        // by name, but a normal operator must never see or tick it in the New-session/profile MCP selection.
         _ = host.AddMcpEndpoint(AutopilotPlanTools.EndpointName, new AutopilotPlanTools(host, planController, settings), isEnabled: () => planController.Phase == AutopilotPlanPhase.Planning, isInternal: true);
 
-        // The autonomous run's report channel (AC-174): a step agent signals done, a run's CEO validator reports its
-        // verdict — both pane-scoped, routed by the manager to whichever run owns the caller pane. Live while any run is
-        // executing; dark when none is.
+        // The autonomous run's report channel (AC-174): a step agent signals done, a run's CEO validator reports
+        // its verdict — both pane-scoped, routed by the manager to whichever run owns the caller pane. Live while
+        // any run is executing.
         _ = host.AddMcpEndpoint(AutopilotRunTools.EndpointName, new AutopilotRunTools(host, manager), isEnabled: () => manager.Active.Count > 0, isInternal: true);
 
-        // The CEO validator's own tools (AC-174): validate a step, keep the source issue in sync. A
-        // separate endpoint from the step agents' one above, so a step agent is never handed the CEO's tools — tighter
-        // least-privilege, and a weaker local model is not distracted into calling a validate/tracker tool. Same
-        // pane-scoping and live-only gating; the CEO validator session is given this endpoint, the step agents are not.
+        // The CEO validator's own tools (AC-174): validate a step, keep the source issue in sync. A separate
+        // endpoint from the step agents' one above, for least-privilege — a step agent never gets the CEO's tools.
+        // Same pane-scoping and live-only gating.
         _ = host.AddMcpEndpoint(AutopilotCeoTools.EndpointName, new AutopilotCeoTools(host, manager), isEnabled: () => manager.Active.Count > 0, isInternal: true);
 
         // The issues a refusal has already been written onto, so clicking a backlog item twice does not leave the same
@@ -84,22 +78,15 @@ public sealed class AutopilotPlugin : ICockpitPlugin
                 return new Dictionary<string, string> { ["status"] = "no-ceo-profile", ["issue"] = run.IssueId };
             }
 
-            // AC-346: before the stage gate below, find out whether the clicked item is an epic (has "parent for"
-            // children) rather than a single issue. Same caller/tracker guard as _RefuseAsync's tracker-write below —
-            // an epic click reads the epic's own links and, on a pause, writes a comment onto it, so only the tracker
-            // plugin that owns the item gets to trigger that read/write, never an arbitrary caller naming someone
-            // else's issue. A non-epic item (children.Count == 0) costs one link lookup and falls straight through to
-            // the unchanged single-issue path below — ResolveAsync returns NotEpic and run is never replaced.
+            // AC-346: before the stage gate below, find out whether the clicked item is an epic. Same caller/tracker
+            // guard as _RefuseAsync's tracker-write below — only the tracker plugin that owns the item triggers that
+            // read/write. A non-epic item costs one link lookup and falls through unchanged (ResolveAsync returns NotEpic).
             if (!string.IsNullOrWhiteSpace(run.IssueId) && string.Equals(intent.CallerPluginId, run.Tracker, StringComparison.OrdinalIgnoreCase)
                 && host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, run.Tracker, StringComparison.OrdinalIgnoreCase)) is { } provider)
             {
-                // The repository the merge check runs git in (AC-346 review): the operator's chosen directory is not
-                // known yet at this point (no plan/session exists until planning starts), so this uses the same
-                // fallback tier AutopilotWorkingDirectory.Resolve does for that same case — the active session's
-                // directory — with the cockpit's own working directory as the very last resort, never the only source.
-                // Should neither resolve to a real repository, GitEpicSubMergeChecker.RefreshAsync leaves its state
-                // empty and IsMerged answers null for every sub, which AutopilotEpicRunner turns into a paused chain
-                // with a comment rather than silently treating every sub as unmerged and restarting from the first one.
+                // The repository the merge check runs git in (AC-346 review): not known yet here, so this uses the
+                // same fallback AutopilotWorkingDirectory.Resolve uses. If neither resolves, AutopilotEpicRunner
+                // turns the unknown merge status into a paused chain with a comment, not a silent restart.
                 var repositoryDirectory = host.Sessions.ActiveSessionWorkingDirectory is { Length: > 0 } active
                     ? active
                     : Directory.GetCurrentDirectory();
@@ -129,13 +116,9 @@ public sealed class AutopilotPlugin : ICockpitPlugin
                 }
             }
 
-            // AC-346: a sub the epic-runner picked may already be mid-run — approved and executing (manager.Active),
-            // staged behind others (queue), or still on the shared planning draft (planController, not yet approved).
-            // Without this, a second click on the epic while its current sub is merge-ready but not yet merged (or
-            // MaxConcurrentRuns allows more than one run at once) would start a second worktree and a second PR on the
-            // very same ticket. Scoped to tracker+issue rather than only epic subs — the same double-click risk exists
-            // for a plain issue — but never blocks a deliberate replan of a sub that already settled: only an
-            // in-flight (not yet settled) run counts.
+            // AC-346: a sub the epic-runner picked may already be mid-run. Without this, a second click could
+            // start a second worktree and PR on the same ticket. Scoped to tracker+issue; never blocks a
+            // deliberate replan of a sub that already settled — only an in-flight run counts.
             if (_HasRunInFlight(planController, queue, manager, run.Tracker, run.IssueId))
             {
                 return new Dictionary<string, string> { ["status"] = "already-running", ["issue"] = run.IssueId };
@@ -168,10 +151,9 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",
         });
 
-        // Open the Autopilot workspace from the side menu: just add it if it is not open yet and
-        // navigate to it — it does not force a planning round. From the surface the operator starts a run with New run
-        // (which is where the CEO-profile guard now lives), so the workspace and its history are reachable without a
-        // profile set. A triggered run still opens straight into a planning round through the "plan" intent above.
+        // Open the Autopilot workspace from the side menu — it does not force a planning round. The operator
+        // starts a run with New run (where the CEO-profile guard now lives), so history stays reachable without
+        // a profile set. A triggered run still opens straight into planning via the "plan" intent above.
         host.AddSideMenuButton("Autopilot", () => _ = host.OpenWorkspaceAsync("workspace.autopilot.plan"));
     }
 
@@ -179,9 +161,9 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     {
     }
 
-    // A planning round needs a CEO profile: without one the host falls back to whatever the first configured profile is
-    // — which may be a local/plugin model that cannot plan. Rather than start a round that quietly
-    // misbehaves, tell the operator and offer the settings where they pick one. Returns whether a profile is set.
+    // A planning round needs a CEO profile: without one the host falls back to whatever the first configured
+    // profile is, which may be a local/plugin model that cannot plan. Tell the operator and offer settings
+    // instead of starting a round that quietly misbehaves. Returns whether a profile is set.
     private static bool _RequireCeoProfile(ICockpitHost host, AutopilotSettings settings)
     {
         if (!string.IsNullOrWhiteSpace(settings.CeoProfileLabel()))
@@ -197,15 +179,9 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         return false;
     }
 
-    // A refused start says so twice: to the operator who pressed the button, and on the issue itself, so the reason
-    // survives the toast and is there for whoever next looks at the item.
-    //
-    // Only the tracker plugin that owns the issue gets that second half. The intent's payload names its own tracker and
-    // issue id, and any installed plugin may send an intent — without this check, "refuse and comment" would hand every
-    // plugin a way to write arbitrary text onto arbitrary issues with the operator's token, which is a capability
-    // Autopilot did not have before. The host stamps the caller, so the two are compared and a mismatch gets the toast
-    // only. Writing is also once per issue, and best-effort: a tracker that is down or read-only costs the note, never
-    // the refusal, which already stands.
+    // A refused start says so twice: the toast, and a comment on the issue. Only the tracker plugin that owns
+    // the issue gets that second half — without this check, any plugin could write onto arbitrary issues. The
+    // host stamps the caller, so a mismatch gets the toast only. Writing is once per issue and best-effort.
     private static async Task _RefuseAsync(ICockpitHost host, PluginIntent intent, AutopilotRun run, string reason, HashSet<string> commented)
     {
         host.ShowToast(reason, PluginToastSeverity.Warning, "Open settings", () => _ = host.ShowSettingsAsync());
@@ -236,12 +212,9 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         }
     }
 
-    // AC-346: the epic-runner's chain paused — a sub not Ready, a nested epic, an undeterminable merge status, or the
-    // epic's own link structure could not be read (subId is null only for that last case, before any sub is even
-    // known). Written onto the epic, not the sub, since it is the epic the operator clicked and the epic's comment
-    // trail is where the DoD wants "which sub, and why" to be readable without opening the sub. Best effort, like
-    // every other tracker write here — a comment that fails to land does not change that the chain already paused;
-    // the caller's returned status already says so.
+    // AC-346: the epic-runner's chain paused — a sub not Ready, a nested epic, or an undeterminable/unreadable
+    // status. Written onto the epic, not the sub, since the operator clicked the epic. Best effort, like every
+    // other tracker write here — a failed comment doesn't change that the chain paused.
     private static async Task _PauseEpicAsync(ITrackerProvider provider, string epicId, string? subId, string reason)
     {
         var text = subId is { Length: > 0 }
@@ -258,11 +231,9 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         }
     }
 
-    // AC-346: whether a run on this exact tracker+issue is already in flight — not yet settled — across every place
-    // one can currently be: the shared planning draft (still being shaped or awaiting approval), the queue (approved,
-    // waiting for a free slot), and the active runs a manager is executing right now. A settled run (merge-ready,
-    // blocked, stopped) never counts — only a genuinely still-running one blocks a second start, so a deliberate
-    // replan of something that already finished is never refused by this guard.
+    // AC-346: whether a run on this exact tracker+issue is already in flight — not yet settled — across the
+    // shared planning draft, the queue, and the manager's active runs. A settled run never counts; only a
+    // genuinely still-running one blocks a second start, so a deliberate replan is never refused by this guard.
     internal static bool _HasRunInFlight(AutopilotPlanController planController, AutopilotRunQueue queue, AutopilotRunManager manager, string tracker, string issueId)
     {
         bool Matches(AutopilotPlanSource? source) =>
