@@ -5,18 +5,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// `IPluginSessionDriver` for Codex over the persistent `codex app-server` JSON-RPC protocol
-// (#45 fase 3) — the interactive route that replaces the headless `CliSubprocessPluginSessionDriver`.
-// Unlike `codex exec`, the app-server can show a real approval dialog: it sends the client a request per
-// shell command / file edit and blocks the turn until the operator answers, which is why this driver reports
-// `PluginSessionCapabilities.SupportsPermissions` where the exec driver could not.
-// Lifecycle: `StartAsync(string?, string?, string?, IReadOnlyDictionary{string, string}?, IReadOnlyList{PluginMcpServer}?, CancellationToken)`
-// spawns one long-lived process, does the `initialize`/`initialized` handshake, then `thread/start` (with the cwd the
-// cockpit already knows, #45 D5) or `thread/resume`. The thread id comes from the start reply or the
-// `thread/started` notification, whichever carries it. Each `SendUserMessageAsync` is a
-// `turn/start`; the streaming `item/*` and `turn/*` notifications are mapped to plugin events
-// by the notification pump, and the server's approval requests are surfaced as
-// `PluginPermissionRequested` and answered by `RespondToPermissionAsync`.
+// `IPluginSessionDriver` for Codex over the persistent `codex app-server` JSON-RPC protocol (#45 fase 3),
+// replacing the headless `CliSubprocessPluginSessionDriver`. Unlike `codex exec`, the app-server sends a
+// request per shell command/file edit and blocks the turn for the operator's answer — hence `SupportsPermissions`.
 internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 {
     private const string _ClientName = "cockpit";
@@ -88,13 +79,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // meter folds it in. Updated by thread/tokenUsage/updated, which arrives around the end of the turn.
     private PluginTokenUsage? _lastTurnUsage;
 
-    // AC-126: Codex's own wire protocol carries the assistant's answer only as item/agentMessage/delta chunks —
-    // turn/completed has no "final text" field of its own, unlike Claude's stream-json result. Folded here as the
-    // deltas arrive and handed to the turn's PluginTurnCompleted.Result, mirroring how OpenAiCompatPluginSessionDriver
-    // accumulates its own deltas. Without this, get_task_result and SessionRuntime.LastAssistantText saw only the
-    // delta events (never a completed text block) and turn/completed's Result stayed null — a text-only Codex
-    // delegation looked "finished" but handed back nothing. Read and reset only from the single-threaded
-    // notification pump, so it needs no lock of its own.
+    // AC-126: turn/completed carries no "final text" field, unlike Claude's stream-json result — the answer
+    // arrives only as item/agentMessage/delta chunks, folded here so LastAssistantText/Result aren't null.
+    // Read/reset only from the single-threaded notification pump, so it needs no lock of its own.
     private readonly StringBuilder _turnText = new();
 
     public CodexAppServerSessionDriver(Func<ICliSubprocess> subprocessFactory, CliAgentConfig config, string executablePath)
@@ -141,12 +128,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             _model = model;
         }
 
-        // A per-session option the operator picked in the New-session dialog wins over the profile's config
-        // default; absent, the config value (and then the CLI's own default) applies. With no explicit sandbox
-        // but a delegated session's permission ceiling folded into the options as permission-mode, derive the
-        // sandbox from that ceiling so a delegated Codex task can actually write (acceptEdits/bypass ->
-        // workspace-write, bounded to the working dir) instead of being stuck at read-only and stalling on an
-        // approval nobody can answer (AC-100/AC-112). danger-full-access is never derived, only ever chosen.
+        // A per-session option wins over the profile's config default; absent, derive from a delegated session's
+        // permission ceiling (acceptEdits/bypass -> workspace-write) so a delegated Codex task can actually write
+        // instead of stalling on an approval nobody can answer (AC-100/AC-112). danger-full-access is never derived.
         var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, null)
             ?? CodexSandbox.ForCeiling(CliAgentConfig.ResolveOption(options, WellKnownPluginSessionOptions.PermissionMode, null))
             ?? _config.SandboxMode;
@@ -183,10 +167,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         await _connection.SendRequestAsync("initialize", new { clientInfo = new { name = _ClientName, version = _ClientVersion } }, cancellationToken).ConfigureAwait(false);
         await _connection.SendNotificationAsync("initialized", null, cancellationToken).ConfigureAwait(false);
 
-        // The live-control choices (#45 D4) — resolved on this same handshaked connection, so listing the models
-        // costs one round-trip and no second process (unlike the New-session dialog's CodexModelCatalog, which has
-        // no running server to reuse). Best-effort: an unreadable listing leaves the model control on the current
-        // model alone, and effort's fixed set needs no lookup at all.
+        // The live-control choices (#45 D4), resolved on this same handshaked connection — one round-trip, no
+        // second process (unlike CodexModelCatalog, which has no running server to reuse). Best-effort: an
+        // unreadable listing just leaves the model control on the current model; effort's fixed set needs no lookup.
         _liveOptions = _BuildLiveOptions(await _ListLiveModelsAsync(cancellationToken).ConfigureAwait(false));
 
         var cwd = _NullIfBlank(workingDirectory);
@@ -198,10 +181,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
         else
         {
-            // A hidden per-session system prompt the host folded into the options map (AC-180 — an embedded run's
-            // brief, e.g. Autopilot's CEO) rides thread/start as developerInstructions: a developer-role instruction
-            // laid on top of the base prompt, never a visible turn. Sent only when set; null leaves the thread's own
-            // instructions untouched, like sandbox/model above.
+            // A hidden per-session system prompt (AC-180, e.g. Autopilot's CEO brief) rides thread/start as
+            // developerInstructions — a developer-role instruction over the base prompt, never a visible turn.
+            // Sent only when set; null leaves the thread's own instructions untouched, like sandbox/model above.
             var developerInstructions = _NullIfBlank(CliAgentConfig.ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, null));
             var started = await _connection.SendRequestAsync("thread/start", new { cwd, sandbox = _NullIfBlank(sandbox), model = _NullIfBlank(effectiveModel), developerInstructions }, cancellationToken).ConfigureAwait(false);
 
@@ -222,11 +204,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             throw new InvalidOperationException($"{nameof(SendUserMessageAsync)} was called before the session started.");
         }
 
-        // Fire-and-forget: turn/start's reply lands only when the turn ends, so awaiting it here would block the
-        // caller for the whole turn. The turn's output streams through the notification pump instead, closed by
-        // turn/completed — mirroring how the exec driver runs its turn in the background.
-        // The live model/effort/approval/sandbox (#45 D4) are captured here, on the caller's thread, so a switch the
-        // operator makes through SetLiveOptionAsync (same thread) is picked up by the next turn and never read mid-write.
+        // Fire-and-forget: turn/start's reply lands only when the turn ends, so awaiting it would block the
+        // caller; output streams via the notification pump instead, closed by turn/completed. Live model/
+        // effort/approval/sandbox (#45 D4) are captured on the caller's thread so same-thread switches are picked up next turn.
         var input = new object[] { new { type = "text", text } };
         _ = _SendTurnAsync(threadId, input, _model, _effort, _approval, _sandbox, cancellationToken);
         return Task.CompletedTask;
@@ -346,10 +326,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 break;
 
             case "turn/started":
-                // A new turn starts fresh on usage: clear any leftover so a turn that reports no tokenUsage carries
-                // none, rather than the previous turn's totals leaking into it and double-counting in the meter.
-                // The text accumulator (AC-126) starts fresh for the same reason — a turn with no message of its
-                // own (pure tool-use) must not inherit the previous turn's answer as its Result.
+                // A new turn clears leftover usage so one that reports no tokenUsage carries none, rather than
+                // double-counting the previous turn's totals. Same reason for resetting the text accumulator
+                // (AC-126): a pure tool-use turn must not inherit the previous turn's answer as its Result.
                 _lastTurnUsage = null;
                 _turnText.Clear();
                 if (_TryGetNestedString(notification.Params, "turn", "id", out var turnId))
@@ -368,10 +347,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
                 break;
 
-            // The reasoning trace (#45 D3) — streamed as a thinking block so the host renders it dimmed/collapsed,
-            // separate from the visible answer. The raw reasoning and its summary are distinct wire notifications
-            // with their own content; they go to separate blocks so that, if Codex emits both, the two never
-            // concatenate into one jumbled block.
+            // The reasoning trace (#45 D3) streams as a thinking block, dimmed/collapsed, separate from the
+            // visible answer. Raw reasoning and its summary are distinct wire notifications kept in separate
+            // blocks so, if Codex emits both, they never concatenate into one jumbled block.
             case "item/reasoning/textDelta":
                 if (_TryGetString(notification.Params, "delta", out var reasoningText))
                 {
@@ -620,10 +598,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 break;
 
             default:
-                // Approval/input kinds we do not yet model (permissions profiles, tool user-input, MCP
-                // elicitations — increment 2) each expect their own response shape ({permissions}, {answers},
-                // {action}, …), not a {decision}. A JSON-RPC error is the only reply that is valid for all of
-                // them: it unblocks the server's request without sending a result it could fail to deserialize.
+                // Approval/input kinds not yet modeled (permissions profiles, tool user-input, MCP elicitations
+                // — increment 2) each expect their own response shape, not a {decision}. A JSON-RPC error is
+                // the only reply valid for all of them, unblocking the request without a guessed result shape.
                 await _connection.RespondErrorAsync(request.Id, -32601, $"Cockpit does not support '{request.Method}' yet.", cancellationToken).ConfigureAwait(false);
                 break;
         }

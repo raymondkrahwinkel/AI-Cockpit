@@ -5,16 +5,9 @@ using System.Threading.Channels;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// A newline-delimited JSON-RPC 2.0 client over one persistent `codex app-server` child process (Fase 3) —
-// the transport under `CodexAppServerSessionDriver`, the plugin-local analogue of the host's own
-// stream-json parsing for Claude. Unlike the proces-per-turn `CliSubprocessPluginSessionDriver`,
-// the process here lives for the whole session and speaks a bidirectional protocol: the client sends requests
-// and gets correlated replies, and the server sends its own requests (approvals) that the client must answer.
-// Message classification (app-server omits the `"jsonrpc"` field on the wire, same as MCP): a line with
-// both `id` and `method` is a server-initiated request → `ServerRequests`; a line with
-// only `id` is a reply to one of ours → resolves the pending call; a line with only `method` is a
-// notification → `Notifications`. A single background read loop does this sorting so callers never
-// race on the stream; stdin writes are serialized behind one lock so two turns can never interleave a message.
+// Newline-delimited JSON-RPC 2.0 client over one persistent `codex app-server` process (Fase 3): unlike the
+// process-per-turn CLI driver, this process lives for the session and is bidirectional, so the server can
+// send its own requests (approvals). One read loop classifies by `id`/`method`; writes serialize behind a lock.
 internal sealed class CodexAppServerConnection : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -103,10 +96,9 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
     public Task RespondAsync(JsonElement id, object? result, CancellationToken cancellationToken = default) =>
         _WriteMessageAsync(new { id, result }, cancellationToken);
 
-    // Answers a server-initiated request with a JSON-RPC error — the protocol-conform way to say "this client
-    // cannot handle this request", used for request kinds the driver does not model. A structured error is a
-    // valid response for any request regardless of its expected result shape, unlike a made-up result that the
-    // server could fail to deserialize.
+    // Answers a server-initiated request with a JSON-RPC error for request kinds the driver does not model.
+    // A structured error is valid for any request regardless of its expected result shape, unlike a made-up
+    // result the server could fail to deserialize.
     public Task RespondErrorAsync(JsonElement id, int code, string message, CancellationToken cancellationToken = default) =>
         _WriteMessageAsync(new { id, error = new { code, message } }, cancellationToken);
 

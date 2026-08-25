@@ -2,10 +2,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-// `CodexTtyProvider` (#45 fase B2): the interactive-TUI command line is deliberately not the
-// headless `exec --json` shape `CliSubprocessPluginSessionDriver` builds — these tests
-// pin exactly that difference (no `exec`, no `--json`, ever) plus resume/sandbox/model, all
-// checked against the real `codex --help`/`codex resume --help` flags rather than assumed.
+// The interactive-TUI command line is deliberately not the headless `exec --json` shape
+// `CliSubprocessPluginSessionDriver` builds — these tests pin that difference (no `exec`, no
+// `--json`, ever) against the real `codex --help`/`codex resume --help` flags rather than assumed.
 public class CodexTtyProviderTests
 {
     private static readonly IReadOnlyDictionary<string, string> NoOptions = new Dictionary<string, string>();
@@ -138,10 +137,9 @@ public class CodexTtyProviderTests
         Assert.Equal("codex", Path.GetFileNameWithoutExtension(spec.ExecutablePath));
     }
 
-    // AC-77: the interactive TUI must receive the session's Cockpit MCP servers as `-c mcp_servers.*` overrides,
-    // the same route the headless app-server takes — without this the Codex TUI only ever sees its own ~/.codex
-    // servers. These pin that the overrides are present, precede any `resume`, and that a bearer token rides the
-    // environment rather than the command line.
+    // AC-77: the interactive TUI must receive the session's Cockpit MCP servers as `-c mcp_servers.*`
+    // overrides, the same route the headless app-server takes — without this the Codex TUI only ever
+    // sees its own ~/.codex servers.
 
     [Fact]
     public void BuildArguments_WithMcpConfigArgs_PrependsThemBeforeEverythingElse()

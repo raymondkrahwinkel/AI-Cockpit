@@ -3,13 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// Parses a single JSON-lines stdout line from `claude --output-format stream-json` into zero-or-more
-// `PluginSessionEvent`s (Fase 4, SDK route) — a port of the host's `ClaudeStreamJsonParser`
-// onto the narrower plugin event vocabulary. Delta-based like the Codex plugin driver: the streaming
-// `stream_event` text/thinking deltas carry the progressive output, so the `assistant` snapshot's own
-// text and thinking blocks are not re-emitted (they would double-render, AC-213); only its tool_use blocks are,
-// since the deltas do not carry those. Rate-limit and status-change lines the plugin vocabulary has no event for are handled off
-// the parser (limits ride the driver's status feed); an unrecognised line yields nothing rather than throwing.
+// Parses a single JSON-lines stdout line from `claude --output-format stream-json` into zero-or-more events.
+// `stream_event` text/thinking deltas carry progressive output, so the `assistant` snapshot's own text/thinking
+// is not re-emitted (AC-213); only its tool_use blocks are, since deltas don't carry those.
 internal static class ClaudeStreamJson
 {
     public static IEnumerable<PluginSessionEvent> ParseLine(string line)
@@ -38,10 +34,9 @@ internal static class ClaudeStreamJson
             _ => [],
         };
 
-        // AC-146: a wire event that belongs to a sub-agent (Task tool call) carries this alongside session_id,
-        // naming the tool_use_id of the parent Task call — stamped onto every event this line yields with a
-        // `with` clone (works through the abstract base reference, since a record's clone is a virtual member)
-        // rather than threading the value through every _Parse* method's own construction.
+        // AC-146: a wire event belonging to a sub-agent carries this alongside session_id, naming the parent
+        // Task call's tool_use_id — stamped onto every event via a `with` clone rather than threading the
+        // value through every _Parse* method's own construction.
         var parentToolUseId = root.TryGetProperty("parent_tool_use_id", out var parentProp) && parentProp.ValueKind == JsonValueKind.String
             ? parentProp.GetString()
             : null;
@@ -62,13 +57,9 @@ internal static class ClaudeStreamJson
             }
             : [];
 
-    // The CLI's own ledger of work that outlived its turn (AC-276): sub-agents still running, shells still open.
-    // It restates the *complete* set every time rather than sending deltas, which is why the host can
-    // build a status on it — see `PluginBackgroundTasksChanged`. An entry whose `task_type` this
-    // build does not recognise maps to `PluginBackgroundTaskKind.Unknown` rather than being dropped,
-    // so the set stays a faithful record of what the provider reported. Note that the host deliberately acts on
-    // neither the status nor the notification for an unknown kind — it cannot know which weighing applies — so
-    // this preserves the information without letting it decide anything.
+    // The CLI's own ledger of work that outlived its turn (AC-276), restating the complete set every time rather
+    // than deltas. An unrecognised `task_type` maps to Unknown rather than being dropped, and the host
+    // deliberately acts on neither status nor notification for it — it cannot know which weighing applies.
     private static PluginBackgroundTasksChanged _ParseBackgroundTasks(JsonElement root, string? sessionId)
     {
         var tasks = new List<PluginBackgroundTask>();
@@ -273,11 +264,9 @@ internal static class ClaudeStreamJson
         Errors = _ParseErrors(root),
     };
 
-    // AC-410: the field _ParseResult otherwise never reads. A failed error_during_execution turn (an unresolvable
-    // --resume id, say) carries no "result" — this is the only place the failure's own reason survives at all.
-    // AC-939: an upstream API failure (rate limit, 529 overload, …) instead reports `subtype: "success"` with
-    // `is_error: true` and the failure text in `result`, never in `errors[]` — fall back to that text so the
-    // reason still reaches the transcript row instead of silently disappearing.
+    // AC-410: a failed error_during_execution turn carries no "result" — the only place its reason survives.
+    // AC-939: an upstream API failure instead reports `subtype: "success"` with `is_error: true` and the failure
+    // text in `result`, never `errors[]` — fall back to that text so the reason isn't silently lost.
     private static IReadOnlyList<string>? _ParseErrors(JsonElement root)
     {
         if (root.TryGetProperty("errors", out var errorsProp) && errorsProp.ValueKind == JsonValueKind.Array)

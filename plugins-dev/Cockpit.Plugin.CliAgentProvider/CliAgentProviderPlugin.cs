@@ -7,8 +7,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 
 // Fase B1 provider-plugin (#45): registers "Codex (CLI)" as a session provider backed by
 // `CliSubprocessPluginSessionDriverFactory` — a proces-per-turn subprocess driver, unlike the
-// Gemini/OpenAI provider plugin's persistent `IChatClient`. Experimental: see this project's own
-// header comment and the design doc for what fase B2 (live Codex verification) still owes.
+// Gemini/OpenAI provider plugin's persistent `IChatClient`. Experimental — fase B2 still owes live verification.
 public sealed class CliAgentProviderPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(
@@ -30,9 +29,8 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         host.AddManagedCli(CodexManagedCli.Descriptor);
 
         // The per-session start defaults the New-session dialog asks about — the same two whichever kind of
-        // session a profile opens, so it means the same thing either way. Sandbox is a fixed set; Model is
-        // declared as free text (the fallback) but the dialog upgrades it to the live model/list at open
-        // (ResolveOptionsAsync below), for both the SDK and the TTY route.
+        // session a profile opens. Sandbox is a fixed set; Model is free text as a fallback, upgraded to
+        // the live model/list at open (ResolveOptionsAsync below), for both the SDK and TTY route.
         var sdkSandbox = new PluginSessionLaunchOption(CodexAppServerSessionDriver.SandboxOptionKey, "Sandbox", CodexSandbox.Choices, DefaultValue: "read-only");
         var sdkModelFallback = new PluginSessionLaunchOption(CodexAppServerSessionDriver.ModelOptionKey, "Model", Choices: []);
 
@@ -40,14 +38,10 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex (CLI)",
             // The app-server driver replaces the headless exec driver as the interactive Codex provider (#45
-            // fase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals —
-            // hence SupportsPermissions: true, where the exec route reported false.
+            // fase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals.
             CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(host.ResolveManagedCliPath),
-            // ConfinesFileAccessToWorkingDirectory (AC-174): Codex spawns its app-server in the session's working directory
-            // and edits within that cwd, so an isolated Autopilot run stays in its worktree. Declared on the registration
-            // because the host honours these, not the driver instance's own Capabilities.
-            // DeclaredOptions (AC-649): Codex's own vocabulary, not Claude's — a sandbox policy, no permission mode and
-            // no effort. Model is read as well but has no fixed set: it is whatever this machine's codex lists.
+            // ConfinesFileAccessToWorkingDirectory (AC-174) and DeclaredOptions (AC-649, Codex's own sandbox
+            // vocabulary) are declared here because the host honours the registration, not the driver instance.
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true)
             {
                 SupportsEnvVars = true,
@@ -76,10 +70,9 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             },
         });
 
-        // Same provider id as the session provider above — a profile names a provider, and what that provider can
-        // do (a headless driver, a TUI, or both, per PluginTtyContracts) is what it registered. Codex's own words
-        // for its start defaults (see CodexTtyProvider's remarks for why these are not Claude's permission-mode/
-        // effort): the sandbox policy and the model override — same live model/list upgrade as the SDK route.
+        // Same provider id as the session provider above — a profile names a provider, and what it can do
+        // (headless, TUI, or both, per PluginTtyContracts) is what it registered. Codex's own start
+        // defaults (sandbox + model), with the same live model/list upgrade as the SDK route.
         var ttySandbox = new PluginTtyLaunchOption(CodexTtyProvider.SandboxOptionKey, "Sandbox", CodexSandbox.Choices);
         var ttyModelFallback = new PluginTtyLaunchOption(CodexTtyProvider.ModelOptionKey, "Model", Choices: []);
 

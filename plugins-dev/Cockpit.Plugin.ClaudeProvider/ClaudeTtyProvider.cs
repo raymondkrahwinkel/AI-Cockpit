@@ -2,11 +2,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// The `claude` CLI as a TTY provider, hosted in the plugin (Fase 4, weg A) — a port of the host's
-// `ClaudeTtySessionProvider`: resolves the executable, pre-marks the working directory trusted, installs the
-// statusline relay that carries Claude's limits, fans the shared MCP registry into a `--mcp-config`, and
-// composes the launch-only flags. Never adds `-p`/stream-json — this is the genuine interactive TUI, which
-// owns its own live switching (`/model`, Shift+Tab) since TTY mode has no control channel.
+// The `claude` CLI as a TTY provider (Fase 4, weg A) — port of the host's `ClaudeTtySessionProvider`.
+// Never adds `-p`/stream-json: this is the genuine interactive TUI, which owns its own live switching
+// (`/model`, Shift+Tab) since TTY mode has no control channel.
 internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver = null) : IPluginTtyProvider
 {
     public const string PermissionModeKey = "permission-mode";
@@ -24,10 +22,9 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         // render — in the .claude.json the CLI reads for this spawn (the profile dir for a non-default profile).
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(configJsonDirectory, workingDirectory);
 
-        // AC-408: the session id is not forced on the launch (see BuildArguments' remark), so it is derived the
-        // same way ClaudeTranscriptReader already does for status — as the new *.jsonl transcript that
-        // appears under this config dir after launch. Snapshotting before returning captures "known before this
-        // session" so the background watch below only ever reports transcripts this session itself created.
+        // AC-408: the session id is derived as the new *.jsonl transcript that appears under this config dir
+        // after launch. Snapshotting first captures "known before this session" so the watch below only ever
+        // reports transcripts this session itself created.
         if (context.ReportConversationId is { } reportConversationId)
         {
             var stateDirectory = ClaudeConfigPaths.ResolveStateDirectory(
@@ -79,9 +76,8 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         }
 
         return new PluginTtyLaunchSpec(
-            // Resolve against PATH like the SDK route does: a bare "claude" is not spawnable directly on Windows
-            // (Process does no PATHEXT lookup), so the locator finds the .cmd/.exe/.bat npm shim. A pinned absolute
-            // path passes through unchanged. Without this a default (blank-executable) Windows profile fails to start.
+            // Resolve against PATH: a bare "claude" is not spawnable directly on Windows (no PATHEXT lookup),
+            // so the locator finds the .cmd/.exe/.bat npm shim; a pinned absolute path passes through unchanged.
             // A cockpit-managed install (AC-20), if present, is preferred over PATH.
             ClaudeExecutableLocator.Resolve(config.ExecutablePath is { Length: > 0 } executable ? executable : "claude", managedResolver),
             arguments,
@@ -97,37 +93,13 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
     // `ClaudeTranscriptReader` already polls at.
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
-    // How long `WatchConversationIdAsync` keeps scanning before giving up and reporting nothing —
-    // long enough to outlast ordinary CLI startup latency (process spawn, an auth/version check) before the
-    // transcript file exists at all, short enough to close the cross-session window described there promptly
-    // rather than leaving it open for the rest of the app's life.
+    // How long `WatchConversationIdAsync` keeps scanning before giving up — long enough to outlast ordinary
+    // CLI startup latency, short enough to close the cross-session window described below promptly.
     private static readonly TimeSpan WatchTimeout = TimeSpan.FromSeconds(10);
 
-    // Reports this session's conversation id exactly once, as soon as its own transcript can be told apart from
-    // every other file under `stateDirectory` (AC-408) — the same "new file since launch"
-    // identification `ClaudeTranscriptReader` uses for status, but a bounded one-shot scan
-    // rather than a standing watch.
-    //
-    // A standing watch would keep scanning the *whole* config dir — every session's transcripts, not just
-    // this one's — for as long as this session runs: Claude's per-session `&lt;cwd-hash&gt;` folder name is
-    // undocumented, so narrowing the scan to just this session's own folder was rejected (see the remark on
-    // `BuildArguments`), and forcing `--session-id` is rejected for the same reason. Left
-    // unbounded, a second session starting under the same config dir later in this session's life would
-    // eventually be seen and misreported as *this* session's id — silently, and the wrong pane would be
-    // resumed into the wrong conversation once a later ticket persists what this one reports. Stopping after one
-    // report, or after `WatchTimeout` with nothing found, closes that window instead of leaving it
-    // open.
-    //
-    // If more than one new file shows up in the very same poll, this session's own transcript cannot be told
-    // apart from another session's that just started in the same instant — reporting nothing is the correct
-    // answer there, not guessing the newest one (a wrong `PluginConversationIdState.Known` is worse
-    // than none at all).
-    //
-    // Consequence, deliberately accepted: this route never reports a changed id after a `/clear` — the new
-    // transcript it starts is exactly the same "unattributable new file" case above, and this scan cannot tell
-    // it apart from another session starting. `PluginTtyLaunchContext.ReportConversationId` itself
-    // still allows repeated calls, and the SDK route (`IPluginSessionDriver.Conversation`) does
-    // report a live mid-session change; this TTY route only cannot do so reliably, and does not pretend it can.
+    // One-shot scan for the "new file since launch", since the per-session folder name is undocumented and
+    // `--session-id` can't be forced; unbounded would misreport a later session's file as this one's id.
+    // If more than one new file appears in a poll, reporting nothing beats guessing the newest.
     internal static async Task WatchConversationIdAsync(
         string stateDirectory,
         IReadOnlySet<string> knownAtLaunch,
@@ -177,9 +149,7 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
     }
 
     // The launch-only start-default flags for the TTY spawn (`internal` for unit tests). Deliberately no
-    // `-p`/stream-json/permission-prompt-tool: the interactive TUI prompts for permission itself. The session
-    // id is not forced (`--session-id` is undocumented for a new interactive session); the cockpit locates the
-    // live transcript as the new file that appears after launch.
+    // `-p`/stream-json/permission-prompt-tool: the interactive TUI prompts for permission itself.
     internal static List<string> BuildArguments(
         string? permissionMode,
         string? model,
@@ -243,10 +213,9 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
             arguments.Add(mcpConfigPath);
         }
 
-        // What the session starts knowing: the standing instructions a profile/project gave it (AC-142/AC-158) and
-        // the orchestrator nudge (#67), whose tools are only reached for if the model knows when they are worth it.
-        // By path rather than by value, for the reason `ClaudePrivateTempFile.WriteSystemPrompt` spells out — a
-        // standing instruction is operator-written and grows, and a command line does not.
+        // What the session starts knowing: the standing instructions (AC-142/AC-158) and the orchestrator nudge
+        // (#67). By path rather than by value — a standing instruction is operator-written and grows, and a
+        // command line does not.
         if (!string.IsNullOrWhiteSpace(appendSystemPromptPath))
         {
             arguments.Add("--append-system-prompt-file");

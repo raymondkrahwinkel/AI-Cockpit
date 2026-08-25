@@ -2,21 +2,9 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// This plugin's own provider config — never seen by the host, only (de)serialized here and inside
-// `CliAgentProviderConfigView`/`CliSubprocessPluginSessionDriverFactory` via the
-// opaque `ConfigJson` the host round-trips (#45 fase B1). Mirrors the shape from the design doc §2.5.
-//
-// `Command`: Path to the CLI executable, or a bare name (e.g. `"codex"`) resolved against PATH — see `CliExecutableLocator`. Cross-platform npm-shim discovery is a B2 refinement.
-// `SubCommand`: The CLI subcommand that enters headless mode, e.g. `"exec"` for Codex.
-// `PromptMode`: `"arg"` (prompt passed as a CLI argument) or `"stdin"` (prompt piped to stdin after spawn).
-// `OutputFormatArgs`: Flags that switch the CLI to JSONL output, e.g. `["--json"]` for Codex. `null` falls back to `EffectiveOutputFormatArgs`'s Codex default.
-// `Model`: Optional model id passed as `-m &lt;model&gt;`; `null`/empty lets the CLI use its own default.
-// `WorkingDirectory`: The child process's working directory — also its sandbox root.
-// `SandboxMode`: Passed as `--sandbox &lt;value&gt;`; Codex's own default is `"read-only"` (safe) — `"workspace-write"`/`"danger-full-access"` only on explicit operator choice.
-// `ExtraArgs`: Any additional CLI flags appended verbatim, e.g. `["--skip-git-repo-check"]`.
-// `AuthEnvVar`: Name of the environment variable the API key is set under for this spawn (never passed as an argument — visible in the process list otherwise). `null`/empty when relying on `codex login`'s own cached auth instead.
-// `ApiKey`: The secret itself — never logged/serialized in the clear, see `ToString`.
-// `ConfigDir`: Optional CLI config/home directory override (Codex: `CODEX_HOME`); empty uses the CLI's own default.
+// This plugin's own provider config — never seen by the host, only (de)serialized here and via
+// `ConfigJson` the host round-trips (#45 fase B1). SandboxMode defaults to "read-only"; AuthEnvVar
+// keeps the API key out of the process argument list.
 internal sealed record CliAgentConfig(
     string Command = "codex",
     string SubCommand = "exec",
@@ -49,10 +37,9 @@ internal sealed record CliAgentConfig(
     public static string? ResolveOption(IReadOnlyDictionary<string, string>? options, string key, string? fallback) =>
         options is not null && options.TryGetValue(key, out var chosen) && !string.IsNullOrWhiteSpace(chosen) ? chosen : fallback;
 
-    // The environment overlay for a spawned CLI process — shared by both the exec and app-server drivers so
-    // the auth/config-dir handling lives in one place. The API key is set as an env-var (never a CLI argument,
-    // which would be visible in the process list) only when both an `AuthEnvVar` and an
-    // `ApiKey` are present; `ConfigDir` maps to Codex's `CODEX_HOME`.
+    // Shared by both drivers so auth/config-dir handling lives in one place. The API key is set as an
+    // env-var — never a CLI argument, which would be visible in the process list — only when both
+    // `AuthEnvVar` and `ApiKey` are present; `ConfigDir` maps to Codex's `CODEX_HOME`.
     public Dictionary<string, string?> BuildEnvironmentVariables()
     {
         var environmentVariables = new Dictionary<string, string?>();

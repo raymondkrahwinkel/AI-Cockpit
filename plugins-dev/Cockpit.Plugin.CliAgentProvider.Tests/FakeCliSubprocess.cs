@@ -10,11 +10,9 @@ internal sealed class FakeCliSubprocess : ICliSubprocess
     private readonly Channel<string> _stdout = Channel.CreateUnbounded<string>();
     private readonly Channel<string> _stderr;
 
-    // `stderrCapacity`:
-    // Zero (default) is an unbounded stderr channel. A positive capacity makes stderr a *bounded* channel —
-    // used by the stderr-deadlock test: without a concurrent drain task actually reading it, a write past
-    // capacity blocks forever, proving the driver really does drain stderr alongside stdout rather than
-    // only after stdout completes.
+    // `stderrCapacity`: a positive value makes stderr a *bounded* channel, used by the stderr-deadlock
+    // test — without a concurrent drain task actually reading it, a write past capacity blocks forever,
+    // proving the driver really does drain stderr alongside stdout.
     public FakeCliSubprocess(int stderrCapacity = 0)
     {
         _stderr = stderrCapacity > 0 ? Channel.CreateBounded<string>(stderrCapacity) : Channel.CreateUnbounded<string>();

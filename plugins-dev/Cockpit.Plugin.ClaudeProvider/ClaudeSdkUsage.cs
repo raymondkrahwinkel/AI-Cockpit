@@ -3,18 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// Folds a Claude SDK session's figures into the provider-neutral `PluginSessionStatus` the header's usage pill
-// renders from (AC-530) — the SDK route's answer to `ClaudeStatusLine`, which `--output-format stream-json`
-// never invokes.
-//
-// Both figures are the CLI's own, asked for over the control channel: allowances from `get_usage` (see
-// `ClaudeUsageWindows`), context from `get_context_usage`. Nothing here computes a percentage. The context
-// figure used to be derived from the last assistant line's tokens over the result line's window size, which
-// broke on 2.1.226 — assistant says `claude-opus-5`, result keys its `modelUsage` `claude-opus-5[1m]`, so any
-// turn touching two models matched nothing. An unreported figure stays absent rather than reading as zero.
-//
-// Two writers on different threads (the stdout pump and the poll's continuation), hence the lock; the snapshot
-// goes to a volatile field so the host's turn-boundary read never sees half a set.
+// Folds a Claude SDK session's figures into the provider-neutral `PluginSessionStatus` (AC-530). Context used to be
+// derived from tokens over window size, but broke on 2.1.226 when model naming diverged between lines — asked for
+// directly instead, so an unreported figure stays absent rather than reading as zero.
 internal sealed class ClaudeSdkUsage
 {
     // DateTimeOffset.FromUnixTimeSeconds' own accepted range, asserted against the constants below in the tests so
@@ -109,30 +100,26 @@ internal sealed class ClaudeSdkUsage
             return;
         }
 
-        // utilization is absent on this line whenever the account is not near the window it names — captured from a
-        // real stream at 5% of the five-hour allowance, the event carries status, resetsAt and rateLimitType and no
-        // figure at all. The percentage then comes from `get_usage` instead; leaving whatever it already published
-        // in place is the point of returning rather than overwriting.
+        // utilization is absent whenever the account is not near the window it names — the percentage then comes
+        // from `get_usage` instead, so leaving whatever was already published in place is the point here.
         if (!info.TryGetProperty("utilization", out var utilization) || utilization.ValueKind != JsonValueKind.Number
             || !utilization.TryGetDouble(out var fraction))
         {
             return;
         }
 
-        // Past the allowance is real and must show; below zero is not a percentage at all. The finiteness check is on
-        // the scaled figure rather than the raw one because the overflow happens in the multiply — 1e308 is itself a
-        // perfectly finite double, and only becomes an infinity once it is a percentage, which would then reach the
-        // header as "∞%" and size a bar against nothing.
+        // Past the allowance is real and must show; below zero is not a percentage at all. The finiteness check
+        // runs on the scaled figure because the overflow happens in the multiply, else it could reach the header
+        // as "∞%" and size a bar against nothing.
         var usedPercent = fraction * 100;
         if (!double.IsFinite(usedPercent) || usedPercent < 0)
         {
             return;
         }
 
-        // resetsAt is epoch seconds when present; a window the CLI reports without one still counts, it just cannot
-        // offer a scheduled resume. Range-checked rather than handed straight to FromUnixTimeSeconds, which throws
-        // outside its own bounds — and this runs on the stdout pump, where a throw ends the pump and takes the whole
-        // session down over one unreadable timestamp.
+        // resetsAt is epoch seconds when present; a window without one still counts, it just has no scheduled
+        // resume. Range-checked rather than handed straight to FromUnixTimeSeconds, which throws outside its own
+        // bounds — this runs on the stdout pump, where a throw would end the pump and take the session down.
         DateTimeOffset? resetsAt = info.TryGetProperty("resetsAt", out var reset) && reset.ValueKind == JsonValueKind.Number
             && reset.TryGetInt64(out var epochSeconds)
             && epochSeconds is >= _MinEpochSeconds and <= _MaxEpochSeconds

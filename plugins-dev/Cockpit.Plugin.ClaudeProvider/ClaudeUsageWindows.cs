@@ -5,11 +5,7 @@ namespace Cockpit.Plugin.ClaudeProvider;
 
 // Reads the rolling allowances out of a `get_usage` control-response. Replaces AC-549's `.claude.json` →
 // `cachedUsageUtilization` route, which leaned on `claude -p "/usage"` to refresh the file — on 2.1.226 that
-// became a real assistant turn (35.8s) that left the cache untouched. No subprocess, no tokens, nothing to
-// cache, no freshness limit to get wrong.
-//
-// Shape, verbatim from a live 2.1.226 session:
-// `{"rate_limits":{"five_hour":{"utilization":7,"resets_at":"2026-08-08T18:00:00.978410+00:00"}, …}}`
+// became a real assistant turn (35.8s) that left the cache untouched. No subprocess, no tokens to burn.
 internal static class ClaudeUsageWindows
 {
     // Keyed by the same wire names `rate_limit_event` uses, so both sources land in one dictionary. Empty for a

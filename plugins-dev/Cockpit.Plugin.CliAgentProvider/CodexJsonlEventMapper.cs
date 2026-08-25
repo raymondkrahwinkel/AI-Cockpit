@@ -3,24 +3,14 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// Parses a single JSONL stdout line from `codex exec --json` into zero-or-more typed
-// `PluginSessionEvent`s (#45 fase B1) — the plugin-local, pure-function mirror of
-// `Cockpit.Infrastructure.Sessions.ClaudeStreamJsonParser`, this plugin's only CLI-*specific* logic.
-// B2 caveat (design doc §2.3/§4): the exact `item.*` field names/shapes below (`item_type`,
-// `command`, `aggregated_output`, ...) are a best-effort reconstruction from Codex's public
-// non-interactive-mode documentation and issue trackers, not a captured transcript from a real run — no
-// logged-in `codex` CLI is available in this environment. Unrecognized `type`/`item_type`
-// values are ignored rather than thrown on (forward-compat, exactly `ClaudeStreamJsonParser`'s
-// `UnknownEvent` philosophy, minus a plugin-facing "unknown" event type — `PluginSessionEvent`
-// has none on the narrow contract), so schema drift degrades gracefully instead of crashing the driver; B2 is
-// to re-verify every field name/shape against a real, logged-in `codex` CLI and adjust only this
-// file (and its fixtures) — not restructure the driver around it.
+// Parses a single JSONL stdout line from `codex exec --json` into typed `PluginSessionEvent`s (#45 fase B1).
+// B2 caveat: `item.*` shapes are a best-effort reconstruction from public docs, no captured transcript was
+// available; unrecognized `type`/`item_type` values are ignored so schema drift degrades gracefully.
 internal static class CodexJsonlEventMapper
 {
-    // Parses one stdout line. `sessionId` is the caller's currently-known session id (or
-    // `null` before the first `thread.started`); it is echoed back unchanged except when
-    // this line is itself a `thread.started`. Malformed JSON and any unrecognized `type`/`item_type`
-    // combination produce zero events rather than throwing.
+    // `sessionId` is the caller's currently-known session id (or null before the first `thread.started`),
+    // echoed back unchanged unless this line is itself a `thread.started`. Malformed JSON and unrecognized
+    // `type`/`item_type` combinations produce zero events rather than throwing.
     public static CodexJsonlMapResult ParseLine(string line, string? sessionId)
     {
         if (string.IsNullOrWhiteSpace(line))
@@ -85,9 +75,8 @@ internal static class CodexJsonlEventMapper
         var itemId = _GetString(item, "id") ?? string.Empty;
 
         // Only command executions and MCP tool calls have a request/response shape the narrow contract can
-        // represent (PluginToolUseRequested/PluginToolResult). agent_message/reasoning/file_change/web_search/
-        // todo_list carry no "requested" half — reasoning is deliberately not surfaced at all (narrow contract
-        // has no thinking event); the others are a B2 candidate to expand once real field shapes are known.
+        // represent. reasoning is deliberately not surfaced (no thinking event in the contract); the rest
+        // (agent_message/file_change/web_search/todo_list) is a B2 candidate once real field shapes are known.
         return itemType switch
         {
             "command_execution" => [new PluginToolUseRequested { SessionId = sessionId, ToolUseId = itemId, ToolName = "command_execution", InputJson = _ToInputJson(item, "command") }],
@@ -110,9 +99,8 @@ internal static class CodexJsonlEventMapper
         {
             case "agent_message":
                 // Caveat (design doc §2.3): unknown whether Codex emits token-deltas or whole messages on
-                // item.completed. Treated as the latter — one PluginAssistantTextDelta carrying the full
-                // text, so the UI streams per-message instead of per-token if that assumption is wrong; B2
-                // to verify/refine against a real transcript.
+                // item.completed. Treated as the latter — one PluginAssistantTextDelta with the full text —
+                // so the UI streams per-message instead of per-token if wrong; B2 to verify against a real transcript.
                 var text = _GetString(item, "text") ?? string.Empty;
                 return [new PluginAssistantTextDelta { SessionId = sessionId, BlockIndex = 0, Text = text }];
 

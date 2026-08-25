@@ -4,9 +4,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Plugin.CliAgentProvider;
 
 // `IPluginSessionDriverFactory` for the Codex CLI provider (#45 fase B1): deserializes the
-// profile's opaque config JSON into a `CliAgentConfig`, resolves its `CliAgentConfig.Command`
-// to a spawnable path via `CliExecutableLocator`, and builds a `CliSubprocessPluginSessionDriver`
-// backed by the real `ProcessCliSubprocess`.
+// profile's opaque config JSON, resolves the command via `CliExecutableLocator`, and builds
+// a `CliSubprocessPluginSessionDriver` backed by the real `ProcessCliSubprocess`.
 internal sealed class CliSubprocessPluginSessionDriverFactory(Func<string, string?>? managedResolver = null) : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)

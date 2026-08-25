@@ -3,20 +3,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// `IPluginSessionDriver` for the Codex CLI provider, driven as a subprocess spawned fresh for
-// every turn (#45 fase B1) — the plugin-local mirror of `Cockpit.Infrastructure.Sessions.ClaudeCliSession`,
-// adapted for Codex's proces-per-turn headless mode instead of Claude's single persistent process.
-// Lifecycle (design doc §2.1): `StartAsync` only records the model override — Codex's real
-// thread/session id is not known until the first turn's `thread.started` line arrives, so
-// `PluginSessionInitialized` is emitted lazily from `CodexJsonlEventMapper` rather
-// than synthesized up front. Each `SendUserMessageAsync` spawns a brand-new
-// `ICliSubprocess` (turn 1: `codex exec --json "text"`; turn 2+:
-// `codex exec resume &lt;threadId&gt; --json "text"`, using the thread id captured from the previous
-// turn's `thread.started`), pumps its stdout through the mapper, and disposes it once the turn ends —
-// whether that is a natural `turn.completed`/`turn.failed`, an exception, or `InterruptAsync`
-// killing it mid-turn. A dedicated stderr-drain task runs alongside the stdout pump for every turn: Codex
-// writes progress to stderr, and an undrained stderr pipe would eventually fill and deadlock the child
-// (design doc §4) — this driver never blocks stdout on stderr or vice versa.
+// `IPluginSessionDriver` for the Codex CLI provider, spawning a fresh subprocess per turn (#45 fase
+// B1) instead of Claude's single persistent process. `PluginSessionInitialized` is emitted lazily,
+// once the real thread id arrives with the first turn's `thread.started`.
 internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
 {
     private readonly Func<ICliSubprocess> _subprocessFactory;
@@ -55,10 +44,9 @@ internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
     {
-        // The subprocess is created and recorded as "current" synchronously, right here — not inside the
-        // background turn task below — so InterruptAsync can never race an in-flight SendUserMessageAsync
-        // call: by the time this method returns, _currentSubprocess is already the instance the eventual
-        // turn will spawn, whether or not that background task has actually started running yet.
+        // Created and recorded as "current" synchronously, right here — not inside the background turn
+        // task below — so InterruptAsync can never race an in-flight SendUserMessageAsync: by the time
+        // this returns, _currentSubprocess is already the instance the turn will spawn.
         var subprocess = _subprocessFactory();
         _currentSubprocess = subprocess;
 

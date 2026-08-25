@@ -2,13 +2,9 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// Gets a Claude TTY session's limits out of Claude and into the cockpit by being its statusline — a copy of the
-// host's `StatusLineRelay` (weg A). Claude's five-hour/weekly allowances are readable *only* in the
-// JSON it hands its statusline command on stdin, so this registers a statusline of its own (via `--settings`,
-// merged over the operator's own for this process only) whose script keeps the JSON where the session header can
-// read it and then runs whatever statusline the operator already had — a feature that silently took the operator's
-// statusline away would be no feature. The snapshot file is named in the launch spec's StatusFile (the host polls
-// it) and in its SessionScopedFiles (the host deletes it when the session ends).
+// Claude's five-hour/weekly allowances are readable *only* in the JSON it hands its statusline command on stdin, so
+// this registers a statusline of its own (via `--settings`, merged for this process only) whose script keeps the
+// JSON where the session header can read it, then chains to whatever statusline the operator already had.
 internal static class ClaudeStatusLine
 {
     // The env var carrying the file this session's statusline JSON is written to. Read by the script below.
@@ -45,10 +41,9 @@ internal static class ClaudeStatusLine
         }
     }
 
-    // Clears the snapshot files left behind by sessions that were killed rather than closed — a cleanly-ended
-    // session's file is deleted by the host via the launch spec's SessionScopedFiles, but a hard kill leaves one.
-    // Called once at plugin startup, the plugin-side equivalent of the host's former statusline housekeeping. A
-    // session's spending is nobody's business once it is over.
+    // Clears snapshot files left behind by sessions killed rather than closed — a clean end deletes its own
+    // file via SessionScopedFiles, but a hard kill leaves one. Called once at plugin startup; a session's
+    // spending is nobody's business once it is over.
     public static void SweepStale()
     {
         try

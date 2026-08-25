@@ -3,26 +3,9 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
-// Marks a working directory trusted in the `.claude.json` the CLI reads for a spawn, so the TUI does not
-// block on its interactive trust dialog on first render — a copy of the host's `WorkspaceTrustWriter`
-// (weg A). Read-merge-write: preserves every other key and project entry, creates what is absent, idempotent.
-//
-// `~/.claude.json` is a single file shared with any `claude` the cockpit already has running (a live
-// interactive TTY rewrites it continuously), so both ends of this read-merge-write are hardened against that
-// concurrency:
-// - The write is *atomic* (temp file + rename), never a `File.Create` truncate-in-place. The old
-// truncate left a zero-length window in which a concurrent `claude` read a half-written config, backed it up
-// (`.claude.json.backup.*`) and reset to defaults — dropping the just-started session's
-// `hasTrustDialogAccepted`, and with it every `--mcp-config` server (MCP is trust-gated), silently.
-// - The write is *skipped when the directory is already trusted* — the common case — so it does not race
-// the live TTY at all.
-// - The read *never downgrades an existing file to an empty root*: an existing file that will not parse as
-// an object is a torn/locked read, retried and then thrown, rather than silently replaced with `{}` — writing
-// that back would wipe every project and trust entry, the exact data loss this type guards against.
-// - The atomic replace is *retried*: a concurrent reader holding the file open makes the OS rename fail
-// with a sharing violation, and surviving a concurrently-active `claude` is the whole point.
-// Cross-process merging is still best-effort: two cockpit spawns that read, add different entries and write can lose
-// one of the two entries (last writer wins) — acceptable, since each re-marks its own directory on its next launch.
+// Marks a working directory trusted in `.claude.json` so the TUI skips its interactive trust dialog on spawn
+// — a copy of the host's `WorkspaceTrustWriter`. Shared with any already-running `claude`, so writes are
+// atomic (temp file + rename) and reads never downgrade an unparseable file to empty, to avoid data loss.
 internal static class ClaudeWorkspaceTrust
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
@@ -62,10 +45,9 @@ internal static class ClaudeWorkspaceTrust
         WriteAtomically(claudeJsonPath, root);
     }
 
-    // The existing config as an object, or a fresh empty root only when the file genuinely does not exist. An
-    // existing file that cannot be read as an object is treated as a transient torn/locked read (the live claude
-    // writing it non-atomically), retried, and — if it never becomes readable — *thrown*. It is deliberately
-    // never downgraded to an empty root: writing that back over a real file would wipe every project and trust entry.
+    // An existing file that can't be read as an object is treated as a transient torn/locked read, retried,
+    // and thrown if it never recovers — never downgraded to an empty root, which would wipe every project
+    // and trust entry on write-back.
     private static JsonObject ReadRootOrThrow(string claudeJsonPath)
     {
         if (!File.Exists(claudeJsonPath))

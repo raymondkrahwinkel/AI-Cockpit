@@ -39,10 +39,9 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
 
         _sandboxMode = new ComboBox { ItemsSource = CodexSandbox.Choices, SelectedItem = existing?.SandboxMode ?? "read-only" };
 
-        // Free text with live suggestions, not a hard dropdown: a profile default may still pin any model (or one
-        // this machine cannot list right now, e.g. logged out) — an AutoCompleteBox is both, a plain ComboBox
-        // would be only the list. The suggestions are filled in the background from this codex's model/list
-        // (increment 2 step C, the config-view mirror of the New-session dialog's Model dropdown).
+        // Free text with live suggestions, not a hard dropdown: a profile default may still pin any model
+        // (or one this machine cannot list right now, e.g. logged out) — an AutoCompleteBox is both, a
+        // plain ComboBox would be only the list.
         _model = new AutoCompleteBox
         {
             Text = existing?.Model ?? string.Empty,
@@ -144,14 +143,9 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         var command = _command.Text?.Trim() ?? string.Empty;
         var workingDirectory = _workingDirectory.Text?.Trim() ?? string.Empty;
 
-        // The working directory is optional, and only the headless route reads it at all: a TTY session is told
-        // where it runs by the cockpit (the New-session dialog's own working directory), so demanding it here
-        // would make the operator fill in a field their session never uses.
-        //
-        // The headless route needs it because the plugin session-driver contract does not carry a working
-        // directory — the host resolves one and the adapter drops it. So the plugin has to ask for what the
-        // cockpit already knows. That is a gap in the contract, not a setting; when it is closed this field can
-        // go entirely.
+        // Optional and only read by the headless route: a TTY session gets its working directory from the
+        // New-session dialog, but the plugin session-driver contract carries none, so headless has to ask for
+        // it here. A contract gap, not a real setting — closing it would let this field go entirely.
         if (string.IsNullOrEmpty(command) || (!string.IsNullOrEmpty(workingDirectory) && !Directory.Exists(workingDirectory)))
         {
             configJson = string.Empty;
