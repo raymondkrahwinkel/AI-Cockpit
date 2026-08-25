@@ -18,22 +18,25 @@ internal sealed class ClusterRowControl : UserControl
 
     private readonly string _id;
     private readonly bool _hasStoredKubeconfig;
+    private readonly bool _hasStoredArgoToken;
     private readonly bool _usesExecAuth;
     private readonly TextBox _label;
     private readonly TextBox _kubeconfigPath;
     private readonly ComboBox _contextBox;
     private readonly TextBox _allowedNamespaces;
     private readonly TextBox _kubeconfig;
+    private readonly TextBox _argoToken;
     private readonly CheckBox _allowClusterScoped;
     private readonly CheckBox _allowExec;
     private readonly CheckBox _allowPortForward;
 
     public event Action? RemoveRequested;
 
-    public ClusterRowControl(ClusterRegistration? existing, bool hasStoredKubeconfig)
+    public ClusterRowControl(ClusterRegistration? existing, bool hasStoredKubeconfig, bool hasStoredArgoToken = false)
     {
         _id = existing?.Id ?? Guid.NewGuid().ToString("n");
         _hasStoredKubeconfig = hasStoredKubeconfig;
+        _hasStoredArgoToken = hasStoredArgoToken;
         _usesExecAuth = existing?.UsesExecAuth ?? false;
 
         _label = new TextBox { Text = existing?.Label ?? string.Empty, PlaceholderText = "Label (e.g. prod, staging)" };
@@ -53,6 +56,13 @@ internal sealed class ClusterRowControl : UserControl
             PlaceholderText = hasStoredKubeconfig
                 ? "Leave blank to keep the stored kubeconfig, or paste a new one to replace it"
                 : "Or paste the kubeconfig for this cluster",
+        };
+        _argoToken = new TextBox
+        {
+            PasswordChar = '•',
+            PlaceholderText = hasStoredArgoToken
+                ? "Leave blank to keep the stored token, or paste a new one to replace it"
+                : "Optional: an Argo CD read-only project-role token, to let the argo_* tools reach Argo's own API",
         };
         _allowClusterScoped = new CheckBox { Content = "Allow cluster-scoped resources (nodes, PVs, namespaces, cluster roles)", IsChecked = existing?.AllowClusterScoped ?? false };
         _allowExec = new CheckBox { Content = "Allow exec (run a command in a pod)", IsChecked = existing?.AllowExec ?? false };
@@ -101,6 +111,8 @@ internal sealed class ClusterRowControl : UserControl
         panel.Children.Add(_allowedNamespaces);
         panel.Children.Add(_Hint("Paste a kubeconfig instead (stored under the secret layer)"));
         panel.Children.Add(_kubeconfig);
+        panel.Children.Add(_Hint("Argo CD API token (stored under the secret layer, same as the kubeconfig)"));
+        panel.Children.Add(_argoToken);
         panel.Children.Add(_Hint("Extra capabilities — off by default; each reaches past the namespace boundary"));
         panel.Children.Add(_allowClusterScoped);
         panel.Children.Add(_allowExec);
@@ -118,13 +130,17 @@ internal sealed class ClusterRowControl : UserControl
         && string.IsNullOrWhiteSpace(_kubeconfigPath.Text)
         && string.IsNullOrWhiteSpace(_kubeconfig.Text)
         && string.IsNullOrWhiteSpace(_allowedNamespaces.Text)
-        && !_hasStoredKubeconfig;
+        && !_hasStoredKubeconfig
+        && !_hasStoredArgoToken;
 
     // The kubeconfig file path, if the operator set one — stored as metadata and read live on connect.
     public string KubeconfigPath => (_kubeconfigPath.Text ?? string.Empty).Trim();
 
     // What was pasted into the kubeconfig box this session, if anything — the parent stores it through the secret layer.
     public string KubeconfigInput => _kubeconfig.Text ?? string.Empty;
+
+    // What was pasted into the Argo token box this session, if anything — the parent stores it through the secret layer.
+    public string ArgoTokenInput => _argoToken.Text ?? string.Empty;
 
     public ClusterRegistration ToRegistration() => new(
         Id: _id,
