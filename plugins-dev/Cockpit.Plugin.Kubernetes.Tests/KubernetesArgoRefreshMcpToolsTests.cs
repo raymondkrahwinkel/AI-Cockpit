@@ -75,17 +75,19 @@ public class KubernetesArgoRefreshMcpToolsTests
         Assert.DoesNotContain(asked, request => request.Scope.StartsWith("k8s.mutate:", StringComparison.Ordinal));
     }
 
-    // AC-576 acceptance criterion 7, literally: the card must say a refresh changes nothing, not just be gated
-    // as if it were a real change.
+    // AC-576 acceptance criterion 7, literally, and accurate: the annotation write itself does change the
+    // Application object, so the card must not claim nothing changes — it must say no resource is rolled out,
+    // updated or deleted, which is the true and complete claim.
     [Fact]
-    public async Task ArgoRefresh_ConsentCard_LiterallySaysNothingChanges()
+    public async Task ArgoRefresh_ConsentCard_SaysNoResourceIsRolledOutOrDeleted_WithoutOverclaimingNothingChanges()
     {
         var (tools, asked) = _Build(ConsentOutcome.Approved, withKubeconfig: false);
 
         await tools.ArgoRefresh("prod", Session, "argocd", "cert-manager");
 
         var refreshAsk = asked.First(request => request.Scope.StartsWith("k8s.argo.refresh:", StringComparison.Ordinal));
-        Assert.Contains("nothing is deployed, updated or deleted", refreshAsk.Action);
+        Assert.Contains("no resource is rolled out, updated or deleted", refreshAsk.Action);
+        Assert.DoesNotContain("changes nothing", refreshAsk.Action);
     }
 
     [Fact]
