@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-// The evidence source against a real git repository (AC-255). These run git for real on a throwaway repo, because the
-// question they answer cannot be faked: whether "what this step changed" is measured from the right moment. An
-// adversarial review found that a mark of `HEAD` alone credited a step with work an earlier step had left
-// uncommitted, and no test could have seen it — every other test in this suite hands the source's output in
-// ready-made.
+// The evidence source against a real git repository (AC-255). These run git for real on a throwaway repo, because
+// the question cannot be faked: whether "what this step changed" is measured from the right moment. An adversarial
+// review found `HEAD` alone credited a step with an earlier step's uncommitted work, invisible to any faked test.
 public sealed class GitCliEvidenceSourceTests : IDisposable
 {
     private readonly string _repository = Path.Combine(Path.GetTempPath(), $"ac255-{Guid.NewGuid():N}");
@@ -149,11 +147,9 @@ public sealed class GitCliEvidenceSourceTests : IDisposable
     [Fact]
     public async Task MarkAsync_WhenGitRefusesToSnapshotTheWorktree_ReturnsNull_RatherThanQuietlyPinningHead()
     {
-        // The guard that keeps a failure from becoming a wrong answer: falling back to the commit alone would hand the
-        // next step this step's uncommitted work as its own, and nothing in the validation turn would hint at it.
-        // Provoked through an index lock rather than, say, a conflicted merge — a lock stops every index-writing git
-        // command on every version and platform, while `rev-parse HEAD` still answers, so this also stays red if the
-        // guard is removed. (A conflicted merge is not portable: some git versions snapshot it happily.)
+        // The guard that keeps a failure from becoming a wrong answer: falling back to the commit alone would hand
+        // the next step this step's uncommitted work as its own. Provoked through an index lock rather than a
+        // conflicted merge (not portable) — a lock stops every index-writing git command while `rev-parse HEAD` still answers.
         _Write("tracked.txt", "uncommitted work that must not be mistaken for the next step's");
         File.WriteAllText(Path.Combine(_repository, ".git", "index.lock"), string.Empty);
 

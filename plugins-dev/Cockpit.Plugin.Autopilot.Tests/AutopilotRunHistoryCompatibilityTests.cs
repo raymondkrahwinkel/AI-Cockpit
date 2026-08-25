@@ -3,10 +3,8 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-// AC-347 backward compatibility: the new fields on `AutopilotRunRecord`/`AutopilotRunStepRecord`
-// round-trip through storage, and — the case that actually matters — JSON persisted before this change (no
-// Attempts/Reworks/Correction/RunId/Ticket/BlockadeAnswers/PullRequestMissing at all) still deserializes, reading back
-// the new fields' defaults.
+// AC-347 backward compatibility: the new record fields round-trip through storage, and — the case that actually
+// matters — JSON persisted before this change (none of the new fields at all) still deserializes, reading back the new fields' defaults.
 public class AutopilotRunHistoryCompatibilityTests
 {
     // An in-memory `IPluginStorage` that round-trips through JSON, the way the host's real storage does.
@@ -61,10 +59,9 @@ public class AutopilotRunHistoryCompatibilityTests
     [Fact]
     public void PreAC347Json_WithNoneOfTheNewFields_StillDeserializes_WithDefaults()
     {
-        // The exact shape AutopilotRunRecord/AutopilotRunStepRecord had before AC-347: no Attempts, Correction,
-        // CorrectionSource, RunId, Ticket or BlockadeAnswers anywhere. Enum values are the pre-existing underlying ints
-        // (AutopilotStepStatus.Passed = 2, AutopilotPlanPhase.MergeReady = 4) — System.Text.Json's default numeric
-        // enum encoding, the same one Set<T> above writes with.
+        // The exact shape these records had before AC-347: no Attempts, Correction, CorrectionSource, RunId,
+        // Ticket or BlockadeAnswers anywhere. Enum values are the pre-existing underlying ints — System.Text.Json's
+        // default numeric enum encoding, the same one Set<T> above writes with.
         const string legacyJson = """
             [
               {

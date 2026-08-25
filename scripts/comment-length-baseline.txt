@@ -1,36 +1,6 @@
 # Known comment-length debt, grandfathered by scripts/check-comment-length.py.
 # Regenerate with: scripts/check-comment-length.py --update-baseline
 # format: <check>\t<path>\t<violation count>
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotCeoBriefTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotCeoMcpScopeTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotCorrectionTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotDuplicateRunGuardTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotEpicProgressCommentTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotEpicRunnerTests.cs	3
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotEvidenceGateTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotPlanIntentTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotPlanTierGateTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotPullRequestSignalTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotReadyGateTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotRunCaptureTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotRunContextTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotRunCoordinatorTests.cs	8
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotRunDriverReviewGroupTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotRunDriverTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotRunHistoryCompatibilityTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotRunHistoryReplaceTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotRunToolsTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotSettingsControlPlaceholderHelpTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotSettingsControlTemplateFitTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotTemplateKickoffTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotTemplateStoreTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotValidatorBriefTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/AutopilotWorkingDirectoryTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/GitCliEvidenceSourceTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/HeadlessAvalonia.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot.Tests/ThemePaletteBaselineTests.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotCeoBrief.cs	6
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotCeoCheckpoint.cs	1
 inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotCeoTools.cs	1
 inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotConsultBrief.cs	1
 inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotCorrection.cs	1

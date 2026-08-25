@@ -3,9 +3,8 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The persisted template store (AC-189): the operator's own templates and their edits (overrides) of the plugin
-// templates survive a restart through the plugin's storage, while the plugin registrations themselves stay in memory.
-// The combined list is the registrations with any override applied, followed by the user templates, each with the
-// right edit/delete flags.
+// templates survive a restart through storage, while the plugin registrations stay in memory. The combined list
+// is the registrations with any override applied, followed by the user templates, each with the right edit/delete flags.
 public class AutopilotTemplateStoreTests
 {
     // An in-memory `IPluginStorage` that round-trips through JSON, the way the host's real storage does.

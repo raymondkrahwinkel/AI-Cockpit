@@ -4,22 +4,14 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// The briefing the CEO planning session is handed when the planning round opens (AC-174): who it is (its own profile,
-// so it plans in a consistent identity), the goal (and the source item when the run was triggered from one, else that
-// it is a CEO-first run), the profiles it can route work to and what each costs, and how to emit the plan through
-// `AutopilotPlanTools` so the operator sees it and approves it. Kept a pure builder off the workspace body
-// so the exact wording — the tool name, the step shape, the cost guidance — is tested without a live session.
+// The briefing the CEO planning session is handed when the planning round opens (AC-174): who it is, the goal (or
+// that it is a CEO-first run), the profiles it can route work to and what each costs, and how to emit the plan
+// through `AutopilotPlanTools`. Kept a pure builder off the workspace body so the exact wording is testable without a live session.
 internal static class AutopilotCeoBrief
 {
-    // Builds the CEO's planning brief. `profiles` are the profiles the run can route steps to (the
-    // host supplies them, with each one's local/paid nature) so the CEO can pick the cheapest-adequate model per step;
-    // `ceoIdentity` is the CEO's own profile label so it plans in one consistent identity. Both are
-    // optional: with none, the brief simply omits the roster and the identity line.
-    // The opening turn a tracker-triggered planning round submits to the CEO: it names the source
-    // issue (tracker, id and title) so the visible prompt says which ticket is being planned — not a generic "the issue
-    // in your brief" — and tells the CEO to draft and emit the plan now. Without any opening turn a system prompt alone
-    // leaves the model idle ("the prompt stays empty"); a CEO-first run has no source and sends no kickoff, so the CEO
-    // asks the operator what the run should achieve instead.
+    // Builds the CEO's planning brief. `profiles` (with local/paid nature) let the CEO pick the cheapest-adequate
+    // model per step; `ceoIdentity` is its own profile label. Both optional — omitted entirely when absent. The
+    // opening turn names the source issue; a CEO-first run sends no kickoff and the CEO asks the operator instead.
     public static string SourceKickoff(AutopilotPlanSource source)
     {
         var title = string.IsNullOrWhiteSpace(source.Title) ? string.Empty : $": \"{source.Title.Trim()}\"";
@@ -49,16 +41,9 @@ internal static class AutopilotCeoBrief
         var executionFit = _ExecutionFit();
         var reviewVerification = _ReviewVerification();
 
-        // Read/write split for a source-triggered run (AC-212). While planning the CEO gets the tracker's READ tools —
-        // it may open the source issue and, for an epic, pull its "parent for" child issues (AC-217) to plan them as one
-        // run — but it must NOT move the issue's stage or post notes yet: nothing has been built and the operator has not
-        // approved, so a write now is premature. The write tools (autopilot_tracker_stage / autopilot_tracker_note) are
-        // deliberately kept out of the planning scope and belong to the run — the CEO validator (AutopilotValidatorBrief)
-        // plus the coordinator's automatic stage-advance (AC-202), both during execution. Provider-neutral: it steers on
-        // reading vs writing, never on a specific tracker or tool brand. Omitted for a CEO-first run (no source issue).
-        // The start gate (AC-345) only sees the one item the operator clicked. An epic's children come in later, inside
-        // this round, so the same bar is stated here for them — the weaker half of the pair, since it is an instruction
-        // rather than a check, but the alternative is a plan that quietly executes backlog items on their parent's ticket.
+        // Read/write split for a source-triggered run (AC-212). Planning gets READ tools only — must NOT move
+        // stage or post notes, since nothing is built and the operator has not approved. Write tools belong to
+        // the run (validator + coordinator auto-advance, AC-202). Provider-neutral, omitted for a CEO-first run.
         var childRule = string.IsNullOrWhiteSpace(executableStage)
             ? "Leave out any child still marked [Brainstorm], and say which ones you left out and why."
             : $"Take in only the children a person has already marked ready to be worked on (\"{executableStage.Trim()}\"); "
@@ -181,10 +166,9 @@ internal static class AutopilotCeoBrief
             + "it. Do not put the whole plan on an expensive model \"to be safe\"; that is the waste this avoids.",
     };
 
-    // Two things the CEO must get right for a step to actually get built, independent of the cost strategy above (the
-    // live failure this addresses: a demanding coding step put on the lightest local model and handed
-    // a vague brief, where the worker "analyses" the repo instead of writing and committing the code, and the step stalls).
-    // Provider-neutral on purpose: it steers on capability and cost, never on a brand or a specific model name.
+    // Two things the CEO must get right for a step to get built, independent of the cost strategy above (the live
+    // failure this addresses: a demanding step on the lightest local model with a vague brief, where the worker
+    // "analyses" instead of building). Provider-neutral: steers on capability and cost, never a brand or model name.
     private static string _ExecutionFit() =>
         """
         Fit the model to the step's real demand, not just its price. An EXECUTING step — one that writes or edits code,
@@ -203,16 +187,9 @@ internal static class AutopilotCeoBrief
         brief lets a cheaper model succeed: clear instructions and the cheapest-adequate model reinforce each other.
         """;
 
-    // What each review round is worth verifying (AC-433). A gate reviews, its findings get fixed, and it reviews again
-    // until a round finds nothing. The protocol in force during the first pilot asked every one of those rounds for a
-    // clean whole-solution build and the entire suite; over two gates that came to eight cycles on one item, of which
-    // two carried a verdict. A round that ends in fixes is answering "does the fix work", which an incremental build
-    // and the tests around the change already answer. The round that ends clean is what the verdict means, so that one
-    // stays whole — three of the four findings in that pilot's second security round were regressions on its own
-    // round-1 fixes, which is what a full final round is for. Paired with a reporting duty on purpose: with the scope
-    // unreported, a cheaper round and a quietly weakened gate look the same from outside. This is brief text, so it
-    // asks rather than enforces — nothing here captures a round's actual scope, which is why the duty is to report it
-    // where the validator reads it. Project-neutral like the rest of this brief: it names no build tool.
+    // What each review round is worth verifying (AC-433). A round that ends in fixes just answers "does the fix
+    // work"; the round that ends clean is what the verdict means, so that one stays whole — regressions on
+    // round-1 fixes are what a full final round catches. Paired with a reporting duty on the round's scope.
     private static string _ReviewVerification() =>
         """
         Verification cost per review round. A review gate reviews, its findings get fixed, and it reviews again until a
@@ -228,11 +205,9 @@ internal static class AutopilotCeoBrief
         report says so. With the scope unreported, a cheaper round and a quietly weakened gate are indistinguishable.
         """;
 
-    // The profiles the CEO can route steps to, each tagged local-free or hosted-paid, so its model choice is cost-aware.
-    // Empty (or none supplied) yields nothing — the brief then leaves the roster out rather than showing an empty header.
-    // Beyond local-vs-paid there is now a per-model figure to surface where the provider declared one, and the roster
-    // passes it through as the estimate it is; a provider that declared nothing still gets only the two older signals,
-    // and the brief says so rather than inventing a number or an order it was never given.
+    // The profiles the CEO can route steps to, each tagged local-free or hosted-paid, so its model choice is
+    // cost-aware. Empty (or none supplied) yields nothing — the roster is left out rather than showing an empty
+    // header. A per-model figure is surfaced where the provider declared one; otherwise only the older two signals show.
     private static string _Roster(IReadOnlyList<PluginProfileInfo>? profiles, AutopilotCostStrategy strategy)
     {
         if (profiles is not { Count: > 0 })

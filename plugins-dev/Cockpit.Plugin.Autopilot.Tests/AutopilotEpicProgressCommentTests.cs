@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot.Tests;
 
-// AC-346's epic-progress comment text — extracted as a pure static
-// (`AutopilotPlanWorkspaceBody.BuildEpicProgressComment`) precisely so its actual wording is testable
-// without a UI or a tracker fake (AC-346 review, MEDIUM 8: the settle-hook previously had tests only on the building
-// blocks underneath it — the reliability summary, the record capture — never on the sentence that actually lands on
-// the epic).
+// AC-346's epic-progress comment text — extracted as a pure static so its wording is testable without a UI or
+// tracker fake (AC-346 review, MEDIUM 8: previously only the building blocks underneath it were tested,
+// never the sentence that actually lands on the epic).
 public class AutopilotEpicProgressCommentTests
 {
     private static AutopilotReliabilitySummary Reliability(int streak = 3, int clean = 3, int considered = 3) => new(streak, clean, considered);
