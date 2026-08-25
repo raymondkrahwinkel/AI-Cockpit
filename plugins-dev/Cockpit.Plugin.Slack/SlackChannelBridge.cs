@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -18,6 +17,10 @@ internal sealed class SlackChannelBridge : IDisposable
     // building a fresh one — a live Func<> here would never see anything _Reconnect had not already rebuilt.
     private readonly AssistantChannelAccess _access;
     private readonly Func<AssistantChannelVerbosity> _verbosity;
+
+    // AC-1074: where a dropped attachment gets said out loud. Routed to the host rather than Trace, which nothing
+    // in this app listens to, so the reason went nowhere at all.
+    private readonly Action<string> _reportError;
 
     // Guards the three collections below: RowChanged/ConsentPromptOpened/ConsentPromptClosed arrive on the
     // gateway's own thread (the UI thread), while HandleInboundMessageAsync/HandleButtonAsync are called from
@@ -39,13 +42,15 @@ internal sealed class SlackChannelBridge : IDisposable
         ISlackChannelSink sink,
         ISlackFileFetcher files,
         AssistantChannelAccess access,
-        Func<AssistantChannelVerbosity> verbosity)
+        Func<AssistantChannelVerbosity> verbosity,
+        Action<string>? reportError = null)
     {
         _gateway = gateway;
         _sink = sink;
         _files = files;
         _access = access;
         _verbosity = verbosity;
+        _reportError = reportError ?? (_ => { });
 
         _gateway.RowChanged += _OnRowChanged;
         _gateway.ConsentPromptOpened += _OnPromptOpened;
@@ -83,7 +88,14 @@ internal sealed class SlackChannelBridge : IDisposable
             }
         }
 
-        var (images, someFileRefused) = await _CollectImagesAsync(files, cancellationToken).ConfigureAwait(false);
+        var (images, someFileRefused, downloadFailures) = await _CollectImagesAsync(files, cancellationToken).ConfigureAwait(false);
+
+        // One report per message rather than per file: a bad token fails every attachment, and that would be a
+        // burst of identical toasts for what is one problem.
+        if (downloadFailures is { } failures)
+        {
+            _reportError($"Slack: an attachment never reached the assistant — {failures}");
+        }
 
         var result = await _gateway.SendAsync(senderId, text, images, cancellationToken).ConfigureAwait(false);
         if (result.Ignored)
@@ -107,15 +119,16 @@ internal sealed class SlackChannelBridge : IDisposable
 
     // What of a message's files is worth handing over. The mime type and size Slack reports are a pre-filter that
     // saves a pointless download — the host decides what an image really is, and does not take our word for it.
-    private async Task<(IReadOnlyList<byte[]> Images, bool Refused)> _CollectImagesAsync(
+    private async Task<(IReadOnlyList<byte[]> Images, bool Refused, string? Failures)> _CollectImagesAsync(
         IReadOnlyList<SlackInboundFile>? files, CancellationToken cancellationToken)
     {
         if (files is not { Count: > 0 })
         {
-            return ([], false);
+            return ([], false, null);
         }
 
         var images = new List<byte[]>();
+        var failures = new List<string>();
         var refused = false;
 
         foreach (var file in files)
@@ -135,14 +148,12 @@ internal sealed class SlackChannelBridge : IDisposable
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // The sender only ever sees the reaction, so the reason goes to Trace — a plugin has no host log
-                // seam, and a download that failed is otherwise indistinguishable from a bad token (AC-1048).
-                Trace.WriteLine($"Slack: '{file.Name}' was not passed to the assistant — {exception.Message}");
+                failures.Add($"'{file.Name}' ({exception.Message})");
                 refused = true;
             }
         }
 
-        return (images, refused);
+        return (images, refused, failures.Count == 0 ? null : string.Join("; ", failures));
     }
 
     // An Approve/Deny button was clicked.
