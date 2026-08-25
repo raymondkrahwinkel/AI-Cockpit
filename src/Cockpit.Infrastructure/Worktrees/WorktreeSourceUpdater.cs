@@ -2,23 +2,14 @@ using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-// Brings the branch a worktree is about to fork from up to date first (AC-349). Without this the fork base is
-// whatever `git rev-parse HEAD` happens to say in the operator's checkout, which is only as recent as the last
-// time they pulled — a session then starts tens of commits behind and every measurement made against the
-// remote-tracking refs (how much work a worktree still holds) is as stale as the refs themselves.
-//
-// The operator's own working tree is touched as little as possible: only a fast-forward, only when the branch has
-// nothing of its own, nothing uncommitted, and nothing on disk the update would write over. Every case this declines
-// to handle — and every error along the way — forks from the local HEAD instead and says so, because a session
-// starting on an older base is a nuisance and losing someone's work is not. The one state that is not simply
-// "untouched" is a fast-forward cut short by its own guard, which git may have half applied; that is detected
-// afterwards and named, rather than reported as if nothing had happened.
+// Brings the branch a worktree is about to fork from up to date first (AC-349), so a session does not start
+// stale against the operator's last pull. The operator's tree is touched as little as possible — only a clean
+// fast-forward — and every case this declines to handle forks from local HEAD instead and says so.
 internal static class WorktreeSourceUpdater
 {
     // Well short of GitCli's default hang guard, and only on the step that leaves the machine: a network that is
-    // slow or gone should delay a session by seconds rather than minutes. The local steps around it keep GitCli's
-    // own guard, which is the right order of magnitude for reading a large repository but not for waiting on a
-    // host that is not answering. The fallback is a fork from the local HEAD, exactly as before this existed.
+    // slow or gone should delay a session by seconds rather than minutes, not GitCli's full timeout.
+    // Fallback is a fork from local HEAD, exactly as before this existed.
     private static readonly TimeSpan FetchTimeout = TimeSpan.FromSeconds(20);
 
     // The merge is local, but it runs the repository's post-merge hook, and a hook that installs packages can take
@@ -94,10 +85,9 @@ internal static class WorktreeSourceUpdater
                 ? await _CountCommitsAsync(root, $"{branchRef}..{known.Reference}", cancellationToken).ConfigureAwait(false)
                 : null;
 
-            // Redacted, because this is usually a remote's name but git accepts a URL there just as happily — and a
-            // URL can carry a token in its userinfo. This sentence goes to a toast and, through the worktree tool,
-            // into an agent's context; git redacts its own stderr, so this interpolation is the one way the raw
-            // value would get out.
+            // Redacted: this is usually a remote's name but git accepts a URL just as happily, which can carry a
+            // token in its userinfo. This sentence reaches a toast and an agent's context, so this interpolation
+            // is the one way the raw value could leak (git redacts its own stderr).
             return new WorktreeSourceRefresh(
                 WorktreeSourceOutcome.FetchFailed,
                 lastKnown ?? 0,
@@ -109,10 +99,9 @@ internal static class WorktreeSourceUpdater
 
         if (upstream is not { } tracking)
         {
-            // Configured to track something that is no longer there — the branch was merged and deleted on the
-            // remote, and a prune took the ref with it. The config is intact; there is simply nothing left to be
-            // behind of, so this stays as quiet as any other branch without an upstream. Saying "could not work it
-            // out" here would put a warning on every session started from a finished feature branch.
+            // Configured to track something no longer there — merged and pruned on the remote. Config is intact,
+            // simply nothing left to be behind of, so stays as quiet as a branch without an upstream (else every
+            // finished feature branch would warn on session start).
             return WorktreeSourceRefresh.Quiet(WorktreeSourceOutcome.NoUpstream);
         }
 
@@ -149,11 +138,9 @@ internal static class WorktreeSourceUpdater
             return _CouldNotCheck(branch);
         }
 
-        // A creation that may not write to this checkout stops here and forks from the upstream tip instead: the
-        // same base the fast-forward below would have produced, without the operator's branch moving for something
-        // they did not ask for (AC-376). It sits after the diverged check and before the rest on purpose — commits
-        // that exist only here belong in what the session starts from, while an uncommitted edit and a file in the
-        // way are only ever reasons not to *write*, and nothing is being written on this path.
+        // A creation that may not write to this checkout stops here and forks from the upstream tip instead —
+        // same base a fast-forward would produce, without moving the operator's branch (AC-376). After the
+        // diverged check since commits-only-here belong in the session base; before the rest since nothing writes here.
         if (handling == WorktreeSourceHandling.LeaveSourceAlone)
         {
             return new WorktreeSourceRefresh(
@@ -195,10 +182,9 @@ internal static class WorktreeSourceUpdater
         }
 
 
-        // Only ever --ff-only, and only in a tree with nothing of its own to lose: this is the operator's real
-        // checkout, and a merge or a rebase in it would be a change they never asked for. Deliberately NOT given the
-        // caller's token — a session start that is abandoned mid-checkout would otherwise leave half-written files
-        // and a stale index.lock behind in that very tree.
+        // Only ever --ff-only, and only in a tree with nothing to lose: this is the operator's real checkout, a
+        // merge/rebase would be unasked-for. Deliberately NOT given the caller's token — an abandoned session start
+        // must not leave half-written files and a stale index.lock behind.
         string? refusal = null;
         try
         {
@@ -216,15 +202,9 @@ internal static class WorktreeSourceUpdater
             refusal = $"it did not finish within {mergeTimeout.TotalSeconds:F0}s";
         }
 
-        // Where the branch actually ended up, asked of the repository rather than inferred from how git exited. A
-        // merge moves HEAD before it runs the post-merge hook, so a hook that outlives the timeout above is killed
-        // with the update already done: trusting the exit code there would report failure and then fork the session
-        // from the commit the branch has just left — the very staleness this exists to prevent.
-        //
-        // Uncancellable for the same reason the merge is. The tree has already been written to by the time this
-        // runs, so a caller who gives up in this window would otherwise take the answer with them: the update would
-        // stand, unreported, and the session start would fail on the cancellation instead. Finding out what happened
-        // is part of doing it.
+        // Asked of the repository, not inferred from exit code: a merge moves HEAD before the post-merge hook
+        // runs, so a hook killed by the timeout above would otherwise report failure and fork from the commit
+        // the branch just left. Uncancellable for the same reason — the tree is already written by this point.
         var head = await _RevParseAsync(root, "HEAD", CancellationToken.None).ConfigureAwait(false);
         if (head is not null && head.Equals(target, StringComparison.Ordinal))
         {
@@ -256,10 +236,9 @@ internal static class WorktreeSourceUpdater
         null,
         $"Could not work out whether '{branch}' was up to date, so this session forked from it as it is.");
 
-    // Whether the fetch went through. Best-effort by design — offline, an expired credential or a remote that is
-    // gone must never be the reason a session does not start. No --prune: dropping remote-tracking refs is a change
-    // to the operator's repository nobody asked for, and losing the very ref the upstream resolves through would
-    // turn this into a silent "tracks nothing" from then on.
+    // Whether the fetch went through. Best-effort by design — offline, an expired credential, or a gone remote
+    // must never block session start. No --prune: dropping remote-tracking refs is an unasked-for change, and
+    // losing the ref the upstream resolves through would turn this into silent "tracks nothing".
     private static async Task<bool> _FetchAsync(string root, string remote, CancellationToken cancellationToken)
     {
         try
@@ -281,13 +260,9 @@ internal static class WorktreeSourceUpdater
         }
     }
 
-    // The remote a branch pushes to. Read from branch.<name>.remote rather than parsed out of the upstream ref,
-    // because a remote name can itself contain a slash and the split would guess wrong. A name that begins with "-"
-    // is refused rather than passed to git, where it would read as an option.
-    //
-    // Three answers, not two: git says "no such key" with exit 1, which is an ordinary local-only branch and worth
-    // no words, while any other exit is config it could not read — and calling that "tracks nothing" would turn a
-    // broken config into permanent silence about a stale base.
+    // Read from branch.<name>.remote rather than parsed out of the upstream ref, since a remote name can contain
+    // a slash. A name starting with "-" is refused rather than passed to git as an option. Three answers, not
+    // two: exit 1 is "no such key" (ordinary local-only branch); any other non-zero exit is unreadable config.
     private static async Task<(bool CouldRead, string? Remote)> _TrackedRemoteAsync(string root, string branch, CancellationToken cancellationToken)
     {
         var configured = await GitCli.RunAsync(
@@ -341,15 +316,9 @@ internal static class WorktreeSourceUpdater
         return count.ExitCode == 0 && int.TryParse(count.StandardOutput.Trim(), out var commits) ? commits : null;
     }
 
-    // Untracked files deliberately do not count as work in progress. Nearly every checkout carries some — build
-    // output, a scratch file — and treating those as a reason not to update would mean the source never is, which is
-    // the whole feature. What they must not do is stand where an incoming file lands, and that is asked separately
-    // below rather than left to git: git refuses to overwrite an untracked file, but an *ignored* one it overwrites
-    // without a word, and a local .env is exactly the file that gets ignored and exactly the one nobody has a second
-    // copy of.
-    // Null when git could not say. The two callers want opposite things from that: before the update, not knowing
-    // means leave the tree alone; afterwards, not knowing is no reason to send the operator hunting through a
-    // checkout that may be perfectly fine.
+    // Untracked files don't count as work in progress (nearly every checkout has some), but must not stand where
+    // an incoming file lands — checked separately since git overwrites ignored files silently (e.g. a local .env).
+    // Null when git could not say; the two callers read that differently: before update, not-knowing means leave alone.
     private static async Task<bool?> _HasTrackedChangesAsync(string root, CancellationToken cancellationToken)
     {
         var status = await GitCli.RunAsync(
@@ -378,12 +347,9 @@ internal static class WorktreeSourceUpdater
             return [];
         }
 
-        // Deliberately two decisions here. --others without --exclude-standard, because with the standard excludes
-        // applied the ignored files — the only ones git would silently clobber — are exactly what drops out of the
-        // answer. And no pathspec: a path that begins with ':' would be read as pathspec magic and quietly match
-        // nothing, a symlinked directory is never descended into, and a long enough list overflows the command line
-        // on Windows. Asking for everything untracked and doing the comparison here has none of those edges — and
-        // it stays small, since this is one line per file, not per byte.
+        // --others without --exclude-standard, because standard excludes would drop the ignored files that git
+        // would silently clobber. No pathspec: a leading ':' reads as pathspec magic, symlinked dirs aren't
+        // descended into, and long lists overflow the command line on Windows — comparing here avoids all of that.
         var untracked = await GitCli.RunAsync(root, ["ls-files", "--others", "-z"], cancellationToken).ConfigureAwait(false);
         if (untracked.ExitCode != 0)
         {
@@ -392,15 +358,9 @@ internal static class WorktreeSourceUpdater
 
         var comparison = await GitPaths.ComparisonForAsync(root, cancellationToken).ConfigureAwait(false);
 
-        // Indexed rather than compared pair by pair: the untracked side deliberately includes ignored files, so in a
-        // repository carrying a node_modules or an obj tree it runs to six figures, and multiplying that by the
-        // incoming set would put seconds of pure string work on the session-start path.
-        //
-        // Two sets, and they must stay two. A path being written and a folder on the way to it collide with
-        // different things: the file collides with something of the same name, the folder only with something
-        // standing exactly where it has to go. Folding them together would make every untracked file that merely
-        // shares a folder with an incoming one read as a collision — and a stray file in a touched folder is the
-        // normal state of a working checkout, so the update would stop happening at all.
+        // Indexed rather than compared pair by pair: the untracked side includes ignored files and can run to six
+        // figures (node_modules, obj), so pairwise comparison would add real seconds to session start. Two sets,
+        // not one — folding a file-collision and a folder-on-the-way together would flag any stray file as a collision.
         var comparer = GitPaths.ComparerFor(comparison);
         var arrivingPaths = new HashSet<string>(arriving, comparer);
         var foldersOnTheWay = new HashSet<string>(arriving.SelectMany(GitPaths.ParentsOf), comparer);

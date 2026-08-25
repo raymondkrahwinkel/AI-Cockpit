@@ -12,10 +12,8 @@ using Cockpit.Plugins.Abstractions.Consent;
 namespace Cockpit.Infrastructure.Worktrees;
 
 // The MCP tools an agent uses to manage its own git worktrees (AC-104, on AC-85), exposed as
-// `mcp__cockpit-worktrees__*`. Lets a session quickly isolate a subtask on its own branch and clean it up when
-// done, without the operator. Thin over `IWorktreeManager` — the same engine the New-session dialog and
-// the managed-worktrees panel use — so a worktree an agent makes is one the operator also sees, and one the session
-// teardown (AC-85 F3) cleans up if the agent forgets.
+// `mcp__cockpit-worktrees__*`. Thin over `IWorktreeManager` — the same engine the New-session dialog and the
+// managed-worktrees panel use — so an agent-made worktree is one the operator also sees.
 internal sealed class WorktreeTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
@@ -24,10 +22,9 @@ internal sealed class WorktreeTools
     private readonly ILiveSessionRegistry? _liveSessions;
     private readonly IConsentBroker? _consent;
 
-    // The liveness registry and the consent broker are optional so the tool's own tests construct it without them;
-    // the container injects the shared singletons, so a real removal is checked against the running sessions and a
-    // dirty removal is gated behind operator consent. Absent liveness is not "assume dead": with no registry to ask,
-    // the cross-session guard in RemoveAsync stays categorical rather than treating silence as permission.
+    // Liveness registry and consent broker are optional so tests construct this without them; the container
+    // injects the shared singletons for real removals. Absent liveness is not "assume dead" — the cross-session
+    // guard in RemoveAsync stays categorical.
     public WorktreeTools(IWorktreeManager worktreeManager, ILiveSessionRegistry? liveSessions = null, IConsentBroker? consent = null)
     {
         _worktreeManager = worktreeManager;
@@ -49,13 +46,9 @@ internal sealed class WorktreeTools
             // cleanup. Falls back to `session` off the verified path (the in-process tool loop / tests).
             var owner = McpRequestContext.CurrentPaneId ?? session;
 
-            // LeaveSourceAlone, always: `directory` is a folder an agent named, and the session was never scoped to
-            // whatever is checked out there. It still starts on the latest state — the worktree forks from the
-            // upstream tip — but that repository's own branch and working tree are not written to on the strength of
-            // an agent's say-so (AC-376).
-            // isAgentCreated: true (AC-520 fix 5) — this is the path that makes that distinction true: every worktree
-            // this tool creates is one an agent asked for, never the one a session runs in, so its own owning
-            // session may remove it later even while that session is still live.
+            // LeaveSourceAlone, always: `directory`'s own branch/working tree are never written to on an agent's
+            // say-so (AC-376), though the worktree still forks from the upstream tip. isAgentCreated: true
+            // (AC-520 fix 5) marks it as agent-made so its owning session may remove it later even while live.
             var record = string.IsNullOrWhiteSpace(branch)
                 ? await _worktreeManager.CreateForSessionAsync(owner, null, directory, WorktreeSourceHandling.LeaveSourceAlone, isAgentCreated: true)
                 : await _worktreeManager.CreateAsync(owner, branch, directory, WorktreeSourceHandling.LeaveSourceAlone, isAgentCreated: true);
@@ -113,15 +106,9 @@ internal sealed class WorktreeTools
             return _Serialize(new { ok = false, error = "No managed worktree at that path — call worktree_list for the current paths." });
         }
 
-        // AC-128: an agent may only remove a worktree it owns (created for its own verified pane) — removing another
-        // session's checkout by naming its path is a confused deputy, and cross-session cleanup while that owner is
-        // still alive is the operator's, done from the managed panel, not an agent's. That protection only has
-        // something to protect while the owner is actually running, though: once it is provably dead (its id is
-        // absent from LiveSessionIds), there is no live session left to pull a working directory out from under, and
-        // refusing only leaves an orphan no session will ever come back to release — the fifth crashed-session
-        // worktree AC-524 measured. Liveness must be genuinely known before this loosens: with no registry to ask
-        // (_liveSessions is null) the guard stays categorical, exactly as it always has, because a missing
-        // registration must never silently read as "dead" and disable the protection it exists to give.
+        // AC-128: an agent may only remove a worktree it owns — cross-session cleanup while the owner is alive is
+        // the operator's, from the managed panel. Once the owner is provably dead (absent from LiveSessionIds) this
+        // loosens, since refusing only leaves an orphan (AC-524); with no registry to ask, the guard stays categorical.
         if (McpRequestContext.CurrentPaneId is { } caller
             && !string.Equals(record.SessionId, caller, StringComparison.Ordinal)
             && (_liveSessions is null || _liveSessions.LiveSessionIds.Contains(record.SessionId)))
@@ -129,20 +116,9 @@ internal sealed class WorktreeTools
             return _Serialize(new { ok = false, error = "That worktree belongs to another session — you can only remove a worktree you created." });
         }
 
-        // Never remove a worktree whose owning session is still running — that pulls the working directory out from
-        // under it. The panel enforces the same guard; close the session first, or let its own teardown remove it.
-        // Still needed after the relaxation above: it is what catches an agent removing its own worktree while its
-        // own session is (for whatever reason) still counted live, a case the guard above never touches because the
-        // caller and the owner are the same session there.
-        //
-        // One exception (AC-520 fix 5): a pane can own two different kinds of worktree, and they need opposite
-        // answers here. The one it was started or reattached in (made by the UI, never through this tool) must stay
-        // protected even against its own session — that IS the working directory the session is running in. One it
-        // made for itself through worktree_create, for a subtask, has nobody running in it; refusing to remove it
-        // left the tool unusable for exactly the case its own description promises ("when a task is done").
-        // IsAgentCreated is what tells the two apart — set at creation time above, never by the UI's own create path
-        // — so only a caller cleaning up its own agent-made worktree is exempted; cross-session cleanup is still the
-        // operator's, from the panel, and still refused by the guard above regardless of this flag.
+        // Never remove a worktree whose owning session is still running — catches an agent removing its own live
+        // worktree, which the guard above doesn't (same session). Exception (AC-520 fix 5): one it made for itself
+        // via worktree_create is exempt, told apart by IsAgentCreated.
         var removingOwnAgentMadeWorktree =
             record.IsAgentCreated && string.Equals(record.SessionId, McpRequestContext.CurrentPaneId, StringComparison.Ordinal);
 
@@ -151,12 +127,9 @@ internal sealed class WorktreeTools
             return _Serialize(new { ok = false, error = "That worktree's session is still running — it will be cleaned up when the session closes; do not remove a live session's worktree." });
         }
 
-        // A worktree that still holds uncommitted changes or untracked files only comes out after the operator
-        // approves it: force-removing it discards that content, so the human decides, not the agent. The broker fails
-        // closed (no operator surface, no approval), so a headless or delegated agent can never discard work this way.
-        // A clean worktree (or one that only has commits ahead, which the removal keeps on the branch) needs no prompt.
-        // The prompt is not pinned to a pane: the caller is untrusted (an agent-declared id), so it is shown to the
-        // operator unattributed rather than trusting the agent to say which session is asking.
+        // A dirty worktree only comes out after operator approval — force-removing discards content, so the human
+        // decides, not the agent. The broker fails closed with no operator surface. Not pinned to a pane: the
+        // caller is untrusted, so the prompt shows unattributed.
         var dirty = await _worktreeManager.HasUncommittedChangesAsync(record);
         if (dirty)
         {
@@ -191,11 +164,9 @@ internal sealed class WorktreeTools
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    // Fold any character a consent surface could render as a line break out of an agent-influenced value (the branch
-    // name it chose at worktree_create) before it goes verbatim into the Dangerous prompt's Action. git rejects ASCII
-    // control characters in a ref but not the Unicode line/paragraph separators (U+2028/U+2029/U+0085), which an agent
-    // could otherwise use to smuggle in reassuring extra lines and bury the "this discards your changes" warning
-    // (cf. AC-80, which flattens control characters in a consent Action for the same reason).
+    // Strip characters a consent surface could render as a line break from an agent-influenced value (the branch
+    // name) before it goes into the Dangerous prompt's Action — git allows Unicode line separators an agent could
+    // use to bury the warning (cf. AC-80).
     private static string _SingleLine(string value) =>
         new(value.Select(character =>
             char.IsControl(character) || character is '\u2028' or '\u2029' or '\u0085' ? ' ' : character).ToArray());

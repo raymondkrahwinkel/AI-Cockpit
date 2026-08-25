@@ -5,10 +5,8 @@ namespace Cockpit.Infrastructure.Worktrees;
 // that looks careful reports "nothing in the way" about a file it is standing on.
 internal static class GitPaths
 {
-    // What the platform normally does — the answer for paths that are not inside a repository, and the fallback for
-    // those that are. "Usually" is the whole caveat: a repository can sit on a mount that disagrees with its host
-    // (a Linux checkout on a CIFS share or a WSL-mounted Windows drive), so anything comparing paths git handed us
-    // asks git instead, through `ComparisonForAsync`.
+    // What the platform normally does. "Usually" is the caveat: a repository can sit on a mount that disagrees
+    // with its host, so anything comparing paths git handed us asks git instead, via `ComparisonForAsync`.
     public static readonly StringComparison PlatformComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 

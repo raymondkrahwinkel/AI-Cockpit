@@ -4,16 +4,9 @@ using Cockpit.Core.Abstractions.Terminal;
 
 namespace Cockpit.Infrastructure.Terminal;
 
-// The live coupling state behind the terminal-access MCP (AC-34). Producer calls come from the UI thread (a pane
-// opens, output flushes); consumer calls come from MCP request threads (list, couple, read). All of it is behind one
-// lock — the state is small and the calls are short, so a lock is simpler and safer here than a lock-free scheme.
-//
-// Read-scope starts at the coupling: `CaptureOutput` is a no-op until a pane is coupled, so nothing that
-// scrolled by before an agent connected — an earlier secret echo included — is ever in the buffer it can read. The
-// buffer is capped so a long-lived coupling on a chatty pane cannot grow without bound.
-//
-// What an agent may reach is narrowed on the way out, not on the way in: every pane registers, but only the
-// plain-shell ones are listed or resolvable, so the agent-session panes stay out of reach of both.
+// The live coupling state behind the terminal-access MCP (AC-34), all behind one lock (small state, short calls).
+// Read-scope starts at the coupling: capture is a no-op until coupled, so nothing scrolled before then leaks.
+// Only plain-shell panes are listed/resolvable, keeping agent-session panes out of reach.
 internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISingletonService
 {
     // Cap on a coupling's captured text — enough to be useful, bounded so a streaming pane cannot exhaust memory. Oldest output is dropped first.

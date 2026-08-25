@@ -4,9 +4,8 @@ using Cockpit.Infrastructure.Configuration;
 namespace Cockpit.Infrastructure.Assistant;
 
 // A loose, light backup/restore for just the two assistant memory files (AC-657), separate from a full cockpit
-// backup (`BackupService`) — which already carries these along with everything else, but only as part of the whole
-// state root. No manifest, no secrets scrubbing, no plugin selection: an operator who wants to carry the assistant's
-// memory to another machine, or keep a copy before clearing it out, does not need the rest of that flow.
+// backup (`BackupService`). No manifest, no secrets scrubbing, no plugin selection: an operator carrying just
+// the assistant's memory to another machine does not need the rest of that flow.
 internal static class AssistantMemoryBackup
 {
     // Writes whichever of the two files exist to a .zip at `archivePath`, overwriting whatever was there.

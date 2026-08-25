@@ -10,17 +10,9 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Terminal;
 
-// The `cockpit-terminal` MCP tools (AC-34): let an agent read and drive a terminal pane the operator has open,
-// live and with the operator watching. Exposed only while the Options master switch is on (the endpoint is not
-// advertised to a session otherwise), so for an agent the feature simply does not exist until it is deliberately
-// turned on.
-//
-// The gate is the shared AC-47 consent broker, and it asks for the narrower thing: `read_terminal` asks to watch
-// a pane, `send_terminal` asks to type into it. So watching a build finish never quietly comes with the keyboard,
-// and an agent that only ever reads is never approved for more than reading. Approval couples the session to the pane
-// (one agent per pane) and starts the output capture — which begins at the coupling, never the earlier scrollback, so
-// a secret that scrolled by before does not leak. The operator keeps control throughout: they can type alongside and
-// Disconnect at any time, and the pane shows a bar saying which of the two an agent holds.
+// The `cockpit-terminal` MCP tools (AC-34): let an agent read and drive a terminal pane the operator has open.
+// Gated by the shared AC-47 consent broker, which asks read/send separately, so watching never quietly comes
+// with the keyboard. Approval couples the session to the pane and starts capture at the coupling, not earlier scrollback.
 internal sealed class TerminalMcpTools
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
@@ -211,10 +203,9 @@ internal sealed class TerminalMcpTools
         });
     }
 
-    // Ensures this session holds at least `needed` on `pane`, asking the operator
-    // once for exactly that much. Returns an error string to surface, or null when the session now holds it. An
-    // agent that has been watching and now wants to type gets a second prompt, worded as the widening it is — the
-    // operator's live view and Disconnect are the counterpart to whatever they granted.
+    // Ensures this session holds at least `needed` on `pane`, asking the operator once for exactly that much.
+    // Returns an error string to surface, or null when held. Watch-then-type gets a second prompt, worded as
+    // the widening it is — the operator's live view and Disconnect are the counterpart to whatever was granted.
     private async Task<string?> _EnsureCoupledAsync(string caller, TerminalPane pane, TerminalCouplingMode needed)
     {
         // Drive covers reading too; anything else has to be exactly what is needed. Spelled out rather than leaning on
@@ -277,10 +268,9 @@ internal sealed class TerminalMcpTools
                 "terminal.drive",
                 ConsentRisk.Dangerous);
 
-    // Fold anything a consent surface could render as a line break out of the pane name before it goes verbatim into
-    // the Dangerous prompt, so a crafted pane name cannot smuggle reassuring extra lines into what the operator
-    // approves (cf. AC-80/AC-92). The Unicode line/paragraph/next-line separators (0x2028/0x2029/0x0085) are compared
-    // numerically so no raw separator character sits in this source file.
+    // Fold line-break characters out of the pane name before it goes verbatim into the Dangerous prompt, so a
+    // crafted pane name cannot smuggle reassuring extra lines into what the operator approves (cf. AC-80/AC-92).
+    // Separators are compared numerically so no raw separator character sits in this source file.
     private static string _SingleLine(string value) =>
         new(value.Select(character =>
             char.IsControl(character) || character == 0x2028 || character == 0x2029 || character == 0x0085

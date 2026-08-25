@@ -12,54 +12,8 @@ using Cockpit.Plugins.Abstractions.Consent;
 namespace Cockpit.Infrastructure.Assistant;
 
 // The `cockpit-assistant-agents` MCP tools (AC-545): the voice assistant's acting path — starting a session on
-// a named desk and stopping one again. The read half is `AssistantReadMcpTools`, and the two are
-// deliberately not one server; `AssistantIdentity.ActMcpServerName` says why.
-// *The mount rule is copied, not re-invented.* Both gates are the ones AC-544 already has, and both are here
-// for the same reasons written out on the read server:
-//
-// *1. It is not handed out.* The endpoint is registered `Internal` (AC-204), so it is in no picker and in
-// no fan-out, and reaches only a launch that names it — `AssistantSessionHost.McpSelection` being the one
-// place in the codebase that does.
-//
-// *2. It is not answered.* `_RefuseIfNotTheAssistant` runs first in every tool and returns
-// *before* the gateway is touched. That is the gate that holds: the mount is a fact about configuration and
-// configuration widens later by accident — an endpoint made non-internal, a profile that names the server, a spawn
-// path that copies a selection it did not read. When that happens these tools sit in a session's context and still
-// answer nobody, because what is checked is the pane `McpAuthMiddleware` stamped from the request's own
-// per-session bearer, and no argument on any tool here can move it.
-//
-// *Why the stakes are higher here than on the read server.* These tools spend money and start processes. The
-// second gate is therefore not the last one: on the defaults, a call raises the SDK permission prompt, which the
-// chat window renders as an Allow/Deny row showing the literal profile, desk and folder. Nothing in this file is
-// that gate and nothing here may become it — a spoken "yes" is a sentence in a transcript, and the only thing that
-// resolves a permission is a click.
-//
-// *"On the defaults" carries that whole sentence, and the tool descriptions have to say so.* The assistant
-// starts on `SessionOptionCatalog.DefaultPermissionMode` only as a floor: the Assistant Profile's own
-// permission mode overrides it (`AssistantSessionHost._LaunchOptions`), so an operator who put
-// `bypassPermissions` on that profile gets no row at all — and for the two tools that raise a cockpit card of
-// their own, AC-575's per-source switch does the same one layer down, before the card is ever built
-// (`ConsentService.RequestConsentAsync`). A description that promises a click unconditionally has the
-// assistant announcing a card nobody will ever see, which is the same defect as promising no click, pointing the
-// other way.
-//
-// *And whichever it was, it is over before the assistant hears about it (AC-768).* Every call here blocks on its
-// own gate: the SDK prompt is answered, the consent card is answered, or neither was ever raised. A tool result is
-// therefore always a decision already made, so telling the assistant to announce that permission is waiting on the
-// operator's screen names a state it can never observe from a result — and it announced one on every spawn
-// regardless, including where either switch above had already taken the row away. What the descriptions ask for
-// instead is the outcome: it went through, or it was refused and why. `AskingCanBeSwitchedOff` is the one
-// sentence that says both, written once because five copies of it are five places for it to stop being true.
-//
-// *This server scopes nothing.* The workspace is a required parameter rather than something derived, because
-// the assistant sits on no desk to derive one from — see `SpawnTarget`, whose two factories are the two
-// scoping rules, and whose remarks explain why a coordinator's stricter rule must not be built as a check bolted
-// onto this one.
-//
-// *Two of these ask on their own account.* `send_message` and `send_prompt` reach into a session the
-// assistant did not start, so they raise a cockpit consent card as well — under two separate sources
-// (`ConsentSourceCatalog.AssistantMessage` and `ConsentSourceCatalog.AssistantPrompt`), so
-// that an operator who lets the assistant leave notes unasked has not thereby let it start work unasked.
+// a named desk and stopping one again. Its own server, gated like AC-544 but also on the SDK permission
+// prompt/consent card since it spends money and starts processes, reported as outcome only (AC-768).
 internal sealed class AssistantAgentMcpTools(
     IAssistantAgentGateway gateway,
     IAssistantMemory memory,
@@ -72,10 +26,9 @@ internal sealed class AssistantAgentMcpTools(
     private const string NotTheAssistant =
         "This tool is the cockpit assistant's own. It is not available to an agent session.";
 
-    // The caveat every "it needs their click" sentence on this server carries, spliced into each description rather
-    // than retyped in it. See the class remarks for why it exists: the click is the default, not a guarantee, the
-    // operator can switch the asking off ahead of time by two separate levers, and either way the call has already
-    // waited out whatever gate there was before the assistant reads a result.
+    // The caveat every "it needs their click" sentence carries, spliced into each description rather than retyped:
+    // the click is a default the operator can switch off, and the call always waits out whatever gate there was
+    // before the assistant reads a result.
     private const string AskingCanBeSwitchedOff =
         " THE CLICK IS THE DEFAULT AND NOT A PROMISE: the operator can switch the asking off ahead of time — for this"
         + " kind of request in Options → Voice, or by giving the Assistant Profile a permission mode that bypasses"
@@ -405,10 +358,8 @@ internal sealed class AssistantAgentMcpTools(
                     paneId = result.PaneId,
                     name = result.SessionName,
                     result.Delivered,
-                    // "asked" | "bypassed" | "remembered" (AC-759) — see send_message for why this is reported
-                    // rather than assumed. Never "remembered" here in practice: a Dangerous request is never
-                    // offered it (ConsentService), but the label still comes from the decision rather than being
-                    // hand-picked here, so that stays true by construction and not by this call site remembering it.
+                    // "asked" | "bypassed" | "remembered" (AC-759), reported rather than assumed. Never
+                    // "remembered" in practice for a Dangerous request, but comes from the decision, not hand-picked.
                     approval = approval.Label,
                 })
                 : _Serialize(new { ok = false, error = result.Error });
@@ -505,26 +456,17 @@ internal sealed class AssistantAgentMcpTools(
                 return refusal;
             }
 
-            // The card below is three labelled lines, and it is rendered verbatim — so a newline inside one of these
-            // three arguments writes a `folder:` line of the caller's own choosing under a folder nobody approved.
-            // Refused rather than escaped: a project id, a path and a profile label have no legitimate shape with a
-            // control character in it, so there is nothing here to salvage.
+            // The card below is three labelled lines rendered verbatim, so a newline in one argument could forge
+            // a line nobody approved. Refused rather than escaped: none of these three fields legitimately
+            // contains a control character.
             if (_RefuseIfNotOneLine(("project id", sharedProjectId), ("folder", sourceDirectory), ("profile", profile)) is { } malformed)
             {
                 return malformed;
             }
 
-            // Asked before the definition is read, so the operator is never made to wait on a connection for a card
-            // they were going to deny. The cost of that order is a project whose machine-specific resource rows are
-            // only discovered afterwards — the retry then raises a second card. Worth it: those rows are the rare
-            // case (see `SharedProjectBindingDialogViewModel.ResourceRows`), a card the operator denied is the
-            // common one, and the alternative is reaching a colleague's server on the strength of a call nobody has
-            // agreed to yet.
-            //
-            // LowRisk, and deliberately not Dangerous: what goes through is a registration in `cockpit.json` of a
-            // definition somebody on the operator's team already wrote, pointed at a folder shown on the card.
-            // Nothing runs, nothing is written outside it, and a second call cannot overwrite or duplicate it (the
-            // gateway refuses an id already added). Starting anything on it is `start_agent`, with its own gate.
+            // Asked before the definition is read so the operator never waits on a connection for a card they
+            // were going to deny — cost: resource rows are discovered afterwards and need a second card.
+            // LowRisk: registers only a definition somebody's team already wrote; nothing runs.
             var approval = await _ApprovedAsync(
                 "The assistant wants to add a shared project to this machine",
                 $"Add shared project {sharedProjectId}\nfolder: {sourceDirectory}\nprofile: {profile}",
@@ -578,11 +520,8 @@ internal sealed class AssistantAgentMcpTools(
             }
 
             // The card below renders labelled lines verbatim, so a newline in a single-line field would forge one
-            // nobody approved — same reason `bind_shared_project` refuses rather than escapes. `behaviorPrompt`/
-            // `description` are legitimately multi-line and are normalised and bounded, not refused, below.
-            // `category` is deliberately not checked here (AC-799 review finding 11): unlike the fields below it
-            // never reaches the card, so the one thing this guard exists for — a newline forging a line under a
-            // value nobody approved — cannot happen through it.
+            // nobody approved — same reason as `bind_shared_project`. `behaviorPrompt`/`description` are
+            // legitimately multi-line and normalised/bounded instead; `category` never reaches the card so needs no check.
             var lineChecks = new List<(string Name, string Value)> { ("name", name) };
             if (sourceDirectory is not null)
             {
@@ -624,25 +563,14 @@ internal sealed class AssistantAgentMcpTools(
                 });
             }
 
-            // An empty array and no argument at all mean the same thing — "every server, following the registry"
-            // (`ProjectMcpOverlay.IsSelectedByDefault` reads a non-null empty list as "nothing is selected", the
-            // opposite of what the card below would otherwise say) — so this collapses `[]` to `null` once, before
-            // either the card or the gateway sees it (AC-799 review finding 1). Without this the two disagreed: the
-            // card would say "every server" while what got stored selected none.
+            // An empty array and no argument mean the same thing ("every server"), but `ProjectMcpOverlay
+            // .IsSelectedByDefault` reads a non-null empty list as "nothing selected" — so collapse `[]` to `null`
+            // once, before card or gateway sees it, to keep the two from disagreeing (AC-799 finding 1).
             var normalizedEnabledMcpServerNames = enabledMcpServerNames is { Length: 0 } ? null : enabledMcpServerNames;
 
-            // LowRisk — weighed against `ConsentRisk`'s own text, not borrowed from `bind_shared_project`
-            // (AC-799 review finding 4). Its bar is "an idempotent, low-consequence action", and this does not
-            // clear the first half on its own: every call makes a fresh `Project.Create` id, so a repeated or
-            // "remembered" call is a second project, not a no-op the way re-adding an already-bound shared project
-            // is. Two things narrow that gap rather than close it: (a) `ConsentService` keys "remember" on the
-            // whole `Action` string, so a remembered approval only ever covers a byte-identical repeat — varying
-            // one field defeats it, it does not ride on it; (b) this card is the only place the operator ever sees
-            // `behaviorPrompt` at all — `start_agent` folds a project's `BehaviorPrompt` into the system prompt via
-            // `ComposeAsync` without showing it on its own card, so scrutinising it loosely here leaves it
-            // unscrutinised everywhere. What still holds unconditionally is the low-consequence half: this writes a
-            // project record and starts nothing, and a session only actually runs behind `start_agent`'s own
-            // separate approval. LowRisk on the strength of (a) and (b), not because non-idempotence stopped mattering.
+            // LowRisk (AC-799 finding 4): not idempotent like `bind_shared_project` (each call makes a fresh
+            // project), but "remember" only covers byte-identical repeats, and this is the only card that ever
+            // shows `behaviorPrompt` — writes a record and starts nothing, a session still needs `start_agent`.
             var approval = await _ApprovedAsync(
                 "The assistant wants to create a new project",
                 $"Create project '{name}'\n"
@@ -877,21 +805,9 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
-    // Asks the operator, and returns the whole decision — never just whether it was approved (AC-759). A caller
-    // that only learns "yes" cannot tell a card the operator actually clicked from one that never appeared because
-    // they switched the asking off ahead of time (AC-575), and the tool descriptions promise a click only "by
-    // default" now precisely because that difference is real; the result has to be able to say which one happened.
-    // `action` is passed straight through to `ConsentRequest.Action`, which is rendered
-    // verbatim, and is composed at each call site out of the literal arguments rather than out of a sentence about
-    // them. That is the rule the type states and the reason it states it: the assistant's words are supplied by a
-    // model that can be argued into supplying different ones, so a card showing a friendly description of a hostile
-    // message is a card that approves the message. The pane id is shown rather than the session's name for the same
-    // reason — the id is what the cockpit will act on, and a name would be the assistant's rendering of it.
-    //
-    // No broker means no operator to ask, and these two tools deliver into someone else's session, so the answer is
-    // no. `AllowRemember` is deliberately left off both: the operator's lever for "stop asking me about this"
-    // is the per-source bypass in Options (AC-575), which is per source and switchable back off, rather than a
-    // per-call promise made on a row that was about one particular message.
+    // Returns the whole decision, never just whether it was approved (AC-759), so a caller can tell a click from
+    // an ahead-of-time bypass (AC-575). `action` is composed from literal arguments, not a model-supplied summary,
+    // since that summary could approve a hostile message; `AllowRemember` is left off, the "stop asking" lever is Options.
     private async Task<_Approval> _ApprovedAsync(string title, string action, string sourceLabel, string scope, ConsentRisk risk)
     {
         if (consent is null)
@@ -916,11 +832,9 @@ internal sealed class AssistantAgentMcpTools(
         public bool Ok => Error is null;
     }
 
-    // Refuses an argument that would land on a consent card as more than the one line it is meant to be. The card's
-    // `Action` is composed of literal arguments precisely so it says what will happen rather than what the assistant
-    // claims will happen — and that only holds while an argument cannot write a line of its own. `send_message`
-    // strips control characters for the same reason; here they are refused instead, because unlike a message body
-    // there is no version of these three fields worth delivering once one is in there.
+    // Refuses an argument that would land on a consent card as more than one line. `send_message` strips control
+    // characters for the same reason; here they are refused instead, since these fields have no legitimate
+    // multi-line form.
     private static string? _RefuseIfNotOneLine(params (string Name, string Value)[] fields)
     {
         foreach (var (name, value) in fields)
@@ -938,17 +852,9 @@ internal sealed class AssistantAgentMcpTools(
         return null;
     }
 
-    // The gate, in one place so every tool on this server is covered by the same sentence rather than by its own
-    // copy of it. Returns the refusal to hand straight back, or null when the caller really is the assistant.
-    // A request with no verified pane is refused too, and not because it might be an impostor: it is the shared
-    // app-lifetime key path (the in-process tool loop), which cannot be attributed to any session at all. There is
-    // no identity to check, so there is no way to establish this one — and the safe answer to "I cannot tell who
-    // this is" on a tool that starts processes in any workspace is no.
-    //
-    // Deliberately a second copy of `AssistantReadMcpTools._RefuseIfNotTheAssistant` rather than a shared
-    // helper the two servers call. What would be shared is four lines; what would be gained is one place to weaken.
-    // Both copies compare against the same `AssistantIdentity.PaneId`, which is the constant that must
-    // not drift — and it already lives in Core for exactly that reason.
+    // The gate, in one place so every tool on this server shares it. A request with no verified pane is refused
+    // too (the shared app-lifetime key path can't be attributed to any session). Deliberately a second copy of
+    // `AssistantReadMcpTools._RefuseIfNotTheAssistant`, not a shared helper — both compare `AssistantIdentity.PaneId`.
     private static string? _RefuseIfNotTheAssistant() =>
         string.Equals(McpRequestContext.CurrentPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal)
             ? null

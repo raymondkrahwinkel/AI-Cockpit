@@ -6,9 +6,8 @@ using Cockpit.Core.Notifications;
 
 namespace Cockpit.Infrastructure.Notifications;
 
-// Windows presence detection: idle time from the Win32 `GetLastInputInfo` and lock state from
-// `SystemEvents.SessionSwitch` (`SessionLock`/`SessionUnlock`). The measured
-// idle time and lock flag are handed to the pure `PresenceDecision` kernel, which owns
+// Windows presence detection: idle time from Win32 `GetLastInputInfo`, lock state from
+// `SystemEvents.SessionSwitch`. Both are handed to the pure `PresenceDecision` kernel, which owns
 // the away/present rule so it stays testable without the P/Invoke.
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsPresenceDetector : IPresenceDetector, IDisposable

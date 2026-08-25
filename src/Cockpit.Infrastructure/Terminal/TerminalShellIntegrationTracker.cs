@@ -2,25 +2,9 @@ using System.Text;
 
 namespace Cockpit.Infrastructure.Terminal;
 
-// Reads the shell-integration marks a shell emits into its own output (OSC 133, the FinalTerm/iTerm2 convention, and
-// VS Code's OSC 633 variant of it) so `run_in_terminal` can know when a command actually finished and what it
-// exited with — instead of guessing from a quiet stream or polluting the operator's visible session with a sentinel
-// `echo`. The marks are invisible escape sequences, so the person watching the pane sees nothing extra, and they
-// travel over SSH because the remote shell is what emits them.
-//
-// Only the two marks that answer a question are acted on: `B` (the shell is at a prompt waiting for input) and
-// `D` (the command finished, optionally with its exit code). `C` — the command started running — is what
-// takes the shell off the prompt again. That single `AtPrompt` bit is also what keeps a command from
-// being typed into a full-screen program: `vim` and `htop` run *during* a command, so the shell is
-// never at a prompt while one is open.
-//
-// *These marks are not proof.* Nothing distinguishes the shell emitting them from any program that writes the
-// same bytes — a `cat` of a crafted file, a nested session. That is true of every terminal that reads OSC 133,
-// and it is why what depends on them here is a *safety* check, not a security boundary: an agent that can be
-// fooled into believing the shell is idle can type a command line into whatever is actually open — but it already
-// holds the operator's approval to type there, and `send_terminal` does that with no prompt-state check at all,
-// by design. So the spoof costs a courtesy, not a permission. The operator watching the pane is the backstop, as it
-// is for everything else this MCP does.
+// Reads the shell-integration marks a shell emits (OSC 133 / VS Code's OSC 633) so `run_in_terminal` knows
+// when a command finished and what it exited with, instead of guessing. Not proof — any program can emit the
+// same bytes — so this is a safety check, not a security boundary; `send_terminal` already has full approval regardless.
 internal sealed class TerminalShellIntegrationTracker
 {
     private const char Escape = (char)0x1b;

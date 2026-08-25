@@ -6,16 +6,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Assistant;
 
-// Persists the `AssistantProfileSlot` under the `assistantProfile` section of
-// `cockpit.json`, read-modify-write through `CockpitConfigFileAccess` like every other
-// section-owning store (same pattern as `Sessions.SessionProfileStore`).
-//
-// *Its own section, not an entry in `profiles`.* That placement is what makes three acceptance
-// criteria hold without a single guard: the slot cannot be deleted through the profile list, it does not appear
-// in *+ New session*, and `list_profiles` never offers it as a delegation target — all three read
-// `Cockpit.Core.Abstractions.Profiles.ISessionProfileStore.LoadAsync`, and this is not in what that
-// returns. It is also why a rename cannot lose the slot: nothing matches it by label, so AC-410's
-// rename-reads-as-gone bug has no surface here.
+// Persists the `AssistantProfileSlot` under the `assistantProfile` section of `cockpit.json`,
+// read-modify-write like every other section-owning store. Its own section, not an entry in `profiles`: that
+// keeps it out of the profile list, "+ New session" and `list_profiles`'s delegation targets without a guard.
 internal sealed class AssistantProfileStore : IAssistantProfileStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;
