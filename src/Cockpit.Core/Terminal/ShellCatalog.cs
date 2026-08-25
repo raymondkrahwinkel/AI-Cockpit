@@ -1,17 +1,8 @@
 namespace Cockpit.Core.Terminal;
 
-// Finds the shells a plain terminal pane can open on this machine (#AC-25). The cockpit already runs an agent CLI in
-// a pty; a terminal is the same pty pointed at a shell instead, so all this has to answer is *which shells are
-// actually here, and by what absolute path* — the same cross-platform trap as
-// `Cockpit.Core.Abstractions.Sessions.ITtySessionProvider`'s executables: a bare `pwsh`/`bash`
-// is not spawnable directly (no `PATHEXT`/PATH lookup by `System.Diagnostics.Process`), so a shell
-// is only offered once it resolves to a real file.
-// Detection is best-effort and ordered by preference: the first entry is the sensible default. On Windows that is
-// PowerShell 7 (`pwsh`) if installed, else Windows PowerShell, then `cmd`, then `wsl` when present. On
-// Linux/macOS the login shell (`$SHELL`) leads, then `bash`/`zsh`/`sh`. It resolves against the
-// real filesystem and this OS — `Build` is a seam that takes the environment values so a test can point
-// it at a temp directory of real shell files, but it deliberately does not simulate a foreign OS: `Detect`
-// only ever runs on the OS it describes, so leaning on `Path` here is correct, not a shortcut.
+// Finds the shells a plain terminal pane can open on this machine (#AC-25) — a shell is only offered once it
+// resolves to a real absolute path. Detection is ordered by preference (first entry is the default) and runs
+// against the real filesystem and OS; `Build` takes the environment as a test seam but never simulates a foreign OS.
 public static class ShellCatalog
 {
     // The shells present on this machine, most-preferred first, each with an absolute path. Reads the real
@@ -22,10 +13,8 @@ public static class ShellCatalog
             Environment.GetEnvironmentVariable("SHELL"),
             Environment.GetEnvironmentVariable("COMSPEC"));
 
-    // The detection over an explicit environment (this OS, the real filesystem), so a test can drive it with a PATH
-    // pointing at a temp directory of real shell files. Each candidate is resolved via `_Resolve`;
-    // unresolved candidates are dropped rather than offered as a path that fails to spawn, and the same binary is
-    // never listed twice. Internal for unit tests.
+    // Detection over an explicit environment so a test can drive it with a PATH pointing at a temp directory of
+    // real shell files. Unresolved candidates are dropped, duplicates collapsed. Internal for unit tests.
     internal static IReadOnlyList<ShellDescriptor> Build(string pathVariable, string? shellEnvironmentVariable, string? comSpec)
     {
         var candidates = OperatingSystem.IsWindows()
@@ -53,11 +42,9 @@ public static class ShellCatalog
         return shells;
     }
 
-    // A descriptor for an operator-specified custom shell (#AC-25) — any path or command, including a third-party
-    // shell not in `Detect` (fish, nushell, xonsh, a login wrapper), which is common on Linux/macOS. The
-    // command is resolved to an absolute path when it can be (a bare name via PATH, Windows extensions probed); when
-    // it cannot, it is passed through unchanged so the pty surfaces a real "not found" the operator can fix, rather
-    // than being silently swapped for another shell. Returns null only for a blank command.
+    // A descriptor for an operator-specified custom shell (#AC-25), including third-party shells not in `Detect`.
+    // Resolved to an absolute path when possible; otherwise passed through so the pty surfaces a real "not found"
+    // rather than silently swapping in another shell. Returns null only for a blank command.
     public static ShellDescriptor? ForCommand(string command)
     {
         var trimmed = command?.Trim() ?? string.Empty;
@@ -82,10 +69,9 @@ public static class ShellCatalog
         ("wsl", "WSL", "wsl.exe", []),
     ];
 
-    // The login shell leads so the terminal matches what the operator's own terminal gives them; then the common
-    // shells by name. `-l` is deliberately omitted — the pty child inherits the cockpit's environment, and a login
-    // shell re-running profile scripts is slower and occasionally clobbers that; an interactive non-login shell is
-    // the least-surprising default, the same choice most terminal emulators make for a new tab.
+    // The login shell leads so the terminal matches the operator's own; then the common shells by name. `-l` is
+    // deliberately omitted — the pty already inherits the cockpit's environment, and a login shell re-running
+    // profile scripts is slower and can clobber that.
     private static IEnumerable<(string Id, string DisplayName, string Command, IReadOnlyList<string> Arguments)> _UnixCandidates(string? shellEnvironmentVariable)
     {
         if (!string.IsNullOrWhiteSpace(shellEnvironmentVariable))

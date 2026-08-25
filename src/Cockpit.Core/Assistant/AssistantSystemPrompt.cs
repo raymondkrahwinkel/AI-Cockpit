@@ -1,53 +1,8 @@
 namespace Cockpit.Core.Assistant;
 
-// The standing instruction the assistant runs under (AC-543, criterion 13). In the codebase and under version
-// control, next to `Cockpit.Core.Delegation.DelegationSystemPrompt` and for the same reason: it is a
-// load-bearing part of the product, not a setting. In `cockpit.json` nobody would find it, and nobody could
-// see it change.
-// *Why it carries this much weight.* Speech reaches the assistant one-to-one — Whisper in, the assistant,
-// SupertonicTTS out — with no cleanup pass on the way in and no rewrite on the way out (decision 10). What the
-// removed rewrite step used to do, this prompt now instructs. That is the whole of it: there is no second place
-// where a 300-word answer gets shortened before it is spoken.
-//
-// *Written in English, about answering in Dutch.* Every surface around the assistant is English — the UI,
-// the tool descriptions, this prompt — and a model follows its surroundings. Left unsaid, it answers a Dutch
-// question in English. The language rule is therefore stated outright rather than left to good behaviour.
-//
-// *The honesty clause (AC-544, criterion 6) is here rather than in a tool.* A statusline is a convention: a
-// session writes one because it was asked to, so "no session mentions AC-223" is a statement about what has been
-// written down, never about what is being worked on. The tool description says so too, but a description is read
-// once at mount and the temptation to round an absence up to an answer arrives later, mid-sentence, under time
-// pressure from someone who asked a yes/no question. This is the same rule the update check follows when it
-// cannot run: say that it could not, rather than report "up to date".
-//
-// *The capability map (AC-635) is a second kind of text and is kept apart from the first.* Everything above is
-// prose about how to talk, and it is prose because tone is what it is teaching. A list of what exists and when to
-// reach for it teaches nothing about tone, and written in the same register it costs three to four times the words
-// to say the same thing — so it is a dense index instead, in `Capabilities`, appended to the end. It is read by a
-// model and never spoken, which is why it may look like a screen: the one rule it carries about itself is that its
-// shape stays out of the answers. What it holds is what a session otherwise discovers halfway through a task —
-// that it has an address of its own (AC-632), that a spawn gets its own worktree from the project it is started on
-// rather than one the assistant makes for it beforehand (AC-719), that a repo has its own base branch, that the
-// agent it starts knows nothing it was not told — and that implementing is never its own job (AC-639),
-// which it learned by building straight in a checkout instead (AC-638).
-//
-// *The acting paragraph (AC-545) says almost nothing about how to spawn, and a great deal about the gate.*
-// How the tools work is in the tool descriptions, which is where a model looks when it is about to call one. What
-// belongs here is the part that has to hold when it is *not* reading them: that permission is a click and never
-// the assistant's to take; that a spoken "yes" is a sentence and never an approval, however plainly it was meant;
-// that the call waits out its own gate, so a result is a decision already made and there is never one left
-// waiting on a screen to announce (AC-768); and that a refusal is a normal turn to keep talking through rather
-// than the end of the conversation. With an open microphone the assistant hears every word in the room
-// (decision 12) — one that can also start sessions needs that separation stated, not implied.
-//
-// *The paragraph is two gates, not one (AC-759).* Starting or stopping a session is the SDK's own Allow/Deny,
-// decided by the Assistant Profile's permission mode; sending a message or a prompt into a session, or moving the
-// assistant's memory to or from a file, is a separate cockpit consent card, decided by AC-575's bypass switches.
-// The two can disagree — the common install has the first still asking and the second switched off entirely — so
-// a session told to expect one click for both would announce a card on a call that never raises one, which is the
-// exact defect reported. `ActingParagraph` below composes the two halves independently rather than behind one
-// flag, and `AssistantStandingInstruction.Compose` is handed both facts so the paragraph a session actually reads
-// matches its own profile and its own bypass settings rather than assuming the widest, most-cautious case.
+// The standing instruction the assistant runs under (AC-543, criterion 13), in the codebase and under version
+// control like `DelegationSystemPrompt`: a load-bearing part of the product, not a setting nobody would see
+// change. States the language rule, the honesty clause (AC-544/6) and the two-gate acting paragraph explicitly.
 public static class AssistantSystemPrompt
 {
     // Gate A: starting or stopping a session (AC-545). The SDK's own Allow/Deny row, which the Assistant Profile's
@@ -61,9 +16,8 @@ public static class AssistantSystemPrompt
         "set to bypass permissions, so the call simply goes ahead.";
 
     // Gate B: reaching into another session or into the assistant's own memory file (AC-545, AC-575). A cockpit
-    // consent card, separate from Gate A's SDK row, which the operator can switch off wholesale or source by
-    // source — on a fresh install it already is (`AssistantSettings.ConsentBypassAll` defaults to on), which is
-    // the state that made the old, unconditional wording wrong most of the time rather than only at the edges.
+    // consent card, separate from Gate A's SDK row, switchable off wholesale or source by source — already
+    // on by default on a fresh install (`AssistantSettings.ConsentBypassAll`).
     private const string _GateBAsks =
         "Sending a message or a prompt into another session, or moving your own memory to or from a file, can " +
         "raise a card of its own too, showing exactly what you are about to send or write.";
@@ -85,11 +39,9 @@ public static class AssistantSystemPrompt
         "said yes.\n" +
         "\n";
 
-    // The acting paragraph, built from the two gates above rather than typed out once per combination — so the
-    // shared tail cannot drift between them, and a third gate, if one is ever added, is one more clause rather
-    // than a doubling of paragraphs. `Default` below is this at its most cautious (both asking), which is also
-    // the only variant that needs to exist as a compile-time literal: everything less cautious is composed here,
-    // at the moment a session actually starts, from what that session's own profile and settings say.
+    // The acting paragraph, built from the two gates above rather than typed out once per combination, so the
+    // shared tail cannot drift between them. `Default` below is this at its most cautious (both asking); every
+    // less-cautious variant is composed here from that session's own profile and settings.
     internal static string ActingParagraph(bool sdkAsksPermission, bool consentCardAsks) =>
         (sdkAsksPermission ? _GateAAsks : _GateABypassed) + " " +
         (consentCardAsks ? _GateBAsks : _GateBBypassed) + _ActingTail;
@@ -198,10 +150,9 @@ public static class AssistantSystemPrompt
         "something as proof it is not running." +
         "\n\n" + Capabilities;
 
-    // The map (AC-635, AC-639). Telegram-style on purpose — see the remarks above. Part of `Default` rather than a
-    // separate block on `AssistantStandingInstruction.Compose`, because an operator who ticks "replace" is
-    // replacing the built-in instruction whole, and a map that survived that would be the one piece of the
-    // default they could not get rid of.
+    // The map (AC-635, AC-639). Telegram-style on purpose. Part of `Default` rather than a separate block on
+    // `AssistantStandingInstruction.Compose`, so ticking "replace" replaces it too rather than leaving it as
+    // the one piece of the default an operator could not get rid of.
     public const string Capabilities =
         "REFERENCE INDEX. This block is for you to read, never to speak. It uses headings and lists; your answers " +
         "do not.\n" +

@@ -1,11 +1,8 @@
 namespace Cockpit.Core.Assistant;
 
 // Composes the instruction an assistant session starts under: `AssistantSystemPrompt.Default` and
-// whatever the operator wrote on the Assistant Profile (AC-594).
-// The box on that dialog used to *replace* the default. It reads as a place to add a name or a house rule,
-// and doing so silently dropped the language rule, the speak-don't-write rule, the honesty clause and the whole
-// permission paragraph — none of which the operator was asking to lose. Adding is now the default and replacing is
-// the advanced choice, which is also what the same field means on an ordinary profile.
+// whatever the operator wrote on the Assistant Profile (AC-594). That box used to *replace* the default,
+// silently dropping the language, speak-don't-write and honesty rules — adding is now the default instead.
 public static class AssistantStandingInstruction
 {
     // What the remembered lines are introduced as, so the assistant can tell them from its own instructions.
@@ -17,15 +14,9 @@ public static class AssistantStandingInstruction
         "Where the conversation stood when you last handed over. It is yours, written before a restart, and it may "
         + "be out of date — treat it as a note to yourself rather than as something the operator just said:";
 
-    // The instruction a session starts under: the built-in one (or the operator's, if they replaced it), then
-    // whatever they wrote, then what was remembered (AC-595) and where the conversation stood (AC-596).
-    //
-    // `sdkAsksPermission`/`consentCardAsks` (AC-759): the two facts the acting paragraph's two gates need, read by
-    // the caller off the Assistant Profile and the consent-bypass settings respectively and handed in rather than
-    // looked up here — this type stays a pure formatter, and the two default to "still asks", the safest reading
-    // when a caller has not looked (there is exactly one today: `AssistantSessionHost`, which always has). That
-    // default is also what makes the common no-gate-info call sites (most of this file's own tests) keep returning
-    // `AssistantSystemPrompt.Default` byte for byte.
+    // The instruction a session starts under: built-in (or replaced), then remembered (AC-595) and current
+    // state (AC-596). `sdkAsksPermission`/`consentCardAsks` (AC-759) are the acting paragraph's two gate facts,
+    // handed in by the caller so this type stays a pure formatter; both default to the safest "still asks".
     public static string Compose(
         string? operatorInstruction,
         bool replacesDefault,

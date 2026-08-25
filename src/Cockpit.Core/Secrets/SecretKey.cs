@@ -2,15 +2,9 @@ using System.Security.Cryptography;
 
 namespace Cockpit.Core.Secrets;
 
-// The key the cockpit's credentials are encrypted with, derived from the operator's password.
-//
-// The password is the only source: no key file, no keyring entry, nothing on disk. That is what the promise
-// rests on — someone who takes the config file, a backup, or the whole laptop has ciphertext and no key. It is
-// also what makes a forgotten password final, which is stated plainly where the operator sets one.
-//
-// PBKDF2-HMAC-SHA512 rather than Argon2id: it is in the framework, and a NuGet dependency for the crypto that
-// guards the crypto is a trade we did not want to make for v1. Argon2id resists GPU cracking better, and the
-// KDF is named in the settings precisely so it can be swapped without stranding an existing config.
+// The key the cockpit's credentials are encrypted with, derived from the operator's password. The password is
+// the only source — no key file, no keyring entry, nothing on disk — which is what makes a forgotten password
+// final. Uses PBKDF2-HMAC-SHA512 (in-framework, no extra crypto dependency); the KDF is named in settings so it can be swapped later.
 public static class SecretKey
 {
     public const string Pbkdf2Sha512 = "pbkdf2-sha512";

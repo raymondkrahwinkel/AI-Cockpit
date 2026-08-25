@@ -15,9 +15,7 @@ public enum AssistantListeningMode
     AlwaysOn,
 
     // The microphone stays open but the assistant only answers after the wake word — the filter that makes
-    // `AlwaysOn` liveable. *Not built in this phase:* the wake word left this epic entirely.
-    // The mode exists here so the indicator can show the option as "not set up yet" rather than hiding it — then
-    // it is visible that the possibility exists and why it is not on. Selecting it is refused while no wake word
-    // is configured, which is always, for now.
+    // `AlwaysOn` liveable. *Not built in this phase.* Exists here so the indicator can show it as
+    // "not set up yet" rather than hide it; selecting it is refused while no wake word is configured.
     AlwaysOnWithWakeWord,
 }

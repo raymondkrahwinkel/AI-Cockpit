@@ -3,15 +3,9 @@ using System.Text;
 
 namespace Cockpit.Core.Secrets;
 
-// Encrypts and decrypts one credential value.
-//
-// AES-256-GCM: authenticated, so a tampered value fails loudly instead of decrypting to plausible nonsense.
-// The field's JSON path is the associated data, which binds the ciphertext to where it sits — a token cannot
-// be lifted out of one field and pasted into another to be decrypted there.
-//
-// Stored as `enc:v1:&lt;base64(nonce|ciphertext|tag)&gt;`. The prefix is what lets the cockpit tell an
-// encrypted value from a plain one without being told, which is what makes a half-migrated file readable
-// rather than a puzzle — and the version is there so a later format has a way in.
+// Encrypts and decrypts one credential value. AES-256-GCM: authenticated, so a tampered value fails loudly.
+// The field's JSON path is the associated data, binding the ciphertext to where it sits so it cannot be moved
+// to another field and decrypted there. Stored as `enc:v1:&lt;base64(nonce|ciphertext|tag)&gt;`.
 public sealed class SecretProtector(byte[] key) : ISecretProtector
 {
     public const string Prefix = "enc:v1:";

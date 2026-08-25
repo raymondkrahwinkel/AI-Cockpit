@@ -3,35 +3,8 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.Core.Assistant;
 
 // The Assistant Profile: a *slot* with a replaceable `SessionProfile` record behind it (AC-543).
-// A `SessionProfile` cannot change provider — "a different provider means a new profile, so credentials
-// and configuration never end up describing a backend the profile no longer talks to". But the assistant must be
-// switchable between Claude, Codex and a local model. Two layers resolve that without weakening the invariant:
-//   - the *slot* — this type — has a stable id (`SlotId`), a fixed display name
-//     (`DisplayName`), and cannot be deleted;
-//   - the *record* — `Profile` — is an ordinary profile with a fixed provider. Switching
-//     provider mints a *new* record and repoints the slot at it; the old record is dropped afterwards.
-//
-// *The invariant, stated so it can be tested:* no `SessionProfile` record ever changes provider.
-// A `with { ProviderConfig = … }` anywhere on the assistant path is the bug this design exists to prevent —
-// it compiles, it appears to work, and it is exactly what the record's own doc-comment forbids.
-//
-// *Found by id, never by label.* The slot lives in its own `assistantProfile` section of
-// `cockpit.json` rather than as an entry in the profile list, so there is nothing to match a label against
-// and AC-410's rename-reads-as-gone bug cannot reach it. That placement is also why the slot is not deletable,
-// why it does not appear in *+ New session*, and why `list_profiles` never offers it as a delegation
-// target: it is not in the list those three read. Guards would have had to be added, remembered, and kept — this
-// is the same property by construction.
-//
-// `Profile`:
-// The record the slot currently points at, or `null` when the slot is deliberately unset —
-// a fresh install, or a provider switch that failed and landed here with `UnsetReason` filled in.
-// `UnsetReason`:
-// Why `Profile` is `null`, in words for the operator. Never null while
-// `Profile` is set. An empty slot with no reason is the failure mode criterion 4 rules out:
-// the operator is owed either the old profile or an explanation, never a blank row.
-// `ReplacesStandingInstruction`:
-// Whether the record's own system prompt *replaces* `AssistantSystemPrompt.Default` instead of
-// being added to it (AC-594). Default false: what an operator types is an addition.
+// A `SessionProfile` cannot change provider, so a provider switch mints a *new* record and repoints the
+// slot, keeping that invariant. Found by id, not label, so AC-410's rename bug cannot reach it.
 public sealed record AssistantProfileSlot(
     SessionProfile? Profile = null,
     string? UnsetReason = null,
