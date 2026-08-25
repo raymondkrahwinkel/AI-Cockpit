@@ -56,7 +56,7 @@ public class HostEndpointToolAnnotationsTests
         var toolClass = DelegatedToolPermissionPolicy.Classify(readOnly, destructive);
         Assert.Equal(ToolPermissionClass.Destructive, toolClass);
 
-        // The valkuil this ticket names by name: Classify(false, false) would give Write, which would let the
+        // The pitfall this ticket names by name: Classify(false, false) would give Write, which would let the
         // shell already run at acceptEdits and erase the whole ceiling distinction. Only Destructive is correct.
         foreach (var ceiling in new[] { "default", "plan", "acceptEdits" })
         {

@@ -51,7 +51,7 @@ public sealed class ShellCommandRunnerTests : IDisposable
     [Fact]
     public async Task RunAsync_ALargeOutput_DoesNotDeadlock()
     {
-        // Comfortably past a pipe's ~64 KiB buffer (AC-1066's own valkuil, same class as VerifyCommandRunner's):
+        // Comfortably past a pipe's ~64 KiB buffer (AC-1066's own pitfall, same class as VerifyCommandRunner's):
         // reading stdout only after the process exits would hang here once the child blocks writing into a full pipe.
         var result = await _runner.RunAsync(
             _workingDirectory, "sh", ["-c", "yes x | head -c 200000"], TimeSpan.FromSeconds(30));
