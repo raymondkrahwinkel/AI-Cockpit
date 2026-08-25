@@ -2,9 +2,9 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Plugin.Kubernetes.Helm;
 
-// AC-1061 fase 1, AC2: a resource Helm installed carries the `app.kubernetes.io/managed-by: Helm` label plus a pair
-// of `meta.helm.sh/release-*` annotations, regardless of chart. Surfacing that here saves the caller from having to
-// know the raw label/annotation names to tell a Helm-managed resource apart from one applied by hand.
+// AC-1068: the `managed-by: Helm` label alone is not enough — Argo CD's `helm template` sets it too without
+// installing anything, which used to report as installed with two empty strings. The release-name/-namespace
+// annotations only exist when Helm itself did the install, so their presence is what separates the two.
 internal static class HelmManagedDetector
 {
     public const string PropertyName = "helmManaged";
@@ -12,6 +12,9 @@ internal static class HelmManagedDetector
     private const string ManagedByLabel = "app.kubernetes.io/managed-by";
     private const string ReleaseNameAnnotation = "meta.helm.sh/release-name";
     private const string ReleaseNamespaceAnnotation = "meta.helm.sh/release-namespace";
+
+    private const string InstalledNote = "Read off this resource's own release annotations — call helm_history to confirm the release still exists.";
+    private const string RenderedNote = "Labeled managed-by: Helm but carries no meta.helm.sh/release-* annotations — rendered without being installed (e.g. Argo CD's `helm template`), not a queryable Helm release.";
 
     public static JsonObject? Detect(JsonNode? resource)
     {
@@ -22,10 +25,16 @@ internal static class HelmManagedDetector
         }
 
         var annotations = resource?["metadata"]?["annotations"] as JsonObject;
+        var releaseName = _String(annotations?[ReleaseNameAnnotation]);
+        var releaseNamespace = _String(annotations?[ReleaseNamespaceAnnotation]);
+        var installed = releaseName is not null && releaseNamespace is not null;
+
         return new JsonObject
         {
-            ["releaseName"] = _String(annotations?[ReleaseNameAnnotation]),
-            ["releaseNamespace"] = _String(annotations?[ReleaseNamespaceAnnotation]),
+            ["installed"] = installed,
+            ["releaseName"] = releaseName,
+            ["releaseNamespace"] = releaseNamespace,
+            ["note"] = installed ? InstalledNote : RenderedNote,
         };
     }
 
