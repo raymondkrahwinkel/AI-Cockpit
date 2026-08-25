@@ -2,11 +2,9 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// Reads a plugin's files and folds them into one closure pin (AC-43), so a swapped dependency DLL — not just a
-// changed entry assembly — re-triggers consent. The *installed* and *source* variants exist so a
-// "did the source change vs what is installed" comparison hashes the same logical file set: a source build ships
-// files the installer never copies (the shared abstractions assembly, build sidecars in subfolders), so hashing
-// them raw would report a difference that copying would erase, and re-install forever.
+// Reads a plugin's files into one closure pin (AC-43), so a swapped dependency DLL, not just the entry
+// assembly, re-triggers consent. *Installed* and *source* variants hash the same logical file set — a source
+// build ships files the installer never copies — so a raw comparison wouldn't false-positive on every install.
 internal static class PluginClosureHash
 {
     // The closure of the files actually on disk under an installed plugin folder (what the loader will load):

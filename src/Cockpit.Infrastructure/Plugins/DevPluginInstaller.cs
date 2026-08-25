@@ -3,16 +3,9 @@ using Cockpit.Core.Abstractions.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// A developer-machine convenience (DEBUG only): refreshes already-installed first-party plugins from their
-// freshly built output, so a rebuild of a plugin lands in the running sandbox without a hand copy. It closes,
-// for the inner loop, the same "installed copy does not move with source" gap the bundled installer closes for
-// the plugins this build ships — but for the ones installed from the store, which a normal build never touches.
-//
-// It only *refreshes*: a plugin that is not installed is not silently installed just because the repo
-// can build it (`installNew: false`), and a disabled or operator-newer plugin is left alone — the looseness
-// is the point, a build must never decide what a cockpit carries. It finds `plugins-dev` by walking up from
-// the running app and matching the app's own build config and target framework; off a dev checkout it finds
-// nothing and does nothing, which is exactly right in a release.
+// AC-1013: DEBUG-only dev convenience refreshing installed first-party plugins from freshly built output —
+// only refreshes (never installs new, never touches disabled/newer, a build must never decide what a
+// cockpit carries), finding `plugins-dev` by walking up; no-op off a dev checkout.
 public sealed class DevPluginInstaller(ILogger? logger = null)
 {
     private const string PluginsDevFolderName = "plugins-dev";
@@ -61,10 +54,9 @@ public sealed class DevPluginInstaller(ILogger? logger = null)
         var sources = new List<string>();
         foreach (var pluginDir in Directory.EnumerateDirectories(pluginsDev))
         {
-            // A test project (Cockpit.Plugin.X.Tests) lives in plugins-dev too and, because it references the
-            // plugin, copies the plugin's plugin.json into its own output. Its bin therefore carries a manifest
-            // with the plugin's id but a whole test assembly closure — xunit, and a duplicate
-            // Cockpit.Plugins.Abstractions that would break the shared type's identity. It is never a plugin source.
+            // AC-1013: a .Tests project's bin also carries the plugin's manifest (copied via project reference)
+            // but a test assembly closure — xunit, a duplicate Abstractions breaking shared type identity —
+            // so it's excluded; never a plugin source.
             if (Path.GetFileName(pluginDir).EndsWith(".Tests", StringComparison.OrdinalIgnoreCase))
             {
                 continue;

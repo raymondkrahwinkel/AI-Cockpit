@@ -1,23 +1,11 @@
 namespace Cockpit.Core.Voice;
 
-// Pure kernel for the one question the global-hotkey registration turns on (#34), deliberately free of any
-// environment access so it is unit-testable: the caller reads the two variables, this decides what they mean.
-// It exists because the answer decides whether a Linux desktop gets a working hotkey at all — under Wayland
-// nothing may install a keyboard hook, so the XDG GlobalShortcuts portal is the only route; under X11 the hook
-// Windows uses works, and most X11 desktops have no GlobalShortcuts implementation to fall back on. Read from the
-// environment, that answer is untestable on any machine that is not the session in question: a CI runner sets
-// neither variable, so it can only ever exercise the X11 arm, and the Wayland arm was carried by nothing but the
-// reasoning in a comment.
+// AC-1013: Pure kernel for the global-hotkey registration's Wayland-vs-X11 question (#34), free of environment access so it's unit-testable — under Wayland only the XDG GlobalShortcuts portal works, under X11 the Windows-style hook works; reading env vars directly would make the Wayland arm untestable on CI (which never sets either variable).
 public static class LinuxSession
 {
-    // Whether this Linux session is Wayland.
-    //
-    // `xdgSessionType`:
-    // `XDG_SESSION_TYPE` — what the session's own login sets, and what every desktop reports itself by.
-    // `waylandDisplay`:
-    // `WAYLAND_DISPLAY` — the socket actually being talked to. It covers a session that never set the first,
-    // which is why it is a fallback and not a second opinion: a compositor is running either way.
-    // False when neither says Wayland — X11, the older and plainer case, where a keyboard hook works.
+    // Whether this Linux session is Wayland. `xdgSessionType` (XDG_SESSION_TYPE) is the session's own report;
+    // `waylandDisplay` (WAYLAND_DISPLAY) is a fallback covering a session that never set the first. False
+    // (X11) when neither says Wayland.
     public static bool IsWayland(string? xdgSessionType, string? waylandDisplay) =>
         string.Equals(xdgSessionType, "wayland", StringComparison.OrdinalIgnoreCase)
         || !string.IsNullOrEmpty(waylandDisplay);

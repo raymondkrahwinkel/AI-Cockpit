@@ -3,24 +3,13 @@ using Cockpit.Core.Abstractions.Agents;
 
 namespace Cockpit.Infrastructure.Agents;
 
-// The concrete claim store behind `IAgentResourceClaims` (AC-393): one list of standing claims, oldest
-// first, with the caller's desk applied on every call rather than baked into a key.
-//
-// Everything is behind one lock, like the inbox and unlike the roster: claiming is a check-then-act — does anyone on
-// this desk already hold it, and is the caller already at its limit — that has to be atomic, or two agents claiming
-// the same worktree on two MCP request threads both see it free and both get it, which is precisely the collision
-// this exists to prevent.
-//
-// A flat list rather than a dictionary keyed on resource, because every operation here needs the owner as well as
-// the resource: a claim is only visible to a caller whose desk holds its owner, and both `Forget` and the
-// per-pane cap look claims up by owner rather than by resource. `MaxClaimsPerPane` keeps the list small
-// enough that a scan is the cheaper answer as well as the simpler one.
+// AC-1013: AC-393 claim store, oldest-first list with the caller's desk applied per call. Locked (check-then-act)
+// so two agents can't both claim the same resource on concurrent MCP threads. Flat list, not dict-by-resource,
+// because `Forget` and the per-pane cap both look claims up by owner rather than by resource.
 internal sealed class AgentResourceClaims : IAgentResourceClaims, IAgentResourceClaimsAudit, ISingletonService
 {
-    // Cap on the claims one pane may hold at once. An agent claims the handful of things it is working on — a
-    // worktree, a branch, a file or two — so the number is generous for the use and still a bound: without one, a
-    // looping agent grows host memory a distinct resource string at a time, and every neighbour that calls
-    // `list_agents` pays for the pile in its own context window.
+    // AC-1013: cap on claims per pane, generous for real use but bounds host memory a looping agent could
+    // otherwise grow, which every neighbour's `list_agents` would then pay for in its own context.
     internal const int MaxClaimsPerPane = 50;
 
     private readonly object _lock = new();
@@ -59,10 +48,8 @@ internal sealed class AgentResourceClaims : IAgentResourceClaims, IAgentResource
     {
         lock (_lock)
         {
-            // The caller's own claim is looked for before anyone else's. With one claim per resource per desk the two
-            // lookups find the same entry; they only come apart in the window Claim's docs describe, where a desk can
-            // show two claims on one name — and there an agent must still be able to give up what it holds rather than
-            // be told, about its own claim, that somebody else has it.
+            // AC-1013: caller's own claim is checked first so, in the rare window where a desk shows two claims
+            // on one name (see Claim), an agent can still release what it holds instead of being told another owns it.
             if (_Standing(resource, workspacePaneIds, ownedBy: paneId) is { } mine)
             {
                 _claims.Remove(mine);
@@ -103,11 +90,9 @@ internal sealed class AgentResourceClaims : IAgentResourceClaims, IAgentResource
         }
     }
 
-    // The claim on `resource` that the caller's desk can see — narrowed to one holder when
-    // `ownedBy` is given — or null when that desk holds none. Resources and pane ids are both
-    // compared ordinally: the agents choose the resource string, and a host that case-folded or normalised paths
-    // here would be guessing which of "a branch", "a worktree path" and "a file" it had been handed, while a pane id
-    // is a host-minted identifier where two spellings are two panes.
+    // AC-1013: claim on `resource` visible to the caller's desk, narrowed by `ownedBy` when given.
+    // Compared ordinally — the host can't guess whether a resource string is a path or branch name to
+    // normalise, and a pane id is host-minted where two spellings mean two panes.
     private AgentResourceClaim? _Standing(string resource, IReadOnlySet<string> workspacePaneIds, string? ownedBy = null) =>
         _claims.FirstOrDefault(claim =>
             string.Equals(claim.Resource, resource, StringComparison.Ordinal)

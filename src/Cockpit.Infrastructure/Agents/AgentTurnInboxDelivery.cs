@@ -9,23 +9,12 @@ namespace Cockpit.Infrastructure.Agents;
 internal sealed class AgentTurnInboxDelivery(IAgentMessageInbox inbox, IWorkspaceAgentCoordinator coordinator)
     : IAgentTurnInboxDelivery, ISingletonService
 {
-    // The most messages one turn carries on its own. Deliberately far below `read_inbox`'s 25: that batch is
-    // one the recipient asked for, on a turn it chose to spend that way, and this one is neither. Here the mail
-    // arrives inside a turn the operator started for their own reasons and is paying for, so an unread backlog
-    // must not be able to bury the thing they actually typed — or turn one neighbour's chattiness into a bill.
-    //
-    // Nothing is lost by the tighter cap, only deferred: the notice says how many are still waiting and names
-    // `read_inbox`, so a recipient that wants the rest can have it in one call, and the next turn brings the
-    // next few anyway.
+    // AC-1013: far below `read_inbox`'s 25 — this mail rides a turn the operator started and pays for, unasked,
+    // so a backlog must not bury what they typed. Nothing lost, only deferred: the notice names `read_inbox`.
     internal const int MaxMessagesPerTurn = 5;
 
-    // The most rendered characters a turn carries, counted on the text that actually goes out.
-    //
-    // A count of messages is not a bound on size, and the gap between the two is a sender's to exploit: the
-    // sender-facing limit is 2 000 characters of body, but escaping expands what is stored, and an ampersand
-    // expands fivefold — so five bodies of 2 000 ampersands each are ten times what "five messages" sounds like,
-    // arriving ahead of the sentence the operator actually typed and paid for. Budgeting on rendered size closes
-    // that. It is the recipient's bound, like the count, and not one a sender can raise.
+    // AC-1013: most rendered chars a turn carries. A message count alone is exploitable — escaping can expand a
+    // 2000-char body fivefold (e.g. ampersands), so 5 messages could render 10x what "5 messages" sounds like.
     internal const int MaxRenderedCharsPerTurn = 12_000;
 
     public AgentInboxTurnNotice? TakeForTurn(string paneId)

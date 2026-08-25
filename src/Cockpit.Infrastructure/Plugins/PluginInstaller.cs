@@ -7,15 +7,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// Installs a plugin from a `.zip` and schedules removals (#14). The archive is unpacked entry by
-// entry through the `PluginInstallPath` zip-slip guard into a staging folder on the same
-// volume as the plugins root, its root `plugin.json` is parsed and its abstractions major checked,
-// and only then is it moved into its final `plugins/&lt;id&gt;/` folder. Removal drops a
-// `.remove` marker that `SweepRemovalsAsync` acts on at the next startup, and an update
-// over an existing install is staged under `PendingUpdatesFolder` for
-// `SweepPendingUpdatesAsync` to apply at the next startup — both deferred because a loaded
-// plugin's assembly file stays locked (on Windows) until the process exits, so replacing it in place
-// throws an access-denied.
+// Installs a plugin from a `.zip` and schedules removals (#14). Unpacked via the `PluginInstallPath`
+// zip-slip guard into same-volume staging, validated, then moved into `plugins/&lt;id&gt;/`. Removal and
+// update are both deferred to next startup, since a loaded plugin's assembly stays locked until exit.
 internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 {
     // The file dropped into a plugin's folder to have it deleted at the next start. Discovery reads it too, so a plugin the operator removed is out of the list from that moment rather than at the restart.
@@ -93,18 +87,16 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             }
 
             var folderId = _ResolveFolderId(manifest.Id);
-            // Hash of the newly installed plugin's whole load closure (computed from staging, before the move):
-            // the entry assembly plus every dependency it ships (AC-43), so the pin covers a swapped dependency
-            // DLL too. The caller pins this so an updated plugin — whose new bytes only go live after the next
-            // restart — stays enabled instead of dropping to needs-consent when the pending copy is swapped in.
+            // Hash of the whole load closure, computed from staging before the move (AC-43), so the pin covers
+            // a swapped dependency DLL too — keeping an updated plugin enabled instead of needs-consent once
+            // the pending copy is swapped in at the next restart.
             var newSha256 = await PluginClosureHash.OfInstalledFolderAsync(stagingDir, cancellationToken).ConfigureAwait(false);
             var finalDir = Path.Combine(_pluginsRoot, folderId);
             if (Directory.Exists(finalDir))
             {
-                // Updating an existing install: the plugin may be loaded, and a loaded assembly's file is locked
-                // until the process exits (on Windows), so an in-place replace would throw an access-denied.
-                // Stage the new version and let SweepPendingUpdatesAsync swap it in at the next startup — before
-                // any plugin loads — the same restart-deferred contract removal uses.
+                // Updating an existing install: a loaded assembly's file is locked until process exit (on
+                // Windows), so stage the new version and let SweepPendingUpdatesAsync swap it in at next
+                // startup, before any plugin loads — same restart-deferred contract removal uses.
                 var pendingDir = Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId);
                 Directory.CreateDirectory(Path.Combine(_pluginsRoot, PendingUpdatesFolder));
                 if (Directory.Exists(pendingDir))
@@ -144,20 +136,17 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         var folder = Path.Combine(_pluginsRoot, folderId);
         if (!Directory.Exists(folder))
         {
-            // Nothing installed under that id, so there is nowhere to write the marker and this call cannot
-            // remove anything. It leaves a staged copy alone deliberately: with no folder to mark, deleting one
-            // would be this method's only effect, on the strength of an id that matches no installed plugin —
-            // and a caller normalising an id differently (SupersededPluginNotice passes a manifest id) would
-            // silently discard an install the operator asked for.
+            // Nothing installed under that id: nowhere to write the marker, so this is a deliberate no-op —
+            // deleting a staged copy would be this method's only effect on an id matching no installed
+            // plugin, and a caller normalizing an id differently could silently discard a wanted install.
             return Task.CompletedTask;
         }
 
         File.WriteAllText(Path.Combine(folder, RemovalMarker), "");
 
-        // Removing wins over an update staged for the same plugin earlier in the session, because it is the
-        // later word. Left in place, the startup sweep would apply that update first — deleting the folder and
-        // the marker inside it together — and the removal would be lost without a sound, the plugin coming back
-        // at a version the operator had just decided not to keep.
+        // Removing wins over an update staged for the same plugin earlier in the session — otherwise the
+        // startup sweep would apply that update first, deleting the marker with the folder, and the
+        // removal would silently vanish with the plugin coming back at a version the operator rejected.
         var pendingDir = Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId);
         if (Directory.Exists(pendingDir))
         {

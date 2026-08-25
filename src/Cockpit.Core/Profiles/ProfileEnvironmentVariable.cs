@@ -2,11 +2,9 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Core.Profiles;
 
-// One environment variable a `SessionProfile` injects into its sessions at spawn, on both the
-// TTY and the SDK route (AC-22). Lets the operator close a gap a GUI/AppImage launch leaves — a variable an
-// interactive shell exports that the cockpit process never inherited — per profile, instead of leaning on
-// shell startup. `IsSecret` marks the value as a credential: it persists encrypted and the
-// profile editor masks it.
+// One environment variable a `SessionProfile` injects into its sessions at spawn, TTY and SDK alike (AC-22).
+// Lets the operator close a gap a GUI/AppImage launch leaves — a variable an interactive shell exports that the
+// cockpit process never inherited — per profile. `IsSecret` marks it as a credential: persists encrypted, masked in the editor.
 public sealed partial record ProfileEnvironmentVariable(string Key, string Value, bool IsSecret = false)
 {
     // Whether `key` is a POSIX-style variable name (letters, digits and underscores, not

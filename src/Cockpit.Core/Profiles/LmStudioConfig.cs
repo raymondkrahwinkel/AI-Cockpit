@@ -1,11 +1,8 @@
 namespace Cockpit.Core.Profiles;
 
-// Connection settings for an LM Studio profile: its OpenAI-compatible server, the model, and an optional API key (only needed behind a key-protected proxy).
-//
-// `BaseUrl`: Server base URL, e.g. `http://localhost:1234`.
-// `Model`: Model id as reported by `/v1/models`.
-// `ApiKey`: Bearer key when the server is key-protected; `null` for the usual local setup.
-// `SystemPrompt`: Optional base system prompt sent as the first (system) message of every conversation for this profile.
+// Connection settings for an LM Studio profile: its OpenAI-compatible server, the model, and an optional API key
+// (only needed behind a key-protected proxy). `BaseUrl`: e.g. `http://localhost:1234`. `Model`: id from `/v1/models`.
+// `ApiKey`: bearer key when protected, `null` otherwise. `SystemPrompt`: optional base system prompt for every conversation.
 public sealed record LmStudioConfig(string BaseUrl, string Model, string? ApiKey = null, string? SystemPrompt = null) : ProviderConfig(SessionProvider.LmStudio)
 {
     // Overrides the record's auto-generated `ToString()`, which would otherwise print `ApiKey`
