@@ -306,4 +306,48 @@ public class ClusterAccessGateTests
         Assert.NotNull(_WithScopePrefix(asked, "k8s.namespace:"));
         Assert.NotNull(_WithScopePrefix(asked, "k8s.exec:"));
     }
+
+    // AC-179 criterion 7: kind create/delete has no ClusterRegistration yet to authorize against (create) or to
+    // apply the namespace jail to (neither applies to a whole cluster) — always Dangerous, never remembered, and a
+    // create approval must not double as a delete approval.
+    [Fact]
+    public async Task KindLifecycle_AsksAsDangerous_NeverRemembered_WithTheLiteralKindCommandShown()
+    {
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+        var gate = new ClusterAccessGate(host);
+
+        var result = await gate.AuthorizeKindLifecycleAsync("kind create cluster --name cockpit-ac179 --kubeconfig /state/kind/cockpit-ac179.kubeconfig", "k8s.kind.create", PaneId);
+
+        Assert.True(result.IsAllowed);
+        var ask = Assert.Single(asked);
+        Assert.Equal(ConsentRisk.Dangerous, ask.Risk);
+        Assert.False(ask.AllowRemember);
+        Assert.Contains("kind create cluster --name cockpit-ac179", ask.Action);
+        Assert.Equal(PaneId, ask.Source.PaneId);
+    }
+
+    [Fact]
+    public async Task KindLifecycle_CreateAndDeleteUseDifferentScopes()
+    {
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+        var gate = new ClusterAccessGate(host);
+
+        await gate.AuthorizeKindLifecycleAsync("kind create cluster --name cockpit-ac179 --kubeconfig /x", "k8s.kind.create", PaneId);
+        await gate.AuthorizeKindLifecycleAsync("kind delete cluster --name cockpit-ac179 --kubeconfig /x", "k8s.kind.delete:cockpit-ac179", PaneId);
+
+        Assert.Equal(2, asked.Count);
+        Assert.NotEqual(asked[0].Scope, asked[1].Scope);
+    }
+
+    [Fact]
+    public async Task KindLifecycle_DeniedConsent_RefusesWithoutRunningKind()
+    {
+        var host = _Host(ConsentOutcome.Denied, out _);
+        var gate = new ClusterAccessGate(host);
+
+        var result = await gate.AuthorizeKindLifecycleAsync("kind delete cluster --name cockpit-ac179 --kubeconfig /x", "k8s.kind.delete:cockpit-ac179", PaneId);
+
+        Assert.False(result.IsAllowed);
+        Assert.NotNull(result.DeniedReason);
+    }
 }
