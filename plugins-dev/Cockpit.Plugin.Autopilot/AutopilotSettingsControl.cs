@@ -10,21 +10,13 @@ using Cockpit.Plugins.Abstractions.Profiles;
 namespace Cockpit.Plugin.Autopilot;
 
 // The settings view (opened from the plugin's gear): kept to the minimum an operator actually fixes — the
-// CEO's identity and the safety caps a run must not exceed. Everything a run's shape needs — which
-// steps, which profile/model per step, which gates are hard, which tracker stage a phase maps to — is context- or
-// tracker-specific and the CEO decides it dynamically per plan (a global tracker mapping breaks the moment there are
-// two trackers, or a non-tracker workload), so none of that is fixed here. Implements `IPluginSettingsView`
-// so the host dialog shows a Save button; the write it hands the host (AC-1003) sets the global level.
-//
-// The four groups these settings were already written in (AC-316) are also the dialog's pages: implementing
-// `IPluginSettingsSections` puts them in the host's navigation rail instead of stacking them into one
-// scroll several screens long. Nothing moved or was renamed — each group is the page it always was.
+// CEO's identity and the safety caps a run must not exceed. `IPluginSettingsSections` puts the four existing
+// groups (AC-316) in the host's rail; a run's own shape is decided dynamically per plan, not fixed here.
 internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsView, IPluginSettingsSections
 {
-    // The placeholder tokens a template body may carry (AC-189), offered as quick-insert chips in the editor and
-    // named (with what each one fills in, AC-521) in the placeholder-help under the Templates section — that help
-    // spells its own meaning per token rather than joining this array, but names the same tokens; a mismatch is
-    // pinned by AutopilotSettingsControlPlaceholderHelpTests against what AutopilotTemplateResolver actually fills.
+    // The placeholder tokens a template body may carry (AC-189), offered as quick-insert chips and named in the
+    // Templates section's placeholder-help (AC-521) — a mismatch between the two is pinned by
+    // AutopilotSettingsControlPlaceholderHelpTests against what AutopilotTemplateResolver actually fills.
     private static readonly string[] _Placeholders =
     [
         "{{issue.id}}",
@@ -332,9 +324,8 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     }
 
     // Opens the create/edit dialog for a template. A null template creates a fresh user template; a plugin/builtin
-    // template is edited into an override; a user template edits in place. The id keeps a user template stable across an
-    // edit (so it is not duplicated); a new user template gets a generated one, and a plugin/builtin edit reuses the
-    // registration's id so the override keys to it.
+    // template is edited into an override; a user template edits in place. A new user template gets a generated
+    // id, and a plugin/builtin edit reuses the registration's id so the override keys to it.
     private void _EditTemplate(AutopilotTemplate? template)
     {
         var isNew = template is null;

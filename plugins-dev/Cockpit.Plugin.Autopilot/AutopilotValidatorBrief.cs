@@ -1,9 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// The hidden brief a run's CEO validator session is started with (AC-174): a queued run runs after its planning round is
-// long closed, so it gets a fresh CEO whose job is only to validate — the plan is already set and approved. Each step's
-// validation turn carries the work and the acceptance, so this only sets the role; kept a pure builder so its wording is
-// tested without a live session.
+// The hidden brief a run's CEO validator session is started with (AC-174): a queued run's planning round is
+// already closed, so it gets a fresh CEO whose job is only to validate. Each step's validation turn carries the
+// work and acceptance, so this only sets the role; a pure builder so its wording is tested without a live session.
 internal static class AutopilotValidatorBrief
 {
     public static string For(AutopilotPlan plan)

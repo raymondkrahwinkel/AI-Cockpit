@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// The fully-qualified names of Autopilot's own in-process control tools (AC-215), as an agent sees them
-// (`mcp__{server}__{tool}`) — the exact tool ids to pre-authorize on a run's embedded sessions through
-// `Cockpit.Plugins.Abstractions.Workspaces.EmbeddedSessionRequest.PreApprovedTools`, so a self-driving run
-// does not stop mid-run to ask the operator to allow a tool the run itself depends on. Only the plugin's own endpoint
-// tools are here — never file, shell or egress tools, which stay gated by the permission mode and the ConsentBroker.
+// Fully-qualified names (AC-215) of Autopilot's own in-process tools, pre-authorized on a run's embedded
+// sessions so it does not stop mid-run to ask the operator for a tool it depends on. Only the plugin's own
+// endpoint tools — never file, shell or egress tools, which stay gated by permission mode and ConsentBroker.
 internal static class AutopilotRunToolNames
 {
     private static string Qualify(string endpoint, string tool) => $"mcp__{endpoint}__{tool}";

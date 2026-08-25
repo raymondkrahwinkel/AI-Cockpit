@@ -1,33 +1,6 @@
 # Known comment-length debt, grandfathered by scripts/check-comment-length.py.
 # Regenerate with: scripts/check-comment-length.py --update-baseline
 # format: <check>\t<path>\t<violation count>
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunToolNames.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunTools.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotSettings.cs	6
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotSettingsControl.cs	3
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotStep.cs	7
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotStepBrief.cs	5
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotStepEvidence.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotStepOutcome.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotTemplate.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotTemplateKickoff.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotTemplateOptionLabel.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotTemplateOrigin.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotTemplateOverride.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotTemplateResolver.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotTemplateStore.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotValidatorBrief.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotWorkingDirectory.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotWorktreeChange.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotWorktreeMark.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/CeoBusyIndicatorModel.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/EpicSubTopologicalOrder.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/GitCliEvidenceSource.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/GitCliPrPublisher.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/GitCommandLine.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/IAutopilotPrPublisher.cs	4
-inline	plugins-dev/Cockpit.Plugin.Autopilot/IEpicSubMergeChecker.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/LocalCiGate.cs	1
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeControlProtocolTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeExecutableLocatorTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/ClaudeMcpConfigTests.cs	1

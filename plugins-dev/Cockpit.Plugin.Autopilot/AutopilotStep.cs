@@ -1,18 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// One step of a CEO-built plan (AC-174) — task-type-agnostic. A step is a titled unit of work with a short
-// description, the `ProfileLabel` it runs on and, where that profile's provider offers a choice, the
-// `Model` to run it on (Claude/Codex expose a model; a local Ollama/LM Studio profile pins its own, so
-// `Model` is null then). It carries the `Brief` the executing agent is handed and the
-// `Acceptance` it is judged against, whether it is a hard gate or skippable (`Mode`), and where
-// it currently sits (`Status`). The done-gates (verify/code/security/conventions) are the steps the CEO
-// emits for a coding goal — not a fixed set baked into the model; a non-coding goal gets different steps.
-//
-// `Id`: Stable id within the plan — how a status update or an operator edit finds this step again.
-// `ProfileLabel`: The session profile the step runs on; the CEO pre-selects it and the operator may change it.
-// `Model`: The model to run on where the profile offers a choice, or null when the profile pins its own.
-// `Brief`: The work brief the executing agent is handed when this step starts — the CEO's prepared context.
-// `Acceptance`: What "done" means for this step, or null when the step needs no explicit acceptance.
+// One step of a CEO-built plan (AC-174) — task-type-agnostic: a titled unit of work with the profile/model it
+// runs on, the `Brief` handed to the agent, the `Acceptance` it is judged against, whether it is a hard gate or
+// skippable, and where it sits. Done-gates are steps the CEO emits for a coding goal, not a fixed set.
 internal sealed record AutopilotStep(
     string Id,
     string Title,
@@ -24,40 +14,32 @@ internal sealed record AutopilotStep(
     GateMode Mode = GateMode.Skip,
     AutopilotStepStatus Status = AutopilotStepStatus.Pending)
 {
-    // The MCP servers this step's session is launched with — deliberately the *minimal* set the step needs, not
-    // everything: a smaller MCP surface is fewer tool definitions in the agent's context (tokens)
-    // and tighter least-privilege (AC-117). The CEO scopes it per step; empty means the step needs no extra MCP beyond
-    // what Autopilot's own report endpoint gives it. Server ids as the host advertises them (e.g. `cockpit-verify`).
+    // The MCP servers this step's session is launched with — deliberately the *minimal* set the step needs: fewer
+    // tool definitions in context, tighter least-privilege (AC-117). Empty means no extra MCP beyond Autopilot's
+    // own report endpoint. Server ids as the host advertises them (e.g. `cockpit-verify`).
     public IReadOnlyList<string> McpServers { get; init; } = [];
 
     // The tracker-neutral id of the issue this step is drafted from, when the CEO folded a specific item into the
-    // plan — the run's own source issue, or (for an epic) one of its child issues (AC-411). Null for a step with no
-    // such backing item (most steps, and every step of a CEO-first run). Lets `AutopilotPlanTools.SetPlan`
-    // check a child against the same executable-stage gate its parent already passed, rather than trusting the CEO's
-    // read of the item's stage from the brief.
+    // plan (AC-411); null for most steps. Lets `AutopilotPlanTools.SetPlan` check a child against the
+    // same executable-stage gate its parent already passed, rather than trusting the CEO's read from the brief.
     public string? SourceIssueId { get; init; }
 
-    // How many times this step has been started (AC-174). The CEO validates a step's output against
-    // its `Acceptance`; a step that does not pass is sent back to rework and re-run — but only while it has
-    // attempts left under the run's cap, so a rework loop is bounded and never becomes an endless loop.
+    // How many times this step has been started (AC-174). A step that fails validation is sent back to rework
+    // and re-run — but only while it has attempts left under the run's cap, so the loop is bounded.
     public int Attempts { get; init; }
 
-    // How many times a validation sent this step back to rework (AC-347) — in contrast to `Attempts`,
-    // which counts every (re-)start, including one with no verdict behind it at all (a crashed session, a stall
-    // timeout, a refused isolation, a profile/model mismatch). This is the narrower count the reliability
-    // classification needs: a rework is a judged correction, a restart is not.
+    // How many times a validation sent this step back to rework (AC-347) — narrower than `Attempts`, which counts
+    // every (re-)start including one with no verdict (a crash, a stall, a refused isolation). A rework is a
+    // judged correction, a restart is not.
     public int Reworks { get; init; }
 
-    // How many agents work this step at once (AC-174). Default 1. The CEO decides where parallel
-    // work is safe — e.g. splitting code work across two or three agents whose parts will not touch the same files —
-    // and the operator can force it back to a single agent ("no multitasking here"). Agents in a parallel step run
-    // isolated (their own worktrees) so they do not get in each other's way; the CEO is what keeps their parts disjoint.
+    // How many agents work this step at once (AC-174). Default 1. The CEO decides where parallel work is safe,
+    // and the operator can force it back to a single agent. Agents in a parallel step run isolated (their own
+    // worktrees); the CEO is what keeps their parts disjoint.
     public int AgentCount { get; init; } = 1;
 
-    // A short human-readable note on the step's latest outcome (AC-174) — why it failed (the CEO's validation reason, or
-    // that the run refused to isolate its session), or a status line while it runs. Surfaced on the pipeline block so a
-    // failed step is not a silent red dot: the operator sees what happened without opening the session. Empty until the
-    // run has something to say.
+    // A short human-readable note on the step's latest outcome (AC-174) — why it failed, or a status line while
+    // it runs. Surfaced on the pipeline block so a failed step is not a silent red dot.
     public string Note { get; init; } = string.Empty;
 
     // This step with a new status — the run advances a step without rebuilding the rest of the plan.
@@ -76,9 +58,8 @@ internal sealed record AutopilotStep(
     public AutopilotStep WithProfile(string profileLabel, string? model) =>
         this with { ProfileLabel = profileLabel, Model = model };
 
-    // Marks this step a review gate the CEO plans alongside its sibling gates rather than strictly one after another
-    // (AC-434) — the driver runs every pending step carrying this flag concurrently, each reading its own throwaway
-    // copy of the run's worktree, and inserts one shared fix step to apply whatever they find before they re-verify.
-    // False (the default) for an ordinary step, which the driver still runs one at a time exactly as before.
+    // Marks this step a review gate the CEO plans alongside its siblings rather than strictly one after another
+    // (AC-434): the driver runs every step carrying this flag concurrently, each on its own throwaway worktree
+    // copy, then inserts one shared fix step. False (default) runs one at a time as before.
     public bool IsReviewGate { get; init; }
 }

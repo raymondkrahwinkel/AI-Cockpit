@@ -2,22 +2,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// A goal/brief template the operator can start an Autopilot run from (AC-189). The `Body` is the brief
-// text, with optional `{{placeholder}}` tokens that `AutopilotTemplateResolver` fills in from the
-// triggering issue and the operator's input at run time. Its `Origin` decides the edit/delete rules:
-// Builtin and Plugin templates are editable (an edit is kept as an override on the original registration) but not
-// deletable; User templates the operator authored are both. This is the Autopilot plugin's own richer view;
-// `PluginAutopilotTemplate` is the leaner thing a plugin registers.
-//
-// `Id`: Stable identity, so an override or a user edit is keyed to it across restarts.
-// `Name`: What the template picker shows.
-// `Body`: The goal/brief text, with optional `{{placeholder}}` tokens.
-// `Origin`: Where it came from — which fixes `Editable` and `Deletable`.
-// `OwnerPluginId`: The id of the plugin that contributed it (Plugin origin only); null otherwise.
-// `Editable`: Whether the operator may edit it. True for every origin.
-// `Deletable`: Whether the operator may delete it. True only for User templates.
-// `RequiredPlaceholders`: The placeholder names the brief cannot do without, so the surface can warn before a run starts with one unfilled. Optional.
-// `DeliversPullRequest`: Whether a run from this template is a code run that ends with a merge-ready pull request (AC-216) — carried from the plugin's `PluginAutopilotTemplate.DeliversPullRequest`. False for an administrative template (no PR expected).
+// A goal/brief template the operator can start an Autopilot run from (AC-189). `Body` is the brief text with
+// optional `{{placeholder}}` tokens `AutopilotTemplateResolver` fills at run time. `Origin` fixes
+// `Editable`/`Deletable`: Builtin/Plugin are editable but not deletable; User templates are both.
 internal sealed record AutopilotTemplate(
     string Id,
     string Name,

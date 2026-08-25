@@ -1,17 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// The CEO's opening kickoff for a planning round when a template is (or is not) chosen in the plan flow (AC-189, slice
-// 3). It turns the operator's template choice into the visible first turn the planning CEO is set going with:
-// - No template — "free planning" — keeps the current behaviour exactly: the tracker kickoff
-// (`AutopilotCeoBrief.SourceKickoff`) when the run was triggered from an item, else no kickoff at all so a
-// CEO-first run stays idle waiting for the operator to say what it should achieve.
-// - A chosen template — its `AutopilotTemplate.Body` resolved through
-// `AutopilotTemplateResolver` (its `{{issue.*}}` tokens filled from the triggering item) becomes the
-// kickoff instead, so the resolved brief is what the CEO drafts the plan from.
-// Kept a pure builder so the "template body → resolved kickoff" rule is unit-testable without a live session or UI.
-//
-// `Message`: The first user turn to submit to the CEO, or null to leave the session idle (free CEO-first planning).
-// `MissingPlaceholders`: The template placeholders that could not be filled, so the surface can warn; empty for free planning.
+// The CEO's opening kickoff for a planning round when a template is (or is not) chosen (AC-189, slice 3). No
+// template keeps current behaviour (tracker kickoff, or idle for a CEO-first run); a chosen template's
+// `Body` resolved through `AutopilotTemplateResolver` becomes the kickoff instead.
 internal sealed record AutopilotKickoff(string? Message, IReadOnlyList<string> MissingPlaceholders);
 
 internal static class AutopilotTemplateKickoff
@@ -36,11 +27,9 @@ internal static class AutopilotTemplateKickoff
         return new AutopilotKickoff(message, resolution.MissingPlaceholders);
     }
 
-    // The intent-Data view of a plan source, keyed the way `AutopilotTemplateResolver` expects
-    // (`issue`/`title`/`description`/`url`/`tracker`), so a template's `{{issue.*}}` tokens
-    // fill from the triggering item. The plan source now carries the item's url (from the intent's `url` key, AC-189),
-    // so `{{issue.url}}` resolves to the real link — present, even when blank, so it is never reported missing from a
-    // source. Null when there is no source (a CEO-first run), so every issue token is reported missing.
+    // The intent-Data view of a plan source, keyed the way `AutopilotTemplateResolver` expects, so a
+    // template's `{{issue.*}}` tokens fill from the triggering item — present even when blank so it is never
+    // reported missing. Null when there is no source, so every issue token is reported missing instead.
     public static IReadOnlyDictionary<string, string>? SourceData(AutopilotPlanSource? source) =>
         source is null
             ? null

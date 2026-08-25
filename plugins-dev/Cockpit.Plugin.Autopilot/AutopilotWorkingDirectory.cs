@@ -2,11 +2,9 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// The directory an Autopilot run works in (AC-174). The operator's chosen folder when they named one at approval (a
-// run planned from a tracker issue has no session, so they pick it in the plan dialog), else the active session's
-// working directory (the run follows what they are looking at), else the cockpit's own working directory — the folder
-// it was launched in. A folder that is a git repository is isolated per step; a plain folder runs without isolation
-// (an admin task with no repo) — that decision is made downstream from this directory, this only resolves where it is.
+// The directory an Autopilot run works in (AC-174): the operator's chosen folder at approval, else the active
+// session's working directory, else the cockpit's own launch directory. Whether it is isolated per step depends
+// on whether it is a git repository — that decision is made downstream, this only resolves where it is.
 internal static class AutopilotWorkingDirectory
 {
     public static string Resolve(IWorkspaceContext context, string? chosen)
