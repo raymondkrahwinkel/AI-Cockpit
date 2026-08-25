@@ -626,6 +626,13 @@
                     </StackPanel>
 
                     <StackPanel Spacing="2">
+                        <TextBlock Classes="FieldLabel" Text="Assistant"/>
+                        <TextBlock Classes="FieldHint" Text="Optional — which assistant this project's sessions run as, e.g. Zyra. Overrides the profile's own. Stays on this machine: it is never shared and never comes along when someone else binds this project."/>
+                        <TextBox Text="{Binding Assistant}" PlaceholderText="whatever the profile says"
+                                 HorizontalAlignment="Stretch" MaxWidth="340"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Classes="FieldLabel" Text="Behaviour"/>
                             <Border Classes="originBadge" Classes.shared="{Binding BehaviorOrigin.IsClaimed}"

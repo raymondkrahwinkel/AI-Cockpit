@@ -490,6 +490,16 @@
                                         </DockPanel>
                                     </StackPanel>
 
+                                    <!-- AC-1071: its own field, not a sentence in the prompt below — the cockpit states
+                                         the choice and withdraws the "which brain do you want?" question a session's
+                                         own instruction files ask first. -->
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Assistant" FontSize="11"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBox Text="{Binding Assistant}" MaxWidth="340" HorizontalAlignment="Left"
+                                                 PlaceholderText="Optional — who a session under this profile is, e.g. “Zyra”"/>
+                                    </StackPanel>
+
                                     <StackPanel Spacing="4">
                                         <TextBlock Text="System prompt" FontSize="11"
                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>

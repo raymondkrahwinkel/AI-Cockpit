@@ -45,6 +45,12 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private string _profileSystemPrompt;
 
+    // AC-1071: which assistant/persona a session under this profile runs as, e.g. "Zyra" — its own field rather
+    // than a sentence in the prompt above, so the cockpit can state the choice and close the "which brain?"
+    // question itself. Empty means none, or whatever the project says. Machine-local: profiles never travel.
+    [ObservableProperty]
+    private string _assistant;
+
     // How much a session under this profile may hold before the OS cuts it off (AC-661). Null means the app
     // default. Numeric rather than text (AC-666): a typed "4096xcxc" used to parse back to null, so the editor
     // silently dropped the cap it appeared to show.
@@ -508,6 +514,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         _purpose = profile.Purpose ?? string.Empty;
         _defaultWorkingDirectory = profile.DefaultWorkingDirectory ?? string.Empty;
         _profileSystemPrompt = profile.SystemPrompt ?? string.Empty;
+        _assistant = profile.Assistant ?? string.Empty;
         _memoryCapMegabytes = profile.MemoryCapMegabytes;
         // Absent/no-restriction is TTY, the same long-standing hard default SessionKindDefaults.ResolveDefaultKind
         // falls back to for the New-session dialog itself.
@@ -627,6 +634,7 @@ public partial class EditableProfileViewModel : ViewModelBase
                 : null,
             DefaultWorkingDirectory = string.IsNullOrWhiteSpace(DefaultWorkingDirectory) ? null : DefaultWorkingDirectory.Trim(),
             SystemPrompt = string.IsNullOrWhiteSpace(ProfileSystemPrompt) ? null : ProfileSystemPrompt.Trim(),
+            Assistant = string.IsNullOrWhiteSpace(Assistant) ? null : Assistant.Trim(),
             MemoryCapMegabytes = MemoryCapMegabytes is > 0 ? MemoryCapMegabytes : null,
             // Meaningless (and hidden in the editor) for a provider with no TTY route — persist null rather than a
             // choice that could never take effect, so ResolveDefaultKind's own SDK fallback is the only word on it.
