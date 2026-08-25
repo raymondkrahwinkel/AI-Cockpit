@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
 // What a single step execution actually produced (AC-347): whether a verdict was ever reached, and if so, what it
-// was. This is the discriminator a plain `bool` could not carry — `Rejected` and `Faulted`
-// both used to collapse into "false", so a rework the CEO's validation actually sent back was indistinguishable from a
-// step that crashed, stalled, or never got a session at all. Passed through `executeStep`'s return value only —
-// never persisted, so it carries no note about enum ordering the way a stored one would.
+// was — the discriminator a plain `bool` could not carry, since `Rejected` and `Faulted` both used to collapse
+// into "false". Passed through `executeStep`'s return value only, never persisted.
 internal enum AutopilotStepOutcome
 {
     // The CEO validated the step's output against its acceptance and accepted it.

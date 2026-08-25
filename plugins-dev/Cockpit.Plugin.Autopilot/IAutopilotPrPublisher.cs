@@ -1,27 +1,16 @@
 namespace Cockpit.Plugin.Autopilot;
 
 // What a run worktree can do about a pull request (AC-216) — probed once at merge-ready (and at preflight, AC-215).
-//
-// `IsGitRun`: The worktree is a git working tree with a branch (a git-repo run, not a plain folder).
-// `HasRemote`: The repository has at least one git remote to push to.
-// `GhAvailable`: The GitHub CLI (`gh`) is on PATH and can be used to open a pull request.
+// `IsGitRun`: has a branch. `HasRemote`: has a git remote to push to. `GhAvailable`: `gh` is on PATH.
 internal sealed record AutopilotPrProbe(bool IsGitRun, bool HasRemote, bool GhAvailable);
 
-// The work to publish for a merge-ready code run (AC-216).
-//
-// `WorktreePath`: The run worktree the branch lives in — where git/gh run.
-// `Branch`: The run branch to push and open the PR from.
-// `Title`: The pull request title (and the message for any leftover-work safety commit) — no AI/agent mention.
-// `Body`: The pull request body (the run's goal and source link).
+// The work to publish for a merge-ready code run (AC-216). `Title` doubles as the leftover-work safety commit
+// message — no AI/agent mention. `Body` is the PR body (the run's goal and source link).
 internal sealed record AutopilotPrRequest(string WorktreePath, string Branch, string Title, string Body);
 
 // What became of work a step committed on a worktree of its own instead of on the run's branch (AC-1037).
-//
-// `Recovered`: The commits cherry-picked onto the run branch, oldest first — the run now carries this work.
-// `Stranded`: The commits still only on the step's own branch — the one the recovery stopped on, and every one after it.
-// `Error`:
-// Why this is not a clean answer — a cherry-pick that would not apply, or a check that could not run. Null only when
-// the branch really was read and everything is where it belongs.
+// `Recovered`: cherry-picked onto the run branch, oldest first. `Stranded`: still only on the step's own branch,
+// from the one recovery stopped on. `Error`: null only when the branch really was read and everything belongs.
 internal sealed record AutopilotStrayCommits(IReadOnlyList<string> Recovered, IReadOnlyList<string> Stranded, string? Error)
 {
     // The step's work is on the run's branch and the harness knows it — the only all-clear this type has.
@@ -38,11 +27,8 @@ internal sealed record AutopilotStrayCommits(IReadOnlyList<string> Recovered, IR
     public bool NeedsSaying => Found || Error is not null;
 }
 
-// The outcome of publishing — what actually landed, for the operator-facing outcome line.
-//
-// `Pushed`: The run branch reached the remote.
-// `PrUrl`: The opened pull request's url, or null when none was opened (gh absent, or opening failed).
-// `Error`: Why publishing did not fully succeed, or null on success — recorded on the run, never thrown.
+// The outcome of publishing — what actually landed, for the operator-facing outcome line. `Pushed`: reached the
+// remote. `PrUrl`: null when none was opened. `Error`: null on success — recorded on the run, never thrown.
 internal sealed record AutopilotPrPublishResult(bool Pushed, string? PrUrl, string? Error);
 
 /// <summary>

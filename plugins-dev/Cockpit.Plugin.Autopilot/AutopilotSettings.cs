@@ -3,10 +3,8 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot;
 
 // Autopilot's settings: a global level plus per-project overrides. Every field resolves as *project override →
-// global value → built-in default*, so a project can tighten (or relax) a setting without changing what the rest
-// do. Persisted as loose keys in the plugin's per-plugin storage; a per-project override lives under a
-// `project:{id}:` prefix. The settings view edits the global level; a run reads the effective value for the
-// project it works in. Read with an optional `projectId` (null = the global level).
+// global value → built-in default*, so a project can tighten (or relax) a setting without changing the rest.
+// Persisted as loose keys, per-project under a `project:{id}:` prefix; the settings view edits the global level.
 internal sealed class AutopilotSettings(IPluginStorage storage)
 {
     private const string MaxAttemptsKey = "maxSelfFixAttempts";
@@ -22,9 +20,8 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string ExecutableStagePrefix = "executableStage:";
 
     // What "a person has judged this executable" is called on each tracker Autopilot ships with (AC-345) — a stage on
-    // YouTrack, and on GitHub Issues, which has none, a label. A tracker with no default here gates on nothing until
-    // the operator names its stage; the settings view offers a box for every installed tracker so that is a choice
-    // rather than a gap.
+    // YouTrack, and on GitHub Issues, which has none, a label. A tracker with no default here gates on nothing
+    // until the operator names its stage; the settings view offers a box per tracker so that is a choice, not a gap.
     private static readonly Dictionary<string, string> DefaultExecutableStages = new(StringComparer.OrdinalIgnoreCase)
     {
         ["youtrack"] = "Ready",
@@ -32,14 +29,8 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     };
 
     // The CLI permission mode a self-driving run starts in (AC-152). Default `acceptEdits`, not `bypassPermissions`
-    // (security review): an isolated step's confinement to its worktree must hold. Codex is genuinely
-    // OS-sandboxed and maps both modes to `workspace-write`, so it is unaffected. Claude, though, has no OS sandbox —
-    // its confinement to cwd is enforced by the permission system, and `bypassPermissions` (`--dangerously-skip-permissions`)
-    // disables exactly that guard, letting an isolated Claude step write to an absolute path outside its worktree (the
-    // real checkout, a dotfile) — reachable via prompt-injection from an untrusted issue in the step brief. `acceptEdits`
-    // keeps that guard: in-worktree edits auto-apply, an out-of-worktree write prompts and, with no human, is denied. A
-    // step that genuinely needs autonomous shell (build/test) belongs on Codex, which bashes confined; Claude stays edit-only.
-    // An operator may still pick `bypassPermissions` per profile — a deliberate choice, the way Codex's danger-full-access is.
+    // (security review): bypass disables the guard keeping an isolated Claude step confined to its worktree,
+    // reachable via prompt-injection. An operator may still pick bypass per profile, a deliberate choice.
     public const string DefaultAutonomyMode = "acceptEdits";
 
     // Raised when any setting changes, so a live surface (the workspace body, a running pipeline) picks it up
@@ -64,10 +55,9 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     // null uses the profile's own default model.
     public string? CeoModel(string? projectId = null) => _ReadString(projectId, CeoModelKey);
 
-    // The profile the CEO's per-step validation runs on (AC-254) — a cheaper model than planning's, since validation is
-    // the run's high-frequency, growing-context part. Same precedence as the AC-233 threshold resolver applied one
-    // level further: project override → global override → the planning profile above, so a run that never sets a
-    // validation override behaves exactly as it did before this split (one shared pair).
+    // The profile the CEO's per-step validation runs on (AC-254) — cheaper than planning's, since validation is
+    // the run's high-frequency, growing-context part. Falls back to the planning profile so a run that never
+    // sets a validation override behaves exactly as it did before this split (one shared pair).
     public string? CeoValidationProfileLabel(string? projectId = null) =>
         _ReadString(projectId, CeoValidationProfileKey) is { Length: > 0 } value ? value : CeoProfileLabel(projectId);
 
@@ -95,15 +85,8 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     // coerced out of an autonomous run's effective mode. Public callers read the coerced value through `AutonomyMode`.
     private const string BypassAutonomyMode = "bypassPermissions";
 
-    // The CLI permission mode a self-driving run starts in (AC-152), defaulting to `DefaultAutonomyMode` when
-    // unset or blank. A stored `bypassPermissions` is coerced back to `DefaultAutonomyMode` (AC-209): a
-    // legacy value from the AC-152 era — when bypass was briefly the default — would otherwise stick and disable exactly
-    // the permission guard an isolated Claude step relies on (see `DefaultAutonomyMode`), so the host's
-    // fail-closed isolation gate refuses every Claude step of the run. Bypass is therefore not a valid effective mode for
-    // an autonomous, isolated run; a step that genuinely needs autonomous shell belongs on Codex, which is OS-sandboxed
-    // and confines in either mode. The coercion covers every step type — impl and the code-/security-review gates all read
-    // this one value — and a per-project override alike, so no persisted bypass (global or scoped) can silently block a run.
-    // An operator who deliberately wants bypass on a specific Codex profile picks it per session, not through this run-wide setting.
+    // Defaults to `DefaultAutonomyMode` when unset or blank. A stored `bypassPermissions` is coerced back
+    // (AC-209): a legacy value would otherwise disable the permission guard an isolated Claude step relies on.
     public string AutonomyMode(string? projectId = null) =>
         _ReadString(projectId, AutonomyModeKey) is { Length: > 0 } mode && !_IsBypassMode(mode) ? mode : DefaultAutonomyMode;
 
@@ -118,11 +101,9 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
 
     public void SetMaxConcurrentRuns(int max, string? projectId = null) => _Write(projectId, MaxConcurrentRunsKey, Math.Max(1, max));
 
-    // The stage on `trackerId` that means "a person judged this executable" — what the start gate
-    // keys on (AC-345). Unset falls back to that tracker's default (`Ready` on YouTrack, the `ready` label on
-    // GitHub Issues); stored blank means the operator turned the gate off for that tracker, and is honoured as such.
-    // Global only, unlike the settings around it: the gate belongs to the tracker's own vocabulary, which does not
-    // change per project, and a per-project level nothing reads would be a promise this class could not keep.
+    // The stage on `trackerId` that means "a person judged this executable" — what the start gate keys on
+    // (AC-345). Unset falls back to that tracker's default; stored blank means the gate is off for that tracker.
+    // Global only: the gate belongs to the tracker's own vocabulary, which does not change per project.
     public string ExecutableStage(string trackerId) =>
         _ReadString(null, _ExecutableStageKey(trackerId))
         ?? DefaultExecutableStages.GetValueOrDefault(trackerId)

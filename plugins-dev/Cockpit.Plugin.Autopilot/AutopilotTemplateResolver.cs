@@ -2,25 +2,14 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// The outcome of resolving a template body (AC-189): the filled-in `Text`, and the names of any
-// placeholders that could not be filled. Resolving never fails — an unfillable placeholder is replaced with the empty
-// string and its name collected here — so the surface can warn about the gaps rather than a run dying on a bad token.
-//
-// `Text`: The body with every `{{placeholder}}` replaced (missing ones by the empty string).
-// `MissingPlaceholders`: The placeholder names that had no value, in first-seen order, de-duplicated.
+// The outcome of resolving a template body (AC-189): the filled-in `Text`, and the names of any placeholders
+// that could not be filled. Resolving never fails — an unfillable placeholder is replaced with the empty string
+// and its name collected here — so the surface can warn about gaps rather than a run dying on a bad token.
 internal sealed record AutopilotTemplateResolution(string Text, IReadOnlyList<string> MissingPlaceholders);
 
-// Fills the `{{placeholder}}` tokens in an `AutopilotTemplate.Body` (AC-189). It reads two sources
-// and merges them in one pass:
-// - `{{issue.id}}`, `{{issue.title}}`, `{{issue.description}}`, `{{issue.url}}` and
-// `{{issue.tracker}}` from a tracker intent's `Data` dictionary — the same payload a tracker sends on the
-// "plan" intent (see `AutopilotRun.FromIntent`), keyed there as `issue`, `title`,
-// `description`, `url` and `tracker`.
-// - `{{input.&lt;name&gt;}}` from an operator-supplied input dictionary.
-// It never throws. An unknown token, or one whose value is absent, is replaced with the empty string and its name is
-// reported in `AutopilotTemplateResolution.MissingPlaceholders` so the caller can warn. It only rewrites
-// the body string it is handed — the C# brief texts elsewhere interpolate at compile time and never pass through here,
-// so the runtime `{{...}}` syntax cannot collide with them.
+// Fills the `{{placeholder}}` tokens in an `AutopilotTemplate.Body` (AC-189): `{{issue.*}}` from a tracker
+// intent's `Data` dictionary, `{{input.&lt;name&gt;}}` from operator input. Never throws — an unknown or
+// absent-value token becomes empty string and is reported in `MissingPlaceholders`.
 internal static partial class AutopilotTemplateResolver
 {
     // {{ token }} — the token is issue.<field> or input.<name>; surrounding whitespace is tolerated and trimmed. The

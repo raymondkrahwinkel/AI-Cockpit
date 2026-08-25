@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// The turns the autonomous run hands its sessions (AC-174): a step agent's opening instruction — its brief plus how to
-// report done — and the validation turn the CEO is asked to judge a finished step by. Kept a pure builder off the
-// coordinator so the wording (the tool to call, what to include) is tested without a live session. Unlike the CEO's
-// hidden planning brief (`AutopilotCeoBrief`), the step brief is the agent's *visible* opening turn —
-// it is the task it was given, submitted for it so an autonomous run needs no human to type the first message.
+// The turns the autonomous run hands its sessions (AC-174): a step agent's opening instruction — its brief plus
+// how to report done — and the validation turn the CEO judges a finished step by. Kept a pure builder off the
+// coordinator so wording is tested without a live session. Unlike the CEO's hidden planning brief, the step brief is the agent's *visible* opening turn.
 internal static class AutopilotStepBrief
 {
     public static string For(AutopilotStep step, int agentCount, int agentNumber)
@@ -19,17 +17,9 @@ internal static class AutopilotStepBrief
             ? $"\n\nYou are agent {agentNumber} of {agentCount} working this step in parallel, each in its own worktree — keep to your part and do not touch what the others own."
             : string.Empty;
 
-        // The agent starts non-interactively under the profile the CEO assigned this step (AC-174, AC-193). No human is
-        // here to answer anything this turn, and that cuts two ways. First, a startup question — a project prompt asking
-        // which persona/brain/config to load — must be treated as already decided (stay in the identity it launched with)
-        // and stepped past, or the run stalls on an unanswered question (the same brain-select trap a spawned sub-agent
-        // hits). Second, and the AC-193 fix: a TASK ambiguity the brief did not spell out must not become a mid-run
-        // question either — the agent makes the most reasonable assumption in line with the goal and acceptance, follows
-        // the codebase's existing conventions (looks at how comparable parts/projects already do it), and carries on,
-        // noting the assumption in its done-summary. AC-201: only when it genuinely cannot get there with a reasonable
-        // assumption does it consult its MANAGER (the CEO) via autopilot_blocked — the CEO answers or escalates to the
-        // operator, so the worker never reaches the operator directly. Kept generic on purpose: it names no specific
-        // persona, so it holds whatever the profile is.
+        // The agent starts non-interactively (AC-174, AC-193) with no human to answer anything this turn: a startup
+        // question must be treated as already decided, and a task ambiguity is resolved with the most reasonable
+        // assumption and noted in the done-summary (AC-201: only escalate via autopilot_blocked when genuinely stuck).
         const string autonomy =
             "You are an autonomous agent in an Autopilot run, working under the profile you were launched with — no human "
             + "is available to answer questions this turn. (1) Setup questions: if your startup asks you to pick a "
@@ -43,13 +33,9 @@ internal static class AutopilotStepBrief
             + "destructive choice, or a missing credential: call autopilot_blocked to consult your manager, who answers "
             + "you or escalates to the operator. Never stop for an ordinary judgement call you can make yourself.";
 
-        // The execution mandate: a lighter/local model handed a coding step too often "analyses" the
-        // repo, summarises what could be done, or asks what the goal is — and ends its turn without ever writing the code,
-        // which stalls the step. This is provider-neutral and holds for any model: the task is to BUILD, not to analyse.
-        // The concrete end state is spelled out (make the change, run tests, commit in the worktree, report done) so even a
-        // light model has no room to read the step as "go analyse this". It does not weaken AC-193/AC-201: the agent still
-        // makes reasonable assumptions and only consults its manager when it genuinely cannot proceed — it just may not end
-        // the turn on analysis or a question in place of the work.
+        // The execution mandate: a lighter/local model handed a coding step too often "analyses" the repo or asks
+        // what the goal is, ending its turn without writing code, which stalls the step. The concrete end state
+        // (change, tests, commit, report done) is spelled out so no model reads it as "go analyse this" — it does not weaken AC-193/AC-201.
         const string executionMandate =
             "This is an execution task, not an analysis or planning task — actually make the change. Write and edit the "
             + "code, add and run the tests, and COMMIT your work in this worktree as you complete it. Do NOT instead "
@@ -82,19 +68,16 @@ internal static class AutopilotStepBrief
             """.ReplaceLineEndings("\n"); // AC-1051: raw string literals take the source file's line endings.
     }
 
-    // The one reminder a step agent gets if it goes quiet without reporting done: weaker/local
-    // models sometimes end their turn with a text summary instead of calling the tool, which strands the step. Nudges
-    // the tool call without disrupting an agent that is genuinely still working.
+    // The one reminder a step agent gets if it goes quiet without reporting done: weaker/local models sometimes
+    // end their turn with a text summary instead of calling the tool, which strands the step.
     public static string StepDoneReminder() =>
         $"If you have finished this step's work, call mcp__{AutopilotRunTools.EndpointName}__autopilot_step_done now with "
         + "a short summary of what you did — that is how the run advances; a text reply on its own does not report the "
         + "step done. If you are still working, ignore this and call it once you finish.";
 
-    // The turn the CEO judges a finished step by. With `evidence` — an independent account of the
-    // change, produced by the harness from the run's own worktree (AC-255) — the CEO validates against that instead of
-    // re-reading the worktree itself. Without it, it gets exactly the instruction it always got: a run whose work the
-    // harness cannot observe (a plain folder, a review gate judging a report, a git probe that failed) degrades loudly
-    // back to the deep inspection rather than quietly to trusting the summary.
+    // The turn the CEO judges a finished step by. With `evidence` — an independent account produced by the
+    // harness (AC-255) — the CEO validates against that instead of re-reading the worktree. Without it (evidence
+    // could not be observed), it degrades loudly back to the deep inspection rather than quietly to trusting the summary.
     public static string ValidationTurn(
         AutopilotStep step,
         IReadOnlyList<string> summaries,
@@ -144,13 +127,9 @@ internal static class AutopilotStepBrief
             : "The harness flagged this about the change — look at the files for it:\n"
                 + string.Join("\n", evidence.Concerns.Select(concern => $"- {concern}"));
 
-        // The observation is composed by the harness, but its contents are the step's own files. A diff's context lines
-        // begin with a single space and its paths with nothing at all, so a step could write a line that reads like an
-        // instruction to the CEO and have it arrive inside the very block the CEO was told to trust. Fencing it as data
-        // is the guard; stripping any copy of the fence out of the observation is what keeps the fence closed.
-        // The agent's own summary sits in the same turn and is even more directly under its control than a diff is, so
-        // it gets the same treatment: without this a step could put a fence pair in its done-summary and hand the CEO a
-        // counterfeit harness observation, inside the one block the turn calls independent.
+        // The observation is composed by the harness, but its contents are the step's own files — a diff line could
+        // read like an instruction to the CEO inside the block it was told to trust. Fencing and stripping any
+        // copy of the fence is the guard; the agent's summary gets the same treatment since it is even more directly under the step's control.
         var observation = _WithoutFence(evidence.Observation);
         reported = _WithoutFence(reported);
 

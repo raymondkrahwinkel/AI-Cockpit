@@ -1,9 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
 // The real `IAutopilotEvidenceSource` (AC-255): reads the run's own git worktree to find out what a step
-// changed. It only ever reads — no `add`, no `commit`, no `stash push` — because an observation that
-// mutates what it observes is not evidence, and because the coordinator's own safety commit is the one place work is
-// staged. Every git fault degrades to null (no evidence, so the CEO keeps inspecting) rather than failing the step.
+// changed. Only ever reads — no `add`, `commit`, or `stash push` — because an observation that mutates what it
+// observes is not evidence. Every git fault degrades to null (no evidence) rather than failing the step.
 internal sealed class GitCliEvidenceSource : IAutopilotEvidenceSource
 {
     // The validation turn is a prompt, not a report: a large refactor's full patch would crowd out the acceptance it is
@@ -18,11 +17,9 @@ internal sealed class GitCliEvidenceSource : IAutopilotEvidenceSource
             return null;
         }
 
-        // `stash create` records the worktree as it stands into a commit it stores nowhere — no ref, no index entry, no
-        // file changes (only loose objects, which git collects on its own). That is what pins work an earlier step left
-        // uncommitted, so this step is not later credited with it. Writing that commit needs an identity, and a machine
-        // without a configured one — a CI box, a fresh container — would otherwise fail here; the identity is supplied
-        // for the call, and never reaches a commit anyone will see.
+        // `stash create` records the worktree as-is into a commit stored nowhere (no ref, no index entry), which
+        // pins work an earlier step left uncommitted so this step isn't later credited with it. The identity is
+        // supplied only for this call, so a machine with none configured doesn't fail here, and it never reaches a visible commit.
         var snapshot = await GitCommandLine.RunAsync(
             "git",
             ["-c", "user.name=cockpit-autopilot", "-c", "user.email=autopilot@localhost", "stash", "create"],

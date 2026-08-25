@@ -3,11 +3,8 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 namespace Cockpit.Plugin.Autopilot;
 
 // Tracks whether the CEO planning session is mid-turn (AC-195) so the "Plan with the CEO" pop-out can show a
-// "working" cue while a planning turn — which can run silently for minutes — is in flight, instead of leaving the
-// dialog looking hung. It mirrors `IEmbeddedSession.IsBusy` and follows
-// `IEmbeddedSession.BusyChanged`; the state rule is separated from the rendering so it is unit-testable
-// without a view. The CEO-only cue lives here on purpose — the shared global session indicator is left untouched so
-// its deliberate deaf-during-streaming behaviour is not regressed app-wide.
+// "working" cue while a silent planning turn is in flight, instead of looking hung. Mirrors
+// `IEmbeddedSession.IsBusy`; the shared global session indicator is left untouched so its deliberate deaf-during-streaming behaviour is not regressed app-wide.
 internal sealed class CeoBusyIndicatorModel : IDisposable
 {
     private readonly IEmbeddedSession _session;

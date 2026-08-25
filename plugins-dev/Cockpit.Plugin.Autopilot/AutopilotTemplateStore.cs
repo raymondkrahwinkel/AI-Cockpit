@@ -2,12 +2,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// The persisted half of the Autopilot template system (AC-189): the operator's own templates and their edits of the
-// plugin/builtin ones. It follows the same shape as `AutopilotRunQueue` and `AutopilotRunHistory`
-// — a list loaded from `IPluginStorage` at construction, written back on every change, a `Changed`
-// signal so the surface re-renders. Plugin registrations live only in memory (re-registered on every start); only the
-// user templates and the overrides are persisted here. `List` merges the two: the passed-in registrations
-// with any override applied, followed by the operator's own templates.
+// The persisted half of the Autopilot template system (AC-189): the operator's own templates and their edits of
+// the plugin/builtin ones. Same shape as `AutopilotRunQueue`/`AutopilotRunHistory`. Plugin registrations live
+// only in memory; `List` merges them (with any override applied) with the operator's own templates.
 internal sealed class AutopilotTemplateStore
 {
     private const string UserTemplatesKey = "templates";

@@ -2,12 +2,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// Asks the Local CI plugin whether this checkout has earned a pull request, if it is installed at all.
-//
-// Addressed by manifest id and an agreed action string, which is how plugin intents work — so nothing here
-// references that plugin's types, and a cockpit without it answers nothing and a run delivers exactly as it did
-// before the gate existed. The identical helper in the GitHub pull-requests plugin is the same three strings for
-// the same reason: two assemblies that must not depend on each other cannot share the constant.
+// Asks the Local CI plugin whether this checkout has earned a pull request, if it is installed at all. Addressed
+// by manifest id and an agreed action string — nothing here references that plugin's types, so a cockpit
+// without it answers nothing and a run delivers exactly as before. The GitHub pull-requests plugin repeats the same three strings since the two assemblies must not depend on each other.
 internal static class LocalCiGate
 {
     private const string PluginId = "local-ci";

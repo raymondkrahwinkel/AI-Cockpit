@@ -3,11 +3,9 @@ using System.Text;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// Runs one `git`/`gh` command in a worktree and hands back what it printed — the single place this plugin
-// shells out, shared by `GitCliPrPublisher` (AC-216) and `GitCliEvidenceSource` (AC-255) so
-// the process plumbing is not written twice. Every command runs in the given directory under a bounded timeout, and
-// never throws: a missing CLI, a non-zero exit or a timeout all come back as a not-ok result, because neither
-// publishing a run nor observing one may crash it.
+// Runs one `git`/`gh` command in a worktree and hands back what it printed — the single place this plugin shells
+// out, shared by `GitCliPrPublisher` and `GitCliEvidenceSource` so the process plumbing isn't written twice.
+// Bounded timeout, never throws: a missing CLI, non-zero exit, or timeout all come back as a not-ok result.
 internal static class GitCommandLine
 {
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(2);

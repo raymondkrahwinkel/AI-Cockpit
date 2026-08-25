@@ -1,15 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// Orders an epic's subs by their `depends on` links (AC-346), Kahn's algorithm: a sub with no unmet dependency
-// left in the remaining set is a candidate, and among candidates the lowest issue id (ordinal, case-insensitive) is
-// picked next — a sub with no dependency on any sibling is exactly as free to run as one whose dependencies already
-// went, so ordering by id is what keeps the result stable and deterministic (the ticket's "willekeurige maar
-// deterministische volgorde") without the epic-runner having to invent a tie-break of its own.
-//
-// A cyclic `depends on` chain — never written by Autopilot itself, but nothing stops a human from creating one in
-// the tracker — has no candidate with zero unmet dependencies once every acyclic sub is placed; rather than stall
-// forever, the lowest remaining id is taken anyway (breaking the cycle at the same deterministic point every time),
-// so a broken chain still produces an order instead of hanging the epic-runner.
+// Orders an epic's subs by their `depends on` links (AC-346), Kahn's algorithm: among candidates with no unmet
+// dependency left, the lowest issue id is picked next — deterministic ordering (the ticket's "willekeurige
+// maar deterministische volgorde"). A cyclic chain still produces an order: the lowest remaining id is taken anyway, breaking the cycle at the same point every time.
 internal static class EpicSubTopologicalOrder
 {
     // `issueIds`: Every sub in the epic, once each.

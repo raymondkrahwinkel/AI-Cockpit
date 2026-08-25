@@ -2,22 +2,9 @@ using System.Text;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// The harness's own account of a finished step (AC-255) — what it observed, and anything about that observation worth
-// a closer look. This is what the CEO validates against instead of re-reading the whole worktree itself. It is
-// composed here, from what `IAutopilotEvidenceSource` saw, and the agent's own summary is carried
-// separately in the validation turn so the two can never be mistaken for each other.
-//
-// The step agent does not write this account and cannot choose what it says. It does, of course, write the code the
-// account describes — so the text inside a diff is the step's own output and is handed to the CEO as data to judge,
-// never as instruction (see `AutopilotStepBrief.ValidationTurn`, which fences it for exactly that reason).
-//
-// `Commit`:
-// The commit this observation was measured on (AC-1037) — carried as its own field rather than left inside the
-// prose, so the validation turn cannot render an observation without saying which tree it is of.
-// `Observation`: What the harness saw, already worded for the validation turn.
-// `Concerns`:
-// What the harness flagged about the change (`AutopilotEvidenceSignals`). Empty means no spot-check fired
-// — not that the step is correct, and the turn says so in as many words.
+// The harness's own account of a finished step (AC-255), validated against instead of re-reading the worktree.
+// The step agent cannot choose what this says, so a diff's text is data to judge, never instruction (see
+// `AutopilotStepBrief.ValidationTurn`). `Concerns`: empty means no spot-check fired, not that the step is correct.
 internal sealed record AutopilotStepEvidence(string Commit, string Observation, IReadOnlyList<string> Concerns)
 {
     // A path list is as unbounded as a diff is, and for the same reason it has to be capped: a wide refactor — or a
