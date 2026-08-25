@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Cockpit.Core.Profiles;
 
-// Mints the plugin config a Claude profile runs under, now that Claude is a bundled provider plugin (Fase 4).
+// Mints the plugin config a Claude profile runs under, now that Claude is a bundled provider plugin (phase 4).
 // Migrates a profile stored as first-class Claude, or auto-detected from `~/.claude*`, into a plugin profile on load.
 // Idempotent: a profile already on this plugin passes through unchanged.
 public static class ClaudePluginProfile
@@ -38,7 +38,7 @@ public static class ClaudePluginProfile
         }
     }
 
-    // One-time migration of legacy typed permission-mode/model/effort defaults into `OptionDefaults` (Fase 4): a non-blank
+    // One-time migration of legacy typed permission-mode/model/effort defaults into `OptionDefaults` (phase 4): a non-blank
     // legacy value wins, recovering profiles where an earlier build seeded OptionDefaults with the plugin's own defaults
     // instead of the operator's; becomes a no-op once resaved. Key literals mirror the host's `WellKnownPluginSessionOptions`.
     public static ProfileDefaults WithMigratedOptionDefaults(ProfileDefaults defaults)
