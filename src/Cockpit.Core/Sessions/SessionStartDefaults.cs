@@ -86,11 +86,9 @@ public sealed record SessionStartDefaults(
     public static string? ResolveAssistant(Project? project, SessionProfile? profile) =>
         _FirstNonBlank(project?.Assistant, profile?.Assistant);
 
-    // AC-1071: what a resolved assistant is said as. Named `assistant` is only half of it — a bare "Gebruik Zyra"
-    // named a persona without closing the question an instruction file asks first, and sessions stalled on that
-    // question unseen (AC-920: a prose question reads as Idle, not NeedsYou). This closes it in so many words.
-    // The cap covers the name alone, never the clause after it: a hand-edited cockpit.json with an absurdly long
-    // assistant must lose its own name to truncation, not the sentence that closes the question.
+    // AC-1071: naming the assistant is only half of it — a bare "Gebruik Zyra" left the question an instruction
+    // file asks first standing, and sessions stalled on it unseen (AC-920: a prose question reads as Idle). The
+    // cap covers the name alone, so an absurd hand-edited value loses itself rather than the clause after it.
     public static string AssistantNote(string assistant) =>
         $"{_CappedSentence("This session runs as ", ProjectPromptText.OneLine(assistant.Trim()), ".")} {AssistantChoiceIsMade}";
 

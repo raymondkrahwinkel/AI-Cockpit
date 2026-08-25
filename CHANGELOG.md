@@ -32,6 +32,21 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a project and a profile can now name the assistant a session runs as — Zyra, Aura, whoever you work
+  with — as its own field instead of a sentence buried in the behaviour prompt. The project's answer wins where
+  both name one, and a session started without a project still gets the profile's. It stays on this machine: it
+  is never published with a shared project, and someone binding your project keeps their own assistant rather
+  than inheriting yours. A behaviour prompt that was nothing but that instruction ("Gebruik Zyra") is moved into
+  the new field for you the first time the project is read; one that also carries real project conventions is
+  left exactly as it is, since there is no safe way to tell where the persona ends and the conventions begin.
+- added: the session then starts with the choice stated and the question closed — it is told which assistant it
+  is and, in so many words, not to ask which one to load or wait for an answer. Sessions used to stall on that
+  question without it showing anywhere: a session waiting on a plain typed question reads as idle, not as one
+  needing you, so it looks exactly like a session that has finished.
+- added: adding a shared project now shows you its behaviour prompt and lets you change it before you accept it.
+  It used to be copied across unseen, so the first you knew of an instruction you had taken on was finding it in
+  the project settings afterwards.
+
 - added: a new "Allow agents to run shell commands" toggle under Options → Security lets a session on a provider
   with no built-in shell of its own (every provider except Claude and the other CLI/ACP agents) run a command such
   as `rg`, `git`, `dotnet` or `python3` and read its exit code, output and errors — off by default, and gated by the
