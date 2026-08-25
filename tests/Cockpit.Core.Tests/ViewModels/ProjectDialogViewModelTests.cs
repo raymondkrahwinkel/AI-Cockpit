@@ -379,6 +379,7 @@ public class ProjectDialogViewModelTests
         viewModel.Description = "   ";
         viewModel.BehaviorPrompt = string.Empty;
         viewModel.Category = "   ";
+        viewModel.Assistant = "   ";
 
         var project = viewModel.ToProject();
 
@@ -386,6 +387,26 @@ public class ProjectDialogViewModelTests
         Assert.Null(project.Description);
         Assert.Null(project.BehaviorPrompt);
         Assert.Null(project.Category);
+        Assert.Null(project.Assistant);
+    }
+
+    /// <summary>
+    /// AC-1071 acceptance criterion 8: the assistant is editable here and survives a round trip. Without it, opening
+    /// a project and pressing Save would silently clear the assistant it was started with.
+    /// </summary>
+    [Fact]
+    public async Task ToProject_AnExistingProjectWithAnAssistant_OpensWithItAndKeepsItOnSave()
+    {
+        var existing = Project.Create("Cockpit") with { Assistant = "Zyra" };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(existing, ProfileStore(), Catalog());
+
+        Assert.Equal("Zyra", viewModel.Assistant);
+
+        Assert.Equal("Zyra", viewModel.ToProject().Assistant);
+
+        viewModel.Assistant = "Aura";
+
+        Assert.Equal("Aura", viewModel.ToProject().Assistant);
     }
 
     // AC-618: category — a plain, never-claimed field on the editor.

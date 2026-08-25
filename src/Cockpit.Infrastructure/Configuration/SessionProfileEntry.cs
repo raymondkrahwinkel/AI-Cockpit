@@ -38,6 +38,10 @@ internal sealed class SessionProfileEntry
     // Standing instructions every session under this profile starts with (AC-142); absent/blank appends nothing.
     public string? SystemPrompt { get; set; }
 
+    // AC-1071: which assistant/persona a session under this profile runs as; absent/blank means the project's own
+    // answer, or none at all. Machine-local, like every other field in this section.
+    public string? Assistant { get; set; }
+
     // The New-session Kind toggle's pre-selection for this profile (AC-139); absent means TTY, the long-standing hard default (and what every profile saved before this setting existed still gets).
     public string? DefaultKind { get; set; }
 
@@ -63,6 +67,7 @@ internal sealed class SessionProfileEntry
         EnabledMcpServers = profile.EnabledMcpServerNames is { } names ? [.. names] : null,
         DefaultWorkingDirectory = string.IsNullOrWhiteSpace(profile.DefaultWorkingDirectory) ? null : profile.DefaultWorkingDirectory,
         SystemPrompt = string.IsNullOrWhiteSpace(profile.SystemPrompt) ? null : profile.SystemPrompt,
+        Assistant = string.IsNullOrWhiteSpace(profile.Assistant) ? null : profile.Assistant,
         DefaultKind = profile.DefaultKind?.ToString(),
         MemoryCapMegabytes = profile.MemoryCapMegabytes,
     };
@@ -88,6 +93,7 @@ internal sealed class SessionProfileEntry
             EnabledMcpServerNames = EnabledMcpServers is { } names ? [.. names] : null,
             DefaultWorkingDirectory = string.IsNullOrWhiteSpace(DefaultWorkingDirectory) ? null : DefaultWorkingDirectory,
             SystemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt,
+            Assistant = string.IsNullOrWhiteSpace(Assistant) ? null : Assistant,
             // An absent/unrecognised value reads as "no default" (null) rather than throwing, the same tolerance
             // WorkspacePaneEntry gives PaneSessionKind — an older cockpit.json (or a hand-edited value) never fails
             // to load over this, it just falls back to the TTY default SessionKindDefaults.ResolveDefaultKind applies.

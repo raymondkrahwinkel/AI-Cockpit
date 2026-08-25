@@ -212,6 +212,15 @@
                         </DockPanel>
                     </StackPanel>
 
+                    <!-- AC-1071: its own field, not a sentence in the prompt below — the cockpit states the choice
+                         and withdraws the "which brain do you want?" question a session's own instruction files ask. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Assistant" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Assistant}" MaxWidth="340" HorizontalAlignment="Left"
+                                 PlaceholderText="Optional — who a session under this profile is, e.g. “Zyra”"/>
+                    </StackPanel>
+
                     <!-- Standing instructions (AC-142): who this profile is and where its knowledge lives. Appended to
                          the provider's own system prompt, never replacing it, so it works for every provider. -->
                     <StackPanel Spacing="4">

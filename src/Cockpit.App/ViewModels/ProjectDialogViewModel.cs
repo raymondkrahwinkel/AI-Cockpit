@@ -103,6 +103,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
             RepositoryRows.Add(new ProjectRepositoryRowViewModel(repository.Path, repository.Label));
         }
         BehaviorPrompt = project.BehaviorPrompt ?? string.Empty;
+        Assistant = project.Assistant ?? string.Empty;
         LogoSource = project.LogoPath ?? string.Empty;
         _originalLogoSource = LogoSource;
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault;
@@ -390,6 +391,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _name = string.Empty;
 
+    // AC-1071: which assistant/persona this project's sessions run as, overriding the profile's. Always local,
+    // for the same reason `Category` below is: nothing a shared definition claims can own it, so there is no
+    // origin badge and no `_Carry{T}` — a colleague binding this project keeps their own assistant.
+    [ObservableProperty]
+    private string _assistant = string.Empty;
+
     // Which category this project sits under in the manager's list (AC-618). Always local — never one of the six
     // claimable `HostProjectField`s, so unlike Name/Description above there is no origin badge and no
     // `_Carry{T}` here: nothing a shared project's definition claims can ever own this field.
@@ -535,6 +542,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         return new(_projectId ?? Guid.NewGuid().ToString("n"), _Carry(NameOrigin, Name.Trim(), p => p.Name))
         {
             Category = _NullIfBlank(Category),
+            Assistant = _NullIfBlank(Assistant),
             Description = _Carry(DescriptionOrigin, _NullIfBlank(Description), p => p.Description),
             // Item 0 is this dialog's own SourceDirectory box, exactly as it always was — a project with no folder
             // and no repository rows saves an empty list, same as an empty SourceDirectory used to save null.

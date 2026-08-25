@@ -70,6 +70,17 @@ public class CockpitProjectDefinitionSecrecyTests
         Assert.DoesNotContain(names, name => name.Contains("Category", StringComparison.OrdinalIgnoreCase));
     }
 
+    // AC-1071 acceptance criterion 4: a project's assistant is explicitly local, for the same reason its category
+    // is — sharing it would impose one operator's persona on every colleague who binds the project, which is the
+    // exact complaint this ticket came from. Pinned by name so it reads as a decision, not as coverage.
+    [Fact]
+    public void Definition_CarriesNoAssistant_SinceTheAssistantIsAlwaysLocalToEachOperator()
+    {
+        var names = typeof(CockpitProjectDefinition).GetProperties().Select(property => property.Name).ToArray();
+
+        Assert.DoesNotContain(names, name => name.Contains("Assistant", StringComparison.OrdinalIgnoreCase));
+    }
+
     // The gap is narrowed at the write seam, not closed: CockpitProjectDefinitionExtensionDataGuard (applied by
     // CockpitProjectDefinitionStore.WriteAsync, AC-607) refuses a secret-shaped, not-already-encrypted key at the
     // top level or one level of nested-object keys. It still forwards a secret-shaped value two-plus levels deep,

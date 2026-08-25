@@ -57,6 +57,14 @@
                 </StackPanel>
 
                 <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="Behaviour"/>
+                    <TextBlock Classes="FieldHint"
+                               Text="What this project asks of a session, as its owner wrote it. It becomes yours once you add the project — change or clear it now if it does not fit how you work."/>
+                    <TextBox Text="{Binding BehaviorPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="78"
+                             PlaceholderText="nothing set"/>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="Folder"/>
                     <TextBlock Classes="FieldHint"
                                Text="Where this project's files live on this machine. Optional — a project with no files of its own (notes only, say) can be left blank and started as-is."/>

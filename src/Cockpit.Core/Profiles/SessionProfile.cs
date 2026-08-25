@@ -33,6 +33,11 @@ public sealed record SessionProfile(
     // `cockpit.append-system-prompt` option Autopilot/delegation use; a project's `BehaviorPrompt` appends further on top.
     public string? SystemPrompt { get; init; }
 
+    // AC-1071: which assistant/persona a session under this profile runs as, e.g. "Zyra" — its own field rather
+    // than a sentence buried in `SystemPrompt`, so the cockpit can state the choice and cancel the "which brain?"
+    // question deterministically. Machine-local: a profile never travels with a shared project.
+    public string? Assistant { get; init; }
+
     // Which route (SDK/TTY) the New-session dialog pre-selects (AC-139); the operator can still override per session.
     // `null` (every pre-existing profile) falls back to TTY. Meaningless for a provider with no TTY route (local HTTP
     // model, or a plugin registering none) — such a profile always starts SDK, enforced by `SessionKindDefaults.ResolveDefaultKind`.

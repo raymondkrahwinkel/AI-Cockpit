@@ -155,8 +155,11 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
 
     public string? Description { get; }
 
-    // Behind `GitUrl` so "Clone…" builds on it; carried through untouched to the new project.
-    private readonly string? _behaviorPrompt;
+    // AC-1071: shown and editable here rather than carried through unseen — whoever binds a shared project now
+    // sees the standing instruction they are taking on, and can change it before it ever reaches their own
+    // config. The persona that used to hide in here is its own field now, and never travels at all.
+    [ObservableProperty]
+    private string? _behaviorPrompt;
 
     private readonly bool _isolateInWorktreeByDefault;
 
@@ -173,7 +176,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     // "Finish setting up" would read as having landed somewhere else.
     public string DialogTitle => $"Add to my projects — {ProjectName}";
 
-    public string Hint => $"This project comes from {SourceName}. Name, behaviour, MCP choice and memory are already set up — fill in what is yours.";
+    public string Hint => $"This project comes from {SourceName}. Name, MCP choice and memory are already set up — check what it asks of a session, and fill in what is yours.";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSave))]
@@ -234,7 +237,10 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
             SourceDirectories = _NullIfBlank(SourceDirectory) is { } folder ? [new(folder)] : [],
             GitUrl = GitUrl,
             DefaultProfileLabel = SelectedProfileLabel,
-            BehaviorPrompt = _behaviorPrompt,
+            BehaviorPrompt = string.IsNullOrWhiteSpace(BehaviorPrompt) ? null : BehaviorPrompt.Trim(),
+            // AC-1071: deliberately not taken from the shared definition — the assistant is this operator's own
+            // answer, and a bound project that set one would be exactly the imposition this ticket removes.
+            Assistant = null,
             IsolateInWorktreeByDefault = _isolateInWorktreeByDefault,
             LogoPath = TempLogoFile.WriteOrNull(_logoBytes),
             McpOverlay = overlay,

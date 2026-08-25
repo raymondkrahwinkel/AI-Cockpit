@@ -139,6 +139,120 @@ public class SessionStartDefaultsTests
             SessionStartDefaults.Resolve(project, Profile()).SystemPrompt);
     }
 
+    /// <summary>
+    /// AC-1071 acceptance criterion 1: the assistant resolves the way every other two-sided field in this class
+    /// already does — the project's own wins, the profile's is the default under it.
+    /// </summary>
+    [Fact]
+    public void Resolve_AnAssistantOnTheProfileAlone_IsTheSessionsAssistant()
+    {
+        var profile = Profile() with { Assistant = "Zyra" };
+
+        Assert.Equal("Zyra", SessionStartDefaults.ResolveAssistant(Project.Create("Cockpit"), profile));
+    }
+
+    [Fact]
+    public void Resolve_AnAssistantOnTheProjectAlone_IsTheSessionsAssistant()
+    {
+        var project = Project.Create("Cockpit") with { Assistant = "Aura" };
+
+        Assert.Equal("Aura", SessionStartDefaults.ResolveAssistant(project, Profile()));
+    }
+
+    [Fact]
+    public void Resolve_BothNameAnAssistant_TheProjectsWins()
+    {
+        var profile = Profile() with { Assistant = "Zyra" };
+        var project = Project.Create("Cockpit") with { Assistant = "Aura" };
+
+        Assert.Equal("Aura", SessionStartDefaults.ResolveAssistant(project, profile));
+    }
+
+    [Fact]
+    public void Resolve_NeitherNamesAnAssistant_RendersNothingAtAll()
+    {
+        Assert.Null(SessionStartDefaults.ResolveAssistant(Project.Create("Cockpit"), Profile()));
+        Assert.Null(SessionStartDefaults.Resolve(Project.Create("Cockpit"), Profile()).SystemPrompt);
+    }
+
+    [Fact]
+    public void Resolve_ABlankAssistant_CountsAsUnset()
+    {
+        var profile = Profile() with { Assistant = "   " };
+        var project = Project.Create("Cockpit") with { Assistant = "\n" };
+
+        Assert.Null(SessionStartDefaults.ResolveAssistant(project, profile));
+    }
+
+    /// <summary>
+    /// AC-1071 acceptance criterion 2: identity first, and the assistant is the most binding half of it — ahead of
+    /// the profile's own standing instructions and far ahead of the project block's attribution heading.
+    /// </summary>
+    [Fact]
+    public void Resolve_AnAssistantAndBothInstructionSets_PutsTheAssistantFirstOfAll()
+    {
+        var profile = Profile() with { Assistant = "Zyra", SystemPrompt = "You are Olaf. Look yourself up in the Depot MCP." };
+        var project = Project.Create("Cockpit") with { BehaviorPrompt = "Test before opening a PR." };
+
+        Assert.Equal(
+            SessionStartDefaults.AssistantNote("Zyra") + "\n\n" +
+            "You are Olaf. Look yourself up in the Depot MCP.\n\n" +
+            SessionStartDefaults.ProjectAttributionHeading + "\n\nTest before opening a PR.",
+            SessionStartDefaults.Resolve(project, profile).SystemPrompt);
+    }
+
+    [Fact]
+    public void Resolve_AnAssistantAndNothingElse_IsTheWholePrompt()
+    {
+        var profile = Profile() with { Assistant = "Zyra" };
+
+        Assert.Equal(
+            SessionStartDefaults.AssistantNote("Zyra"),
+            SessionStartDefaults.Resolve(Project.Create("Cockpit"), profile).SystemPrompt);
+    }
+
+    /// <summary>
+    /// AC-1071 acceptance criterion 3: naming the assistant is only half the job. A bare "Gebruik Zyra" named one
+    /// and left "ask first, and wait" standing — this pins that the note actually withdraws the question.
+    /// </summary>
+    [Fact]
+    public void AssistantNote_NamesTheAssistantAndWithdrawsTheQuestion()
+    {
+        var note = SessionStartDefaults.AssistantNote("Zyra");
+
+        Assert.Contains("Zyra", note, StringComparison.Ordinal);
+        Assert.Contains(SessionStartDefaults.AssistantChoiceIsMade, note, StringComparison.Ordinal);
+        Assert.Contains("do not ask", SessionStartDefaults.AssistantChoiceIsMade, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not wait", SessionStartDefaults.AssistantChoiceIsMade, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A hand-edited cockpit.json can put anything in the field. The name is what gets cut, never the clause that
+    /// closes the question — a note that loses its ending would reopen exactly what it exists to close.
+    /// </summary>
+    [Fact]
+    public void AssistantNote_AnAbsurdlyLongAssistant_StillEndsWithTheClauseThatClosesTheQuestion()
+    {
+        var note = SessionStartDefaults.AssistantNote(new string('x', 20_000));
+
+        Assert.EndsWith(SessionStartDefaults.AssistantChoiceIsMade, note, StringComparison.Ordinal);
+        Assert.True(note.Length < 2_000, $"note was {note.Length} characters");
+    }
+
+    /// <summary>
+    /// A session started without a project is exactly why the assistant lives on the profile: it is the only one
+    /// of the two that is always there (see <c>CockpitViewModel</c>'s own profile-only spawn path).
+    /// </summary>
+    [Fact]
+    public void Resolve_NoProjectAtAll_StillCarriesTheProfilesAssistant()
+    {
+        var profile = Profile() with { Assistant = "Zyra" };
+
+        Assert.Equal(
+            SessionStartDefaults.AssistantNote("Zyra"),
+            SessionStartDefaults.Resolve(project: null, profile).SystemPrompt);
+    }
+
     [Fact]
     public void Resolve_NeitherSpeaks_AppendsNothing()
     {

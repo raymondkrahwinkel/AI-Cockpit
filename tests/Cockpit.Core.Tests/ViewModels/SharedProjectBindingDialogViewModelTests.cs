@@ -105,6 +105,69 @@ public class SharedProjectBindingDialogViewModelTests
         Assert.Equal("depot:handbook", project.MemoryRef);
     }
 
+    /// <summary>
+    /// AC-1071 acceptance criterion 5: binding never sets an assistant, however the shared definition is shaped —
+    /// whoever binds keeps their own. This is the case the ticket came from: Lionear bound EWB and inherited
+    /// "Gebruik Zyra", a persona he does not use.
+    /// </summary>
+    [Fact]
+    public async Task ToProject_HoweverTheSharedDefinitionIsShaped_NeverSetsAnAssistant()
+    {
+        var binding = new SharedProjectBinding("EWB") { BehaviorPrompt = "Gebruik Zyra" };
+        var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
+        var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
+            _SharedProject, "Work", source, _ProfileStoreWith("Vex"));
+        viewModel!.SelectedProfileLabel = "Vex";
+
+        Assert.Null(viewModel.ToProject().Assistant);
+    }
+
+    /// <summary>
+    /// The same rule one type earlier: the binding a plugin hands the host structurally cannot carry an assistant,
+    /// so no source can reintroduce one behind the dialog's back.
+    /// </summary>
+    [Fact]
+    public void SharedProjectBinding_CarriesNoAssistant_SinceTheAssistantNeverTravels()
+    {
+        var names = typeof(SharedProjectBinding).GetProperties().Select(property => property.Name).ToArray();
+
+        Assert.DoesNotContain(names, name => name.Contains("Assistant", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// AC-1071 acceptance criterion 9: the behaviour prompt is no longer copied unseen. What the operator leaves in
+    /// the box is what lands in their own project — not what the shared definition said.
+    /// </summary>
+    [Fact]
+    public async Task ToProject_TheBehaviourPromptWasEditedHere_TakesWhatTheOperatorLeftRatherThanTheSharedText()
+    {
+        var binding = new SharedProjectBinding("EWB") { BehaviorPrompt = "Gebruik Zyra" };
+        var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
+        var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
+            _SharedProject, "Work", source, _ProfileStoreWith("Vex"));
+        viewModel!.SelectedProfileLabel = "Vex";
+
+        Assert.Equal("Gebruik Zyra", viewModel.BehaviorPrompt);
+
+        viewModel.BehaviorPrompt = "Test before opening a PR.";
+
+        Assert.Equal("Test before opening a PR.", viewModel.ToProject().BehaviorPrompt);
+    }
+
+    [Fact]
+    public async Task ToProject_TheBehaviourPromptWasClearedHere_LandsAsNoneAtAll()
+    {
+        var binding = new SharedProjectBinding("EWB") { BehaviorPrompt = "Gebruik Zyra" };
+        var source = _SourceReturning(SharedProjectBindingResult.Success(binding));
+        var (viewModel, _) = await SharedProjectBindingDialogViewModel.CreateAsync(
+            _SharedProject, "Work", source, _ProfileStoreWith("Vex"));
+        viewModel!.SelectedProfileLabel = "Vex";
+
+        viewModel.BehaviorPrompt = "   ";
+
+        Assert.Null(viewModel.ToProject().BehaviorPrompt);
+    }
+
     [Fact]
     public async Task ToProject_ABindingWithLogoBytes_MaterializesThemAsTheLogoPath()
     {

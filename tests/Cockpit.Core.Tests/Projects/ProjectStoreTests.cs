@@ -44,6 +44,7 @@ public class ProjectStoreTests : IDisposable
             GitUrl = "https://github.com/example/ai-cockpit.git",
             DefaultProfileLabel = "personal",
             BehaviorPrompt = "Follow the project conventions. Test before opening a PR.",
+            Assistant = "Zyra",
             IsolateInWorktreeByDefault = true,
             MemoryRef = "depot:ai-cockpit",
             SharedSourceName = "Depot — Work",
