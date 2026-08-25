@@ -3,10 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace Cockpit.Core.Notifications;
 
-// The Discord webhook request body shape: `{"content":"..."}`. A Discord webhook accepts a
-// plain JSON object with a `content` string; this is the smallest payload that posts a
-// message. Kept in Core with its own serializer so the exact wire shape is unit-testable without
-// an HTTP round-trip.
+// The Discord webhook request body shape: `{"content":"..."}`. Kept in Core with its own
+// serializer so the exact wire shape is unit-testable without an HTTP round-trip.
 public sealed class DiscordWebhookPayload
 {
     private static readonly JsonSerializerOptions SerializerOptions =

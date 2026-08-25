@@ -1,14 +1,8 @@
 namespace Cockpit.Core.Assistant;
 
 // The short lines the cockpit speaks on the assistant's behalf when the model itself said nothing: that it is
-// going to look something up (AC-597), and that it is still at it (AC-598).
-// *Why the cockpit says these rather than the model.* The standing instruction already asks for a lead-in and
-// gets one about three turns in five, measured over a morning of transcripts. The other two go straight to a tool,
-// and the operator is left listening to a room. Asking harder does not fix a habit; saying it ourselves does, on
-// any provider and at any reasoning effort.
-//
-// ponytail: two languages, and silence in any other. A filler in the wrong language is worse than none — the
-// assistant answers in the language it was spoken to, and this would be the one sentence that did not.
+// going to look something up (AC-597), and that it is still at it (AC-598). ponytail: two languages only,
+// silence otherwise — a filler in the wrong language is worse than none.
 public static class AssistantSpokenFillers
 {
     private static readonly IReadOnlyDictionary<string, string[]> GoingToLook = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)

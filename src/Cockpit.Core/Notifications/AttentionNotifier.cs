@@ -3,12 +3,9 @@ using Cockpit.Core.Abstractions.Notifications;
 
 namespace Cockpit.Core.Notifications;
 
-// Orchestrates the session signals: loads the settings, asks `IPresenceDetector` whether the
-// operator is present or away, lets the pure `NotificationRouter` pick the channel, and delivers
-// via the matching notifier. Present → toast, away → Discord webhook. Each signal has its own gate — a
-// needs-attention always goes out, a finished turn only when you are not watching that session
-// (`FinishedNotificationDecision`), and the idle signals only when the operator turned them on —
-// but they share one delivery path, so there is a single place that knows about channels.
+// Orchestrates the session signals: asks `IPresenceDetector` for present/away, lets the pure
+// `NotificationRouter` pick the channel, and delivers via the matching notifier (toast/webhook).
+// Each signal has its own gate, but they share one delivery path.
 internal sealed class AttentionNotifier(
     INotificationSettingsStore settingsStore,
     IPresenceDetector presenceDetector,

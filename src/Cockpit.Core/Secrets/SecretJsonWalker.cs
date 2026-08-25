@@ -3,19 +3,13 @@ using System.Text.Json.Nodes;
 
 namespace Cockpit.Core.Secrets;
 
-// Walks the cockpit's settings and rewrites every credential-bearing string, wherever it sits.
-//
-// Extracted from the backup scrubber so the scrubber and the encryption layer traverse the settings the same
-// way. The traversal is the subtle part, not what each does with the value it finds: a plugin keeps its
-// settings as a JSON string *inside* the cockpit's JSON, which is where the plugins' tokens actually
-// live — a walker that only visited the outer document would report a clean backup and ship the token, and
-// would encrypt a config while leaving those same tokens in the clear.
+// Walks the cockpit's settings and rewrites every credential-bearing string, wherever it sits. Shared by the
+// backup scrubber and the encryption layer so both traverse the same way — including into a plugin's settings,
+// which are stored as a JSON string *inside* the cockpit's JSON and would otherwise be missed.
 public static class SecretJsonWalker
 {
-    // Applies `transform` to every secret-named string value in `root`, in
-    // place. The transform receives the field's JSON path (which the protector binds the ciphertext to) and its
-    // current value, and returns the replacement — or `null` to leave the value untouched.
-    // Returns the paths it rewrote.
+    // Applies `transform` to every secret-named string value in `root`, in place, passing the field's JSON path
+    // and current value; returns `null` to leave untouched. Returns the paths it rewrote.
     public static IReadOnlyList<string> Transform(JsonNode root, SecretFields fields, Func<string, string, string?> transform)
     {
         var rewritten = new List<string>();

@@ -1,19 +1,13 @@
 namespace Cockpit.Core.Assistant;
 
-// Who the assistant is, in the two names the mount rule is built out of (AC-544, criterion 2). Both live here, in
-// Core, because the two halves of that rule are written in two assemblies that cannot see each other: the App
-// starts the assistant and names the server it is to be given, and Infrastructure hosts the tools and refuses
-// every caller that is not that pane. A constant copied into both would be a rule that can drift, and the drift
-// would be silent — a renamed pane id does not fail to compile, it just quietly stops matching, and what stops
-// matching is a guardrail.
+// Who the assistant is, in the two names the mount rule is built out of (AC-544, criterion 2). Lives in Core
+// because App and Infrastructure cannot see each other, so a constant copied into both could drift silently
+// — a renamed pane id would not fail to compile, it would just quietly stop matching.
 public static class AssistantIdentity
 {
     // The pane id the assistant is always known by, and the only identity the broad read tools answer to.
-    //
-    // It is not a secret and it does not have to be: it is checked against
-    // `McpRequestContext.CurrentPaneId`, which is stamped host-side from the request's own per-session
-    // bearer (AC-89) and cannot be moved by any argument on any tool. An ordinary session naming this string
-    // gets nothing, because nothing reads a string the caller supplied.
+    // Not a secret: checked against `McpRequestContext.CurrentPaneId`, stamped host-side from the
+    // request's own per-session bearer (AC-89) and unmovable by any argument.
     public const string PaneId = "cockpit-assistant";
 
     // The MCP server the broad read tools are hosted under. Registered as an internal endpoint, so it never fans
@@ -22,12 +16,7 @@ public static class AssistantIdentity
     public const string McpServerName = "cockpit-assistant";
 
     // The MCP server the assistant's *acting* tools are hosted under (AC-545): starting, stopping and
-    // placing sessions across every desk. Internal like `McpServerName`, mounted by the same single
-    // launch, and guarded by the same per-tool check on `PaneId`.
-    // A second endpoint rather than more tools on the first, for two reasons that are not presentation. A cockpit
-    // endpoint is one name to one tools class, so sharing would have meant reading and acting in one type — and
-    // the read server's whole documented promise is that nothing on it changes anything. And the two are not the
-    // same risk: if a future launch ever has cause to hand the assistant's read path to something else, that must
-    // not carry the ability to start sessions along with it, silently, because they travelled under one name.
+    // placing sessions. Internal like `McpServerName`, guarded by the same per-tool `PaneId` check, and
+    // separate so the read server's promise that nothing on it changes anything stays true.
     public const string ActMcpServerName = "cockpit-assistant-agents";
 }
