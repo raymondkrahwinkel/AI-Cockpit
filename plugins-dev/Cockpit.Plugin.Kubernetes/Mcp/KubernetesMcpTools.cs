@@ -95,7 +95,7 @@ internal sealed partial class KubernetesMcpTools(
     }
 
     [McpServerTool(Name = "get_resource")]
-    [Description("Reads one resource in full. apiVersion like \"v1\" or \"apps/v1\", plural like \"pods\"/\"deployments\". A namespaced kind needs its namespace (outside the allowed list asks first; a secret always asks); a cluster-scoped kind needs cluster-scoped access on. Returns the resource as JSON, with a \"helmManaged\" field added when the resource carries Helm's managed-by label — \"installed\": true with a release name/namespace when Helm itself installed it, \"installed\": false when it was only rendered by something else with that label set (e.g. Argo CD's `helm template`).")]
+    [Description("Reads one resource in full. apiVersion like \"v1\" or \"apps/v1\", plural like \"pods\"/\"deployments\". A namespaced kind needs its namespace (outside the allowed list asks first; a secret always asks); a cluster-scoped kind needs cluster-scoped access on. Returns the resource as JSON, with a \"helmManaged\" field added when the resource carries Helm's managed-by label — \"installed\": true with a release name/namespace when Helm itself installed it, \"installed\": false when it was only rendered by something else with that label set (e.g. Argo CD's `helm template`) — and an \"argoManaged\" field (the owning Application's name) added when the resource carries Argo CD's tracking-id annotation or instance label. When both are present, Argo CD owns the resource and Helm was at most its renderer.")]
     public async Task<string> GetResource(
         [Description("The cluster label.")] string cluster,
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -130,9 +130,9 @@ internal sealed partial class KubernetesMcpTools(
                 ? await generic.ReadAsync<RawKubernetesObject>(name, cancel: token)
                 : await generic.ReadNamespacedAsync<RawKubernetesObject>(_RequireNamespace(@namespace), name, cancel: token);
             var node = JsonSerializer.SerializeToNode(resource);
-            if (HelmManagedDetector.Detect(node) is { } helmManaged)
+            if (node is not null)
             {
-                node![HelmManagedDetector.PropertyName] = helmManaged;
+                ResourceOwnership.Annotate(node);
             }
 
             return McpText.Node(node);
