@@ -26,6 +26,7 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
             Description = "Loonverwerking — DDD-template, MSSQL.",
             GitUrl = "git@github.com:synvolution/payroll-processor.git",
             BehaviorPrompt = "Werk volgens de DDD-template.",
+            Assistant = "Aura",
             SourceDirectories = [new("/home/raymond/RiderProjects/payroll")],
             DefaultProfileLabel = "Claude — Opus 5",
             McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["Depot: Work", "YouTrack"] },
@@ -194,6 +195,11 @@ public partial class ShareProjectDialogViewModel : ViewModelBase
         GoesToDepot.Add(new ShareFieldRowViewModel("Worktree isolation", _project.IsolateInWorktreeByDefault ? "on" : "off"));
 
         StaysOnThisMachine.Add(new ShareFieldRowViewModel("Profile", _project.DefaultProfileLabel is { Length: > 0 } profile ? profile : "not set"));
+
+        // AC-1071: named even when unset, beside the profile it belongs with — this column exists so the operator
+        // can see that whoever binds this project keeps their own assistant rather than inheriting theirs.
+        StaysOnThisMachine.Add(new ShareFieldRowViewModel(
+            "Assistant", _project.Assistant is { Length: > 0 } assistant ? assistant : "not set"));
 
         if (_project.SourceDirectory is { Length: > 0 } folder)
         {

@@ -107,6 +107,22 @@ public class ShareProjectDialogViewModelTests
         Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label == "Category");
     }
 
+    /// <summary>
+    /// AC-1071 acceptance criterion 6: the assistant stays on this machine, beside the profile it belongs with.
+    /// Named even when unset — a column titled "what stays here" that skips it would leave the operator guessing
+    /// whether their persona is about to be imposed on everyone who binds the project.
+    /// </summary>
+    [Theory]
+    [InlineData("Zyra", "Zyra")]
+    [InlineData(null, "not set")]
+    public void Rows_TheAssistant_StaysOnThisMachineAndNeverGoesToDepot(string? assistant, string expected)
+    {
+        var viewModel = ShareProjectDialogViewModel.Create(Project() with { Assistant = assistant }, []);
+
+        Assert.Contains(viewModel.StaysOnThisMachine, row => row.Label == "Assistant" && row.Value == expected);
+        Assert.DoesNotContain(viewModel.GoesToDepot, row => row.Label == "Assistant");
+    }
+
     // AC-763: the logo now travels with the rest of the definition, so it belongs in the column that promises that.
     [Fact]
     public void Rows_ALogo_GoesToDepotRatherThanStayingOnThisMachine()
