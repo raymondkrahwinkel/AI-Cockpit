@@ -139,10 +139,9 @@ public class DiscordChannelBridgeImageTests
         Assert.Empty(sink.Reactions);
         Assert.Empty(sink.Posted);
     }
-    /// <summary>
-    /// AC-1074: a dropped attachment is a dropped piece of the message, so it says so through the host. It used
-    /// to go to Trace, which nothing in this app listens to, so the reason reached nobody at all.
-    /// </summary>
+
+    // AC-1074: a dropped attachment is a dropped piece of the message, so it says so through the host. It used
+    // to go to Trace, which nothing in this app listens to, so the reason reached nobody at all.
     [Fact]
     public async Task AnAttachmentThatCannotBeFetched_IsReportedWithItsNameAndReason()
     {

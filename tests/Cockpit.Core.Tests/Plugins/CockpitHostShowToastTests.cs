@@ -10,10 +10,8 @@ using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
 
-/// <summary>
-/// <see cref="CockpitHost.ShowToast"/> (AC-1074): an error toast also lands in the log. A toast is gone in seconds,
-/// and a channel plugin reporting "nothing will ever come in" is exactly what someone reads back an hour later.
-/// </summary>
+// CockpitHost.ShowToast (AC-1074): an error toast also lands in the log. A toast is gone in seconds, and a channel
+// plugin reporting "nothing will ever come in" is exactly what someone reads back an hour later.
 public class CockpitHostShowToastTests
 {
     [Fact]

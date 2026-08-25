@@ -37,10 +37,8 @@ public class SlackUserIdTests
     public void AValidId_ValidatesClean() =>
         Assert.Null(SlackUserId.Validate("U0123ABCDE"));
 
-    /// <summary>
-    /// AC-1074: the live config held "D0BNYEX539D" — a DM conversation id in the member-id field. Telling the
-    /// operator which object they actually pasted is what stops them pasting it straight back in.
-    /// </summary>
+    // AC-1074: the live config held "D0BNYEX539D" — a DM conversation id in the member-id field. Telling the
+    // operator which object they actually pasted is what stops them pasting it straight back in.
     [Theory]
     [InlineData("D0BNYEX539D", "a DM conversation id")]
     [InlineData("C0BRZNHGFEJ", "a public channel id")]
