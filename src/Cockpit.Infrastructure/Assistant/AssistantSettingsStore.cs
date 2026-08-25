@@ -5,11 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Assistant;
 
-// Persists `AssistantSettings` under the `assistant` section of `cockpit.json` — same
-// read-modify-write pattern as `Cockpit.Infrastructure.Voice.VoiceSettingsStore`, so saving these
-// settings never touches the assistant's own profile section (`assistantProfile`, owned by
-// `AssistantProfileStore`) or any other sibling. When no settings were ever saved,
-// `LoadAsync` returns the defaults (assistant disabled).
+// Persists `AssistantSettings` under the `assistant` section of `cockpit.json` — same read-modify-write
+// pattern as `VoiceSettingsStore`, so saving never touches sibling sections like `assistantProfile`.
+// When no settings were ever saved, `LoadAsync` returns the defaults (assistant disabled).
 internal sealed class AssistantSettingsStore : IAssistantSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;

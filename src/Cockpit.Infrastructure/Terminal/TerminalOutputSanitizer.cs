@@ -2,16 +2,9 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Infrastructure.Terminal;
 
-// Turns the raw terminal bytes a coupled pane captured (ANSI/VT escape sequences and all) into plain text for
-// `read_terminal` (AC-34): the agent gets what a person would read on the screen, not a stream of colour codes
-// and cursor moves. Applied to the whole captured buffer at read time — never per output chunk — so an escape
-// sequence split across two pty writes is already rejoined before it is stripped.
-//
-// A pragmatic strip rather than a full terminal emulation: it removes CSI (colours, cursor moves), OSC (title/
-// clipboard), and the other escape forms, folds CRLF to LF, applies a lone CR as a column-0 overwrite (so a shell's
-// line redraw reads as the final text, not both drafts concatenated — AC-34), and drops the remaining control bytes
-// (a backspace, a bell) — enough to read a shell's output cleanly. It does not reconstruct a redrawn TUI
-// (htop, vim); a cell-accurate view of those is a later refinement.
+// Turns the raw terminal bytes a coupled pane captured into plain text for `read_terminal` (AC-34). Applied to
+// the whole captured buffer at read time — never per output chunk — so a split escape sequence is rejoined first.
+// A pragmatic strip, not a full terminal emulation: it does not reconstruct a redrawn TUI (htop, vim).
 internal static class TerminalOutputSanitizer
 {
     // ESC [ <params 0x30-0x3f> <intermediates 0x20-0x2f> <final 0x40-0x7e> — colours, cursor moves, erases.
@@ -42,10 +35,8 @@ internal static class TerminalOutputSanitizer
         return OtherControls.Replace(text, string.Empty);
     }
 
-    // A lone carriage return moves the cursor to column 0 and later characters overwrite what is already there, so a
-    // shell that redraws its input line (echoes a key, then CR and reprints the whole line) reads as the final visible
-    // text — not both drafts concatenated, which turned "ls" into "lls" (AC-34). Run before the control-byte strip so
-    // the CR is applied, not dropped. Off the happy path (no CR present) it is a no-op.
+    // A lone CR moves the cursor to column 0, so a shell's line redraw reads as the final text, not both
+    // drafts concatenated (was "ls" -> "lls", AC-34). Run before the control-byte strip so the CR is applied.
     private static string _ApplyCarriageReturns(string text)
     {
         if (!text.Contains('\r'))

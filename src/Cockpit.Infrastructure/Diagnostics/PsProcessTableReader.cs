@@ -5,13 +5,9 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.Infrastructure.Diagnostics;
 
-// macOS's process table, via `ps` (#78). macOS has no `/proc`, and .NET exposes no parent-process id,
-// so the one reliable way to see who spawned what is the tool the system ships with. One `ps` per sample
-// (every few seconds), not one per session.
-//
-// The parsing lives in `PsLine` and is unit-tested — this codebase has no Mac to try it on, so the
-// part that can be verified without one is verified without one, and the part that cannot (does `ps` run,
-// does it accept these flags) is stated plainly rather than assumed.
+// macOS's process table, via `ps` (#78): no `/proc`, and .NET exposes no parent-process id, so `ps` is the
+// one reliable source. Parsing lives in `PsLine` and is unit-tested — this codebase has no Mac to try it
+// on, so only what can be verified without one is verified; whether `ps` itself runs is assumed.
 [SupportedOSPlatform("macos")]
 internal sealed class PsProcessTableReader : IProcessTableReader
 {

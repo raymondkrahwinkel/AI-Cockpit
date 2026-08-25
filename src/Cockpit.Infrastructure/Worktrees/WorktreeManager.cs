@@ -31,10 +31,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         // tests construct this directly and simply omit it to skip the cleanup being exercised.
         _dockerCli = dockerCli;
 
-        // Resolved per create, so an override the operator changes in Options takes effect on the next worktree
-        // rather than only on a restart. A blank override keeps the default under the app state root. An unreadable
-        // config must never make creating a worktree fail — resolving the root is not the place to surface a corrupt
-        // cockpit.json — so a load failure falls back to the default root rather than throwing on the create path.
+        // Resolved per create, so an operator override in Options takes effect on the next worktree, not only on
+        // restart. An unreadable config must never make creating a worktree fail, so a load failure falls back to
+        // the default root rather than throwing on the create path.
         _resolveRoot = async cancellationToken =>
         {
             string? root;
@@ -111,10 +110,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             repository = repository with { HeadCommit = forkAt };
         }
 
-        // Announced here rather than through the returned record, because from this line on the operator's checkout
-        // may already have moved and everything below can still fail: a cancelled start, a branch name that is
-        // taken, a git that will not run. Any of those throws, and a record nobody receives cannot tell anyone their
-        // branch is not where they left it. A listener that throws must not take the creation down with it.
+        // Announced here rather than through the returned record: from this line on the checkout may already have
+        // moved and everything below can still fail (cancelled start, taken branch name, git error), and a record
+        // nobody receives cannot tell anyone their branch moved. A listener that throws must not abort creation.
         try
         {
             SourceRefreshed?.Invoke(sourceRefresh);
@@ -138,11 +136,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
         Directory.CreateDirectory(Path.GetDirectoryName(worktreePath)!);
 
-        // -b, never -B: an already-existing branch is a hard failure, not a silent reset of that branch's history
-        // onto a new base. --lock holds the worktree against a prune sweep for as long as the session owns it.
-        // Submodules are not auto-populated here: `git worktree add` has no --recurse-submodules option (verified
-        // against git 2.55, contrary to the design note), so a repository that uses submodules needs a
-        // `git submodule update --init` inside the worktree — a documented limitation, not a common case.
+        // -b, never -B: an already-existing branch is a hard failure, not a silent reset of its history onto a new
+        // base. --lock holds the worktree against a prune sweep for as long as the session owns it. Submodules are
+        // not auto-populated: `git worktree add` has no --recurse-submodules option (verified against git 2.55).
         await GitCli.RunCheckedAsync(
             repository.Root,
             ["worktree", "add", "--lock", "--reason", $"cockpit session {sessionId}", "-b", branch, worktreePath, repository.HeadCommit],
@@ -209,12 +205,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         }
         catch (Exception)
         {
-            // The folder is there but git could not answer from inside it. Which of the two reasons it is decides
-            // everything downstream, so ask: a folder that is no longer a working tree at all — emptied by a removal
-            // that could not delete it, its administration since reclaimed by a prune — holds no working copy to
-            // lose, and saying "uncommitted changes" about it is a claim about work nobody can point at. It also
-            // makes the row unsweepable and its Remove button permanently refusable, which is the state this reads
-            // its way out of (the sibling of AC-342, with the folder left behind instead of gone).
+            // The folder is there but git could not answer from inside it. A folder that is no longer a working
+            // tree at all holds no working copy to lose; reading it as "uncommitted changes" would make the row
+            // unsweepable, the same unremovable-row state as AC-342.
             if (!await _HasWorkingCopyAsync(record.Path, cancellationToken).ConfigureAwait(false))
             {
                 return new WorktreeStatus(record, Exists: true, HasUncommittedChanges: false, StrandableCommits: 0)
@@ -230,12 +223,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         }
     }
 
-    // Whether a git working copy is still at <paramref name="path"/> — git's own answer, not an inference from what
-    // the folder holds. The state this exists for: the folder is on disk but the checkout inside it is not, so every
-    // question asked from within it fails, and the pessimistic reading of that failure ("it might hold work") keeps a
-    // worktree that demonstrably holds none. A git that cannot be run at all counts as "there is one": an answer we
-    // could not get is not evidence the checkout is gone, and every caller is safer keeping a worktree than forgetting
-    // one.
+    // Whether a git working copy is still at <paramref name="path"/> — git's own answer, not an inference from the
+    // folder. A git that cannot be run at all counts as "there is one": an answer we could not get is not evidence
+    // the checkout is gone, and every caller is safer keeping a worktree than forgetting one.
     private static async Task<bool> _HasWorkingCopyAsync(string path, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(path))
@@ -264,27 +254,15 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         return await _StrandableCommitCountAsync(record, cancellationToken).ConfigureAwait(false) == 0;
     }
 
-    // The work a removal would strand: commits that exist nowhere but in this worktree's branch (AC-266). The
-    // question is not "is this branch merged" but "can removing it lose anything", and a commit is safe the moment
-    // it is reachable from somewhere else — so this asks three cheap questions and stops at the first "safe":
-    //
-    //   1. Reachable from the base branch's current tip, or from ANY remote-tracking ref. One rev-list does both.
-    //      The remote half is what makes a pushed-but-unmerged branch removable: a push updates the local
-    //      remote-tracking ref, so this needs no network and is true the instant the session pushed.
-    //   2. Present in the base by content rather than by identity — a squash- or rebase-merge rewrites the commits,
-    //      so their SHAs are absent from the base while the work is in it. `git cherry` compares patch ids.
-    //   3. Same content on the files this branch touched. This is what catches a squash of SEVERAL commits, which
-    //      step 2 misses: patch ids are per commit, and one squashed commit matches none of the originals.
-    //
-    // Every step errs towards "still holds work" — the direction that keeps a tree rather than losing one. Both the
-    // panel status and the teardown clean-gate share this, so the two never disagree on what "has work to keep" means.
+    // The work a removal would strand: commits that exist nowhere but in this worktree's branch (AC-266). Asks
+    // three cheap questions and stops at the first "safe": reachable from base/remote, present by content via
+    // `git cherry` (squash/rebase rewrites SHAs), or same file content as base. Errs towards "still holds work".
     private static Task<int> _StrandableCommitCountAsync(WorktreeRecord record, CancellationToken cancellationToken) =>
         _CommitsOutsideBaseAsync(record, treatPushedAsSafe: true, cancellationToken);
 
-    // Whether every commit on this branch is in the base branch itself — the stricter question, with a push to a
-    // remote NOT counting as an answer. Deleting the local branch is gated on this rather than on IsCleanAsync: a
-    // remote-tracking ref is a claim about a remote as this repository last saw it, and a force-push or a deleted
-    // remote branch makes that claim stale. Keeping the branch costs a dead ref; getting it wrong costs the commits.
+    // Whether every commit on this branch is in the base branch itself — a push to a remote does NOT count.
+    // Deleting the local branch is gated on this rather than on IsCleanAsync: a remote-tracking ref may be stale
+    // (force-push, deleted remote branch). Keeping the branch costs a dead ref; getting it wrong costs the commits.
     private static async Task<bool> _IsFullyInBaseAsync(WorktreeRecord record, CancellationToken cancellationToken) =>
         await _CommitsOutsideBaseAsync(record, treatPushedAsSafe: false, cancellationToken).ConfigureAwait(false) == 0;
 
@@ -316,10 +294,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     // where comparing history by identity says "unmerged" about work that is demonstrably in the base.
     private static async Task<bool> _IsInBaseByContentAsync(string path, string tip, string baseRef, CancellationToken cancellationToken)
     {
-        // '+' marks a commit whose patch the base does not have; none of them means every commit arrived, however it
-        // was rewritten on the way. Skipped when a merge commit is among them: git cherry compares patches and emits
-        // no line at all for a merge, so a branch whose only unmerged commit IS a merge — an evil merge carrying
-        // conflict resolution of its own — would read as "all present" on an empty answer.
+        // '+' marks a commit whose patch the base does not have; none of them means every commit arrived. Skipped
+        // when a merge commit is among them: git cherry emits no line for a merge, so a branch whose only unmerged
+        // commit IS a merge would falsely read as "all present" on an empty answer.
         var merges = await GitCli.RunAsync(path, ["rev-list", "--count", "--merges", tip, "--not", baseRef], cancellationToken).ConfigureAwait(false);
         var hasNoMergeCommit = merges.ExitCode == 0 && merges.StandardOutput.Trim() == "0";
 
@@ -331,12 +308,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             return true;
         }
 
-        // Several commits squashed into one: no per-commit patch matches, so ask the only question that still holds —
-        // do the files this branch touched look exactly the same in the base? If they do, there is nothing to strand.
-        // If the base moved on past the merge, they differ and the tree is kept: a false "has work", never a false
-        // "safe". Paths come from the fork point (three-dot), so files only the base changed are not consulted, and
-        // -z because git quotes and octal-escapes a non-ASCII path by default — a pathspec that then matches nothing,
-        // which git answers with "no difference" and would read as safe.
+        // Several commits squashed into one: no per-commit patch matches, so ask instead whether the files this
+        // branch touched look exactly the same in the base. Paths come from the fork point (three-dot); -z avoids
+        // git's default quoting/octal-escaping of non-ASCII paths, which would make a pathspec match nothing.
         var touched = await GitCli.RunAsync(path, ["diff", "--name-only", "-z", $"{baseRef}...{tip}"], cancellationToken).ConfigureAwait(false);
         var paths = touched.StandardOutput.Split('\0', StringSplitOptions.RemoveEmptyEntries);
         if (touched.ExitCode != 0 || paths.Length == 0)
@@ -367,11 +341,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             return await _FurthestKnownTipAsync(record.Path, recordedBase, cancellationToken).ConfigureAwait(false);
         }
 
-        // Legacy records (written before the base branch was tracked) and detached-HEAD creations have no recorded
-        // branch: fall back to the repository's default branch. Discover its name from origin/HEAD but prefer the
-        // LOCAL ref of that name, so a worktree merged into a local main that has not been pushed yet still reads as
-        // merged rather than being measured against a stale origin tip. Only if no local ref matches do we measure
-        // against the remote-tracking ref itself, and only then against the frozen fork commit.
+        // Legacy records and detached-HEAD creations have no recorded branch: fall back to the repository's default
+        // branch, preferring the LOCAL ref (from origin/HEAD's name) so a merged-but-not-pushed local main still
+        // reads as merged. Only falls to the remote-tracking ref, then the frozen fork commit, if that fails.
         var originHead = await GitCli.RunAsync(
             record.Path,
             ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
@@ -404,10 +376,8 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     }
 
     // The base branch as far along as this repository knows it: its local tip, or its remote-tracking tip when the
-    // local one has not caught up. Measuring against a local branch that lags behind the remote reports work as
-    // unmerged that the merge on the remote already absorbed — an operator who never pulls would keep every finished
-    // worktree forever. Only ever moves FORWARD: a local branch that is ahead (merged locally, not yet pushed) wins,
-    // which is what the local-first preference protected.
+    // local one has not caught up. A local branch lagging behind the remote would report work as unmerged that the
+    // remote already absorbed. Only ever moves FORWARD — a local branch ahead (merged, not yet pushed) wins.
     private static async Task<string> _FurthestKnownTipAsync(string path, string branch, CancellationToken cancellationToken)
     {
         // git's own answer to "where does this branch push to", rather than guessing at origin/<branch>: it honours a
@@ -446,11 +416,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     public Task<bool> HasUncommittedChangesAsync(WorktreeRecord record, CancellationToken cancellationToken = default) =>
         _PorcelainDirtyAsync(record.Path, cancellationToken);
 
-    // The porcelain "does the working tree still hold uncommitted changes or untracked files" check — the exact
-    // content a force-remove would discard — shared by the teardown clean-gate and the agent-facing dirty-removal
-    // consent gate so the rule lives in one place. A folder that is gone holds nothing; a folder git cannot read
-    // (corrupt, mid-delete) is treated as holding changes, the safe direction — a state we cannot prove clean is
-    // never silently discarded.
+    // The porcelain "uncommitted changes or untracked files" check, shared by the teardown clean-gate and the
+    // agent-facing dirty-removal consent gate so the rule lives in one place. A folder git cannot read (corrupt,
+    // mid-delete) is treated as holding changes — a state we cannot prove clean is never silently discarded.
     private static async Task<bool> _PorcelainDirtyAsync(string path, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(path))
@@ -488,28 +456,20 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
                     "git refused to remove worktree '{Branch}' at '{Path}': {Refusal}", record.Branch, record.Path, refusal);
             }
 
-            // A refusal about a folder that still holds a working copy stands: it may hold work, and git said in its
-            // own words why it would not go. With no working copy left there is nothing for git to remove — the
-            // folder gone after a manual delete plus a prune, or a folder left behind with the checkout cleared out
-            // of it — and the registry entry is the only thing that outlived the worktree. Dropping that entry IS the
-            // removal then. Failing instead would leave the panel a row whose Remove button can never succeed
-            // (AC-342), and git's own admin entry, if one lingers, is what the reconcile sweep's prune is for.
+            // A refusal about a folder that still holds a working copy stands. With no working copy left, only the
+            // registry entry outlived the worktree, so dropping it IS the removal; failing instead would leave a
+            // Remove button that can never succeed (AC-342). Git's own admin entry is the reconcile sweep's job.
             if (refusal is not null && await _HasWorkingCopyAsync(record.Path, cancellationToken).ConfigureAwait(false))
             {
                 throw new InvalidOperationException(refusal);
             }
         }
-        // Else (AC-507): the repository this worktree was forked from is gone — `git worktree remove` cannot run
-        // without it (there is nowhere to ask), so it is never even attempted. Route A (Raymond, 2026-07-30): drop
-        // the registry entry unconditionally and leave the worktree folder exactly as it is, whether or not it still
-        // holds uncommitted work — the alternative (keep refusing) reproduces AC-342, a Remove button that can never
-        // succeed.
+        // Else (AC-507): the repository is gone, so `git worktree remove` can't run — drop the registry entry
+        // unconditionally, leaving the folder as-is (Route A, Raymond, 2026-07-30); refusing instead reproduces
+        // AC-342.
 
-        // Whichever branch above got here is about to drop the registry entry as the only removal that is still
-        // possible — git either was never asked (repository gone) or already agreed there is nothing left it can
-        // measure. "Removed from the cockpit" must still mean "gone from disk" whenever that is provable (Raymond:
-        // a worktree Cockpit shows as removed must actually be gone), so a folder that still holds content is only
-        // ever left in place when deleting it cannot be shown to be safe — never on a guess (cleanup-policy A).
+        // "Removed from the cockpit" must still mean "gone from disk" whenever provable, so a folder that still
+        // holds content is only ever left in place when deleting it cannot be shown safe (cleanup-policy A).
         string? notice = null;
         try
         {
@@ -547,10 +507,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         }
         catch (Exception)
         {
-            // An unreadable folder (permissions, a dying mount) is still a folder that might hold something —
-            // the same safe direction _PorcelainDirtyAsync and _HasWorkingCopyAsync take elsewhere in this file.
-            // Dropping the entry must never depend on being able to enumerate what is left behind: silence here
-            // would have reintroduced exactly the undeletable row this fix exists to remove.
+            // An unreadable folder (permissions, a dying mount) is still a folder that might hold something, the
+            // same safe direction as _PorcelainDirtyAsync/_HasWorkingCopyAsync. Dropping the entry must never
+            // depend on enumerating what is left behind — that would reintroduce the undeletable row this fixes.
             notice = $"'{record.Branch}''s worktree folder at '{record.Path}' could not be checked and was left on disk, untouched.";
             _logger?.LogWarning(
                 "Could not even check what is left in '{Path}' for branch '{Branch}'; left on disk, untouched.", record.Path, record.Branch);
@@ -644,14 +603,8 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         "comes back — run 'git worktree unlock' and 'git worktree prune' there by hand.";
 
     // Whether a leftover worktree folder holds nothing beyond what a commit already safely preserves elsewhere, so
-    // deleting it destroys no work — the hard boundary Fix 2 exists to enforce: physical deletion only ever follows
-    // proof, never a guess (cleanup-policy A). Two questions, both answered from the repository root rather than the
-    // folder itself — that folder is precisely the one git no longer recognises as a working tree, which is why
-    // RemoveAsync is asking this at all:
-    //   1. Is every commit reachable only from this branch already reachable from the base or a remote?
-    //   2. Does every file physically on disk match, byte for byte, what that branch's own tip has committed?
-    // A "no", or an "I cannot tell" to either — the repository itself gone, a branch that no longer resolves, a rev-
-    // list that fails — answers false: left on disk is the safe fallback either way.
+    // deleting it destroys no work (physical deletion only ever follows proof, cleanup-policy A). Checks commit
+    // reachability from base/remote and byte-for-byte file match against the branch tip; "cannot tell" answers false.
     private static async Task<bool> _CanDeleteLeftoverFolderAsync(WorktreeRecord record, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(record.RepositoryRoot))
@@ -681,12 +634,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         }
     }
 
-    // Whether every real file still sitting under the folder is exactly what the branch's own tip already
-    // committed — answered by comparing git's own tree listing to the files on disk, since the folder's local git
-    // recognition is gone (that is why this is being asked at all, rather than a plain `git status`). Any extra
-    // file, any content mismatch, or a folder that cannot even be walked (permissions, a dying mount) all read as
-    // "not provably safe": the cost of a false "safe" is somebody's lost work, the cost of a false "not sure" is
-    // only a folder left behind for the operator to look at by hand.
+    // Whether every real file under the folder is exactly what the branch's own tip already committed — compares
+    // git's tree listing to disk, since the folder's local git recognition is gone. Any extra file, mismatch, or
+    // unwalkable folder reads as "not provably safe": a false "safe" loses work, a false "not sure" only strands a folder.
     private static async Task<bool> _MatchesTrackedContentAsync(WorktreeRecord record, CancellationToken cancellationToken)
     {
         var tracked = await _TrackedBlobsAsync(record.RepositoryRoot, record.Branch, cancellationToken).ConfigureAwait(false);
@@ -769,10 +719,8 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             .Equals(".git", StringComparison.Ordinal);
 
     // Asks git to remove the worktree and reports what it refused with, or null when it went through. Unlocked
-    // first because git declines a locked worktree without a second --force; that unlock may itself fail (already
-    // unlocked after a prune elsewhere, or a manual git) and is deliberately ignored — the removal is the step that
-    // has to land, and it speaks for itself. git being unrunnable here at all (the repository folder is gone) is a
-    // refusal like any other: the caller decides what it means, knowing whether the worktree is still on disk.
+    // first because git declines a locked worktree without a second --force; that unlock may itself fail and is
+    // deliberately ignored — the removal is the step that has to land. Git being unrunnable is a refusal like any other.
     private static async Task<string?> _AskGitToRemoveAsync(WorktreeRecord record, bool force, CancellationToken cancellationToken)
     {
         string[] arguments = force
@@ -792,12 +740,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         }
     }
 
-    // The empty folders a removal leaves behind: the worktree's own, when git would not delete it (a removal that got
-    // as far as clearing the checkout, and a Windows handle on the directory that outlasted it), and the
-    // per-repository grouping folder (<worktreesRoot>/<repo-hash>/) above it, which git never touches — it removes
-    // the worktree leaf, not the folder holding it. Sweep both so finished repositories do not accumulate empty
-    // directories. Best-effort and only when empty: a folder still holding anything — a sibling worktree, files left
-    // in a cleared-out one — is never touched.
+    // The empty folders a removal leaves behind: the worktree's own (git may not delete it, e.g. a lingering
+    // Windows handle) and the per-repository grouping folder above it, which git never touches. Sweep both so
+    // finished repositories do not accumulate empty directories. Best-effort and only when empty.
     private static void _TryRemoveIfEmpty(string? directory)
     {
         try
@@ -823,12 +768,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             return null;
         }
 
-        // Re-lock so a reconcile sweep leaves the reattached worktree alone, and re-own it so liveness and later
-        // teardown follow the new session rather than the dead one. Locking is best-effort — it may already be
-        // locked, or the repository behind it may be gone entirely (AC-507) — and the try/catch makes that true in
-        // practice as well as in the comment: an unhandled start failure here (GitCli now throws instead of
-        // silently returning a non-zero exit) previously took the whole reattach down with it, before the re-own
-        // below — the part that actually has to land — ever ran.
+        // Re-lock so a reconcile sweep leaves the reattached worktree alone, and re-own it so liveness and teardown
+        // follow the new session. Locking is best-effort (may already be locked, or the repository gone — AC-507):
+        // an unhandled failure here previously took the whole reattach down before the re-own below ever ran.
         var locked = true;
         try
         {
@@ -916,11 +858,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
     private async Task _ReleaseOneAsync(WorktreeRecord record, CancellationToken cancellationToken)
     {
-        // A worktree with no working copy left — its folder gone, or the folder still there with the checkout cleared
-        // out of it — has nothing to keep, and nothing about it can be measured either: the clean check below runs git
-        // inside that folder and fails, which counts as "not clean" and marks the record retained — so teardown left
-        // exactly the entry the panel then could not remove (AC-342). Drop it here instead. The branch is kept, as on
-        // every other removal, so commits that live only there stay reachable.
+        // A worktree with no working copy left has nothing to keep, and nothing about it can be measured either:
+        // the clean check below would fail and mark the record retained, leaving the unremovable row AC-342 fixes.
+        // Drop it here instead; the branch is kept, as on every other removal.
         if (!await _HasWorkingCopyAsync(record.Path, cancellationToken).ConfigureAwait(false))
         {
             await RemoveAsync(record, force: false, cancellationToken).ConfigureAwait(false);
@@ -941,11 +881,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
         if (clean)
         {
-            // Asked while the worktree is still there, since the answer is measured from inside it. The branch goes
-            // only when its work is in the base branch itself, otherwise finished sessions would pile up branches
-            // nobody merges. Deliberately stricter than the clean-gate above (AC-266): that one also calls a pushed
-            // branch safe, which it is for the working tree — a checkout is reproducible — but not a reason to drop
-            // the local commits, since the remote-tracking ref proving it may be stale.
+            // Asked while the worktree is still there. The branch goes only when its work is in the base branch
+            // itself, otherwise finished sessions pile up branches nobody merges. Stricter than the clean-gate
+            // above (AC-266), which also calls a pushed branch safe — not a reason to drop local commits.
             bool isWorkInTheBase;
             try
             {
@@ -986,10 +924,8 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         return Path.GetFullPath(Path.Combine(worktreesRoot, repositoryFolder, leaf));
     }
 
-    // No ticket is bound to a session at start yet, so the branch is a readable slug plus the session's own short id
-    // (§10.5.4) — the id, not a timestamp, because two sessions started in the same second under one label would
-    // otherwise collide on the name and git's -b would refuse the second. Ticket-based naming lands when a session
-    // carries a linked ticket.
+    // No ticket is bound to a session at start yet, so the branch is a readable slug plus the session's short id
+    // (§10.5.4) — the id, not a timestamp, since two sessions in the same second would otherwise collide on the name.
     private static string _BuildBranchName(string? sessionLabel, string sessionId)
     {
         var slug = _Slug(sessionLabel ?? string.Empty);

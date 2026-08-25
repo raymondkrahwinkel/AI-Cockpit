@@ -5,10 +5,9 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Notifications;
 
-// Persists `NotificationSettings` under the `notifications` section of
-// `cockpit.json` (same file/pattern as `SessionProfileStore`). Reads-modifies-writes the
-// whole file via `CockpitConfigFileAccess` so it leaves the `profiles` section
-// untouched. When no settings were ever saved, `LoadAsync` returns the defaults.
+// Persists `NotificationSettings` under the `notifications` section of `cockpit.json` (same
+// pattern as `SessionProfileStore`), read-modify-write via `CockpitConfigFileAccess` so the
+// `profiles` section stays untouched. `LoadAsync` returns defaults when nothing was ever saved.
 internal sealed class NotificationSettingsStore : INotificationSettingsStore, ISingletonService
 {
     private readonly CockpitConfigFileAccess _configFile;

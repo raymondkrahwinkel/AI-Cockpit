@@ -3,13 +3,9 @@ using Cockpit.Core.Abstractions.Terminal;
 
 namespace Cockpit.Infrastructure.Terminal;
 
-// The live value of the terminal-access master switch (AC-34), read synchronously by the endpoint fan-out to decide
-// whether the `cockpit-terminal` server is advertised to a session at all. Off by default: the feature is opt-in.
-//
-// A tiny mutable singleton rather than an async settings read, because the fan-out asks "is it on?" on a hot path and
-// wants an immediate answer. Its initial value is seeded from the persisted `Core.Terminal.TerminalAccessSettings`
-// at startup, and the Options toggle flips it live (and persists), so a change takes effect on the next session
-// without a restart.
+// The live value of the terminal-access master switch (AC-34), read synchronously by the endpoint fan-out.
+// A tiny mutable singleton rather than an async settings read, since the fan-out needs an immediate answer.
+// Seeded from persisted settings at startup; the Options toggle flips it live, taking effect next session.
 internal sealed class TerminalAccessState : ITerminalAccessSwitch, ISingletonService
 {
     public bool Enabled { get; set; }

@@ -7,16 +7,9 @@ using Cockpit.Core.Notifications;
 
 namespace Cockpit.Infrastructure.Notifications;
 
-// Best-effort Windows toast for the present operator, raised through PowerShell's built-in WinRT
-// `ToastNotificationManager`. This route was chosen because the cockpit is an unpackaged Win32
-// app with no package identity: a real toast normally needs a registered AppUserModelID + Start-menu
-// shortcut, whereas PowerShell already ships one, so a genuine toast appears without pulling in a
-// `net*-windows10` toast package or a Windows-only target framework (Infrastructure stays
-// cross-platform `net10.0`).
-// LIVE-CHECK FLAG (Iron Law #9): whether the toast actually renders on Raymond's desktop cannot be
-// observed from this sandbox, and the toast shows under the "Windows PowerShell" app identity rather
-// than the cockpit's own. It is a best-effort, lighter notification — not a faked one. The Discord
-// webhook branch is the primary, verified path; this toast path is the secondary one.
+// Best-effort Windows toast raised through PowerShell's WinRT `ToastNotificationManager`, since the
+// cockpit is an unpackaged Win32 app with no AppUserModelID. Shows under "Windows PowerShell", not
+// the cockpit's own identity; secondary to the verified Discord webhook path.
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsToastNotifier(ILogger<WindowsToastNotifier> logger) : IToastNotifier
 {

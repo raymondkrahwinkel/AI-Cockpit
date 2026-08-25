@@ -6,11 +6,9 @@ using Cockpit.Core.Notifications;
 
 namespace Cockpit.Infrastructure.Notifications;
 
-// POSTs a needs-attention notification to a Discord webhook as `application/json` with the
-// `{"content":"..."}` body Discord expects. This is the primary "operator is away" channel
-// and must be solid: it is self-contained (a plain HTTP POST, no AI-Hub / MCP dependency), and a
-// non-2xx response or transport failure is logged rather than thrown, so a failed notification
-// never breaks the session flow that triggered it.
+// POSTs a needs-attention notification to a Discord webhook as `application/json`. This is the
+// primary "operator is away" channel: self-contained (plain HTTP POST, no AI-Hub / MCP dependency),
+// and a non-2xx response or transport failure is logged rather than thrown so it never breaks the session.
 internal sealed class DiscordWebhookNotifier(HttpClient httpClient, ILogger<DiscordWebhookNotifier> logger)
     : IWebhookNotifier, ISingletonService
 {

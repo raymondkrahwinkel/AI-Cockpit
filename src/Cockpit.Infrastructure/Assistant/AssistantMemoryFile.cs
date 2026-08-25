@@ -5,9 +5,8 @@ using Cockpit.Infrastructure.Configuration;
 namespace Cockpit.Infrastructure.Assistant;
 
 // The assistant's memory as a markdown file next to `cockpit.json` (AC-595). Plain text a human can open,
-// because opening it is the only way to prune it.
-// Not in `cockpit.json`: that file is written whole by `CockpitConfigFileAccess` on every settings
-// change, and a growing block of free text in it would ride along with every one of those writes.
+// because opening it is the only way to prune it. Not in `cockpit.json`: that file is written whole on every
+// settings change, and a growing block of free text would ride along with every one of those writes.
 internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
 {
     private const string Heading = "# What the operator asked me to remember";

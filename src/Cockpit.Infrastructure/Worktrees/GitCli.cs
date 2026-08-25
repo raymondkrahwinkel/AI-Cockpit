@@ -4,16 +4,13 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-// Runs git for the worktree manager (AC-85). A thin wrapper over the git CLI rather than a library binding: the
-// same binary the operator's own shell uses, so git's refusals — "a branch named 'x' already exists", "contains
-// modified or untracked files" — are the ones the cockpit surfaces, and there is no second copy of git's rules
-// to keep in step with it.
+// Runs git for the worktree manager (AC-85). A thin wrapper over the git CLI, not a library binding: git's own
+// refusals ("a branch named 'x' already exists") are what the cockpit surfaces, with no second copy of git's
+// rules to keep in step with it.
 internal static class GitCli
 {
-    // Not a network timeout — a worktree add copies a full checkout, which is slow but bounded. It is a hang guard:
-    // a git waiting on a credential prompt or a wedged index lock would otherwise stall session start forever. The
-    // kill is by tree because git shells out (a credential helper, a submodule clone), and killing only the parent
-    // leaves those running.
+    // Hang guard, not a network timeout: a worktree add is slow but bounded, so this catches a git stuck on a
+    // credential prompt or a wedged index lock. Kill is by tree since git shells out to helpers/submodules.
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
 
     public static async Task<GitResult> RunAsync(
@@ -28,12 +25,9 @@ internal static class GitCli
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            // git writes paths as UTF-8 on every platform. Left unset, .NET decodes a redirected stream with the
-            // console code page, which on Windows is not UTF-8 — "café.txt" comes back mangled, and a pathspec built
-            // from that text matches no file. git answers a pathspec that matches nothing with "no difference", so
-            // IsCleanAsync reads a worktree holding unmerged work as clean and ReleaseAsync deletes its branch.
-            // Same class of silent-safe answer the -z in _HasUnmergedWorkAsync guards against, arriving by a
-            // different door. A no-op where the console is already UTF-8.
+            // git writes paths as UTF-8 on every platform; left unset, .NET decodes via the console code page,
+            // mangling non-ASCII paths so a pathspec built from them matches nothing — and IsCleanAsync then reads
+            // a worktree with unmerged work as clean. No-op where the console is already UTF-8.
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
             UseShellExecute = false,
@@ -41,9 +35,8 @@ internal static class GitCli
         };
 
         // Extra environment for the child git only — how the clone path (AC-90) turns off interactive prompting
-        // (GIT_TERMINAL_PROMPT=0) so a missing credential helper fails fast instead of hanging on an invisible
-        // prompt. Set on the child's own Environment, never the cockpit's, and the seam a future in-memory token
-        // injection (GIT_ASKPASS + the token in this child env only) would extend without touching argv or config.
+        // (GIT_TERMINAL_PROMPT=0) so a missing credential helper fails fast. Set on the child's Environment only,
+        // never the cockpit's.
         if (environment is not null)
         {
             foreach (var (name, value) in environment)
@@ -52,11 +45,8 @@ internal static class GitCli
             }
         }
 
-        // core.longpaths so a worktree checkout — the app state root plus a deep repository path (a nested Angular
-        // component tree is enough) — does not trip Windows' 260-character path limit with "Filename too long".
-        // Git for Windows then writes through the \\?\ extended-length API regardless of the OS registry switch.
-        // A harmless no-op off Windows and for git commands that create no files. Set per-invocation so it never
-        // depends on the operator's global config.
+        // core.longpaths so a worktree checkout does not trip Windows' 260-character path limit. Harmless no-op
+        // off Windows. Set per-invocation so it never depends on the operator's global config.
         startInfo.ArgumentList.Add("-c");
         startInfo.ArgumentList.Add("core.longpaths=true");
 
@@ -65,12 +55,9 @@ internal static class GitCli
             startInfo.ArgumentList.Add(argument);
         }
 
-        // Checked up front rather than inferred from the Process.Start() failure below: a missing working directory
-        // and a missing git binary both surface as a Win32Exception there (on Windows, "The directory name is
-        // invalid"; on Linux, "No such file or directory" — the same shape either way), so catching and re-diagnosing
-        // after the fact would be guessing. A caller (AC-507) needs the two told apart — a repository folder that
-        // moved away is its own state to react to, not an environment problem to send the operator chasing a git
-        // install that was never broken.
+        // Checked up front rather than inferred from the Process.Start() failure below: a missing directory and a
+        // missing git binary both surface as the same Win32Exception shape, and a caller (AC-507) needs the two
+        // told apart.
         if (!Directory.Exists(workingDirectory))
         {
             throw new InvalidOperationException($"Could not run git — the working directory does not exist: '{workingDirectory}'.");
@@ -137,25 +124,18 @@ internal static class GitCli
         return result.StandardOutput.Trim();
     }
 
-    // What git refused with, in the words it used. git says why in terms a person can act on ("a branch named 'x'
-    // already exists"); that is what a caller surfaces, not "git exited with 128" — but with the checkout progress
-    // ("Updating files: 42% …", written to stderr and carriage-returned over itself) stripped out first, so a failed
-    // worktree add shows the actual error instead of a hundred percent-lines.
-    //
-    // git echoes the remote URL in its own failures ("fatal: unable to access 'https://user:token@host/…'"), so any
-    // URL userinfo is redacted before this reaches a dialog or a log — the same binding rule the display of the
-    // arguments follows. Belt and suspenders with GitCloneUrl stripping credentials up front.
+    // What git refused with, in the words it used — not "git exited with 128" — with checkout progress chatter
+    // stripped first so a failed worktree add shows the actual error. URL userinfo is redacted too, since git
+    // echoes the remote URL in its own failures.
     internal static string DescribeFailure(GitResult result)
     {
         var said = RedactUrlCredentials(StripProgress(result.StandardError));
         return said.Length > 0 ? said : $"git exited with {result.ExitCode}.";
     }
 
-    // Drops git's transfer/checkout progress chatter ("Updating files:", "Receiving objects:", …) from
-    // `standardError`, so an error surfaced to the operator is the diagnosis, not the progress bar
-    // that ran up to it. Splits on both line terminators because git overwrites progress in place with a carriage
-    // return. Falls back to the raw text if stripping would leave nothing, so a git that reports only via progress
-    // is never reduced to an empty message.
+    // Drops git's transfer/checkout progress chatter from `standardError` so the surfaced error is the diagnosis,
+    // not the progress bar. Splits on both line terminators since git overwrites progress with a carriage return.
+    // Falls back to the raw text if stripping would leave nothing.
     internal static string StripProgress(string standardError)
     {
         var kept = standardError
@@ -172,10 +152,8 @@ internal static class GitCli
     // userinfo before the arguments are joined for display. A binding rule: secret values never in argv/config/logs.
     private static readonly Regex _UrlUserInfo = new(@"://[^/@\s]+@", RegexOptions.Compiled);
 
-    // Blanks any URL userinfo (`https://user:token@host`) in `text` bound for an exception
-    // message or a log. The same binding rule as `_RedactArguments`, applied to arbitrary text — git's
-    // own stderr echoes the remote URL in its failures, so a pasted token would otherwise ride a clone/fetch error
-    // straight into the dialog and the log.
+    // Blanks any URL userinfo (`https://user:token@host`) in `text` bound for an exception message or log — git's
+    // stderr echoes the remote URL in its failures, so a pasted token would otherwise ride along.
     internal static string RedactUrlCredentials(string text) => _UrlUserInfo.Replace(text, "://***@");
 
     private static string _RedactArguments(IReadOnlyList<string> arguments) =>

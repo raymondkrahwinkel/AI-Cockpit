@@ -62,17 +62,9 @@ internal sealed class ProcProcessTableReader : IProcessTableReader
         }
     }
 
-    // One pooled read instead of File.ReadAllText, because this runs for every process on the machine every couple of
-    // seconds and a `/proc` file is the case ReadAllText is worst at: the kernel reports its length as zero, so there
-    // is nothing to size a buffer from and the read grows one under a FileStream and a StreamReader, per process, per
-    // tick. Measured on this machine that machinery cost 18.7 KB per process — 656 processes, 12 MB a tick — for
-    // files of a few hundred bytes.
-    //
-    // A read that fills the buffer is reported as nothing rather than as content. These files come from seq_file
-    // generators that answer a single read in full, so it does not happen at this size — but "did not fit" and "is
-    // all of it" are indistinguishable afterwards, and the failure that would follow is the quiet kind: a `statm`
-    // cut mid-field still has its two spaces and still parses, into a resident figure that is simply too small and
-    // goes straight to the status bar with nothing to say it is wrong.
+    // Pooled read instead of File.ReadAllText: `/proc` reports length zero, so ReadAllText grows a buffer per
+    // process per tick — measured at 18.7 KB/process, 12 MB a tick for 656 processes. A read that fills the
+    // buffer is reported as nothing, since a fit-vs-truncated result would otherwise be indistinguishable.
     private static int _ReadInto(string path, byte[] buffer)
     {
         using var handle = File.OpenHandle(path);
@@ -85,16 +77,9 @@ internal sealed class ProcProcessTableReader : IProcessTableReader
     // Comfortably over a `stat` line for a process with a long name, and over any `statm`.
     private const int BufferBytes = 4096;
 
-    // What the process actually occupies, which is what an operator means by "how much RAM is this using".
-    //
-    // From `statm` rather than `status`, because this runs for every process on the machine every couple of seconds
-    // and `status` is the expensive way to ask: ~1.5 KB over some fifty lines, scanned line by line — a string per
-    // line and a reader per process — to reach one field. `statm` is a single short line of counts. Measured on this
-    // machine, its second field times the page size equals `VmRSS` exactly, so the number on screen does not move.
-    //
-    // Not `stat`'s own rss field, which would have saved the second read altogether: measured against `VmRSS` it sat
-    // about 1.5% low (733.9 vs 744.8 MB on a running cockpit), which is what the kernel's own documentation warns
-    // about. Cheaper, and wrong.
+    // `statm` rather than `status` (cheaper: one short line vs ~50 scanned lines per process); its second
+    // field times the page size equals `VmRSS` exactly. Not `stat`'s own rss field — measured ~1.5% low
+    // (733.9 vs 744.8 MB) versus `VmRSS`, per the kernel docs' own warning: cheaper, and wrong.
     private static long _ReadResidentMemory(int processId)
     {
         var buffer = ArrayPool<byte>.Shared.Rent(BufferBytes);
