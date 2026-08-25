@@ -4,11 +4,8 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
 // AC-605 criterion 4: the host (`ProjectResourcePathPortability.ClassifyScope`) and this plugin
-// (`ProjectResourcePortabilityClassifier.Classify`) must agree on every reference shape — they cannot
-// share code (a plugin must not reference `Cockpit.Core`, AC-244), so this is the one place both are run
-// against the same table and compared. Change either side's rule for a shape here and this test goes red, whichever
-// side changed — that is the whole point: it is not two separate tests that could drift out of sync with each
-// other, only with reality.
+// (`ProjectResourcePortabilityClassifier.Classify`) must agree on every reference shape — they cannot share
+// code (a plugin must not reference `Cockpit.Core`, AC-244), so both run against the same table here.
 public class ProjectResourceScopeParityTests
 {
     // Maps the plugin's own four-shape vocabulary onto the host's — see ProjectResourceScope's own remarks on why

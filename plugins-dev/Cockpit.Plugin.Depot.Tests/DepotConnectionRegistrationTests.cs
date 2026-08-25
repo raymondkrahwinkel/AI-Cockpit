@@ -27,9 +27,8 @@ public class DepotConnectionRegistrationTests
 }
 
 // `PluginMcpSignInOutcome`'s zero value (AC-243): must be `Unavailable`, not `Authorized` —
-// `default(PluginMcpSignInOutcome)` is what an unstubbed fake (`Substitute.For&lt;ICockpitHost&gt;()`'s
-// default `Task&lt;T&gt;` answer for any method nobody configured a return for), a missed switch arm, or a
-// deserialization gap all produce — none of which have actually signed anything in.
+// an unstubbed fake, a missed switch arm, or a deserialization gap all produce the default,
+// none of which have actually signed anything in.
 public class PluginMcpSignInOutcomeTests
 {
     [Fact]

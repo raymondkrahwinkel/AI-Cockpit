@@ -9,44 +9,18 @@ using Microsoft.Extensions.Logging;
 namespace Cockpit.Plugin.Depot;
 
 // Builds the memory-source registration(s) this plugin hands the host (AC-165/166, AC-501): one per configured
-// Depot connection, so the project editor's picker can tell "Depot project — Wispslate" from "Depot project —
-// Synvolution" apart instead of the single fixed "Depot project" a pre-AC-501 install offered regardless of how
-// many instances were connected.
-//
-// A separate type from `DepotPlugin` and `Ui.DepotSettingsControl` — like
-// `Cockpit.Plugin.YouTrack.YouTrackProjectField` is for a project field — so a test can build
-// registrations and assert on the scheme/title/instruction shape without a real MCP server behind them. Since
-// AC-502 it does take an `ICockpitHost`: each registration's `ProjectMemorySourceRegistration.ListLocationsAsync`
-// closes over it to call this connection's own contributed server, but that delegate is never invoked at
-// registration-build time — a test still gets a real, comparable registration without ever calling it.
+// Depot connection, so the picker can tell connections apart instead of a single fixed "Depot project". Kept
+// separate from `DepotPlugin` so a test can assert on scheme/title/instruction without a real MCP server.
 internal static class DepotMemorySource
 {
-    // The prefix a project's `MemoryRef` carries this source under — `depot:cockpit`. Never change it:
-    // an already-linked project's stored reference is matched against it case-insensitively. Reserved for the
-    // first connection in a settings list (see `BuildRegistrationPairs`), so a project linked before
-    // AC-501 ever existed keeps resolving, whichever connection now happens to be first.
+    // The prefix a project's `MemoryRef` carries this source under — `depot:cockpit`. Never change it: an
+    // already-linked project's stored reference is matched against it case-insensitively. Reserved for the
+    // first connection in a settings list, so a project linked before AC-501 keeps resolving.
     public const string Scheme = "depot";
 
-    // One registration per connection, in the same order `connections` lists them, paired with
-    // the connection it was built from — the pairing is what a caller needs to diff "before" against "after" by
-    // connection identity when a save changes the list (`Ui.DepotSettingsControl.Save`), rather than by
-    // position, which a reorder or a removal ahead of a connection would shift out from under it.
-    //
-    // The first connection keeps the plain `Scheme`; every later one gets a scheme namespaced from its
-    // own name (`depot.wispslate`), falling back to its stable `DepotConnectionRegistration.Id`
-    // when the name yields nothing usable (an all-symbol name, e.g.) or collides with another connection's own slug
-    // — a GUID-derived id is always a scheme `ProjectMemoryRef.IsUsableScheme` accepts and is unique by
-    // construction, so a connection is never silently dropped for want of a nameable scheme.
-    //
-    // `connections`: The configured connections.
-    // `host`:
-    // Wires each registration's `ProjectMemorySourceRegistration.CheckReachability` to this connection's
-    // own MCP server (AC-503, rebuilt AC-499) via `host.CallMcpToolAsync`'s `list_projects` — see
-    // `_CheckReachabilityAsync`'s own remarks. Null (the default, and what every existing test of
-    // this method already passes) leaves `CheckReachability` unset — a row behaves exactly as it does today,
-    // nothing shown under it. Optional rather than a second required parameter so this stays the same host-free type
-    // the class remarks describe: a test can still build registrations and assert on them without standing up an
-    // `ICockpitHost`.
+    // Paired with the connection it was built from so a caller can diff "before" against "after" by connection
+    // identity (`Ui.DepotSettingsControl.Save`) rather than position. First connection keeps the plain `Scheme`;
+    // later ones get a scheme namespaced from their own name, falling back to the stable `Id` on collision.
     public static IReadOnlyList<(DepotConnectionRegistration Connection, ProjectMemorySourceRegistration Registration)> BuildRegistrationPairs(
         IReadOnlyList<DepotConnectionRegistration> connections,
         ICockpitHost? host = null)
@@ -70,26 +44,18 @@ internal static class DepotMemorySource
         IReadOnlyList<DepotConnectionRegistration> connections, ICockpitHost? host = null) =>
         BuildRegistrationPairs(connections, host).Select(pair => pair.Registration).ToList();
 
-    // One `ISharedProjectSource` per connection (AC-245), keyed under the same scheme
-    // `BuildRegistrationPairs` would give that connection's own memory source — so a
-    // `SharedProject.Id` this returns is exactly the `MemoryRef` a project would carry once bound
-    // to it, and `Ui.DepotSettingsControl` can sync both registrations by the same key when a
-    // connection is added, renamed or removed.
-    // `httpClient`: AC-763's own blob PUT/GET, threaded through purely as a test seam — production callers omit
-    // it and get DepotSharedProjectSource's/CockpitProjectLogoBlob's own default client.
+    // One `ISharedProjectSource` per connection (AC-245), keyed under the same scheme as its memory source,
+    // so `Ui.DepotSettingsControl` can sync both registrations by the same key when a connection changes.
+    // `httpClient`: AC-763's blob PUT/GET, threaded through purely as a test seam.
     public static IReadOnlyList<ISharedProjectSource> BuildSharedProjectSources(
         IReadOnlyList<DepotConnectionRegistration> connections, ICockpitHost host, HttpClient? httpClient = null) =>
         BuildRegistrationPairs(connections, host)
             .Select(pair => (ISharedProjectSource)new DepotSharedProjectSource(pair.Connection, pair.Registration.Scheme, host, httpClient))
             .ToList();
 
-    // AC-499: Title keeps naming the connection ("Depot project — Wispslate") even though the picker's own dropdown
-    // no longer shows it once FamilyKey groups this registration under "Depot" — the instance dropdown reads
-    // InstanceTitle instead (ProjectDialogViewModel.CreateAsync). Title still has a reader that never sees
-    // FamilyKey/InstanceTitle at all: ProjectMemorySourceMapping flattens a registration to Scheme/Title/Instruction
-    // for a session's own standing instructions, so Title is the only surviving name once a session is told where
-    // its memory lives — dropping the connection name from it would make that sentence read "your memory lives in
-    // 'Depot project'" for every connection alike.
+    // AC-499: Title keeps naming the connection even though FamilyKey groups it under "Depot" in the picker
+    // dropdown (InstanceTitle covers that). ProjectMemorySourceMapping still flattens to Scheme/Title/Instruction
+    // for a session's standing instructions, so dropping the name here would make every connection read alike.
     private static ProjectMemorySourceRegistration _RegistrationFor(DepotConnectionRegistration connection, string scheme, ICockpitHost? host) =>
         new(
             scheme,
@@ -107,10 +73,9 @@ internal static class DepotMemorySource
             InstanceTitle = connection.Name,
         };
 
-    // AC-502: lists this connection's own Depot projects through its contributed MCP server's `list_projects`
-    // tool, via `ICockpitHost.CallMcpToolAsync` — the host owns the token, this plugin only ever sees
-    // the tool's JSON text result. `includeSummary` is worth the extra server-side walk here (DEP-159): this
-    // is a picker the operator opens once to make a choice, not a per-keystroke read.
+    // AC-502: lists this connection's Depot projects via `ICockpitHost.CallMcpToolAsync`'s `list_projects` —
+    // the host owns the token. `includeSummary` is worth the extra server-side walk here (DEP-159): this is
+    // a picker the operator opens once to make a choice, not a per-keystroke read.
     private static async Task<ProjectMemorySourceLocationsResult> _ListLocationsAsync(
         DepotConnectionRegistration connection, ICockpitHost host, CancellationToken cancellationToken)
     {
@@ -210,11 +175,9 @@ internal static class DepotMemorySource
             : documents;
     }
 
-    // AC-499: what a Confirmed reachability result shows under the row — the project's own name and kind, since
-    // that data comes free with the same list_projects call the match itself needed. Deliberately not the document
-    // summary _DetailFor also carries: this call runs on every debounced edit (see its own remarks on
-    // includeSummary: false), so nothing here should invite a plugin to wish it had asked the server to walk a
-    // project's file tree just to fill this line in.
+    // AC-499: what a Confirmed reachability result shows — name and kind, free with the list_projects call the
+    // match already needed. Deliberately not the document summary `_DetailFor` carries: this runs on every
+    // debounced edit, so nothing here should need a server-side file-tree walk.
     private static string _ReachabilityDetailFor(_ListProjectsProject project)
     {
         var name = project.Name is { Length: > 0 } value ? value : project.Slug ?? string.Empty;
@@ -271,21 +234,9 @@ internal static class DepotMemorySource
         public DateTimeOffset? LastModifiedAt { get; set; }
     }
 
-    // The AC-503 reachability check for one Depot connection, rebuilt under AC-499 after being measured against a
-    // real Depot server: the original guess — a tool named `"outline"` called with only `{"project": value}"`
-    // — was wrong. Depot's own `outline` is a single-*document* tool (`required: ["project", "path"]`);
-    // called without `path` it always failed, and that failure mapped onto `ProjectMemorySourceReachability.NotSignedIn`,
-    // so a fully signed-in operator kept reading "sign in to confirm this location" for a check that could never
-    // have succeeded regardless of sign-in state.
-    //
-    // This calls `list_projects` instead — the same tool `_ListLocationsAsync` already uses for
-    // the picker, and the one Depot tool that actually answers "does this slug exist and can this operator see it":
-    // `project_info(project)` was measured as unusable for this (a nonexistent slug answers 200 with every
-    // field null rather than an error), so a slug lookup against the operator's own visible project list is the
-    // only reliable "exists and I can see it" this server offers. `includeSummary: false` — unlike the
-    // picker's own call — because Depot's own tool description warns that flag "walks each returned project's file
-    // tree server-side"; the picker is opened once, but this check reruns on every debounced edit, and nothing it
-    // needs (only slug/name/kind) requires that walk.
+    // AC-503, rebuilt under AC-499: the original `outline` call failed (needs `path`) and mapped onto
+    // NotSignedIn, showing signed-in operators a bogus "sign in" prompt. `list_projects` answers reliably
+    // instead (`project_info` returns 200 with null fields for a nonexistent slug); `includeSummary: false` skips the walk.
     private static async Task<ProjectMemorySourceReachabilityResult> _CheckReachabilityAsync(
         ICockpitHost host, DepotConnectionRegistration connection, string value, CancellationToken cancellationToken)
     {
@@ -329,14 +280,9 @@ internal static class DepotMemorySource
             : ProjectMemorySourceReachabilityResult.Confirmed(_ReachabilityDetailFor(match));
     }
 
-    // AC-499: the trace this check left nowhere before — grepping the dev log for this probe found nothing, which
-    // is exactly how a defect that silently told a signed-in operator to sign in again stayed unnoticed. Resolved
-    // from `ICockpitHost.Services`, the same shared container `Cockpit.App.Plugins.CockpitHost`'s
-    // own internal logging already resolves `ILoggerFactory` from — no new host member, just the DI seam every
-    // plugin already has. Null on a host/test double with no logging registered (most tests): a missing log line is
-    // not a failure this check itself needs to report on. Iron Law #8: only the connection's own (non-secret) name,
-    // the typed slug and the plugin's own error text ever land here — never a token, never anything this call used
-    // to authenticate.
+    // AC-499: this trace didn't exist before, which is how a defect telling a signed-in operator to sign in
+    // again went unnoticed. Resolved from `ICockpitHost.Services`; null on a test double is fine. Iron Law #8:
+    // only the connection's non-secret name, the typed slug and the error text land here — never a token.
     private static void _LogCheckFailure(ICockpitHost host, DepotConnectionRegistration connection, string slug, string reason) =>
         host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot")
             .LogWarning("Depot reachability check for '{Slug}' against connection '{Connection}' failed: {Reason}", slug, connection.Name, reason);
@@ -358,10 +304,8 @@ internal static class DepotMemorySource
             return candidate;
         }
 
-        // The slug collided with another connection's; its own id breaks that tie. Ids are host-generated GUIDs, so
-        // in practice this never collides either — the numbered fallback below only matters for storage that was
-        // hand-edited or corrupted into sharing an id, and guarantees BuildRegistrationPairs still never hands back
-        // two connections the same scheme, whatever the input.
+        // The slug collided; its id breaks the tie. Ids are host-generated GUIDs so this rarely collides
+        // either — the numbered fallback only matters for storage hand-edited into sharing an id.
         candidate = $"{Scheme}.{connection.Id}";
         var suffix = 2;
         while (taken.Contains(candidate))

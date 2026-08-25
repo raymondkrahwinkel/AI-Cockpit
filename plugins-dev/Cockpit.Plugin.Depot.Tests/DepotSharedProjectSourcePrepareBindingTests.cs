@@ -7,11 +7,9 @@ using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-// `DepotSharedProjectSource.PrepareBindingAsync` (AC-246): the second, fuller read the "Finish setting
-// up…" bind step needs. Every fixture is the actual JSON text Depot's `read` tool would send, parsed by the
-// real `Cockpit.Plugin.Depot.ProjectDefinition.CockpitProjectDefinitionJson` deserializer — the same
-// "measure against a real-looking response, never a fake that hands back an already-built type" discipline
-// `DepotSharedProjectSourceTests` already documents for `ListAsync`.
+// `DepotSharedProjectSource.PrepareBindingAsync` (AC-246): the second, fuller read the "Finish setting up…"
+// bind step needs. Every fixture is the actual JSON text Depot's `read` tool would send, parsed by the real
+// deserializer — never a fake that hands back an already-built type, per `DepotSharedProjectSourceTests`.
 public class DepotSharedProjectSourcePrepareBindingTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
@@ -104,11 +102,9 @@ public class DepotSharedProjectSourcePrepareBindingTests
     [Fact]
     public async Task PrepareBindingAsync_TenAbsoluteResourceRows_AllPassThroughUnfiltered()
     {
-        // The purely defensive half of this case: a non-blank absolute reference reaching a real Depot definition
-        // regardless — a hand edit, or an older writer that predates AC-246's placeholder shape (see the sibling
-        // test below for the case this build's own writer actually produces now: a blank reference). This reader
-        // does not classify or drop anything itself either way — that is the App layer's job
-        // (SharedProjectBindingDialogViewModel), reading whatever this returns.
+        // Defensive case: a non-blank absolute reference from a hand edit or a pre-AC-246 writer (the sibling
+        // test below covers this build's actual writer, which produces a blank reference instead). This reader
+        // does not classify or drop anything either way — that is the App layer's job.
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
         var rows = string.Join(",", Enumerable.Range(1, 10)
@@ -125,10 +121,9 @@ public class DepotSharedProjectSourcePrepareBindingTests
     [Fact]
     public async Task PrepareBindingAsync_TenAbsoluteRowsThroughTheRealWritePipeline_ArriveAsPlaceholders()
     {
-        // AC-246 (Raymond, 2026-08-02): this is the real path now, not a hand-edit hypothetical — a project with
-        // ten absolute resource rows writes ten placeholders, through the actual writer
-        // (CockpitProjectResourceEntry.Create) and the actual (de)serializer, not a hand-assembled read-side
-        // fixture. Blank Reference, but Role and Label survive.
+        // AC-246 (Raymond, 2026-08-02): the real path, not a hand-edit hypothetical — ten absolute resource rows
+        // written through the actual writer and (de)serializer produce ten placeholders with a blank Reference,
+        // but Role and Label survive.
         var entries = Enumerable.Range(1, 10)
             .Select(i => CockpitProjectResourceEntry.Create("Reference", $"/home/erik/work/note-{i}.md", $"Note {i}"))
             .ToList();

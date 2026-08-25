@@ -4,14 +4,9 @@ using Cockpit.Plugin.Depot.Secrets;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-// Closes the gap CockpitProjectDefinitionSecrecyTests once pinned as open (AC-607 decision 3): an unrecognised
-// ExtensionData field from a newer Cockpit build is refused, not blindly forwarded, when its key looks secret-shaped
-// (SensitiveFieldNameHeuristic) and its value is not already provably encrypted (ProjectSecretProtector.IsProtected).
-// A key that does not match the heuristic still forwards untouched — ordinary forward-compat for a genuinely benign
-// future field is preserved; only the secret-shaped gap is closed.
-//
-// Walks top-level keys plus one level of nested JSON objects, not into arrays — the same "narrow and defensible
-// rather than a general scanner" reasoning ProjectResourceSecretPathHeuristic already states for itself.
+// Closes the gap CockpitProjectDefinitionSecrecyTests pinned as open (AC-607 decision 3): an unrecognised
+// ExtensionData field is refused, not blindly forwarded, when its key looks secret-shaped and its value isn't
+// already provably encrypted. Walks top-level keys plus one nesting level, not arrays — narrow on purpose.
 public static class CockpitProjectDefinitionExtensionDataGuard
 {
     public static (Dictionary<string, JsonElement>? Kept, IReadOnlyList<string> DroppedKeys) Apply(
@@ -58,10 +53,9 @@ public static class CockpitProjectDefinitionExtensionDataGuard
         return (kept.Count == 0 ? null : kept, dropped);
     }
 
-    // AC-607 review finding 4: CockpitProjectSensitiveFieldEntry carries its own [JsonExtensionData] passthrough
-    // (the same forward-compat idiom every wire row has), which the top-level Apply above never reaches — a future
-    // build could otherwise smuggle a plaintext fallback field through a sensitive-field row unnoticed. Same rule,
-    // applied per row, reported as `SensitiveFields.{Label}.{key}`.
+    // AC-607 review finding 4: CockpitProjectSensitiveFieldEntry's own [JsonExtensionData] passthrough is never
+    // reached by the top-level Apply above — a future build could smuggle a plaintext fallback through a
+    // sensitive-field row unnoticed. Same rule, applied per row, reported as `SensitiveFields.{Label}.{key}`.
     public static (List<CockpitProjectSensitiveFieldEntry>? Kept, IReadOnlyList<string> DroppedKeys) ApplyToSensitiveFields(
         IReadOnlyList<CockpitProjectSensitiveFieldEntry>? fields)
     {

@@ -2,17 +2,14 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-// Pins the rule that a sensitive value never leaves this machine in the clear (Raymond, 2026-08-02): a field
-// carrying one either travels encrypted under a project password, or it does not travel at all. Depot is a shared
-// server — a colleague, and whoever administers the instance, can read what lands there.
-// These tests do not implement that rule; they make it impossible to break it by accident. The definition carries
-// no sensitive field today, and the assertion below is what turns that from a coincidence into a decision.
+// Pins the rule that a sensitive value never leaves this machine in the clear: a field carrying one either
+// travels encrypted under a project password, or not at all — Depot is a shared server, readable by a
+// colleague or admin. These tests turn "no sensitive field today" from coincidence into an enforced decision.
 public class CockpitProjectDefinitionSecrecyTests
 {
     // The complete set of fields the shared definition writes. Adding one is a deliberate act: this test goes red,
-    // and whoever added it has to say here whether the new field can carry a secret. A project's
-    // `AdditionalInfo` rows are the ones to watch — they carry `IsSecret` and are stored encrypted
-    // locally, so putting them on the wire unencrypted would undo exactly what that flag is for.
+    // and whoever added it has to say here whether it can carry a secret — watch `AdditionalInfo` rows
+    // especially, since they carry `IsSecret` and are stored encrypted locally.
     private static readonly string[] _FieldsClearedForSharing =
     [
         nameof(CockpitProjectDefinition.SchemaVersion),
@@ -25,9 +22,8 @@ public class CockpitProjectDefinitionSecrecyTests
         nameof(CockpitProjectDefinition.Resources),
         nameof(CockpitProjectDefinition.Logo),
         nameof(CockpitProjectDefinition.ExtensionData),
-        // AC-607 (deliberate act, as this test's own comment demands): a project's IsSecret AdditionalInfo rows
-        // now DO travel, but only ever as ciphertext under the project's data key — see
-        // CockpitProjectSensitiveFieldFilter.Apply, the only place that builds SensitiveFields entries.
+        // AC-607: a project's IsSecret AdditionalInfo rows now DO travel, but only as ciphertext under the
+        // project's data key — see CockpitProjectSensitiveFieldFilter.Apply.
         nameof(CockpitProjectDefinition.SensitiveFields),
         nameof(CockpitProjectDefinition.PasswordEnvelope),
     ];
@@ -43,11 +39,9 @@ public class CockpitProjectDefinitionSecrecyTests
         Assert.Equal(_FieldsClearedForSharing.OrderBy(name => name, StringComparer.Ordinal), actual);
     }
 
-    // AC-607 review finding 5: the definition now deliberately DOES carry a secret-derived row — SensitiveFields,
-    // ciphertext only, never plaintext. This test does not guard against that; it guards against a plaintext
-    // `AdditionalInfo`-shaped or `Secret`-named property specifically ever appearing again, which
-    // `SensitiveFields`/`PasswordEnvelope` correctly do not trip (neither name contains "Secret" or
-    // "AdditionalInfo").
+    // AC-607: the definition deliberately DOES carry a secret-derived row (SensitiveFields, ciphertext only).
+    // This guards against a plaintext `AdditionalInfo`-shaped or `Secret`-named property ever appearing —
+    // `SensitiveFields`/`PasswordEnvelope` correctly do not trip either check.
     [Fact]
     public void Definition_CarriesNoSecretOrAdditionalInfoNamedProperty_OnlyTheEncryptedSensitiveFieldsRow()
     {
@@ -57,11 +51,9 @@ public class CockpitProjectDefinitionSecrecyTests
         Assert.DoesNotContain(names, name => name.Contains("AdditionalInfo", StringComparison.OrdinalIgnoreCase));
     }
 
-    // AC-618 acceptance criterion 3: a project's category is explicitly local (`Project.Category`, stored only
-    // in `cockpit.json`) — sharing it here would let whoever shares a project impose their own filing on every
-    // colleague who binds to it. Definition_CarriesOnlyFieldsClearedForSharing_SoAddingOneIsADeliberateAct
-    // above already guards this by construction (the exhaustive whitelist would need editing), but this pins the
-    // specific rule by name so it reads as a decision rather than an accident of that other test's coverage.
+    // AC-618 criterion 3: a project's category is explicitly local (`Project.Category`, stored only in
+    // `cockpit.json`) — sharing it would let whoever shares a project impose their own filing on every
+    // colleague. Pinned by name so it reads as a decision, not an accident of the whitelist test above.
     [Fact]
     public void Definition_CarriesNoCategory_SinceCategoryIsAlwaysLocalToEachOperator()
     {
@@ -81,14 +73,9 @@ public class CockpitProjectDefinitionSecrecyTests
         Assert.DoesNotContain(names, name => name.Contains("Assistant", StringComparison.OrdinalIgnoreCase));
     }
 
-    // The gap is narrowed at the write seam, not closed: CockpitProjectDefinitionExtensionDataGuard (applied by
-    // CockpitProjectDefinitionStore.WriteAsync, AC-607) refuses a secret-shaped, not-already-encrypted key at the
-    // top level or one level of nested-object keys. It still forwards a secret-shaped value two-plus levels deep,
-    // inside an array, inside an array of objects, or embedded as JSON-in-a-string (the exact last case the host's
-    // own SecretJsonWalker handles and this guard deliberately does not — see
-    // CockpitProjectDefinitionExtensionDataGuardTests for the 4 "still forwarded" cases pinned as a known, accepted
-    // limitation, the same narrow-and-defensible tradeoff ProjectResourceSecretPathHeuristic already documents for
-    // itself). `someFutureField` here matches no secret-name heuristic at all, so it correctly still forwards.
+    // CockpitProjectDefinitionExtensionDataGuard (AC-607) narrows the gap, doesn't close it: it refuses a
+    // secret-shaped key only at the top level or one nesting level (known accepted limitation, see
+    // CockpitProjectDefinitionExtensionDataGuardTests). `someFutureField` matches no heuristic, still forwards.
     [Fact]
     public void ExtensionData_ForwardsUnknownFieldsUnread_WhichAC607NarrowsButDoesNotFullyClose()
     {
@@ -108,10 +95,9 @@ public class CockpitProjectDefinitionSecrecyTests
             nameof(CockpitProjectResourceEntry.Label),
             nameof(CockpitProjectResourceEntry.Portability),
             nameof(CockpitProjectResourceEntry.ExtensionData),
-            // AC-246 (Raymond, 2026-08-02): a plain bool — "a row belongs here, without its reference" — cannot
-            // itself carry a secret value the way a free-text field could. The field this guard actually exists to
-            // catch (a text field a secret could hide in) is still exactly one: Reference, still governed by
-            // ProjectResourceSecretPathHeuristic before Create ever builds a row, Placeholder row or not.
+            // AC-246: a plain bool — "a row belongs here, without its reference" — cannot itself carry a
+            // secret the way a free-text field could. Reference remains the one field this guard exists for,
+            // still governed by ProjectResourceSecretPathHeuristic before Create ever builds a row.
             nameof(CockpitProjectResourceEntry.Placeholder),
         ];
 

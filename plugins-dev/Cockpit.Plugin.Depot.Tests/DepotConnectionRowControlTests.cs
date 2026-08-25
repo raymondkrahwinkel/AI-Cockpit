@@ -11,11 +11,8 @@ using NSubstitute;
 namespace Cockpit.Plugin.Depot.Tests;
 
 // `DepotConnectionRowControl`'s Sign-in action (AC-243/AC-355, reworked AC-499): a token is filed
-// under a server's registered name, so the row must never sign in under a name it merely typed — it saves first
-// (through the delegate it is constructed with, the same route `Ui.DepotSettingsControl.Save` exposes
-// to its own Save button) and then re-reads what actually landed in storage before calling the host. The
-// read-availability guard `DepotConnectionRowControl.RefreshAuthStateAsync` uses is exercised
-// separately below; it is unrelated to whether Sign-in itself is offered since AC-499.
+// under a server's registered name, so the row must never sign in under a name it merely typed — it saves
+// first and re-reads what actually landed in storage before calling the host.
 [Collection("avalonia")]
 public class DepotConnectionRowControlTests
 {
@@ -217,11 +214,9 @@ public class DepotConnectionRowControlTests
         Assert.DoesNotContain("mcp/mcp", _AuthStatusText(row) ?? string.Empty, StringComparison.Ordinal);
     }
 
-    // AC-499 UX pass: the row's own status slot is the single place the operator reads before deciding to click,
-    // so it has to carry exactly one relevant sentence in every state — never two states' worth, never nothing.
-    // The four tests below pin one sentence per state; the fifth guards the seam between "busy" and "outcome" that
-    // a naive fix (re-deriving the message from field validity in SignInAsync's finally, the way _OnFieldsChanged
-    // does) would silently break.
+    // AC-499 UX pass: the row's status slot is the one place the operator reads before clicking, so it must
+    // carry exactly one relevant sentence per state. Fifth test guards the "busy"/"outcome" seam a naive
+    // re-derive-from-field-validity fix would silently break.
 
     [Fact]
     public void AuthStatus_NewBlankRow_ShowsWhySignInIsUnavailable()
@@ -312,10 +307,8 @@ public class DepotConnectionRowControlTests
         Assert.Equal("Signed in.", _AuthStatusText(row));
     }
 
-    // The regression this whole design has to avoid: a failed outcome is the one message the operator most needs
-    // to actually read, so it must not be replaced by an invitation to try again before they get the chance —
-    // SignInAsync's finally block re-derives the button's IsEnabled (content is still valid) but must leave the
-    // text alone, the same invariant its own comment already documents for outcome text in general.
+    // The regression this whole design has to avoid: a failed outcome is the message the operator most needs to
+    // read, so SignInAsync's finally block may re-derive the button's IsEnabled but must leave the text alone.
     [Fact]
     public async Task SignInAsync_FailedOutcome_TextIsNotImmediatelyReplacedByTheBrowserMessage()
     {
@@ -340,10 +333,8 @@ public class DepotConnectionRowControlTests
         Assert.Contains("Couldn't reach", _AuthStatusText(row), StringComparison.Ordinal);
     }
 
-    // AC-499: the operator must know a click opens a browser before clicking. The row's own status slot (tests
-    // above) is the primary way that happens now; this tooltip on the Sign-in button is a free extra that repeats
-    // it on hover, same idiom as SettingsHelpRow's "?" hint and the other ToolTip.SetTip calls throughout this
-    // codebase — it pins that the tooltip actually says so, not just that some tooltip exists.
+    // AC-499: the operator must know a click opens a browser before clicking. The status slot (tests above)
+    // is the primary way; this tooltip is a free extra repeating it on hover.
     [Fact]
     public void SignInButton_HasATooltipExplainingItOpensABrowser()
     {
@@ -355,11 +346,9 @@ public class DepotConnectionRowControlTests
         Assert.Contains("browser", tip ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
-    // AC-499: the status label sits next to the Sign-in button in a Grid ("Auto,*"), not the horizontal StackPanel
-    // it replaced — a StackPanel measures every child with unbounded width along its own orientation, so
-    // TextWrapping.Wrap on the label never had a width to wrap against and a long outcome message (the Unreachable
-    // case above, which names the dialed URL) ran off the row instead of onto a second line. This pins that a long
-    // message actually grows the label's own height (wraps) rather than staying single-line and overflowing.
+    // AC-499: the status label sits in a Grid ("Auto,*"), not the StackPanel it replaced — a StackPanel
+    // measures children with unbounded width, so TextWrapping.Wrap never had a width to wrap against and a
+    // long message ran off the row instead of wrapping. Pins that a long message grows the label's height.
     [Fact]
     public async Task SignInAsync_LongUnreachableMessage_WrapsInsteadOfOverflowing()
     {

@@ -2,12 +2,9 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-// `CockpitProjectResourceEntry.Create` — what happens to an absolute reference instead of shipping it
-// or refusing the write outright (AC-244, narrowed by AC-605: an anchor-relative reference is portable now, so it
-// is written like any other portable row — see Create_AnchorRelativeReference_ReturnsARowWithThatPortability —
-// and again by AC-246: a plain absolute reference is written as a placeholder — role and label, no reference — not
-// dropped outright any more; see Create_AbsoluteReference_ReturnsAPlaceholderRow. A secret-shaped
-// reference is the one case still dropped in full, whatever its shape — AC-612, unchanged.
+// `CockpitProjectResourceEntry.Create` — what happens to an absolute reference (AC-244). AC-605 made an
+// anchor-relative reference portable; AC-246 made a plain absolute one a placeholder instead of dropped.
+// A secret-shaped reference is still dropped in full, whatever its shape — AC-612, unchanged.
 public class CockpitProjectResourceEntryTests
 {
     [Fact]
@@ -114,10 +111,9 @@ public class CockpitProjectResourceEntryTests
     [Fact]
     public void Create_AnAbsoluteSecretPathReferenceWithALabel_DropsTheLabelTooNotJustTheReference()
     {
-        // AC-246: this is the row a placeholder must never become. An absolute path alone now travels as role +
-        // label; a secret-shaped one must stay a full drop, or a label like "Productie-DB" would leak by itself
-        // even with the reference withheld. The secret check runs before the placeholder branch even exists to be
-        // reached — see Create's own remarks.
+        // AC-246: this is the row a placeholder must never become. A plain absolute path travels as role +
+        // label, but a secret-shaped one must stay a full drop — a label like "Productie-DB" would leak
+        // by itself even with the reference withheld. The secret check runs before the placeholder branch.
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
         var entry = CockpitProjectResourceEntry.Create("Reference", Path.Combine(home, ".aws", "credentials"), "Productie-DB");

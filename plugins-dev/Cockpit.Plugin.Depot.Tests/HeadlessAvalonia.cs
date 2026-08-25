@@ -7,23 +7,17 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-// An Avalonia runtime without a screen (AC-243, IL#9) — the same fixture `Cockpit.Plugin.Workflows.Tests`
-// built for #69, copied rather than shared because a plugin test project cannot reference another plugin's test
-// project any more than a plugin can reference the host. Runs *with the host's theme loaded*: a settings view
-// rendered against a bare application asks every named brush for nothing and falls back to Fluent, which is not
-// what the operator sees. `Cockpit.App` cannot be referenced from here, so `Styles/Theme.axaml` is read
-// off disk and parsed — as close to the real thing as this side of the plugin boundary can get.
-//
-// Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.
+// An Avalonia runtime without a screen (AC-243, IL#9), copied rather than shared with `Cockpit.Plugin.Workflows.Tests`
+// since a plugin test project cannot reference another plugin's test project. Loads the host's theme from disk
+// so brushes resolve instead of falling back to Fluent; set up by hand since Avalonia.Headless.XUnit needs xunit v3, this repo is on v2.
 public sealed class HeadlessAvalonia
 {
     private static readonly Lock Gate = new();
     private static bool _started;
 
-    // AC-423 added a DataGridRow selector to the shared Theme.axaml parsed below. Nothing in this plugin ever
-    // constructs a DataGrid, so Avalonia.Controls.DataGrid.dll — present in the output directory via the
-    // PackageReference, but never touched by any executed code — would otherwise never actually load, and the
-    // runtime XAML compiler only resolves a type against assemblies that are loaded. This reference forces it.
+    // AC-423 added a DataGridRow selector to the shared Theme.axaml parsed below. Nothing in this plugin
+    // constructs a DataGrid, so its assembly would never actually load, and the runtime XAML compiler only
+    // resolves a type against loaded assemblies. This reference forces it.
     private static readonly Type DataGridAssemblyAnchor = typeof(Avalonia.Controls.DataGridRow);
 
     public HeadlessAvalonia()

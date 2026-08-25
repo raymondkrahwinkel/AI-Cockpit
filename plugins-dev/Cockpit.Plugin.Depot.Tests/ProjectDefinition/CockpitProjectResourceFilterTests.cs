@@ -15,9 +15,8 @@ public class CockpitProjectResourceFilterTests
             ("Reference", "/home/raymond/private-notes.md", null),
         ]);
 
-        // AC-605: AnchorRelative is portable now — it travels to everyone with the instance, resolved against
-        // whoever opens the project, so it joins the other two portable rows instead of being dropped.
-        // AC-246: the fourth, absolute row is no longer dropped either — it lands here too, as a placeholder
+        // AC-605: AnchorRelative is portable now — resolved against whoever opens the project, so it joins
+        // the other portable rows. AC-246: the absolute row also lands here now, as a placeholder
         // (role + label, no reference) rather than in Dropped.
         Assert.Equal(4, result.Portable.Count);
         Assert.Empty(result.Dropped);
@@ -95,10 +94,9 @@ public class CockpitProjectResourceFilterTests
         Assert.Null(dropped.Portability);
     }
 
-    // AC-612 (criterion 3, "Delen"): a secret-shaped row is dropped through the same mechanism AC-244 already
-    // built for an unportable row — no new reporting path. The reference is anchor-relative in shape, so
-    // `CockpitProjectResourceDropped.Portability` still reads `AnchorRelative` here: what this
-    // row's own shape classifies as, distinct from why `CockpitProjectResourceEntry.Create` refused it.
+    // AC-612 (criterion 3, "Share"): a secret-shaped row is dropped through the same mechanism AC-244 already
+    // built for an unportable row — no new reporting path. `Portability` still reads `AnchorRelative`
+    // here (the row's own shape), distinct from why `CockpitProjectResourceEntry.Create` refused it.
     [Fact]
     public void Apply_SecretPathReference_IsDroppedAlongsideTheAbsoluteRow()
     {

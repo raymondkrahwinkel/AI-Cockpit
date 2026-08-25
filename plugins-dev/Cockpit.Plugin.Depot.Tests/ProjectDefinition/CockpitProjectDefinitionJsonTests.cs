@@ -3,11 +3,9 @@ using Cockpit.Plugin.Depot.ProjectDefinition;
 
 namespace Cockpit.Plugin.Depot.Tests.ProjectDefinition;
 
-// The hostile-input harness for `CockpitProjectDefinitionJson` (AC-244): unknown fields at every
-// level, a mismatched `schemaVersion`, missing required fields, corrupt/truncated JSON, extreme strings and
-// unicode. The forward-compat guarantee this backs — a field a newer build wrote survives an older build's
-// read-then-write — is asserted by parsing both documents and comparing values, not raw text, since property
-// order is not part of the promise.
+// The hostile-input harness for `CockpitProjectDefinitionJson` (AC-244): unknown fields, mismatched
+// `schemaVersion`, missing required fields, corrupt/truncated JSON, extreme strings and unicode. Compares
+// parsed values, not raw text, since property order is not part of the forward-compat promise.
 public class CockpitProjectDefinitionJsonTests
 {
     [Fact]

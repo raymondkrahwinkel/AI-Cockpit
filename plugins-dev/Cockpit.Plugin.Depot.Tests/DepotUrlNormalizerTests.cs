@@ -1,9 +1,8 @@
 namespace Cockpit.Plugin.Depot.Tests;
 
-// `DepotUrlNormalizer` (AC-499): pins the round-trip guarantee the class doc comment promises —
-// `Normalize(endpointUrl) + "/mcp" == endpointUrl` for every endpoint URL an operator actually pastes,
-// including a deployment whose own base path ends in `/mcp` (`https://host/mcp/mcp`), which a naive
-// "strip every trailing /mcp" implementation gets wrong.
+// `DepotUrlNormalizer` (AC-499): pins the round-trip guarantee `Normalize(endpointUrl) + "/mcp" == endpointUrl`
+// for every endpoint URL an operator actually pastes, including a deployment whose base path itself ends in
+// `/mcp` (`https://host/mcp/mcp`), which a naive "strip every trailing /mcp" implementation gets wrong.
 public class DepotUrlNormalizerTests
 {
     [Fact]
@@ -95,11 +94,9 @@ public class DepotUrlNormalizerTests
         Assert.Equal("https://depot.example.com/mcp#section", DepotUrlNormalizer.Normalize("https://depot.example.com/mcp#section"));
     }
 
-    // The property DepotUrlNormalizer's own doc comment promises: for every endpoint URL an operator actually
-    // pastes (Depot's docs always show the full endpoint, including /mcp), stripping it down and re-appending
-    // "/mcp" — exactly what DepotPlugin._ContributionFor does with the stored, already-normalized base — must land
-    // back on the same endpoint. "https://host/mcp/mcp" is the case that breaks under a loop that strips every
-    // trailing /mcp instead of exactly one.
+    // For every endpoint URL an operator actually pastes (always the full endpoint, including /mcp), stripping
+    // it down and re-appending "/mcp" must land back on the same endpoint. "https://host/mcp/mcp" is the case
+    // that breaks under a loop stripping every trailing /mcp instead of exactly one.
     [Theory]
     [InlineData("https://depot.example.com/mcp")] // root deployment
     [InlineData("https://depot.example.com/mcp/")] // trailing slash after the suffix
@@ -113,10 +110,9 @@ public class DepotUrlNormalizerTests
         Assert.Equal(trimmedEndpoint, DepotUrlNormalizer.Normalize(endpointUrl) + "/mcp");
     }
 
-    // The round-trip promise is scoped to a real endpoint URL — Depot's own documented URL never carries a query
-    // string or fragment after /mcp, and Normalize deliberately leaves both untouched (see the class doc comment),
-    // so re-appending "/mcp" to the normalized value does not reconstruct the original input here. Pinning the
-    // actual behavior instead: nothing is stripped, so the value is returned unchanged aside from trimming.
+    // The round-trip promise is scoped to a real endpoint URL: Depot's documented URL never carries a query
+    // string or fragment after /mcp, and Normalize deliberately leaves both untouched, so nothing is stripped
+    // here — the value returns unchanged aside from trimming.
     [Theory]
     [InlineData("https://depot.example.com/mcp?token=abc")]
     [InlineData("https://depot.example.com/mcp#section")]

@@ -212,11 +212,9 @@ public class DepotPluginTests
     [Fact]
     public void GetMcpServers_AfterTwoConnectionsSwapNames_EachKeepsItsOwnId()
     {
-        // Acceptance criterion 3, the Depot half. Two connections on the same host swap names: they stay unique, so
-        // nothing refuses the save, and the derived MCP server names swap with them. If identity followed the name,
-        // each would inherit the other's token — and since McpOAuthToken.IsForResource only bounds a token to
-        // scheme/host/port, two instances on one host with different paths would pass that check too, and one
-        // connection would present the other's bearer to an endpoint it was never issued for.
+        // Acceptance criterion 3, the Depot half. Two connections on the same host swap names. If identity
+        // followed the name, each would inherit the other's token — McpOAuthToken.IsForResource only bounds
+        // a token to scheme/host/port, so one connection would present the other's bearer to a wrong endpoint.
         using var plugin = new DepotPlugin();
         plugin.Initialize(_HostWithConnections(
             new DepotConnectionRegistration("c1", "alpha", "https://depot.example.com/alpha"),
@@ -281,11 +279,9 @@ public class DepotPluginTests
         Assert.Equal("https://wispslate.example.com", server.OAuthAuthority);
     }
 
-    // AC-499 regression, the measured defect: a connection already stored with a trailing /mcp of its own (Depot's
-    // own docs tell the operator to paste the full endpoint, and older builds — or storage from before this fix —
-    // kept whatever was typed) must not double into "…/mcp/mcp" every time a session asks this plugin for its
-    // servers. Normalized at this use point, not only at save time, so already-stored data is fixed without a
-    // migration.
+    // AC-499 regression: a connection already stored with a trailing /mcp (older builds kept whatever was
+    // typed) must not double into "…/mcp/mcp". Normalized at this use point, not only at save time, so
+    // already-stored data is fixed without a migration.
     [Fact]
     public void GetMcpServers_ConnectionStoredWithATrailingMcp_DoesNotDoubleItInTheContributedUrl()
     {
@@ -353,12 +349,9 @@ public class DepotPluginTests
         Assert.Same(plugin, descriptor.ImplementationInstance);
     }
 
-    // Regression: the earlier version of this reclaim fired one RemoveMcpServer call per connection without
-    // awaiting between them. RemoveMcpServer does its own unlocked load-modify-save round trip against the shared
-    // store, so two concurrent calls for two different connections can each load the same stale snapshot and the
-    // last SaveAsync to finish silently keeps whichever connection lost the race — exactly the stale registry entry
-    // this reclaim exists to remove. This pins that the second call is not even made until the first's task
-    // completes.
+    // Regression: firing one RemoveMcpServer call per connection without awaiting let two concurrent calls
+    // each load the same stale snapshot (unlocked load-modify-save), silently keeping the entry that lost
+    // the race. Pins that the second call is not made until the first's task completes.
     [Fact]
     public async Task Initialize_TwoConnectionsConfigured_ReclaimsThemSequentially_NotConcurrently()
     {
@@ -389,11 +382,9 @@ public class DepotPluginTests
         }
     }
 
-    // --- AC-499: the family is declared unconditionally --------------------------------------------------------
-    // The bug this ticket exists to close: zero connections meant no "Depot" entry anywhere in the project editor's
-    // picker and no way to reach this plugin's settings from it. Declaring the family regardless of how many
-    // connections are configured is what fixes that — asserted at zero, one and several so a future regression that
-    // reintroduces an `if (connections.Count > 0)` guard fails here at the zero case specifically.
+    // AC-499: zero connections meant no "Depot" entry in the project editor's picker. Declaring the family
+    // unconditionally fixes that — asserted at zero, one and several so a reintroduced
+    // `if (connections.Count > 0)` guard fails here at the zero case specifically.
 
     [Fact]
     public void Initialize_NoConnectionsConfigured_StillDeclaresTheDepotFamily()

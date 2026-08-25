@@ -8,15 +8,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Depot;
 
-// One Depot connection's own `ISharedProjectSource` (AC-245): lists this connection's projects through
-// `list_projects` (the same call `DepotMemorySource` already makes for its picker), then reads
-// each one's `.cockpit/project.json` (`CockpitProjectDefinitionStore.ReadAsync`, AC-244) to learn
-// its portable name and description — a Depot project without one is not offered here at all: not every project on
-// a connection has opted into being shared this way.
-//
-// ponytail: one MCP round trip per listed project on top of the initial `list_projects` call, every time the
-// Projects workspace loads — no caching. Acceptable for the handful of projects a connection realistically carries
-// today; batch or cache here first if a connection with hundreds of shared projects makes this the slow part.
+// One Depot connection's own `ISharedProjectSource` (AC-245): lists projects via `list_projects`, then reads
+// each one's `.cockpit/project.json` (AC-244) for name/description — one without it isn't offered here.
+// ponytail: one MCP round trip per project every workspace load, no caching; fine for a handful of projects.
 internal sealed class DepotSharedProjectSource(
     DepotConnectionRegistration connection, string scheme, ICockpitHost host, HttpClient? httpClient = null)
     : ISharedProjectSource
@@ -65,15 +59,9 @@ internal sealed class DepotSharedProjectSource(
 
             var role = DepotProjectRoleParser.Parse(project.Role);
 
-            // Raymond, 2026-08-02: intended end state is Depot itself changing so a Viewer gets MCP read rights
-            // (write stays Editor+) — a DEP-side fix, not a Cockpit one, and not shipped yet. Until it lands,
-            // Depot's own access guard (measured against origin/dev: ReadFileQuery.cs requires ProjectRole.Editor)
-            // makes every Viewer's read of .cockpit/project.json fail regardless of whether that project actually
-            // carries one. The read is attempted for every role alike — once the DEP fix ships, a Viewer's read
-            // simply starts succeeding here with no Cockpit-side change required — but a Viewer/Unknown-role
-            // failure is reported as a named, visible-but-unreadable outcome instead of silently dropped, since
-            // today it is ambiguous whether that project even opted into Cockpit sharing. An Editor/Owner failure
-            // still means, unambiguously, "not shared this way" and is left out as before.
+            // Until Depot lets a Viewer get MCP read rights (DEP-side fix, not shipped), Depot's access guard
+            // makes every Viewer's read of .cockpit/project.json fail regardless of whether it exists — report
+            // that as visible-but-unreadable rather than silently dropped; Editor/Owner failure still means "not shared this way".
             var definitionResult = await CockpitProjectDefinitionStore.ReadAsync(
                 host, connection.McpServerName, project.Slug, cancellationToken).ConfigureAwait(false);
 
@@ -108,15 +96,9 @@ internal sealed class DepotSharedProjectSource(
         return SharedProjectListResult.Success(shared) with { VisibleButUnreadable = unreadable };
     }
 
-    // Reads `.cockpit/project.json` a second time (AC-246), for the one project the operator is binding right
-    // now rather than every project on this connection — `ListAsync`'s own read only ever kept
-    // `CockpitProjectDefinition.Name`/`Description`, so a bind step needs its own call for the
-    // rest (`GitUrl`, `BehaviorPrompt`, the worktree switch, the MCP overlay, the resource rows).
-    // `id` is expected in this source's own shape (`"{scheme}:{slug}"`), so parsing it back is a
-    // prefix check against `id`'s own scheme rather than a general `ProjectMemoryRef`-style
-    // parse — this plugin cannot reference `Cockpit.Core` (see this class's own remarks on
-    // `ProjectResourcePortabilityClassifier`), and it does not need to: it only ever has to recognise
-    // its own scheme, never anyone else's.
+    // Reads `.cockpit/project.json` a second time (AC-246): `ListAsync`'s read only kept Name/Description,
+    // binding needs the rest (GitUrl, BehaviorPrompt, worktree switch, MCP overlay, resource rows). `id`'s
+    // `"{scheme}:{slug}"` is parsed with a plain prefix check since this plugin can't reference `Cockpit.Core`.
     public async Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken)
     {
         var prefix = $"{scheme}:";
@@ -165,19 +147,9 @@ internal sealed class DepotSharedProjectSource(
         return SharedProjectBindingResult.Success(binding);
     }
 
-    // AC-247. Re-reads id's current definition first — not for its own checksum (the caller's baseChecksum, from
-    // the read the operator's edit actually started from, is what CockpitProjectDefinitionStore.WriteAsync is
-    // asked to defend), but so GitUrl, Resources and Logo — every field SharedProjectDefinitionEdit does not
-    // mention — carry through byte-for-byte rather than being reconstructed from SharedProjectBinding's own lossy
-    // read shape (a resource row's Placeholder flag, in particular, does not survive a round trip through
-    // SharedProjectBindingResource — rebuilding one from just Role/Reference/Label would silently drop every
-    // placeholder row on write).
-    //
-    // This fresh read cannot substitute for baseChecksum: if nothing changed since the operator opened the editor,
-    // it is (by definition) identical to what that earlier read saw, so reusing it for pass-through fields changes
-    // nothing a conflict would have caught. If something did change, the write below still carries the operator's
-    // own, older baseChecksum — so the server-side check catches the change regardless of which fields it touched,
-    // exactly the guarantee optimistic concurrency exists for.
+    // AC-247. Re-reads id's current definition first — not for its checksum (the caller's baseChecksum is what
+    // WriteAsync defends), but so GitUrl/Resources/Logo carry through byte-for-byte rather than being
+    // reconstructed from SharedProjectBinding's lossy read shape (a Placeholder row would otherwise be dropped).
     public async Task<SharedProjectWriteBackResult> WriteBackAsync(
         string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken)
     {
@@ -254,12 +226,9 @@ internal sealed class DepotSharedProjectSource(
             GitUrl = current.GitUrl,
             BehaviorPrompt = edit.BehaviorPrompt,
             IsolateInWorktreeByDefault = edit.IsolateInWorktreeByDefault,
-            // Adversarial review finding: this used to fall back to `current.McpOverlay` on null, reading
-            // SharedProjectDefinitionEdit's own "null means no opinion, every server ticked" (the same idiom
-            // SharedProjectBinding.EnabledMcpServerNames already documents for the read direction) as "the operator
-            // didn't touch this." The two mean opposite things — an operator who re-ticks every server to clear a
-            // remote restriction sends null on purpose, and the old code silently kept the restriction Depot
-            // already had. Always reflect what edit actually says, never fall back to what was already there.
+            // Used to fall back to `current.McpOverlay` on null, misreading "no opinion, every server ticked"
+            // as "operator didn't touch this" — clearing a restriction by re-ticking every server sends null
+            // on purpose. Always reflect what edit actually says, never fall back to what was already there.
             McpOverlay = edit.EnabledMcpServerNames is { } enabled ? new CockpitProjectMcpOverlayEntry { Enabled = [.. enabled] } : null,
             Resources = current.Resources,
             Logo = logoPath,
@@ -313,9 +282,9 @@ internal sealed class DepotSharedProjectSource(
             return SharedProjectPublishTargetListResult.Failed(parseError ?? "Depot's project list came back in an unexpected shape.");
         }
 
-        // AC-620's own decision 4: only a project the operator can already write to is offered — Depot has no
-        // create_project call to fall back on, so a Viewer's row would dead-end the moment it is chosen. AC-699:
-        // CanWrite answers that, not a role list repeated here — this one missed "Admin" and emptied the dropdown.
+        // AC-620 decision 4: only a project the operator can already write to is offered — Depot has no
+        // create_project fallback, so a Viewer's row would dead-end. AC-699: CanWrite answers that, not a
+        // repeated role list — the earlier list missed "Admin" and emptied the dropdown.
         var targets = listed
             .Where(project => !string.Equals(project.Kind, "Brain", StringComparison.OrdinalIgnoreCase))
             .Select(project => (project.Slug, project.Name, Role: DepotProjectRoleParser.Parse(project.Role)))
@@ -429,11 +398,9 @@ internal sealed class DepotSharedProjectSource(
             BehaviorPrompt = definition.BehaviorPrompt,
             IsolateInWorktreeByDefault = definition.IsolateInWorktreeByDefault,
             EnabledMcpServerNames = definition.McpOverlay?.Enabled,
-            // AC-246 (Raymond, 2026-08-02): a Placeholder row's Reference is blank on purpose — that is the row
-            // saying "fill in your own path", not "nothing to name". Only a genuinely blank, non-placeholder
-            // reference (malformed data — never something CockpitProjectResourceEntry.Create itself writes) is
-            // left out here; SharedProjectBindingDialogViewModel is what turns a blank Reference into a question
-            // row rather than a value to trust.
+            // AC-246 (Raymond, 2026-08-02): a Placeholder row's Reference is blank on purpose — "fill in your
+            // own path", not "nothing to name". Only a genuinely blank, non-placeholder reference (malformed
+            // data) is left out; SharedProjectBindingDialogViewModel turns a blank Reference into a question row.
             Resources =
             [
                 .. (definition.Resources ?? [])

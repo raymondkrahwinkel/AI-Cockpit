@@ -11,11 +11,8 @@ using NSubstitute;
 namespace Cockpit.Plugin.Depot.Tests;
 
 // `DepotSettingsControl.Save` (AC-243, reworked AC-504): persists the connection list, and reclaims a
-// removed or renamed connection's *old* "Depot: &lt;name&gt;" MCP-registry entry — left over from an install
-// that predates AC-504's move to offering a connection's server per-project instead of pushing it into the shared
-// registry (the orphan-cleanup KubernetesSettingsControl.Save does for a cluster's secret, applied to the registry
-// instead). Save never adds to that registry any more: a kept or new connection's server is what
-// `DepotPlugin.GetMcpServers(string?, IReadOnlyList{string})` answers with, not a registry row.
+// removed or renamed connection's *old* "Depot: &lt;name&gt;" MCP-registry entry — left over from before
+// AC-504 moved to offering a connection's server per-project instead of the shared registry.
 [Collection("avalonia")]
 public class DepotSettingsControlTests
 {
@@ -88,10 +85,8 @@ public class DepotSettingsControlTests
         _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
     }
 
-    // The guard this pins: two rows saved under the same name would leave the registry unable to tell them apart —
-    // Save() refuses the whole batch rather than keep one and drop the other (mirrors McpServersViewModel.Save's own
-    // duplicate-name refusal in the host dialog), so a same-named pair of brand-new rows leaves storage exactly as
-    // empty as it started, not holding whichever row happened to sort first.
+    // Two rows saved under the same name would leave the registry unable to tell them apart, so Save()
+    // refuses the whole batch rather than keep one and drop the other (mirrors McpServersViewModel.Save).
     [Fact]
     public void Save_TwoRowsWithTheSameName_RefusesTheWholeSave_AndWritesNothing()
     {
@@ -109,10 +104,9 @@ public class DepotSettingsControlTests
         Assert.Empty(settings.Connections);
     }
 
-    // Case-insensitive on purpose (Ordinal → OrdinalIgnoreCase): ProjectMemorySourceRegistration.Register (the
-    // memory-source registry a save also writes to) refuses a colliding scheme case-insensitively, so "Work"/"work"
-    // would already collide one layer down even though Depot's own McpServerName comparison used to let them both
-    // through as two distinct "Depot: Work"/"Depot: work" entries.
+    // Case-insensitive on purpose: ProjectMemorySourceRegistration.Register refuses a colliding scheme
+    // case-insensitively, so "Work"/"work" would collide there even though McpServerName used to let
+    // them through as two distinct entries.
     [Fact]
     public void Save_TwoRowsWithNamesDifferingOnlyByCase_RefusesTheWholeSave_AndWritesNothing()
     {
@@ -375,16 +369,9 @@ public class DepotSettingsControlTests
         host.DidNotReceive().RemoveSharedProjectSource(Arg.Any<string>());
     }
 
-    // AC-502/AC-503, explicitly: `DepotSettingsControl._SyncMemorySources` (private) calls
-    // `DepotMemorySource.BuildRegistrationPairs` twice for the same connection content — once for
-    // `_originalConnections`, once for the freshly-saved list — and each call wires brand-new
-    // `ProjectMemorySourceRegistration.ListLocationsAsync`/`ProjectMemorySourceRegistration.SignInAsync`/
-    // `ProjectMemorySourceRegistration.CheckReachability` closures over that call's own connection
-    // instance. Two such closures are never delegate-equal, but `ProjectMemorySourceRegistration`'s own
-    // equality override (AC-502) deliberately ignores all three, comparing only Scheme/Title/Instruction — so the
-    // record's own `==` correctly reads two independently-built registrations for the same connection as
-    // equal, which is exactly what lets `DepotSettingsControl._SyncMemorySources`'s plain `==`
-    // diff (no hand-rolled comparison needed) skip an unchanged connection.
+    // AC-502/AC-503: `_SyncMemorySources` calls `BuildRegistrationPairs` twice, wiring new delegate closures
+    // each time that are never delegate-equal. `ProjectMemorySourceRegistration`'s equality (AC-502)
+    // deliberately ignores those closures, comparing only Scheme/Title/Instruction — so the plain `==` diff still skips an unchanged connection.
     [Fact]
     public void Save_UnchangedConnection_IsNotReRegistered_DespiteEachBuildRegistrationPairsCallWiringItsOwnClosures()
     {
@@ -436,11 +423,9 @@ public class DepotSettingsControlTests
             registration.Scheme == "depot" && registration.Title.Contains("Wispslate")));
     }
 
-    // Regression: retiring a stale scheme and registering the new one per connection, one connection at a time,
-    // let an Add claim a scheme a later connection in the same save still held under its own before-registration —
-    // two connections swapping names silently dropped one of the two from the registry until a restart. A
-    // call-counting substitute cannot see that gap (both Adds and both Removes still happen, just in an order that
-    // loses one), so this wires the host's calls into a small registry stand-in and asserts on its end state.
+    // Regression: retiring/registering per connection one at a time let an Add claim a scheme a later
+    // connection in the same save still held, silently dropping one on a name swap. A call-counting
+    // substitute can't see that ordering gap, so this asserts on a registry stand-in's end state instead.
     [Fact]
     public void Save_SwappingTwoConnectionNames_BothMemorySourcesSurviveInTheRegistry()
     {
@@ -477,12 +462,9 @@ public class DepotSettingsControlTests
         Assert.True(registry.Sources.TryGetValue("depot.gamma", out var gamma) && gamma.Title.Contains("Gamma"));
     }
 
-    // --- AC-499: _SyncMemorySources end-state under the widened equality (FamilyKey/InstanceTitle now included) --
-    // ProjectMemorySourceRegistration.Equals now also compares FamilyKey/InstanceTitle (AC-499), which
-    // _SyncMemorySources' before/after diff relies on. These pin the registry's actual end state — not call counts,
-    // which cannot see an ordering bug where a later Add silently loses to an earlier connection's own
-    // not-yet-retired scheme (see Save_SwappingTwoConnectionNames_BothMemorySourcesSurviveInTheRegistry above, the
-    // same reasoning applied to FamilyKey/InstanceTitle specifically).
+    // AC-499: Equals now also compares FamilyKey/InstanceTitle, which _SyncMemorySources' before/after diff
+    // relies on. These pin the registry's actual end state, not call counts, for the same ordering-bug
+    // reasoning as Save_SwappingTwoConnectionNames_BothMemorySourcesSurviveInTheRegistry above.
 
     private static FakeMemorySourceRegistry _WireRegistry(ICockpitHost host)
     {
@@ -674,9 +656,8 @@ public class DepotSettingsControlTests
         _ = host.Received(1).RemoveMcpServer("Depot: Work");
     }
 
-    // The gamble AC-499 exists to remove: a row whose own typed name collides with another row's already-kept one
-    // must never sign in under its own ToRegistration().McpServerName, because Save() refused the whole batch, not
-    // silently kept the other row and dropped this one — signing in under that computed name would authorize the
+    // AC-499: a row whose typed name collides with another row's kept one must never sign in under its own
+    // computed McpServerName — Save() refused the whole batch, so signing in there would authorize the
     // *other* row's connection under this row's belief.
     [Fact]
     public async Task SignInAsync_RowCollidesOnName_NeverSignsIn_AndLeavesBothRowsUnsaved()
@@ -697,10 +678,8 @@ public class DepotSettingsControlTests
         Assert.Empty(settings.Connections);
     }
 
-    // Fix 2's actual failure scenario: two connections already stored and signed in before, one renamed into a
-    // collision with the other. Pins the full end state a call-counting assert on "did not sign in" alone would
-    // miss — both the stored connection list and the memory-source registry must come out exactly as they went in,
-    // not with the colliding row's old entry silently reclaimed.
+    // Fix 2's failure scenario: two stored, signed-in connections, one renamed into a collision. Pins the
+    // full end state a call-counting "did not sign in" assert alone would miss — nothing reclaimed silently.
     [Fact]
     public async Task SignInAsync_RenameCollidesWithAnAlreadyStoredRow_RefusesTheWholeSave_AndLeavesStorageAndMemorySourcesUntouched()
     {
@@ -771,10 +750,9 @@ public class DepotSettingsControlTests
         Assert.False(registry.Sources.ContainsKey("depot.gamma"));
     }
 
-    // AC-499: the MCP-registry reclaim and memory-source sync that live in Save() run identically whether Save is
-    // triggered by the host's own Save button or by a row's Sign-in click — checked here on the registry's actual
-    // end state (FakeMemorySourceRegistry), the same reasoning Save_SwappingTwoConnectionNames_* above documents
-    // for why a call-counting substitute cannot be trusted for this.
+    // AC-499: Save()'s reclaim and memory-source sync run identically whether triggered by the Save button
+    // or a row's Sign-in click — checked on the registry's actual end state for the same reason
+    // Save_SwappingTwoConnectionNames_* above distrusts a call-counting substitute.
     [Fact]
     public async Task SignInAsync_RenamedRow_EndState_MemorySourceInstanceTitleFollowsTheRename()
     {
@@ -804,11 +782,9 @@ public class DepotSettingsControlTests
     // before it starts pulling controls out of one.
     private static void _Show(Control control)
     {
-        // A control already attached under a shown window (a prior _Show/_AddRow/_SetRowFields call in the same
-        // test) would throw "already has a visual parent" if wrapped in a second window — reuse the existing one.
-        // Re-running UpdateLayout every time (not just on first attach) matters: a row added after the initial
-        // layout pass has not had ApplyTemplate run on its own Content yet, so GetVisualDescendants would not find
-        // its TextBoxes until another layout pass realises them.
+        // A control already attached under a shown window would throw "already has a visual parent" if
+        // wrapped again — reuse the existing one. Re-running UpdateLayout every time matters: a row added
+        // after the initial layout pass has not had ApplyTemplate run yet, so its TextBoxes need another pass.
         if (Avalonia.Controls.TopLevel.GetTopLevel(control) is Window existing)
         {
             existing.UpdateLayout();
@@ -849,11 +825,9 @@ public class DepotSettingsControlTests
         remove.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
     }
 
-    // A minimal stand-in for `ProjectMemorySourceRegistry` (internal to Cockpit.App, not referenced from this
-    // project) with the same first-one-wins-by-scheme rule, wired to the host substitute's
-    // `ICockpitHost.AddProjectMemorySource`/`ICockpitHost.RemoveProjectMemorySource` calls.
-    // Exists because a substitute that only counts calls cannot see an ordering bug where a later Add silently
-    // loses to an earlier connection's not-yet-retired scheme — only the registry's actual end state can.
+    // A minimal stand-in for `ProjectMemorySourceRegistry` (internal to Cockpit.App) with the same
+    // first-one-wins-by-scheme rule. Exists because a call-counting substitute cannot see an ordering bug
+    // where a later Add silently loses to an earlier connection's not-yet-retired scheme.
     private sealed class FakeMemorySourceRegistry
     {
         private readonly Dictionary<string, ProjectMemorySourceRegistration> _sources = new(StringComparer.OrdinalIgnoreCase);
