@@ -1,36 +1,6 @@
 # Known comment-length debt, grandfathered by scripts/check-comment-length.py.
 # Regenerate with: scripts/check-comment-length.py --update-baseline
 # format: <check>\t<path>\t<violation count>
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotCeoTools.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotConsultBrief.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotCorrection.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotCorrectionKind.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotCorrectionSource.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotEpicRunner.cs	4
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotEvidenceSignals.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotMergeReadyDecision.cs	4
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotModelTier.cs	5
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotPlan.cs	6
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotPlanController.cs	7
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotPlanPhase.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotPlanSource.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotPlanTools.cs	7
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotPlanWorkspaceBody.cs	33
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotPlugin.cs	11
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotReadyGate.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotReliabilitySummary.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotReviewFixStep.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRun.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunContext.cs	8
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunCoordinator.cs	32
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunDriver.cs	7
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunEnvironment.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunHistory.cs	2
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunManager.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunQueue.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunRecord.cs	3
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunReliability.cs	1
-inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunStepRecord.cs	1
 inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunToolNames.cs	1
 inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotRunTools.cs	1
 inline	plugins-dev/Cockpit.Plugin.Autopilot/AutopilotSettings.cs	6

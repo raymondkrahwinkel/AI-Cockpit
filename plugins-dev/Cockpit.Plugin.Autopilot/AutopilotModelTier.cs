@@ -3,22 +3,14 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// The cost ceiling a plan clears before the operator ever approves it (AC-256). Until this existed the only thing
-// steering model choice was brief text, and the pilot run put 88.9% of its tokens on the second-dearest model of the
-// four on offer, the remainder on the second-cheapest, and never touched the cheapest at all — a brief asks, it does
-// not enforce, which is the same lesson AC-433 learned about review scope.
-//
-// Expressed purely as a position in the list the profile's own provider ranked
-// (`PluginProfileInfo.ModelCostEstimatesCheapestFirst`), never as a model name: the CEO brief is
-// deliberately provider-neutral and this rule has to be able to say the same. A fraction rather than a fixed index,
-// so the meaning does not change when a provider offers two models instead of four.
+// The cost ceiling a plan clears before the operator approves it (AC-256) — a pilot run put 88.9% of its
+// tokens on the second-dearest model, never touching the cheapest. Expressed as a fractional position in the
+// profile's own ranked list, never a model name, so the CEO brief stays provider-neutral.
 internal static class AutopilotModelTier
 {
-    // How many of a profile's ranked models a step that is not a review gate may choose from, counting from the
-    // cheapest. `AutopilotCostStrategy.CostFirst` means the cheapest only — its own instruction already
-    // says escalate only after a cheaper model has actually failed. `AutopilotCostStrategy.Balanced`
-    // allows the cheaper half, which is what moves the measured mix without reserving the top tiers from the gates
-    // that need them. Always at least one, so a profile offering a single model can still run it.
+    // How many of a profile's ranked models a non-review step may choose from, counting from the cheapest.
+    // CostFirst means cheapest only; Balanced allows the cheaper half. Always at least one, so a profile with a
+    // single model can still run it.
     internal static int AllowedCount(int rankedModels, AutopilotCostStrategy strategy) => strategy switch
     {
         AutopilotCostStrategy.QualityFirst => rankedModels,
@@ -26,10 +18,8 @@ internal static class AutopilotModelTier
         _ => Math.Max(1, rankedModels / 2),
     };
 
-    // Checks one step against the ceiling, returning the refusal to hand back to the CEO or null when the step is
-    // within it. Silent on everything it cannot judge rather than guessing: a review gate (where a missed finding
-    // costs more than the tokens), a profile whose provider ranks nothing, and a model absent from that ranking all
-    // pass. Kept static and free of the endpoint so it is tested directly.
+    // Checks one step against the ceiling, returning a refusal or null when within it. Silent on what it cannot
+    // judge: a review gate (a missed finding costs more than the tokens), an unranked profile, or an unranked model.
     internal static string? Validate(AutopilotStep step, IReadOnlyList<PluginProfileInfo> profiles, AutopilotCostStrategy strategy)
     {
         if (strategy is AutopilotCostStrategy.QualityFirst || step.IsReviewGate || string.IsNullOrWhiteSpace(step.Model))
@@ -63,12 +53,9 @@ internal static class AutopilotModelTier
               + "those. Only the operator can lift this, by setting the cost strategy to QualityFirst.";
     }
 
-    // The same rule applied to a step nobody planned. `AutopilotRunDriver` synthesizes the shared fix step
-    // that clears a review group's findings, and it inherits the gate's profile and model — but a gate is exempt from
-    // the ceiling and a fix step is not: it writes code and runs the suite like any other step. Emitting a plan never
-    // touches it, so without this the one step the CEO never planned is the one that escapes the ceiling. Over it, the
-    // step moves to the dearest model still allowed rather than the cheapest, keeping as much capability as the
-    // ceiling permits; within it, the step is returned untouched.
+    // The same rule applied to a step nobody planned: `AutopilotRunDriver`'s synthesized fix step inherits a
+    // review gate's profile/model, but unlike the gate it is not exempt from the ceiling. Over it, moves to the
+    // dearest still-allowed model rather than the cheapest, to keep as much capability as the ceiling permits.
     internal static AutopilotStep HoldToCeiling(AutopilotStep step, IReadOnlyList<PluginProfileInfo> profiles, AutopilotCostStrategy strategy)
     {
         if (Validate(step, profiles, strategy) is null)
@@ -80,10 +67,9 @@ internal static class AutopilotModelTier
         var profile = profiles.First(candidate => string.Equals(candidate.Label, step.ProfileLabel, StringComparison.Ordinal));
         var ranked = profile.ModelCostEstimatesCheapestFirst;
 
-        // The dearest the ceiling allows, but only one the profile actually offers: nothing stops a provider pricing a
-        // model it does not list, and moving the step onto that would swap a cost problem for a step that dies at
-        // launch on the profile check. Nothing offered within the ceiling leaves the step alone — a run that keeps
-        // going one tier over budget beats a run that cannot start this step at all.
+        // The dearest the ceiling allows, but only one the profile actually offers — a provider can price a model
+        // it doesn't list, and moving onto that would swap a cost problem for a launch-time failure. Nothing
+        // offered within the ceiling leaves the step alone: over budget beats unable to start.
         var affordable = ranked
             .Take(AllowedCount(ranked.Count, strategy))
             .Select(estimate => estimate.Model)

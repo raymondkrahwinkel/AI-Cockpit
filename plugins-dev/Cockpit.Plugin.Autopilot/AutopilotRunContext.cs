@@ -6,10 +6,8 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 namespace Cockpit.Plugin.Autopilot;
 
 // One running Autopilot run and its surface state (AC-174): its own plan controller and coordinator, the CEO validator
-// session it embeds, and the live step view to show. Created per dequeued plan by the workspace body; it runs the plan
-// to a settled end — embedding a fresh CEO validator (the planning round is long closed) and, through the coordinator,
-// each step's agent — and raises `Changed` as its pipeline or step view moves so the surface re-renders it.
-// Several can run at once: each is independent, and its coordinator self-gates every tool call on its own panes.
+// session it embeds, and the live step view to show. Runs the plan to a settled end, raising `Changed` as its
+// pipeline or step view moves. Several can run at once: each is independent and self-gates its own panes.
 internal sealed class AutopilotRunContext
 {
     private readonly ICockpitHost _host;
@@ -25,11 +23,9 @@ internal sealed class AutopilotRunContext
     // `_RunAsync` before the first CEO exists, so the coordinator can never call back here while it is still blank.
     private string _ceoDirectory = string.Empty;
 
-    // The MCP surface the run's validator CEO is scoped to (AC-197): only the CEO endpoint that hosts its own tools —
-    // autopilot_validate plus autopilot_tracker_stage / autopilot_tracker_note. Left on the request's default empty list
-    // it would inherit the host's whole selection (161 tools observed): every tool definition in its context, and it
-    // would still leave the tracker-stage flow to chance. Mounting AutopilotCeoTools.EndpointName explicitly guarantees
-    // the validate and tracker tools are present — the exact endpoint the validator/tracker brief tells it to call.
+    // The MCP surface the run's validator CEO is scoped to (AC-197): only the CEO endpoint that hosts its own tools.
+    // Left on the request's default empty list it would inherit the host's whole selection instead — mounting
+    // AutopilotCeoTools.EndpointName explicitly guarantees the validate and tracker tools are present.
     internal static readonly IReadOnlyList<string> ValidatorCeoMcpServers = [AutopilotCeoTools.EndpointName];
 
     // The embed request for a run's validating CEO — a pure static so the shape it asks the host for can be exercised
@@ -60,17 +56,13 @@ internal sealed class AutopilotRunContext
             // every tool rather than stall on a prompt, contained by the run's worktree.
             PreApproveAllTools = true,
             WorkingDirectory = workingDirectory,
-            // Confine the validator's file tools to whatever directory it is pointed at: the
-            // run worktree when there is one, else the run's folder (a non-git run, or a git run whose worktree
-            // could not be created). A Claude/Codex CEO confines natively and ignores this; a local-model CEO
-            // would otherwise reach the operator's home, so it is held to the folder it validates — least
-            // privilege in every case, never wider than the run's own directory.
+            // Confine the validator's file tools to whatever directory it is pointed at. A Claude/Codex CEO
+            // confines natively and ignores this; a local-model CEO would otherwise reach the operator's home,
+            // so it is held to least privilege in every case, never wider than the run's own directory.
             ConfineFileToolsToWorkingDirectory = true,
             // The run's autonomy mode, for the same reason a step worker carries it (AC-209): it is coerced away from
-            // bypassPermissions, and naming it here drops whatever mode the CEO profile happens to have stored. Without
-            // it, a profile saved on bypassPermissions reaches the driver, a permission-based provider stops vouching
-            // confinement, and the host's fail-closed gate refuses the very confinement this request asks for — leaving
-            // the run waiting on a validator that never starts (AC-191).
+            // bypassPermissions, else a profile saved on bypassPermissions reaches the driver and the host's
+            // fail-closed gate refuses the confinement this request asks for, leaving the validator stuck (AC-191).
             PermissionMode = settings.AutonomyMode(),
             // The ledger rides in the hidden brief rather than as an opening turn: it is this session's standing
             // context, and a turn would cost the very round trip the checkpoint is there to save.
@@ -101,10 +93,9 @@ internal sealed class AutopilotRunContext
     // The plan this run drives — its goal is the run's label on the surface.
     public AutopilotPlan Plan { get; }
 
-    // What ties this one run's sessions together in the host's usage trail (AC-251). A run spends across a session
-    // per step plus its validating CEO, and nothing the host can see says those belong to each other — so the run
-    // says it, and afterwards "what did this run cost" is a sum rather than an estimate. Minted per run and never
-    // reused; the planning round that produced the plan is not part of it, having happened before there was a run.
+    // What ties this one run's sessions together in the host's usage trail (AC-251), so "what did this run cost"
+    // is a sum rather than an estimate. Minted per run and never reused; planning is not part of it, having
+    // happened before there was a run.
     public string RunId { get; } = Guid.NewGuid().ToString("n");
 
     // The run's plan controller and where each step sits — what the surface renders as this run's pipeline.
@@ -160,11 +151,9 @@ internal sealed class AutopilotRunContext
         {
             var repositoryDirectory = AutopilotWorkingDirectory.Resolve(_context, plan.WorkingDirectory);
 
-            // Whether the run isolates each step in a worktree (AC-174). A git repository isolates —
-            // the confinement guarantee holds. Only a folder the host positively reports is NOT a git repository runs
-            // without isolation (an admin task with no repo — a deliberate choice); Unknown (an older host, a failed probe)
-            // stays isolated, fail-closed, so the guard is never dropped silently. This keeps "not a git repo → run
-            // free" apart from "a git repo whose worktree could not be created", which stays isolated (refused downstream).
+            // Whether the run isolates each step in a worktree (AC-174). Only a folder the host positively reports
+            // is NOT a git repository runs without isolation; Unknown (older host, failed probe) stays isolated,
+            // fail-closed, so the guard is never dropped silently.
             var status = await _host.DetectGitDirectoryStatusAsync(repositoryDirectory, _cts.Token);
             var isolateSteps = AutopilotRunEnvironment.IsolateFor(status);
 
@@ -176,10 +165,9 @@ internal sealed class AutopilotRunContext
                 await _host.RememberWorkingPathAsync(repositoryDirectory, _cts.Token);
             }
 
-            // One worktree for the whole run when it isolates (AC-174): every step runs in it so their
-            // work accumulates on one branch — the merge-ready deliverable — instead of a throwaway worktree per step.
-            // Null when the run does not isolate (a plain folder), or when the worktree could not be created (a git-repo
-            // run then falls back to per-step isolation, which the fail-closed gate still guards).
+            // One worktree for the whole run when it isolates (AC-174): every step runs in it so their work
+            // accumulates on one branch — the merge-ready deliverable — instead of a throwaway worktree per step.
+            // Null when the run does not isolate, or the worktree could not be created (falls back per-step).
             PluginWorktreeInfo? runWorktree = null;
             if (isolateSteps)
             {
@@ -238,10 +226,8 @@ internal sealed class AutopilotRunContext
     }
 
     // A run entered the AwaitingOperator wait (AC-155/AC-194): tell the operator once, since they may be working
-    // elsewhere in the app while the run sits blocked on their answer. OnControllerChanged fires on every re-render, so
-    // an unguarded toast would repeat on each render while the run waits — the previous-phase edge guard keeps it to one
-    // toast per time the run enters the wait. Marshalled to the UI thread since Changed is raised from MCP-call/driver
-    // threads too.
+    // elsewhere while the run sits blocked. OnControllerChanged fires on every re-render, so the previous-phase edge
+    // guard keeps it to one toast per wait; marshalled to the UI thread since Changed fires from other threads too.
     private void _MaybeNotifyAwaiting()
     {
         var current = Controller.Phase;

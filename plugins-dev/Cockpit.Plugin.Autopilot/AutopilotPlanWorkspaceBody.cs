@@ -13,10 +13,9 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
 
-// The CEO plan-flow workspace body (AC-174/AC-175): the pipeline as blocks on the left and, once a step is running,
-// its live session on the right. It renders whatever the shared `AutopilotPlanController` holds and
-// re-renders on its change — the planning pop-out and the executeStep session-embedding land as the flow is wired up.
-// This grows up alongside the shipped gate-based `AutopilotWorkspaceBody` rather than replacing it in one move.
+// The CEO plan-flow workspace body (AC-174/AC-175): pipeline blocks on the left, the running step's live session
+// on the right, rendered from the shared `AutopilotPlanController`. Grows up alongside the shipped gate-based
+// `AutopilotWorkspaceBody` rather than replacing it in one move.
 internal sealed class AutopilotPlanWorkspaceBody : UserControl
 {
     private readonly ICockpitHost _host;
@@ -30,33 +29,21 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private readonly List<AutopilotRunContext> _activeContexts = [];
     private readonly ContentControl _bodyHost = new();
 
-    // Which active run's pipeline the right pane shows, when the operator picked one explicitly via the "Needs you"
-    // badge (AC-440) rather than the phase-based default below. Never cleared explicitly — _DisplayedContext ignores it
-    // once the run it points at leaves _activeContexts (settled) or leaves AwaitingOperator (answered), and falls back
-    // to the default the next render either way.
+    // Which active run's pipeline the right pane shows, when picked explicitly via the "Needs you" badge (AC-440)
+    // rather than the phase-based default. Never cleared explicitly — _DisplayedContext ignores it once the run
+    // settles or leaves AwaitingOperator, falling back to the default either way.
     private AutopilotRunContext? _focusedContext;
 
-    // The MCP surface the planning CEO is scoped to (AC-197/AC-212): the plan-emit endpoint it uses to draft the plan,
-    // plus — for a source-triggered run — the tracker's READ-only MCP servers (<paramref name="trackerReadServers"/>).
-    // Left on the request's default empty list the CEO would inherit the host's entire selection (161 tools observed) —
-    // every tool definition in its context (tokens), none of it needed to plan.
-    //
-    // Read vs write split (AC-212): the CEO gets the tracker's read tools while planning so it can open the source issue
-    // and, for an epic, pull its "parent for" child issues (AC-217) — but NOT the tracker's write tools. The write path
-    // (autopilot_tracker_stage / autopilot_tracker_note) lives on the CEO-tools endpoint, which AutopilotPlugin gates on
-    // manager.Active.Count > 0 (an active run) and which this scope never lists: moving the issue's stage or posting
-    // notes before the operator has approved would be premature. Stage/notes stay the run's job — the CEO validator
-    // (AutopilotValidatorBrief) plus the coordinator's auto-advance (AC-202), both during execution. The read servers are
-    // resolved provider-neutrally from the source's ITrackerProvider.ReadToolMcpServerNames, so no tracker is named here.
+    // The MCP surface the planning CEO is scoped to (AC-197/AC-212): the plan-emit endpoint, plus a source-triggered
+    // run's tracker READ-only MCP servers — left default, the CEO would inherit the host's entire selection (161
+    // tools observed). Read tools only, never write — moving stage/posting notes before approval would be premature.
     internal static IReadOnlyList<string> PlanningCeoMcpServers(IReadOnlyList<string>? trackerReadServers) =>
         trackerReadServers is { Count: > 0 } servers
             ? [AutopilotPlanTools.EndpointName, .. servers]
             : [AutopilotPlanTools.EndpointName];
 
-    // The read-only tracker MCP servers a source-triggered planning round scopes the CEO to (AC-212): resolve the
-    // source's tracker provider by its id and take the read-tool server names it advertises. Empty for a CEO-first run
-    // (no source), an unknown/unregistered tracker, or a tracker that reads via a CLI rather than an MCP server (GitHub
-    // Issues via gh). Provider-neutral — Autopilot asks the provider, it never names a tracker.
+    // Read-only tracker MCP servers for a source-triggered round (AC-212). Empty for a CEO-first run, an unknown
+    // tracker, or one that reads via a CLI rather than an MCP server. Provider-neutral — never names a tracker.
     private IReadOnlyList<string> _TrackerReadServers(AutopilotPlanSource? source) =>
         source is { } item
             && _host.TrackerProviders.FirstOrDefault(provider => string.Equals(provider.TrackerId, item.Tracker, StringComparison.OrdinalIgnoreCase)) is { } tracker
@@ -206,12 +193,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return surface;
     }
 
-    // Which of the active runs the right pane shows (AC-440). An explicit pick from the "Needs you" badge wins only
-    // while that run is still active AND still awaiting the operator — the moment it is answered (→ Running) or
-    // settles, the pick is stale and must not stick, or a later run turning AwaitingOperator would sit hidden behind it
-    // forever, the exact symptom this fix removes. Absent a live pick, a run in AwaitingOperator wins over one merely
-    // Running, so a second concurrent run's blockade is never hidden behind the first one's live step surface — the bug
-    // the badge used to paper over (it lit up for any awaiting run while the pane kept showing _activeContexts[0]).
+    // Which of the active runs the right pane shows (AC-440). An explicit pick wins only while that run is still
+    // active AND still awaiting the operator — otherwise it's stale and must not stick. Absent a live pick, a run
+    // in AwaitingOperator wins over one merely Running, so a second run's blockade is never hidden behind the first.
     private AutopilotRunContext? _DisplayedContext()
     {
         if (_focusedContext is { } focused && _activeContexts.Contains(focused) && focused.Controller.Phase == AutopilotPlanPhase.AwaitingOperator)
@@ -242,11 +226,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return 0;
     }
 
-    // The badge was clicked (AC-440): step to the next run awaiting the operator, past the one *shown* right now — not
-    // the last one clicked, which is the same run whenever nothing was clicked yet or the pick already went stale. Using
-    // _DisplayedContext() here (rather than _focusedContext directly) is what makes a click on a single awaiting run a
-    // no-op instead of a same-run re-pick: re-picking still triggers _Render(), which rebuilds the answer TextBox from
-    // scratch and would silently drop whatever the operator had already typed.
+    // The badge was clicked (AC-440): step to the next run awaiting the operator, past the one shown right now.
+    // Using _DisplayedContext() (not _focusedContext) makes a click on a single awaiting run a no-op instead of a
+    // same-run re-pick — re-picking would re-render and drop whatever the operator had already typed.
     private void _FocusNextAwaitingRun()
     {
         var awaiting = _activeContexts.Where(context => context.Controller.Phase == AutopilotPlanPhase.AwaitingOperator).ToList();
@@ -345,10 +327,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
     }
 
-    // One settled run in history: an outcome dot, its name and finish time, the outcome line (flagging any failed steps
-    // even on a merge-ready run so a green dot never hides them), and each step with its mark and — for a step that
-    // failed or was blocked — the reason it carried, so history explains why a step did not pass, not just that it did
-    // not.
+    // One settled run in history: an outcome dot, name and finish time, the outcome line (flagging any failed
+    // steps even on a merge-ready run), and each step with its mark and its failure/block reason underneath.
     private Control _BuildHistoryRow(AutopilotRunRecord record)
     {
         var mergeReady = record.Outcome == AutopilotPlanPhase.MergeReady;
@@ -460,13 +440,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         _ => string.Empty,
     };
 
-    // A settled step's own row (AC-347): its status mark plus, when it needed a correction, a trailing readable label
-    // so the AC-347 figure has a visible per-step counterpart that also says which kind of correction it was — and, for
-    // a step the operator reclassified by hand, a faint "set by you" line so a manually set figure never reads as if
-    // the run itself had decided it. Right-click always offers the four classifications — reclassifying is valid for
-    // any settled step regardless of its current one, so the menu is never a dead control.
-    // Reads like the live chip: the profile, and the model after it where the profile offers a choice. Empty when the
-    // record predates AC-256, so an old run shows no half-filled line.
+    // A settled step's own row (AC-347): its status mark plus, when corrected, a trailing label — and, for a
+    // step the operator reclassified by hand, a faint "set by you" line. Reads like the live chip: profile, then
+    // model where the profile offers a choice. Empty when the record predates AC-256.
     internal static string _HistoryStepTier(AutopilotRunStepRecord step) => (step.ProfileLabel, step.Model) switch
     {
         ({ Length: > 0 } profile, { Length: > 0 } model) => $"· {profile} · {model}",
@@ -542,10 +518,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return new Border { Child = lines, ContextMenu = _CorrectionMenu(record, stepIndex) };
     }
 
-    // The reclassify menu (AC-347): the four correction kinds, each setting CorrectionSource to Operator so the manual
-    // override stays visible as one. Written back through AutopilotRunHistory.Replace — the one path a settled record is
-    // edited through after it landed. It closes over the record instance rather than its position, so an edit lands on
-    // the run it was opened on even if another run settles in the meantime.
+    // The reclassify menu (AC-347): sets CorrectionSource to Operator so a manual override stays visible as one.
+    // Closes over the record instance rather than its position, so an edit lands on the run it opened on
+    // even if another run settles in the meantime.
     private ContextMenu _CorrectionMenu(AutopilotRunRecord record, int stepIndex)
     {
         MenuItem Item(AutopilotCorrectionKind kind, string label)
@@ -643,33 +618,24 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return new DockPanel { LastChildFill = false, Children = { head, new Border { [DockPanel.DockProperty] = Dock.Top, Child = list } } };
     }
 
-    // Whether the surface needs the operator (AC-203): true while any active run sits in AwaitingOperator — a step hit a
-    // blockade only the operator can answer (AC-155). Pure so the persistent "needs you" marker's condition is unit-testable
-    // without a host or a UI thread. Keyed on the phase alone, so a CEO consult — which keeps the run Running (spoor 2,
-    // AC-201) — never trips it; only a real operator escalation (spoor 3, AwaitingOperator) does.
+    // Whether the surface needs the operator (AC-203): true while any active run sits in AwaitingOperator. Keyed
+    // on phase alone, so a CEO consult (keeps the run Running, spoor 2, AC-201) never trips it — only a real
+    // operator escalation (spoor 3) does.
     internal static bool NeedsOperatorAttention(IEnumerable<AutopilotPlanPhase> activePhases) =>
         activePhases.Any(phase => phase == AutopilotPlanPhase.AwaitingOperator);
 
-    // The persistent "needs you" badge (AC-203): a standing amber marker on the queue bar, which docks at the top of the
-    // surface and never scrolls away with a specific run's view or the history. It is rebuilt from the live phase on every
-    // render — a run entering the wait raises Changed, which re-renders the surface — so it appears the moment a run turns
-    // AwaitingOperator and disappears as soon as the operator answers (→ Running) or the run settles. This is the lasting
-    // signal for an operator who missed the one-shot AC-194 toast and is not looking at the blocked run; the toast stays as
-    // the in-the-moment nudge, this outlives it.
-    //
-    // Clickable since AC-440: with more than one active run, the pane could sit on a run that is merely Running while
-    // this badge lit up for a different, awaiting one — a "needs you" with no way to reach the run it was about. A click
-    // now steps the pane to the (next) run actually awaiting the operator.
+    // The persistent "needs you" badge (AC-203): a standing amber marker on the queue bar, rebuilt from the live
+    // phase on every render, so it survives past the one-shot AC-194 toast for an operator not looking at the
+    // blocked run. Clickable since AC-440: with more than one active run, steps the pane to the run actually awaiting.
     private Control _BuildNeedsYouBadge(int count)
     {
         // The theme's ink for a bright status fill. It used to be a near-black mixed by hand for the old orange
         // amber; white — the answer on the accent — reads at 2:1 on this one and is not an option.
         var onWaiting = _Brush("CockpitTextOnStatusBrush");
 
-        // The amber fill lives on this inner Border, not on the Button below — FluentTheme's Button template restyles
-        // its ContentPresenter's Background on :pointerover/:pressed (Theme.axaml), which wins over a locally-set
-        // Button.Background and would turn the badge dark (near-illegible against CockpitTextOnStatusBrush) the moment
-        // it is hovered or clicked. A Border as Content sits outside that template and keeps its own colour always.
+        // The amber fill lives on this inner Border, not the Button below — FluentTheme's Button template restyles
+        // its ContentPresenter's Background on :pointerover/:pressed, which would turn the badge dark. A Border
+        // as Content sits outside that template and keeps its own colour always.
         var fill = new Border
         {
             Background = _Brush("CockpitStatusWaitingBrush"),
@@ -753,10 +719,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return button;
     }
 
-    // New run: open a fresh planning round on the planning controller. Guarded on the pop-out already being open (not the
-    // phase — the planning controller idles in Planning, so a phase guard would block every New run); a run already in
-    // flight is unaffected, since planning is decoupled from executing. BeginPlanning turns the phase Planning and sets a
-    // fresh empty draft, which the render turns into an opened pop-out.
+    // New run: open a fresh planning round. Guarded on the pop-out already being open, not the phase — the
+    // controller idles in Planning, so a phase guard would block every New run; a run in flight is unaffected.
     private void _StartPlanningRound()
     {
         // A planning round needs a CEO profile — the guard moved here from the side-menu button so
@@ -832,13 +796,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         });
     }
 
-    // A run finished: record it in history (unless it was cancelled — a closed workspace, still Running — where there is
-    // nothing to record) and raise a toast. Every settled run gets its own done/blocked toast; when
-    // that empties both the running set and the queue after more than one run, an extra "whole queue finished" summary
-    // follows, so a single run is one toast and a staged queue ends with a clear all-done.
-    // Whether a run's final phase is one that gets recorded in history and toasted (AC-196): merge-ready, blocked, or
-    // operator-stopped. A run that is still Running when its context is dropped was cancelled by a closed workspace and
-    // has nothing to record. Pure so the "a stopped run is recorded, not silently dropped" rule is unit-testable.
+    // Whether a run's final phase gets recorded in history and toasted (AC-196): merge-ready, blocked, or
+    // operator-stopped. Still-Running means it was cancelled by a closed workspace, nothing to record.
     internal static bool IsSettledOutcome(AutopilotPlanPhase outcome) =>
         outcome is AutopilotPlanPhase.MergeReady or AutopilotPlanPhase.Blocked or AutopilotPlanPhase.Stopped;
 
@@ -851,10 +810,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             _completedRuns++;
             _history.Add(AutopilotRunRecord.Capture(plan, outcome, blockReason, runId, blockadeAnswers, pullRequestMissing, DateTimeOffset.Now));
 
-            // AC-346: this run's sub came from an epic chain (AutopilotEpicRunner stamped EpicId when it picked the
-            // sub) — one progress comment on the epic per settled step, so the epic's own comment trail stays
-            // readable without clicking into every sub. Best-effort and fire-and-forget, like every other tracker
-            // write in this plugin: a comment that fails to land never holds up the surface re-rendering below.
+            // AC-346: this run's sub came from an epic chain — one progress comment on the epic per settled step.
+            // Best-effort and fire-and-forget, like every other tracker write in this plugin.
             if (plan.Source is { EpicId.Length: > 0 } source)
             {
                 _ = _PostEpicProgressAsync(source, plan, outcome, blockReason, pullRequestMissing);
@@ -891,14 +848,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         }
     }
 
-    // AC-346: the epic-runner's progress comment — one per settled sub-run, written onto the epic named by
-    // AutopilotPlanSource.EpicId rather than the sub itself. Reuses AutopilotRunReliability/AutopilotReliabilitySummary
-    // for the same reliability line the merge-ready toast above shows, so the epic's trail reads consistently with
-    // everywhere else that figure is shown rather than inventing a second wording for it — but scoped to just this
-    // epic's own settled runs (filtered on AutopilotRunRecord.EpicId), not the entire history: the ticket asks for the
-    // state of the chain, and a reliability figure blended with every unrelated run ever recorded would not answer
-    // that. Resolves the tracker provider by the source's own tracker id — provider-neutral, like every other tracker
-    // write in this plugin.
+    // AC-346: the epic-runner's progress comment, one per settled sub-run, written onto the epic (not the sub).
+    // Reuses the same reliability line as the merge-ready toast, but scoped to just this epic's own settled runs —
+    // the ticket asks for the chain's state, not a figure blended with unrelated runs.
     private async Task _PostEpicProgressAsync(AutopilotPlanSource source, AutopilotPlan plan, AutopilotPlanPhase outcome, string? blockReason, bool pullRequestMissing)
     {
         var provider = _host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, source.Tracker, StringComparison.OrdinalIgnoreCase));
@@ -949,10 +901,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     {
         try
         {
-            // The template choice (AC-189, slice 3): before the CEO session starts — its kickoff is fixed at embed — let
-            // the operator pick a template or plan free. A chosen template's resolved body becomes the CEO's kickoff
-            // instead of the hardcoded source kickoff; "free" keeps the current behaviour exactly. Cancelling the picker
-            // backs out of the whole round, the same as closing the pop-out unapproved.
+            // The template choice (AC-189, slice 3): the CEO's kickoff is fixed at embed, so let the operator pick
+            // a template or plan free first. Cancelling the picker backs out of the whole round.
             var pick = await _PickTemplateAsync(_plan.Plan?.Source);
             if (pick.Cancelled)
             {
@@ -979,16 +929,12 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                     PluginToastSeverity.Information);
             }
 
-            // The CEO plans on the profile and model configured in the plugin settings (AC-174) — blank = the app
-            // default — and gets its briefing as a hidden system prompt given at start (AC-180): who it is, the goal
-            // (and the source item), the profiles it can route steps to (with each one's cost), and to emit the plan
-            // through the autopilot_plan tool. A hidden prompt at start, not a visible turn, so the operator sees only
-            // the plan and their own input — and it cannot race the session's runtime coming up the way a post-start
-            // message did.
+            // The CEO gets its briefing as a hidden system prompt given at start (AC-180) — not a visible turn, so
+            // it can't race the session's runtime coming up the way a post-start message did.
             var profiles = await _host.GetProfilesAsync();
             var ceoLabel = _settings.CeoProfileLabel();
-            // The CEO's identity is the profile it runs under. A blank setting means the app default, which the host
-            // resolves to the first configured profile — resolve the same one here so the CEO still knows who it is.
+            // A blank setting means the app default, which the host resolves to the first configured profile —
+            // resolve the same one here so the CEO still knows who it is.
             var ceoIdentity = string.IsNullOrWhiteSpace(ceoLabel) ? profiles.FirstOrDefault()?.Label : ceoLabel;
 
             var ceo = _context.EmbedSession(new EmbeddedSessionRequest
@@ -1000,10 +946,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 AppendSystemPrompt = _plan.Plan is { } plan
                     ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy(), _settings.ExecutableStage(plan.Source?.Tracker ?? string.Empty))
                     : null,
-                // The kickoff (AC-189): a chosen template's resolved body, else — free planning — the tracker kickoff for
-                // a run triggered from an item, or null for a CEO-first run so it idles waiting for the operator to say
-                // what it should achieve. Built above from the picker choice. The host submits it after the runtime is
-                // up, so it does not race the session coming online.
+                // The kickoff (AC-189): a chosen template's body, else the tracker kickoff or null for a CEO-first
+                // run. Built above from the picker choice; the host submits it after the runtime is up.
                 InitialUserMessage = kickoff.Message,
             });
             _ceo = ceo;
@@ -1016,10 +960,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             // A failed pop-out must not crash the surface; the operator can retry from New run.
         }
 
-        // The dialog closed — approved (the Approve button already submitted the plan to the manager, which starts it or
-        // queues it) or cancelled. Either way the planning CEO's job is done, so close it and reset the planning
-        // controller so the next New run starts a fresh round. The run itself executes on its own context with its own
-        // CEO validator, not this planning session.
+        // The dialog closed — approved or cancelled. Either way close the planning CEO and reset the controller so
+        // the next New run starts fresh. The run itself executes on its own context with its own CEO validator.
         _popoutOpen = false;
 
         if (_ceo is { } planningCeo)
@@ -1034,11 +976,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         }
     }
 
-    // The template picker (AC-189, slice 3): a small modal before the CEO pop-out where the operator picks a template to
-    // start the run from, or plans free. It lists the combined templates — the plugin/builtin registrations with any
-    // override applied, then the operator's own — each with its origin badge. Returns Cancelled when the operator backed
-    // out (the round is then aborted), else the chosen template or null for free planning. When no templates exist at all
-    // it skips straight to free planning, so an empty catalogue never puts a needless dialog in the way.
+    // The template picker (AC-189, slice 3): a small modal before the CEO pop-out to pick a template or plan free.
+    // Returns Cancelled when the operator backed out, else the chosen template or null. No templates skips
+    // straight to free planning, so an empty catalogue never puts a needless dialog in the way.
     private async Task<(bool Cancelled, AutopilotTemplate? Template)> _PickTemplateAsync(AutopilotPlanSource? source)
     {
         IReadOnlyList<AutopilotTemplate> templates;
@@ -1060,10 +1000,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         AutopilotTemplate? chosen = null;
         var cancelled = true;
 
-        // The chosen option, held in a plain local the rows set on click and Continue reads — index 0 is "plan free", the
-        // templates follow, so it maps to templates[index - 1]. This replaces the ListBox whose SelectedIndex the operator
-        // could not move onto item 0 by clicking (default-selected, so re-selecting it was a silent no-op — the live bug):
-        // every option is now its own full-width RadioButton with a visible checked state, "Plan free" a big target of its own.
+        // Index 0 is "plan free", templates follow (templates[index - 1]). Replaces the ListBox whose SelectedIndex
+        // the operator could not move onto item 0 by clicking — re-selecting a default-selected item was a silent no-op.
         var selectedIndex = 0;
 
         var detail = new TextBlock
@@ -1106,9 +1044,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             ShowDetail();
         }
 
-        // One full-width clickable row per option (AC-189): a RadioButton in a single group, stretched so the whole row is
-        // the hit target, with a bold title and a muted subtitle. Unlike the old ListBox row, clicking anywhere on it —
-        // including the already-selected one — is an unambiguous, visible act.
+        // One full-width clickable row per option (AC-189): a RadioButton stretched so the whole row is the hit
+        // target. Unlike the old ListBox row, clicking anywhere on it — even the already-selected one — is unambiguous.
         var optionsPanel = new StackPanel { Spacing = 6 };
         var group = Guid.NewGuid().ToString("N");
 
@@ -1236,8 +1173,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return (cancelled, chosen);
     }
 
-    // A plugin's readable name for its host-stamped id (a template's OwnerPluginId), or null when no installed plugin
-    // matches — the origin-label helper then falls back to the bare id so a Plugin template's origin is never blank.
+    // A plugin's readable name for its host-stamped id, or null when no installed plugin matches — the
+    // origin-label helper then falls back to the bare id.
     private string? _PluginName(string pluginId) =>
         _host.InstalledPlugins.FirstOrDefault(plugin => string.Equals(plugin.Id, pluginId, StringComparison.Ordinal))?.DisplayName;
 
@@ -1270,10 +1207,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     {
         var planHost = new ContentControl { Content = _BuildBlocks(_plan.Plan) };
 
-        // The run name field: the CEO proposes a name and it pre-fills here, but the operator can
-        // override it, and the field must be non-empty before Approve — so a run always carries a recognisable name into
-        // the queue and history. A "mirroring" guard tells the CEO's proposal apart from the operator's own typing, so
-        // once they edit the name a later CEO re-emit does not overwrite it.
+        // The run name field: the CEO proposes a name and it pre-fills here, but the operator can override it,
+        // and it must be non-empty before Approve. A "mirroring" guard tells the CEO's proposal apart from the
+        // operator's own typing, so a later CEO re-emit doesn't overwrite an edited name.
         var nameBox = new TextBox
         {
             FontSize = 12,
@@ -1325,10 +1261,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
         nameBox.TextChanged += (_, _) =>
         {
-            // A change whose text is not the one we just mirrored in is the operator typing — from then on their name
-            // stands and a later CEO re-emit does not overwrite it. Comparing the value (not a timing flag) is robust
-            // whether Avalonia raises TextChanged synchronously or deferred: setting Text from null to "" at build used
-            // to trip a mirroring flag and wrongly mark the field edited, which then blocked every auto-fill.
+            // Text that doesn't match what we just mirrored in is the operator typing — their name stands from then
+            // on. Comparing the value (not a timing flag) is robust regardless of when Avalonia raises TextChanged.
             if ((nameBox.Text ?? string.Empty) != lastMirrored)
             {
                 nameEdited = true;
@@ -1358,9 +1292,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         _plan.Changed += OnPlanChanged;
         planHost.DetachedFromVisualTree += (_, _) => _plan.Changed -= OnPlanChanged;
 
-        // A one-line hint above the plan so it is clear the plan is shaped through the conversation, not by clicking the
-        // blocks: steps and their models are added, removed or re-targeted by asking the CEO in the chat (AC-174 — the
-        // clickable per-step model pills were dropped in favour of discussing the split with the CEO).
+        // A one-line hint above the plan: steps and their models are added, removed or re-targeted by asking the
+        // CEO in the chat (AC-174 — clickable per-step model pills were dropped in favour of this).
         var hint = new TextBlock
         {
             Text = "Add, remove or re-target steps — including which model runs each — by asking the CEO in the chat.",
@@ -1434,13 +1367,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
         };
 
-        // A CEO-only "working" cue over the session view (AC-195): the CEO's planning turn can run silently for minutes,
-        // and the shared session view's own indicator stays deaf during streaming on purpose — so without this the
-        // pop-out reads as hung. It follows the embedded session's busy signal alone, leaving the global indicator
-        // untouched. Docked as a full-width bar across the top of the chat pane (AC-214, confirmed in a live test): the
-        // same accent bar the run shows when work returns to the CEO for validation (_BuildValidatingSurface), so the
-        // two read as one visual language — not a floating pill. Collapsed it takes no layout space, so the chat fills
-        // the pane until the CEO starts thinking, then the bar drops in at the top and pushes the conversation down.
+        // A CEO-only "working" cue over the session view (AC-195): the CEO's planning turn can run silently for
+        // minutes and the shared session view's own indicator stays deaf during streaming, so without this the
+        // pop-out reads as hung. Same accent bar the run shows on validation (_BuildValidatingSurface), not a floating pill.
         var working = _BuildCeoWorkingCue();
         var busy = new CeoBusyIndicatorModel(ceo, isWorking =>
             Dispatcher.UIThread.Post(() => working.IsVisible = isWorking));
@@ -1457,12 +1386,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return new DockPanel { LastChildFill = true, Children = { footer, left, right } };
     }
 
-    // The CEO-only "working" cue (AC-195/AC-214): a full-width bar across the top of the CEO's chat pane while its
-    // planning turn is in flight, so a long silent turn shows progress rather than looking stuck. Mirrors the
-    // step-validation banner (_BuildValidatingSurface) exactly — the accent bar the run shows when work returns to the
-    // CEO — so both "the CEO has the ball" moments read the same, on CockpitStatusBusyBrush with dark-on-accent text.
-    // Replaces the earlier floating pill (AC-214), whose intended accent tint fell back to the panel background because
-    // its brush key did not exist. Hidden until the busy signal lights it; collapsed it takes no layout space.
+    // The CEO-only "working" cue (AC-195/AC-214): mirrors the step-validation banner (_BuildValidatingSurface)
+    // exactly, so both "the CEO has the ball" moments read the same. Replaces an earlier floating pill (AC-214)
+    // whose intended accent tint fell back to the panel background because its brush key didn't exist.
     private Control _BuildCeoWorkingCue() => new Border
     {
         IsVisible = false,
@@ -1501,11 +1427,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // nothing to do.
     private bool _HasApprovableSteps() => _plan.Plan is { Steps.Count: > 0 };
 
-    // The working-directory field (AC-174): a run planned from a tracker issue has no session, so the operator names the
-    // folder it works in here — the same folders the New-session dialog offers (pinned favorites and recents, loaded on
-    // demand when the history button is clicked) plus a Browse. A non-git folder is allowed; the hint says the run then
-    // works in it without per-step isolation. Returns the field and its text box so the caller wires the mirroring and
-    // the approval gate; the box's value is set by the caller (the CEO's proposal or the active session's directory).
+    // The working-directory field (AC-174): a run planned from a tracker issue has no session, so the operator
+    // names the folder here — the same folders the New-session dialog offers, plus Browse. A non-git folder is
+    // allowed, working without per-step isolation. Returns the field/box so the caller wires mirroring and the approval gate.
     private (Control Field, TextBox Box) _BuildWorkingDirectoryField()
     {
         var box = new TextBox
@@ -1652,10 +1576,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
         button.Click += (sender, _) =>
         {
-            // Approve submits the planned draft — carrying the operator's (or the CEO's) run name and their chosen
-            // working directory — to the run manager, which runs it now if there is a free slot or queues it behind the
-            // others. It does not run on the planning controller. The button is only enabled once the plan has steps, a
-            // name and a directory, so all three hold here.
+            // Approve submits the draft to the run manager, which runs it now or queues it — not the planning
+            // controller. The button is only enabled once the plan has steps, a name and a directory.
             if (_plan.Plan is { Steps.Count: > 0 } plan)
             {
                 var name = nameProvider().Trim();
@@ -1787,9 +1709,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        // While the run is live the operator can stop it (AC-196): a mid-run stop settles it Stopped and records it in
-        // history, rather than the run vanishing silently while still Running. Only shown while the run is actually
-        // running or waiting — a settled run has nothing left to stop.
+        // While the run is live the operator can stop it (AC-196): settles it Stopped and records it in history,
+        // rather than vanishing silently. Only shown while running or waiting.
         // TODO(AC-196): a confirmation ("Stop run? unmerged work is discarded") is UX-wanted but out of scope here.
         var live = controller.Phase is AutopilotPlanPhase.Running or AutopilotPlanPhase.AwaitingOperator;
         var stop = new Button
@@ -1854,10 +1775,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // thin affordance — the operator stays out of the loop unless they choose to step in.
     private Control _BuildStepSurface(AutopilotRunContext context, Control stepView)
     {
-        // The step view is a persistent control (the live embedded session), reused across renders. _Render rebuilds
-        // this whole pipeline while the previous one is still on the host, so the view still sits in the previous
-        // render's container — and Avalonia throws when a control that still has a parent is placed into a new one.
-        // Detach it from that container first.
+        // The step view is a persistent control reused across renders and still sits in the previous render's
+        // container — Avalonia throws when a control with a parent is placed into a new one. Detach first.
         _DetachFromParent(stepView);
 
         var intervene = new Button
@@ -1896,10 +1815,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
         };
 
-        // Host the reused step view in a fresh single-child Border rather than adding it straight to the DockPanel's
-        // Children: a Panel's Children collection rejects a control that still has a parent from the previous render (the
-        // step view is persistent and reparented each render), and throws mid-render — a Border's single-child slot
-        // reparents it cleanly, the way the right pane held it before this bar was added.
+        // Host the reused step view in a fresh single-child Border rather than adding it straight to the
+        // DockPanel's Children — a Panel's Children collection rejects a control that still has a parent.
         return new DockPanel
         {
             LastChildFill = true,
@@ -1907,10 +1824,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
     }
 
-    // The CEO's validation of a finished step: the CEO session under a prominent accent banner, so it
-    // reads clearly that the CEO is now reviewing the work against its acceptance — not the finished worker still sitting
-    // in the pane. The CEO view is a persistent control, reparented each render, so it is detached from its old container
-    // first, the same way the step view is.
+    // The CEO's validation of a finished step: the CEO session under a prominent accent banner, so it's clear the
+    // CEO is now reviewing — not the finished worker still sitting there. Detached the same way the step view is.
     private Control _BuildValidatingSurface(Control ceoView)
     {
         _DetachFromParent(ceoView);
@@ -1974,13 +1889,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         }
     }
 
-    // The blockade panel (AC-155): the step's question to the operator, an answer box, and a Send that relays the reply
-    // to the blocked session and resumes the run. The step blocks stay on the left; only the right pane changes.
-    //
-    // Wrapped in its own ScrollViewer since AC-440: a question with several numbered options and an escalation's advice
-    // is routinely longer than the pane, and an escalation is exactly the case that cannot be designed away — it is the
-    // agent explaining what it could not decide itself. Without the scroll region the text used to fill the pane and
-    // push the answer box and Send button out of reach, leaving the operator unable to see what they were answering.
+    // The blockade panel (AC-155): the step's question, an answer box, and a Send that relays the reply and resumes
+    // the run. Wrapped in its own ScrollViewer since AC-440 — an escalation's question and advice routinely runs
+    // longer than the pane, and without scrolling it used to push the answer box and Send out of reach.
     private Control _BuildBlockadePanel(AutopilotRunContext context)
     {
         var answer = new TextBox

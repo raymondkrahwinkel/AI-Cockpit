@@ -1,10 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// A finished step in a run's history: its title and how it ended, the run's last note on it (why it failed, or a
-// closing line), how many attempts and reworks it took, and the AC-347 correction it was classified as. Kept small
-// and value-only so the record persists cleanly and reads back after a restart — it is a snapshot of the outcome, not
-// a live step. The new fields are init-properties, not positional parameters, so persisted history from before AC-347
-// still deserializes — a missing field just reads back its default.
+// A finished step in a run's history: its title and how it ended, the run's last note on it, how many attempts and
+// reworks it took, and the AC-347 correction it was classified as — a snapshot, not a live step. New fields are
+// init-properties, not positional parameters, so persisted history from before AC-347 still deserializes.
 internal sealed record AutopilotRunStepRecord(string Title, AutopilotStepStatus Status, string Note)
 {
     // How many times this step was started — a restart counter, not a judgment; see `Reworks`.

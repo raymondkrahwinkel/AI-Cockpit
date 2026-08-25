@@ -1,12 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// One settled run in the history: what it was called, its goal, how it ended (merge-ready or
-// blocked) and why, when it finished, and each step's outcome — so a run that settled and left the surface is not lost
-// but shown in the history section with what it did. Persisted through the plugin's storage, so history survives a
-// restart. `FinishedAt` is an ISO-8601 string (formatted for display on render) rather than a DateTime, so
-// the record round-trips through JSON without a timezone surprise. `RunId`/`Ticket`/
-// `BlockadeAnswers`/`PullRequestMissing` are init-properties, not positional parameters, so
-// persisted history from before AC-347 still deserializes — a missing field just reads back its default.
+// One settled run in the history: what it was called, its goal, how it ended and why, when it finished, and each
+// step's outcome. Persisted through the plugin's storage; `FinishedAt` is an ISO-8601 string so it round-trips
+// without a timezone surprise; `RunId`/`Ticket`/`BlockadeAnswers`/`PullRequestMissing` let pre-AC-347 history deserialize.
 internal sealed record AutopilotRunRecord(
     string Name,
     string Goal,
@@ -29,25 +25,18 @@ internal sealed record AutopilotRunRecord(
     // *not* a correction: answering a question the run itself raised is not the same as the run needing rework.
     public int BlockadeAnswers { get; init; }
 
-    // Whether this run reached merge-ready but could not deliver its pull request (AC-347) — no `gh`, no
-    // remote, or the publish itself failed. Such a run still needs a human to open the PR by hand, so it is never
-    // clean regardless of how its steps were classified; see `AutopilotRunReliability.RanClean`.
+    // Whether this run reached merge-ready but could not deliver its pull request (AC-347). Such a run still
+    // needs a human to open the PR by hand, so it is never clean; see `AutopilotRunReliability.RanClean`.
     public bool PullRequestMissing { get; init; }
 
-    // The epic this run's sub was picked from (AC-346), or empty for a run clicked directly on its own item —
-    // mirrors `AutopilotRun.EpicId`/`AutopilotPlanSource.EpicId`. Lets the epic-runner's
-    // progress comment (`AutopilotPlanWorkspaceBody._PostEpicProgressAsync`) summarize reliability over just this
-    // epic's own settled runs rather than the whole history, which would otherwise mix in every unrelated run ever
-    // recorded.
+    // The epic this run's sub was picked from (AC-346), or empty for a run clicked directly on its own item.
+    // Lets the epic-runner's progress comment summarize reliability over just this epic's settled runs rather
+    // than the whole history, which would otherwise mix in every unrelated run ever recorded.
     public string EpicId { get; init; } = string.Empty;
 
-    // Captures a settled run's live state into its history record — the write path itself, extracted out of
-    // `AutopilotPlanWorkspaceBody._RecordAndNotify` as a pure static factory so the mapping from
-    // `AutopilotPlan`/`AutopilotStep` to persisted shape is unit-testable without a UI. A
-    // static factory on the record it builds, rather than a helper on the workspace body, because every input here is
-    // either plan state or a plain value the caller already snapshotted — nothing UI-shaped is needed to build one.
-    // `finishedAt` is a parameter rather than read from `DateTimeOffset.Now` inside this
-    // method, so the timestamp is deterministic in a test; the caller passes `DateTimeOffset.Now`.
+    // Captures a settled run's live state into its history record, extracted as a pure static factory so the
+    // mapping is unit-testable without a UI. `finishedAt` is a parameter rather than read internally, so it is
+    // deterministic in a test.
     public static AutopilotRunRecord Capture(
         AutopilotPlan plan,
         AutopilotPlanPhase outcome,

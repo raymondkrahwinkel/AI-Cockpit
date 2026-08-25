@@ -1,12 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// The plan the CEO builds and the operator approves once (AC-174). During the planning round it is a *living
-// artifact* — the CEO rebuilds it from the conversation and the operator tweaks a step's profile/model — and it
-// freezes on approval, after which the autonomous run drives it step by step. `Source` is null for a
-// CEO-first plan (started with only the CEO, no supplied item). The model is task-type-agnostic: the same shape holds
-// a coding plan (code → … → PR) and a future non-coding plan (AC-158), because a step is just a step.
-//
-// `Goal`: What the run is to achieve — drafted from the source, or defined with the CEO in a CEO-first run.
+// The plan the CEO builds and the operator approves once (AC-174) — a living artifact during planning, frozen at
+// approval when the autonomous run starts driving it step by step. `Source` is null for a CEO-first plan.
+// `Goal`: what the run is to achieve.
 internal sealed record AutopilotPlan(
     string Goal,
     AutopilotPlanSource? Source,
@@ -17,18 +13,14 @@ internal sealed record AutopilotPlan(
     // recognisable, and history reads by name rather than by goal sentence. Falls back to `Goal` when unset.
     public string Name { get; init; } = string.Empty;
 
-    // The folder the run works in (AC-174), chosen by the operator at approval — the run resolves its repository from
-    // here, so a run planned from a tracker issue (which has no session, hence no directory) still knows where to work.
-    // Blank falls back to the active session's directory, then the cockpit's own. A folder that is a git repository is
-    // isolated per step; a plain folder (an admin task) runs without isolation.
+    // The folder the run works in (AC-174), chosen at approval so a tracker-triggered run (which has no
+    // session, hence no directory) still knows where to work. Blank falls back to the session's directory, then
+    // the cockpit's own; a git repository is isolated per step, a plain folder runs without isolation.
     public string WorkingDirectory { get; init; } = string.Empty;
 
-    // Whether this run is a *code* run that must end with a merge-ready pull request (AC-216) — set at approval
-    // from the chosen template's `AutopilotTemplate.DeliversPullRequest`. When true, the run's merge-ready
-    // finalizer pushes the run branch and opens a PR (or reports a clear outcome and leaves the work on its branch when
-    // it cannot — no `gh`, no remote). When false (an administrative run, or a free/CEO-first plan), the run
-    // settles merge-ready with no PR expectation and no error for the missing PR. Defaults to false — silence is only
-    // wrong for a code run.
+    // Whether this run is a code run that must end with a merge-ready pull request (AC-216) — set at approval
+    // from the chosen template. When true the finalizer pushes and opens a PR (or reports why it couldn't);
+    // when false (admin run, free/CEO-first plan) merge-ready settles with no PR expectation. Defaults to false.
     public bool DeliversPullRequest { get; init; }
 
     // The run's display label — its `Name`, or the `Goal` when no name was set yet,
@@ -36,20 +28,18 @@ internal sealed record AutopilotPlan(
     // history rather than by its bare summary.
     public string Label => _WithSourcePrefix(string.IsNullOrWhiteSpace(Name) ? Goal : Name);
 
-    // The best available name to pre-fill the approval field with: the CEO's proposed
-    // `Name` when it gave one, else the `Goal`, else the first step's title. The CEO does not
-    // always pass a name (or even a goal) through the plan tool, so this always yields something concrete for the
-    // operator to accept or edit rather than leaving the field — and the approval gate — empty on a planned run.
+    // The best available name to pre-fill the approval field with: `Name`, else `Goal`, else the first step's
+    // title. The CEO does not always pass a name (or goal) through the plan tool, so this always yields something
+    // concrete rather than leaving the field — and the approval gate — empty.
     public string SuggestedName =>
         _WithSourcePrefix(
             !string.IsNullOrWhiteSpace(Name) ? Name
             : !string.IsNullOrWhiteSpace(Goal) ? Goal
             : Steps.FirstOrDefault()?.Title ?? string.Empty);
 
-    // Prefixes a run name with the source issue key (AC-199) — "AC-191 - {name}" — when this plan came from a tracker
-    // item, so the operator-facing name carries the ticket it serves. A CEO-first plan (no `Source`) is
-    // left untouched, and a name that already opens with the issue key (the CEO proposed one, or the prefix was applied
-    // once already) is not prefixed twice.
+    // Prefixes a run name with the source issue key (AC-199) — "AC-191 - {name}" — when this plan came from a
+    // tracker item. A CEO-first plan (no `Source`) is left untouched, and a name already carrying the
+    // issue key is not prefixed twice.
     private string _WithSourcePrefix(string name) =>
         Source is { IssueId: { Length: > 0 } issueId }
         && !string.IsNullOrWhiteSpace(name)
@@ -76,10 +66,8 @@ internal sealed record AutopilotPlan(
     public AutopilotStep? NextPending => Steps.FirstOrDefault(step => step.Status == AutopilotStepStatus.Pending);
 
     // The next unit of pending work (AC-434): the run of review-gate steps starting at, and contiguous with,
-    // `NextPending` in plan order — so the driver runs a code-review/security-review pair concurrently
-    // instead of one after another, but a review gate elsewhere in the plan is never pulled forward past an
-    // unfinished ordinary step (or a settled one) sitting between them. Just `NextPending` alone for an
-    // ordinary step. Empty once every step has settled.
+    // `NextPending` — so the driver runs a code-review/security-review pair concurrently, without pulling a later
+    // review gate forward past an unfinished step. Just `NextPending` alone for an ordinary step.
     public IReadOnlyList<AutopilotStep> NextPendingGroup
     {
         get

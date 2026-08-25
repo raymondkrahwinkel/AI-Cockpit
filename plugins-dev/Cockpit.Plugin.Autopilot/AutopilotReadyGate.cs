@@ -6,12 +6,9 @@ internal sealed record AutopilotReadyDecision(bool IsAllowed, string Reason)
     public static AutopilotReadyDecision Allowed { get; } = new(true, string.Empty);
 }
 
-// The gate that decides whether an item is the tracker's own idea of executable before any planning starts (AC-345).
-// Autopilot already asks its CEO to judge scope from the issue text, but the text is the thing that lies: the backlog
-// audit of 2026-07-27 found items claiming a fix was impossible where the gate was already in the code, and items
-// calling a decision open that their own subtask records as taken. A model reading that text has no way to know. A
-// stage a human moved the item onto is evidence of a different kind, so Autopilot keys on that first and only then
-// lets the CEO judge whether the work also fits one run.
+// The gate that decides whether an item is the tracker's own idea of executable before any planning starts
+// (AC-345). Issue text lies — the 2026-07-27 backlog audit found items claiming a fix impossible where it was
+// already in the code — so a stage a human moved the item onto is keyed on first, and only then does the CEO judge fit.
 internal static class AutopilotReadyGate
 {
     // Still an idea rather than a work item. Refused even when it also sits on the executable stage: the two
@@ -21,10 +18,9 @@ internal static class AutopilotReadyGate
     private const string GatePointer =
         "Autopilot keys on the tracker's own gate instead of judging the text: a person marks an item executable once its premise still holds, it fits one item, no decision is outstanding, its dependencies are done, and it says how you know it is finished.";
 
-    // Decides on `reportedStages` — the stages the tracker says the item is on, one per line (a
-    // YouTrack issue has a single stage, a GitHub issue has its labels) — against the stage the operator configured as
-    // executable for that tracker. A blank `executableStage` turns the gate off deliberately; an item
-    // whose stage could not be read is refused, because "cannot tell" is not the same as "is executable".
+    // Decides on `reportedStages` — the tracker's stages, one per line — against the operator-configured
+    // executable stage. A blank `executableStage` turns the gate off deliberately; an unreadable stage is
+    // refused, because "cannot tell" is not the same as "is executable".
     public static AutopilotReadyDecision Decide(string? title, string? reportedStages, string? executableStage)
     {
         if (title is not null && title.Contains(BrainstormMarker, StringComparison.OrdinalIgnoreCase))

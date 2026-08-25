@@ -8,9 +8,8 @@ using Cockpit.Plugins.Abstractions.Tracking;
 namespace Cockpit.Plugin.Autopilot;
 
 // The in-process MCP tool (`mcp__cockpit-autopilot-plan__autopilot_plan`) the CEO uses during the planning round
-// (AC-174) to emit and revise the plan. Pane-scoped like the run's report tools (`AutopilotRunTools`): only
-// the planning session bound to this controller (`AutopilotPlanController.SessionPaneId`) may set the plan,
-// so another session cannot rewrite it. The operator approves the plan through the host UI to freeze it and start the run.
+// (AC-174) to emit and revise the plan. Pane-scoped like `AutopilotRunTools`: only the planning session bound
+// to this controller may set the plan. The operator approves it through the host UI to freeze it and start the run.
 internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanController plan, AutopilotSettings settings)
 {
     // The in-process MCP server name the plugin mounts this tool under — the plan-flow's own, dark outside planning.
@@ -48,30 +47,26 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
             return _Fail(error!);
         }
 
-        // AC-210: a step's (profile, model) pair must be one the host can actually run — a profile that exists, and a
-        // model that profile offers (or none for a local profile that pins its own). The CEO emits both as free text, so
-        // without this a plan can name a model the profile cannot drive; the run then fails the step mid-flight with a
-        // misleading isolation error. Turn it down here so the CEO corrects the plan before the operator approves it.
+        // AC-210: a step's (profile, model) pair must be one the host can actually run. The CEO emits both as free
+        // text, so without this a plan can name a model the profile cannot drive and fail mid-flight with a
+        // misleading error. Turn it down here so the CEO corrects the plan before the operator approves it.
         var profiles = await host.GetProfilesAsync().ConfigureAwait(false) ?? [];
         if (ValidateStepProfiles(steps, profiles) is { } profileError)
         {
             return _Fail(profileError);
         }
 
-        // AC-256: runnable is not the same as affordable. The brief asks the CEO to lean cheap, but a brief only asks —
-        // the pilot run put 88.9% of its tokens on a model near the expensive end while that instruction was in force. The
-        // ceiling is enforced here, at emit, so the CEO redrafts before the operator ever sees the plan. Deliberately
-        // not at step start: an operator who re-targets a step afterwards is making a human choice, and failing their
-        // step for it would be both rude and confusing — the waste this addresses is the model's, not theirs.
+        // AC-256: runnable is not the same as affordable. A brief only asks the CEO to lean cheap — the pilot run
+        // put 88.9% of its tokens on an expensive model anyway — so the ceiling is enforced here, at emit, before
+        // the operator sees the plan. Not at step start: an operator re-targeting a step is a human choice.
         if (AutopilotModelTier.ValidateAll(steps, profiles, settings.CostStrategy()) is { } tierError)
         {
             return _Fail(tierError);
         }
 
-        // AC-411: a step folded in from a tracker child (an epic's sub-item, pulled in by the CEO during planning
-        // rather than clicked by the operator) must clear the same executable-stage gate its parent already passed
-        // before the round started (AC-345) — checked here in code against the tracker itself, not left to the CEO's
-        // own reading of the item's stage from its brief.
+        // AC-411: a step folded in from a tracker child (an epic's sub-item the CEO pulled in during planning)
+        // must clear the same executable-stage gate its parent already passed (AC-345) — checked here in code
+        // against the tracker itself, not left to the CEO's own reading of the item's stage.
         if (await _ValidateChildStagesAsync(steps).ConfigureAwait(false) is { } childError)
         {
             return _Fail(childError);
@@ -149,11 +144,9 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         return true;
     }
 
-    // AC-210: validate every step's profile/model against the host's real roster (`ICockpitHost.GetProfilesAsync`) —
-    // the single source of truth, the same one the CEO-model picker filters on. Returns the first violation as a clear
-    // message for the CEO to fix, or null when every step is runnable. Kept static so it is tested without a live endpoint,
-    // and reused by the coordinator's embed-time safety net. With no roster (a host that supplies none, a bare test graph)
-    // it validates nothing rather than reject every plan — the roster is the only thing it can check against.
+    // AC-210: validate every step's profile/model against the host's real roster — the single source of truth
+    // the CEO-model picker also filters on. Returns the first violation, or null when every step is runnable.
+    // Kept static so it is tested without a live endpoint, and reused by the coordinator's embed-time safety net.
     internal static string? ValidateStepProfiles(IReadOnlyList<AutopilotStep> steps, IReadOnlyList<PluginProfileInfo> profiles)
     {
         if (profiles is not { Count: > 0 })
@@ -172,10 +165,9 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         return null;
     }
 
-    // AC-210: validate one step's (profile, model). The profile must exist by label; a choice-provider profile (Claude —
-    // `PluginProfileInfo.ModelSuggestions` non-empty) must carry a model from that list; a local profile that
-    // pins its own model (empty suggestions) must carry no model. Returns the violation message, or null when the step is
-    // runnable. Assumes a non-empty roster (the caller guards the empty case).
+    // AC-210: validate one step's (profile, model). The profile must exist by label; a choice-provider profile
+    // (non-empty `ModelSuggestions`) must carry a model from that list; a local profile that pins its own model
+    // must carry none. Returns the violation, or null. Assumes a non-empty roster.
     internal static string? ValidateStepProfile(AutopilotStep step, IReadOnlyList<PluginProfileInfo> profiles)
     {
         var profile = profiles.FirstOrDefault(candidate => string.Equals(candidate.Label, step.ProfileLabel, StringComparison.Ordinal));
@@ -203,14 +195,9 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
             : $"Step \"{step.Id}\" runs on the local profile \"{profile.Label}\", which pins its own model, so leave 'model' empty; it has \"{step.Model}\".";
     }
 
-    // AC-411: the code half of the child-stage gate. A step with no `AutopilotStep.SourceIssueId`, or one
-    // that names the run's own source issue (already checked before this planning round opened), is not re-checked.
-    // Every other named issue is a child the CEO folded in during planning, so its title and stage are read straight
-    // from the tracker — never the step's own title or description, which the CEO writes and this gate exists not to
-    // trust — and run through `AutopilotReadyGate`: the same gate, the same bar, evaluated in code. No
-    // source (a CEO-first run), no configured executable stage for this tracker (the operator turned the gate off),
-    // or no matching registered provider all mean nothing to check against, so the plan is accepted as-is. Fetched
-    // once per distinct issue id, since the same child can back more than one step.
+    // AC-411: the code half of the child-stage gate. A step with no `SourceIssueId`, or naming the run's own
+    // source issue, is not re-checked. Every other named issue is a child folded in during planning, so its
+    // title/stage are read from the tracker — never the CEO-written text this gate exists not to trust.
     private async Task<string?> _ValidateChildStagesAsync(IReadOnlyList<AutopilotStep> steps)
     {
         if (plan.Plan?.Source is not { } source)

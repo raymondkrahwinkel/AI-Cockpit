@@ -1,12 +1,8 @@
 namespace Cockpit.Plugin.Autopilot;
 
-// Runs approved plans from the queue, up to `AutopilotSettings.MaxConcurrentRuns` at once (AC-174):
-// an approved plan is submitted here, executes now if there is a free slot, else waits in the `AutopilotRunQueue`
-// until one frees. Each running run gets its own coordinator; a tool call (a step reporting done, the CEO validating)
-// is routed to whichever running run owns the caller's pane — every coordinator self-gates on its own panes, so trying
-// each is safe. Starting a run is the `Runner` the workspace body sets while it is open (a run needs the
-// workspace's context to embed sessions), so the concurrency logic here is testable without live sessions by setting a
-// fake runner. A run submitted with no runner set (the workspace closed) simply waits in the queue until one is.
+// Runs approved plans from the queue, up to `AutopilotSettings.MaxConcurrentRuns` at once (AC-174). A tool call is
+// routed to whichever running run owns the caller's pane — every coordinator self-gates, so trying each is safe.
+// `Runner` is set by the workspace body while it is open, so this is testable without live sessions via a fake one.
 internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSettings settings)
 {
     private readonly Lock _lock = new();
