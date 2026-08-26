@@ -180,6 +180,31 @@ public class LocalJobRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task ARunThatHitsItsDeadlineIsTimedOutRatherThanCancelled()
+    {
+        // AC-1073: a run nobody stopped must not come back looking like a Kill — an agent reading the verdict
+        // needs to tell "the operator stopped this" apart from "nobody was watching and the clock ran out".
+        var workflow = _project.AddWorkflow("ci.yml", TemporaryProject.OneLinuxJob);
+        var running = new TaskCompletionSource();
+        using var runner = new LocalJobRunner(
+            FakeLocalCiRuntime.Ready(),
+            FakeStreamingCliRunner.Blocking(running),
+            _cleanup,
+            () => ActRunOptions.For(8),
+            () => "run-9",
+            TimeSpan.FromMilliseconds(20));
+
+        var result = await runner.RunAsync(
+            new LocalRunRequest(_project.Root, workflow, "build"), _ => { }, approve: null, CancellationToken.None);
+
+        Assert.Equal(LocalRunOutcome.TimedOut, result.Outcome);
+        Assert.Contains("cut off", result.Reason);
+
+        // Same cleanup path as a Kill — DockerRunCleanup, not a second mechanism.
+        Assert.Equal(["run-9"], _cleanup.Removed);
+    }
+
+    [Fact]
     public async Task AStopThatArrivesBeforeTheRunStartsIsAnswered_NotThrown()
     {
         var workflow = _project.AddWorkflow("ci.yml", TemporaryProject.OneLinuxJob);
