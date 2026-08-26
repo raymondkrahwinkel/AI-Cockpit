@@ -89,7 +89,7 @@ public class DepotSettingsRenderTests
         window.Close();
 
         var path = Path.Combine(AppContext.BaseDirectory, fileName);
-        target.Save(path);
+        target.Save(path, PngBitmapEncoderOptions.Default);
 
         using var stream = File.OpenRead(path);
         return WriteableBitmap.Decode(stream);
