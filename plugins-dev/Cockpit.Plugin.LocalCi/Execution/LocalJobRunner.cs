@@ -33,8 +33,16 @@ internal sealed class LocalJobRunner(
     IStreamingCliRunner cli,
     IRunContainerCleanup cleanup,
     Func<ActRunOptions> options,
-    Func<string> newRunId) : ILocalJobRunner, IDisposable
+    Func<string> newRunId,
+    TimeSpan? maxRunTime = null) : ILocalJobRunner, IDisposable
 {
+    // AC-1073: measured healthy runs take 4-6 minutes. 30 minutes leaves room for a cold image pull or a slower
+    // machine without becoming a new source of false reds, while still bounding a stuck run to a known window
+    // instead of the unbounded memory pressure that got two sessions killed by systemd-oomd.
+    internal static readonly TimeSpan DefaultMaxRunTime = TimeSpan.FromMinutes(30);
+
+    private readonly TimeSpan _maxRunTime = maxRunTime ?? DefaultMaxRunTime;
+
     // One at a time, and a second request is answered rather than queued. The machine is the operator's own and
     // several sessions are usually live; two container builds at once take the cockpit down with them. Queueing
     // would leave the asking session waiting on something it was never told about.
@@ -140,9 +148,15 @@ internal sealed class LocalJobRunner(
             onLine(line);
         }
 
+        // Linked rather than passed through directly: `cancellationToken` alone is the caller's own stop signal
+        // (Kill or Stop, AC-82), and this timer must fire without anyone pressing it while still leaving that
+        // signal able to fire on its own.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(_maxRunTime);
+
         try
         {
-            var run = await cli.RunAsync("act", arguments, request.ProjectRoot, Keep, cancellationToken);
+            var run = await cli.RunAsync("act", arguments, request.ProjectRoot, Keep, deadline.Token);
             if (!run.Started)
             {
                 return LocalRunResult.DidNotRun(
@@ -179,13 +193,20 @@ internal sealed class LocalJobRunner(
             // token that just fired would cancel the cleanup too and leave the containers behind.
             await cleanup.RemoveAsync(runId, CancellationToken.None);
 
+            // `cancellationToken` alone carries the caller's stop signal; it is only set when a human pressed
+            // Kill or Stop. If it is not set here, the deadline fired on its own, and that has to come back as a
+            // different outcome so an agent can tell the two apart.
+            var timedOut = !cancellationToken.IsCancellationRequested;
+
             return new LocalRunResult(
                 request.WorkflowPath,
                 request.JobId,
-                LocalRunOutcome.Cancelled,
+                timedOut ? LocalRunOutcome.TimedOut : LocalRunOutcome.Cancelled,
                 elapsed.Elapsed,
                 ExitCode: null,
-                "the run was stopped before it reached a verdict.",
+                timedOut
+                    ? $"the run was cut off after {_Format(_maxRunTime)} without reaching a verdict."
+                    : "the run was stopped before it reached a verdict.",
                 tail.Text());
         }
     }
@@ -193,4 +214,7 @@ internal sealed class LocalJobRunner(
     // The half that is not ready speaks for itself — those sentences are what the detection is for.
     private static string _WhyTheMachineCannot(LocalCiRuntimeStatus status) =>
         status.Docker.IsReady ? status.Act.Message : status.Docker.Message;
+
+    private static string _Format(TimeSpan span) =>
+        span.TotalMinutes >= 1 ? $"{(int)span.TotalMinutes}m" : $"{span.TotalSeconds:0.#}s";
 }

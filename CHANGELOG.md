@@ -361,6 +361,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a local CI run that gets stuck on this machine — a hung container, a workflow waiting on something that
+  never arrives — no longer keeps the container running forever. It is now cut off after 30 minutes, cleaned up
+  the same way a run you stop yourself is, and reported as its own verdict rather than looking like a run you
+  cancelled or one that simply never answered.
+
 - fixed: the programs a session started no longer keep running forever after the cockpit is gone. A session that
   ran a build or a test suite leaves compiler and build servers parked behind it, and those survive a crash of the
   cockpit and get adopted by the system — where nothing links them back to the session that started them, so they

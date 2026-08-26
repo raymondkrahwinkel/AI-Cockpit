@@ -30,6 +30,7 @@ internal sealed record LocalRunResult(
         LocalRunOutcome.CouldNotRun => $"{JobId} could not be run on this machine: {Reason}",
         LocalRunOutcome.NotApproved => $"{JobId} was not run on this machine: {Reason}",
         LocalRunOutcome.Cancelled => $"{JobId} was stopped after {_Elapsed} and reached no verdict.",
+        LocalRunOutcome.TimedOut => $"{JobId} was cut off after {_Elapsed} and reached no verdict: {Reason}",
         _ => $"{JobId} was not run on this machine: {Reason}",
     };
 
