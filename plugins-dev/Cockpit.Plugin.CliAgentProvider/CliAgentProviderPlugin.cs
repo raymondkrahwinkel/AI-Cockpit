@@ -34,6 +34,12 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         var sdkSandbox = new PluginSessionLaunchOption(CodexAppServerSessionDriver.SandboxOptionKey, "Sandbox", CodexSandbox.Choices, DefaultValue: "read-only");
         var sdkModelFallback = new PluginSessionLaunchOption(CodexAppServerSessionDriver.ModelOptionKey, "Model", Choices: []);
 
+        // AC-1101, SDK route only (the TTY route has no equivalent flag). Effort stays unset by default — Codex
+        // keeps the chosen model's own default rather than one this plugin invents; its real choices come from
+        // ResolveOptionsAsync below. Approval is never a per-spawn override — see `SpawnOptionOverrides.NeverOverridable`.
+        var sdkEffortFallback = new PluginSessionLaunchOption(CodexAppServerSessionDriver.EffortOptionKey, "Effort", Choices: []);
+        var sdkApproval = new PluginSessionLaunchOption(CodexAppServerSessionDriver.ApprovalOptionKey, "Approval", CodexAppServerSessionDriver.ApprovalChoices);
+
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex (CLI)",
@@ -50,11 +56,16 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
                 [
                     new(CodexAppServerSessionDriver.SandboxOptionKey, "Sandbox", [.. CodexSandbox.Choices.Select(choice => new PluginSessionOptionValue(choice, choice))], "read-only"),
                     new(CodexAppServerSessionDriver.ModelOptionKey, "Model"),
+                    // No KnownValues (AC-1101): which efforts are valid depends on the chosen model, the same reason
+                    // Model above declares none — a per-model closed set is enforced where the model is actually
+                    // known (the New-session/profile-editor dropdown, ResolveOptionsAsync below), not here.
+                    new(CodexAppServerSessionDriver.EffortOptionKey, "Effort"),
+                    new(CodexAppServerSessionDriver.ApprovalOptionKey, "Approval", [.. CodexAppServerSessionDriver.ApprovalChoices.Select(choice => new PluginSessionOptionValue(choice, choice))]),
                 ],
             },
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson, host))
         {
-            Options = [sdkSandbox, sdkModelFallback],
+            Options = [sdkSandbox, sdkModelFallback, sdkEffortFallback, sdkApproval],
             // #1105: the SDK route reports these at each turn boundary (plus a start-of-session prefetch, C) —
             // this only says what they are, the same split ClaudeProviderPlugin uses for its own two routes.
             UsageSignals = CodexUsageSignals.Declarations,
@@ -69,7 +80,15 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
                 var model = listing.Ids.Count == 0
                     ? sdkModelFallback
                     : new PluginSessionLaunchOption(CodexAppServerSessionDriver.ModelOptionKey, "Model", listing.Ids, listing.DefaultId);
-                return [sdkSandbox, model];
+
+                // Effort choices are the model the dialog opens on (AC-1101): not every model supports every
+                // preset, so the values offered come from that one model's own listing, not a shared guess.
+                var effortChoices = listing.ReasoningEffortsFor(model.DefaultValue);
+                var effort = effortChoices.Count == 0
+                    ? sdkEffortFallback
+                    : new PluginSessionLaunchOption(CodexAppServerSessionDriver.EffortOptionKey, "Effort", effortChoices);
+
+                return [sdkSandbox, model, effort, sdkApproval];
             },
         });
 

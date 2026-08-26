@@ -40,6 +40,29 @@ public class CodexModelCatalogTests
         Assert.Null(listing.DefaultId);
     }
 
+    // AC-1101: each model reports its own reasoning-effort presets — sol/terra offer "ultra", others do not — so
+    // the effort control must read this per model rather than assume every model offers the same fixed set.
+    [Fact]
+    public async Task ListAsync_ParsesEachModelsOwnSupportedReasoningEfforts()
+    {
+        var fake = new FakeCliSubprocess();
+        var listTask = CodexModelCatalog.ListAsync(() => fake, _DefaultConfig(), "codex", CancellationToken.None);
+
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """
+            {"data":[
+                {"id":"gpt-5.6-sol","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"ultra"}]},
+                {"id":"gpt-5.5","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}
+            ]}
+            """);
+        var listing = await listTask;
+
+        Assert.Equal(new[] { "low", "medium", "ultra" }, listing.ReasoningEffortsFor("gpt-5.6-sol"));
+        Assert.Equal(new[] { "low", "high" }, listing.ReasoningEffortsFor("gpt-5.5"));
+        // A model the listing has nothing for reports no efforts, rather than borrowing another model's set.
+        Assert.Empty(listing.ReasoningEffortsFor("unknown-model"));
+    }
+
     [Fact]
     public async Task ListAsync_IsEmpty_WhenTheReplyCarriesNoModelData()
     {

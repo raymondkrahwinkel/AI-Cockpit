@@ -43,6 +43,7 @@ internal static class CodexModelCatalog
 
         var ids = new List<string>();
         string? defaultId = null;
+        var reasoningEffortsById = new Dictionary<string, IReadOnlyList<string>>();
         foreach (var entry in data.EnumerateArray())
         {
             if (entry.ValueKind != JsonValueKind.Object
@@ -62,17 +63,48 @@ internal static class CodexModelCatalog
             {
                 defaultId = id;
             }
+
+            reasoningEffortsById[id] = _ParseReasoningEfforts(entry);
         }
 
-        return new CodexModelListing(ids, defaultId);
+        return new CodexModelListing(ids, defaultId, reasoningEffortsById);
+    }
+
+    // `supportedReasoningEfforts` (AC-1101): each model reports its own reasoning-effort presets, not a fixed set
+    // shared by all — sol/terra offer "ultra", luna and 5.5 do not. Reading it per model, instead of a hardcoded
+    // list, is what lets the effort control filter to what the selected model actually supports.
+    private static IReadOnlyList<string> _ParseReasoningEfforts(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("supportedReasoningEfforts", out var efforts) || efforts.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var values = new List<string>();
+        foreach (var preset in efforts.EnumerateArray())
+        {
+            if (_StringProperty(preset, "reasoningEffort") is { Length: > 0 } effort)
+            {
+                values.Add(effort);
+            }
+        }
+
+        return values;
     }
 
     private static string? _StringProperty(JsonElement parent, string name) =>
         parent.TryGetProperty(name, out var element) && element.ValueKind == JsonValueKind.String ? element.GetString() : null;
 }
 
-// The models Codex reported, and which one it marks default — empty when the listing could not be read.
-internal sealed record CodexModelListing(IReadOnlyList<string> Ids, string? DefaultId)
+// The models Codex reported, which one it marks default, and each model's own reasoning-effort presets (keyed by
+// model id) — empty when the listing could not be read.
+internal sealed record CodexModelListing(IReadOnlyList<string> Ids, string? DefaultId, IReadOnlyDictionary<string, IReadOnlyList<string>>? ReasoningEffortsById = null)
 {
     public static CodexModelListing Empty { get; } = new([], null);
+
+    // The reasoning-effort presets the given model reports, or empty when the listing carries none for it (an
+    // unlisted model, a Codex build too old to report the field) — the caller treats that the same as "no live
+    // effort control" rather than falling back to a guessed set.
+    public IReadOnlyList<string> ReasoningEffortsFor(string? modelId) =>
+        modelId is { Length: > 0 } id && ReasoningEffortsById?.TryGetValue(id, out var efforts) is true ? efforts : [];
 }

@@ -19,17 +19,19 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // Option key for the per-session model override — also a live control (#45 D4).
     public const string ModelOptionKey = "model";
 
-    // Option key for the live reasoning-effort control (#45 D4), carried as `effort` on `turn/start`.
+    // Option key for the reasoning-effort control — a live control (#45 D4) and, since AC-1101, also a per-session
+    // start option, carried as `effort` on `turn/start`.
     public const string EffortOptionKey = "effort";
 
-    // Option key for the live approval-policy control (#45 D4 inc2), carried as `approvalPolicy` on `turn/start`.
+    // Option key for the approval-policy control — a live control (#45 D4 inc2) and, since AC-1101, also a
+    // profile-level start option (never a per-spawn override, see `SpawnOptionOverrides.NeverOverridable`),
+    // carried as `approvalPolicy` on `turn/start`.
     public const string ApprovalOptionKey = "approvalPolicy";
 
-    // Codex's ReasoningEffort values — a fixed set, unlike the model list, so they need no live lookup.
-    private static readonly IReadOnlyList<string> _EffortChoices = ["low", "medium", "high"];
-
-    // Codex's AskForApproval enum, the simple string form (the granular-object form is not modelled here).
-    private static readonly IReadOnlyList<string> _ApprovalChoices = ["untrusted", "on-request", "never"];
+    // Codex's AskForApproval enum, the simple string form (the granular-object form is not modelled here). Public
+    // (AC-1101) so the plugin registration can declare the same set as the profile-level Approval start option,
+    // without a second copy drifting from this one.
+    public static readonly IReadOnlyList<string> ApprovalChoices = ["untrusted", "on-request", "never"];
 
     private readonly CodexAppServerConnection _connection;
     private readonly CliAgentConfig _config;
@@ -44,11 +46,13 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     private string? _model;
 
-    // The live reasoning-effort override (#45 D4). Null until the operator picks one, so a turn that never touched
-    // it carries no effort and Codex uses its own default rather than one this driver invented.
+    // The reasoning-effort override (#45 D4, profile-level start option since AC-1101). Null until the profile's
+    // own option or the operator's live switch sets one, so a turn that never touched it carries no effort and
+    // Codex uses its own default rather than one this driver invented.
     private string? _effort;
 
-    // The live approval-policy override (#45 D4 inc2), same shape as effort — null until picked, so Codex keeps its own default.
+    // The approval-policy override (#45 D4 inc2, profile-level start option since AC-1101), same shape as effort —
+    // null until the profile's own option or the operator's live switch sets one, so Codex keeps its own default.
     private string? _approval;
 
     // The live sandbox override (#45 D4 inc2b), the kebab choice the operator picked. Pre-filled from the launch
@@ -137,6 +141,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         var effectiveModel = CliAgentConfig.ResolveOption(options, ModelOptionKey, _model);
         _model = effectiveModel;
         _sandbox = sandbox;
+
+        // AC-1101: the profile's own effort/approval choice must already be in force for the first turn a spawned
+        // session sends, before any live-panel switch could carry it. Absent, both stay null and Codex keeps its own default.
+        _effort = CliAgentConfig.ResolveOption(options, EffortOptionKey, null);
+        _approval = CliAgentConfig.ResolveOption(options, ApprovalOptionKey, null);
 
         // The session's MCP servers (#26) become -c config overrides on the app-server spawn; any bearer token
         // rides the process environment, never the command line (see CodexMcpConfig).
@@ -692,10 +701,16 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         // the New-session dialog offers, which the driver turns into the SandboxPolicy object for the wire.
         options.Add(new PluginSessionLaunchOption(SandboxOptionKey, "Sandbox", CodexSandbox.Choices, _sandbox));
 
-        // Effort and approval have no current value until the operator picks one (Codex runs its own default), so
-        // they open unset.
-        options.Add(new PluginSessionLaunchOption(EffortOptionKey, "Effort", _EffortChoices, _effort));
-        options.Add(new PluginSessionLaunchOption(ApprovalOptionKey, "Approval", _ApprovalChoices, _approval));
+        // Effort's choices are the selected model's own `supportedReasoningEfforts` (AC-1101) — sol/terra offer
+        // "ultra", others do not. A model the listing has nothing for leaves the control out entirely, same as Model above.
+        var effortChoices = models.ReasoningEffortsFor(_model);
+        if (effortChoices.Count > 0)
+        {
+            options.Add(new PluginSessionLaunchOption(EffortOptionKey, "Effort", effortChoices, _effort));
+        }
+
+        // Approval has no current value until the operator picks one (Codex runs its own default), so it opens unset.
+        options.Add(new PluginSessionLaunchOption(ApprovalOptionKey, "Approval", ApprovalChoices, _approval));
         return options;
     }
 

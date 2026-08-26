@@ -10,9 +10,9 @@ public static class SpawnOptionOverrides
 {
     // Refused whatever a provider declares, and refused outright rather than gated (Raymond, 2026-08-08): these decide
     // what a session may do to the machine, and a caller that could dial them up per spawn is the consent gate one hop
-    // removed. `sandbox` is Codex's word for the same launch-time question Claude asks with `permission-mode`.
+    // removed. `sandbox`/`approvalPolicy` are Codex's two halves of that same question (AC-1101 added the second).
     public static readonly IReadOnlyList<string> NeverOverridable =
-        [WellKnownPluginSessionOptions.PermissionMode, "sandbox"];
+        [WellKnownPluginSessionOptions.PermissionMode, "sandbox", "approvalPolicy"];
 
     // The options this spawn should launch with, or the reason it may not launch at all. A null map with no refusal
     // means nothing was asked for: the profile's own defaults stand untouched, which is every spawn made until now.

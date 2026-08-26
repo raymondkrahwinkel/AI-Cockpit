@@ -76,6 +76,29 @@ public class CodexAppServerSessionDriverTests
         Assert.Equal("o3", threadStart.GetProperty("params").GetProperty("model").GetString());
     }
 
+    // AC-1101: a spawned session's very first turn must already carry the profile's effort/approval choice — there
+    // is no live-panel switch before it, so unlike sandbox/model (which ride thread/start), these have to be picked
+    // up from the start options and re-asserted on the first turn/start.
+    [Fact]
+    public async Task Start_UsesThePerSessionEffortAndApprovalOptions_OnTheFirstTurn()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        var options = new Dictionary<string, string> { ["effort"] = "high", ["approvalPolicy"] = "never" };
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        await driver.SendUserMessageAsync("go");
+
+        var turn = await _WaitForRequestAsync(fake, "turn/start");
+        Assert.Equal("high", turn.GetProperty("params").GetProperty("effort").GetString());
+        Assert.Equal("never", turn.GetProperty("params").GetProperty("approvalPolicy").GetString());
+    }
+
     [Fact]
     public async Task Start_PassesTheSessionsMcpServers_AsConfigArgs_WithTheTokenInTheEnvironmentNotTheCommandLine()
     {
@@ -556,12 +579,18 @@ public class CodexAppServerSessionDriverTests
 
         var startTask = driver.StartAsync("gpt-5-codex", "/work", resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "model/list", """{"data":[{"id":"gpt-5-codex","isDefault":true},{"id":"gpt-5"}]}""");
+        await _RespondAsync(fake, "model/list", """
+            {"data":[
+                {"id":"gpt-5-codex","isDefault":true,"supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"high"}]},
+                {"id":"gpt-5","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"high"},{"reasoningEffort":"xhigh"},{"reasoningEffort":"max"},{"reasoningEffort":"ultra"}]}
+            ]}
+            """);
         await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
         // D4: the live controls the header renders — the model list read on this connection, opened on the model the
-        // session started with, plus the fixed effort levels which open unset (Codex runs its own default).
+        // session started with, plus that model's own effort levels (AC-1101), which open unset (Codex runs its own
+        // default). gpt-5's wider set (it has "ultra", gpt-5-codex does not) never leaks into the started model's list.
         var model = Assert.Single(driver.LiveOptions, option => option.Key == "model");
         Assert.Equal(new[] { "gpt-5-codex", "gpt-5" }, model.Choices);
         Assert.Equal("gpt-5-codex", model.DefaultValue);
@@ -569,6 +598,24 @@ public class CodexAppServerSessionDriverTests
         var effort = Assert.Single(driver.LiveOptions, option => option.Key == "effort");
         Assert.Equal(new[] { "low", "medium", "high" }, effort.Choices);
         Assert.Null(effort.DefaultValue);
+    }
+
+    // AC-1101: a Codex build too old to report `supportedReasoningEfforts`, or a listing the driver could not read
+    // at all, must not fall back to a guessed set — better no effort control than one offering values this model
+    // might silently ignore.
+    [Fact]
+    public async Task LiveOptions_OmitTheEffortControl_WhenTheListingReportsNoneForTheStartedModel()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        var startTask = driver.StartAsync("gpt-5-codex", "/work", resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[{"id":"gpt-5-codex","isDefault":true}]}""");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        Assert.DoesNotContain(driver.LiveOptions, option => option.Key == "effort");
     }
 
     [Fact]

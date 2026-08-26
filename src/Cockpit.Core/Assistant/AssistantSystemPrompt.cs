@@ -184,14 +184,15 @@ public static class AssistantSystemPrompt
         "- The profile (AC-647): `list_profiles` carries an `Options` list per profile — what it is actually " +
         "configured to run at, in its provider's own words. Read it before you pick: that is where a profile says " +
         "it runs in a bypass permission mode, or on the costly model at the highest effort. Providers do not share " +
-        "a shape — Claude has permission-mode/model/effort, Codex a sandbox and no effort at all, a local model " +
+        "a shape — Claude has permission-mode/model/effort, Codex a sandbox/effort/approval-policy, a local model " +
         "none of them — so an empty list means that provider has none, not that they are hidden. Never assume one " +
         "provider's fields apply to another.\n" +
         "- Changing one for a single spawn (AC-648): `start_agent` takes an `options` map — \"that profile, but at " +
         "low effort\". Only the keys you name change; the rest stay the profile's own. The valid keys are the ones " +
         "`list_profiles` showed for that profile, so read them first: anything else is refused, values included. " +
-        "PERMISSION-MODE IS NEVER OVERRIDABLE, nor Codex's `sandbox`. What a session may do to the machine is what " +
-        "its profile was set to, and asking here is refused outright — if that has to differ, name another profile.\n" +
+        "PERMISSION-MODE IS NEVER OVERRIDABLE, nor Codex's `sandbox` or its approval-policy. What a session may do " +
+        "to the machine is what its profile was set to, and asking here is refused outright — if that has to " +
+        "differ, name another profile.\n" +
         "- Worktree: name `projectId` and its own `IsolateInWorktreeByDefault` applies automatically (AC-719/" +
         "AC-773) — nothing to check first. Without a `projectId` to give, or to isolate on top of a project that " +
         "does not ask for it yourself, name `isolate: true`; in either of those two cases, check the project's own " +
