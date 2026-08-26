@@ -25,7 +25,7 @@ public class LinuxCgroupMemoryLimiterTests
 
             var group = Path.Combine(root.FullName, "cockpit-session-4321");
             Assert.Equal((512 * Megabyte).ToString(), File.ReadAllText(Path.Combine(group, "memory.high")));
-            Assert.Equal("4321", File.ReadAllText(Path.Combine(group, "cgroup.procs")));
+            Assert.Equal(["4321"], _Enrolled(group));
             Assert.False(
                 File.Exists(Path.Combine(group, "memory.max")),
                 "AC-692: this class must never set the kernel's hard OOM-kill boundary.");
@@ -46,4 +46,64 @@ public class LinuxCgroupMemoryLimiterTests
 
         Assert.Null(limiter.Apply(4323, 512 * Megabyte));
     }
+
+    [Fact]
+    public void Apply_MovesInWhatTheSessionHadAlreadyForked()
+    {
+        var root = Directory.CreateTempSubdirectory("cockpit-cgroup-test-");
+        try
+        {
+            // The shape AC-1086 measured: the CLI forks an npm supervisor which forks the real MCP server, all of
+            // it seconds before Apply runs. A grandchild proves the walk recurses rather than taking one level.
+            var tree = new Dictionary<int, IReadOnlyList<int>>
+            {
+                [4400] = [4401, 4402],
+                [4401] = [4403],
+            };
+
+            var limiter = new LinuxCgroupMemoryLimiter(
+                NullLogger.Instance,
+                () => root.FullName,
+                pid => tree.TryGetValue(pid, out var children) ? children : []);
+
+            using var handle = limiter.Apply(4400, 512 * Megabyte);
+            Assert.NotNull(handle);
+
+            var group = Path.Combine(root.FullName, "cockpit-session-4400");
+            Assert.Equal(["4400", "4401", "4402", "4403"], _Enrolled(group).Order());
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Apply_StillCapsTheSessionWhenTheSweepStumbles()
+    {
+        var root = Directory.CreateTempSubdirectory("cockpit-cgroup-test-");
+        try
+        {
+            // A child that exits mid-walk takes its procfs entry with it. The group already exists and already
+            // holds the session by then, so the read failing must cost the strays behind it and not the handle.
+            var limiter = new LinuxCgroupMemoryLimiter(
+                NullLogger.Instance,
+                () => root.FullName,
+                pid => pid == 4500 ? [4501, 4502] : throw new IOException("this process is gone"));
+
+            using var handle = limiter.Apply(4500, 512 * Megabyte);
+            Assert.NotNull(handle);
+
+            var group = Path.Combine(root.FullName, "cockpit-session-4500");
+            Assert.Equal(["4500", "4501", "4502"], _Enrolled(group).Order());
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    // The pids the limiter wrote into the group, in the order it wrote them.
+    private static string[] _Enrolled(string group) =>
+        File.ReadAllLines(Path.Combine(group, "cgroup.procs"));
 }
