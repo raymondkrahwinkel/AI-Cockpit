@@ -127,8 +127,8 @@ jobs:
 
       - name: Test the plugins that have tests
         run: |
-          # Production plugin code was already built with -warnaserror above; preserve the test projects' existing warning policy.
-          dotnet build PluginTests.slnx --configuration Release
+          # Keep the test graph under the same zero-warning policy as production plugins.
+          dotnet build PluginTests.slnx --configuration Release -warnaserror
           dotnet test PluginTests.slnx --configuration Release --no-build --logger "console;verbosity=minimal"
 
   # A plugin can pass every test here and still be unpublishable: the store only offers an update when the
