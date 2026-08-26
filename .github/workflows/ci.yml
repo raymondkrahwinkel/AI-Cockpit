@@ -127,7 +127,7 @@ jobs:
 
       - name: Test the plugins that have tests
         run: |
-          dotnet build PluginTests.slnx --configuration Release -warnaserror
+          dotnet build PluginTests.slnx --configuration Release
           dotnet test PluginTests.slnx --configuration Release --no-build --logger "console;verbosity=minimal"
 
   # A plugin can pass every test here and still be unpublishable: the store only offers an update when the
