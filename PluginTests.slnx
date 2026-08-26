@@ -1,0 +1,34 @@
+<Solution>
+  <Folder Name="/host/">
+    <Project Path="src/Cockpit.App/Cockpit.App.csproj" />
+  </Folder>
+  <Folder Name="/plugins-dev/">
+    <Project Path="plugins-dev/Cockpit.Plugin.Autopilot.Tests/Cockpit.Plugin.Autopilot.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/Cockpit.Plugin.ClaudeProvider.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests/Cockpit.Plugin.CliAgentProvider.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Depot.Tests/Cockpit.Plugin.Depot.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Diagram.Tests/Cockpit.Plugin.Diagram.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Discord.Tests/Cockpit.Plugin.Discord.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Docker.Tests/Cockpit.Plugin.Docker.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.FanOut.Tests/Cockpit.Plugin.FanOut.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.GeminiProvider.Tests/Cockpit.Plugin.GeminiProvider.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.GitHubActions.Tests/Cockpit.Plugin.GitHubActions.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.GitHubIssues.Tests/Cockpit.Plugin.GitHubIssues.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests/Cockpit.Plugin.GitHubModelsProvider.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/Cockpit.Plugin.GitHubPullRequests.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.GitStatus.Tests/Cockpit.Plugin.GitStatus.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.GrokProvider.Tests/Cockpit.Plugin.GrokProvider.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.KimiProvider.Tests/Cockpit.Plugin.KimiProvider.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Kubernetes.Tests/Cockpit.Plugin.Kubernetes.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.LocalCi.Tests/Cockpit.Plugin.LocalCi.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests/Cockpit.Plugin.OpenRouterProvider.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests/Cockpit.Plugin.OpencodeProvider.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Proxmox.Tests/Cockpit.Plugin.Proxmox.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.SessionReview.Tests/Cockpit.Plugin.SessionReview.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Slack.Tests/Cockpit.Plugin.Slack.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests/Cockpit.Plugin.TranscriptSearch.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.UsageTrend.Tests/Cockpit.Plugin.UsageTrend.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Workflows.Tests/Cockpit.Plugin.Workflows.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.YouTrack.Tests/Cockpit.Plugin.YouTrack.Tests.csproj" />
+  </Folder>
+</Solution>
