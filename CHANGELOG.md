@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a session can now start a command — a test run, say — and end its own turn immediately instead of
+  blocking on it; the verdict is delivered to its inbox once the command finishes or times out. Every process it
+  leaves behind is ended too, a build server it spawned and left running included, whether the run finished
+  cleanly or was cut off by its timeout. A run in progress shows in the status bar with a Kill only you can press.
 - added: on Linux, a session warns you while it is stalling on memory — minutes before the system kills it. The
   warning reads the same meter the system's own out-of-memory daemon decides on, measured on that one session
   rather than on free memory, which says nothing once swap is full. It waits for the stall to hold for twenty

@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
@@ -11,13 +13,23 @@ namespace Cockpit.Core.Tests.Mcp;
 /// </summary>
 public class CockpitMcpEndpointTests
 {
+    // AC-1094 added start_run/run_status to the same tools class; this file only exercises set_status, so the
+    // extra dependencies are unused substitutes here rather than real collaborators.
+    private static SessionStatusTools _Tools(ISessionLabelSink sink) => new(
+        sink,
+        Substitute.For<ITrackedCommandRunner>(),
+        new RunTracker(),
+        Substitute.For<IWorkspaceAgentGateway>(),
+        Substitute.For<IWorkspaceAgentCoordinator>(),
+        Substitute.For<IAgentMessageInbox>());
+
     [Fact]
     public async Task SetStatus_RoutesToTheSink_AndReportsWhetherASessionMatched()
     {
         var sink = Substitute.For<ISessionLabelSink>();
         sink.SetStatuslineAsync("pane-1", "AC-13").Returns(Task.FromResult(true));
         sink.SetStatuslineAsync("unknown", Arg.Any<string>()).Returns(Task.FromResult(false));
-        var tools = new SessionStatusTools(sink);
+        var tools = _Tools(sink);
 
         var ok = JsonSerializer.Deserialize<JsonElement>(await tools.SetStatusAsync("AC-13", "pane-1"));
         Assert.True(ok.GetProperty("ok").GetBoolean());
@@ -36,7 +48,7 @@ public class CockpitMcpEndpointTests
     {
         var sink = Substitute.For<ISessionLabelSink>();
         sink.SetStatuslineAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(Task.FromResult(true));
-        var tools = new SessionStatusTools(sink);
+        var tools = _Tools(sink);
 
         var reply = JsonSerializer.Deserialize<JsonElement>(await tools.SetStatusAsync("AC-13", "pane-1"));
 
@@ -52,7 +64,7 @@ public class CockpitMcpEndpointTests
         var sink = Substitute.For<ISessionLabelSink>();
         sink.SetStatuslineAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(Task.FromResult(true));
         sink.SuggestNameAsync("pane-1", "AC-312").Returns(Task.FromResult(taken));
-        var tools = new SessionStatusTools(sink);
+        var tools = _Tools(sink);
 
         var reply = JsonSerializer.Deserialize<JsonElement>(await tools.SetStatusAsync("AC-13", "pane-1", "AC-312"));
 
@@ -69,7 +81,7 @@ public class CockpitMcpEndpointTests
     {
         var sink = Substitute.For<ISessionLabelSink>();
         sink.SetStatuslineAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(Task.FromResult(false));
-        var tools = new SessionStatusTools(sink);
+        var tools = _Tools(sink);
 
         var reply = JsonSerializer.Deserialize<JsonElement>(await tools.SetStatusAsync("AC-13", "unknown", "AC-312"));
 

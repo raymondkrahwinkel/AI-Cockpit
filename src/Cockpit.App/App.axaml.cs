@@ -24,6 +24,7 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Toasts;
+using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 using Cockpit.Core.Abstractions.Mcp;
@@ -248,6 +249,14 @@ public partial class App : Application
     private void _StartCockpit(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var cockpitViewModel = Program.Services.GetRequiredService<CockpitViewModel>();
+
+        // AC-1094: core (non-plugin) sources of supervised background activity, e.g. RunTracker for a tracked test
+        // run — resolved by the public interface only, so this needs no reference to any concrete Infrastructure
+        // type. Plugins add theirs later, through ICockpitHost, as they load.
+        foreach (var source in Program.Services.GetServices<ISupervisedActivitySource>())
+        {
+            cockpitViewModel.PluginSupervisedActivities.Add(source);
+        }
 
         // The New-session profile picker's ProfileDisplayConverter is used via x:Static (not DI-constructed), so
         // hand it the provider registry once here — that lets a plugin profile show its own provider's name (e.g.

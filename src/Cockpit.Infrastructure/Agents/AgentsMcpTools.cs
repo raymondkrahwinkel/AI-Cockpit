@@ -609,13 +609,13 @@ internal sealed class AgentsMcpTools(
     // Whether the named pane has mail carried to it by its own next turn (AC-394). False for a pane the snapshot
     // does not hold — every caller here has already established membership, so that case is unreachable rather
     // than meaningful, and the safe answer to "will this surface by itself" is the one that makes a sender check.
-    private static bool _DeliversAtTurnStart(WorkspaceAgentSnapshot snapshot, string paneId) =>
+    internal static bool _DeliversAtTurnStart(WorkspaceAgentSnapshot snapshot, string paneId) =>
         snapshot.Panes.FirstOrDefault(pane => string.Equals(pane.PaneId, paneId, StringComparison.Ordinal))
             ?.DeliversAtTurnStart ?? false;
 
     // AC-1013 (AC-614): warns, doesn't refuse, when no route will read this — all three must be false (no
     // passive delivery, no wake consent, never collected mail); refusing would be the host guessing on the sender's behalf.
-    private static string? _UnreachableWarning(
+    internal static string? _UnreachableWarning(
         IWorkspaceAgentCoordinator coordinator, WorkspaceAgentSnapshot snapshot, string addressee) =>
         _ReachableVia(coordinator, snapshot, addressee) == ReachableOperatorOnly
             ? $"This message is waiting, but nothing is going to bring it to '{addressee}' on its own: that pane has no turn-start delivery, has never called a cockpit tool the cockpit could attach it to, and has not opted in to being woken. It will only see this if it calls read_inbox itself. Do not read silence from it as an answer — if this matters, ask your operator to pass it on."
@@ -636,7 +636,7 @@ internal sealed class AgentsMcpTools(
     // AC-1013 (AC-527 criterion 6): strongest applicable route ("asks least of the recipient"), ordered by
     // that rather than epic layer numbering. Piggyback is reported on evidence (has reached this server), not
     // capability, since a pane that never has may have no MCP surface at all (AC-156).
-    private static string _ReachableVia(
+    internal static string _ReachableVia(
         IWorkspaceAgentCoordinator coordinator, WorkspaceAgentSnapshot snapshot, string paneId)
     {
         if (_DeliversAtTurnStart(snapshot, paneId))
