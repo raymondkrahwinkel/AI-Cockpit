@@ -61,6 +61,7 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Rendering;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Audio;
@@ -6149,10 +6150,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        pluginStaging.Commit();
+        // AC-1108: Commit() below re-commits every plugin's settings, not only the tab opened — measured 51+
+        // separate cockpit.json writes here on top of SaveAllSettingsAsync's thirteen; batched to one round-trip.
+        await using (CockpitConfigWriteBatch.Begin())
+        {
+            pluginStaging.Commit();
 
-        _EndOptionsEdit();
-        await SaveAllSettingsAsync();
+            _EndOptionsEdit();
+            await SaveAllSettingsAsync();
+        }
+
         _SaveUpdateSettings();
 
         if (_delegationMcpToggle is { } toggle)
