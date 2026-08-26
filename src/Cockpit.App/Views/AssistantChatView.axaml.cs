@@ -89,9 +89,13 @@ public partial class AssistantChatView : UserControl
         _following = true;
         try
         {
+            // AC-1111: ScrollIntoView ran a whole nested layout pass here, once per streamed row, because a row
+            // that has just arrived is never realised yet. Assigning Offset only invalidates. Same change, and
+            // the same reasons, as SessionView._FollowNewest.
             if (TranscriptItems.ContainerFromIndex(newestIndex) is null)
             {
-                TranscriptItems.ScrollIntoView(newestIndex);
+                TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(
+                    Math.Max(0, TranscriptScroll.Extent.Height - TranscriptScroll.Viewport.Height));
             }
 
             if (_NewestRowIsFullyVisible())
