@@ -66,7 +66,7 @@ internal sealed class SessionStatusTools(
     }
 
     [McpServerTool(Name = "start_run", ReadOnly = false, Destructive = false)]
-    [Description("DRAFT — under review, wording not final. Starts a command (e.g. a `dotnet test` filter) and returns a run id right away, before the command has finished — you can end your turn immediately after. When it ends, by finishing or by its timeout, the verdict is delivered to your own inbox and, if you have wake consent, a turn is started for you to read it; either way it never restarts anything on your behalf. There is no lock and no queue: an unrelated concurrent run of your own or another session's is not something this waits on or refuses over. On timeout the verdict is `TimedOut`, carrying whatever the command had already printed. Every process the run's tree still holds when it ends — a compiler daemon it spawned and left running included — is ended too, whether the run finished cleanly or timed out; this does not touch anything outside that one run. `unreachable`, when present in the reply, means nothing is going to bring this run's verdict to you on its own — read it before you end your turn.")]
+    [Description("Starts a command (e.g. a `dotnet test` filter) and returns a run id right away, before the command has finished — you can end your turn immediately after. When it ends, by finishing or by its timeout, the verdict is delivered to your own inbox and, if you have wake consent, a turn is started for you to read it. It never restarts anything on your behalf. There is no lock and no queue: an unrelated concurrent run of your own or another session's is not something this waits on or refuses over. On timeout the verdict is `TimedOut`, carrying whatever the command had already printed. Every process the run's tree still holds when it ends — a compiler daemon it spawned and left running included — is ended too, whether the run finished cleanly or timed out; this does not touch anything outside that one run. `unreachable`, when present in the reply, means nothing is going to bring this run's verdict to you on its own — read it before you end your turn.")]
     public async Task<string> StartRunAsync(
         [Description("The directory the command runs in.")] string workingDirectory,
         [Description("The command to run, e.g. 'dotnet'. Never parsed by a shell — pass its arguments separately in `arguments`, not appended here.")] string command,
@@ -106,7 +106,7 @@ internal sealed class SessionStatusTools(
     }
 
     [McpServerTool(Name = "run_status", ReadOnly = true)]
-    [Description("DRAFT — under review, wording not final. Reports what a run started with start_run is doing, or what it finished with — the recovery path for when that run's inbox delivery never reached you (a wake refused, an inbox already full, a turn that ended before it arrived). Never starts or restarts anything.")]
+    [Description("Reports what a run started with start_run is doing, or what it finished with — the recovery path for when that run's inbox delivery never reached you (a wake refused, an inbox already full, a turn that ended before it arrived). Never starts or restarts anything.")]
     public string RunStatus([Description("The run id start_run returned.")] string runId)
     {
         if (tracker.IsRunning(runId))
