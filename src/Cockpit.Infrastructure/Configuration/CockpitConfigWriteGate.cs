@@ -7,7 +7,8 @@ internal static class CockpitConfigWriteGate
     // Holds the write gate; empty, and only its existence-while-open means anything.
     private const string LockSuffix = ".lock";
 
-    // Generous on purpose: a write is milliseconds, so reaching this means something is wrong, not busy.
+    // Generous on purpose. AC-1108: a CockpitConfigWriteBatch now holds this for its whole scope (a batched
+    // Apply, measured ~23ms), not just one write — reaching this still means something is wrong, not busy.
     private static readonly TimeSpan GateTimeout = TimeSpan.FromSeconds(10);
 
     private static readonly TimeSpan GatePollInterval = TimeSpan.FromMilliseconds(20);

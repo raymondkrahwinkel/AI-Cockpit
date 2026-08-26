@@ -28,7 +28,15 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
 
     public string ConfigFilePath => configFilePath;
 
-    public async Task<CockpitConfigFile?> ReadAsync(CancellationToken cancellationToken)
+    // AC-1108: mid-batch, sees that batch's own not-yet-flushed copy instead of stale disk — GlobalHotkeyCoordinator
+    // re-reads a section a sibling save just wrote, from the VoiceSettingsSaved handler that save raises mid-Apply.
+    public async Task<CockpitConfigFile?> ReadAsync(CancellationToken cancellationToken) =>
+        CockpitConfigWriteBatch.TryPeek(this) is { } pending
+            ? pending
+            : await ReadNowAsync(cancellationToken).ConfigureAwait(false);
+
+    // The real disk read — what ReadAsync does outside a batch, and what seeds a batch's first mutation.
+    internal async Task<CockpitConfigFile?> ReadNowAsync(CancellationToken cancellationToken)
     {
         if (await TryReadAsync(configFilePath, cancellationToken).ConfigureAwait(false) is { } configFile)
         {
@@ -113,16 +121,36 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         }
     }
 
-    // Loads the file, mutates one section, and writes the whole document back, serialised against every
-    // other writer on this machine — without the gate, two concurrent writers each silently restore the
-    // other's section to what it had been (how a plugin's freshly pinned hash once disappeared).
+    // Loads the file, mutates one section, and writes the whole document back, serialised against every other
+    // writer on this machine (how a plugin's freshly pinned hash once disappeared) — or, AC-1108, joins the
+    // ambient CockpitConfigWriteBatch when one is open instead of writing immediately.
     public async Task UpdateAsync(Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
+    {
+        if (CockpitConfigWriteBatch.TryApply(this, mutate, cancellationToken, out var applied))
+        {
+            await applied.ConfigureAwait(false);
+            return;
+        }
+
+        await UpdateNowAsync(mutate, cancellationToken).ConfigureAwait(false);
+    }
+
+    // What UpdateAsync does outside a batch — never consults the ambient batch itself, or its own flush would
+    // re-enqueue into itself.
+    internal async Task UpdateNowAsync(Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
     {
         using var gate = await CockpitConfigWriteGate.AcquireAsync(configFilePath, cancellationToken).ConfigureAwait(false);
 
-        var configFile = await ReadAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();
+        var configFile = await ReadNowAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();
         mutate(configFile);
 
+        await WriteNowAsync(configFile).ConfigureAwait(false);
+    }
+
+    // Serialises and replaces the file with `configFile` as given — no read, no gate of its own: the caller
+    // already holds one, UpdateNowAsync's own or a CockpitConfigWriteBatch's held across the whole scope.
+    internal async Task WriteNowAsync(CockpitConfigFile configFile)
+    {
         var document = JsonSerializer.SerializeToNode(configFile, SerializerOptions)
             ?? throw new InvalidOperationException("The cockpit configuration serialized to nothing.");
 
@@ -147,6 +175,11 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
 
         await Task.CompletedTask.ConfigureAwait(false);
     }
+
+    // What TryPeek hands a mid-batch ReadAsync caller instead of the live, still-mutating batch document — so
+    // mutating what it got back (nothing does today, but ReadAsync's contract allows it) can't corrupt the batch.
+    internal static CockpitConfigFile ClonePeeked(CockpitConfigFile configFile) =>
+        JsonSerializer.Deserialize<CockpitConfigFile>(JsonSerializer.Serialize(configFile, SerializerOptions), SerializerOptions)!;
 
     // AC-41: the write gate lives in CockpitConfigWriteGate so the encryption migration and the banner
     // dismissal share this lock. Reads don't take it, but a reader mid-swap waits the writer out instead.
