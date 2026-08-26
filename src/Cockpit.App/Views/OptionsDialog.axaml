@@ -930,8 +930,7 @@
                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='usage pill context window session tokens cost five hour weekly'}">
                             <CheckBox Content="Context window (ctx %)" IsChecked="{Binding ShowUsagePillContext}"/>
                             <CheckBox Content="Session usage (tokens · cost)" IsChecked="{Binding ShowUsagePillSessionUsage}"/>
-                            <CheckBox Content="5-hour window" IsChecked="{Binding ShowUsagePillFiveHour}"/>
-                            <CheckBox Content="Weekly window" IsChecked="{Binding ShowUsagePillWeekly}"/>
+                            <CheckBox Content="Rate windows (e.g. 5-hour, weekly — whatever the provider reports)" IsChecked="{Binding ShowUsagePillRateWindows}"/>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>

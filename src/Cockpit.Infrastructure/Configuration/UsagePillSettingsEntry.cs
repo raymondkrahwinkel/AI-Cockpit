@@ -15,12 +15,22 @@ internal sealed class UsagePillSettingsEntry
 
     public UsagePillSettings ToDomain() => new()
     {
-        // A name this build no longer knows (a field removed since the file was written) is dropped rather than
-        // throwing, so an older build still loads a config a newer one wrote.
+        // An unknown name (a field removed since the file was written) is dropped rather than throwing. #1105
+        // A2 folds the two old window toggles onto one first — Distinct() keeps that from becoming a duplicate.
         VisibleFields = VisibleFields
+            .Select(_MigrateName)
             .Select(name => Enum.TryParse<UsagePillField>(name, out var field) ? field : (UsagePillField?)null)
             .Where(field => field is not null)
             .Select(field => field!.Value)
+            .Distinct()
             .ToList(),
+    };
+
+    // #1105: pre-migration configs stored "5-hour window" and "Weekly window" as two separate fields; both now
+    // draw from the one provider-neutral RateWindows field (A2), so either name folds onto it.
+    private static string _MigrateName(string name) => name switch
+    {
+        "FiveHourWindow" or "WeeklyWindow" => nameof(UsagePillField.RateWindows),
+        _ => name,
     };
 }

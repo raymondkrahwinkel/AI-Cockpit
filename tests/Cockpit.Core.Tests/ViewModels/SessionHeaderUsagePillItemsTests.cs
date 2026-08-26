@@ -36,9 +36,27 @@ public class SessionHeaderUsagePillItemsTests
         var vm = new SessionViewModel { ContextUsedPercent = null };
         vm.RateLimits.Clear();
         vm.RateLimits.Add(new SessionRateWindow("5h", 64, null));
-        vm.UsagePillVisibleFields = [UsagePillField.FiveHourWindow];
+        vm.UsagePillVisibleFields = [UsagePillField.RateWindows];
 
         Assert.Equal("5h 64%", Assert.Single(vm.UsagePillItems).DisplayText);
+    }
+
+    /// <summary>
+    /// #1105 A2: RateWindows draws one segment per window the provider reported, not one enum value per window
+    /// shape — the fix for Codex's "7d" window falling through a pill that only knew "5h"/"wk".
+    /// </summary>
+    [Fact]
+    public void MultipleWindows_AllRenderFromTheOneRateWindowsField()
+    {
+        var vm = new SessionViewModel { ContextUsedPercent = null };
+        vm.RateLimits.Clear();
+        vm.RateLimits.Add(new SessionRateWindow("5h", 12, null));
+        vm.RateLimits.Add(new SessionRateWindow("7d", 34, null));
+        vm.UsagePillVisibleFields = [UsagePillField.RateWindows];
+
+        Assert.Equal(2, vm.UsagePillItems.Count);
+        Assert.Equal("5h 12%", vm.UsagePillItems[0].DisplayText);
+        Assert.Equal("7d 34%", vm.UsagePillItems[1].DisplayText);
     }
 
     /// <summary>
@@ -76,7 +94,7 @@ public class SessionHeaderUsagePillItemsTests
     public void AWindowPill_SurvivesAnUpdateThatOmitsIt()
     {
         // AC-761 F1: a snapshot reporting only ctx must not blank the 5h pill a fuller snapshot already showed.
-        var vm = new SessionViewModel { UsagePillVisibleFields = [UsagePillField.Context, UsagePillField.FiveHourWindow] };
+        var vm = new SessionViewModel { UsagePillVisibleFields = [UsagePillField.Context, UsagePillField.RateWindows] };
         var context = new PluginUsageSignal("context", "ctx", PluginUsageSignalKind.Fill, DefaultThresholdPercent: 50);
         var fiveHour = new PluginUsageSignal("five-hour", "5h", PluginUsageSignalKind.Allowance, DefaultThresholdPercent: 90);
 
@@ -145,7 +163,7 @@ public class SessionHeaderUsagePillItemsTests
         var vm = new SessionViewModel { ContextUsedPercent = 20 };
         vm.RateLimits.Clear();
         vm.RateLimits.Add(new SessionRateWindow("wk", 80, null));
-        vm.UsagePillVisibleFields = [UsagePillField.WeeklyWindow, UsagePillField.Context];
+        vm.UsagePillVisibleFields = [UsagePillField.RateWindows, UsagePillField.Context];
 
         Assert.Equal(2, System.Linq.Enumerable.Count(vm.UsagePillItems));
         Assert.Equal("wk 80%", vm.UsagePillItems[0].DisplayText);

@@ -167,6 +167,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         await _connection.SendRequestAsync("initialize", new { clientInfo = new { name = _ClientName, version = _ClientVersion } }, cancellationToken).ConfigureAwait(false);
         await _connection.SendNotificationAsync("initialized", null, cancellationToken).ConfigureAwait(false);
 
+        // #1105 C: an account-level read fills the bar before the first turn's own notification would. Fire-
+        // and-forget on the driver's own lifetime, off the critical path to PluginSessionInitialized — a slow or
+        // unresponsive app-server must not delay session start for this.
+        _ = _PrefetchRateLimitsAsync(_lifetime.Token);
+
         // The live-control choices (#45 D4), resolved on this same handshaked connection — one round-trip, no
         // second process (unlike CodexModelCatalog, which has no running server to reuse). Best-effort: an
         // unreadable listing just leaves the model control on the current model; effort's fixed set needs no lookup.
@@ -517,6 +522,26 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         _PublishStatus();
     }
 
+    // #1105 C: account/rateLimits/read answers with the same shape the notification's params carry, so it runs
+    // through the same handler. Best-effort — a failure just leaves the bar empty until the first turn's own
+    // notification fills it, today's behaviour.
+    private async Task _PrefetchRateLimitsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _connection.SendRequestAsync("account/rateLimits/read", new { }, cancellationToken).ConfigureAwait(false);
+            _HandleRateLimits(result);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Best-effort, see remarks above.
+        }
+    }
+
     private void _PublishStatus()
     {
         var status = new PluginSessionStatus(_contextUsedPercent, _rateLimits);
@@ -536,18 +561,8 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             ? DateTimeOffset.FromUnixTimeSeconds(epochSeconds)
             : (DateTimeOffset?)null;
 
-        return new PluginRateLimitWindow(_WindowLabel(windowMinutes), usedPercent, resetsAt, windowMinutes);
+        return new PluginRateLimitWindow(CodexUsageSignals.WindowLabel(windowMinutes), usedPercent, resetsAt, windowMinutes);
     }
-
-    // The provider owns the header label (#45 D7): derive it from the window's span so a five-hour window reads
-    // "5h" and a weekly one "7d", and a window with no span falls back to a neutral "rate".
-    private static string _WindowLabel(int? windowMinutes) => windowMinutes switch
-    {
-        null => "rate",
-        < 60 => $"{windowMinutes}m",
-        < 1440 => $"{windowMinutes / 60}h",
-        _ => $"{windowMinutes / 1440}d",
-    };
 
     private static int? _TryGetInt(JsonElement parent, string property) =>
         parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out var element)

@@ -55,6 +55,9 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson, host))
         {
             Options = [sdkSandbox, sdkModelFallback],
+            // #1105: the SDK route reports these at each turn boundary (plus a start-of-session prefetch, C) —
+            // this only says what they are, the same split ClaudeProviderPlugin uses for its own two routes.
+            UsageSignals = CodexUsageSignals.Declarations,
             // AC-713: Codex had no login gate at all before this — every profile read as ready regardless of
             // whether `codex login`/`CODEX_API_KEY` was actually set up. `codex login status`'s exit code is the
             // only structured signal the CLI offers (see `CodexLoginStatus`).
@@ -82,6 +85,10 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             CreateProvider: _ => new CodexTtyProvider(host.ResolveManagedCliPath),
             Options: [ttySandbox, ttyModelFallback])
         {
+            // #1105: declared here too (no ReadUsage, out of scope) — App.axaml.cs lists the TTY registration
+            // first and skips a later SDK one with the same ProviderId, so an empty list here would have hidden
+            // the SDK route's declaration from Options -> Usage thresholds.
+            UsageSignals = CodexUsageSignals.Declarations,
             // Declared on both routes (AC-629), same as Claude — an SDK-only provider would otherwise be the
             // example that leaves the gate silent.
             IsLoggedIn = configJson => CodexLoginStatus.IsLoggedIn(configJson, host.ResolveManagedCliPath),
