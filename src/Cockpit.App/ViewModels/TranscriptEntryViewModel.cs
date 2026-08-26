@@ -131,10 +131,22 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isBackgroundTaskLive;
 
-    // Running until the ledger stops reporting the task; failed the moment the call itself came back an error.
-    public string BackgroundStatusText => IsResultError
-        ? "Background · failed"
-        : IsBackgroundTaskLive || !HasResult ? "Background · running" : "Background · done";
+    // Set once a `BackgroundTaskNotification` (AC-1057) names this row's task, overriding the inference below with
+    // the provider's own verdict. Null until then; `Unknown` (an unrecognised status) falls back to that same
+    // inference rather than guessing completed.
+    [ObservableProperty]
+    private BackgroundTaskStatus? _backgroundNotificationStatus;
+
+    // The provider's own verdict once it arrives; until then, inferred: running until the ledger stops reporting
+    // the task, failed the moment the call itself came back an error.
+    public string BackgroundStatusText => BackgroundNotificationStatus switch
+    {
+        BackgroundTaskStatus.Completed => "Background · done",
+        BackgroundTaskStatus.Failed => "Background · failed",
+        _ => IsResultError
+            ? "Background · failed"
+            : IsBackgroundTaskLive || !HasResult ? "Background · running" : "Background · done",
+    };
 
     // The tool result coupled to this tool-use row by tool_use_id (L14), or null until it arrives.
     [ObservableProperty]
@@ -496,6 +508,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     partial void OnIsResultErrorChanged(bool value) => OnPropertyChanged(nameof(BackgroundStatusText));
 
     partial void OnIsBackgroundTaskLiveChanged(bool value) => OnPropertyChanged(nameof(BackgroundStatusText));
+
+    partial void OnBackgroundNotificationStatusChanged(BackgroundTaskStatus? value) => OnPropertyChanged(nameof(BackgroundStatusText));
 
     // --- Reading levels (AC-138) ------------------------------------------------------------------------------
     // The current reading level of the session this row belongs to, pushed onto every row by the session view model

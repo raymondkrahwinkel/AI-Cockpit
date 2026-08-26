@@ -748,6 +748,18 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 },
                 task.Description))],
         },
+        PluginBackgroundTaskNotification notification => new BackgroundTaskNotification
+        {
+            SessionId = notification.SessionId,
+            TaskId = notification.TaskId,
+            ToolUseId = notification.ToolUseId,
+            Status = notification.Status switch
+            {
+                PluginBackgroundTaskStatus.Completed => BackgroundTaskStatus.Completed,
+                PluginBackgroundTaskStatus.Failed => BackgroundTaskStatus.Failed,
+                _ => BackgroundTaskStatus.Unknown,
+            },
+        },
         PluginSessionError error => new SessionError
         {
             SessionId = error.SessionId,

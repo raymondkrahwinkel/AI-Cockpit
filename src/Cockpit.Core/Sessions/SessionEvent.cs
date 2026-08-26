@@ -176,6 +176,24 @@ public sealed record BackgroundTasksChanged : SessionEvent
     public required IReadOnlyList<BackgroundTask> Tasks { get; init; }
 }
 
+// How a `BackgroundTaskNotification` says its task ended. Unknown is ordinal 0, deliberately: a status this
+// build does not recognise lands on the least authoritative option rather than silently reading as completed.
+public enum BackgroundTaskStatus
+{
+    Unknown,
+    Completed,
+    Failed,
+}
+
+// The provider's own verdict on a task named by an earlier `BackgroundTasksChanged` (AC-1057) — the only place
+// completed and failed are told apart; that ledger only ever says "still there or not".
+public sealed record BackgroundTaskNotification : SessionEvent
+{
+    public required string TaskId { get; init; }
+    public string? ToolUseId { get; init; }
+    public required BackgroundTaskStatus Status { get; init; }
+}
+
 // Something went wrong in the session driver itself (process failure, parse failure, ...).
 // This is a driver-level event, not a wire event.
 public sealed record SessionError : SessionEvent

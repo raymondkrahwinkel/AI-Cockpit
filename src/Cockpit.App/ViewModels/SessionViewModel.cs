@@ -2854,6 +2854,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _RecomputeStatus();
                 break;
 
+            // AC-1057: the provider's own verdict on one background task, replacing the inferred done/failed guess
+            // for exactly the row that started it. Matched by ToolUseId first (the id this event names for that
+            // reason) and by BackgroundTaskId as a fallback for a row whose ToolUseId went unset for some reason.
+            case BackgroundTaskNotification notification:
+                var notifiedRow = notification.ToolUseId is not null
+                    ? _backgroundToolRows.FirstOrDefault(row => row.ToolUseId == notification.ToolUseId)
+                    : null;
+                notifiedRow ??= _backgroundToolRows.FirstOrDefault(row => row.BackgroundTaskId == notification.TaskId);
+                if (notifiedRow is not null)
+                {
+                    notifiedRow.BackgroundNotificationStatus = notification.Status;
+                }
+
+                break;
+
             case SessionStatusChanged statusChanged:
                 // needs_action non-empty is the CLI telling the host the session wants attention
                 // (e.g. a pending question) — same "jump out in the sidebar" signal as a pending

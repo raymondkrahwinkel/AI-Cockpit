@@ -53,6 +53,7 @@ internal static class ClaudeStreamJson
             {
                 "init" => _ParseInit(root, sessionId),
                 "background_tasks_changed" => [_ParseBackgroundTasks(root, sessionId)],
+                "task_notification" => _ParseTaskNotification(root, sessionId),
                 _ => [],
             }
             : [];
@@ -95,6 +96,35 @@ internal static class ClaudeStreamJson
         }
 
         return new PluginBackgroundTasksChanged { SessionId = sessionId, Tasks = tasks };
+    }
+
+    // The CLI's own verdict on a task named by an earlier `background_tasks_changed` (AC-1057, CLI 2.1.246) — the
+    // only place completed and failed are told apart; the ledger above only ever says "still there or not". Wire
+    // shape is a plain `system` message, not the plain-text `<task-notification>` block an earlier CLI used.
+    private static IEnumerable<PluginSessionEvent> _ParseTaskNotification(JsonElement root, string? sessionId)
+    {
+        var taskId = _String(root, "task_id");
+        if (string.IsNullOrEmpty(taskId))
+        {
+            // Without an id there is nothing to attach the outcome to.
+            yield break;
+        }
+
+        var status = _String(root, "status") switch
+        {
+            "completed" => PluginBackgroundTaskStatus.Completed,
+            "failed" => PluginBackgroundTaskStatus.Failed,
+            _ => PluginBackgroundTaskStatus.Unknown,
+        };
+
+        var toolUseId = _String(root, "tool_use_id");
+        yield return new PluginBackgroundTaskNotification
+        {
+            SessionId = sessionId,
+            TaskId = taskId,
+            ToolUseId = string.IsNullOrEmpty(toolUseId) ? null : toolUseId,
+            Status = status,
+        };
     }
 
     private static IEnumerable<PluginSessionEvent> _ParseInit(JsonElement root, string? sessionId)
