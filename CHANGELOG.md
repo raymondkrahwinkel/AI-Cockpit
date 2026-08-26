@@ -365,6 +365,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: when two of the cockpit's own parts come to depend on each other in a circle, startup now stops with a
+  message naming the loop instead of hanging with no window and no error. Previously the wiring worked its way
+  around such a loop forever and went quiet, which said nothing about where to look; the same mistake now reports
+  itself in a fraction of a second. This is a safety net for the wiring in general, not a fix for one circle.
+
 - fixed: the cockpit could hang while starting up, showing no window and no error — two of its own parts had come
   to depend on each other in a circle, the catalogue of MCP servers needing the delegation service and the
   delegation service needing the catalogue back. The wiring that builds the cockpit got stuck working its way
