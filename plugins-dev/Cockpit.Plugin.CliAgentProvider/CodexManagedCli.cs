@@ -3,14 +3,16 @@ using Cockpit.Plugins.Abstractions.ManagedCli;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
-// Codex's managed-CLI install recipe (AC-20) — the one place the Codex download channel is named. The host's
-// generic installer consumes this `ManagedCliDescriptor`; the core never knows what "codex" is.
-// Route (verified against the live GitHub release `openai/codex@rust-v0.144.5`, 2026-07): releases are tagged
+// Codex's managed-CLI install recipe (AC-20, AC-1107) — the one place the Codex download channel is named. The
+// host's generic installer consumes this `ManagedCliDescriptor`; the core never knows what "codex" is.
+// Route (verified against the live GitHub release `openai/codex@rust-v0.149.1`, 2026-08): releases are tagged
 // `rust-v&lt;version&gt;`; the per-target asset is `codex-&lt;triple&gt;.tar.gz` (Linux/macOS) or
 // `codex-&lt;triple&gt;.exe.tar.gz` (Windows), a single-file tarball whose entry is the binary named after the
 // triple. Codex ships only a musl Linux build (a static binary that also runs on glibc). Integrity comes from the
 // GitHub API asset `digest` (`sha256:…`) — a second channel over TLS, since the release's
 // `SHA256SUMS` asset covers only the `codex-package-*` bundles, not the bare tarball.
+// Since `rust-v0.143.0`, the release also carries three sibling binaries as their own assets, same
+// `codex-<label>-<triple>` naming scheme — see AC-1107 for which condition needs which one.
 internal static class CodexManagedCli
 {
     public const string CliName = "codex";
@@ -95,17 +97,81 @@ internal static class CodexManagedCli
         return platform.Os == "win32" ? $"codex-{triple}.exe" : $"codex-{triple}";
     }
 
+    // A sibling binary's release asset name — same scheme as AssetName, just `codex-<label>-` prefixed instead of
+    // `codex-` (AC-1107). Internal for testing.
+    internal static string SiblingAssetName(string label, ManagedCliPlatform platform)
+    {
+        var triple = TargetTriple(platform);
+        return platform.Os == "win32" ? $"codex-{label}-{triple}.exe.tar.gz" : $"codex-{label}-{triple}.tar.gz";
+    }
+
+    // A sibling binary's tarball entry name. Internal for testing.
+    internal static string SiblingEntryName(string label, ManagedCliPlatform platform)
+    {
+        var triple = TargetTriple(platform);
+        return platform.Os == "win32" ? $"codex-{label}-{triple}.exe" : $"codex-{label}-{triple}";
+    }
+
+    // The file name a sibling binary is placed under in the version directory — the exact name Codex itself looks
+    // for next to `codex(.exe)` (AC-1107). Internal for testing.
+    internal static string SiblingFileName(string label, ManagedCliPlatform platform) =>
+        platform.Os == "win32" ? $"codex-{label}.exe" : $"codex-{label}";
+
     // Builds the download plan from a target platform and a fetched GitHub release JSON. Internal (no network) for testing.
     internal static ManagedCliDownloadPlan BuildPlan(ManagedCliPlatform platform, string releaseJson)
     {
-        var assetName = AssetName(platform);
-
         using var document = JsonDocument.Parse(releaseJson);
         if (!document.RootElement.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
         {
             throw new InvalidOperationException("The codex release JSON has no assets array.");
         }
 
+        var (url, sha256) = _ResolveAsset(assets, AssetName(platform));
+        var isWindows = platform.Os == "win32";
+
+        var additionalArtifacts = new List<ManagedCliDownloadArtifact>
+        {
+            _SiblingArtifact("code-mode-host", platform, assets, needsExecutableBit: !isWindows),
+        };
+
+        if (isWindows)
+        {
+            // Windows-only siblings — see AC-1107 for the trigger condition.
+            additionalArtifacts.Add(_SiblingArtifact("command-runner", platform, assets, needsExecutableBit: false));
+            additionalArtifacts.Add(_SiblingArtifact("windows-sandbox-setup", platform, assets, needsExecutableBit: false));
+        }
+
+        return new ManagedCliDownloadPlan
+        {
+            Url = url,
+            ExpectedSha256 = sha256,
+            ExecutableFileName = isWindows ? "codex.exe" : "codex",
+            ArchiveFormat = ManagedCliArchiveFormat.TarGz,
+            ExecutableEntryName = EntryName(platform),
+            NeedsExecutableBit = !isWindows,
+            AdditionalArtifacts = additionalArtifacts,
+        };
+    }
+
+    // Resolves one labelled sibling asset (code-mode-host, command-runner, windows-sandbox-setup) into a plan artifact.
+    private static ManagedCliDownloadArtifact _SiblingArtifact(string label, ManagedCliPlatform platform, JsonElement assets, bool needsExecutableBit)
+    {
+        var (url, sha256) = _ResolveAsset(assets, SiblingAssetName(label, platform));
+        return new ManagedCliDownloadArtifact
+        {
+            Url = url,
+            ExpectedSha256 = sha256,
+            FileName = SiblingFileName(label, platform),
+            ArchiveFormat = ManagedCliArchiveFormat.TarGz,
+            ArchiveEntryName = SiblingEntryName(label, platform),
+            NeedsExecutableBit = needsExecutableBit,
+        };
+    }
+
+    // Finds one named asset in the release JSON's assets array and returns its download URL and SHA-256 (the
+    // "sha256:" digest prefix stripped). Shared by the primary binary and every sibling (AC-1107).
+    private static (string Url, string Sha256) _ResolveAsset(JsonElement assets, string assetName)
+    {
         foreach (var asset in assets.EnumerateArray())
         {
             var name = asset.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : null;
@@ -134,16 +200,7 @@ internal static class CodexManagedCli
                 throw new InvalidOperationException($"The codex asset '{assetName}' has no sha256 digest to verify against.");
             }
 
-            var isWindows = platform.Os == "win32";
-            return new ManagedCliDownloadPlan
-            {
-                Url = url,
-                ExpectedSha256 = digest["sha256:".Length..],
-                ExecutableFileName = isWindows ? "codex.exe" : "codex",
-                ArchiveFormat = ManagedCliArchiveFormat.TarGz,
-                ExecutableEntryName = EntryName(platform),
-                NeedsExecutableBit = !isWindows,
-            };
+            return (url, digest["sha256:".Length..]);
         }
 
         throw new InvalidOperationException($"The codex release does not contain the asset '{assetName}'.");

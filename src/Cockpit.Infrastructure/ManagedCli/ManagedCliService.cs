@@ -180,15 +180,32 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
             var plan = await descriptor.BuildDownloadPlanAsync(_http, platform, version, cancellationToken).ConfigureAwait(false);
             var finalPath = Path.Combine(versionDirectory, plan.ExecutableFileName);
 
-            if (File.Exists(finalPath))
+            // Content-addressed by version, but a recipe that now promises a sibling binary (AC-1107) must still be
+            // topped up even when the primary executable is already on disk.
+            var missingArtifacts = _AllArtifacts(plan)
+                .Where(artifact => !File.Exists(Path.Combine(versionDirectory, artifact.FileName)))
+                .ToList();
+
+            if (missingArtifacts.Count == 0)
             {
-                // Already on disk — a managed install is content-addressed by version, so re-fetching the same one
-                // is wasted bytes. An update to a newer version is a separate, explicit EnsureInstalled of that version.
                 _CleanupOldVersions(cliName, version);
                 return ManagedCliInstallResult.Ok(version, finalPath);
             }
 
-            await _DownloadVerifyPlaceAsync(plan, versionDirectory, cancellationToken).ConfigureAwait(false);
+            if (Directory.Exists(versionDirectory))
+            {
+                // A partial version directory (a sibling asset missing entirely, or a previous repair pass that got
+                // interrupted) — top up only what is missing rather than re-downloading what is already verified.
+                foreach (var artifact in missingArtifacts)
+                {
+                    await _DownloadVerifyPlaceArtifactAsync(artifact, versionDirectory, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                await _DownloadVerifyPlaceAsync(plan, versionDirectory, cancellationToken).ConfigureAwait(false);
+            }
+
             _CleanupOldVersions(cliName, version);
             return ManagedCliInstallResult.Ok(version, finalPath);
         }
@@ -205,42 +222,17 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
 
     private async Task _DownloadVerifyPlaceAsync(ManagedCliDownloadPlan plan, string versionDirectory, CancellationToken cancellationToken)
     {
-        // Build in a sibling ".download" directory and swap it into place only once everything succeeded, so a failed
-        // or cancelled install never leaves a partial version dir that a later ResolveInstalledPath treats as complete.
+        // Builds in a sibling ".download" directory and swaps it into place only once every artifact succeeded, so a
+        // failed or cancelled install never leaves a partial version dir (AC-1107).
         var tempDirectory = versionDirectory + ".download";
         _DeleteDirectoryIfExists(tempDirectory);
         Directory.CreateDirectory(tempDirectory);
 
         try
         {
-            var bytes = await _DownloadAsync(plan.Url, cancellationToken).ConfigureAwait(false);
-
-            // Verify before anything is written out or unpacked. A mismatch means the bytes are not what the provider
-            // published — reject and install nothing.
-            var actualSha = PluginHash.Compute(bytes);
-            if (!string.Equals(actualSha, plan.ExpectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+            foreach (var artifact in _AllArtifacts(plan))
             {
-                throw new InvalidOperationException(
-                    $"The download did not match the published SHA-256 and was rejected (expected {plan.ExpectedSha256.Trim()}, got {actualSha}).");
-            }
-
-            var executablePath = Path.Combine(tempDirectory, plan.ExecutableFileName);
-            switch (plan.ArchiveFormat)
-            {
-                case ManagedCliArchiveFormat.RawBinary:
-                    await File.WriteAllBytesAsync(executablePath, bytes, cancellationToken).ConfigureAwait(false);
-                    break;
-                case ManagedCliArchiveFormat.TarGz:
-                case ManagedCliArchiveFormat.Zip:
-                    _ExtractExecutableFromArchive(bytes, plan, executablePath);
-                    break;
-                default:
-                    throw new InvalidOperationException($"Unsupported managed-CLI archive format '{plan.ArchiveFormat}'.");
-            }
-
-            if (plan.NeedsExecutableBit && !OperatingSystem.IsWindows())
-            {
-                File.SetUnixFileMode(executablePath, ExecutableMode);
+                await _DownloadVerifyPlaceArtifactAsync(artifact, tempDirectory, cancellationToken).ConfigureAwait(false);
             }
 
             var parent = Path.GetDirectoryName(versionDirectory);
@@ -258,6 +250,68 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
             throw;
         }
     }
+
+    // Downloads, verifies and places one artifact. Writes to a ".part" staging path and renames it into place last,
+    // so a failure here never corrupts an artifact an earlier pass already placed (AC-1107).
+    private async Task _DownloadVerifyPlaceArtifactAsync(ManagedCliArtifactPlan artifact, string destinationDirectory, CancellationToken cancellationToken)
+    {
+        var bytes = await _DownloadAsync(artifact.Url, cancellationToken).ConfigureAwait(false);
+
+        // Verify before anything is written out or unpacked. A mismatch means the bytes are not what the provider
+        // published — reject and install nothing.
+        var actualSha = PluginHash.Compute(bytes);
+        if (!string.Equals(actualSha, artifact.ExpectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"The download of '{artifact.FileName}' did not match the published SHA-256 and was rejected (expected {artifact.ExpectedSha256.Trim()}, got {actualSha}).");
+        }
+
+        var finalPath = Path.Combine(destinationDirectory, artifact.FileName);
+        var stagingPath = finalPath + ".part";
+        switch (artifact.ArchiveFormat)
+        {
+            case ManagedCliArchiveFormat.RawBinary:
+                await File.WriteAllBytesAsync(stagingPath, bytes, cancellationToken).ConfigureAwait(false);
+                break;
+            case ManagedCliArchiveFormat.TarGz:
+            case ManagedCliArchiveFormat.Zip:
+                _ExtractArchiveEntry(bytes, artifact.ArchiveEntryName, stagingPath);
+                break;
+            default:
+                throw new InvalidOperationException($"Unsupported managed-CLI archive format '{artifact.ArchiveFormat}'.");
+        }
+
+        if (artifact.NeedsExecutableBit && !OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(stagingPath, ExecutableMode);
+        }
+
+        File.Move(stagingPath, finalPath, overwrite: true);
+    }
+
+    // The plan's primary executable and its AdditionalArtifacts, as one uniform sequence — every consumer below
+    // (download-all, missing-file detection) treats them identically; only the fetch source differs.
+    private static IEnumerable<ManagedCliArtifactPlan> _AllArtifacts(ManagedCliDownloadPlan plan)
+    {
+        yield return new ManagedCliArtifactPlan(
+            plan.Url, plan.ExpectedSha256, plan.ExecutableFileName, plan.ArchiveFormat, plan.ExecutableEntryName, plan.NeedsExecutableBit);
+
+        foreach (var artifact in plan.AdditionalArtifacts)
+        {
+            yield return new ManagedCliArtifactPlan(
+                artifact.Url, artifact.ExpectedSha256, artifact.FileName, artifact.ArchiveFormat, artifact.ArchiveEntryName, artifact.NeedsExecutableBit);
+        }
+    }
+
+    // A uniform view over the plan's primary executable and its ManagedCliDownloadArtifact siblings, so the
+    // download/verify/place code below does not need two near-identical code paths.
+    private readonly record struct ManagedCliArtifactPlan(
+        string Url,
+        string ExpectedSha256,
+        string FileName,
+        ManagedCliArchiveFormat ArchiveFormat,
+        string? ArchiveEntryName,
+        bool NeedsExecutableBit);
 
     // Fetch the binary/archive bytes with a size cap, a timeout and a User-Agent. Streams the body and aborts the
     // moment it passes the cap, so an oversized (declared or actual) response never fully materialises in memory.
@@ -297,7 +351,7 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
     // Curated extraction (the poison-bug lesson: take only what is needed, not a whole tree). The archive bytes are
     // already in memory, and a MemoryStream is seekable, so SharpCompress can sniff the format (tar.gz or zip)
     // without the rewind trouble a forward-only network stream causes — one reader serves both archive formats.
-    private static void _ExtractExecutableFromArchive(byte[] archiveBytes, ManagedCliDownloadPlan plan, string executablePath)
+    private static void _ExtractArchiveEntry(byte[] archiveBytes, string? entryName, string outputPath)
     {
         using var archiveStream = new MemoryStream(archiveBytes, writable: false);
         using var reader = ReaderFactory.OpenReader(archiveStream, new ReaderOptions());
@@ -308,13 +362,13 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
                 continue;
             }
 
-            if (!_EntryMatches(reader.Entry.Key, plan.ExecutableEntryName))
+            if (!_EntryMatches(reader.Entry.Key, entryName))
             {
                 continue;
             }
 
             using var entryStream = reader.OpenEntryStream();
-            using var output = File.Create(executablePath);
+            using var output = File.Create(outputPath);
 
             // Bound the extracted size too: the archive passed the checksum, but cap defensively so a (source-signed)
             // decompression bomb cannot fill the disk.
@@ -336,7 +390,7 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         }
 
         throw new InvalidOperationException(
-            plan.ExecutableEntryName is { Length: > 0 } wanted
+            entryName is { Length: > 0 } wanted
                 ? $"The archive did not contain the expected entry '{wanted}'."
                 : "The archive contained no file to extract.");
     }

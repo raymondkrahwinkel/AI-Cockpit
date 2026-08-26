@@ -40,4 +40,11 @@ public sealed record ManagedCliDownloadPlan
     /// Whether the placed file needs the Unix executable bit set (true for the Unix binaries; a no-op on Windows).
     /// </summary>
     public bool NeedsExecutableBit { get; init; }
+
+    /// <summary>
+    /// Sibling binaries this version directory must also contain (AC-1107) — e.g. Codex's separate
+    /// <c>codex-code-mode-host</c>, which since <c>rust-v0.143.0</c> ships as its own release asset rather than
+    /// bundled with <c>codex</c> itself. Empty for a CLI that is just the one executable (Claude).
+    /// </summary>
+    public IReadOnlyList<ManagedCliDownloadArtifact> AdditionalArtifacts { get; init; } = [];
 }
