@@ -42,6 +42,77 @@ only reason a contract-`1` plugin is refused.
 
 ---
 
+## Capabilities — what a plugin can ask for {#capabilities}
+
+`Cockpit.Plugins.Abstractions.Capabilities.CapabilityCatalog.All` is the fixed list of what this SDK offers,
+with every member below grouped into the unit a manifest declares and an operator grants. It is also the
+discovery list: if a contribution point is not in this table, it does not exist.
+
+**Host-only.** The catalogue describes the host's own surface, so only the host can add to it — see
+[AC-474](https://raymondkrahwinkel.myjetbrains.com/youtrack/issue/AC-474).
+
+- **Risk** is `CapabilityRisk`: `Ambient` adds to the cockpit's surface and reads nothing of the operator's,
+  `Sensitive` reads or writes state the plugin did not create, `Dangerous` acts with the operator's rights or
+  opens egress. Only `Dangerous` lines up with `ConsentRisk.Dangerous`.
+- **Since** is the host version the *capability* first existed in. An individual member added later still has
+  its own `minHostVersion` — that stays `Directory.Build.props`' job.
+- **Scope** names the keys a grant can be narrowed along; `—` means all-or-nothing.
+- Each capability's one-line operator-facing summary lives on `PluginCapability.Summary`, so it is in the SDK's
+  IntelliSense and in exactly one place.
+
+| ID | Capability | Risk | Since | Scope | Contribution points |
+|---|---|---|---|---|---|
+| `ui.settings` | Its own settings screen | Ambient | 0.3.0 | — | `ICockpitHost.AddSettings`, `ICockpitHost.ShowSettingsAsync`, `ICockpitHost.HasSettings`, `ICockpitHost.OnSettingsSaved` |
+| `ui.side-menu` | A button in the left menu | Ambient | 0.3.0 | — | `ICockpitHost.AddSideMenuButton`, `ICockpitHost.AddSideMenuSection`, `ICockpitHost.AddSideMenuButtonWithBadge` |
+| `ui.commands` | Toolbar buttons and keyboard shortcuts | Ambient | 0.3.0 | — | `ICockpitHost.AddToolbarAction`, `ICockpitHost.AddShortcut` |
+| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitHost.AddWidget`, `ICockpitHost.Widgets`, `ICockpitHost.AddDockPanel` |
+| `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitHost.AddSessionHeaderItem`, `ICockpitHost.AddSessionBanner`, `ICockpitHost.AddSessionHeaderAction`, `ICockpitHost.AddConversationPicker` |
+| `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
+| `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitActions.ConfirmAsync` |
+| `ui.host-views` | Host-rendered read-only views | Ambient | 0.7.0 | — | `ICockpitHost.CreateMarkdownView`, `ICockpitHost.CreateHelpHint`, `ICockpitHost.OpenHelp`, `ICockpitHost.HasHelp` |
+| `consent.request` | Asking the operator to approve an action | Ambient | 0.3.0 | — | `ICockpitHost.RequestConsentAsync` |
+| `storage.settings` | Its own settings storage | Ambient | 0.3.0 | — | `IPluginStorage.Get`, `IPluginStorage.Set` |
+| `workspaces.types` | Its own kind of workspace | Ambient | 0.3.0 | — | `ICockpitHost.AddWorkspaceType`, `ICockpitHost.WorkspaceTypes`, `ICockpitHost.OpenWorkspaceAsync` |
+| `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
+| `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitActions.SetClipboardTextAsync` |
+| `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
+| `profiles.read` | Reading the configured profiles | Sensitive | 0.3.0 | — | `ICockpitHost.GetProfilesAsync` |
+| `sessions.observe` | Watching the running sessions | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.Sessions`, `ICockpitHost.CurrentMcpCallerPaneId` |
+| `sessions.annotate` | Naming a session | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.SetSessionStatusline`, `ICockpitHost.SetSessionName`, `ICockpitHost.SuggestSessionName`, `ICockpitActions.SetActiveSessionStatusAsync` |
+| `sessions.compose` | Proposing a new session | Sensitive | 0.3.0 | — | `ICockpitHost.ShowNewSessionDialogAsync` |
+| `workflows.steps` | Steps and templates for workflows | Sensitive | 0.3.0 | — | `ICockpitHost.AddWorkflowStep`, `ICockpitHost.WorkflowSteps`, `ICockpitHost.AddWorkflowTemplate`, `ICockpitHost.WorkflowTemplates` |
+| `workflows.trigger-observe` | Watching workflow triggers | Sensitive | 0.3.0 | `typeId` | `ICockpitHost.WorkflowTriggerRaised` |
+| `autopilot.templates` | Autopilot templates | Sensitive | 0.5.0 | — | `ICockpitHost.RegisterAutopilotTemplate`, `ICockpitHost.RegisteredAutopilotTemplates` |
+| `projects.fields` | Fields on a project | Sensitive | 0.7.0 | — | `ICockpitHost.AddProjectField`, `ICockpitHost.ProjectFields`, `ICockpitHost.ClaimProjectOwnership`, `ICockpitHost.GetProjectFieldOwnership` |
+| `projects.read` | Reading project field values | Sensitive | 0.7.0 | `key` | `ICockpitHost.GetProjectFieldValueAsync`, `ICockpitHost.GetProjectFieldValuesAsync` |
+| `projects.memory-source` | Offering a project memory source | Sensitive | 0.10.0 | `scheme` | `ICockpitHost.AddProjectMemorySource`, `ICockpitHost.RemoveProjectMemorySource`, `ICockpitHost.ProjectMemorySources`, `ICockpitHost.AddProjectMemorySourceFamily` |
+| `projects.memory-read` | Reading project memory | Sensitive | 0.22.0 | — | `ICockpitHost.GetProjectMemoryRowsAsync` |
+| `projects.shared-source` | Offering shared projects | Sensitive | 0.19.0 | `key` | `ICockpitHost.AddSharedProjectSource`, `ICockpitHost.RemoveSharedProjectSource`, `ICockpitHost.SharedProjectSources` |
+| `tracking.providers` | Being an issue tracker | Sensitive | 0.3.0 | — | `ICockpitHost.AddTrackerProvider`, `ICockpitHost.TrackerProviders` |
+| `workspaces.git` | Reading and preparing git working copies | Sensitive | 0.3.0 | `directory` | `ICockpitHost.CreateRunWorktreeAsync`, `ICockpitHost.DetectGitDirectoryStatusAsync` |
+| `workspaces.paths` | The remembered working directories | Sensitive | 0.4.0 | — | `ICockpitHost.GetRememberedWorkingPathsAsync`, `ICockpitHost.RememberWorkingPathAsync` |
+| `host.services` | The host's service provider | Dangerous | 0.3.0 | — | `ICockpitHost.Services` |
+| `plugins.intents` | Calling other plugins | Dangerous | 0.3.0 | `targetPluginId` | `ICockpitHost.RegisterIntentHandler`, `ICockpitHost.SendIntent`, `ICockpitHost.CanSendIntent` |
+| `workflows.trigger-raise` | Starting a workflow | Dangerous | 0.3.0 | `typeId` | `ICockpitHost.RaiseWorkflowTrigger` |
+| `sessions.start` | Starting sessions | Dangerous | 0.3.0 | `profileLabel` | `ICockpitActions.StartSessionAsync` |
+| `sessions.delegate` | Handing work to a profile | Dangerous | 0.3.0 | `profileLabel`, `permission` | `ICockpitActions.DelegateAsync` |
+| `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.BindToSession`, `ICockpitActions.InjectIntoActiveSessionAsync`, `ICockpitActions.HasActiveSession` |
+| `sessions.provide` | Being a session provider | Dangerous | 0.3.0 | — | `ICockpitHost.AddSessionProvider`, `ICockpitHost.AddTtyProvider` |
+| `sessions.resources` | Putting content into a session's context | Dangerous | 0.7.0 | — | `ICockpitHost.AddSessionResourceProvider`, `ICockpitHost.SessionResourceProviders` |
+| `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync` |
+| `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync` |
+| `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
+| `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
+| `channels.assistant` | A chat channel onto the assistant | Dangerous | 0.27.0 | — | `ICockpitHost.OpenAssistantChannel` |
+
+This table is verified against `CapabilityCatalog` by `CapabilityCatalogTests`; editing one without the other
+fails the build.
+
+> This list says what a plugin *can ask for*. Declaring, granting and enforcing it are separate work
+> (AC-107) — today every member below is simply callable.
+
+---
+
 ## `ICockpitPlugin` {#icockpitplugin}
 
 The entry point your plugin implements (`: IDisposable`). The host discovers it in your entry assembly.
