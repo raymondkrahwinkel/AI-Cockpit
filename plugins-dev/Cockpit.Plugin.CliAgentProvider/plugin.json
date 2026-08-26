@@ -1,11 +1,11 @@
 {
   "id": "cli-agent-provider",
   "name": "Codex (ChatGPT)",
-  "version": "0.7.6",
+  "version": "0.8.0",
   "entryAssembly": "Cockpit.Plugin.CliAgentProvider.dll",
   "entryType": "Cockpit.Plugin.CliAgentProvider.CliAgentProviderPlugin",
   "abstractionsVersion": 2,
   "minHostVersion": "0.28.0",
-  "description": "Adds the Codex CLI as a provider, in two ways. As a TTY session it runs the real interactive Codex TUI in a pane, the same as Claude's — its own interface, its own approval prompts, which the cockpit cannot see into. As an SDK session it is driven headless, a subprocess per turn (`codex exec --json`); that route has no in-band permission channel at all, because Codex sets approval-policy to never in headless mode. Configure the sandbox per profile. Requires the codex CLI installed and authenticated (`codex login`) on the machine running Cockpit.",
+  "description": "Adds the Codex CLI as a provider, in two ways. As a TTY session it runs the real interactive Codex TUI in a pane, the same as Claude's — its own interface, its own approval prompts, which the cockpit cannot see into. As an SDK session it speaks the persistent `codex app-server` protocol and has an in-band permission channel; configure sandbox, effort and approval-policy per profile so a spawned session can actually run unattended. Requires the codex CLI installed and authenticated (`codex login`) on the machine running Cockpit.",
   "author": "Cockpit"
 }

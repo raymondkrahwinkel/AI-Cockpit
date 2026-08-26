@@ -68,12 +68,14 @@ public class SpawnOptionOverridesTests
     [InlineData("Permission-Mode")]
     [InlineData(" permission-mode ")]
     [InlineData("sandbox")]
+    [InlineData("approvalPolicy")]
     public void ThePermissionModeKey_IsRefused_HoweverItIsSpelledAndWhateverTheProviderDeclares(string key)
     {
-        // Criterion 3 (Raymond, 2026-08-08). Asserted as a refusal rather than as "the mode stayed default": a merge
-        // that quietly dropped the key would pass that second assertion while the caller was told its spawn ran as
-        // asked. `sandbox` is here because Codex answers the same launch-time question with another word, and both
-        // providers are asked so neither can be refused only where it happens to be declared.
+        // Criterion 3 (Raymond, 2026-08-08; approvalPolicy added AC-1101). Asserted as a refusal rather than as "the
+        // mode stayed default": a merge that quietly dropped the key would pass that second assertion while the
+        // caller was told its spawn ran as asked. `sandbox`/`approvalPolicy` are here because Codex answers the
+        // same launch-time question (what may this session do to the machine, unattended) with its own words, and
+        // both providers are asked so neither can be refused only where it happens to be declared.
         var (mergedByClaude, claudeRefusal) = SpawnOptionOverrides.Merge(
             "Claude", Claude, ProfileDefaults, new Dictionary<string, string> { [key] = "bypassPermissions" });
         var (mergedByCodex, codexRefusal) = SpawnOptionOverrides.Merge(
