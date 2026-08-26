@@ -305,6 +305,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: **a session's memory cap now also covers the tool servers it started.** The cap is applied a few
+  seconds after a session launches, and anything the agent had already started in those seconds — its MCP tool
+  servers, which start immediately — stayed outside it and was counted against the cockpit itself instead. That
+  was around 137 MB per session in the wrong place: uncapped, and making the cockpit's own memory look larger
+  than it is. Those processes are now moved in with the session they belong to.
+
 - changed: **a delegated task now runs read-only unless the session that started it asked for more.** Until now a
   task inherited whatever its target profile allowed, so a task handed a "read this and report back" prompt was
   given the right to rewrite the repository — and one did: it read for a while, decided on its own to start

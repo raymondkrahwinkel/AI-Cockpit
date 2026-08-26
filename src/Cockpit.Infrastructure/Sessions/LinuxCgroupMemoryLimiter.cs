@@ -16,19 +16,21 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
 
     private readonly ILogger _logger;
     private readonly Func<string?> _findWritableParent;
+    private readonly Func<int, IReadOnlyList<int>> _readChildren;
 
     public LinuxCgroupMemoryLimiter(ILogger<LinuxCgroupMemoryLimiter> logger)
-        : this(logger, _FindWritableParent)
+        : this(logger, _FindWritableParent, _ReadChildren)
     {
     }
 
-    // Test seam: real `/proc/self/cgroup` discovery needs actual cgroupfs, which no dev machine or CI runner for
-    // this repo's other two platforms has. This lets a test point `Apply` at an ordinary temp directory instead
-    // and read back what was really written there — real file I/O, just not real cgroupfs.
-    internal LinuxCgroupMemoryLimiter(ILogger logger, Func<string?> findWritableParent)
+    // Test seam: real `/proc/self/cgroup` discovery and `/proc/<pid>/task/*/children` need actual cgroupfs and a
+    // live process tree, which no dev machine or CI runner for this repo's other two platforms has. This lets a
+    // test point `Apply` at an ordinary temp directory instead and read back what was really written there.
+    internal LinuxCgroupMemoryLimiter(ILogger logger, Func<string?> findWritableParent, Func<int, IReadOnlyList<int>>? readChildren = null)
     {
         _logger = logger;
         _findWritableParent = findWritableParent;
+        _readChildren = readChildren ?? (_ => []);
     }
 
     public IDisposable? Apply(int processId, long capBytes)
@@ -49,9 +51,19 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
             File.WriteAllText(Path.Combine(group, "memory.high"), capBytes.ToString());
 
             // Swap left as the parent has it: forcing memory.swap.max to 0 surprises a machine running zram.
-            File.WriteAllText(Path.Combine(group, "cgroup.procs"), processId.ToString());
+            // The session itself goes first, so everything it forks from here on is born inside the group — and
+            // not through `_Enrol`, since failing to move the session means there is no cap and the caller must hear it.
+            var procs = Path.Combine(group, "cgroup.procs");
+            File.AppendAllText(procs, processId + "\n");
+
+            var adopted = _AdoptExistingDescendants(procs, processId);
 
             _logger.LogInformation("Session {ProcessId} throttled past {CapBytes} bytes by cgroup {Group}.", processId, capBytes, group);
+            if (adopted > 0)
+            {
+                _logger.LogInformation("Session {ProcessId}: {Adopted} process(es) it had already forked were moved in with it.", processId, adopted);
+            }
+
             return new CgroupHandle(group, _logger);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -59,6 +71,104 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
             _logger.LogWarning(exception, "Session memory cap: could not create a cgroup; session {ProcessId} runs uncapped.", processId);
             return null;
         }
+    }
+
+    // AC-1086: a cgroup is inherited at fork, so a child born before the move stays where it started. The agent CLI
+    // starts its MCP servers within a second of spawning while this call lands three to four seconds later, which
+    // left ~137 MB per session outside the cap and charged to the cockpit's own scope. Returns how many moved.
+    private int _AdoptExistingDescendants(string procs, int rootProcessId)
+    {
+        var adopted = 0;
+        var pending = new Stack<int>();
+        pending.Push(rootProcessId);
+
+        // A process table that changes while it is walked can present a cycle; visiting each id once terminates
+        // regardless, the same guard `ProcessTree.Sum` needs for the same reason.
+        var seen = new HashSet<int> { rootProcessId };
+
+        while (pending.Count > 0)
+        {
+            foreach (var child in _Children(pending.Pop()))
+            {
+                if (!seen.Add(child))
+                {
+                    continue;
+                }
+
+                pending.Push(child);
+
+                // Per child, not per sweep: one that exited between being listed and being written is ordinary,
+                // and must not cost the siblings behind it their move.
+                if (_Enrol(procs, child))
+                {
+                    adopted++;
+                }
+            }
+        }
+
+        return adopted;
+    }
+
+    // By the time the sweep runs the group exists and the session is in it, so a stumble here must cost the strays
+    // it has not reached yet and nothing more — never the handle, which is what removes the group again.
+    private IReadOnlyList<int> _Children(int processId)
+    {
+        try
+        {
+            return _readChildren(processId);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(exception, "Session memory cap: could not read the children of {ProcessId}; it keeps the ones it has.", processId);
+            return [];
+        }
+    }
+
+    // Appends rather than overwrites: cgroupfs takes one pid per write and ignores the offset, and appending is
+    // what makes a plain temp directory show every pid a test wrote instead of only the last.
+    private static bool _Enrol(string procs, int processId)
+    {
+        try
+        {
+            File.AppendAllText(procs, processId + "\n");
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    // The children of every thread of `processId`, from procfs. A process with no `/proc` entry has exited, which
+    // is an ordinary outcome here rather than an error.
+    private static IReadOnlyList<int> _ReadChildren(int processId)
+    {
+        var tasks = $"/proc/{processId}/task";
+        if (!Directory.Exists(tasks))
+        {
+            return [];
+        }
+
+        var children = new List<int>();
+        try
+        {
+            foreach (var task in Directory.EnumerateDirectories(tasks))
+            {
+                foreach (var id in File.ReadAllText(Path.Combine(task, "children")).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (int.TryParse(id, out var child))
+                    {
+                        children.Add(child);
+                    }
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A thread that ended mid-walk takes its `children` file with it; what was read already still counts.
+        }
+
+        return children;
     }
 
     // The first level up where a new group both can be made and comes up with the memory controller's interface
