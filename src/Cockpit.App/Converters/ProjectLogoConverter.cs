@@ -4,13 +4,8 @@ using Avalonia.Media.Imaging;
 
 namespace Cockpit.App.Converters;
 
-// Loads a project's stored logo for its card (AC-162). Returns `null` for a project without one,
-// or one whose file has gone, so the card falls back to its initial rather than showing a broken image.
-// Decoded once and kept: the overview rebinds its cards on every refresh, and re-reading the same handful of small
-// images from disk each time is work nobody asked for. The path alone will not do as the key — the store names a
-// logo after its project, so replacing one with a file of the same kind reuses the path exactly, and a cache that
-// trusts the name serves the picture the operator just threw away. The write time and the size decide instead;
-// they are a stat, where decoding is a read plus the decode.
+// Loads a card logo (AC-162), returning null for a missing file so the initial is shown instead. Cache by path,
+// write time and size: replacement logos reuse their project-named path, and refreshes should not re-decode them.
 public sealed class ProjectLogoConverter : IValueConverter
 {
     public static readonly ProjectLogoConverter Instance = new();

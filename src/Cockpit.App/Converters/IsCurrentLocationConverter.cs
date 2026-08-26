@@ -3,12 +3,8 @@ using Avalonia.Data.Converters;
 
 namespace Cockpit.App.Converters;
 
-// Drives the "Current" badge in `MemorySourceLocationPickerDialog`'s list (AC-499): true when a row's own
-// `Value` (the first binding) equals the picker's `CurrentValue` (the second, reached from the
-// `DataTemplate` via `$parent[ListBox]`). Ordinal, matching the same comparison
-// `ViewModels.MemorySourceLocationPickerViewModel` uses to pick the row on load — this converter only
-// re-derives the same answer for display, it never sets `SelectedLocation` itself, so clicking a different
-// row moves the selection highlight without moving this badge off the row the operator actually came in on.
+// Drives the "Current" badge (AC-499) with the ordinal comparison used to select the initial row. It only
+// reflects that initial value, so changing the selection does not move the badge.
 public sealed class IsCurrentLocationConverter : IMultiValueConverter
 {
     public static readonly IsCurrentLocationConverter Instance = new();

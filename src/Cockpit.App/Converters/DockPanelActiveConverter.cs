@@ -3,10 +3,8 @@ using Avalonia.Data.Converters;
 
 namespace Cockpit.App.Converters;
 
-// Drives the dock rail's active-tab highlight (AC-951): true when a tab's own Id (the first binding) equals
-// OpenDockPanelId (the second, reached from the ItemsControl via $parent). The second value is nullable — the
-// rail's tabs stay on screen while collapsed, when OpenDockPanelId is null and nothing should highlight — so,
-// unlike IsCurrentLocationConverter, this always resolves to a bool rather than falling through to null.
+// Drives the dock rail highlight (AC-951); tabs persist when collapsed, so a null OpenDockPanelId must resolve
+// false rather than fall through to null.
 public sealed class DockPanelActiveConverter : IMultiValueConverter
 {
     public static readonly DockPanelActiveConverter Instance = new();

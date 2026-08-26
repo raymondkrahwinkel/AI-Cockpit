@@ -6,18 +6,14 @@ using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.Converters;
 
-// Renders a `SessionProfile` as its display label with provider (and local model) — e.g.
-// `default (Claude) / local (LM Studio - qwen2.5)` — so the New-session profile picker shows the backend
-// without a wrapper view model (#26). A plugin-provider profile shows the specific plugin's own display name
-// (resolved through `PluginProviderRegistry`) rather than the generic "Plugin" placeholder.
+// Renders a profile label with its provider/model (#26), so the picker shows the backend without a wrapper view
+// model; plugin providers resolve their specific name rather than the generic "Plugin" placeholder.
 public sealed class ProfileDisplayConverter : IValueConverter
 {
     public static readonly ProfileDisplayConverter Instance = new();
 
-    // The provider registry the converter resolves a plugin profile's own display name through, set once at app
-    // startup (a static seam because an `IValueConverter` used via `x:Static Instance` is not
-    // DI-constructed). Null until wired, or in the design-time previewer — a plugin profile then falls back to the
-    // generic "Plugin" label, exactly as before.
+    // Static because the x:Static converter is not DI-constructed; until startup wiring (or in the previewer),
+    // plugin profiles fall back to "Plugin".
     public static IPluginProviderRegistry? PluginProviderRegistry { get; set; }
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>

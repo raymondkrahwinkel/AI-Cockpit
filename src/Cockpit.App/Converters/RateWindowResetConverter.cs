@@ -3,10 +3,8 @@ using Avalonia.Data.Converters;
 
 namespace Cockpit.App.Converters;
 
-// Formats a usage window's reset time for the session header's usage-pill hover (AC-37): a relative
-// "resets in 2h 14m" (the glanceable part) plus the absolute local time "Thu 14:30" (the detail). Returns an
-// empty string when the provider gave no reset time (`Cockpit.Core.Sessions.SessionRateWindow.ResetsAt`
-// is null), so the row simply shows the bar without a reset line rather than a placeholder.
+// Formats the usage-pill reset hover (AC-37) with relative and local times; no provider reset time means no line,
+// rather than a placeholder.
 public sealed class RateWindowResetConverter : IValueConverter
 {
     public static readonly RateWindowResetConverter Instance = new();
