@@ -398,6 +398,15 @@ public partial class SessionView : UserControl
     // AC-800: also the last row VisibleTranscript shows — a hidden row could never terminate (AC-611).
     private int _NewestVisibleIndex() => TranscriptItems.ItemCount - 1;
 
+    // AC-1111 measurement scaffold — remove before the PR.
+    internal record FollowNewestMeasurement(
+        int FirstRealised, int LastRealised, int RealisedBefore, int NewestIndex, int RealisedAfter, double ElapsedMs,
+        long AllocatedBytes);
+
+    internal static Action<FollowNewestMeasurement>? FollowNewestProbe;
+
+    internal static bool SkipScrollIntoView;
+
     private void _FollowNewest()
     {
         // ScrollIntoView drives a layout pass then and there, and the ScrollViewer raises ScrollChanged from that
@@ -419,9 +428,23 @@ public partial class SessionView : UserControl
             // ScrollIntoView forces a synchronous layout pass; asking for an already-realised row
             // (as happens every repaint while streaming) costs that pass for nothing — measured,
             // ~3 layout passes per frame where one would do. Only ask when the row genuinely isn't there.
-            if (TranscriptItems.ContainerFromIndex(newestIndex) is null)
+            if (TranscriptItems.ContainerFromIndex(newestIndex) is null && !SkipScrollIntoView)
             {
+                // AC-1111 measurement scaffold — remove before the PR.
+                var realisedBefore = TranscriptItems.GetRealizedContainers()
+                    .Select(TranscriptItems.IndexFromContainer).Where(index => index >= 0).ToList();
+                var allocated = GC.GetTotalAllocatedBytes(precise: true);
+                var watch = System.Diagnostics.Stopwatch.StartNew();
                 TranscriptItems.ScrollIntoView(newestIndex);
+                watch.Stop();
+                FollowNewestProbe?.Invoke(new FollowNewestMeasurement(
+                    realisedBefore.Count == 0 ? -1 : realisedBefore.Min(),
+                    realisedBefore.Count == 0 ? -1 : realisedBefore.Max(),
+                    realisedBefore.Count,
+                    newestIndex,
+                    TranscriptItems.GetRealizedContainers().Count(),
+                    watch.Elapsed.TotalMilliseconds,
+                    GC.GetTotalAllocatedBytes(precise: true) - allocated));
             }
 
             // ScrollIntoView treats a rect as in-view once its top edge is, so a row taller than the
