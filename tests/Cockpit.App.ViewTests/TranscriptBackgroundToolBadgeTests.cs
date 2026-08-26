@@ -103,4 +103,20 @@ public class TranscriptBackgroundToolBadgeTests
 
         Assert.Equal("Background · failed", ToolRow(session).BackgroundStatusText);
     });
+
+    [Fact]
+    public void ATaskThatFailsAfterBackgrounding_ReadsAsFailed_NotJustDone() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-1057: before the notification existed, the ledger dropping a task id read as "done" whether the task
+        // succeeded or blew up — this is the exact case that used to hide a failure as a checkmark.
+        var session = new SessionViewModel();
+
+        session.Apply(Call("""{"command":"false","run_in_background":true}"""));
+        session.Apply(Outstanding(new BackgroundTask("b2n9en4yr", BackgroundTaskKind.Shell, "false")));
+        session.Apply(Result("Command running in background with ID: b2n9en4yr. Output is being written to: /tmp/x."));
+        session.Apply(Outstanding());
+        session.Apply(new BackgroundTaskNotification { SessionId = "s1", TaskId = "b2n9en4yr", ToolUseId = ToolUseId, Status = BackgroundTaskStatus.Failed });
+
+        Assert.Equal("Background · failed", ToolRow(session).BackgroundStatusText);
+    });
 }

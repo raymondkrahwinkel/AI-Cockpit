@@ -215,4 +215,43 @@ public class ClaudeStreamJsonTests
         // signal; opening _ParseSystem up for background_tasks_changed must not start admitting those.
         Assert.Empty(ClaudeStreamJson.ParseLine("""{"type":"system","subtype":"task_progress","session_id":"abc"}"""));
     }
+
+    // AC-1057: the CLI's afterthought on a backgrounded task, captured verbatim against a real 2.1.246 run driving
+    // a deliberately failing `Bash(run_in_background: true)` call. The ticket assumed a plain-text
+    // `<task-notification>` block in a `user` message; re-measuring found this structured `system` event instead.
+    [Fact]
+    public void TaskNotification_CarriesTheOutcome_KeyedToItsToolUse()
+    {
+        const string line = """
+        {"type":"system","subtype":"task_notification","task_id":"b2n9en4yr","tool_use_id":"toolu_01ChT55cdpf1a6BRZ3EYezZz","status":"failed","output_file":"/tmp/claude-1000/x/tasks/b2n9en4yr.output","summary":"Background command \"Run false command in background\" failed with exit code 1","uuid":"40fd7fd1-606b-4b23-976d-8bf0db9f457c","session_id":"1a88bad1-2e4b-43a3-83b2-a55937fe7028"}
+        """;
+
+        var notification = Assert.IsType<PluginBackgroundTaskNotification>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Equal("b2n9en4yr", notification.TaskId);
+        Assert.Equal("toolu_01ChT55cdpf1a6BRZ3EYezZz", notification.ToolUseId);
+        Assert.Equal(PluginBackgroundTaskStatus.Failed, notification.Status);
+    }
+
+    [Fact]
+    public void TaskNotification_WithAnUnknownStatus_KeepsItUnknown()
+    {
+        // A status a newer CLI names and this build does not must not be read as "completed" — that is exactly the
+        // silent-success misreading criterion 4 rules out, same guarantee `_ParseBackgroundTasks` already gives an
+        // unrecognised task_type.
+        const string line = """
+        {"type":"system","subtype":"task_notification","task_id":"x1","tool_use_id":"toolu_x","status":"cancelled"}
+        """;
+
+        var notification = Assert.IsType<PluginBackgroundTaskNotification>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Equal(PluginBackgroundTaskStatus.Unknown, notification.Status);
+    }
+
+    [Fact]
+    public void TaskNotification_SkipsANotificationWithNoId()
+    {
+        // Without a task_id there is no row to attach the outcome to.
+        Assert.Empty(ClaudeStreamJson.ParseLine("""{"type":"system","subtype":"task_notification","status":"completed"}"""));
+    }
 }
