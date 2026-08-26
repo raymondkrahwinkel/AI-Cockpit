@@ -3,13 +3,9 @@ using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Shell;
 
-// AC-1094: a cgroup v2 group for exactly one tracked run's process tree, reusing the primitive AC-1093 built for
-// session containment. `Process.Kill(entireProcessTree: true)` walks ppid, so a build-server node that outlived its
-// parent and was adopted by pid 1 falls outside the walk; cgroup membership is inherited at fork and untouched by
-// reparenting, so `cgroup.kill` reaches it regardless. Naming reuses `LinuxCgroupMemoryLimiter`'s own
-// `cockpit-session-<owner>-...` scheme rather than a new prefix, so a group this leaves behind (a crash mid-run) is
-// picked up by the same startup sweep that already cleans up leftover session groups — `OwnerOf` only ever parses
-// the owner half, so `runId` (never containing '-') is free to be a token instead of a pid.
+// AC-1094: a cgroup v2 group for one tracked run's process tree, reusing AC-1093's cgroup.kill — membership
+// survives reparenting to pid 1, which `Kill(entireProcessTree: true)`'s ppid walk cannot reach. Naming reuses
+// `LinuxCgroupMemoryLimiter`'s `cockpit-session-<owner>-...` scheme so a leaked group is caught by its startup sweep.
 internal sealed class RunCgroup : IDisposable
 {
     private readonly string? _group;
@@ -21,10 +17,9 @@ internal sealed class RunCgroup : IDisposable
         _logger = logger;
     }
 
-    // Made before the run's process exists — see `ProcsPath`. There is nothing to move afterward: a process that
-    // forks a detached grandchild can reparent it to pid 1 faster than any code on our side could react to the
-    // process id `Process.Start()` hands back, so the only race-free containment is the child moving itself in
-    // before it runs anything at all.
+    // Made before the run's process exists — see `ProcsPath`. A detached grandchild can reparent to pid 1 faster
+    // than code here could react to a pid handed back after the fact, so the only race-free containment is the
+    // child moving itself in before it runs anything at all.
     public static RunCgroup Create(string runId, ILogger logger) =>
         Create(runId, logger, LinuxCgroupMemoryLimiter.FindWritableParent);
 

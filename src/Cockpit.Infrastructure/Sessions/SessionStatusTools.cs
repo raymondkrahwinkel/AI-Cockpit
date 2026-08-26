@@ -10,10 +10,9 @@ using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// The MCP tools a session uses to say what it is working on (#AC-13, `mcp__cockpit-session__*`), and — since
-// AC-1094 — to run a command without tying up its own turn while it does. Kept separate from the orchestrator
-// server so a delegated sub-agent, denied those tools to stop it delegating further, can still use both; status+
-// name share one tool (#AC-312) but only the statusline is binding.
+// The MCP tools a session uses to say what it is working on (#AC-13), and — since AC-1094 — to run a command
+// without tying up its own turn while it does. Kept off the orchestrator server so a delegated sub-agent still has
+// both; status+name share one tool (#AC-312) but only the statusline is binding.
 internal sealed class SessionStatusTools(
     ISessionLabelSink labels,
     ITrackedCommandRunner runner,

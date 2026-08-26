@@ -609,8 +609,6 @@ internal sealed class AgentsMcpTools(
     // Whether the named pane has mail carried to it by its own next turn (AC-394). False for a pane the snapshot
     // does not hold — every caller here has already established membership, so that case is unreachable rather
     // than meaningful, and the safe answer to "will this surface by itself" is the one that makes a sender check.
-    // Internal, not private: AC-1094's start_run reuses this to tell a session, at the moment it starts a tracked
-    // run, whether ending its turn right after will actually bring the verdict back on its own.
     internal static bool _DeliversAtTurnStart(WorkspaceAgentSnapshot snapshot, string paneId) =>
         snapshot.Panes.FirstOrDefault(pane => string.Equals(pane.PaneId, paneId, StringComparison.Ordinal))
             ?.DeliversAtTurnStart ?? false;

@@ -7,17 +7,14 @@ using Cockpit.Core.Abstractions.Shell;
 
 namespace Cockpit.Infrastructure.Shell;
 
-// AC-1094: same execution shape as ShellCommandRunner (AC-1066) — ProcessStartInfo.ArgumentList, never a shell
-// string, both pipes drained concurrently. What is new: the process moves itself into its own cgroup before it
-// runs anything at all (see `SelfMoveIntoCgroupThenExec`), and whether the run finishes or times out, that whole
-// cgroup is ended before this returns — reaching a build-server node `Kill(entireProcessTree: true)` alone cannot,
-// because reparenting to pid 1 takes it out of the ppid tree but never out of the cgroup it was born into.
+// AC-1094: same execution shape as ShellCommandRunner (AC-1066), but the process moves itself into its own cgroup
+// before running anything (`SelfMoveIntoCgroupThenExec`), and that whole cgroup ends unconditionally when the run
+// ends — reaching a node `Kill(entireProcessTree: true)` cannot once reparenting to pid 1 takes it out of the tree.
 internal sealed class TrackedCommandRunner(ILogger<TrackedCommandRunner> logger) : ITrackedCommandRunner, ISingletonService
 {
-    // Moves the about-to-run process into the cgroup at `$1` before doing anything else, then hands off to the
-    // real command via `exec` — replacing this shell, not forking from it, so the real command keeps the same pid
-    // and inherits the membership rather than racing to acquire it. `shift` drops the procs path so `"$@"` becomes
-    // exactly command + arguments, none of it ever re-parsed by the shell.
+    // Moves the process into the cgroup at `$1` before anything else, then `exec`s the real command — same pid,
+    // so it inherits membership instead of racing to acquire it. `shift` drops the procs path so `"$@"` is exactly
+    // command + arguments, none of it ever re-parsed by the shell.
     private const string SelfMoveIntoCgroupThenExec = "echo $$ > \"$1\"; shift; exec \"$@\"";
 
     public async Task<TrackedRunResult> RunAsync(

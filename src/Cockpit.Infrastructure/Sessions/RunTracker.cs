@@ -4,10 +4,9 @@ using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// AC-1094: what a tracked run is doing right now, or last did — the status-bar source (AC-82), with an
-// operator-only Kill per run, and the backing store for `run_status`, the recovery path when a completed run's
-// inbox delivery never arrived. Unlike LocalCi's tracker there is no "one at a time" here: nothing serialises
-// these runs, so more than one can be in flight together.
+// AC-1094: what a tracked run is doing right now, or last did — the status-bar source (AC-82) and the backing
+// store for `run_status`. Unlike LocalCi's tracker, nothing serialises these runs, so more than one can be in
+// flight together.
 internal sealed class RunTracker : ISupervisedActivitySource, ISingletonService
 {
     // ponytail: unbounded run ids would grow this dictionary for the life of the cockpit process; a session that
