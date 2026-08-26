@@ -66,6 +66,10 @@ public partial class AssistantChatView : UserControl
     // mistaken for a reason to re-enter (SessionView._following, AC-528).
     private bool _following;
 
+    // AC-1113: carries that guard across the layout pass a plain Offset write drives, which runs after the call
+    // has returned and raises the ScrollChanged that would re-enter. Same field, same reasons, as SessionView.
+    private bool _followCorrected;
+
     // The last row (SessionView._NewestVisibleIndex): this view binds to `Session.VisibleTranscript` too, so a
     // folded tool call or a Thinking row is not an item here — following one of those could never terminate,
     // having no height to bring into view.
@@ -94,8 +98,7 @@ public partial class AssistantChatView : UserControl
             // the same reasons, as SessionView._FollowNewest.
             if (TranscriptItems.ContainerFromIndex(newestIndex) is null)
             {
-                TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(
-                    Math.Max(0, TranscriptScroll.Extent.Height - TranscriptScroll.Viewport.Height));
+                _MoveTo(Math.Max(0, TranscriptScroll.Extent.Height - TranscriptScroll.Viewport.Height));
             }
 
             if (_NewestRowIsFullyVisible())
@@ -112,12 +115,22 @@ public partial class AssistantChatView : UserControl
             var shortfall = bottom.Y - TranscriptScroll.Viewport.Height;
             if (shortfall > 0)
             {
-                TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(TranscriptScroll.Offset.Y + shortfall);
+                _MoveTo(TranscriptScroll.Offset.Y + shortfall);
             }
         }
         finally
         {
             _following = false;
+        }
+    }
+
+    // AC-1113: a write that lands where the viewport already sits still invalidates layout, and every such pass
+    // counts towards Avalonia's own cut-off. Same helper, same reasons, as SessionView's.
+    private void _MoveTo(double offsetY)
+    {
+        if (!TranscriptScrollAnchor.IsSettled(TranscriptScroll.Offset.Y, offsetY))
+        {
+            TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(offsetY);
         }
     }
 
@@ -312,6 +325,14 @@ public partial class AssistantChatView : UserControl
         var byOperator = _wheelTurned || _pointerHeld;
         _wheelTurned = false;
 
+        // AC-1113: our own correction against a real change, told apart by the deltas. Same change, and the
+        // same reasons, as SessionView's own handler.
+        var ownCorrection = TranscriptScrollAnchor.IsOwnCorrection(e.ExtentDelta.Y, e.ViewportDelta.Y);
+        if (!ownCorrection)
+        {
+            _followCorrected = false;
+        }
+
         // Only an operator scroll re-derives whether we stick; content growing on its own just gets followed.
         if (byOperator)
         {
@@ -319,8 +340,9 @@ public partial class AssistantChatView : UserControl
                 || TranscriptScrollAnchor.IsAtBottom(
                     TranscriptScroll.Offset.Y, TranscriptScroll.Extent.Height, TranscriptScroll.Viewport.Height);
         }
-        else if (_stickToBottom)
+        else if (_stickToBottom && TranscriptScrollAnchor.MayFollow(ownCorrection, _followCorrected))
         {
+            _followCorrected |= ownCorrection;
             _FollowNewest();
         }
 

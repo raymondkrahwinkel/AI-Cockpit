@@ -369,6 +369,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the transcript no longer freezes the cockpit for seconds at a time while replies stream in. Keeping the
+  newest row in view moved the viewport, and the layout that followed asked it to move again — over and over,
+  until the toolkit cut the frame short. The cockpit stayed up, but the window stopped responding and a burst of
+  those cuts allocated gigabytes for nothing. Both the session pane and the assistant chat window are fixed.
+
+- fixed: the log of the run before last is kept as well — three runs back instead of one. After a freeze the
+  usual reaction is to restart twice in quick succession, which used to overwrite the very log that held the
+  freeze.
+
 - fixed: when two of the cockpit's own parts come to depend on each other in a circle, startup now stops with a
   message naming the loop instead of hanging with no window and no error. Previously the wiring worked its way
   around such a loop forever and went quiet, which said nothing about where to look; the same mistake now reports
