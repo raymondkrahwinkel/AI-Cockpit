@@ -56,6 +56,28 @@ public partial class TtyView : UserControl
     private readonly List<byte> _outputPending = [];
     private DispatcherTimer? _outputFlush;
 
+    // AC-965: the ceiling on what the pty reader may hold while the UI thread has not come back to the flush
+    // timer above. Roughly two hundred flushes' worth of a very loud pty, so nothing a working UI thread does
+    // can reach it, and small enough that every pane hitting it at once is survivable.
+    internal const int MaxPendingPtyOutputBytes = 8 * 1024 * 1024;
+
+    // Whether this standstill has already been reported. The reader only ever sets it, the flush only ever clears
+    // it, so the worst a race costs is one line too many or one too few — not worth a lock in this path.
+    private volatile bool _reportedPtyDrop;
+
+    // What the pty reader is holding for the next flush. A test seam: the ceiling is only observable from
+    // outside while the pump is mid-flood, which is exactly when nothing else can look.
+    internal long PendingPtyOutputBytes
+    {
+        get
+        {
+            lock (_outputLock)
+            {
+                return _outputPending.Count;
+            }
+        }
+    }
+
     // AC-760: a held brief may reach the pty only once the CLI is actually reading stdin, not merely once the
     // process exists — readiness rides the DECSET 2004 flag through the same flush that drains every pty byte.
     // ponytail: 15s fallback for a CLI that never enables bracketed paste, fixed rather than a setting.
@@ -95,6 +117,12 @@ public partial class TtyView : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Unloaded += OnUnloaded;
+
+        // AC-965: the terminal's own pending-write queue drains on the UI thread too, so it grows without bound
+        // under the same standstill the reader's buffer does — it ships uncapped because it cannot know its host
+        // is a desktop app rather than an embedded device. Newest wins, as it does one layer up.
+        Terminal.WriteDropPolicy = WriteDropPolicy.OldestFirst;
+        Terminal.WriteQueueMaxBytes = MaxPendingPtyOutputBytes;
 
         // Push-to-talk (F9 by default): tunnel so we intercept it before the Terminal control's own
         // KeyDown handling would otherwise encode it as a VT keystroke and send it into the pty.
@@ -846,7 +874,7 @@ public partial class TtyView : UserControl
         }
     }
 
-    private async Task PumpOutputAsync(IConPtyProcess pty, CancellationToken cancellationToken)
+    internal async Task PumpOutputAsync(IConPtyProcess pty, CancellationToken cancellationToken)
     {
         var buffer = new byte[8192];
         try
@@ -861,10 +889,14 @@ public partial class TtyView : UserControl
 
                 // AC-57: hand the bytes to the UI-thread flush timer instead of writing (and repainting) per read.
                 // Copied out under the lock before the next ReadAsync overwrites the buffer.
+                long dropped;
                 lock (_outputLock)
                 {
                     _outputPending.AddRange(buffer.AsSpan(0, read));
+                    dropped = _DiscardOldestPtyOutputPastTheCeiling();
                 }
+
+                _ReportPtyOutputDrop(dropped);
             }
         }
         catch (OperationCanceledException)
@@ -916,6 +948,43 @@ public partial class TtyView : UserControl
         return string.Join('\n', lines);
     }
 
+    // AC-965: caller owes it _outputLock. Returns the bytes discarded, which the caller reports outside the lock.
+    // Trims to half the ceiling rather than exactly to it: an exact trim would move the whole buffer on every 8 KB
+    // read once full, which is the last thing to spend a stalled machine's CPU on.
+    private long _DiscardOldestPtyOutputPastTheCeiling()
+    {
+        if (_outputPending.Count <= MaxPendingPtyOutputBytes)
+        {
+            return 0;
+        }
+
+        var drop = _outputPending.Count - (MaxPendingPtyOutputBytes / 2);
+        _outputPending.RemoveRange(0, drop);
+        return drop;
+    }
+
+    // Says once per standstill that output is being lost, never per read: a pane whose UI thread is away drops
+    // every 4 MB, and a line per drop would put a locked, synchronous file append in that same hot path.
+    private void _ReportPtyOutputDrop(long dropped)
+    {
+        if (dropped <= 0)
+        {
+            return;
+        }
+
+        if (_reportedPtyDrop)
+        {
+            return;
+        }
+
+        _reportedPtyDrop = true;
+        _logger?.LogWarning(
+            "pty output is being discarded on pane {PaneId}: the UI thread has not drained it past {Ceiling} bytes. "
+            + "Older output is dropped from here until it comes back (AC-965).",
+            _viewModel?.PaneId,
+            MaxPendingPtyOutputBytes);
+    }
+
     // Writes everything the pty reader has accumulated in one Terminal.Write, on the UI thread. Driven by the
     // ~30 fps flush timer (and once more on exit) so the terminal repaints at a bounded rate under a burst — see
     // the _outputFlush field comment. A no-op when nothing is pending, so an idle session costs nothing.
@@ -930,6 +999,10 @@ public partial class TtyView : UserControl
                 _outputPending.Clear();
             }
         }
+
+        // The UI thread is back, so the next standstill gets its own warning rather than being swallowed by the
+        // flag this one set (AC-965).
+        _reportedPtyDrop = false;
 
         if (chunk is { Length: > 0 })
         {
