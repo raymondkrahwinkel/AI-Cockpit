@@ -362,6 +362,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: the cockpit can capture a heap dump the moment memory passes that alarm, so the next report says what
   was actually holding it instead of only how much. Off unless you ask for it, since the file is as large as the
   memory that triggered it: set `COCKPIT_HEAP_DUMP_ON_ALARM=1` and leave it set. The log names the file it wrote.
+- fixed: the built-in assistant now starts in a fixed folder instead of an AppImage's own randomly-named mount
+  folder, so its earlier conversation is found again after a restart instead of quietly starting a new one every
+  time. A saved conversation id is also dropped, rather than reused, once the assistant's profile or working
+  folder actually changes, and a state file that briefly fails to read no longer looks the same as "nothing was
+  ever saved" — both used to throw the conversation away with nothing said about it.
 - fixed: a local CI run that took a while no longer loses its result if the connection to the session that
   started it drops before it is delivered. The run itself used to be cancelled the moment that connection went
   away — discarding whatever it had built — even though nobody had actually asked to stop it; now only the

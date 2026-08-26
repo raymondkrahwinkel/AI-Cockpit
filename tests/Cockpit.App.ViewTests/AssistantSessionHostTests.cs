@@ -805,7 +805,7 @@ public class AssistantSessionHostTests
     public void ResumingByConversationId_ReplaysThePersistedTranscript_BeforeTheOperatorSeesAnEmptyWindow()
     {
         var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+        sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
 
         var transcript = Substitute.For<IAssistantTranscriptStore>();
@@ -832,7 +832,7 @@ public class AssistantSessionHostTests
     public void AnUnrecognisedSavedRow_IsSkipped_RatherThanFailingTheWholeReplay()
     {
         var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+        sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
 
         var transcript = Substitute.For<IAssistantTranscriptStore>();
@@ -904,7 +904,7 @@ public class AssistantSessionHostTests
     public void ResumingByConversationId_ReplaysAnAnsweredQuestionCard_WithItsOptionsAndAnswerReadOnly()
     {
         var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+        sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
 
         const string savedInputJson = """
@@ -935,7 +935,7 @@ public class AssistantSessionHostTests
     public void AnUnresolvableResume_RecoversOntoAFreshConversation_WithAReadableDividerExplainingWhy()
     {
         var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+        sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "gone")]);
 
         var (host, first, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState);
@@ -967,7 +967,7 @@ public class AssistantSessionHostTests
     public void AFailedTurnLaterInAResumedConversation_DoesNotReadAsAnUnresolvableResume()
     {
         var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+        sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
         var transcript = Substitute.For<IAssistantTranscriptStore>();
         transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(_ =>
@@ -1017,7 +1017,7 @@ public class AssistantSessionHostTests
     public void ResumingByConversationId_DoesNotArchiveTheTranscript()
     {
         var sessionState = Substitute.For<ISessionStateStore>();
-        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+        sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
         var transcript = Substitute.For<IAssistantTranscriptStore>();
 
@@ -1161,7 +1161,7 @@ public class AssistantSessionHostTests
     public void TheAssistantsResume_IsTheConversationItsPaneLastRecorded_NotAFreshOne()
     {
         var state = Substitute.For<ISessionStateStore>();
-        state.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+        state.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
         [
             _StateFor("some-other-pane", "conv-elsewhere"),
             _StateFor(AssistantSessionHost.AssistantPaneId, "conv-assistant"),
@@ -1172,6 +1172,24 @@ public class AssistantSessionHostTests
 
         Assert.Equal(SessionResumeMode.BySessionId, resume.Mode);
         Assert.Equal("conv-assistant", resume.SessionId);
+    }
+
+    /// <summary>
+    /// AC-1089 criterion 3: a state file that fails to read is not "nothing was ever saved" — the two used to look
+    /// identical (<c>LoadAsync</c> collapses them), which threw a real conversation away on a transient read error
+    /// with nothing said about it. <c>TryLoadAsync</c> tells them apart; this asserts the failure path still ends
+    /// in a fresh conversation (there is no id to resume either way) but is reached, not skipped.
+    /// </summary>
+    [Fact]
+    public void TheAssistantsResume_WhenTheStateCouldNotBeRead_IsAFreshConversation_NotSilently()
+    {
+        var state = Substitute.For<ISessionStateStore>();
+        state.TryLoadAsync(Arg.Any<CancellationToken>()).Returns((IReadOnlyList<SessionStateRecord>?)null);
+        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), sessionState: state));
+
+        var resume = Dispatcher.UIThread.Invoke(() => host._ResolveResumeAsync(default).GetAwaiter().GetResult());
+
+        Assert.Equal(SessionResumeMode.New, resume.Mode);
     }
 
     [Fact]
@@ -1258,6 +1276,7 @@ public class AssistantSessionHostTests
         {
             sessionState = Substitute.For<ISessionStateStore>();
             sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
+            sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>([]);
         }
 
         if (transcript is null)
@@ -1266,8 +1285,11 @@ public class AssistantSessionHostTests
             transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>([]);
         }
 
+        var sessionStateRecorder = new SessionStateRecorder(
+            sessionState, new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance);
+
         return new AssistantSessionHost(
-            cockpit ?? new CockpitViewModel(), settings, profiles, sessionState,
+            cockpit ?? new CockpitViewModel(), settings, profiles, sessionState, sessionStateRecorder,
             catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(), transcript,
             NullLogger<AssistantSessionHost>.Instance);
     }

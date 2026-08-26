@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -30,6 +31,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private readonly IAssistantSettingsStore _settings;
     private readonly IAssistantProfileStore _profiles;
     private readonly ISessionStateStore _sessionState;
+    private readonly SessionStateRecorder _sessionStateRecorder;
     private readonly IMcpServerCatalog _mcpServers;
     private readonly IAssistantMemory _memory;
     private readonly IAssistantTranscriptStore _transcript;
@@ -48,6 +50,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         IAssistantSettingsStore settings,
         IAssistantProfileStore profiles,
         ISessionStateStore sessionState,
+        SessionStateRecorder sessionStateRecorder,
         IMcpServerCatalog mcpServers,
         IAssistantMemory memory,
         IAssistantTranscriptStore transcript,
@@ -57,6 +60,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _settings = settings;
         _profiles = profiles;
         _sessionState = sessionState;
+        _sessionStateRecorder = sessionStateRecorder;
         _mcpServers = mcpServers;
         _memory = memory;
         _transcript = transcript;
@@ -370,6 +374,15 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             await _transcript.ArchiveAsync(cancellationToken).ConfigureAwait(true);
         }
 
+        // AC-1089: fixed rather than inherited from Environment.CurrentDirectory — an AppImage's mount folder is a
+        // fresh random name every launch, so a saved conversation id resumed from there never matches the folder
+        // Claude looks under next time. Beside Cockpit's own state (Raymond's choice), which also never moves.
+        var workingDirectory = CockpitBuild.StateRoot;
+
+        // Created here rather than assumed: spawning into a folder that does not exist yet fails the whole start
+        // ("No such file or directory"), and nothing guarantees another writer reached this root first.
+        Directory.CreateDirectory(workingDirectory);
+
         await session.StartConfiguredAsync(
             profile,
             // AC-1013: App defaults only as the floor — the profile's own permission mode/model/effort ride the
@@ -378,6 +391,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,
             SessionOptionCatalog.DefaultEffort,
+            workingDirectory: workingDirectory,
             resume: resume,
             // The one place in the codebase that names the broad read server (AC-544). See _McpSelectionAsync.
             enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
@@ -400,6 +414,17 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             _logger.LogWarning("The assistant session was not running right after its start: {Status}", session.Status);
         }
+
+        // AC-1089: the assistant never came through here, so its record carried no ProfileId/WorkingDirectory and a
+        // profile or working-directory switch read as "nothing changed", leaving a stale conversation id standing.
+        // Fire-and-forget like the same call in CockpitViewModel — a started session must not wait on a state write.
+        _ = _sessionStateRecorder.RecordSessionStartedAsync(
+            AssistantPaneId,
+            profile,
+            workingDirectory,
+            worktreePath: null,
+            worktreeBranch: null,
+            permissionMode: SessionOptionCatalog.DefaultPermissionMode.Value);
 
         // AC-638/AC-596: say why in the transcript, since the hand-over note only reaches the system prompt.
         // `startFreshBecause` lets AC-684's failed-resume recovery use its own reason instead of this default.
@@ -600,7 +625,17 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // none. Internal so the rule can be asserted directly; a restart's whole promise lives here.
     internal async Task<SessionResume> _ResolveResumeAsync(CancellationToken cancellationToken)
     {
-        var states = await _sessionState.LoadAsync(cancellationToken).ConfigureAwait(true);
+        // AC-1089: TryLoadAsync, not LoadAsync — the latter turns a read failure into an empty list, indistinguishable
+        // from "nothing was ever saved". That silently threw the assistant's conversation away on a transient read
+        // error; a real failure is worth a log line even though a fresh start is the only option either way.
+        var states = await _sessionState.TryLoadAsync(cancellationToken).ConfigureAwait(true);
+        if (states is null)
+        {
+            _logger.LogWarning(
+                "The assistant's saved session state could not be read; starting a new conversation instead of resuming.");
+            return SessionResume.New;
+        }
+
         return states.FirstOrDefault(state => string.Equals(state.PaneId, AssistantPaneId, StringComparison.Ordinal))
             is { ConversationId: { Length: > 0 } conversationId }
             ? SessionResume.BySessionId(conversationId)
