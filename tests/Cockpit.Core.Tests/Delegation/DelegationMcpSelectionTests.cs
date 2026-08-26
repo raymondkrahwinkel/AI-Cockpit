@@ -189,13 +189,16 @@ public class DelegationMcpSelectionTests
         var mcpServerStore = Substitute.For<IMcpServerStore>();
         mcpServerStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(registry);
 
+        // The service takes the catalog as a deferred lookup (AC-1110), so a test that has one hands it over as one.
+        Func<IMcpServerCatalog?>? catalogLookup = mcpServerCatalog is null ? null : () => mcpServerCatalog;
+
         return new DelegationService(
             Substitute.For<ISessionProfileStore>(),
             Substitute.For<ISessionManager>(),
             mcpServerStore,
             Substitute.For<IDelegationAuditLog>(),
             minutes => TimeSpan.FromMinutes(minutes),
-            mcpServerCatalog: mcpServerCatalog);
+            mcpServerCatalog: catalogLookup);
     }
 
     private static DelegationService _ServiceWithRegistry(params McpServerConfig[] registry) =>
