@@ -349,6 +349,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a cockpit whose window stops responding no longer eats every gigabyte the machine has. While the
+  interface was stalled, each terminal pane kept reading its session's output into memory as fast as the program
+  behind it could write, with nothing emptying it and nothing telling that program to slow down — operators saw
+  memory climb in a straight line from a few hundred megabytes to fourteen gigabytes in under five minutes, on
+  both Linux and macOS, until the machine had to be restarted. A pane now holds at most a few megabytes of
+  waiting output and discards the oldest beyond that, which is output that would have scrolled out of view
+  anyway; the log says once, per pane, that it is doing so.
 - fixed: a local CI run that took a while no longer loses its result if the connection to the session that
   started it drops before it is delivered. The run itself used to be cancelled the moment that connection went
   away — discarding whatever it had built — even though nobody had actually asked to stop it; now only the
