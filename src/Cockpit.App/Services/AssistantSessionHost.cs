@@ -379,6 +379,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // Claude looks under next time. Beside Cockpit's own state (Raymond's choice), which also never moves.
         var workingDirectory = CockpitBuild.StateRoot;
 
+        // Created here rather than assumed: spawning into a folder that does not exist yet fails the whole start
+        // ("No such file or directory"), and nothing guarantees another writer reached this root first.
+        Directory.CreateDirectory(workingDirectory);
+
         await session.StartConfiguredAsync(
             profile,
             // AC-1013: App defaults only as the floor — the profile's own permission mode/model/effort ride the
