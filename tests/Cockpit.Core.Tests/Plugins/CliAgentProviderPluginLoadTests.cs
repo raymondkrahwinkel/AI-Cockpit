@@ -64,9 +64,11 @@ public class CliAgentProviderPluginLoadTests
         // AC-649/AC-1110: the guard is Codex's own option vocabulary, not the absence of `effort` — AC-1101 gave Codex
         // that axis on purpose, so it is the exact key set that proves the schema is not shaped around Claude's: no
         // `permission-mode`, and an `approvalPolicy` Claude has no counterpart for.
+        // Compared as a set: the declaration order is not a promise, and a guard that fails on a reorder is the same
+        // shape of false alarm this assertion just stopped being.
         Assert.Equal(
-            new[] { "sandbox", "model", "effort", "approvalPolicy" },
-            registration.Capabilities.DeclaredOptions.Select(option => option.Key).ToArray());
+            new[] { "approvalPolicy", "effort", "model", "sandbox" },
+            registration.Capabilities.DeclaredOptions.Select(option => option.Key).OrderBy(key => key, StringComparer.Ordinal).ToArray());
         var sandbox = Assert.Single(registration.Capabilities.DeclaredOptions, option => option.Key == "sandbox");
         Assert.Equal(new[] { "read-only", "workspace-write", "danger-full-access" }, sandbox.KnownValues!.Select(value => value.Value).ToArray());
         var approval = Assert.Single(registration.Capabilities.DeclaredOptions, option => option.Key == "approvalPolicy");
