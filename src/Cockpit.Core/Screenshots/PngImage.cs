@@ -2,12 +2,9 @@ using System.Buffers.Binary;
 
 namespace Cockpit.Core.Screenshots;
 
-// The one thing a capture needs to know about a PNG somebody else encoded: how big it is (AC-326). A capture
-// that gets its layout from the desktop rather than from its own blit has to check the two agree, and the
-// image's own dimensions are the only evidence there is.
-// Reading the header rather than decoding: the answer is twenty-four bytes in, and decoding a whole desktop's
-// worth of pixels to learn its width would cost tens of megabytes to discard immediately. It also keeps this in
-// Core, which has no imaging library and should not grow one for a header read.
+// Captures need PNG dimensions to verify desktop layout against an externally encoded image (AC-326).
+// Read the header: decoding a desktop image wastes megabytes and would add an imaging library to Core for one value.
+// The image dimensions are the only independent evidence that the captured desktop layout and encoded pixels agree.
 public static class PngImage
 {
     private static ReadOnlySpan<byte> Signature => [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];

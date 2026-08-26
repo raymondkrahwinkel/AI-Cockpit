@@ -2,10 +2,8 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Core.Markdown;
 
-// The shape check for "could this code-span be a file path", nothing more. `Theme.axaml` and
-// `System.Text.Json` are the same shape (a dotted identifier with a short tail) and this cannot tell
-// them apart — only a disk probe can (`FilePathResolver`, `Cockpit.App`). What this rejects is what
-// never had a chance either way: no separator, no short extension, or a space with nothing to anchor it.
+// This only checks whether a code span could be a path; `Theme.axaml` and `System.Text.Json` need `FilePathResolver` to distinguish.
+// It rejects shapes that cannot be either: no separator or short extension, or an unanchored space.
 public static partial class FilePathCandidate
 {
     public static bool TryParse(string codeSpanText, out string path, out int? line)

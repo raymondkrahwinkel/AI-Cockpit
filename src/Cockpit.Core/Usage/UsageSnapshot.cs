@@ -1,10 +1,8 @@
 namespace Cockpit.Core.Usage;
 
-// What one session had run up at a moment in time (AC-251): the token buckets, the cost and the turns behind
-// the header's meter, plus enough about the session to tell later which work they belong to. Written after every
-// completed turn, so the newest record for a `PaneId` is that session's total — that the totals are
-// carried on every record rather than only at the end is what makes them survive a crash or a kill, which is
-// the whole point: until this existed the numbers lived only in memory and yesterday's spend was unrecoverable.
+// Per-turn session usage snapshot (AC-251): header-meter buckets, cost, turns, and enough identity to attribute them later.
+// Totals on every `PaneId` record survive crashes or kills; end-only totals would lose prior spend.
+// Persisting each completed turn replaces the former in-memory-only accounting that made yesterday's spend unrecoverable.
 public sealed record UsageSnapshot
 {
     // The session this belongs to — the cockpit's own pane id, unique to one session for as long as it exists.

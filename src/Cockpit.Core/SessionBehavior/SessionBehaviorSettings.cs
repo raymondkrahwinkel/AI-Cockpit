@@ -1,9 +1,6 @@
 namespace Cockpit.Core.SessionBehavior;
 
-// User-configurable session-behaviour settings, persisted under the `sessionBehavior` section of
-// `cockpit.json` (same store pattern as the profiles, notifications and transcript display). Holds
-// whether typing "exit" closes the session once its turn completes (T10), and whether messages queued
-// mid-turn are combined into a single follow-up turn (AC-145).
+// User-configurable session behaviour in `cockpit.json`'s `sessionBehavior` section: exit-after-turn (T10) and combined queued messages (AC-145).
 public sealed record SessionBehaviorSettings
 {
     // When true, sending "exit" closes the session after that turn completes. Off by default.
@@ -14,17 +11,8 @@ public sealed record SessionBehaviorSettings
     // keeps getting its own turn.
     public bool CombineQueuedMessages { get; init; }
 
-    // Whether agent sessions may be woken by a neighbour's urgent message (AC-615) — a turn started for them, on
-    // their own desk, that the operator did not ask for. **On by default.**
-    //
-    // This is where the consent for that lives. It used to be a per-session decision an agent made about itself
-    // through `set_wake_optin`, and the result was that nobody ever turned it on: an agent will not spend its
-    // operator's turn on its own say-so, and the operator never saw the choice because it was an MCP call rather
-    // than a setting. So the line was built and never used. Moving it here keeps the property that mattered — the
-    // person paying for the turn is the one who agreed to it — while making the default the useful one.
-    //
-    // A session can still override this for itself with `set_wake_optin`, in either direction, for as long as
-    // it lives. The rate limit on wakes (AC-396) is what makes an on-by-default setting safe to ship: it is the
-    // reason that cap had to be built first rather than last.
+    // Neighbor wake-ups default on (AC-615), with consent in the operator-visible setting rather than an agent MCP choice.
+    // Sessions may override it temporarily; AC-396's wake rate limit makes that useful default safe.
+    // The old per-session opt-in stayed unused because the operator never saw it and an agent cannot consent for them.
     public bool WakeAgentsByDefault { get; init; } = true;
 }

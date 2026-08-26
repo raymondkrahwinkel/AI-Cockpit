@@ -1,12 +1,8 @@
 namespace Cockpit.Core.Configuration;
 
-// The product name and the addresses that carry it (AC-508).
-// The onboarding screens are the most name-bearing surface this app has, and the guide lives on the website
-// rather than in the app — so a screen text, a menu item and a sign-in step all need to say the same name and
-// point at the same domain. AC-167 has not settled either yet: the name leans towards Wispslate and the
-// canonical domain (`.com` or `.app`) is still open. Two hand-kept copies of a domain drift, and a
-// domain that drifts after a client is registered under it is worse than one that was never written down, so
-// every surface resolves both from here and the change stays a one-line change.
+// Product name and addresses live here (AC-508): onboarding and the web guide must agree while AC-167 settles them.
+// One source prevents domain drift, which can invalidate an already-registered client.
+// Screens, menus, sign-in, and the external guide therefore resolve both values from this class.
 public static class CockpitBrand
 {
     // The product name as it appears to the operator.

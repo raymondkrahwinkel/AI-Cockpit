@@ -3,10 +3,8 @@ using System.Text.RegularExpressions;
 
 namespace Cockpit.Core.Markdown;
 
-// A small, pragmatic markdown parser for the subset Claude produces in a transcript: headings,
-// paragraphs, fenced code blocks, bullet/ordered lists, pipe tables, and inline bold/italic/code/links.
-// It is deliberately not a full CommonMark implementation — it turns the common shapes into a flat
-// block list the cockpit renders into themed controls, so the look and clickable links are fully ours.
+// Pragmatic parser for transcript markdown: common blocks plus bold/italic/code/links, rendered as Cockpit's flat themed controls.
+// It deliberately is not full CommonMark: the supported subset gives Cockpit ownership of appearance and links.
 public static partial class MarkdownParser
 {
     // AC-936: opt-in — off keeps CommonMark's default (a single newline joins its paragraph's lines with a
@@ -316,10 +314,8 @@ public static partial class MarkdownParser
         return runs;
     }
 
-    // Applies an enclosing `**`/`*` to the runs it wraps. Plain text simply becomes that kind;
-    // anything with a kind of its own (a link, a code span, the other emphasis) keeps it and takes the
-    // surrounding emphasis as a flag. Either way one run in yields one run out, so the concatenated text —
-    // and with it the renderer's link offsets — is exactly what the reader sees.
+    // Enclosing emphasis changes plain-text kind, or becomes a flag on links/code/other emphasis.
+    // One run in stays one out, preserving concatenated text and therefore renderer link offsets.
     private static IEnumerable<MarkdownInline> _Emphasise(List<MarkdownInline> runs, MarkdownInlineKind emphasis)
         => runs.Select(run => run.Kind == MarkdownInlineKind.Text
             ? run with { Kind = emphasis }
@@ -398,10 +394,8 @@ public static partial class MarkdownParser
     [GeneratedRegex(@"^\s*\d+\.\s+")]
     private static partial Regex OrderedItemRegex();
 
-    // Runs against the line after every line containing a pipe, so it meets whatever a tracker's issue body holds.
-    // Its adjacent \s* runs are the classic quadratic shape — a line of nothing but whitespace made the backtracking
-    // engine take seconds, synchronously, on the UI thread (AC-303). NonBacktracking answers the same question in
-    // linear time; the pattern uses no lookaround or backreference, which are what that engine cannot do.
+    // This runs after every pipe line, including arbitrary tracker content; adjacent `\s*` made whitespace quadratic on the UI thread (AC-303).
+    // `NonBacktracking` is linear and valid because this pattern needs neither lookaround nor backreferences.
     [GeneratedRegex(@"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$", RegexOptions.NonBacktracking)]
     private static partial Regex TableSeparatorRegex();
 }

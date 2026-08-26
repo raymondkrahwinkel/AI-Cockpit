@@ -1,15 +1,8 @@
 namespace Cockpit.Core.Configuration;
 
-// What the app calls itself where a person reads it (AC-430).
-// The name lives here once so a second naming round is an edit to one file instead of a sweep. The
-// identifiers the product is *built* out of keep their own names deliberately — namespaces, the
-// state folder in `CockpitBuild`, config keys, the repository — because renaming those breaks
-// existing installs and their configuration and buys nothing a reader can see.
-//
-// Only the places that *name* the product use this: the title bar, the window title the taskbar
-// reads, the About dialog, the tray, the header of a diagnostics report. Running prose says "the cockpit",
-// the way the app already talks about itself elsewhere — a brand repeated in every sentence of the UI reads
-// as advertising rather than as an explanation.
+// Reader-facing product name lives here (AC-430), making a naming round a one-file edit without breaking install identifiers.
+// Use it only where the product is named; running UI prose says "the cockpit" to avoid advertising copy.
+// Namespaces, state folders, config keys, and repository identifiers stay stable for existing installations.
 public static class CockpitProduct
 {
     // The maker's half of the name — the word drawn at full strength in the title bar.
