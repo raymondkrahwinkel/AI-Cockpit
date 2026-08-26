@@ -184,6 +184,70 @@ public sealed class ManagedCliServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureInstalled_WithAdditionalArtifacts_DownloadsVerifiesAndPlacesAll()
+    {
+        // AC-1107: a recipe that promises a sibling binary (Codex's code-mode-host) must actually place it, not
+        // just the primary executable — this is the test the acceptance criteria ask for.
+        var primary = "primary bytes"u8.ToArray();
+        var sibling = "sibling bytes"u8.ToArray();
+        var handler = new StubHttpMessageHandler(request => StubHttpMessageHandler.Bytes(
+            request.RequestUri!.AbsoluteUri.EndsWith("sibling", StringComparison.Ordinal) ? sibling : primary));
+        var service = _Service(handler);
+        var plan = _RawPlan(primary) with
+        {
+            AdditionalArtifacts =
+            [
+                new ManagedCliDownloadArtifact
+                {
+                    Url = "https://example.test/sibling",
+                    ExpectedSha256 = PluginHash.Compute(sibling),
+                    FileName = "acme-helper",
+                    NeedsExecutableBit = true,
+                },
+            ],
+        };
+        service.Register(_Descriptor("acme", "1.0.0", plan));
+
+        var result = await service.EnsureInstalledAsync("acme");
+
+        Assert.True(result.Success);
+        var versionDir = Path.Combine(_root, "cli", "acme", "1.0.0");
+        Assert.Equal(primary, await File.ReadAllBytesAsync(Path.Combine(versionDir, "acme")));
+        Assert.Equal(sibling, await File.ReadAllBytesAsync(Path.Combine(versionDir, "acme-helper")));
+    }
+
+    [Fact]
+    public async Task EnsureInstalled_ExistingVersionMissingAdditionalArtifact_RepairsInPlace_WithoutRedownloadingPrimary()
+    {
+        // The AC-1107 repair case: a version directory installed before the recipe grew a sibling binary. The
+        // primary is already on disk and correct — only the missing file should be fetched.
+        var sibling = "sibling bytes"u8.ToArray();
+        var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.Bytes(sibling));
+        var service = _Service(handler);
+        var plan = _RawPlan("primary bytes"u8.ToArray()) with
+        {
+            AdditionalArtifacts =
+            [
+                new ManagedCliDownloadArtifact
+                {
+                    Url = "https://example.test/sibling",
+                    ExpectedSha256 = PluginHash.Compute(sibling),
+                    FileName = "acme-helper",
+                },
+            ],
+        };
+        service.Register(_Descriptor("acme", "1.0.0", plan));
+        _PlaceInstalled("acme", "1.0.0"); // only the primary "acme" file, as an older recipe would have left it
+
+        var result = await service.EnsureInstalledAsync("acme");
+
+        Assert.True(result.Success);
+        Assert.Equal(1, handler.CallCount); // only the missing sibling was fetched
+        var versionDir = Path.Combine(_root, "cli", "acme", "1.0.0");
+        Assert.Equal(sibling, await File.ReadAllBytesAsync(Path.Combine(versionDir, "acme-helper")));
+    }
+
+    [Fact]
     public void ResolveInstalledPath_PicksNewestVersion_ByVersionOrder()
     {
         _PlaceInstalled("acme", "1.2.0");
