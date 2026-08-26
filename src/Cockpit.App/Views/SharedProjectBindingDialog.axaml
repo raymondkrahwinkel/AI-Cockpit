@@ -53,7 +53,7 @@
                     <TextBlock Classes="FieldLabel" Text="Profile *"/>
                     <TextBlock Classes="FieldHint" Text="Profiles are local — every machine picks its own."/>
                     <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfileLabel}"
-                              PlaceholderText="Pick a profile…" HorizontalAlignment="Stretch" MaxWidth="340"/>
+                              PlaceholderText="Pick a profile…" HorizontalAlignment="Stretch"/>
                 </StackPanel>
 
                 <StackPanel Spacing="2">
@@ -79,7 +79,7 @@
                                IsVisible="{Binding HasGitUrl}"/>
                 </StackPanel>
 
-                <!-- AC-246 vormwaarschuwing: this block, not the two fields above it, is the one that can grow to
+                <!-- AC-246 shape warning: this block, not the two fields above it, is the one that can grow to
                      ten rows on a project with that many machine-specific references. Bounded and independently
                      scrollable so Profile/Folder — the two fields every operator needs, every time — never scroll
                      out of view behind a long list on the one screen where a shared project is met for the first
