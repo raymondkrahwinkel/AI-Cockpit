@@ -393,15 +393,13 @@ public partial class SessionView : UserControl
         _UpdateJumpAffordance();
     }
 
-    // Asks for the row, not an offset: ScrollToEnd()'s Extent-Viewport estimate left the transcript
-    // ~300px short of bottom (AC-528) and its own correction re-triggered an infinite layout loop.
-    // AC-800: also the last row VisibleTranscript shows — a hidden row could never terminate (AC-611).
+    // The last row VisibleTranscript shows — following one it hides could never terminate (AC-800, AC-611).
     private int _NewestVisibleIndex() => TranscriptItems.ItemCount - 1;
 
     private void _FollowNewest()
     {
-        // ScrollIntoView drives a layout pass then and there, and the ScrollViewer raises ScrollChanged from that
-        // pass — so without this guard the handler calls itself until the stack runs out (measured: it does).
+        // Moving the viewport raises ScrollChanged from the pass it drives — so without this guard the
+        // handler calls itself until the stack runs out (measured: it does).
         if (_following || TranscriptItems.ItemCount == 0 || _NewestRowIsFullyVisible())
         {
             return;
@@ -416,17 +414,18 @@ public partial class SessionView : UserControl
         _following = true;
         try
         {
-            // ScrollIntoView forces a synchronous layout pass; asking for an already-realised row
-            // (as happens every repaint while streaming) costs that pass for nothing — measured,
-            // ~3 layout passes per frame where one would do. Only ask when the row genuinely isn't there.
+            // A row that is not realised is below the viewport, so the estimated end is the way towards it.
+            // Assigning Offset only invalidates; ScrollIntoView ran a whole nested layout pass here instead,
+            // once per streamed row — 6.8MB and tens of milliseconds each, which is AC-1111 (measured).
             if (TranscriptItems.ContainerFromIndex(newestIndex) is null)
             {
-                TranscriptItems.ScrollIntoView(newestIndex);
+                TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(
+                    Math.Max(0, TranscriptScroll.Extent.Height - TranscriptScroll.Viewport.Height));
             }
 
-            // ScrollIntoView treats a rect as in-view once its top edge is, so a row taller than the
-            // viewport leaves its bottom permanently below — unsatisfiable, re-triggering a layout
-            // pass on every ScrollChanged (the SDK freeze). Closes the residue by hand instead.
+            // The estimated end is Extent-derived and lands short of the true bottom (~300px, AC-528), and a
+            // row taller than the viewport keeps its bottom below it anyway. Both leave a residue that only the
+            // realised row's own geometry can close, which is what the rest of this method does.
             if (_NewestRowIsFullyVisible())
             {
                 return;
