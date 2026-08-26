@@ -7,9 +7,14 @@ namespace Cockpit.Core;
 public static class DependencyInjectionHelper
 {
     // AsyncLocal rather than [ThreadStatic]: StackGuard moves a deep resolve onto a second thread, and
-    // only ExecutionContext flows across that hop. The value is a List, so both threads share the one
-    // instance — a thread-bound chain would be empty there and never see the loop (AC-1112).
-    private static readonly AsyncLocal<List<Type>> ResolutionChain = new();
+    // only ExecutionContext flows across that hop — a thread-bound chain is empty there and never sees
+    // the loop (AC-1112).
+    private static readonly AsyncLocal<Frame?> ResolutionChain = new();
+
+    // One node per frame rather than a shared list. An AsyncLocal value is inherited by every branch of
+    // the context, so once a resolve on the main thread sets it, parallel resolves further on would share
+    // the one instance and report a cycle that is not there.
+    private sealed record Frame(Type ServiceType, Frame? Caller);
 
     public static IServiceCollection AddServices(this IServiceCollection services, params Assembly[] assemblies)
     {
@@ -53,25 +58,46 @@ public static class DependencyInjectionHelper
         Type serviceType,
         Func<IServiceProvider, object> forward) => provider =>
     {
-        var chain = ResolutionChain.Value ??= [];
+        var caller = ResolutionChain.Value;
 
-        var openedAt = chain.IndexOf(serviceType);
-        if (openedAt >= 0)
+        for (var frame = caller; frame is not null; frame = frame.Caller)
         {
-            var loop = chain.Skip(openedAt).Append(serviceType).Select(type => type.Name);
-
-            throw new InvalidOperationException(
-                $"A circular dependency was detected: {string.Join(" -> ", loop)}");
+            if (frame.ServiceType == serviceType)
+            {
+                throw new InvalidOperationException(
+                    $"A circular dependency was detected: {DescribeLoop(caller, serviceType)}");
+            }
         }
 
-        chain.Add(serviceType);
+        ResolutionChain.Value = new Frame(serviceType, caller);
         try
         {
             return forward(provider);
         }
         finally
         {
-            chain.RemoveAt(chain.Count - 1);
+            ResolutionChain.Value = caller;
         }
     };
+
+    // Walks back to the first visit of the repeated type, then reads out in resolution order.
+    private static string DescribeLoop(Frame? caller, Type serviceType)
+    {
+        var loop = new List<string>();
+
+        for (var frame = caller; frame is not null; frame = frame.Caller)
+        {
+            loop.Add(frame.ServiceType.Name);
+
+            if (frame.ServiceType == serviceType)
+            {
+                break;
+            }
+        }
+
+        loop.Reverse();
+        loop.Add(serviceType.Name);
+
+        return string.Join(" -> ", loop);
+    }
 }
