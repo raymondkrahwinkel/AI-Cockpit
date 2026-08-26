@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: on Linux, a session warns you while it is stalling on memory — minutes before the system kills it. The
+  warning reads the same meter the system's own out-of-memory daemon decides on, measured on that one session
+  rather than on free memory, which says nothing once swap is full. It waits for the stall to hold for twenty
+  seconds, so a heavy build starting stays quiet while the slow climb that precedes a kill does not. When it
+  appears, closing any session — not necessarily the one that warned — is what keeps the rest alive.
+
 - added: the Kubernetes plugin can now spin up a disposable local kind cluster on your own machine
   (`kind_create`), list what it made (`kind_list`) and tear one down again (`kind_delete`) — registered
   automatically, so the plugin's other tools can reach it right away with no manual kubeconfig step. A cluster you
@@ -363,6 +369,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   On one machine that was 65 stray programs holding just under 4 GB. On Linux, which is the only platform that can
   hold a session's programs together; on macOS and Windows the cockpit now says at startup that it cannot, instead
   of leaving you to guess.
+
+- fixed: on Linux, a session the system kills for memory pressure no longer disappears without a word. It used to
+  leave nothing behind — no error, no notice, and nothing in the cockpit's own log — so the only way to find out
+  was to notice the pane had gone quiet, sometimes with an hour of uncommitted work in its worktree. The session
+  now says it was ended by the system rather than by anything you or the agent did, and repeats the system's own
+  account of why. That is read from the system's log, not guessed from an exit code: when a session is killed this
+  way there is no exit code to read.
 
 - fixed: a cockpit whose window stops responding no longer eats every gigabyte the machine has. While the
   interface was stalled, each terminal pane kept reading its session's output into memory as fast as the program

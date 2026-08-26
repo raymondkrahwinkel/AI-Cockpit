@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Diagnostics;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.Services;
 
@@ -28,7 +29,14 @@ public sealed class ResourceMonitor(IProcessTableReader reader) : ISingletonServ
         foreach (var (title, processId) in sessionProcessIds)
         {
             var measured = _Measure(processId, rows, elapsed, cores);
-            sessions.Add(new SessionResourceUsage(title, measured.CpuPercent, measured.MemoryBytes));
+
+            // AC-1060: read on the tick that already has the pid, since the meter that matters here is the one
+            // `systemd-oomd` decides on and it lives per session cgroup. Null everywhere but Linux.
+            sessions.Add(new SessionResourceUsage(
+                title,
+                measured.CpuPercent,
+                measured.MemoryBytes,
+                LinuxSessionCgroup.PressureAvg10(processId)));
         }
 
         _sampledAt = now;
@@ -69,5 +77,6 @@ public sealed record ResourceUsage(
     public static readonly ResourceUsage None = new(0, 0, [], [], CockpitParts.None);
 }
 
-// One session's share, measured across its whole process tree.
-public sealed record SessionResourceUsage(string Title, double CpuPercent, long MemoryBytes);
+// One session's share, measured across its whole process tree. `PressureAvg10` is the share of the last ten
+// seconds its cgroup stalled on memory (AC-1060) — null off Linux, and null for a session with no cgroup.
+public sealed record SessionResourceUsage(string Title, double CpuPercent, long MemoryBytes, double? PressureAvg10 = null);

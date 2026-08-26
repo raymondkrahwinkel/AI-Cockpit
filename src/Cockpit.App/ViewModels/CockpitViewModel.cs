@@ -3526,6 +3526,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    // AC-1060: the cap above is about this session's own ceiling; this is about the machine's. A session well
+    // inside its cap is killed anyway when the slice it sits in stays under pressure, and that is what oomd reads.
+    private void _WarnAboutSessionPressure(ResourceUsage usage)
+    {
+        foreach (var measured in usage.Sessions)
+        {
+            var session = Sessions.FirstOrDefault(candidate => candidate.Title == measured.Title);
+            if (session?.ReportMemoryPressure(measured.PressureAvg10) != true)
+            {
+                continue;
+            }
+
+            // No Kill button here, unlike the over-cap toast: killing this session is rarely the answer — it is
+            // the machine that is short, and the operator is the one who knows which session matters least.
+            ToastHost.Add(
+                $"'{measured.Title}' has been stalling on memory for {SessionPressureAlarm.Sustained.TotalSeconds:0}s. "
+                + "Sessions are ended whole by the system when this holds — closing one now is cheaper than losing one.",
+                ToastSeverity.Warning,
+                actionLabel: null,
+                onAction: null);
+        }
+    }
+
     // Names the session in a cockpit-wide toast with a Kill button the moment it crosses its own cap — replaces
     // the automatic kill that used to happen instead (AC-692). Kept beside AC-700's bar, which outlives it.
     private void _WarnAboutSessionMemory(ResourceUsage usage)
@@ -3656,6 +3679,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _WarnAboutMemory(usage);
         _WarnAboutSessionCaps(usage);
         _WarnAboutSessionMemory(usage);
+        _WarnAboutSessionPressure(usage);
 
         ResourceCpu = $"CPU {usage.CpuPercent:0}%  ·  RAM ";
         ResourceMemory = _Megabytes(usage.MemoryBytes);

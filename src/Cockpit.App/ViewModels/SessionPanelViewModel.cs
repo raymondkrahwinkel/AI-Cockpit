@@ -806,6 +806,37 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [RelayCommand]
     private void KillOverCapSession() => RaiseCloseRequested();
 
+    // The key the memory-pressure warning stands under (AC-1060). Its own key, not the cap's: a session can stall
+    // hard while staying well inside its cap, which is exactly what happened to the two sessions oomd killed.
+    private const string MemoryPressureWarningKey = "cockpit.memory-pressure";
+
+    // How long this session's cgroup has been stalling, carried between samples — the "for > 20s" half of the test.
+    private SessionPressureState _pressure;
+
+    // AC-1060: puts the run-up to an oomd kill on the bar, minutes before it happens. Returns true on the sample
+    // that first holds long enough, so the caller raises its toast once rather than on every tick after.
+    public bool ReportMemoryPressure(double? pressureAvg10)
+    {
+        // No reading is not a calm reading: off Linux, and for a session with no cgroup left, the meter simply is
+        // not there. Leaving the state untouched keeps a run in progress from being reset by a missed sample.
+        if (pressureAvg10 is not { } avg10)
+        {
+            return false;
+        }
+
+        var decision = SessionPressureAlarm.Decide(avg10, DateTimeOffset.UtcNow, _pressure);
+        _pressure = decision.Next;
+
+        _RaiseOrClear(
+            MemoryPressureWarningKey,
+            _pressure.Warned
+                ? "This session is stalling on memory. While the machine stays under pressure, systemd-oomd ends "
+                  + "the whole session at once — closing something else now is what keeps this one alive."
+                : null);
+
+        return decision.Warn;
+    }
+
     // The key the auth-expiry warning stands under (AC-713), same bookkeeping as the memory cap above.
     private const string AuthExpiryWarningKey = "cockpit.auth-expiry";
 
