@@ -92,7 +92,9 @@ public class AdaptiveGcCompactorTests
         var compacts = 0;
         var heapBytes = 4L * 1024 * 1024 * 1024; // over the compact ceiling and the leak-warn ceiling
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var compactor = new AdaptiveGcCompactor(logger, () => heapBytes, () => compacts++, () => now);
+        // AC-965: an explicit no-dump seam, so reaching the alarm branch here can never shell out to the runtime's
+        // createdump on whatever machine is running the suite.
+        var compactor = new AdaptiveGcCompactor(logger, () => heapBytes, () => compacts++, () => now, heapDump: () => null);
 
         compactor.CheckOnce();
         now = now.AddSeconds(31);
@@ -121,6 +123,58 @@ public class AdaptiveGcCompactorTests
         new AdaptiveGcCompactor(over, () => 2L * 1024 * 1024 * 1024, () => overCompacts++).CheckOnce();
         Assert.Equal(0, overCompacts);
         Assert.Empty(over.Messages); // between the compact ceiling and the leak ceiling: quiet
+    }
+
+    /// <summary>
+    /// AC-965: this check measures a heap size and nothing else, so it must not name a cause. Two investigations
+    /// were sent after Avalonia by the wording this replaces while the actual fault was elsewhere.
+    /// </summary>
+    [Fact]
+    public void CheckOnce_DoesNotBlameAvaloniaForAHeapItOnlyMeasured()
+    {
+        var logger = new _CapturingLogger();
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var compactor = new AdaptiveGcCompactor(
+            logger, () => 4L * 1024 * 1024 * 1024, () => { }, () => now, heapDump: () => null);
+
+        compactor.CheckOnce();
+        now = now.AddSeconds(61);
+        compactor.CheckOnce();
+
+        Assert.NotEmpty(logger.Messages);
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("Avalonia", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// AC-965: the dump is the only evidence of what held the heap, and it is taken at most once per run — a
+    /// second costs as much as the first and says the same thing.
+    /// </summary>
+    [Fact]
+    public void CheckOnce_TakesAtMostOneHeapDumpPerRunAndOnlyWhenItWasAskedFor()
+    {
+        var previous = Environment.GetEnvironmentVariable(AdaptiveGcCompactor.HeapDumpEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(AdaptiveGcCompactor.HeapDumpEnvironmentVariable, "1");
+
+            var dumps = 0;
+            var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var compactor = new AdaptiveGcCompactor(
+                new _CapturingLogger(), () => 4L * 1024 * 1024 * 1024, () => { }, () => now,
+                heapDump: () => { dumps++; return "/tmp/cockpit-heap.dmp"; });
+
+            compactor.CheckOnce();
+            now = now.AddSeconds(61);
+            compactor.CheckOnce();
+            now = now.AddSeconds(61);
+            compactor.CheckOnce();
+
+            Assert.Equal(1, dumps);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(AdaptiveGcCompactor.HeapDumpEnvironmentVariable, previous);
+        }
     }
 
     private sealed class _CapturingLogger : ILogger<AdaptiveGcCompactor>

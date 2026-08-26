@@ -356,6 +356,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   both Linux and macOS, until the machine had to be restarted. A pane now holds at most a few megabytes of
   waiting output and discards the oldest beyond that, which is output that would have scrolled out of view
   anyway; the log says once, per pane, that it is doing so.
+- fixed: the log no longer blames a runaway heap on the interface toolkit. It used to say "a known Avalonia
+  retention leak" whenever memory passed three gigabytes, which is a cause that check has no way of knowing and
+  which sent two investigations after the wrong thing. It now reports what it measured and points at the dump.
+- added: the cockpit can capture a heap dump the moment memory passes that alarm, so the next report says what
+  was actually holding it instead of only how much. Off unless you ask for it, since the file is as large as the
+  memory that triggered it: set `COCKPIT_HEAP_DUMP_ON_ALARM=1` and leave it set. The log names the file it wrote.
 - fixed: a local CI run that took a while no longer loses its result if the connection to the session that
   started it drops before it is delivered. The run itself used to be cancelled the moment that connection went
   away — discarding whatever it had built — even though nobody had actually asked to stop it; now only the

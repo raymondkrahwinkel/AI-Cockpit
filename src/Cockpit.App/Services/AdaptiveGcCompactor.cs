@@ -1,4 +1,8 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.InteropServices;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,7 +17,8 @@ public sealed class AdaptiveGcCompactor(
     Func<long>? heapBytesProbe = null,
     Action? compact = null,
     Func<DateTime>? utcNow = null,
-    Func<long>? allocatedBytesProbe = null) : ISingletonService, IDisposable
+    Func<long>? allocatedBytesProbe = null,
+    Func<string?>? heapDump = null) : ISingletonService, IDisposable
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMilliseconds(200);
 
@@ -36,8 +41,8 @@ public sealed class AdaptiveGcCompactor(
     // Avalonia retention compaction can't free (~2% RSS reclaimed) anyway, so raise/lower this as the pause-budget knob.
     private const long CompactCeilingBytes = 512L * 1024 * 1024;
 
-    // Well past any legitimate working set: tell the operator a restart is what clears it (the underlying leak is
-    // Avalonia's, not ours — see the class note). Throttled so a heap that camps up here can't flood the log.
+    // Well past any legitimate working set: tell the operator a restart is what clears it. Throttled so a heap
+    // that camps up here can't flood the log.
     private const long LeakWarnCeilingBytes = 3L * 1024 * 1024 * 1024;
     private static readonly TimeSpan LeakWarnInterval = TimeSpan.FromMinutes(1);
 
@@ -56,6 +61,12 @@ public sealed class AdaptiveGcCompactor(
     // (the heap size itself is not: a collection drops it mid-stream). Injectable so a test can drive "busy" vs
     // "idle" without allocating for real. precise:false keeps it a cheap per-thread sum.
     private readonly Func<long> _allocatedBytes = allocatedBytesProbe ?? DefaultAllocatedBytes;
+
+    // AC-965: takes the dump and returns where it landed, or null when it could not. Injectable for the same
+    // reason `_compact` is: a test must not write a multi-gigabyte file, and CI must not either.
+    private readonly Func<string?> _heapDump = heapDump ?? DefaultHeapDump;
+
+    private bool _capturedHeapDump;
 
     // Only ever read and written by the one monitor thread (or a test driving CheckOnce directly). Baselined at
     // construction so the first check measures a real delta rather than the whole process's allocations to date.
@@ -165,11 +176,16 @@ public sealed class AdaptiveGcCompactor(
 
         if (now - _leakWarnSince.Value >= LeakWarnInterval)
         {
+            // AC-965: no longer named as "a known Avalonia retention leak". Two investigations were sent the wrong
+            // way by that phrase — an acute runaway of tens of MB/s is not UI retention, and this check cannot tell
+            // the two apart. It reports what it measured; the dump beside it is what says who is holding the bytes.
             _logger.LogError(
-                "Managed heap has stayed above {Ceiling} for over a minute ({Heap}) — a known Avalonia retention leak; a restart is what clears it.",
+                "Managed heap has stayed above {Ceiling} for over a minute ({Heap}). What is holding it is not known "
+                + "from here — a restart clears it, and the heap dump named below is what identifies the cause.",
                 ByteSize.Human(LeakWarnCeilingBytes),
                 ByteSize.Human(heapBytes));
             _loggedLeakError = true;
+            _CaptureHeapDumpOnce(heapBytes);
         }
         else if (_lastLeakWarnUtc is null || now - _lastLeakWarnUtc.Value >= LeakWarnInterval)
         {
@@ -192,6 +208,90 @@ public sealed class AdaptiveGcCompactor(
 
     // Named so the field and its baseline can share one default without duplicating the GC call.
     private static long DefaultAllocatedBytes() => GC.GetTotalAllocatedBytes(precise: false);
+
+    // AC-965: a runaway heap says nothing about what is holding it, and by the time an operator reports one the
+    // process is gone. Taking the dump here is the only moment the evidence still exists. Once per run: the second
+    // one would cost as much as the first and say the same thing.
+    private void _CaptureHeapDumpOnce(long heapBytes)
+    {
+        if (_capturedHeapDump)
+        {
+            return;
+        }
+
+        _capturedHeapDump = true;
+        if (!HeapDumpRequested)
+        {
+            _logger.LogWarning(
+                "What is holding this heap can only be read from a dump taken while it is still up. Set {Variable}=1 "
+                + "and leave it set to capture one the next time this fires.",
+                HeapDumpEnvironmentVariable);
+            return;
+        }
+
+        try
+        {
+            var path = _heapDump();
+            if (path is null)
+            {
+                _logger.LogWarning(
+                    "No heap dump was taken: createdump is not where this runtime keeps it. Without one, the next "
+                    + "report of this carries no more than the last did.");
+                return;
+            }
+
+            _logger.LogError(
+                "Heap dump written to {Path} (about {Size} of disk, the heap as it stands). Open it with "
+                + "`dotnet-dump analyze` to see what is holding the memory, and attach it to the report.",
+                path,
+                ByteSize.Human(heapBytes));
+        }
+        catch (Exception exception)
+        {
+            // The heap is already running away; failing to photograph it must not also take the app down.
+            _logger.LogWarning(exception, "Taking a heap dump at the alarm ceiling failed.");
+        }
+    }
+
+    // Off unless the operator asked for it: the dump is as large as the heap that triggered it, so several
+    // gigabytes appearing unannounced is not something to do to every machine. Turned on while hunting a
+    // specific instance — which is the only time anyone wants the file.
+    internal const string HeapDumpEnvironmentVariable = "COCKPIT_HEAP_DUMP_ON_ALARM";
+
+    private static bool HeapDumpRequested =>
+        Environment.GetEnvironmentVariable(HeapDumpEnvironmentVariable) is "1" or "true";
+
+    // Uses the runtime's own `createdump`, which ships beside coreclr on every platform .NET supports — no
+    // diagnostic package to add and nothing for an operator to install first. Returns null when it is not there.
+    private static string? DefaultHeapDump()
+    {
+        var tool = Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), OperatingSystem.IsWindows() ? "createdump.exe" : "createdump");
+        if (!File.Exists(tool))
+        {
+            return null;
+        }
+
+        var target = Path.Combine(
+            Path.GetDirectoryName(CockpitBuild.LogPath) ?? Path.GetTempPath(),
+            $"cockpit-heap-{DateTime.UtcNow:yyyyMMdd-HHmmss}.dmp");
+
+        using var process = Process.Start(new ProcessStartInfo(tool)
+        {
+            // --withheap is the smaller of the two useful modes: the managed heap without the full address space,
+            // which is what says who is holding the bytes.
+            ArgumentList = { "--withheap", "--name", target, Environment.ProcessId.ToString(CultureInfo.InvariantCulture) },
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+        });
+
+        if (process is null)
+        {
+            return null;
+        }
+
+        process.WaitForExit();
+        return process.ExitCode == 0 && File.Exists(target) ? target : null;
+    }
 
     public void Dispose() => _stopping = true;
 }
