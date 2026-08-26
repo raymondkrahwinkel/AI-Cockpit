@@ -511,6 +511,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // incomplete snapshot keeps its last known value; `ResetUsageHistory` is what forgets one.
     public void ApplyUsage(IReadOnlyList<PluginUsageSignal> signals, IReadOnlyList<PluginUsageReading> readings)
     {
+        // Kept for _DescribeUnreportedWindows, which needs every declared allowance signal — not just the ones a
+        // reading arrived for — to say which one is missing (#1105).
+        _declaredSignals = signals;
+
         foreach (var reading in readings)
         {
             if (signals.FirstOrDefault(signal => signal.Key == reading.SignalKey) is not { } declared)
@@ -566,6 +570,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         _lastReadings.Clear();
         _thresholds.Clear();
+        _declaredSignals = [];
     }
 
     // The threshold each rendered figure was measured against, by the label it renders under, so the pill and the
@@ -1134,26 +1139,28 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _unreportedWindowsNotice = string.Empty;
 
-    // Which selected fields name a rate window, by the label that window carries. Session usage and ctx are not
-    // windows; anything else a future field adds is not one either until it is listed here.
-    private static readonly Dictionary<UsagePillField, string> _WindowFieldLabels = new()
-    {
-        [UsagePillField.FiveHourWindow] = "5h",
-        [UsagePillField.WeeklyWindow] = "wk",
-    };
+    // The declared signals behind the session's last ApplyUsage call (#1105), kept so
+    // _DescribeUnreportedWindows can recheck whenever RateWindows is toggled or the windows themselves
+    // change — not just the instant a snapshot lands.
+    private IReadOnlyList<PluginUsageSignal> _declaredSignals = [];
 
     private string _DescribeUnreportedWindows()
     {
         // Nothing has been reported at all yet (a session that has not had its first usage event): silence is the
-        // honest answer there, not a claim about what the provider can do.
-        if (!HasUsagePill)
+        // honest answer there, not a claim about what the provider can do. Same silence when the operator has not
+        // asked to see rate windows at all — nothing was attempted, so there is nothing to explain.
+        if (!HasUsagePill || !UsagePillVisibleFields.Contains(UsagePillField.RateWindows))
         {
             return string.Empty;
         }
 
-        var missing = UsagePillVisibleFields
-            .Where(field => _WindowFieldLabels.ContainsKey(field))
-            .Select(field => _WindowFieldLabels[field])
+        // A declared allowance signal (#1105: whatever the provider's registration lists — "5h"/"wk" for Claude,
+        // "7d" for Codex) with no matching window in RateLimits is one the operator would expect to see and does
+        // not. This is provider-neutral by construction: nothing here names a specific window shape.
+        var missing = _declaredSignals
+            .Where(signal => signal.Kind == PluginUsageSignalKind.Allowance)
+            .Select(signal => signal.Label)
+            .Distinct()
             .Where(label => RateLimits.All(window => window.Label != label))
             .ToList();
 
@@ -1212,7 +1219,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         UsagePillItems.Clear();
         foreach (var field in UsagePillVisibleFields)
         {
-            if (BuildUsagePillItem(field) is { } item)
+            foreach (var item in BuildUsagePillItems(field))
             {
                 // Every segment but the first carries a divider on its left, so they read as one pill.
                 UsagePillItems.Add(item with { ShowLeadingDivider = UsagePillItems.Count > 0 });
@@ -1225,28 +1232,37 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnPropertyChanged(nameof(ShowChevronDivider));
     }
 
-    private UsagePillItem? BuildUsagePillItem(UsagePillField field) => field switch
+    // Most fields yield at most one segment; RateWindows (#1105 A2) yields one per window the provider
+    // actually reported, in the order it reported them — a five-hour-plus-weekly provider draws two segments
+    // from this one field, a seven-day-only provider draws one, with no enum value per window shape.
+    private IEnumerable<UsagePillItem> BuildUsagePillItems(UsagePillField field)
     {
-        UsagePillField.Context when ContextUsedPercent is { } percent =>
-            new UsagePillItem($"ctx {percent:0}%", UsageSeverity.BrushKeyFor(percent, _ThresholdFor("ctx")), $"Context window: {percent:0}% used"),
-        // Gated on SuppressCostMeter as well as on being selected: this segment is now the only place the
-        // token/cost figure renders (the standalone meter beside the pill was the same UsageSummary and the same
-        // tooltip, so unticking "Session usage" moved the figure instead of removing it — Raymond, live test
-        // 2026-07-31). Simple's "no cost" promise therefore has to hold here rather than on the meter.
-        UsagePillField.SessionUsage when HasUsage && !SuppressCostMeter =>
-            new UsagePillItem(UsageSummary, "CockpitTextSecondaryBrush", UsageTooltip),
-        UsagePillField.FiveHourWindow => WindowPillItem("5h"),
-        UsagePillField.WeeklyWindow => WindowPillItem("wk"),
-        _ => null,
-    };
+        switch (field)
+        {
+            case UsagePillField.Context when ContextUsedPercent is { } percent:
+                yield return new UsagePillItem($"ctx {percent:0}%", UsageSeverity.BrushKeyFor(percent, _ThresholdFor("ctx")), $"Context window: {percent:0}% used");
+                break;
 
-    // The rate windows label themselves ("5h", "wk"); a field maps to the window carrying its label, and yields
-    // nothing when the provider reported no such window. Each pill carries only its own figure in the hover — the
-    // combined story stays in the chevron's flyout.
-    private UsagePillItem? WindowPillItem(string label) =>
-        RateLimits.FirstOrDefault(window => window.Label == label) is { } window
-            ? new UsagePillItem($"{label} {window.UsedPercent:0}%", UsageSeverity.BrushKeyFor(window.UsedPercent, _ThresholdFor(label)), $"{label}: {window.UsedPercent:0}% used")
-            : null;
+            // Gated on SuppressCostMeter as well as on being selected: this segment is now the only place the
+            // token/cost figure renders (the standalone meter beside the pill was the same UsageSummary and the
+            // same tooltip, so unticking "Session usage" moved the figure instead of removing it — Raymond, live
+            // test 2026-07-31). Simple's "no cost" promise therefore has to hold here rather than on the meter.
+            case UsagePillField.SessionUsage when HasUsage && !SuppressCostMeter:
+                yield return new UsagePillItem(UsageSummary, "CockpitTextSecondaryBrush", UsageTooltip);
+                break;
+
+            case UsagePillField.RateWindows:
+                foreach (var window in RateLimits)
+                {
+                    yield return _WindowPillItem(window);
+                }
+
+                break;
+        }
+    }
+
+    private UsagePillItem _WindowPillItem(SessionRateWindow window) =>
+        new($"{window.Label} {window.UsedPercent:0}%", UsageSeverity.BrushKeyFor(window.UsedPercent, _ThresholdFor(window.Label)), $"{window.Label}: {window.UsedPercent:0}% used");
 
     // What the provider called worth mentioning for the signal behind this label, or null when the figure came
     // from a route that declares none (an SDK driver reporting windows without signals, or a design-time stub).

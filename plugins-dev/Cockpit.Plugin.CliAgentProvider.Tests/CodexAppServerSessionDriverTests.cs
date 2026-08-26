@@ -440,6 +440,37 @@ public class CodexAppServerSessionDriverTests
         }, status.RateLimits);
     }
 
+    // #1105 C: the driver asks for the account snapshot itself right after the handshake instead of waiting
+    // for a turn. Fire-and-forget: _StartAsync below never answers this request, yet the session still starts.
+    [Fact]
+    public async Task StartAsync_PrefetchesTheAccountRateLimits_SoTheBarCanFillBeforeAnyTurn()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await _RespondAsync(fake, "account/rateLimits/read", """{"rateLimits":{"primary":{"usedPercent":22,"resetsAt":1800000000,"windowDurationMins":10080}}}""");
+
+        var status = await _WaitForStatusAsync(driver, current => current.RateLimits.Count > 0);
+        Assert.Equal("7d", Assert.Single(status.RateLimits).Label);
+    }
+
+    // A codex build too old to know "account/rateLimits/read" answers with a JSON-RPC error rather than a
+    // result; today's behaviour (empty until the first turn) must survive that, not tear the session down.
+    [Fact]
+    public async Task StartAsync_PrefetchFailure_LeavesTheSessionUsable()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        var request = await _WaitForRequestAsync(fake, "account/rateLimits/read");
+        var id = request.GetProperty("id").GetInt64();
+        await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"error":{"code":-32601,"message":"method not found"}}""");
+
+        Assert.Null(driver.Status);
+    }
+
     [Fact]
     public async Task SessionInitialized_CarriesTheWorkingDirectory()
     {

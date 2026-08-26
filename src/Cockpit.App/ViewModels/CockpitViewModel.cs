@@ -1441,18 +1441,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _transcriptDisplaySettingsStatus = string.Empty;
 
-    // Which metrics the header's usage pill shows (AC-105), as four toggles composed into the saved field list. Applied to all open sessions.
+    // Which metrics the header's usage pill shows (AC-105), as three toggles composed into the saved field list. Applied to all open sessions.
     [ObservableProperty]
     private bool _showUsagePillContext = true;
 
     [ObservableProperty]
     private bool _showUsagePillSessionUsage;
 
+    // #1105 A2: one toggle for every rolling allowance window a provider reports, replacing the earlier pair of
+    // Claude-specific five-hour/weekly toggles that left a differently-shaped window (Codex's 7d) undrawable.
     [ObservableProperty]
-    private bool _showUsagePillFiveHour;
-
-    [ObservableProperty]
-    private bool _showUsagePillWeekly;
+    private bool _showUsagePillRateWindows;
 
     [ObservableProperty]
     private string _usagePillSettingsStatus = string.Empty;
@@ -2254,11 +2253,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     partial void OnShowUsagePillSessionUsageChanged(bool value) => ApplyUsagePillFields();
 
-    partial void OnShowUsagePillFiveHourChanged(bool value) => ApplyUsagePillFields();
+    partial void OnShowUsagePillRateWindowsChanged(bool value) => ApplyUsagePillFields();
 
-    partial void OnShowUsagePillWeeklyChanged(bool value) => ApplyUsagePillFields();
-
-    // The chosen usage-pill fields in display order, composed from the four toggles.
+    // The chosen usage-pill fields in display order, composed from the three toggles.
     private IReadOnlyList<UsagePillField> ComposeUsagePillFields()
     {
         var fields = new List<UsagePillField>();
@@ -2272,14 +2269,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             fields.Add(UsagePillField.SessionUsage);
         }
 
-        if (ShowUsagePillFiveHour)
+        if (ShowUsagePillRateWindows)
         {
-            fields.Add(UsagePillField.FiveHourWindow);
-        }
-
-        if (ShowUsagePillWeekly)
-        {
-            fields.Add(UsagePillField.WeeklyWindow);
+            fields.Add(UsagePillField.RateWindows);
         }
 
         return fields;
@@ -3403,8 +3395,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _usagePillSettingsStore.LoadAsync();
         ShowUsagePillContext = settings.VisibleFields.Contains(UsagePillField.Context);
         ShowUsagePillSessionUsage = settings.VisibleFields.Contains(UsagePillField.SessionUsage);
-        ShowUsagePillFiveHour = settings.VisibleFields.Contains(UsagePillField.FiveHourWindow);
-        ShowUsagePillWeekly = settings.VisibleFields.Contains(UsagePillField.WeeklyWindow);
+        ShowUsagePillRateWindows = settings.VisibleFields.Contains(UsagePillField.RateWindows);
     }
 
     // Persists the usage-pill field selection edited in the Options dialog to `cockpit.json`.
@@ -6245,8 +6236,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var usagePill = new UsagePillSettings();
         ShowUsagePillContext = usagePill.VisibleFields.Contains(UsagePillField.Context);
         ShowUsagePillSessionUsage = usagePill.VisibleFields.Contains(UsagePillField.SessionUsage);
-        ShowUsagePillFiveHour = usagePill.VisibleFields.Contains(UsagePillField.FiveHourWindow);
-        ShowUsagePillWeekly = usagePill.VisibleFields.Contains(UsagePillField.WeeklyWindow);
+        ShowUsagePillRateWindows = usagePill.VisibleFields.Contains(UsagePillField.RateWindows);
 
         var behavior = new SessionBehaviorSettings();
         AutoCloseOnExit = behavior.AutoCloseOnExit;

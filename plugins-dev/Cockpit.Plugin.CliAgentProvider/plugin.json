@@ -1,7 +1,7 @@
 {
   "id": "cli-agent-provider",
   "name": "Codex (ChatGPT)",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "entryAssembly": "Cockpit.Plugin.CliAgentProvider.dll",
   "entryType": "Cockpit.Plugin.CliAgentProvider.CliAgentProviderPlugin",
   "abstractionsVersion": 2,
