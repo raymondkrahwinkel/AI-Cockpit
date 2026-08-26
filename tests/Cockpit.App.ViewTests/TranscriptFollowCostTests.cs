@@ -24,7 +24,7 @@ public sealed class TranscriptFollowCostTests
 
     // A real frame rather than UpdateLayout: the freeze's stack starts in MediaContext.Render, and it is that pass
     // the follow re-entered. Driving layout by hand would measure a shape the app never runs.
-    private static void _Frame(Window window)
+    private static void _Frame()
     {
         Dispatcher.UIThread.RunJobs();
         AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
@@ -48,17 +48,17 @@ public sealed class TranscriptFollowCostTests
         var view = new SessionView { DataContext = session };
         var window = new Window { Width = 800, Height = 600, Content = view };
         window.Show();
-        _Frame(window);
+        _Frame();
 
         view.TranscriptScroll.ScrollToEnd();
-        _Frame(window);
+        _Frame();
 
         var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
         for (var index = 0; index < StreamedRows; index++)
         {
             session.Transcript.Add(new TranscriptEntryViewModel(
                 TranscriptEntryKind.AssistantText, $"streamed {index} of a reply that wraps over a couple of lines."));
-            _Frame(window);
+            _Frame();
         }
 
         var perRowMb = (GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore) / 1024.0 / 1024.0 / StreamedRows;
