@@ -156,6 +156,21 @@ public class DelegationMcpSelectionTests
         Assert.Equivalent(new object[] { Orchestrator }, servers);
     }
 
+    [Fact]
+    public async Task ASelectedNonAlwaysMountedHostEndpoint_ReachesTheDelegatedTask()
+    {
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync("project-1", Arg.Any<CancellationToken>())
+            .Returns([new McpServerConfig { Name = "cockpit-worktrees", CockpitHosted = true, AlwaysMounted = false }]);
+        var service = _ServiceWithRegistry(
+            [],
+            mcpServerCatalog: catalog);
+
+        var servers = await service._ToolsForAsync(_Profile(selection: ["cockpit-worktrees"]), projectId: "project-1");
+
+        Assert.Equivalent(new object[] { "cockpit-worktrees" }, servers);
+    }
+
     private static McpServerConfig _Enabled(string name) => new() { Name = name, Enabled = true };
 
     private static McpServerConfig _Disabled(string name) => new() { Name = name, Enabled = false };
@@ -167,7 +182,9 @@ public class DelegationMcpSelectionTests
             EnabledMcpServerNames = selection,
         };
 
-    private static DelegationService _ServiceWithRegistry(params McpServerConfig[] registry)
+    private static DelegationService _ServiceWithRegistry(
+        McpServerConfig[] registry,
+        IMcpServerCatalog? mcpServerCatalog = null)
     {
         var mcpServerStore = Substitute.For<IMcpServerStore>();
         mcpServerStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(registry);
@@ -177,6 +194,10 @@ public class DelegationMcpSelectionTests
             Substitute.For<ISessionManager>(),
             mcpServerStore,
             Substitute.For<IDelegationAuditLog>(),
-            minutes => TimeSpan.FromMinutes(minutes));
+            minutes => TimeSpan.FromMinutes(minutes),
+            mcpServerCatalog: mcpServerCatalog);
     }
+
+    private static DelegationService _ServiceWithRegistry(params McpServerConfig[] registry) =>
+        _ServiceWithRegistry(registry, mcpServerCatalog: null);
 }
