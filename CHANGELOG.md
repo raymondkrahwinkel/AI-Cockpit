@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the plugin SDK now carries a named list of everything a plugin can ask the cockpit for — each
+  entry with how much granting it would hand over, which SDK members it covers and the cockpit version it
+  first appeared in. Nothing is asked or enforced yet; it is the vocabulary the later permission prompt
+  will speak, and for now a plugin author's map of the whole API surface in the API reference.
 - added: a session can now start a command — a test run, say — and end its own turn immediately instead of
   blocking on it; the verdict is delivered to its inbox once the command finishes or times out. Every process it
   leaves behind is ended too, a build server it spawned and left running included, whether the run finished
