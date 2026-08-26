@@ -47,6 +47,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     private readonly ISessionProfileStore _profileStore;
     private readonly ISessionManager _sessionManager;
     private readonly IMcpServerStore _mcpServerStore;
+    private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IDelegationAuditLog _auditLog;
     private readonly ISessionWorkspaces _workspaces;
     private readonly IPluginProviderRegistry? _providerRegistry;
@@ -77,8 +78,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IPluginProviderRegistry? providerRegistry = null,
         ISessionProjectResolver? projects = null,
         IWorktreeManager? worktrees = null,
-        IConsentBroker? consent = null)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent)
+        IConsentBroker? consent = null,
+        IMcpServerCatalog? mcpServerCatalog = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog)
     {
     }
 
@@ -96,11 +98,13 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IWorktreeManager? worktrees = null,
         TimeSpan? idleWindow = null,
         IConsentBroker? consent = null,
-        TimeSpan? taskRetention = null)
+        TimeSpan? taskRetention = null,
+        IMcpServerCatalog? mcpServerCatalog = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
         _mcpServerStore = mcpServerStore;
+        _mcpServerCatalog = mcpServerCatalog;
         _auditLog = auditLog;
         _workspaces = workspaces ?? NoSessionWorkspaces.Instance;
         _providerRegistry = providerRegistry;
@@ -151,8 +155,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             .ToList();
     }
 
-    // The MCP servers a task delegated to `profile` would receive, sorted, as the
-    // listing surfaces them so a caller can pass a valid `mcp_servers` narrowing on delegate_task (AC-136).
+    // Target descriptions stay registry-only while task entitlement is catalog/project scoped (AC-1069).
+    // Passing caller scope through this public route belongs to a follow-up; the sorted listing lets callers
+    // pass a valid `mcp_servers` narrowing on delegate_task (AC-136).
     private static IReadOnlyList<string> _AvailableServers(IReadOnlyList<McpServerConfig> registry, SessionProfile profile) =>
         [.. _NarrowServersFor(registry, profile, null).OrderBy(name => name, StringComparer.OrdinalIgnoreCase)];
 
@@ -345,12 +350,19 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             throw;
         }
 
+        // A sub-agent inherits the project of the session that delegated it (AC-320): it is doing a piece of
+        // that session's work, so the servers, overrides and contributions its caller starts with are the ones
+        // it needs too. Resolved here, once — the start path is where looking it up would cost the UI thread.
+        var projectId = _projects is null || callerPaneId is null
+            ? null
+            : await _projects.ProjectIdOfAsync(callerPaneId, cancellationToken);
+
         // AC-136: a per-task MCP selection may only narrow within what the profile already gets. A name outside
         // that allowed set is an escalation attempt — a server the operator disabled, or the orchestrator without
         // MayDelegateFurther — and is refused, with the available set named, not silently honoured or dropped.
         if (request.McpServers is { } requestedServers)
         {
-            var allowed = await _ToolsForAsync(profile);
+            var allowed = await _ToolsForAsync(profile, projectId: projectId);
             var disallowed = requestedServers.Where(name => !allowed.Contains(name)).ToList();
             if (disallowed.Count > 0)
             {
@@ -361,13 +373,6 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 throw new DelegationRejectedException(reason);
             }
         }
-
-        // A sub-agent inherits the project of the session that delegated to it (AC-320): it is doing a piece of
-        // that session's work, so the servers, overrides and contributions its caller starts with are the ones
-        // it needs too. Resolved here, once — the start path is where looking it up would cost the UI thread.
-        var projectId = _projects is null || callerPaneId is null
-            ? null
-            : await _projects.ProjectIdOfAsync(callerPaneId, cancellationToken);
 
         var entry = new DelegatedTaskEntry(profile, request) { OwnerPaneId = callerPaneId, ProjectId = projectId };
         lock (_tasksLock)
@@ -619,7 +624,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 entry.Profile,
                 effectiveCeiling,
                 model: null,
-                enabledMcpServerNames: await _ToolsForAsync(entry.Profile, entry.McpServers),
+                enabledMcpServerNames: await _ToolsForAsync(entry.Profile, entry.McpServers, entry.ProjectId),
                 workingDirectory: entry.WorkingDirectory,
                 // AC-128/AC-89: give the delegated session its own verified MCP identity, keyed on the task id, so
                 // the driver mints it a per-session token instead of the shared app key. Without this a sub-agent's
@@ -840,9 +845,14 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     // The MCP servers a delegated session gets: everything the operator enabled, narrowed by the profile's
     // pre-selection and the caller's per-task selection, minus the orchestrator unless MayDelegateFurther —
     // a second lock on the recursion guard alongside `_Guard`'s depth check.
-    internal async Task<IReadOnlySet<string>> _ToolsForAsync(SessionProfile profile, IReadOnlyList<string>? perTaskSelection = null)
+    internal async Task<IReadOnlySet<string>> _ToolsForAsync(
+        SessionProfile profile,
+        IReadOnlyList<string>? perTaskSelection = null,
+        string? projectId = null)
     {
-        var registry = await _mcpServerStore.LoadAsync();
+        var registry = _mcpServerCatalog is null
+            ? await _mcpServerStore.LoadAsync()
+            : await _mcpServerCatalog.GetServersForProjectAsync(projectId);
         return _NarrowServersFor(registry, profile, perTaskSelection);
     }
 
@@ -871,6 +881,10 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         {
             names.Remove(OrchestratorMcpServer.ServerName);
         }
+
+        // Terminal needs an operator pane and an unremembered approval, so unattended tasks cannot use it.
+        // Keeping it out avoids advertising a tool that can never succeed there.
+        names.Remove("cockpit-terminal");
 
         return names;
     }
