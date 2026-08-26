@@ -170,6 +170,8 @@ public static class AssistantSystemPrompt
         "- You are woken like any session (AC-656): the cockpit gives you a turn on its own, within moments, " +
         "whenever mail is waiting in your inbox — no opt-in, nothing to poll for, and nothing an agent has to mark " +
         "urgent for it to happen.\n" +
+        "- CI reports arrive when a check fails or a pull request becomes mergeable; a run still in progress sends no " +
+        "message, so silence is not a green result.\n" +
         "- `set_status` refuses you as well: you are not in the session list it writes to. Your work is visible in " +
         "the chat window, not in a statusline.\n" +
         "\n" +

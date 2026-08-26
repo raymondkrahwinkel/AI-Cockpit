@@ -74,7 +74,7 @@ public class CiWatcherTests
         _inbox.DidNotReceiveWithAnyArgs().Deliver(default!, default!, default!, default!);
     }
 
-    // Acceptance criterion 2: nobody asked, and both the operator and the assistant are told.
+    // AC-1095 criteria 1 and 2: nobody asked, and both the operator, the live pane, and the assistant are told.
     [Fact]
     public async Task ARedCheck_ReachesTheOperatorAndTheAssistantWithoutBeingAskedFor()
     {
@@ -91,6 +91,11 @@ public class CiWatcherTests
             AssistantIdentity.PaneId,
             Arg.Any<string>(),
             Arg.Is<string>(body => body.Contains("plugins")));
+        _inbox.Received(1).Deliver(
+            Arg.Any<string>(),
+            "pane-1",
+            Arg.Any<string>(),
+            Arg.Is<string>(body => body.Contains("plugins") && body.Contains("https://github.com")));
     }
 
     // Criterion 3: the message reports, it does not act. Nothing here starts a session or a task, and the message
@@ -102,7 +107,7 @@ public class CiWatcherTests
 
         await watcher.RunOnceAsync();
 
-        _inbox.Received(1).Deliver(
+        _inbox.Received(2).Deliver(
             Arg.Any<string>(),
             Arg.Any<string>(),
             Arg.Any<string>(),
@@ -121,7 +126,21 @@ public class CiWatcherTests
         await watcher.RunOnceAsync();
 
         await _notifier.Received(1).NotifyAttentionAsync(Arg.Any<AttentionNotification>(), Arg.Any<CancellationToken>());
-        _inbox.Received(1).Deliver(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
+        _inbox.Received(2).Deliver(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    // AC-1095 criterion 6: the same failed job on a new push must be news again.
+    [Fact]
+    public async Task ACheckThatFailsAgainOnANewCommit_IsReportedAgain()
+    {
+        using var watcher = _Watcher(OneRed, OneRed);
+        var heads = new Queue<string>(["first", "second"]);
+        watcher.HeadProbe = (_, _) => Task.FromResult(heads.Dequeue());
+
+        await watcher.RunOnceAsync();
+        await watcher.RunOnceAsync();
+
+        await _notifier.Received(2).NotifyAttentionAsync(Arg.Any<AttentionNotification>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -160,8 +179,7 @@ public class CiWatcherTests
         await _notifier.DidNotReceiveWithAnyArgs().NotifyAttentionAsync(default!, default);
     }
 
-    // Two sessions on one worktree are one branch and one set of checks. Reported per pane, the operator would be
-    // told the same failure once per session sitting on it.
+    // AC-1095 criterion 3: one probe per worktree, then every live pane gets the same result.
     [Fact]
     public async Task TwoSessionsOnOneCheckout_AreOneCheckAndOneReport()
     {
@@ -184,6 +202,9 @@ public class CiWatcherTests
 
         Assert.Equal(1, probes);
         await _notifier.Received(1).NotifyAttentionAsync(Arg.Any<AttentionNotification>(), Arg.Any<CancellationToken>());
+        _inbox.Received(1).Deliver(Arg.Any<string>(), AssistantIdentity.PaneId, Arg.Any<string>(), Arg.Any<string>());
+        _inbox.Received(1).Deliver(Arg.Any<string>(), "pane-1", Arg.Any<string>(), Arg.Any<string>());
+        _inbox.Received(1).Deliver(Arg.Any<string>(), "pane-2", Arg.Any<string>(), Arg.Any<string>());
     }
 
     // No gh, no login, no pull request: the watcher survives it and remembers nothing that did not happen, so the
@@ -255,7 +276,7 @@ public class CiWatcherTests
         await watcher.RunOnceAsync();
 
         await _notifier.Received(1).NotifyAttentionAsync(Arg.Any<AttentionNotification>(), Arg.Any<CancellationToken>());
-        _inbox.Received(1).Deliver(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
+        _inbox.Received(2).Deliver(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
     }
 
     // Criterion 4: green checks are not the same question as "may this be merged".
@@ -349,11 +370,31 @@ public class CiWatcherTests
         await watcher.RunOnceAsync();
         await watcher.RunOnceAsync();
 
-        _inbox.Received(2).Deliver(
+        _inbox.Received(4).Deliver(
             Arg.Any<string>(),
             Arg.Any<string>(),
             Arg.Any<string>(),
             Arg.Is<string>(body => body.Contains("mergeable")));
+    }
+
+    // AC-1095 criteria 9 and 10: a CI result carries names and links, not an unbounded job log.
+    [Fact]
+    public async Task AnOversizedCiMessage_IsTruncatedRatherThanDropped()
+    {
+        using var watcher = new CiWatcher(_notifier, _inbox, _settings)
+        {
+            Watching = () => [new WatchedCheckout("pane-1", new string('x', 2_100), Environment.CurrentDirectory)],
+            Probe = (_, _) => Task.FromResult(OneRed),
+            HeadProbe = (_, _) => Task.FromResult("commit"),
+        };
+
+        await watcher.RunOnceAsync();
+
+        _inbox.Received(2).Deliver(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Is<string>(body => body.Length <= 2_000 && body.Contains("more CI details omitted")));
     }
 
     // Asked of the container rather than of the class: an unregistered watcher resolves to null in `App.axaml.cs`,
