@@ -127,6 +127,7 @@ jobs:
 
       - name: Test the plugins that have tests
         run: |
+          # Production plugin code was already built with -warnaserror above; preserve the test projects' existing warning policy.
           dotnet build PluginTests.slnx --configuration Release
           dotnet test PluginTests.slnx --configuration Release --no-build --logger "console;verbosity=minimal"
 
