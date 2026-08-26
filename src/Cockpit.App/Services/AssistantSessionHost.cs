@@ -415,10 +415,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             _logger.LogWarning("The assistant session was not running right after its start: {Status}", session.Status);
         }
 
-        // AC-1089: the assistant never went through this before, so its record carried no ProfileId/WorkingDirectory
-        // — a profile or working-directory switch could not be told apart from "nothing changed" and a stale
-        // conversation id rode along into a provider that never had it. Fire-and-forget like the same call in
-        // CockpitViewModel: a session that has already started must not wait on a state-file write.
+        // AC-1089: the assistant never came through here, so its record carried no ProfileId/WorkingDirectory and a
+        // profile or working-directory switch read as "nothing changed", leaving a stale conversation id standing.
+        // Fire-and-forget like the same call in CockpitViewModel — a started session must not wait on a state write.
         _ = _sessionStateRecorder.RecordSessionStartedAsync(
             AssistantPaneId,
             profile,
