@@ -19,4 +19,8 @@ public class AgentStatusSystemPromptTests
         Assert.Contains("update", AgentStatusSystemPrompt.Default, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("clear", AgentStatusSystemPrompt.Default, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void TheInstruction_ExplainsThatARunningCiCheckIsSilent() =>
+        Assert.Contains("silence is not a green result", AgentStatusSystemPrompt.Default, StringComparison.OrdinalIgnoreCase);
 }

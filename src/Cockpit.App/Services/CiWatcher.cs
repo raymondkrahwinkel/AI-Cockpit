@@ -30,11 +30,13 @@ public sealed class CiWatcher(
 
     // Who the message is from. Not a pane and never will be — the cockpit itself noticed this, not a neighbour.
     private const string SenderPaneId = "cockpit-ci-watch";
+    private const int MaxMessageLength = 2_000;
+    private const string TruncationMarker = " … (more CI details omitted)";
 
     private readonly ILogger<CiWatcher> _logger = logger ?? NullLogger<CiWatcher>.Instance;
 
     // The red checks already reported, per checkout, so a branch that stays red stays quiet.
-    private readonly Dictionary<string, IReadOnlySet<string>> _reported = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Dictionary<string, IReadOnlySet<string>>> _reported = new(StringComparer.OrdinalIgnoreCase);
 
     // The checkouts already reported ready (AC-645), so a pull request that sits green all afternoon is said once.
     private readonly HashSet<string> _reportedReady = new(StringComparer.OrdinalIgnoreCase);
@@ -50,6 +52,9 @@ public sealed class CiWatcher(
     // Runs `gh pr checks` in a directory and hands back what it printed. Replaced by the tests, which have no
     // repository, no network and no wish for either.
     public Func<string, CancellationToken, Task<string>> Probe { get; set; } = _AskGhAsync;
+
+    // The checked-out commit identifies a new push when the same job name fails again.
+    public Func<string, CancellationToken, Task<string>> HeadProbe { get; set; } = _AskHeadAsync;
 
     // AC-645: `gh pr view` for the merge itself. A second call because `gh pr checks --json` has no `reviewDecision`
     // or `mergeable` to fold into — it only knows check fields — and only ever run once the checks are already green.
@@ -93,17 +98,18 @@ public sealed class CiWatcher(
         _looking = true;
         try
         {
-            var checkouts = Watching()
+            var checkoutGroups = Watching()
                 .Where(checkout => !string.IsNullOrWhiteSpace(checkout.Directory))
                 .GroupBy(checkout => checkout.Directory, StringComparer.OrdinalIgnoreCase)
-                .Select(group => group.First())
                 .ToList();
+            var checkouts = checkoutGroups.Select(group => group.First()).ToList();
 
             _Forget(checkouts);
 
-            foreach (var checkout in checkouts)
+            foreach (var group in checkoutGroups)
             {
-                await _LookAsync(checkout, cancellationToken);
+                var recipients = group.ToList();
+                await _LookAsync(recipients[0], recipients, cancellationToken);
             }
         }
         finally
@@ -112,7 +118,7 @@ public sealed class CiWatcher(
         }
     }
 
-    private async Task _LookAsync(WatchedCheckout checkout, CancellationToken cancellationToken)
+    private async Task _LookAsync(WatchedCheckout checkout, IReadOnlyList<WatchedCheckout> recipients, CancellationToken cancellationToken)
     {
         string output;
         try
@@ -127,11 +133,25 @@ public sealed class CiWatcher(
             return;
         }
 
+        string head;
+        try
+        {
+            head = await HeadProbe(checkout.Directory, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(exception, "Asking git for the head of {Directory} failed; keeping the existing CI deduplication.", checkout.Directory);
+            head = string.Empty;
+        }
+
         var checks = RedChecks.Parse(output);
-        var alreadyReported = _reported.GetValueOrDefault(checkout.Directory, new HashSet<string>(StringComparer.Ordinal));
+        var reports = _reported.GetValueOrDefault(checkout.Directory) ?? new(StringComparer.Ordinal);
+        var alreadyReported = reports.GetValueOrDefault(head, new HashSet<string>(StringComparer.Ordinal));
         var newlyRed = RedChecks.NewlyRed(checks, alreadyReported);
 
-        _reported[checkout.Directory] = RedChecks.RedNames(checks);
+        reports.Clear();
+        reports[head] = RedChecks.RedNames(checks);
+        _reported[checkout.Directory] = reports;
 
         if (!RedChecks.AllGreen(checks))
         {
@@ -142,16 +162,16 @@ public sealed class CiWatcher(
 
         if (newlyRed.Count > 0)
         {
-            await _ReportAsync(checkout, newlyRed, cancellationToken);
+            await _ReportAsync(checkout, recipients, newlyRed, cancellationToken);
             return;
         }
 
-        await _LookAtReadinessAsync(checkout, checks, cancellationToken);
+        await _LookAtReadinessAsync(checkout, recipients, checks, cancellationToken);
     }
 
     // AC-645: the mirror of a red check — nothing failing, nothing pending, nothing blocking the merge, and nobody
     // pressing the button. Said once per crossing into ready, the same way red is said once per crossing into red.
-    private async Task _LookAtReadinessAsync(WatchedCheckout checkout, IReadOnlyList<CiCheck> checks, CancellationToken cancellationToken)
+    private async Task _LookAtReadinessAsync(WatchedCheckout checkout, IReadOnlyList<WatchedCheckout> recipients, IReadOnlyList<CiCheck> checks, CancellationToken cancellationToken)
     {
         if (!RedChecks.AllGreen(checks))
         {
@@ -182,10 +202,10 @@ public sealed class CiWatcher(
         }
 
         _reportedReady.Add(checkout.Directory);
-        await _ReportReadyAsync(checkout, cancellationToken);
+        await _ReportReadyAsync(checkout, recipients, cancellationToken);
     }
 
-    private async Task _ReportReadyAsync(WatchedCheckout checkout, CancellationToken cancellationToken)
+    private async Task _ReportReadyAsync(WatchedCheckout checkout, IReadOnlyList<WatchedCheckout> recipients, CancellationToken cancellationToken)
     {
         _logger.LogInformation("CI went green and the pull request is mergeable on {Title} ({Directory}).", checkout.Title, checkout.Directory);
 
@@ -193,15 +213,11 @@ public sealed class CiWatcher(
             new AttentionNotification(checkout.Title, "CI is green and the pull request is ready to merge"),
             cancellationToken);
 
-        inbox.Deliver(
-            SenderPaneId,
-            AssistantIdentity.PaneId,
-            "ci",
-            $"CI is green on '{checkout.Title}' ({checkout.Directory}) and the pull request is mergeable with nothing "
-                + "blocking review. It is still unmerged. Nothing has been started about it.");
+        _Deliver(recipients, $"CI is green on '{checkout.Title}' ({checkout.Directory}) and the pull request is mergeable with nothing "
+            + "blocking review. It is still unmerged. Nothing has been started about it.");
     }
 
-    private async Task _ReportAsync(WatchedCheckout checkout, IReadOnlyList<CiCheck> red, CancellationToken cancellationToken)
+    private async Task _ReportAsync(WatchedCheckout checkout, IReadOnlyList<WatchedCheckout> recipients, IReadOnlyList<CiCheck> red, CancellationToken cancellationToken)
     {
         var named = string.Join(", ", red.Select(check => check.Name));
         _logger.LogInformation("CI went red on {Title} ({Directory}): {Checks}.", checkout.Title, checkout.Directory, named);
@@ -211,16 +227,23 @@ public sealed class CiWatcher(
             new AttentionNotification(checkout.Title, $"CI failed: {named}"),
             cancellationToken);
 
-        // And the assistant, which is the one coordinating these pull requests (AC-632). It reads this on its next
-        // turn or tool call, so a tick nobody needed to hear about costs it nothing.
-        inbox.Deliver(
-            SenderPaneId,
-            AssistantIdentity.PaneId,
-            "ci",
-            $"CI failed on '{checkout.Title}' ({checkout.Directory}): {named}. "
-                + $"{string.Join(" ", red.Select(check => check.Link).Where(link => link.Length > 0))} "
-                + "Nothing has been started about it.");
+        _Deliver(recipients, $"CI failed on '{checkout.Title}' ({checkout.Directory}): {named}. "
+            + $"{string.Join(" ", red.Select(check => check.Link).Where(link => link.Length > 0))} "
+            + "Nothing has been started about it.");
     }
+
+    private void _Deliver(IReadOnlyList<WatchedCheckout> recipients, string message)
+    {
+        var body = _Bound(message);
+        inbox.Deliver(SenderPaneId, AssistantIdentity.PaneId, "ci", body);
+        foreach (var paneId in recipients.Select(checkout => checkout.PaneId).Distinct(StringComparer.Ordinal))
+        {
+            inbox.Deliver(SenderPaneId, paneId, "ci", body);
+        }
+    }
+
+    private static string _Bound(string message) =>
+        message.Length <= MaxMessageLength ? message : message[..(MaxMessageLength - TruncationMarker.Length)] + TruncationMarker;
 
     // Drops what was remembered about checkouts nobody is on any more, so a long run does not accumulate the branches
     // of every session ever closed.
@@ -252,21 +275,24 @@ public sealed class CiWatcher(
     // `gh pr checks` for the pull request of whatever branch this directory is on. The exit code is ignored on
     // purpose: gh exits 8 while checks are pending and 1 when one failed, and writes the JSON either way.
     private static Task<string> _AskGhAsync(string workingDirectory, CancellationToken cancellationToken) =>
-        _RunGhAsync(workingDirectory, ["pr", "checks", "--json", "bucket,name,workflow,link"], cancellationToken);
+        _RunProcessAsync("gh", workingDirectory, ["pr", "checks", "--json", "bucket,name,workflow,link"], cancellationToken);
 
     // AC-645: the two fields that say whether anything is still blocking the merge. A merged or closed pull request
     // makes this fail or answer nothing, which reads as not ready — so a branch already merged is never reported.
     private static Task<string> _AskGhMergeStateAsync(string workingDirectory, CancellationToken cancellationToken) =>
-        _RunGhAsync(workingDirectory, ["pr", "view", "--json", "reviewDecision,mergeable"], cancellationToken);
+        _RunProcessAsync("gh", workingDirectory, ["pr", "view", "--json", "reviewDecision,mergeable"], cancellationToken);
 
-    private static async Task<string> _RunGhAsync(string workingDirectory, string[] arguments, CancellationToken cancellationToken)
+    private static async Task<string> _AskHeadAsync(string workingDirectory, CancellationToken cancellationToken) =>
+        (await _RunProcessAsync("git", workingDirectory, ["rev-parse", "HEAD"], cancellationToken)).Trim();
+
+    private static async Task<string> _RunProcessAsync(string executable, string workingDirectory, string[] arguments, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(workingDirectory))
         {
             return string.Empty;
         }
 
-        var startInfo = new ProcessStartInfo("gh")
+        var startInfo = new ProcessStartInfo(executable)
         {
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
