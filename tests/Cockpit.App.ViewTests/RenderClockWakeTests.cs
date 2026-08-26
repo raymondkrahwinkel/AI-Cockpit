@@ -19,6 +19,8 @@ public sealed class RenderClockWakeTests
     // fails on a broken wake edge rather than on a slow CI runner.
     private static readonly TimeSpan CommitBudget = TimeSpan.FromSeconds(5);
 
+    // AC-1076: forcing SkipException.ForSkip on [Fact] reported [FAIL], not skip, under xunit 2.9.3 + xunit.runner.visualstudio 3.1.4.
+    // Recheck after either package upgrades.
     [SkippableFact]
     public async Task AForcedCommit_IsStillProcessedAfterTheAppHasBeenIdle()
     {
