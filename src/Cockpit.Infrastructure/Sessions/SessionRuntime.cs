@@ -28,6 +28,14 @@ internal sealed class SessionRuntime : ISessionRuntime
     // The OS ceiling around this session's process tree, while it has one (AC-661).
     private IDisposable? _memoryCap;
 
+    // The conversation id the driver last reported, so an event Cockpit raises itself lands on the same
+    // conversation as the driver's own (AC-1060).
+    private string? _lastSessionId;
+
+    // AC-1060: the cgroup this session runs in, taken while it is still alive. After an oomd kill there is no
+    // process left to ask, and the journal names the group rather than the pid.
+    private string? _cgroupName;
+
     // Events dropped off the front of the log, so a cursor handed out before a trim still maps to the right
     // place in the log rather than silently replaying events the consumer has already seen.
     private int _droppedEvents;
@@ -98,6 +106,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         if (_memoryLimiter is not null && _driver.ProcessId is { } processId)
         {
             _memoryCap = _memoryLimiter.Apply(processId, SessionMemoryCap.ResolveBytes(profile, launchOptions));
+            _cgroupName = LinuxSessionCgroup.NameFor(processId);
         }
 
         _pump = _PumpEventsAsync(_lifetime.Token);
@@ -199,14 +208,52 @@ internal sealed class SessionRuntime : ISessionRuntime
         {
             await foreach (var evt in _driver.Events.WithCancellation(cancellationToken))
             {
-                _Append(evt);
-                EventAppended?.Invoke(evt);
+                _Publish(evt);
             }
         }
         catch (OperationCanceledException)
         {
             // Expected on shutdown.
+            return;
         }
+
+        await _ReportOomdKillAsync(cancellationToken);
+    }
+
+    // AC-1060: the stream ended on its own. `systemd-oomd` kills the whole cgroup, so there is no exit code and
+    // no last line to read — its journal naming this session's group is the only fact that says what happened.
+    private async Task _ReportOomdKillAsync(CancellationToken cancellationToken)
+    {
+        // Silence unless there is evidence: a session the operator closed also ends here when its process goes
+        // before the lifetime is cancelled, and a guessed cause is what criterion 2 exists to avoid.
+        if (cancellationToken.IsCancellationRequested || _cgroupName is not { } group)
+        {
+            return;
+        }
+
+        if (await LinuxOomdJournal.FindKillAsync(group) is not { } kill)
+        {
+            return;
+        }
+
+        var because = kill.Pressure.Length > 0
+            ? $" — memory pressure in the slice it sits in was {kill.Pressure}"
+            : string.Empty;
+
+        _Publish(new SessionError
+        {
+            // The conversation this row belongs to, as the driver last reported it — the kill itself carries no
+            // session id, and a row without one is attributed to no conversation at all.
+            SessionId = _lastSessionId,
+            Message = "This session was killed by systemd-oomd, not by anything in the session or in Cockpit. "
+                + $"Its whole cgroup ({kill.CgroupName}) went at once{because}.",
+        });
+    }
+
+    private void _Publish(SessionEvent evt)
+    {
+        _Append(evt);
+        EventAppended?.Invoke(evt);
     }
 
     // A turn can produce several assistant-text blocks, so the reply is folded as they complete and published
@@ -214,6 +261,8 @@ internal sealed class SessionRuntime : ISessionRuntime
     // is preferred when the driver provides one, falling back to the collected prose.
     private void _Append(SessionEvent evt)
     {
+        _lastSessionId = evt.SessionId ?? _lastSessionId;
+
         switch (evt)
         {
             case AssistantTextCompleted { Text.Length: > 0 } text:
