@@ -2,11 +2,8 @@ using Cockpit.Plugins.Abstractions.ManagedCli;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
-// The Codex managed-CLI descriptor (AC-20, AC-1107): version parsing, the target-triple/asset-name mapping, and the
-// plan built from a GitHub release — including the three sibling assets (code-mode-host on every platform;
-// command-runner and windows-sandbox-setup on Windows only). The fixture mirrors the real
-// `api.github.com/repos/openai/codex` release shape (verified live against rust-v0.149.1), so these assert the
-// provider-specific knowledge without a network.
+// The Codex managed-CLI descriptor (AC-20, AC-1107): version parsing, asset-name mapping, and the plan built from
+// a GitHub release, including the three sibling assets. The fixture mirrors the real release shape.
 public class CodexManagedCliTests
 {
     private const string Release = """

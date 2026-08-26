@@ -180,10 +180,8 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
             var plan = await descriptor.BuildDownloadPlanAsync(_http, platform, version, cancellationToken).ConfigureAwait(false);
             var finalPath = Path.Combine(versionDirectory, plan.ExecutableFileName);
 
-            // A managed install is content-addressed by version, so every expected file already on disk is wasted
-            // bytes to re-fetch — but a recipe that now promises a sibling binary (AC-1107) it did not before must
-            // still be topped up even when the primary executable is already there. An update to a newer version is
-            // a separate, explicit EnsureInstalled of that version.
+            // Content-addressed by version, but a recipe that now promises a sibling binary (AC-1107) must still be
+            // topped up even when the primary executable is already on disk.
             var missingArtifacts = _AllArtifacts(plan)
                 .Where(artifact => !File.Exists(Path.Combine(versionDirectory, artifact.FileName)))
                 .ToList();
@@ -224,10 +222,8 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
 
     private async Task _DownloadVerifyPlaceAsync(ManagedCliDownloadPlan plan, string versionDirectory, CancellationToken cancellationToken)
     {
-        // Build in a sibling ".download" directory and swap it into place only once every artifact succeeded, so a
-        // failed or cancelled install never leaves a partial version dir that a later ResolveInstalledPath treats as
-        // complete. (A version dir that already exists but is missing an artifact takes the repair path in
-        // EnsureInstalledAsync instead, writing straight into it — see _DownloadVerifyPlaceArtifactAsync.)
+        // Builds in a sibling ".download" directory and swaps it into place only once every artifact succeeded, so a
+        // failed or cancelled install never leaves a partial version dir (AC-1107).
         var tempDirectory = versionDirectory + ".download";
         _DeleteDirectoryIfExists(tempDirectory);
         Directory.CreateDirectory(tempDirectory);
@@ -255,10 +251,8 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         }
     }
 
-    // Downloads, verifies and places one artifact (the plan's primary executable or one of its AdditionalArtifacts)
-    // into destinationDirectory. Writes to a ".part" staging path and renames into place last, so a failure here
-    // never corrupts an artifact that was already placed by an earlier pass (the repair path relies on this: other
-    // files in destinationDirectory are untouched while this one is being fetched).
+    // Downloads, verifies and places one artifact. Writes to a ".part" staging path and renames it into place last,
+    // so a failure here never corrupts an artifact an earlier pass already placed (AC-1107).
     private async Task _DownloadVerifyPlaceArtifactAsync(ManagedCliArtifactPlan artifact, string destinationDirectory, CancellationToken cancellationToken)
     {
         var bytes = await _DownloadAsync(artifact.Url, cancellationToken).ConfigureAwait(false);
