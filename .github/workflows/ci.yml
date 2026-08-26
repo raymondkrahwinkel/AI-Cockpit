@@ -127,11 +127,9 @@ jobs:
 
       - name: Test the plugins that have tests
         run: |
-          for tests in plugins-dev/Cockpit.Plugin.*.Tests/; do
-            echo "::group::$tests"
-            dotnet test "$tests" --configuration Release --verbosity minimal
-            echo "::endgroup::"
-          done
+          # Production plugin code was already built with -warnaserror above; preserve the test projects' existing warning policy.
+          dotnet build PluginTests.slnx --configuration Release
+          dotnet test PluginTests.slnx --configuration Release --no-build --logger "console;verbosity=minimal"
 
   # A plugin can pass every test here and still be unpublishable: the store only offers an update when the
   # version string moved (AC-276, 2026-07-30 shipped a fix nobody could get). Catch it before the change
