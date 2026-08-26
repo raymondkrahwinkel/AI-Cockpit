@@ -6,10 +6,7 @@ using Avalonia.Media;
 
 namespace Cockpit.App.Converters;
 
-// Resolves a theme brush resource key (e.g. `"CockpitStatusBusyBrush"`, as produced by
-// `ViewModels.SessionViewModel.SessionStatusBrushKey`) to the actual
-// `IBrush` from `Application.Resources`, so the sidebar/grid status dot
-// can bind directly to a view-model string without a codebehind lookup.
+// Resolves the view-model's theme brush key to an IBrush, letting status dots bind without code-behind lookup.
 public sealed class StatusBrushConverter : IValueConverter
 {
     public static readonly StatusBrushConverter Instance = new();
