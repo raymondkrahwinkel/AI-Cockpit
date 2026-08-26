@@ -6,6 +6,10 @@ namespace Cockpit.Infrastructure.Sessions;
 // Linux `ISessionMemoryLimiter` (AC-661): a cgroup v2 group per session, the pid moved in. AC-692: sets
 // `memory.high` (a throttle) rather than `memory.max` (a hard OOM-kill boundary), since Cockpit no longer ends a
 // session for going over its cap on any platform — it warns instead, by toast and by the session's bar (AC-700).
+
+// Measured against that choice (AC-1060): a group past `memory.high` reclaims continuously, and that reclaim is
+// what drives the pressure `systemd-oomd` picks its victim on — so the throttle makes a session a candidate for
+// the ungoverned kill AC-692 set out to avoid. Recorded to be weighed; changing it is not that ticket's call.
 internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
 {
     private const string CgroupRoot = "/sys/fs/cgroup";
