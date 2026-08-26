@@ -57,8 +57,8 @@ public static class CredentialFileHousekeeping
     }
 
     // AC-46: creates the diagnostic log owner-only (defense-in-depth, not a known leak). The `logs/`
-    // directory is created owner-only first, then truncated so each run starts clean; the previous run is
-    // kept as `.previous` first, one generation, so "why did the cockpit disappear?" stays answerable.
+    // directory is created owner-only first, then truncated so each run starts clean; the runs before it are
+    // kept as `.previous`, `.previous.2` and `.previous.3` so "why did the cockpit disappear?" stays answerable.
     public static void PrepareLogFile(string logPath)
     {
         var directory = Path.GetDirectoryName(logPath);
@@ -67,24 +67,46 @@ public static class CredentialFileHousekeeping
             CockpitConfigPath.EnsurePrivateDirectory(directory);
         }
 
-        if (File.Exists(logPath))
+        // Oldest first, so each generation is out of the way before the one below it takes its name.
+        for (var generation = KeptLogGenerations; generation > 1; generation--)
         {
-            try
-            {
-                // Move rather than copy: the owner-only mode this file was created with travels with it, so the
-                // kept copy needs no second round of restriction.
-                File.Move(logPath, logPath + PreviousLogSuffix, overwrite: true);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-            }
+            _KeepAs(KeptLogPath(logPath, generation - 1), KeptLogPath(logPath, generation));
         }
+
+        _KeepAs(logPath, KeptLogPath(logPath, 1));
 
         CockpitConfigPath.WriteAllTextPrivate(logPath, string.Empty);
     }
 
+    // Move rather than copy: the owner-only mode the file was created with travels with it, so the kept copy
+    // needs no second round of restriction. A missing source is the normal case on an early run.
+    private static void _KeepAs(string from, string to)
+    {
+        if (!File.Exists(from))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Move(from, to, overwrite: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     // Appended to the log path for the copy `PrepareLogFile` keeps of the previous run.
     public const string PreviousLogSuffix = ".previous";
+
+    // AC-1113: two quick restarts is the normal reaction to a freeze, and with a single kept copy the second
+    // one discarded the evidence of the first — which is exactly how the 21:04 and 22:03 freezes were lost.
+    public const int KeptLogGenerations = 3;
+
+    // Where `PrepareLogFile` keeps generation `generation` of the log, 1 being the run that just ended.
+    public static string KeptLogPath(string logPath, int generation) => generation <= 1
+        ? logPath + PreviousLogSuffix
+        : $"{logPath}{PreviousLogSuffix}.{generation}";
 
     // When `configFilePath` is an encrypted config, deletes any `.bak`/`.damaged-*`
     // sidecar that still holds a credential in the clear. Reads whether encryption is on straight from the config

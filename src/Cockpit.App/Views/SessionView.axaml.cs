@@ -24,6 +24,11 @@ public partial class SessionView : UserControl
     // causes are never mistaken for the operator's — and never re-enter it.
     private bool _following;
 
+    // AC-1113: `_following` only covers a scroll change raised inside the call. Since AC-1111 the viewport move
+    // is a plain Offset write, whose layout pass — and the ScrollChanged that ends it — runs after the call has
+    // returned. This carries the guard across it: the follow's own correction may be answered once, not forever.
+    private bool _followCorrected;
+
     // Marks a real scroll gesture happened; the next ScrollChanged is its consequence. Delta fields
     // can't stand in — a panel's own offset correction has the same fingerprint (three rounds of
     // this ticket died on that ambiguity). Needs an expiry — see _OnTranscriptWheel.
@@ -256,6 +261,15 @@ public partial class SessionView : UserControl
         var byOperator = _wheelTurned || _pointerHeld;
         _wheelTurned = false;
 
+        // AC-1113: this reads the deltas to tell our own correction from a real change, which is a different
+        // question from the one the `_wheelTurned` comment warns about — that ambiguity is about the operator,
+        // and a panel's own offset correction belongs on this side of the line anyway.
+        var ownCorrection = TranscriptScrollAnchor.IsOwnCorrection(e.ExtentDelta.Y, e.ViewportDelta.Y);
+        if (!ownCorrection)
+        {
+            _followCorrected = false;
+        }
+
         if (byOperator)
         {
             // Only the operator can stop the follow, and only the operator can resume it, so only a change they
@@ -265,11 +279,12 @@ public partial class SessionView : UserControl
                 || TranscriptScrollAnchor.IsAtBottom(
                     TranscriptScroll.Offset.Y, TranscriptScroll.Extent.Height, TranscriptScroll.Viewport.Height);
         }
-        else if (_stickToBottom)
+        else if (_stickToBottom && TranscriptScrollAnchor.MayFollow(ownCorrection, _followCorrected))
         {
             // Content grew or shrank (a row streamed in), or the viewport resized (the composer's activity line,
             // the starting banner, the usage-warning and pending-resume bars all dock above the transcript and
             // take their band out of it, AC-459). Nobody scrolled: keep the newest row in view.
+            _followCorrected |= ownCorrection;
             _FollowNewest();
         }
 
@@ -419,8 +434,7 @@ public partial class SessionView : UserControl
             // once per streamed row — 6.8MB and tens of milliseconds each, which is AC-1111 (measured).
             if (TranscriptItems.ContainerFromIndex(newestIndex) is null)
             {
-                TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(
-                    Math.Max(0, TranscriptScroll.Extent.Height - TranscriptScroll.Viewport.Height));
+                _MoveTo(Math.Max(0, TranscriptScroll.Extent.Height - TranscriptScroll.Viewport.Height));
             }
 
             // The estimated end is Extent-derived and lands short of the true bottom (~300px, AC-528), and a
@@ -440,12 +454,22 @@ public partial class SessionView : UserControl
             var shortfall = bottom.Y - TranscriptScroll.Viewport.Height;
             if (shortfall > 0)
             {
-                TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(TranscriptScroll.Offset.Y + shortfall);
+                _MoveTo(TranscriptScroll.Offset.Y + shortfall);
             }
         }
         finally
         {
             _following = false;
+        }
+    }
+
+    // AC-1113: a write that lands where the viewport already sits still invalidates layout, and every such pass
+    // counts towards Avalonia's own cut-off. The follow reaches a fixpoint here instead of asking again.
+    private void _MoveTo(double offsetY)
+    {
+        if (!TranscriptScrollAnchor.IsSettled(TranscriptScroll.Offset.Y, offsetY))
+        {
+            TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(offsetY);
         }
     }
 
