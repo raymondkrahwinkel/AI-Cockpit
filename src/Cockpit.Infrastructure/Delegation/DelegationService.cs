@@ -47,7 +47,10 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     private readonly ISessionProfileStore _profileStore;
     private readonly ISessionManager _sessionManager;
     private readonly IMcpServerStore _mcpServerStore;
-    private readonly IMcpServerCatalog? _mcpServerCatalog;
+    // Resolved on use rather than injected (AC-1110). The catalog reaches this service back through
+    // ICockpitInternalMcpProvider, so taking the instance here closes a construction cycle that MEDI cannot
+    // report -- Scrutor's per-interface forwarding factory hides it from the cycle detector, and it hangs instead.
+    private readonly Func<IMcpServerCatalog?>? _mcpServerCatalog;
     private readonly IDelegationAuditLog _auditLog;
     private readonly ISessionWorkspaces _workspaces;
     private readonly IPluginProviderRegistry? _providerRegistry;
@@ -79,7 +82,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         ISessionProjectResolver? projects = null,
         IWorktreeManager? worktrees = null,
         IConsentBroker? consent = null,
-        IMcpServerCatalog? mcpServerCatalog = null)
+        Func<IMcpServerCatalog?>? mcpServerCatalog = null)
         : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog)
     {
     }
@@ -99,7 +102,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         TimeSpan? idleWindow = null,
         IConsentBroker? consent = null,
         TimeSpan? taskRetention = null,
-        IMcpServerCatalog? mcpServerCatalog = null)
+        Func<IMcpServerCatalog?>? mcpServerCatalog = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
@@ -850,9 +853,10 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IReadOnlyList<string>? perTaskSelection = null,
         string? projectId = null)
     {
-        var registry = _mcpServerCatalog is null
+        var catalog = _mcpServerCatalog?.Invoke();
+        var registry = catalog is null
             ? await _mcpServerStore.LoadAsync()
-            : await _mcpServerCatalog.GetServersForProjectAsync(projectId);
+            : await catalog.GetServersForProjectAsync(projectId);
         return _NarrowServersFor(registry, profile, perTaskSelection);
     }
 

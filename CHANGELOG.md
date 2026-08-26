@@ -365,6 +365,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the cockpit could hang while starting up, showing no window and no error — two of its own parts had come
+  to depend on each other in a circle, the catalogue of MCP servers needing the delegation service and the
+  delegation service needing the catalogue back. The wiring that builds the cockpit got stuck working its way
+  around that loop instead of reporting it. The catalogue is now looked up at the moment it is actually used
+  rather than when the delegation service is built, which breaks the circle without changing what either does.
+
 - fixed: a session pane that is following the newest message no longer freezes the whole cockpit while a long
   answer streams in, and no longer drives memory use up by a gigabyte a minute while it does. Keeping the newest
   row in view used to re-run the window's entire layout for every single line that arrived; it now moves the view

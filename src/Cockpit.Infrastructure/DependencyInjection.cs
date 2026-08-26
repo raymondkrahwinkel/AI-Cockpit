@@ -24,6 +24,11 @@ public static class DependencyInjection
     {
         services.AddSingleton<AudioEngine, MiniAudioEngine>();
 
+        // AC-1110: handed to DelegationService as a deferred lookup, not as the instance. The catalog reaches that
+        // service back through ICockpitInternalMcpProvider, and injecting it directly closes a construction cycle
+        // that deadlocks the container instead of being reported.
+        services.AddSingleton<Func<IMcpServerCatalog?>>(provider => provider.GetService<IMcpServerCatalog>);
+
         // Built-in cockpit MCP endpoints (#AC-13): CockpitMcpEndpointHost hosts each and auto-publishes it to the
         // registry as its own MCP server. cockpit-session is always mounted: telling the operator what a session
         // is working on is plumbing, not a capability to weigh up, so it's kept out of the pickers (#AC-12).
