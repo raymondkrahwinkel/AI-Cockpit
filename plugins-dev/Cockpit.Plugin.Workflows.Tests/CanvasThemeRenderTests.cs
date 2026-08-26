@@ -204,7 +204,7 @@ public class CanvasThemeRenderTests
         window.Close();
 
         var path = Path.Combine(AppContext.BaseDirectory, fileName);
-        target.Save(path);
+        target.Save(path, PngBitmapEncoderOptions.Default);
 
         // Back through a decoded bitmap so individual pixels can be read: RenderTargetBitmap does not expose them.
         using var stream = File.OpenRead(path);

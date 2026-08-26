@@ -25,6 +25,7 @@ public class DepotSettingsControlTests
             return false;
         }
 
+        Assert.NotNull(commit);
         commit();
         return true;
     }
