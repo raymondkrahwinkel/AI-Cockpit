@@ -14,12 +14,16 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
     // boundary is a level or two above.
     private const int SearchDepth = 4;
 
+    // AC-1093: what marks a directory in the parent as a session group of ours, so a later run can find back what
+    // this one left behind. A cgroup outlives the process that made it, which is the whole point of the anchor.
+    internal const string GroupPrefix = "cockpit-session-";
+
     private readonly ILogger _logger;
     private readonly Func<string?> _findWritableParent;
     private readonly Func<int, IReadOnlyList<int>> _readChildren;
 
     public LinuxCgroupMemoryLimiter(ILogger<LinuxCgroupMemoryLimiter> logger)
-        : this(logger, _FindWritableParent, _ReadChildren)
+        : this(logger, FindWritableParent, _ReadChildren)
     {
     }
 
@@ -43,7 +47,7 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
                 return null;
             }
 
-            var group = Path.Combine(parent, $"cockpit-session-{processId}");
+            var group = Path.Combine(parent, GroupNameFor(Environment.ProcessId, processId));
             Directory.CreateDirectory(group);
 
             // memory.high, never memory.max (AC-692) — see the class comment. A session over this throttles; it is
@@ -171,9 +175,52 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
         return children;
     }
 
+    // Carries the cockpit that made the group as well as the session in it. The owner is what tells a leftover
+    // group of a run that died from a live group of the cockpit beside this one — a development build takes no
+    // single-instance claim (AC-4), so two cockpits sharing one parent is ordinary rather than impossible.
+    internal static string GroupNameFor(int ownerProcessId, int sessionProcessId) =>
+        $"{GroupPrefix}{ownerProcessId}-{sessionProcessId}";
+
+    // The cockpit a group directory names as its maker, or null when the name does not carry one — which is what
+    // a group from before AC-1093 looks like, and those can only be a previous run's.
+    internal static int? OwnerOf(string groupName)
+    {
+        if (!groupName.StartsWith(GroupPrefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var parts = groupName[GroupPrefix.Length..].Split('-');
+
+        return parts.Length is 2 && int.TryParse(parts[0], out var owner) ? owner : null;
+    }
+
+    // AC-1093: cgroup v2's own `cgroup.kill` (kernel 5.14+) — one write ends every process in the group, with no
+    // process tree to walk. That is what reaches an MSBuild node or a VBCSCompiler that outlived its build and was
+    // adopted by systemd: it left the tree, never the cgroup. Returns why it could not, or null when it did.
+    internal static string? KillGroup(string group)
+    {
+        var kill = Path.Combine(group, "cgroup.kill");
+        if (!File.Exists(kill))
+        {
+            return "this kernel's cgroup v2 has no cgroup.kill (5.14 or newer)";
+        }
+
+        try
+        {
+            File.WriteAllText(kill, "1\n");
+
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return exception.Message;
+        }
+    }
+
     // The first level up where a new group both can be made and comes up with the memory controller's interface
     // files in it — proof the controller is delegated there, rather than a directory that merely accepted a mkdir.
-    private static string? _FindWritableParent()
+    internal static string? FindWritableParent()
     {
         if (_OwnCgroupPath() is not { } own)
         {
@@ -225,17 +272,28 @@ internal sealed class LinuxCgroupMemoryLimiter : ISessionMemoryLimiter
         return null;
     }
 
-    // A group only deletes once empty; one that still holds a process is left for systemd to reap with the session.
+    // A group only deletes once empty, so what the session left running goes first. The pty child has already had
+    // its SIGHUP by now (`TtyProcessOwningSessionFiles.Dispose` releases this handle last), so this is the tail:
+    // the build servers that ignore it and the strays systemd has adopted.
     private sealed class CgroupHandle(string group, ILogger logger) : IDisposable
     {
         public void Dispose()
         {
+            // AC-1093: no silence when it could not be done — a session whose leftovers are still running is
+            // exactly the thing that went unnoticed for 35 minutes on 26-08-2026.
+            if (KillGroup(group) is { } reason)
+            {
+                logger.LogWarning("Session cgroup {Group}: could not stop what it still holds — {Reason}.", group, reason);
+            }
+
             try
             {
                 Directory.Delete(group);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
+                // The kill lands at once but the group is only empty once the last corpse is reaped, so an
+                // immediate rmdir can still lose that race. The next start's sweep removes what is left.
                 logger.LogDebug(exception, "Session memory cap: cgroup {Group} not removed; it still holds processes.", group);
             }
         }

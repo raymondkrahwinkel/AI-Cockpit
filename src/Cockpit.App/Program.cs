@@ -17,6 +17,7 @@ using Cockpit.Core.Updates;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Velopack;
 
@@ -130,6 +131,11 @@ sealed class Program
         // A GUI or AppImage launch hands this process a PATH without the user's bin directories, and every child
         // inherits it (AC-19). Repair it once, up front, before anything resolves a tool or spawns a session.
         StartupPathRepair.Run(loggerFactory.CreateLogger(typeof(StartupPathRepair)));
+
+        // AC-1093: a session that is not resumed after a crash still has its processes, and a build server or an
+        // MSBuild node that systemd has adopted is no longer in any tree to find it by. Its cgroup outlived the run
+        // that made it, and that is what this ends them by — before any session of this run makes a group of its own.
+        StaleSessionProcessSweep.Run(loggerFactory.CreateLogger(typeof(StaleSessionProcessSweep)));
 
         services.AddCore().AddInfrastructure().AddServices(
             typeof(Cockpit.Core.DependencyInjection).Assembly,

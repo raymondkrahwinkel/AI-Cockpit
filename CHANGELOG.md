@@ -355,6 +355,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the programs a session started no longer keep running forever after the cockpit is gone. A session that
+  ran a build or a test suite leaves compiler and build servers parked behind it, and those survive a crash of the
+  cockpit and get adopted by the system — where nothing links them back to the session that started them, so they
+  sit on gigabytes of memory until someone happens to look. Closing a session now stops everything it started, and
+  a start of the cockpit clears out what a run that ended badly left behind, before it opens anything of its own.
+  On one machine that was 65 stray programs holding just under 4 GB. On Linux, which is the only platform that can
+  hold a session's programs together; on macOS and Windows the cockpit now says at startup that it cannot, instead
+  of leaving you to guess.
+
 - fixed: a cockpit whose window stops responding no longer eats every gigabyte the machine has. While the
   interface was stalled, each terminal pane kept reading its session's output into memory as fast as the program
   behind it could write, with nothing emptying it and nothing telling that program to slow down — operators saw
