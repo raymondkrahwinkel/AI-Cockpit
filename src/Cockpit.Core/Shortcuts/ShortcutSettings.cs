@@ -1,9 +1,7 @@
 namespace Cockpit.Core.Shortcuts;
 
-// The user's configured gestures (#: shortcuts): per-action for the built-in app actions (defaulting to
-// `ShortcutCatalog` where unset), and per-id overrides for plugin-contributed shortcuts (which
-// otherwise use the gesture the plugin registered). A blank gesture unbinds. Immutable; the `With…`
-// helpers return a new instance and the store persists it.
+// User gestures: built-ins default to `ShortcutCatalog`; plugin overrides otherwise use the registered gesture (#: shortcuts).
+// Blank unbinds; immutable `With…` helpers return the instance persisted by the store.
 public sealed record ShortcutSettings(
     IReadOnlyDictionary<ShortcutAction, string> Gestures,
     IReadOnlyDictionary<string, string> PluginGestures)

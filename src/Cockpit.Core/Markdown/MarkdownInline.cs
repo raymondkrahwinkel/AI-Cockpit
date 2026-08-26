@@ -1,14 +1,8 @@
 namespace Cockpit.Core.Markdown;
 
-// One inline run within a markdown block: plain text, or emphasised/code text, or a link. A flat
-// record (kind + text [+ url]) rather than a type hierarchy — the rendered subset is small and this
-// keeps the parser and renderer to a simple switch.
-// Nesting stays flat as well: a link inside `**…**` is one run whose `Kind` is still
-// `MarkdownInlineKind.Link`, carrying the surrounding emphasis on `OuterBold` /
-// `OuterItalic`. That flatness is load-bearing — the renderer locates a clickable link by
-// summing `Text` lengths, so a nested run list would put those offsets out of step with the
-// text actually drawn and open the wrong URL. Ask `IsBold`/`IsItalic` for
-// emphasis; the two fields alone miss the run that *is* the bold or italic.
+// Markdown inlines remain flat records rather than a type hierarchy: the rendered subset needs only a simple parser/renderer switch.
+// Nested emphasis stays flags on a link/code run because nested lists would desynchronise renderer text offsets and open the wrong URL.
+// Consumers must use `IsBold`/`IsItalic`; outer flags alone miss a run whose own kind supplies the emphasis.
 public sealed record MarkdownInline(
     MarkdownInlineKind Kind,
     string Text,

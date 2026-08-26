@@ -41,13 +41,8 @@ public sealed record MarkdownBlock
     // a reader gets when the reference could not be shown.
     public string? ImageAlt { get; init; }
 
-    // Structural equality, spelled out because the compiler's version is not. A record compares each property
-    // with `EqualityComparer&lt;T&gt;.Default`, and for the three list properties here that is reference
-    // equality — so two separately parsed but identical blocks came out unequal, while the record's shape
-    // promises the opposite. Any caller trusting that promise got a wrong answer silently.
-    //
-    // The transcript renderer is one such caller: it re-parses a streaming reply on every repaint and rebuilds
-    // only the blocks that actually changed, which is exactly this comparison.
+    // Records compare list properties by reference, so structural equality is explicit: separately parsed identical blocks must compare equal.
+    // The streaming transcript renderer relies on that when it rebuilds only changed blocks after each repaint.
     public bool Equals(MarkdownBlock? other)
     {
         if (ReferenceEquals(this, other))

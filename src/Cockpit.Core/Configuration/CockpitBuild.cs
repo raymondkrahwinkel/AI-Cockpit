@@ -1,12 +1,8 @@
 namespace Cockpit.Core.Configuration;
 
-// Which build this is, and the state directory that follows from it (AC-3).
-// A development build keeps its state beside the production one rather than in it. This app is developed from
-// sessions the production cockpit itself hosts, so a `dotnet run` and the cockpit the operator is actually
-// using are routinely open at the same time — and until now they shared one `cockpit.json`, one plugins
-// directory and one log. A half-built profile or a plugin registration from a debug run is not something the
-// operator asked for, and the two racing each other over the same config is a corruption the config layer has
-// already been bitten by. Separate roots mean neither can write over the other's state at all.
+// Development and production builds use separate state roots (AC-3), as both commonly run together.
+// This prevents debug profiles, plugins, logs, or concurrent config writes corrupting the operator's production state.
+// In normal development, production Cockpit hosts the session that runs the debug build, so coexistence is routine.
 public static class CockpitBuild
 {
     public const string ProductionStateFolder = "Cockpit";

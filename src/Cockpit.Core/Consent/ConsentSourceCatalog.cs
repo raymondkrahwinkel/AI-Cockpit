@@ -1,16 +1,8 @@
 namespace Cockpit.Core.Consent;
 
-// The labels the cockpit's own consent-asking callers identify themselves by — and, because a host-internal
-// caller has no plugin id, the keys the assistant's consent bypass (#AC-575) switches are stored under.
-// These constants exist so there is one definition rather than two. The bypass list in Options is filled from
-// here, and the gates below build their `ConsentSource` from the same constants — so a label that is renamed
-// moves both at once, instead of leaving a switch pointing at a source that no longer answers to that name and a
-// source that quietly stopped being bypassable.
-//
-// Plugins are deliberately absent. A plugin asks through `ICockpitHost.RequestConsentAsync`, which stamps its
-// plugin id host-side, and that id — not the plugin's own label — is what the bypass keys on. There is no
-// compile-time list of installed plugins, and inventing one here would be a list that goes stale; the Options
-// surface reads them off what has actually asked.
+// Host-internal consent labels live here so gates and Options bypass keys cannot drift (#AC-575).
+// Plugins are absent: the host stamps their id, and Options discovers installed plugins from actual requests.
+// Renaming a constant therefore moves both the requesting source and its stored bypass key together.
 public static class ConsentSourceCatalog
 {
     // The terminal MCP server: running a command in a session's terminal, or taking one over.
@@ -42,12 +34,8 @@ public static class ConsentSourceCatalog
     // The debug-gated sample prompt (#73). Not a real consumer, but it does ask, so it is nameable.
     public const string Debug = "Debug";
 
-    // The assistant putting a message in another session's inbox: information the recipient reads in its own time.
-    // Deliberately *not* the same label as `AssistantPrompt`, and this is the whole reason both
-    // exist. The key is the label (a host-internal caller has no plugin id), so one label would mean one row in
-    // Options and one switch — and telling an agent something would then be un-separable from making it do
-    // something. An operator who is happy for the assistant to leave notes unasked is not thereby happy for it to
-    // start work unasked; a single switch would decide both, and would decide them the permissive way.
+    // Assistant inbox messages have their own consent label: a host-internal caller has no plugin id (AC-798).
+    // Sharing `AssistantPrompt` would make notes and starting work one permissive, inseparable Options switch.
     public const string AssistantMessage = "Assistant message";
 
     // The assistant submitting a turn in another session — a hand-off of the operator's own rights.
@@ -63,10 +51,7 @@ public static class ConsentSourceCatalog
     // `AssistantMemoryExport`.
     public const string AssistantMemoryImport = "Assistant memory import";
 
-    // The assistant adding a project a colleague shares (AC-798) to this machine — its own label rather than one
-    // shared with the assistant's other writes, for the same reason `AssistantMessage` and `AssistantPrompt` are
-    // two: an operator happy for their team's projects to be added unasked has not thereby agreed to anything else
-    // the assistant writes.
+    // Adding a colleague's shared project has its own label (AC-798), not consent for every assistant write.
     public const string AssistantProjectBinding = "Assistant project binding";
 
     // The assistant creating a brand-new local project (AC-799) — its own label, not `AssistantProjectBinding`:

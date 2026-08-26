@@ -1,12 +1,8 @@
 namespace Cockpit.Core.Updates;
 
-// The name of the feed a build reads: `{platform}-{stream}` — `win-stable`, `linux-nightly` (AC-387).
-// These are the names `vpk pack --channel` writes in the release and nightly workflows.
-//
-// The platform is part of the channel rather than a filter applied to it, because a filter is a step somebody can
-// forget. All three platforms publish into one GitHub release, so a channel named only for the stream would let a
-// Windows install be offered a macOS package — the failure this project is most exposed to, and one that happens on
-// somebody else's machine rather than in CI.
+// Update feeds use `{platform}-{stream}` names that `vpk pack --channel` writes (AC-387).
+// Platform belongs in the channel, not a forgettable filter: one release otherwise risks offering another OS's package.
+// Encoding it at publication makes that mistake impossible instead of relying on every future reader to filter correctly.
 public static class UpdateChannelName
 {
     // The channel this build is allowed to read.

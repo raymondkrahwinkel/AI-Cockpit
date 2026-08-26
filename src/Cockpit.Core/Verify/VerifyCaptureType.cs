@@ -1,9 +1,7 @@
 namespace Cockpit.Core.Verify;
 
-// How a verify runner captures the UI it reports back (AC-86). Only `Avalonia` exists in v1 — a
-// headless render of the app's own visual tree to a text snapshot plus an optional screenshot — but it is part
-// of the persisted runner shape so a later web/DOM capture type can be added without migrating existing entries,
-// and so the tool can refuse a runner whose capture kind this build does not know how to read back.
+// Verify runner capture kind (AC-86); v1's `Avalonia` renders the visual tree to text and optional screenshot.
+// Persist it now so future web/DOM kinds avoid migration and unknown kinds can be refused safely.
 public enum VerifyCaptureType
 {
     // A headless Avalonia render: a `VisualTreeSnapshot` text file and an optional PNG screenshot.

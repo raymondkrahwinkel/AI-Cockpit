@@ -1,9 +1,7 @@
 namespace Cockpit.Core.WorkingPaths;
 
-// The remembered working directories offered in the New-session dialog (so a project folder you have used
-// before is one click away instead of retyped): a most-recent-first `Recent` list, auto-capped,
-// and a user-pinned `Favorites` list. Immutable — the `With…` helpers return a new instance
-// with the change applied, and the store persists the result.
+// New-session working-directory history: auto-capped recent paths plus user-pinned favorites, avoiding retyping.
+// Immutable `With…` helpers return the instance persisted by the store.
 public sealed record WorkingPathHistory(IReadOnlyList<string> Recent, IReadOnlyList<string> Favorites)
 {
     // How many recent paths are kept; older ones fall off the end. Favorites are separate and uncapped.
