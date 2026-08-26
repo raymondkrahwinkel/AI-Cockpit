@@ -365,6 +365,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session pane that is following the newest message no longer freezes the whole cockpit while a long
+  answer streams in, and no longer drives memory use up by a gigabyte a minute while it does. Keeping the newest
+  row in view used to re-run the window's entire layout for every single line that arrived; it now moves the view
+  directly instead, which is around six times cheaper per line and leaves the tail exactly where it was.
 - fixed: a local CI run that gets stuck on this machine — a hung container, a workflow waiting on something that
   never arrives — no longer keeps the container running forever. It is now cut off after 30 minutes, cleaned up
   the same way a run you stop yourself is, and reported as its own verdict rather than looking like a run you
