@@ -101,48 +101,20 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     void ReportPreparing(string? status, double? fraction);
 }
 
-// Backs the pop-out chat window (AC-543 criteria 7, 8, 9): a peephole onto the assistant's own standing
-// conversation, never its owner.
-// *Criterion 7 — reads a conversation, never starts one.* `Session` is read straight off
-// `IAssistantSessionHost.Session`; this view model never creates a `SessionViewModel`
-// itself. `EnsureOpenedAsync` is the one call this view model makes *on its own* that can
-// cause a start, and it only runs the host's own idempotent lazy-start (opening the chip is "an operator
-// handling" per criterion 1) — it never resets or replaces whatever conversation the host already holds.
-// `Dispose` only detaches this peephole's own event subscription; it never touches the session, so
-// closing the window can never end it.
-//
-// *And nothing here ends one either.* `IAssistantSessionHost.RestartAsync` is the one member that
-// does, and this window does not call it: a restart is asked for beside the setting that needs it, in
-// Options → Voice → Assistant Profile, not from the surface the conversation is being read on. The header carries
-// handlings of the *running* assistant — speaking on or off — and one standing safety fact it must show
-// without Options being open (AC-575's bypass mark).
-//
-// *Criterion 8 — no microphone required.* This view model carries no STT/voice code path at all: sending is
-// `SendAsync` on typed `InputText`, full stop. The assistant hotkey (`F10`) is a
-// global hook the lead wires elsewhere (`GlobalHotkeyCoordinator`); this window does not depend on it being
-// available, configured, or even present.
-//
-// *Criterion 9 — off breaks off, mid-sentence.* Switching `SpeakReplies` off calls
-// `IVoicePlaybackQueue.StopAll` before persisting the new value — the same interrupt a push-to-talk
-// barge-in uses — so a reply already playing is cut, not finished. Switching it back on plays nothing on its own;
-// it only changes what happens to the *next* reply.
+// Backs the pop-out chat window (AC-543 criteria 7, 8, 9): a peephole onto the assistant's own standing conversation,
+// never its owner (AC-575).
 public sealed partial class AssistantChatViewModel : ObservableObject, IDisposable
 {
     private readonly IAssistantSessionHost _host;
     private readonly IAssistantSettingsStore _settingsStore;
     private readonly IVoicePlaybackQueue _playbackQueue;
 
-    // AC-662: the sidebar's always-on/listen switch (AssistantIndicatorCoordinator.Indicator), fed in so the
-    // header can carry the same toggle without a second copy of its state, its command, or its one-time cost
-    // confirmation. Null for every construction path that predates this ticket (tests, Screenshotter's design-time
-    // scenes) — the header hides the switch rather than binding to nothing.
+    // AC-662: the sidebar's always-on/listen switch (AssistantIndicatorCoordinator.Indicator), fed in so the header can
+    // carry the same toggle without a second copy of its state, its command, or its one-time cost confirmation.
     private readonly AssistantIndicatorViewModel? _indicator;
 
-    // Optional (AC-545 criterion 5): a fake host in AssistantChatViewModelTests, Screenshotter's design-time data,
-    // and every other construction path predating this ticket build this view model with three arguments. Making
-    // the spawn trail a fourth required one would be a compile break in every one of them for a flyout most of
-    // those paths never open. Null reads as "no trail wired" — the flyout then shows the same empty state a real
-    // trail with nothing recorded in it would, rather than throwing.
+    // Making the spawn trail a fourth required one would be a compile break in every one of them for a flyout most of
+    // those paths never open (AC-545).
     private readonly IAssistantSpawnAuditLog? _spawnAuditLog;
 
     // AC-740: null in the design-time/unit-test graph, where the @-mention picker's file source always answers empty.
@@ -155,16 +127,13 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     private IReadOnlyDictionary<string, string> _deskNameByPaneId = new Dictionary<string, string>(StringComparer.Ordinal);
 
-    // Session is exposed only through the property below, not as [ObservableProperty] on a field, because it is
-    // never assigned locally — it always reads straight through to the host. What can change is *which* session
-    // the host reports, so change notification is driven by watching the host's own PropertyChanged instead
-    // (see _OnHostPropertyChanged) rather than by a setter nothing in this class ever calls.
+    // Session is exposed only through the property below, not as [ObservableProperty] on a field, because it is never
+    // assigned locally — it always reads straight through to the host.
     private SessionViewModel? _observedSession;
 
-    // Set while _LoadSpeakRepliesAsync is applying a freshly loaded value to SpeakReplies, so that assignment does
-    // not read as the operator flicking the switch: without this guard, a stored "off" would fire the same
-    // playback-interrupt and re-save that a real click does, on every window open, for a value that was never
-    // touched.
+    // Set while _LoadSpeakRepliesAsync is applying a freshly loaded value to SpeakReplies, so that assignment does not
+    // read as the operator flicking the switch: without this guard, a stored "off" would fire the same
+    // playback-interrupt and re-save that a real click does, on every window open, for a value that was never touched.
     private bool _loadingSpeakReplies;
 
     // Fix found while verifying AC-935: without this, CanSend never re-evaluated and the Send button
@@ -179,14 +148,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _speakReplies = true;
 
-    // Whether the operator has switched the consent bypass on for at least one source (#AC-575) — shown in this
-    // window's header, and on the chip for when the window is closed. Read on open alongside
-    // `SpeakReplies`, and again on every Options save through `ApplySettingsAsync`.
-    // The second half is what makes this true rather than merely usually true. This window is ownerless and is kept
-    // between openings (`AssistantIndicatorCoordinator`, criterion 7), so it can sit open while Options is used:
-    // losing focus is not closing, `Show()` on a live window raises no new `Opened`, and a mark that were
-    // only read in `EnsureOpenedAsync` would be read once per window lifetime — stale in exactly the
-    // state the operator is in most.
+    // The second half is what makes this true rather than merely usually true (AC-575).
     [ObservableProperty]
     private bool _consentBypassActive;
 
@@ -201,11 +163,9 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _isDocked;
 
-    // AC-953: where the transcript was scrolled to, handed from the view that is leaving a host to the one built
-    // for the next. Null means "was at the tail", which needs no restoring — following it is what a fresh view
-    // does anyway. Everything else the operator had in flight (input text, attachments, the mention picker) is
-    // already on this view model, and the transcript comes from the session: the scroll offset is the only thing
-    // a fresh view per host would otherwise lose.
+    // Everything else the operator had in flight (input text, attachments, the mention picker) is already on this view
+    // model, and the transcript comes from the session: the scroll offset is the only thing a fresh view per host would
+    // otherwise lose (AC-953).
     internal TranscriptScrollPosition? TranscriptAnchor { get; set; }
 
     // Raised by the header's Dock/Undock button. The view model cannot do the swap itself — which hosts exist is
@@ -262,10 +222,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // Read-through, like `Session` below: never assigned locally, only ever reports whatever `_indicator` holds.
     public AssistantIndicatorViewModel? Indicator => _indicator;
 
-    // The assistant's own session, bound straight through to the existing SDK transcript view. Null until the assistant has been lazily started at least once.
+    // The assistant's own session, bound straight through to the existing SDK transcript view.
     public SessionViewModel? Session => _host.Session;
 
-    // Whether there is anything to show yet — a fresh install, or a window opened before the first message, both read as "no session" rather than an empty transcript on a phantom one.
+    // Whether there is anything to show yet — a fresh install, or a window opened before the first message, both read
+    // as "no session" rather than an empty transcript on a phantom one.
     public bool HasSession => Session is not null;
 
     // AC-740: the @-mention picker, shared shape with SessionView's via MentionPickerViewModel. This window's
@@ -273,10 +234,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // default before any session exists — never the Cockpit process's own cwd.
     public MentionPickerViewModel MentionPicker { get; }
 
-    // Whether the transcript has any rows — separate from `HasSession` because a session can exist (started) with nothing said in it yet.
+    // Whether the transcript has any rows — separate from `HasSession` because a session can exist (started) with
+    // nothing said in it yet.
     public bool HasMessages => Session?.HasTranscript ?? false;
 
-    // True while the assistant cannot be reached at all (criterion 1: feature off, no profile, or a failed start) — paired with `UnavailableReason` so the window says why instead of just sitting empty.
+    // True while the assistant cannot be reached at all (criterion 1: feature off, no profile, or a failed start) —
+    // paired with `UnavailableReason` so the window says why instead of just sitting empty.
     public bool IsUnavailable => _host.Activity == AssistantActivity.Unavailable;
 
     public string? UnavailableReason => _host.UnavailableReason;
@@ -286,13 +249,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // nothing has to be notified when the attachment strip changes.
     public bool CanSend => !string.IsNullOrWhiteSpace(InputText) || Session is { HasPendingAttachments: true };
 
-    // The spawn trail's most recent entries, newest first, for the flyout's `ItemsControl` — see
-    // `LoadSpawnLogAsync` for why the trail and not the transcript is what answers "what has this
-    // thing ever started". Empty until the flyout has been opened at least once, or forever if
-    // `_spawnAuditLog` is null.
+    // The spawn trail's most recent entries, newest first, for the flyout's `ItemsControl` — see `LoadSpawnLogAsync`
+    // for why the trail and not the transcript is what answers "what has this thing ever started".
     public ObservableCollection<AssistantSpawnLogRowViewModel> SpawnLogEntries { get; } = new();
 
-    // Backs the flyout's empty-state line. Raised by hand in `LoadSpawnLogAsync` — the load runs once per open rather than being observed continuously, so there is nothing to watch.
+    // Raised by hand in `LoadSpawnLogAsync` — the load runs once per open rather than being observed continuously, so
+    // there is nothing to watch.
     public bool HasSpawnLogEntries => SpawnLogEntries.Count > 0;
 
     // AC-776: every live agent session, filtered like AssistantReadGateway._ListSessions and rebuilt on
@@ -354,11 +316,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         OnPropertyChanged(nameof(HasLiveSessions));
     }
 
-    // Opens the window's view onto the assistant (criterion 1: the first chip click is the "operator handling"
-    // that is allowed to start it lazily) — called by the view once, when it attaches. Never called from the
-    // constructor: a view model built to seed design-time/Screenshotter data must not reach out and start a real
-    // session the moment it exists. Loads the current read-aloud setting first, so the header toggle opens
-    // showing what Options actually has it set to rather than the placeholder default.
+    // Never called from the constructor: a view model built to seed design-time/Screenshotter data must not reach out
+    // and start a real session the moment it exists.
     public async Task EnsureOpenedAsync(CancellationToken cancellationToken = default)
     {
         await _LoadSpeakRepliesAsync(cancellationToken).ConfigureAwait(true);
@@ -392,11 +351,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         }
     }
 
-    // The read-aloud switch (criterion 9) — the same header toggle whether it is opened here or in Options, since
-    // both read and write the same `AssistantSettings.SpeakReplies` through `IAssistantSettingsStore`.
-    // Switching it off calls `IVoicePlaybackQueue.StopAll` before persisting — the same interrupt a
-    // push-to-talk barge-in uses — so a reply already playing is cut, not finished. Guarded by
-    // `_loadingSpeakReplies` so applying a freshly loaded value on open never reads as a click.
+    // Guarded by `_loadingSpeakReplies` so applying a freshly loaded value on open never reads as a click.
     partial void OnSpeakRepliesChanged(bool value)
     {
         if (_loadingSpeakReplies)
@@ -477,15 +432,6 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     // Reads the spawn trail back for the flyout (AC-545 criterion 5), called only when the flyout actually opens
     // (`AssistantChatWindow._OnSpawnLogFlyoutOpened`) rather than every time this window does.
-    // *Why the trail and not the transcript.* The transcript already shows every `start_agent`/
-    // `stop_agent` tool row from this conversation — but only this one, and only for as long as it has not
-    // been scrolled past or replaced by a restart. The trail is the thing that answers "what has this thing ever
-    // started" regardless of which conversation is on screen, which is the question this affordance exists for.
-    //
-    // `Task.Run(Func{Task})` pushes the read off the UI thread deliberately: `ReadRecentAsync`
-    // walks the trail file backward a block at a time and every I/O call on the way is real file I/O, not the
-    // no-op a mocked test makes it look like. A flyout opening is not the place to find out that trail has grown
-    // large enough for that walk to be felt.
     [RelayCommand]
     private async Task LoadSpawnLogAsync()
     {
@@ -505,12 +451,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         OnPropertyChanged(nameof(HasSpawnLogEntries));
     }
 
-    // The conversation as plain text, for saving out of the window.
     // Written here rather than in the view so it can be tested, and deliberately dumb: every row in the order it
-    // happened, labelled by what it is, tool results included. This is for handing a conversation to somebody who
-    // was not in the room — an agent asked to look at what went wrong, most of all — and the rows the window folds
-    // away are exactly the ones such a reader needs. Nothing is summarised and nothing is dropped; the reading
-    // levels are a display choice, not a statement about what happened.
+    // happened, labelled by what it is, tool results included.
     public string TranscriptAsText()
     {
         if (Session is not { } session)
@@ -572,21 +514,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         }
     }
 
-    // Moves the transcript watch from one session to the next, so `HasMessages` is re-raised as rows
-    // arrive rather than only when the session itself is swapped.
-    // *Why this is needed at all.* `HasMessages` is what the window switches on: the transcript
-    // scroller is bound to it, and the "type a message to start talking" placeholder to its inverse. It was only
-    // ever re-raised from the `Session` branch above — and at that exact moment the transcript is empty,
-    // because the session is set the instant it starts and the first row does not exist until the turn produces
-    // it. So it read false, nothing raised it again, and the window sat on its placeholder for the whole life of
-    // the session while the assistant answered behind it. The rows were arriving the whole time;
-    // `ItemsSource` is an `System.Collections.ObjectModel.ObservableCollection{T}` and was
-    // updating perfectly inside a scroller nobody could see.
-    //
-    // Watching the collection rather than polling `HasTranscript`: the collection is the thing that changes,
-    // and it already announces itself.
-    // Also moves the `PendingAttachments` watch (bug fix, found verifying AC-935): `CanSend` reads
-    // `Session.HasPendingAttachments`, and without this an image-only message never re-enabled Send either.
+    // Moves the transcript watch from one session to the next, so `HasMessages` is re-raised as rows arrive rather than
+    // only when the session itself is swapped (AC-935).
     private void _WatchTranscript(SessionViewModel? previous, SessionViewModel? next)
     {
         if (previous is not null)
@@ -611,10 +540,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     private void _OnPendingAttachmentsChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
         OnPropertyChanged(nameof(CanSend));
 
-    // Detaches from the host and from the transcript it was watching — nothing more. Deliberately does not touch
-    // `Session` in any way: this runs when the window closes, and closing this window must never end
-    // the assistant's conversation (criterion 7). It only stops this peephole listening for changes it can no
-    // longer show anyone.
+    // Deliberately does not touch `Session` in any way: this runs when the window closes, and closing this window must
+    // never end the assistant's conversation (criterion 7).
     public void Dispose()
     {
         _host.PropertyChanged -= _OnHostPropertyChanged;
@@ -629,12 +556,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     }
 }
 
-// One row of the spawn trail (AC-545 criterion 5), formatted for the flyout in `AssistantChatWindow.axaml`.
-// The trail's own `AssistantSpawnAuditEntry` carries structured data — a `DateTimeOffset`,
-// an `AssistantSpawnAction` enum, and several nullable fields each with its own fallback rule (a
-// workspace shows its name and falls back to its id; a null working directory means the profile's default ran).
-// Wrapping it here means that fallback logic lives in one place, in code that can be unit-tested directly, rather
-// than as three separate converters or a MultiBinding the XAML would otherwise need.
+// Wrapping it here means that fallback logic lives in one place, in code that can be unit-tested directly, rather than
+// as three separate converters or a MultiBinding the XAML would otherwise need (AC-545).
 public sealed record AssistantSpawnLogRowViewModel(
     string When,
     string What,
@@ -647,7 +570,7 @@ public sealed record AssistantSpawnLogRowViewModel(
     // Whether this row carries a refusal reason — the row template shows the italic line only then.
     public bool HasRefusal => Refusal is { Length: > 0 };
 
-    // Whether there is a session to name. A refused start produced none, and a row that printed an empty line for it would read as a session with no name.
+    // Whether there is a session to name.
     public bool HasSession => Session.Length > 0;
 
     // Whether the profile-and-folder line applies. Only a start has them: a stop names a session that is already
@@ -659,9 +582,8 @@ public sealed record AssistantSpawnLogRowViewModel(
         entry.At.ToLocalTime().ToString("dd MMM HH:mm"),
         _DescribeWhat(entry),
         // Criterion 5 names the caller first, and it is the whole reason SpawnCaller exists: once AC-436 lands, a
-        // coordinator's spawn and the assistant's are the same shape of entry and only this word tells them apart.
-        // One arm per rule, not "assistant or else": AC-795's paired controller reads here too, and lumping it in
-        // with the coordinator would label work that came from another machine as an agent on this one.
+        // coordinator's spawn and the assistant's are the same shape of entry and only this word tells them apart
+        // (AC-795).
         entry.Caller switch
         {
             SpawnCaller.Assistant => "assistant",

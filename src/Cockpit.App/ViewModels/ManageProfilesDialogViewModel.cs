@@ -10,10 +10,9 @@ using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-// Backs the Manage-profiles dialog (#12/#17): list the profiles, edit each one's label, config
-// directory (shown so it is clear where its login lives), executable, purpose and start defaults, and
-// add/remove entries. Save persists the whole edited list through `ISessionProfileStore`;
-// the view closes via `CloseRequested`.
+// Backs the Manage-profiles dialog (#12/#17): list the profiles, edit each one's label, config directory (shown
+// so it is clear where its login lives), executable, purpose and start defaults, and add/remove
+// entries. Save persists the whole edited list through `ISessionProfileStore`; the view closes via `CloseRequested`.
 public partial class ManageProfilesDialogViewModel : ViewModelBase
 {
     private readonly ISessionProfileStore? _profileStore;
@@ -26,7 +25,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
     private readonly IReadOnlyList<SessionProviderOption> _providers;
 
-    // The MCP servers a profile may pre-select from (AC-130), fetched once when the dialog loads; empty until then, or when no catalog was supplied.
+    // The MCP servers a profile may pre-select from (AC-130), fetched once when the dialog loads; empty until then, or
+    // when no catalog was supplied.
     private IReadOnlyList<string> _availableMcpServerNames = [];
 
     // Raised when the dialog should close (after a save, or on cancel).
@@ -107,7 +107,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string _modelFetchStatus = string.Empty;
 
-    // Fetches the selected local profile's installed models from its server so the operator can pick one instead of typing an id (#26).
+    // Fetches the selected local profile's installed models from its server so the operator can pick one instead of
+    // typing an id (#26).
     [RelayCommand]
     private async Task RefreshModelsAsync()
     {
@@ -244,20 +245,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
             return true;
         }
 
-        // A profile needs the settings its own provider launches with; refuse to persist a half-filled row rather
-        // than write junk. The message names the profiles rather than the fields: which fields those are is the
-        // provider's business, and a message that enumerates them ("a config directory, or a base URL and model")
-        // is one that quietly becomes a lie with every provider added — as it already had for Codex, which needs
-        // neither. Also where a plugin provider's TryGetConfigJson failing surfaces (#45/AC-1001 criterion 5):
-        // IsValid already routes through it, so a rejected config reads exactly like an incomplete profile.
-        //
-        // An *existing* row left orphaned (its provider plugin removed/disabled/failed to load — CanChooseProvider
-        // is false, so it was loaded, not just added) is exempt: IsValid counts it invalid too, but `ToProfile()`
-        // passes its stored config through completely unedited — it is not a half-filled row, just one this screen
-        // cannot currently edit. Gating on it here would mean an unrelated orphan blocks every other profile edit
-        // (and, now that Remove is staged rather than immediate — AC-1001 — blocks removing an unrelated profile
-        // too) until the plugin comes back. A *freshly added* row stuck the same way (no plugin registered for the
-        // provider it defaults to) stays gated — that one really is unconfigured, not preserved.
+        // A profile needs the settings its own provider launches with; refuse to persist a half-filled row rather than
+        // write junk (#45, AC-1001).
         if (Profiles.Where(profile => !profile.IsValid && !(profile.IsPluginProviderMissing && !profile.CanChooseProvider))
             .Select(profile => profile.Label).ToList() is { Count: > 0 } incomplete)
         {

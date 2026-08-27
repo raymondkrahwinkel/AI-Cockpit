@@ -5,11 +5,8 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels;
 
-// Content for the About dialog (#46): app identity, the running build's version, a short description, which
-// providers a session can actually run under *on this install*, the licence, and the links to the public
-// GitHub repo, the issue tracker and the plugin store. The provider line is built from the live plugin registry
-// rather than a hard-coded list — naming providers the operator has not installed would be advertising, not
-// information.
+// The provider line is built from the live plugin registry rather than a hard-coded list — naming providers the
+// operator has not installed would be advertising, not information (#46).
 public sealed record AboutInfo(
     string AppName,
     string VersionText,
@@ -20,25 +17,21 @@ public sealed record AboutInfo(
     string IssuesUrl,
     string PluginStoreUrl)
 {
-    // The build's "important numbers", shown as a faint line under the version: the plugin contract the host
-    // provides (the hard compatibility gate — a plugin is refused unless its `abstractionsVersion` matches),
-    // the SDK semver plugin authors build against, and the .NET runtime. These are the identifiers a bug report
-    // needs, put where a user already looks for "what version am I on".
+    // The build's "important numbers", shown as a faint line under the version: the plugin contract the host provides
+    // (the hard compatibility gate — a plugin is refused unless its `abstractionsVersion` matches), the SDK semver
+    // plugin authors build against, and the .NET runtime.
     public string BuildText { get; init; } = "";
 
     public const string DefaultGitHubUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit";
     public const string DefaultIssuesUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit/issues";
     public const string DefaultPluginStoreUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins";
 
-    // The providers the core ships with itself, always available regardless of what is installed — the local OpenAI-compatible ones. Claude and every other agent are provider plugins now (Fase 4), so they come from the plugin registry, not this list.
+    // The providers the core ships with itself, always available regardless of what is installed — the local
+    // OpenAI-compatible ones.
     private static readonly string[] BuiltInProviders = ["Ollama", "LM Studio"];
 
-    // Builds the About info from `assembly`'s version metadata, preferring the
-    // informational version (carries a semver/build suffix when set) over the plain assembly version.
-    //
-    // `pluginProviderNames`:
-    // Display names of the provider plugins actually installed and enabled right now. Empty is the normal case
-    // for a fresh install and simply leaves the built-in providers standing.
+    // Builds the About info from `assembly`'s version metadata, preferring the informational version (carries a
+    // semver/build suffix when set) over the plain assembly version.
     public static AboutInfo FromAssembly(Assembly assembly, IEnumerable<string>? pluginProviderNames = null) => new(
         CockpitProduct.DisplayName,
         _VersionText(assembly),
@@ -57,10 +50,7 @@ public sealed record AboutInfo(
     private static string _ProviderText(IEnumerable<string>? pluginProviderNames) =>
         string.Join(" · ", BuiltInProviders.Concat(pluginProviderNames ?? []));
 
-    // "Plugin API 1 (SDK 1.4.0) · .NET 10.0.10". The API number is the contract major the host provides — the
-    // gate PluginLoadPolicy enforces on every plugin's abstractionsVersion. Its major stays in lock-step with the
-    // SDK semver's major (the SDK's minor moves for additive, non-breaking changes), so showing both tells a plugin
-    // author which contract they target and which SDK features are available. FrameworkDescription is ".NET x.y.z".
+    // "Plugin API 1 (SDK 1.4.0) · .NET 10.0.10".
     private static string _BuildText() =>
         $"Plugin API {AbstractionsContract.Version} (SDK {_VersionText(typeof(AbstractionsContract).Assembly)}) · {RuntimeInformation.FrameworkDescription}";
 

@@ -20,24 +20,13 @@ public sealed record AgentLineBudgetRow(string PaneId, string Activity, string S
 // A pane the cockpit can see that has never called in — the AC-156 shape, made visible rather than left out.
 public sealed record AgentLineGapRow(string PaneId, string Note);
 
-// The desk being inspected: which workspace, and the agent panes on it.
-//
-// Resolved by the caller rather than through `IWorkspaceAgentGateway`, which is what an earlier revision did
-// and could not: that gateway is constructed *from* `CockpitViewModel`, so taking it as a
-// constructor dependency of that same view model is a cycle the container follows until the stack runs out. The
-// same reason `ISessionDialogService`'s worktrees and projects dialogs take their view models as parameters.
+// Resolved by the caller rather than through `IWorkspaceAgentGateway`, which is what an earlier revision did and could
+// not: that gateway is constructed *from* `CockpitViewModel`, so taking it as a constructor dependency of that same
+// view model is a cycle the container follows until the stack runs out.
 public sealed record AgentLineDesk(string WorkspaceId, IReadOnlySet<string> PaneIds);
 
-// The operator's window on what agents are doing to each other (AC-397). Read-only by construction and not only by
-// intent: this view model exposes no command that sends, wakes or releases anything, and the services it holds are
-// the reading halves of the line's stores.
-//
-// It exists because the operator is not a participant in the message path. Without it, agent-to-agent traffic is
-// entirely invisible — the same blind spot AC-34 closed for the terminal MCP, one layer along.
-//
-// Scoped to one desk: the desk of the session in view. The workspace boundary the line enforces for agents is not
-// something this quietly steps around — an operator can look at another desk by selecting a session on it, which is
-// the same act as walking to another window, rather than by being handed every desk at once.
+// Read-only by construction and not only by intent: this view model exposes no command that sends, wakes or releases
+// anything, and the services it holds are the reading halves of the line's stores (AC-397, AC-34).
 public sealed partial class AgentLineInspectorViewModel : ObservableObject
 {
     private readonly IAgentNotifyAuditLog? _trail;

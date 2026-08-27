@@ -7,14 +7,8 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.App.ViewModels;
 
-// The Debug tab's diagnostics panel (AC-58): the app reporting what it runs on, how it draws, what it holds in
-// memory, the sessions open, and the crash artifacts the OS left — as one block of monospace text the tester can
-// read and copy. The copy is the point: the tester sends us that text instead of screenshots of Activity Monitor
-// and a hunt through crash-report folders, which is exactly what AC-57 could not get.
-//
-// The report is rendered on demand and when the dialog opens, never on a timer — a diagnostics page nobody is
-// looking at should cost nothing. A second refresh after leaving it open shows whether the managed heap or the
-// gen2 count is climbing, the tell for the un-disposed-subscription leak AC-57 turned to once Metal was ruled out.
+// The copy is the point: the tester sends us that text instead of screenshots of Activity Monitor and a hunt through
+// crash-report folders, which is exactly what AC-57 could not get (AC-58).
 public sealed partial class DiagnosticsViewModel(
     DiagnosticsCollector? collector,
     Func<IReadOnlyList<SessionDescriptor>> sessions) : ObservableObject

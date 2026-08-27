@@ -2,11 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels;
 
-// One editable row of an HTTP MCP server's custom headers (AC-354): a header name and its value. The value
-// field always masks in the dialog, the same as the API-key field beside it — a custom header is in practice
-// always a credential (see `Cockpit.Core.Mcp.McpHeader`). A half-filled row is dropped on save
-// rather than held against the operator; `EditableMcpServerViewModel.ToConfig` is what applies
-// that filter, via `McpHeader.IsComplete`.
+// A half-filled row is dropped on save rather than held against the operator; `EditableMcpServerViewModel.ToConfig` is
+// what applies that filter, via `McpHeader.IsComplete` (AC-354).
 public partial class McpHeaderRowViewModel : ViewModelBase
 {
     [ObservableProperty]

@@ -4,9 +4,7 @@ using Cockpit.Core.Mcp;
 namespace Cockpit.App.ViewModels;
 
 // Shared AC-134 helpers for an MCP-server checklist (the New-session dialog and the profile editor both use one):
-// estimating each row's tool tokens in the background, and rolling the ticked rows up into a labelled running
-// total. Kept UI-toolkit-free so it stays unit-testable; the caller owns the collection and marshals to the UI
-// thread (the estimate awaits resume on the captured dialog context).
+// estimating each row's tool tokens in the background, and rolling the ticked rows up into a labelled running total.
 internal static class McpTokenEstimation
 {
     // Estimates each server in turn (the estimator caches, so re-runs are cheap unless `refresh`),
@@ -46,7 +44,8 @@ internal static class McpTokenEstimation
         }
     }
 
-    // The rolled-up figure over the *ticked* rows: the summed known tokens, whether any ticked row is still counting, and whether any ticked row's cost is unknown (a server that would not enumerate).
+    // The rolled-up figure over the *ticked* rows: the summed known tokens, whether any ticked row is still counting,
+    // and whether any ticked row's cost is unknown (a server that would not enumerate).
     public static (int Tokens, bool AnyEstimating, bool AnyUnknown) Total(IEnumerable<McpServerSelectionItemViewModel> items)
     {
         var tokens = 0;
