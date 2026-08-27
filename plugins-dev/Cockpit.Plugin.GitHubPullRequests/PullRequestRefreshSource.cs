@@ -46,6 +46,45 @@ internal sealed class PullRequestRefreshSource : IDisposable
 
     private const string StorageKey = "refreshSourceSnapshot";
 
+    // The restart cache draws the list and badges before the first fetch; prompt-only PR bodies stay in memory.
+    private sealed record PersistedSnapshot(PersistedResult Result, DateTimeOffset? FetchedAt)
+    {
+        public PullRequestFeedSnapshot ToRuntime() => new(Result.ToRuntime(), FetchedAt);
+
+        public static PersistedSnapshot From(PullRequestFeedSnapshot snapshot) =>
+            new(PersistedResult.From(snapshot.Result), snapshot.FetchedAt);
+    }
+
+    private sealed record PersistedResult(
+        IReadOnlyList<PersistedPullRequest> PullRequests,
+        IReadOnlyList<PersistedPullRequest> ReviewRequested,
+        bool RepositoryMissing)
+    {
+        public PullRequestFeedResult ToRuntime() =>
+            new(PullRequests.Select(pullRequest => pullRequest.ToRuntime()).ToArray(),
+                ReviewRequested.Select(pullRequest => pullRequest.ToRuntime()).ToArray(),
+                RepositoryMissing);
+
+        public static PersistedResult From(PullRequestFeedResult result) =>
+            new(result.PullRequests.Select(PersistedPullRequest.From).ToArray(),
+                result.ReviewRequested.Select(PersistedPullRequest.From).ToArray(),
+                result.RepositoryMissing);
+    }
+
+    private sealed record PersistedPullRequest(
+        int Number,
+        string Title,
+        string Url,
+        string Repository,
+        string Author,
+        DateTimeOffset? UpdatedAt)
+    {
+        public GitHubPullRequest ToRuntime() => new(Number, Title, Url, Body: null, Repository, Author, UpdatedAt);
+
+        public static PersistedPullRequest From(GitHubPullRequest pullRequest) =>
+            new(pullRequest.Number, pullRequest.Title, pullRequest.Url, pullRequest.Repository, pullRequest.Author, pullRequest.UpdatedAt);
+    }
+
     private readonly IPluginStorage _storage;
     private readonly Func<bool, CancellationToken, Task<PullRequestFeedResult>> _load;
     private readonly Timer _timer;
@@ -103,9 +142,9 @@ internal sealed class PullRequestRefreshSource : IDisposable
     {
         try
         {
-            return _storage.Get<PullRequestFeedSnapshot>(StorageKey) is
+            return _storage.Get<PersistedSnapshot>(StorageKey) is
                 { Result: { PullRequests: not null, ReviewRequested: not null } } snapshot
-                ? snapshot
+                ? snapshot.ToRuntime()
                 : null;
         }
         catch (Exception)
@@ -148,7 +187,7 @@ internal sealed class PullRequestRefreshSource : IDisposable
         {
             var result = await _load(forceRefresh, CancellationToken.None);
             _current = new PullRequestFeedSnapshot(result, DateTimeOffset.UtcNow);
-            _storage.Set(StorageKey, _current);
+            _storage.Set(StorageKey, PersistedSnapshot.From(_current));
             LastError = null;
         }
         catch (Exception exception)

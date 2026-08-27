@@ -38,7 +38,7 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public async Task ColdStart_ShowsThePersistedSnapshotBeforeAnyFetchCompletes()
     {
-        var storage = new InMemoryStorage();
+        var storage = new JsonBackedStorage();
         var oldSnapshot = new PullRequestFeedSnapshot(
             new PullRequestFeedResult([SamplePullRequest], [], RepositoryMissing: false),
             DateTimeOffset.UtcNow - PullRequestRefreshSource.StaleAfter - TimeSpan.FromMinutes(1));
@@ -73,6 +73,41 @@ public class PullRequestRefreshSourceTests
         Assert.Equal(freshPullRequest.Title, afterFetch.Result.PullRequests[0].Title);
         Assert.True(DateTimeOffset.UtcNow - afterFetch.FetchedAt!.Value < TimeSpan.FromSeconds(5), "the post-fetch snapshot has to be freshly timestamped");
         Assert.Equal(freshPullRequest.Title, persisted?.Result.PullRequests[0].Title);
+    }
+
+    [Fact]
+    public async Task RestartSnapshot_PersistsRenderableFieldsWithoutBody()
+    {
+        var storage = new JsonBackedStorage();
+        var legacyPullRequest = SamplePullRequest with { Body = "legacy body" };
+        storage.Set(
+            "refreshSourceSnapshot",
+            new PullRequestFeedSnapshot(
+                new PullRequestFeedResult([legacyPullRequest], [], RepositoryMissing: false),
+                DateTimeOffset.UtcNow));
+
+        var freshPullRequest = legacyPullRequest with { Title = "Fresh title", Body = "body that must not persist" };
+        var source = new PullRequestRefreshSource(
+            storage,
+            (_, _) => Task.FromResult(new PullRequestFeedResult([freshPullRequest], [], RepositoryMissing: false)),
+            pollInterval: TimeSpan.FromMinutes(10));
+
+        Assert.Equal(legacyPullRequest.Title, source.Current.Result.PullRequests[0].Title);
+        await _WaitUntilAsync(() => storage.Raw("refreshSourceSnapshot").Contains(freshPullRequest.Title), TimeSpan.FromSeconds(2));
+        source.Dispose();
+
+        var persistedJson = storage.Raw("refreshSourceSnapshot");
+        Assert.DoesNotContain(legacyPullRequest.Body, persistedJson);
+        Assert.DoesNotContain(freshPullRequest.Body, persistedJson);
+
+        var release = new TaskCompletionSource<PullRequestFeedResult>();
+        var restarted = new PullRequestRefreshSource(storage, (_, _) => release.Task, pollInterval: TimeSpan.FromMinutes(10));
+
+        Assert.Equal(freshPullRequest.Title, restarted.Current.Result.PullRequests[0].Title);
+        Assert.Null(restarted.Current.Result.PullRequests[0].Body);
+
+        release.SetResult(PullRequestFeedResult.Missing);
+        restarted.Dispose();
     }
 
     [Fact]
@@ -354,6 +389,8 @@ public class PullRequestRefreshSourceTests
         private readonly Dictionary<string, string> _values = [];
 
         public void SeedRaw(string key, string rawJson) => _values[key] = rawJson;
+
+        public string Raw(string key) => _values[key];
 
         public T? Get<T>(string key) => _values.TryGetValue(key, out var json) ? JsonSerializer.Deserialize<T>(json) : default;
 
