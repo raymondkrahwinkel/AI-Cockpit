@@ -369,6 +369,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session's transcript, status and progress no longer stall for as long as a runaway drawing pass keeps
+  the window busy. Incoming updates used to pile up one at a time until drawing let up, however long that took;
+  they now merge into the same row as they arrive, so the same stall costs a short delay in what you see instead
+  of the window going quiet while it looks perfectly healthy.
+
 - fixed: the cockpit no longer freezes for tens of seconds after a runaway layout pass. When the UI cut such a
   pass off, the drawing that should have followed was skipped and nothing asked for another one, so the window
   sat frozen — doing nothing at all, at almost no processor use — until some unrelated change happened to wake

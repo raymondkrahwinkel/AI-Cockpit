@@ -496,6 +496,89 @@ public class SessionEventQueueTests
         Assert.Equal("late", ((AssistantTextDelta)applied[1]).Text);
     }
 
+    /// <summary>
+    /// Tail-only folding cannot bound this: with five sessions round-robining, every arrival's immediate
+    /// predecessor belongs to a different session, so it never matches (AC-1204 review — measured at 10,000/10,000
+    /// pending before the wide fallback below existed). The fallback searches the whole pending list once it has
+    /// grown past a healthy drain's worth of work, which is what actually bounds this case.
+    /// </summary>
+    [Fact]
+    public void Enqueue_InterleavedAcrossFiveSessionIds_StaysBoundedInstead_OfOnePerEvent()
+    {
+        var pump = new ManualPump();
+        var applied = new List<SessionEvent>();
+        var queue = new SessionEventQueue(applied.Add, pump.Post);
+        const int total = 10_000;
+        const int distinctSessions = 5;
+
+        for (var i = 0; i < total; i++)
+        {
+            queue.Enqueue(new AssistantTextDelta { SessionId = $"S{i % distinctSessions}", BlockIndex = 0, Text = "x" });
+        }
+
+        Assert.True(queue.PendingCount < 200, $"pending={queue.PendingCount}, expected well under {total}");
+
+        pump.RunAll();
+        Assert.Equal(total, applied.Sum(e => ((AssistantTextDelta)e).Text.Length));
+    }
+
+    /// <summary>
+    /// The realistic version of the same gap: a session's own stream and a concurrent sub-agent's lane (the
+    /// interleaving <c>MixedTurn</c> below already covers for a small batch) never sit adjacent either, so this is
+    /// the one that actually happens in production, not just in a five-session thought experiment.
+    /// </summary>
+    [Fact]
+    public void Enqueue_InterleavedBetweenTwoLanesOfOneSession_StaysBoundedInstead_OfOnePerEvent()
+    {
+        var pump = new ManualPump();
+        var applied = new List<SessionEvent>();
+        var queue = new SessionEventQueue(applied.Add, pump.Post);
+        const int total = 10_000;
+
+        for (var i = 0; i < total; i++)
+        {
+            var parent = i % 2 == 0 ? null : "agent";
+            queue.Enqueue(new AssistantTextDelta { SessionId = Sid, BlockIndex = 0, Text = "x", ParentToolUseId = parent });
+        }
+
+        Assert.True(queue.PendingCount < 200, $"pending={queue.PendingCount}, expected well under {total}");
+
+        pump.RunAll();
+        Assert.Equal(total, applied.Sum(e => ((AssistantTextDelta)e).Text.Length));
+    }
+
+    /// <summary>
+    /// The wide fallback must not do what a naive "scan back for any match" would: a tool call sits between two
+    /// text deltas that would otherwise satisfy the coalescer's merge rule, and in production that tool call
+    /// closes the row the first delta opened — <c>SessionViewModel.cs</c>'s handling of <c>ToolUseRequested</c>
+    /// sets <c>_currentAssistantEntry</c> back to null. Folding across it would merge two rows <c>Apply</c> keeps
+    /// apart, which is a correctness bug, not an optimization. Padded past <c>WideFoldThreshold</c> with an
+    /// unrelated session's traffic so the fallback is actually the path under test.
+    /// </summary>
+    [Fact]
+    public void Enqueue_PastTheWideFoldThreshold_NeverFoldsATextDeltaAcrossAToolCallInTheSameLane()
+    {
+        var pump = new ManualPump();
+        var applied = new List<SessionEvent>();
+        var queue = new SessionEventQueue(applied.Add, pump.Post);
+
+        // Padding on an unrelated session: never folds with itself (each has a distinct SessionId) or with the
+        // lane under test below, so it purely pushes PendingCount past the threshold that arms the wide fallback.
+        for (var i = 0; i < 200; i++)
+        {
+            queue.Enqueue(new AssistantTextDelta { SessionId = $"filler{i}", BlockIndex = 0, Text = "y" });
+        }
+
+        queue.Enqueue(Text("a", 0));
+        queue.Enqueue(new ToolUseRequested { SessionId = Sid, ToolUseId = "t1", ToolName = "Read", InputJson = "{}" });
+        queue.Enqueue(Text("c", 0));
+
+        pump.RunAll();
+
+        var lane = applied.Where(e => e.SessionId == Sid).Select(Describe).ToList();
+        Assert.Equal(new[] { "a", "ToolUseRequested", "c" }, lane);
+    }
+
     private static AssistantTextDelta Text(string text, int block, string? parent = null) =>
         new() { SessionId = Sid, BlockIndex = block, Text = text, ParentToolUseId = parent };
 
