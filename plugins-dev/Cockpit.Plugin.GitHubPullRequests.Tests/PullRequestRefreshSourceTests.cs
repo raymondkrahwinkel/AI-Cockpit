@@ -1,14 +1,10 @@
-using System.Collections.Concurrent;
-using System.Text.Json;
-using Cockpit.Plugins.Abstractions;
-
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // AC-515: refreshing has to run independent of any view, never make a caller wait on a miss, survive a restart
 // with the previous list marked old, and not cost more `gh` calls per unit time than before. Every test here
 // drives `PullRequestRefreshSource` directly — no `GitHubPullRequestsWidget` or the
 // AC-517 side-menu badge involved — via a fake load function (no `gh`, no network), which is exactly what
-// acceptance criterion 2 asks for ("aantoonbaar met een test op de verversingsbron, niet op een control").
+// acceptance criterion 2 asks for ("demonstrable with a test on the refresh source, not on a control").
 public class PullRequestRefreshSourceTests
 {
     private static readonly GitHubPullRequest SamplePullRequest = new(1, "Fix the thing", "https://github.com/octocat/hello-world/pull/1", null, "octocat/hello-world", "octocat");
@@ -18,7 +14,7 @@ public class PullRequestRefreshSourceTests
     {
         var calls = 0;
         var source = new PullRequestRefreshSource(
-            new InMemoryStorage(),
+            new InMemoryPluginStorage(),
             (_, _) =>
             {
                 Interlocked.Increment(ref calls);
@@ -38,7 +34,7 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public async Task ColdStart_ShowsThePersistedSnapshotBeforeAnyFetchCompletes()
     {
-        var storage = new InMemoryStorage();
+        var storage = new InMemoryPluginStorage();
         var oldSnapshot = new PullRequestFeedSnapshot(
             new PullRequestFeedResult([SamplePullRequest], [], RepositoryMissing: false),
             DateTimeOffset.UtcNow - PullRequestRefreshSource.StaleAfter - TimeSpan.FromMinutes(1));
@@ -76,6 +72,43 @@ public class PullRequestRefreshSourceTests
     }
 
     [Fact]
+    public async Task RestartSnapshot_PersistsRenderableFieldsWithoutBody()
+    {
+        var storage = new InMemoryPluginStorage();
+        var legacyPullRequest = SamplePullRequest with { Body = "legacy body" };
+        storage.Set(
+            "refreshSourceSnapshot",
+            new PullRequestFeedSnapshot(
+                new PullRequestFeedResult([legacyPullRequest], [], RepositoryMissing: false),
+                DateTimeOffset.UtcNow));
+
+        var freshPullRequest = legacyPullRequest with { Title = "Fresh title", Body = "body that must not persist" };
+        var source = new PullRequestRefreshSource(
+            storage,
+            (_, _) => Task.FromResult(new PullRequestFeedResult([freshPullRequest], [freshPullRequest], RepositoryMissing: false)),
+            pollInterval: TimeSpan.FromMinutes(10));
+
+        Assert.Equal(legacyPullRequest.Title, source.Current.Result.PullRequests[0].Title);
+        await _WaitUntilAsync(() => storage.Raw("refreshSourceSnapshot").Contains(freshPullRequest.Title), TimeSpan.FromSeconds(2));
+        source.Dispose();
+
+        var persistedJson = storage.Raw("refreshSourceSnapshot");
+        Assert.DoesNotContain(legacyPullRequest.Body, persistedJson);
+        Assert.DoesNotContain(freshPullRequest.Body, persistedJson);
+
+        var release = new TaskCompletionSource<PullRequestFeedResult>();
+        var restarted = new PullRequestRefreshSource(storage, (_, _) => release.Task, pollInterval: TimeSpan.FromMinutes(10));
+
+        Assert.Equal(freshPullRequest.Title, restarted.Current.Result.PullRequests[0].Title);
+        Assert.Equal(freshPullRequest.Title, restarted.Current.Result.ReviewRequested[0].Title);
+        Assert.Null(restarted.Current.Result.PullRequests[0].Body);
+        Assert.False(restarted.Current.Result.RepositoryMissing);
+
+        release.SetResult(PullRequestFeedResult.Missing);
+        restarted.Dispose();
+    }
+
+    [Fact]
     public async Task OverlappingRefreshCalls_CollapseIntoOneLoad()
     {
         var calls = 0;
@@ -88,7 +121,7 @@ public class PullRequestRefreshSourceTests
         // is drained (awaited via firstCallSeen) before the overlap is measured, so what is under test is the three
         // calls issued here, not an accident of thread-pool scheduling.
         var source = new PullRequestRefreshSource(
-            new InMemoryStorage(),
+            new InMemoryPluginStorage(),
             (_, _) =>
             {
                 var n = Interlocked.Increment(ref calls);
@@ -121,18 +154,12 @@ public class PullRequestRefreshSourceTests
         Assert.Equal(2, ran.Count(x => !x));
     }
 
-    // AC-515 blocker 2: a snapshot that is not valid JSON at all — a truncated write (see blocker 1) or a leftover
-    // from an incompatible earlier build — must read as "nothing persisted yet", the same as a fresh install,
-    // rather than throw out of the constructor. This runs inside `GitHubPullRequestsPlugin.Initialize`, before
-    // `AddSettings`/`AddSideMenuSection`/`AddWidget` register anything — an unguarded throw here
-    // used to make `PluginManager.Initialize` skip every one of this plugin's contributions over one bad key.
-    // `JsonBackedStorage` (unlike `InMemoryStorage`) round-trips through
-    // `System.Text.Json.JsonSerializer` like the host's real `PluginStorage` does, so this
-    // actually drives the deserialize path the bug lives in.
+    // The JSON-backed test storage reproduces the host's deserialize path: malformed persisted data must fall
+    // back to an empty snapshot instead of aborting plugin initialization.
     [Fact]
     public void ColdStart_WithUnparsableStoredJson_FallsBackToEmpty_InsteadOfThrowing()
     {
-        var storage = new JsonBackedStorage();
+        var storage = new InMemoryPluginStorage();
         storage.SeedRaw("refreshSourceSnapshot", "not json at all");
 
         var source = new PullRequestRefreshSource(storage, (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)), pollInterval: TimeSpan.FromMinutes(10));
@@ -155,7 +182,7 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public void ColdStart_WithWrongShapedJson_FallsBackToEmpty_InsteadOfCarryingANullResult()
     {
-        var storage = new JsonBackedStorage();
+        var storage = new InMemoryPluginStorage();
         storage.SeedRaw("refreshSourceSnapshot", """{"totally":"unrelated","shape":true}""");
 
         var source = new PullRequestRefreshSource(storage, (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)), pollInterval: TimeSpan.FromMinutes(10));
@@ -177,7 +204,7 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public void ColdStart_WithNullCollectionsInsideResult_FallsBackToEmpty_InsteadOfCarryingNullLists()
     {
-        var storage = new JsonBackedStorage();
+        var storage = new InMemoryPluginStorage();
         storage.SeedRaw("refreshSourceSnapshot", """{"Result":{}}""");
 
         var source = new PullRequestRefreshSource(storage, (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)), pollInterval: TimeSpan.FromMinutes(10));
@@ -216,7 +243,7 @@ public class PullRequestRefreshSourceTests
         var calls = 0;
 
         var source = new PullRequestRefreshSource(
-            new InMemoryStorage(),
+            new InMemoryPluginStorage(),
             (_, _) =>
             {
                 var n = Interlocked.Increment(ref calls);
@@ -253,7 +280,7 @@ public class PullRequestRefreshSourceTests
     public async Task RefreshAsync_CalledAfterDispose_IsGatedOutInsteadOfThrowing()
     {
         var source = new PullRequestRefreshSource(
-            new InMemoryStorage(),
+            new InMemoryPluginStorage(),
             (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)),
             pollInterval: TimeSpan.FromMinutes(10));
 
@@ -268,7 +295,7 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public async Task AFailedFetch_StillRaisesUpdated_SoAFirstEverAttemptIsNotSilent()
     {
-        var storage = new InMemoryStorage();
+        var storage = new InMemoryPluginStorage();
 
         // The constructor's due-time-zero tick fetches straight away, so a handler attached on the line after it can
         // already be too late: the fetch fails, Updated fires with nothing listening, and the wait below then just
@@ -303,7 +330,7 @@ public class PullRequestRefreshSourceTests
     public async Task ExplicitRefresh_ThatRan_ReportsItsOwnFailure()
     {
         var source = new PullRequestRefreshSource(
-            new InMemoryStorage(),
+            new InMemoryPluginStorage(),
             (_, _) => Task.FromException<PullRequestFeedResult>(new InvalidOperationException("gh not installed")),
             pollInterval: TimeSpan.FromMinutes(10));
 
@@ -335,28 +362,4 @@ public class PullRequestRefreshSourceTests
         return condition();
     }
 
-    // Concurrent because a background poll writes here while a test's wait loop reads — a plain dictionary throws or returns garbage on that overlap.
-    private sealed class InMemoryStorage : IPluginStorage
-    {
-        private readonly ConcurrentDictionary<string, object?> _values = new();
-
-        public T? Get<T>(string key) => _values.TryGetValue(key, out var value) ? (T?)value : default;
-
-        public void Set<T>(string key, T value) => _values[key] = value;
-    }
-
-    // Unlike `InMemoryStorage`, stores values as the raw JSON strings the host's real
-    // `PluginStorage` does — needed for the malformed/wrong-shape tests above, which are only real bugs on
-    // the JSON round trip; `InMemoryStorage` keeps the live object and would never exercise
-    // `JsonSerializer.Deserialize{TValue}(string, JsonSerializerOptions)` at all.
-    private sealed class JsonBackedStorage : IPluginStorage
-    {
-        private readonly Dictionary<string, string> _values = [];
-
-        public void SeedRaw(string key, string rawJson) => _values[key] = rawJson;
-
-        public T? Get<T>(string key) => _values.TryGetValue(key, out var json) ? JsonSerializer.Deserialize<T>(json) : default;
-
-        public void Set<T>(string key, T value) => _values[key] = JsonSerializer.Serialize(value);
-    }
 }
