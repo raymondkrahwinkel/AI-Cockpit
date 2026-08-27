@@ -2,10 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels;
 
-// One clickable chip under the project editor's Category field (AC-618): a category already in use somewhere, so
-// the operator can pick it instead of retyping it. Clicking one is exactly the same as typing that text —
-// `ProjectDialogViewModel.SelectCategoryCommand` only ever assigns `ProjectDialogViewModel.Category`,
-// there is no second, chip-only path onto the saved project.
+// One clickable chip under the project editor's Category field (AC-618): a category already in use somewhere, so the
+// operator can pick it instead of retyping it.
 public partial class ProjectCategoryChipViewModel : ViewModelBase
 {
     public string Name { get; }

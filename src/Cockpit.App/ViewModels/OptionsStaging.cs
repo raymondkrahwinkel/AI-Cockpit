@@ -4,14 +4,8 @@ using System.Text.Json;
 
 namespace Cockpit.App.ViewModels;
 
-// The Options dialog's staged-changes bookkeeping (AC-999).
-//
-// *What this list is not.* Reverting does not read it — `CockpitViewModel.CancelOptionsAsync` re-seeds from
-// disk through the app's own startup load paths, which cover every setting by construction. This list only
-// answers "has the operator changed anything", for the footer's indicator and the warning on Escape. A name
-// missing here therefore costs a warning, never an undo — the one failure mode that is safe to have. It is kept
-// honest by `OptionsStagingGuardTests`, which reconciles it against every editable control in
-// `OptionsDialog.axaml`, so a control added later has to be put in one of the two lists deliberately.
+// This list only answers "has the operator changed anything", for the footer's indicator and the warning on Escape
+// (AC-999).
 internal static class OptionsStaging
 {
     // A character no setting can contain, so two different sets of values cannot join into the same string.
@@ -86,12 +80,8 @@ internal static class OptionsStaging
         "AssistantOptions.SpeakReplies",
     ];
 
-    // Editable-looking, but not settings — so deliberately outside the transaction. Cancel does not undo what
-    // these feed, which is exactly why each one has to be named here rather than simply left off the list above:
-    // a new control lands in a category on purpose or the guard test fails.
-    //
-    // The first is the toggle that starts and stops a live microphone; the backup pair are arguments to the
-    // archive the operator is about to write; the last drives a handshake with another cockpit.
+    // Cancel does not undo what these feed, which is exactly why each one has to be named here rather than simply left
+    // off the list above: a new control lands in a category on purpose or the guard test fails.
     public static readonly string[] ImmediateOrTransient =
     [
         "IsTestingMic",
@@ -102,9 +92,6 @@ internal static class OptionsStaging
     ];
 
     // The handlers in `OptionsDialog.axaml.cs` that act on the spot and are not undone by Cancel (AC-999 §6).
-    // Pinned so a button added to the dialog cannot quietly join them: encryption rewrites every stored
-    // credential, the backup and memory handlers touch files outside the cockpit, and an update check reaches the
-    // network. None of those is a value with a previous state to restore.
     public static readonly string[] ImmediateActionHandlers =
     [
         "OnEnableEncryption",
@@ -122,8 +109,7 @@ internal static class OptionsStaging
 
     // Click handlers that, unlike the ones above, *are* undone by Cancel — they only fill in a field the Profiles
     // fingerprint already covers (`EditableProfileViewModel.ConfigDir`/`DefaultWorkingDirectory`/`ExecutablePath`,
-    // reverted with the rest of the profile by `Profiles.LoadAsync()`). They stay Click-driven rather than plain
-    // bindings only because a folder/file picker needs `Window.StorageProvider`, which a binding cannot reach.
+    // reverted with the rest of the profile by `Profiles.LoadAsync()`).
     public static readonly string[] ReversibleValueHandlers =
     [
         "OnBrowseProfileConfigDir",
@@ -153,13 +139,8 @@ internal static class OptionsStaging
             : string.Empty);
 
         // Profiles (AC-1001): a full serialization of every edited row's would-be-saved shape, added/removed rows
-        // included, rather than a hand-kept list of property paths — the same reasoning `ToProfile()` already
-        // gives for not exposing a typed selection per provider. Cheap enough for a handful of profiles.
-        //
-        // `ProviderConfig` is serialized a second time by its own runtime type: `SessionProfile.ProviderConfig` is
-        // declared as the abstract `ProviderConfig`, and System.Text.Json serializes a property by its *declared*
-        // type by default — so the first pass alone would see every provider's config as just `{"Provider":...}`
-        // and miss a changed base URL or config directory entirely.
+        // included, rather than a hand-kept list of property paths — the same reasoning `ToProfile()` already gives for
+        // not exposing a typed selection per provider.
         parts.Add(cockpit.Profiles is { } profiles
             ? string.Join(Separator, profiles.Profiles.Select(profile => _ProfileFingerprint(profile.ToProfile())))
             : string.Empty);

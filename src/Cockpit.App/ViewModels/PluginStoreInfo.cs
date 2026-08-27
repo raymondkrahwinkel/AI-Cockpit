@@ -4,11 +4,9 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewModels;
 
-// One configured plugin store as shown in the Manage-stores dialog (#62, AC-7): the store itself plus the
-// display fields — name, icon and plugin count. These are enriched from the store's `index.json` once it
-// has been browsed (`PluginManagerViewModel.BrowseStoresAsync`), and derived from the location
-// until then, so a freshly added store still reads as "owner/repo" (or a folder name) rather than a raw link
-// before its first fetch.
+// These are enriched from the store's `index.json` once it has been browsed
+// (`PluginManagerViewModel.BrowseStoresAsync`), and derived from the location until then, so a freshly added store
+// still reads as "owner/repo" (or a folder name) rather than a raw link before its first fetch (#62, AC-7).
 public sealed partial class PluginStoreInfo : ObservableObject
 {
     // The store this row represents — what the Remove command acts on.

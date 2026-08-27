@@ -10,12 +10,9 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels.Onboarding;
 
-// Drives the first-run wizard's provider step (AC-510[b]): what the operator already has (observed where
-// possible — criterion 1), the four ways an install can land (criterion 2), the offline path (criterion 3) and
-// the fact that Skip/Next never install anything on their own (criterion 4). Installs go through
-// `IPluginProvisioningService` — the same DI-registered instance the plugin store dialog now
-// receives (`Cockpit.App.ViewModels.PluginManagerViewModel`'s own constructor), so there is exactly
-// one install path, not a second one for onboarding.
+// Drives the first-run wizard's provider step (AC-510[b]): what the operator already has (observed where possible —
+// criterion 1), the four ways an install can land (criterion 2), the offline path (criterion 3) and the fact that
+// Skip/Next never install anything on their own (criterion 4).
 public sealed partial class ProviderStepViewModel : ObservableObject
 {
     private readonly IPluginStoreConfigStore? _storeConfigStore;
@@ -25,10 +22,7 @@ public sealed partial class ProviderStepViewModel : ObservableObject
 
     public ObservableCollection<ProviderPickerRowViewModel> Providers { get; } = [];
 
-    // The two providers that need neither internet nor an install (AC-510[b] criterion 3), joined for direct
-    // display — core, not a plugin (see `SessionProviderCatalog`), so this is always accurate regardless of
-    // what the store says or whether it could even be reached. Always shown, not only while offline: a fair
-    // alternative on any network.
+    // Always shown, not only while offline: a fair alternative on any network (AC-510[b]).
     public string LocalProvidersText { get; } = string.Join(" and ",
         SessionProviderCatalog.Providers
             .Where(option => option.Value is SessionProvider.Ollama or SessionProvider.LmStudio)
@@ -106,17 +100,12 @@ public sealed partial class ProviderStepViewModel : ObservableObject
             }
         };
 
-    // Bumped at the start of every LoadAsync call so a stale, still-in-flight run can tell it has been
-    // superseded and stop touching Providers instead of racing a newer run's writes (AC-510[b]: the constructor
-    // already fires one fire-and-forget LoadAsync, so a caller — a test, or Back/Next rebuilding the step — that
-    // also awaits LoadAsync directly must not end up with two runs both adding rows into the same collection).
+    // Version each load so the constructor's fire-and-forget pass cannot overwrite a newer caller's results
+    // (AC-510[b]).
     private int _loadGeneration;
 
     // Fetches every configured store's index, keeps only the AI-provider entries (AC-510[b] criterion 5:
-    // `PluginStoreEntry.ProviderCategory`), and marks each one found/not-found/cloud. Offline when
-    // every store fails — never when the list of providers merely comes back empty, which is a different, honest
-    // state of its own (a store that carries no providers today). The latest call always wins over an older one
-    // still in flight.
+    // `PluginStoreEntry.ProviderCategory`), and marks each one found/not-found/cloud.
     public async Task LoadAsync()
     {
         if (_storeConfigStore is null || _storeClient is null)
@@ -210,10 +199,8 @@ public sealed partial class ProviderStepViewModel : ObservableObject
 
     partial void OnIsLoadingChanged(bool value) => InstallSelectedCommand.NotifyCanExecuteChanged();
 
-    // Installs every checked row through the provisioning seam's batch call — one plugin failing isolated from
-    // the rest (AC-510[b] criterion 2's "half-succeeded" shape), each row's own outcome applied once the batch
-    // returns. Never runs on its own: Skip and Next (the wizard shell) never call this, so a pre-filled
-    // selection nobody acted on installs nothing (criterion 4).
+    // Never runs on its own: Skip and Next (the wizard shell) never call this, so a pre-filled selection nobody acted
+    // on installs nothing (criterion 4) (AC-510[b]).
     [RelayCommand(CanExecute = nameof(CanInstallSelected))]
     private async Task InstallSelectedAsync()
     {

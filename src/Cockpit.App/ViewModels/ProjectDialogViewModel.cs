@@ -19,10 +19,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
 {
     private readonly string? _projectId;
 
-    // The project exactly as it was loaded, kept only so `ToProject` can carry forward a claimed
-    // field's value untouched (AC-604 acceptance criterion 3) — an edit to a field this project's ownership
-    // claims must never reach `cockpit.json`, whether or not the control is locked. Null for a new project,
-    // which cannot yet be claimed (a claim is keyed by an id nothing has assigned).
+    // The project exactly as it was loaded, kept only so `ToProject` can carry forward a claimed field's value
+    // untouched (AC-604 acceptance criterion 3) — an edit to a field this project's ownership claims must never reach
+    // `cockpit.json`, whether or not the control is locked.
     private readonly Project? _originalProject;
 
     // What LogoSource held when this dialog opened (AC-763) — _BuildLogoEditAsync's own baseline to tell
@@ -55,18 +54,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // Raised when the operator wants to pick the logo from a file; the view opens the picker and assigns `LogoSource`.
     public event Action? PickLogoRequested;
 
-    // Raised when the operator picks "Choose…" on a resource row (AC-485); the view opens a folder picker for a
-    // Memory row or a file picker for any other role, and assigns the result back onto that row's own
-    // `ProjectResourceRowViewModel.Reference` — carrying the row rather than a single dialog-wide value,
-    // since AC-485 lets more than one row need a picker of its own.
+    // Raised when the operator picks "Choose…" on a resource row (AC-485); the view opens a folder picker for a Memory
+    // row or a file picker for any other role, and assigns the result back onto that row's own
+    // `ProjectResourceRowViewModel.Reference` — carrying the row rather than a single dialog-wide value, since AC-485
     public event Action<ProjectResourceRowViewModel>? PickResourceRequested;
 
-    // Raised by SaveAsync when the write-back hits a checksum conflict (AC-247): the caller (SessionDialogService)
-    // owns opening the conflict window, the same split every other *Requested event here leaves to whoever can
-    // actually show a window. `edit` is the operator's own typed values, fixed for the whole resolve — never the
-    // merged retry SaveAsync may go on to build; `latest` is the fresh remote state the failed write's own re-read
-    // already fetched, so the window never has to ask Depot again just to show what changed. Returns the
-    // operator's choice, or null when they cancelled the window (back to editing this dialog, nothing written).
+    // `edit` is the operator's own typed values, fixed for the whole resolve — never the merged retry SaveAsync may go
+    // on to build; `latest` is the fresh remote state the failed write's own re-read already fetched, so the window
+    // never has to ask Depot again just to show what changed (AC-247).
     public event Func<SharedProjectDefinitionEdit, SharedProjectBinding, Task<ProjectDefinitionConflictResolution?>>? ConflictRequested;
 
     // Design-time constructor for the Avalonia previewer.
@@ -132,10 +127,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
         Func<(IReadOnlyList<ProjectMemorySourceRegistration> Sources, IReadOnlyList<ProjectMemorySourceFamily> Families)>? refreshMemorySources = null,
         IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? fieldOwnership = null,
         IReadOnlyList<string>? knownCategories = null,
-        // AC-247: null for a new project, a project no source claims, or a claimed project whose fresh checksum
-        // read failed — Save then behaves exactly as it did before AC-247 (a locked claimed field, if any, simply
-        // never reaches ToProject; see _Carry). Set only by the caller that already resolved the right
-        // ISharedProjectSource for this project and read a checksum to defend a write against.
+        // AC-247: null for a new project, a project no source claims, or a claimed project whose fresh checksum read
+        // failed — Save then behaves exactly as it did before AC-247 (a locked claimed field, if any, simply never
+        // reaches ToProject; see _Carry).
         ProjectSharedWriteBackContext? sharedWriteBack = null,
         // AC-938: the same repository probe the New-session dialog already uses to grey its isolate checkbox — null
         // for a caller that does not wire one, in which case SaveAsync's own repository-is-a-git-repo check is
@@ -156,9 +150,6 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // AC-523: the same source CreateAsync itself reads from below, kept so a later "Servers…" call
             // (ConfigureMemorySourceAsync) can re-read it once its own settings screen has closed, rather than
             // rebuilding forever from the one-time snapshot memorySources/memorySourceFamilies handed to this call.
-            // Falls back to replaying that snapshot when the caller does not supply one (every existing test call
-            // site, and the design-time/previewer shape) — a rebuild from it reproduces the same dictionary, so
-            // ConfigureMemorySourceAsync's own refresh is harmless, just not live, for a caller that opts out.
             _refreshMemorySources = refreshMemorySources ?? (() => (memorySources ?? [], memorySourceFamilies ?? [])),
         };
 
@@ -203,11 +194,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
         foreach (var registration in memorySources ?? [])
         {
             // AC-499 review: InstanceTitle's own doc comment promises "blank or null falls back to Title" — a
-            // whitespace-only value (a stray "   " a plugin's own settings UI let through untrimmed) is blank in
-            // every other sense this codebase uses the word (Register's own IsNullOrWhiteSpace checks), so a plain
-            // Length>0 test here would show a blank-looking row in the instance dropdown instead of honouring that
-            // promise. Measured directly against the built assembly (AC-499 harness) before this fix: a
-            // three-space InstanceTitle produced a three-space Label rather than falling back.
+            // whitespace-only value (a stray " " a plugin's own settings UI let through untrimmed) is blank in every
+            // other sense this codebase uses the word (Register's own IsNullOrWhiteSpace checks), so a plain Length>0
             var instanceChoice = _BuildInstanceChoice(registration);
 
             if (registration.FamilyKey is { Length: > 0 } familyKey && familyInstances.TryGetValue(familyKey, out var instances))
@@ -231,18 +219,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
                 viewModel.MemorySourceChoices, resource.Role, resource.Reference, resource.Label ?? "", resource.ReachesSessions, resource.SendsContent,
                 viewModel.MemorySourceFamilyInstances);
 
-            // Folder is the default selection the instant this row is built — "Folder" is always MemorySourceChoices[0]
-            // (see above). The match below overwrites this only when the row is a Memory row whose stored reference
-            // actually names a registered source; every other case leaves Folder selected, which is what the
-            // ComboBox must show rather than nothing at all.
+            // The match below overwrites this only when the row is a Memory row whose stored reference actually names a
+            // registered source; every other case leaves Folder selected, which is what the ComboBox must show rather
+            // than nothing at all.
             row.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[0];
 
-            // A saved reference of the shape "<scheme>:<value>" naming a source actually offered here selects that
-            // source (and, for a family member, the instance itself — AC-499) and shows the bare value; anything
-            // else — a path, a scheme no installed plugin registered, an empty value after the colon — leaves
-            // "Folder" selected (set above) and the reference exactly as the row stored it. That is deliberate, not
-            // merely the fallback case: a plugin that is temporarily uninstalled must not lose or garble the
-            // reference just because this dialog was opened and saved while it was gone.
+            // That is deliberate, not merely the fallback case: a plugin that is temporarily uninstalled must not lose
+            // or garble the reference just because this dialog was opened and saved while it was gone (AC-499).
             if (resource.Role == ProjectResourceRole.Memory
                 && ProjectMemoryRef.TryParse(resource.Reference, out var scheme, out var value)
                 && row.TryMatchMemorySourceScheme(scheme, out var top, out var instance))
@@ -256,9 +239,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
 
         // Awaited directly here (AC-485 review, MUST-FIX 2), not merely scheduled: the dialog must open with every
-        // row's diagnostics already answered, the same as before that review moved the actual check off the UI
-        // thread. Every other call site below only schedules the refresh and moves on — see
-        // _RefreshResourceDiagnostics's own remarks on why that is safe for them but not for this one.
+        // row's diagnostics already answered, the same as before that review moved the actual check off the UI thread.
         viewModel._RefreshResourceDiagnostics(immediately: true);
         await viewModel.ResourceDiagnosticsRefreshCompleted.ConfigureAwait(false);
 
@@ -278,13 +259,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
         viewModel.SelectedProfileLabel = viewModel.Profiles.FirstOrDefault(label =>
             string.Equals(label, project?.DefaultProfileLabel, StringComparison.OrdinalIgnoreCase));
 
-        // AC-766: scoped to this project rather than the project-agnostic GetServersAsync() — the checklist is
-        // where a project-linked server (Depot, say) finally gets a row of its own, ticked by default, instead of
-        // being invisible here no matter how the operator configured it.
-        // ponytail: read once, from the saved project — a Memory row the operator adds to ResourceRows in this
-        // same dialog session (a brand-new Depot connection, say) will not grow its own row here until the project
-        // is saved and reopened. Live tracking needs a schemes-based catalog overload keyed off the in-progress
-        // ResourceRows rather than the saved project; add if this proves confusing in practice.
+        // AC-766: scoped to this project rather than the project-agnostic GetServersAsync() — the checklist is where a
+        // project-linked server (Depot, say) finally gets a row of its own, ticked by default, instead of being
+        // invisible here no matter how the operator configured it.
         var servers = await mcpServerCatalog.GetServersForProjectAsync(project?.Id, cancellationToken).ConfigureAwait(false);
         var overlay = project?.McpOverlay ?? ProjectMcpOverlay.None;
         var offered = McpServerRegistryFilter.OfferedToOperator(servers);
@@ -300,14 +277,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
             });
         }
 
-        // A name this project has already decided about that the checklist cannot show — the server was disabled in
-        // the registry since, or removed — is kept rather than dropped on save, the way the project's own servers are.
-        // Editing which servers are on must not silently flip one because the row for it was not there. Both
-        // directions are carried: an "off" one so saving cannot switch it back on, an "on" one because the list that
-        // gets written names what is on, so leaving it out would be switching it off.
-        // Only names the project itself named: a catalog endpoint with no row (internal, always-mounted) is not a
-        // decision this project ever made, and writing one into the list of what is on would mount tooling — the
-        // Autopilot's pane-scoped endpoints among it — that the checklist hides precisely because it is not a choice.
+        // A name this project has already decided about that the checklist cannot show — the server was disabled in the
+        // registry since, or removed — is kept rather than dropped on save, the way the project's own servers are.
         var hasRow = offered.Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var decided = (overlay.EnabledServerNames ?? [])
             .Concat(overlay.DisabledServerNames)
@@ -317,20 +288,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
         viewModel._carriedEnabledServerNames = [.. decided.Where(overlay.IsSelectedByDefault)];
         viewModel._carriedDisabledServerNames = [.. decided.Where(name => !overlay.IsSelectedByDefault(name))];
 
-        // AC-247, adversarial review finding: the fields above were populated from `project` — this machine's own,
-        // possibly stale, local copy — while `sharedWriteBack.Baseline` (when set) is a read taken moments ago.
-        // Opening the editor without reconciling the two would let SaveAsync send the stale local values back to
-        // Depot with a checksum that legitimately matches its current state, silently overwriting whatever a
-        // colleague changed before this editor ever opened — not a race, a guaranteed clobber on every edit to a
-        // project this machine had not looked at recently. Refreshing every write-back-eligible field from the
-        // fresh read closes that gap, and doubles as what the operator sees: the dialog opens showing Depot's own
-        // current values, not this machine's cache of them.
-        //
-        // ponytail: MCP names outside this machine's own catalog are not reconciled here — `_ApplyRemoteValues`
-        // only ticks rows `McpServers` already has, so a name `_carriedEnabledServerNames`/`_carriedDisabledServerNames`
-        // captured from the local project's overlay a moment ago can still diverge from the fresh baseline. Narrow
-        // (a project sharing an MCP name this machine has no row for) and self-healing (the next open re-reads);
-        // widen this if a real project hits it.
+        // Opening the editor without reconciling the two would let SaveAsync send the stale local values back to Depot
+        // with a checksum that legitimately matches its current state, silently overwriting whatever a colleague
+        // changed before this editor ever opened — not a race, a guaranteed clobber on every edit to a project
         if (sharedWriteBack is not null)
         {
             viewModel._ApplyRemoteValues(sharedWriteBack.Baseline);
@@ -342,10 +302,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // The project's own servers, carried through untouched: v1 edits which servers are on, not the servers themselves (see `ToProject`).
     private readonly IReadOnlyList<McpServerConfig> _additionalServers = [];
 
-    // The project's resources exactly as the store loaded them, held only until `ResourceRows` can be
-    // built from them (AC-485) — matching a Memory row's reference against a registered source has to wait for
-    // `CreateAsync` to populate `MemorySourceChoices` first, the same ordering constraint the
-    // single Memory row used to have. Empty once `CreateAsync` has consumed it; nothing reads it afterwards.
+    // The project's resources exactly as the store loaded them, held only until `ResourceRows` can be built from them
+    // (AC-485) — matching a Memory row's reference against a registered source has to wait for `CreateAsync` to
+    // populate `MemorySourceChoices` first, the same ordering constraint the single Memory row used to have.
     private readonly IReadOnlyList<ProjectResource> _pendingResources = [];
 
     // The names this project switched on that the checklist has no row for, carried through so saving cannot switch them off.
@@ -403,10 +362,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string _category = string.Empty;
 
-    // The categories already in use elsewhere (AC-618), as clickable chips under the field — built once, in
-    // `CreateAsync`, from `Cockpit.Core.Projects.ProjectSettings.CategoryOrder`. Empty for
-    // the design-time constructor and for a build with no categories in use yet, in which case
-    // `HasCategoryChips` is false and the row stays off screen rather than showing an empty bar.
+    // Empty for the design-time constructor and for a build with no categories in use yet, in which case
+    // `HasCategoryChips` is false and the row stays off screen rather than showing an empty bar (AC-618).
     public ObservableCollection<ProjectCategoryChipViewModel> CategoryChips { get; } = [];
 
     public bool HasCategoryChips => CategoryChips.Count > 0;
@@ -434,27 +391,19 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // Where `SourceDirectory` was cloned from, kept so an edit does not lose it. Set by the clone flow, never typed.
     public string? GitUrl { get; private set; }
 
-    // The memory-source picker's choices, shared by every `ProjectResourceRowViewModel` whose
-    // `ProjectResourceRowViewModel.Role` is Memory: "Folder", then one entry per declared family, then
-    // every ungrouped source, in registration order (AC-165/166, AC-499). Always at least "Folder" — the picker no
-    // longer disappears (`ProjectResourceRowViewModel.ShowsMemorySourcePicker` is true for every Memory
-    // row) just because no plugin registered a source.
+    // Always at least "Folder" — the picker no longer disappears (`ProjectResourceRowViewModel.ShowsMemorySourcePicker`
+    // is true for every Memory row) just because no plugin registered a source (AC-165, AC-499).
     public ObservableCollection<MemorySourceChoice> MemorySourceChoices { get; } = [];
 
-    // Every declared family's own instances (AC-499), keyed by `ProjectMemorySourceFamily.Key`
-    // case-insensitively — what a row's own `ProjectResourceRowViewModel.FamilyInstanceChoices` reads
-    // once its top choice names a family. Built in `CreateAsync` and shared by every row in the dialog,
-    // the same way `MemorySourceChoices` is — but, unlike that collection, rebuilt (AC-523, not merely
-    // "once") by `ConfigureMemorySourceAsync` once its own "Servers…" call returns, and pushed back onto
-    // every row via `ProjectResourceRowViewModel.UpdateFamilyInstanceChoices` so the dropdown updates
-    // without the operator closing and reopening this dialog.
+    // Built in `CreateAsync` and shared by every row in the dialog, the same way `MemorySourceChoices` is — but, unlike
+    // that collection, rebuilt (AC-523, not merely "once") by `ConfigureMemorySourceAsync` once its own "Servers…" call
+    // returns, and pushed back onto every row via (AC-499).
     public IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> MemorySourceFamilyInstances { get; private set; } =
         new Dictionary<string, IReadOnlyList<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase);
 
     // Re-reads the live memory-source registry (AC-523) — the same source `CreateAsync`'s own
-    // `memorySources`/`memorySourceFamilies` parameters were read from, reused rather than a new
-    // dependency injected here — so `ConfigureMemorySourceAsync` can rebuild `MemorySourceFamilyInstances`
-    // after its "Servers…" call returns. Set once by `CreateAsync`; never null afterwards.
+    // `memorySources`/`memorySourceFamilies` parameters were read from, reused rather than a new dependency injected
+    // here — so `ConfigureMemorySourceAsync` can rebuild `MemorySourceFamilyInstances` after its "Servers…" call
     private Func<(IReadOnlyList<ProjectMemorySourceRegistration> Sources, IReadOnlyList<ProjectMemorySourceFamily> Families)> _refreshMemorySources =
         () => ([], []);
 
@@ -469,10 +418,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
     public ObservableCollection<ProjectInfoFieldViewModel> AdditionalInfo { get; } = [];
 
     // The project's resources (AC-483/485), in the order the operator put them in — a memory location, standing
-    // instructions, something to look up. Replaces the dialog's old standalone Memory row: that row is now simply
-    // one of these with `ProjectResourceRowViewModel.Role` set to `ProjectResourceRole.Memory`,
-    // and every other role that a project could already carry (but this dialog had no box for) is edited here too.
-    // A row the operator adds and leaves alone costs them nothing: `ToProject` drops it.
+    // instructions, something to look up.
     public ObservableCollection<ProjectResourceRowViewModel> ResourceRows { get; } = [];
 
     // Repository #2 and on (AC-938) — the Folder row above stays repo #1 (SourceDirectory). A row the operator
@@ -520,13 +466,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
     {
         var editedOverlay = new ProjectMcpOverlay
         {
-            // A list only for a project that actually narrowed something. Leaving it null where every server is
-            // ticked is the difference between "this project wants these" and "this project has no opinion": the
-            // second keeps picking up a server added to the registry later, which is what a project that never
-            // switched anything off should do — and the first, deliberately, does not (Raymond, 2026-08-01).
-            // It is also the way back: ticking every row on again drops the list, and the project follows the
-            // registry once more. A carried name either way still counts as narrowing — there is a decision to
-            // keep, and no row on screen through which it could be taken back.
+            // A list only for a project that actually narrowed something.
             EnabledServerNames = _ComputeEnabledMcpServerNames(),
             // AC-766: a project-linked row unticked here — never one this project had a row for before its own
             // catalog query named the row's scheme — is the one decision EnabledServerNames cannot express; see
@@ -556,10 +496,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // manager turns it into a copy the cockpit owns; the editor only carries the answer, as it does the rest.
             LogoPath = _Carry(LogoOrigin, _NullIfBlank(LogoSource), p => p.LogoPath),
             IsolateInWorktreeByDefault = _Carry(WorktreeSwitchOrigin, IsolateInWorktreeByDefault, p => p.IsolateInWorktreeByDefault),
-            // Resources only — never MemoryRef beside it (see Project.MemoryRef's own doc comment on why an
-            // initializer must pick one: both write the same underlying list, and whichever is set last wins). Every
-            // row the operator can see and edit is right here in ResourceRows now, Memory rows included, so there is
-            // no second, hidden value left to fold in and no order to get wrong.
+            // Resources only — never MemoryRef beside it (see Project.MemoryRef's own doc comment on why an initializer
+            // must pick one: both write the same underlying list, and whichever is set last wins).
             Resources =
             [
                 .. ResourceRows.Select(row => row.ToDomain()).Where(resource => !string.IsNullOrWhiteSpace(resource.Reference)),
@@ -580,13 +518,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
     }
 
     // `edited` unless `origin` says this field is both claimed and still locked (AC-604 acceptance criterion 3,
-    // narrowed by AC-247), in which case the value `_originalProject` already had wins instead — an edit to a
-    // field with nowhere to write back to must never reach `cockpit.json`, whether or not the control let the
-    // operator type into it. A claimed field the source marked editable is no longer this case (AC-247): by the
-    // time ToProject runs, SaveAsync's own write-back either already landed the edit at the source (Success) or
-    // this call never happens at all (a conflict/error return closes nothing) — so `edited` is exactly what
-    // belongs in `cockpit.json` for it, the same as any local field. `_originalProject` is null only for a new
-    // project, which cannot yet be claimed, so falling back to `edited` there changes nothing.
+    // narrowed by AC-247), in which case the value `_originalProject` already had wins instead — an edit to a field
+    // with nowhere to write back to must never reach `cockpit.json`, whether or not the control let the operator type
     private T _Carry<T>(ProjectFieldOriginViewModel origin, T edited, Func<Project, T> original) =>
         origin.IsClaimed && origin.IsLockedHere && _originalProject is not null ? original(_originalProject) : edited;
 
@@ -624,17 +557,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void RemoveInfoField(ProjectInfoFieldViewModel field) => AdditionalInfo.Remove(field);
 
-    // Appends a blank resource row (AC-485), the same shape `AddInfoField` already has — Folder
-    // pre-selected for it, matching what `CreateAsync` does for a loaded row.
-    //
     // AC-499 review, defect found by `Cockpit.App.ViewTests.ProjectDialogMemorySourceTests` (which builds a
-    // `ProjectDialogViewModel` directly rather than through `CreateAsync`, exactly the same
-    // shape the XAML designer's own `&lt;Design.DataContext&gt;` instance uses): `MemorySourceChoices[0]`
-    // is only guaranteed to exist once `CreateAsync` has run — it is the one place "Folder" gets added. A
-    // `ProjectDialogViewModel` built any other way still starts with zero choices, and this used to
-    // index into it unconditionally, throwing `ArgumentOutOfRangeException` the instant "+ Add row" was
-    // clicked on such an instance. Guarded the same way `CreateAsync`'s own per-loaded-row selection already
-    // is, immediately above.
+    // `ProjectDialogViewModel` directly rather than through `CreateAsync`, exactly the same shape the XAML designer's
+    // own `&lt;Design.DataContext&gt;` instance uses): `MemorySourceChoices[0]` is only guaranteed to exist once
     [RelayCommand]
     private void AddResourceRow()
     {
@@ -668,27 +593,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void BrowseRepository(ProjectRepositoryRowViewModel row) => BrowseRepositoryRequested?.Invoke(row);
 
-    // "Servers…" on a Memory row's server row (AC-499): opens wherever the picked family's own instances are
-    // configured. A no-op when the picked choice offers none — the button that would call this is not shown at all
-    // in that case (`ProjectResourceRowViewModel.CanConfigureMemorySource`), but a command guards the
-    // same way in case it is ever invoked another way. Also a no-op while a previous call for the same row is still
-    // running (`ProjectResourceRowViewModel.IsConfiguringMemorySource`) — an impatient second click
-    // must not start a second, overlapping call to the same plugin.
-    //
-    // A plugin's own `ConfigureAsync` throwing costs this row a message (`ProjectResourceRowViewModel.MemorySourceConfigureError`),
-    // the same "never let a plugin's own failure escape unhandled" rule `ProjectPluginFieldViewModel.LoadOptionsAsync`
-    // already follows for a field's own option list — left uncaught, the exception would fault this command's own
-    // `Task` with nobody awaiting it, silently doing nothing from the operator's point of view rather
-    // than saying what went wrong.
-    //
-    // AC-523: once `ConfigureAsync` returns, `MemorySourceFamilyInstances` is rebuilt from
-    // `_refreshMemorySources` — the same registry `CreateAsync` itself read `memorySources`/
-    // `memorySourceFamilies` from — and pushed onto every row via
-    // `ProjectResourceRowViewModel.UpdateFamilyInstanceChoices`. A plugin's settings screen is very
-    // often where a connection gets added or removed, so the instance this call was meant to unlock (or the one it
-    // just removed) shows up here without the operator closing and reopening this dialog. Every row is refreshed,
-    // not only `row`: a settings screen for one family's connections is reachable from any row
-    // that picked it, and every other row sharing that same family must see the same answer.
+    // Also a no-op while a previous call for the same row is still running
+    // (`ProjectResourceRowViewModel.IsConfiguringMemorySource`) — an impatient second click must not start a second,
+    // overlapping call to the same plugin (AC-499, AC-523).
     [RelayCommand]
     private async Task ConfigureMemorySourceAsync(ProjectResourceRowViewModel row)
     {
@@ -724,11 +631,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void Clone() => CloneRequested?.Invoke();
 
-    // AC-247: for a project no source claims editable (the overwhelming majority — every project before this
-    // ticket, and every claimed field bar the five WriteBackAsync now supports), this is exactly the old
-    // synchronous Save: build the project, close. Only a project with a live `_writeBack` context takes the
-    // write-then-close path below, and only that path can come back with SaveError set or reopen this same dialog
-    // after a resolved conflict instead of closing it.
+    // Only a project with a live `_writeBack` context takes the write-then-close path below, and only that path can
+    // come back with SaveError set or reopen this same dialog after a resolved conflict instead of closing it (AC-247).
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
@@ -755,18 +659,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
         SaveError = null;
 
-        // Fixed for the whole call: what the operator actually typed, compared against `writeBack.Baseline` (the
-        // read this editor opened with, which CreateAsync also used to populate these very fields — see its own
-        // remarks) to tell "I touched this field" apart from "I left it alone" — never against a later merged
-        // retry, which would make a field the operator touched once look untouched on a second conflict.
+        // Compare edits with the opening baseline, never a merged retry, so untouched fields remain distinguishable.
         var operatorEdit = await _BuildEditAsync().ConfigureAwait(true);
 
-        // Nothing to write back: close exactly as a project with no write-back context does. Skipping the call
-        // outright — rather than sending an edit identical to the baseline and letting it round-trip harmlessly —
-        // is what actually matters here: CreateAsync's own fresh-baseline population (see its remarks) makes an
-        // accidental overwrite unlikely even without this guard, but a Save that touches nothing shared has no
-        // business spending an MCP round trip, and skips the conflict machinery entirely rather than only shrinking
-        // its odds.
+        // Skip shared writes entirely when no shared field changed; a harmless round trip still creates needless
+        // conflict risk.
         if (_MatchesBaseline(operatorEdit, writeBack.Baseline))
         {
             CloseRequested?.Invoke(ToProject());
@@ -825,12 +722,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
                     return;
                 }
 
-                // "Apply only my change": a field-by-field merge onto the fresh remote state — every field the
-                // operator actually touched keeps the operator's own value; every field the operator left alone
-                // takes whatever the fresh read just found, so a colleague's own unrelated edit is never lost
-                // just because it happened to land in the same conflict. Retried with the fresh checksum: if
-                // nothing has moved again since that re-read, this succeeds; the loop only runs a third time on
-                // another, even narrower race.
+                // Merge only touched fields onto fresh remote state so a colleague's unrelated edits survive.
                 pendingEdit = _MergeOntoLatest(operatorEdit, writeBack.Baseline, result.LatestSnapshot!);
                 baseChecksum = result.LatestSnapshot!.Checksum!;
             }
@@ -919,11 +811,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
     }
 
-    // The same "null means no opinion, otherwise every ticked ordinary name plus whatever this build has no row
-    // for" logic both ToProject's own overlay and AC-247's remote edit need. A project-linked server (Depot, say)
-    // is left out of this list either way, on or off: locally it is governed by DisabledServerNames instead
-    // (AC-766, ToProject), and a shared project definition must never carry a machine-local connection's name at
-    // all (AC-247/AC-763) — "Depot: {name}" means something different on a colleague's machine, or nothing.
+    // The same "null means no opinion, otherwise every ticked ordinary name plus whatever this build has no row for"
+    // logic both ToProject's own overlay and AC-247's remote edit need (AC-766, AC-763).
     private IReadOnlyList<string>? _ComputeEnabledMcpServerNames() =>
         McpServers.Any(server => !server.IsProjectLinked && !server.IsEnabledForSession) || _carriedEnabledServerNames.Count > 0 || _carriedDisabledServerNames.Count > 0
             ? [.. McpServers.Where(server => !server.IsProjectLinked && server.IsEnabledForSession).Select(server => server.Name), .. _carriedEnabledServerNames]
@@ -962,13 +851,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
     }
 
-    // Whether SaveAsync's own write-back can be skipped outright — every write-back-eligible field reads the same
-    // as `baseline`, the read this editor opened with (see CreateAsync's own remarks on why these fields start out
-    // equal to it). Compared with the same normalization `_NullIfBlank` applies everywhere else in this class
-    // (trim, blank-as-null) on both sides — `baseline`'s own strings come from Depot's JSON verbatim, not through
-    // this editor's own text boxes, so comparing them raw against a trimmed edit would read a stray trailing space
-    // in Depot's own copy as "the operator touched this," which is backwards for a guard whose whole job is
-    // recognising nothing happened.
+    // Whether SaveAsync's own write-back can be skipped outright — every write-back-eligible field reads the same as
+    // `baseline`, the read this editor opened with (see CreateAsync's own remarks on why these fields start out equal
+    // to it).
     private static bool _MatchesBaseline(SharedProjectDefinitionEdit edit, SharedProjectBinding baseline) =>
         edit.LogoEdit is null
         && _FieldEquals(edit.Name, baseline.Name)
@@ -977,12 +862,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         && edit.IsolateInWorktreeByDefault == baseline.IsolateInWorktreeByDefault
         && _SameNames(edit.EnabledMcpServerNames, baseline.EnabledMcpServerNames);
 
-    // "Alleen mijn wijziging toepassen" (AC-247's own per-field merge): for each field, the operator's edit wins
-    // only where the operator actually changed it from what this editor opened with (`baseline`) — a field left
-    // alone takes whatever `latest` just found instead, so a colleague's unrelated change never gets silently
-    // discarded just because it happened to share a conflict with a field the operator did touch. Same
-    // normalization as `_MatchesBaseline`, and for the same reason: `baseline` is Depot's own raw JSON, `mine` is
-    // this editor's trimmed text boxes.
+    // Apply operator changes field by field while preserving newer remote values for untouched fields (AC-247).
     private static SharedProjectDefinitionEdit _MergeOntoLatest(
         SharedProjectDefinitionEdit mine, SharedProjectBinding baseline, SharedProjectBinding latest) => new(
         !_FieldEquals(mine.Name, baseline.Name) ? mine.Name : latest.Name,
@@ -1020,15 +900,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     {
         ResourceRows.Add(row);
         _UpdateLastRowFlags();
-        // Any change that affects what gets saved or how it is judged — Reference, Role, ReachesSessions, and which
-        // memory source is picked.
-        //
-        // AC-485 review (FIX 6) — Role is included, but not for either reason this comment used to give: Role does
-        // not gate the broken-reference probe (ReachesSessions does, see _RefreshResourceDiagnostics below), and it
-        // does not gate scope either (ProjectResourcePathPortability.ClassifyScope never looks at a row's
-        // Role at all). The real reason is MUST-FIX 1: switching a row's role away from Memory (or back to it) can
-        // itself rewrite Reference's own text — see ProjectResourceRowViewModel.OnRoleChanged — and it is that
-        // rewritten value the diagnostics below must judge, not whatever Reference held a moment before the switch.
+        // AC-485 review (FIX 6) — Role is included, but not for either reason this comment used to give: Role does not
+        // gate the broken-reference probe (ReachesSessions does, see _RefreshResourceDiagnostics below), and it does
+        // not gate scope either (ProjectResourcePathPortability.ClassifyScope never looks at a row's Role at all).
         row.PropertyChanged += _OnResourceRowChanged;
     }
 
@@ -1053,12 +927,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
             CheckReachability = registration.CheckReachability,
         };
 
-    // Rebuilds `MemorySourceFamilyInstances`'s shape from `sources`/`families`
-    // (AC-523) — every declared family gets an entry (possibly empty), and every source whose
-    // `ProjectMemorySourceRegistration.FamilyKey` names one of them becomes an instance under it, the
-    // same rule `CreateAsync`'s own first build follows. Ungrouped sources are not represented here —
-    // this ticket's scope is a family's own instances (AC-523's "Servers…" flow only ever adds or removes those),
-    // not `MemorySourceChoices`'s own top-level rows.
+    // Ungrouped sources are not represented here — this ticket's scope is a family's own instances (AC-523's "Servers…"
+    // flow only ever adds or removes those), not `MemorySourceChoices`'s own top-level rows.
     private static IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> _BuildFamilyInstances(
         IReadOnlyList<ProjectMemorySourceRegistration>? sources,
         IReadOnlyList<ProjectMemorySourceFamily>? families)
@@ -1092,68 +962,26 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
     }
 
-    // Completes once the most recently scheduled `_RefreshResourceDiagnostics` call has written its
-    // answer onto every row, or been superseded by a later one (AC-485 review, MUST-FIX 2) — a hook a test can
-    // await deterministically instead of sleeping for a computation whose entire point is to run off the UI
-    // thread. Production code never awaits this itself: what the operator sees update is each row's own bound
-    // `ProjectResourceRowViewModel.IsBroken`/`ProjectResourceRowViewModel.Scope`,
-    // whenever the background work gets there.
+    // Completes once the most recently scheduled `_RefreshResourceDiagnostics` call has written its answer onto every
+    // row, or been superseded by a later one (AC-485 review, MUST-FIX 2) — a hook a test can await deterministically
+    // instead of sleeping for a computation whose entire point is to run off the UI thread.
     internal Task ResourceDiagnosticsRefreshCompleted { get; private set; } = Task.CompletedTask;
 
     // Bumped by every call to `_RefreshResourceDiagnostics` — see that method's remarks on why a stale answer must be told apart from the current one.
     private int _resourceDiagnosticsRefreshVersion;
 
-    // Schedules a re-run of `ProjectResourceProbe` and `ProjectResourcePathPortability`
-    // over every row without waiting for it, so the row-level property change that triggered this call (a
-    // keystroke in the Reference box, a role switch, adding or removing a row, the folder changing) returns to the
-    // UI immediately.
-    //
-    // AC-485 review (MUST-FIX 2): this used to run the probe's I/O synchronously, on whatever thread called it —
-    // the UI thread for every trigger above. The `Reference` box binds with Avalonia's default per-keystroke
-    // trigger, so a row whose path check does not answer quickly — a disconnected mapped drive, say, which the
-    // probe's own UNC guard does not catch since a drive letter is not a UNC path — cost up to the probe's own
-    // 200 ms time budget on *every character typed*: measured at 204 ms/call, so 35 keystrokes cost roughly
-    // 7 seconds of a frozen window, for every row in the dialog at once. The actual I/O now runs on a pool thread
-    // (see `_RunResourceDiagnosticsAsync`) and only its answer is marshalled back.
+    // Schedules a re-run of `ProjectResourceProbe` and `ProjectResourcePathPortability` over every row without waiting
+    // for it, so the row-level property change that triggered this call (a keystroke in the Reference box, a role
+    // switch, adding or removing a row, the folder changing) returns to the UI immediately (AC-485).
     private void _RefreshResourceDiagnostics(bool immediately = false) =>
         ResourceDiagnosticsRefreshCompleted = _RunResourceDiagnosticsAsync(
             immediately ? TimeSpan.Zero : ResourceDiagnosticsQuietPeriod);
 
-    // How long the typing has to stop before a row is judged. Long enough that writing a path straight through
-    // never triggers a check, short enough that the answer feels like it belongs to what was just typed. Opening
-    // the dialog passes `immediately` instead: there is nothing to wait for, and a row stored as broken should
-    // say so the moment it is on screen.
+    // Long enough that writing a path straight through never triggers a check, short enough that the answer feels like
+    // it belongs to what was just typed.
     private static readonly TimeSpan ResourceDiagnosticsQuietPeriod = TimeSpan.FromMilliseconds(400);
 
-    // The actual work `_RefreshResourceDiagnostics` schedules (AC-485 review, MUST-FIX 2). Row objects
-    // are read only on the calling (UI) thread, into a plain snapshot — touching a
-    // `ProjectResourceRowViewModel` off the UI thread is not safe — and the snapshot alone, plain data
-    // with no UI affinity, is handed to `Task.Run{TResult}(Func{TResult})` for the part that can
-    // actually take a while: `ProjectResourceProbe.FindUnresolved`,
-    // `ProjectResourcePathPortability.ClassifyScope` and
-    // `ProjectResourcePathPortability.SuggestRepoRelativeFix` over every row. Once that finishes, the answer is
-    // written back onto each row — but only if no newer call has started in the meantime: `version` is
-    // compared against `_resourceDiagnosticsRefreshVersion`'s current value, and a stale answer
-    // (a slow, earlier call finishing after a faster, later one already has) is simply dropped rather than
-    // overwriting the fresher one — a race that was not possible back when every call ran to completion
-    // synchronously, in the order it was made.
-    //
-    // AC-485 review (FIX 3): `ProjectResourceProbe.FindUnresolved` itself never looks at
-    // `ProjectResource.ReachesSessions` for a row that is not switched off elsewhere — it filters the
-    // whole input by that flag before doing any I/O, then answers with the bare *text* of every reference it
-    // found missing. Matching that text back onto every row sharing it — including a row this probe was never
-    // asked about, because its own `ReachesSessions` was false — would call a row "broken" that was simply
-    // never judged. Gating the assignment itself on the row's own `ReachesSessions` (not only on the string
-    // being in the result) keeps "not judged" and "judged and broken" apart, which the doc comment on
-    // `ProjectResourceRowViewModel.IsBroken` already promises and the assignment below did not
-    // previously keep.
-    //
-    // Cancelled and replaced at the start of every `_RunResourceDiagnosticsAsync` call (AC-503
-    // acceptance criterion 5) — a Reachability check is a network call that can run long enough to still be in
-    // flight when a newer edit supersedes it, unlike the filesystem probe's own version-guard (which only ever
-    // discards a stale *answer*, since a filesystem check finishes fast enough that letting it run to
-    // completion costs nothing). Cancelling the token itself, not merely discarding the result, is what actually
-    // stops an older in-flight tool call rather than leaving it to complete unread in the background.
+    // The actual work `_RefreshResourceDiagnostics` schedules (AC-485 review, MUST-FIX 2) (AC-503).
     private CancellationTokenSource? _reachabilityCancellation;
 
     private async Task _RunResourceDiagnosticsAsync(TimeSpan quietPeriod)
@@ -1168,17 +996,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
         var reachabilityCancellation = new CancellationTokenSource();
         _reachabilityCancellation = reachabilityCancellation;
 
-        // Wait for the typing to stop before judging anything. Running the probe off the UI thread stops it freezing
-        // the window, but it does not stop it running once per character — and a half-typed path is a path that does
-        // not exist, so without this the row flashes "could not be found" in red while the operator is still writing
-        // it. Superseded within the quiet period means this call never touches disk at all.
-        //
-        // Deliberately not solved by committing the box on focus loss instead, which is where this landed first: it
-        // made the typed value reach the row only when focus moved, and saving straight from the box — typing a path
-        // and going for the confirm button, the ordinary way to use this dialog — dropped the row entirely. Measured,
-        // not reasoned: the test SavingStraightFromTheReferenceBox_KeepsWhatWasTyped fails against that version. What
-        // is on screen is what is in the view model, here as everywhere else in this app; the cost of the check is
-        // this delay's problem, not the binding's.
+        // Running the probe off the UI thread stops it freezing the window, but it does not stop it running once per
+        // character — and a half-typed path is a path that does not exist, so without this the row flashes "could not
+        // be found" in red while the operator is still writing it.
         if (quietPeriod > TimeSpan.Zero)
         {
             await Task.Delay(quietPeriod).ConfigureAwait(true);
@@ -1203,13 +1023,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
             return (Unresolved: unresolvedReferences, Scopes: scopes, RepoRelativeFixes: repoRelativeFixes);
         });
 
-        // AC-503: a Memory row whose picked source has a reachability check and a non-blank typed value gets one,
-        // run alongside the filesystem probe above rather than after it — this is a network call and the two probes
-        // judge disjoint sets of rows (this one only ever looks at Memory rows; ProjectResourceProbe never does,
-        // see its own class remarks), so there is nothing for the two to race over.
-        // AC-499: SelectedMemorySourceLeaf rather than SelectedMemorySourceChoice — for a family row the check
-        // delegate belongs to the picked instance, not the family placeholder, and a family with no instance picked
-        // has none to call at all.
+        // AC-503: a Memory row whose picked source has a reachability check and a non-blank typed value gets one, run
+        // alongside the filesystem probe above rather than after it — this is a network call and the two probes judge
+        // disjoint sets of rows (this one only ever looks at Memory rows; ProjectResourceProbe never does (AC-499).
         var reachabilityTasks = resources
             .Where(pair => pair.row.Role == ProjectResourceRole.Memory
                 && pair.row.SelectedMemorySourceLeaf?.CheckReachability is not null
@@ -1238,15 +1054,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
     }
 
-    // Runs one Memory row's own `ProjectMemorySourceRegistration.CheckReachability` (AC-503) and writes
-    // the answer back onto `row` — but only if `version` still matches
-    // `_resourceDiagnosticsRefreshVersion` once the check completes, the same stale-answer guard
-    // `_RunResourceDiagnosticsAsync` already applies to the filesystem probe's own result.
-    //
-    // `value`: The bare value the operator typed — never the folded `"{scheme}:{value}"` form `ProjectResourceRowViewModel.ToDomain` saves, which the plugin's own check never asked to see.
-    // `check`: The row's picked source's own check delegate.
-    // `version`: The refresh version this call belongs to.
-    // `cancellationToken`: Cancelled by a newer `_RunResourceDiagnosticsAsync` call starting (see `_reachabilityCancellation`) — never awaited past that point.
+    // Apply memory reachability only while its diagnostics version is current, preventing stale async results
+    // (AC-503).
     private async Task _RunReachabilityCheckAsync(
         ProjectResourceRowViewModel row,
         string value,
@@ -1267,11 +1076,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
         catch (Exception exception)
         {
-            // A plugin's own check delegate threw before it could decide anything (AC-499: CheckFailed, not
-            // NotSignedIn — the delegate ran and blew up, which is exactly what CheckFailed exists to report,
-            // distinct from an actual "needs sign-in" answer). Never NotFound for a failure this ambiguous (AC-503
-            // acceptance criterion 4), which would name the wrong cause for what might simply be a hiccup in the
-            // plugin's own check.
+            // Never NotFound for a failure this ambiguous (AC-503 acceptance criterion 4), which would name the wrong
+            // cause for what might simply be a hiccup in the plugin's own check (AC-499).
             result = ProjectMemorySourceReachabilityResult.CheckFailed(exception.Message);
         }
 
@@ -1289,10 +1095,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     private static string? _NullIfBlank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
-// Where SaveAsync writes a claimed field's edit back to (AC-247) — the source that claimed this project, the id
-// it knows this project by, and the read this editor opened with (its own Checksum is what the first write
-// attempt defends; its other fields are what SaveAsync's per-field merge compares an edit against to tell
-// "the operator touched this" apart from "this just came along for the ride").
+// Where SaveAsync writes a claimed field's edit back to (AC-247) — the source that claimed this project, the id it
+// knows this project by, and the read this editor opened with (its own Checksum is what the first write attempt
+// defends; its other fields are what SaveAsync's per-field merge compares an edit against to tell "the operator touched
 public sealed record ProjectSharedWriteBackContext(ISharedProjectSource Source, string Id, SharedProjectBinding Baseline);
 
 // The operator's choice on ProjectDialogViewModel's conflict window (AC-247) — `TakeTheirs` discards every edit to

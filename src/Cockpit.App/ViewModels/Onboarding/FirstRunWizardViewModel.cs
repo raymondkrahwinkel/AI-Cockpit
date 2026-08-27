@@ -15,11 +15,9 @@ public sealed record WizardPlannedSlot(int Order, string Title);
 // Back/Next step over it — shown, not silently dropped.
 public sealed partial class FirstRunWizardViewModel : ObservableObject
 {
-    // The epic's own plan (AC-508's four subs), so the step bar reads "Step 1 of 4" from the first screen even
-    // before the Depot step (AC-540) exists to fill its slot — a slot nothing has registered for yet is shown
-    // dim rather than left out, the same honesty AC-510's "Found ≠ works" already applies to a provider. The two
-    // production call sites (the startup gate and the Help menu's "Run setup again") share this single literal
-    // rather than each carrying their own copy of the plan.
+    // The epic's own plan (AC-508's four subs), so the step bar reads "Step 1 of 4" from the first screen even before
+    // the Depot step (AC-540) exists to fill its slot — a slot nothing has registered for yet is shown dim rather than
+    // left out, the same honesty AC-510's "Found ≠ works" already applies to a provider.
     public static readonly IReadOnlyList<WizardPlannedSlot> EpicPlan =
     [
         new(0, "What this is"),

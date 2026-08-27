@@ -1,9 +1,7 @@
 namespace Cockpit.App.ViewModels;
 
-// The wording every screen that asks for plugin consent uses (AC-511): the per-plugin consent dialog (#14) and
-// the first-run wizard's batch, which asks once for a list instead of once per plugin.
-// One constant rather than a copy per screen: the batch is only defensible if it says what the four separate
-// dialogs it replaces said, and two literals drift the moment one of them is edited.
+// The wording every screen that asks for plugin consent uses (AC-511): the per-plugin consent dialog (#14) and the
+// first-run wizard's batch, which asks once for a list instead of once per plugin.
 public static class PluginConsentTerms
 {
     // The standing terms of enabling a plugin at all — what it can reach, and that changed bytes ask again.

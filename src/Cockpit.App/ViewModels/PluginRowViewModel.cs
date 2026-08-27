@@ -11,10 +11,8 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
 {
     private readonly IReadOnlyList<PluginFailure> _failures = failures ?? [];
 
-    // Three independent facts can live in the same folder's history (#184): whether it ever became operative,
-    // whether it is flagged as built for a newer SDK, and whether a contribution it registered later failed. A
-    // single "the failure" would collapse them — an initialize failure and a later mcp-server one are not the
-    // same fact, and neither should hide the other.
+    // Three independent facts can live in the same folder's history (#184): whether it ever became operative, whether
+    // it is flagged as built for a newer SDK, and whether a contribution it registered later failed.
     private PluginFailure? _ActivationFailure => _failures.LastOrDefault(failure => PluginDiagnostics.ActivationPhases.Contains(failure.Phase));
 
     private PluginFailure? _CompatibilityWarning => _failures.LastOrDefault(failure => failure.Phase == "compatibility");

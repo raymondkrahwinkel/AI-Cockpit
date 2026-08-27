@@ -3,11 +3,9 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-// The conflict window ProjectDialogViewModel.SaveAsync opens when a write-back's baseChecksum no longer matches
-// the source's current copy (AC-247, mockup section 6: "Kan niet opslaan — iemand was je voor"). Built once per
-// conflict from three snapshots of the same five fields: what the operator opened the editor with (`baseline`),
-// what the operator actually typed (`mine`), and what the source found on the fresh re-read its own rejected write
-// already did (`latest`) — never a fourth read just to show this window.
+// Built once per conflict from three snapshots of the same five fields: what the operator opened the editor with
+// (`baseline`), what the operator actually typed (`mine`), and what the source found on the fresh re-read its own
+// rejected write already did (`latest`) — never a fourth read just to show this window (AC-247).
 public sealed partial class ProjectDefinitionConflictViewModel : ViewModelBase
 {
     // Raised when the operator answers: the resolution to retry with, or null when they cancelled (back to
@@ -36,17 +34,13 @@ public sealed partial class ProjectDefinitionConflictViewModel : ViewModelBase
     // matching ProjectDialogViewModel's own field order top to bottom.
     public IReadOnlyList<ProjectDefinitionConflictRowViewModel> Rows { get; }
 
-    // Depot's checksum covers the whole of .cockpit/project.json — GitUrl, Resources and Logo included, none of
-    // which this window's own five-field table names (AC-247's scope is the fields the editor itself can change).
-    // A conflict caused only by one of those still opens this window (the checksum genuinely no longer matches),
-    // but produces zero rows — shown as this note instead of a table with nothing in it, so "Cancel"/"Take theirs"
-    // still make sense even though there is nothing here to compare.
+    // A conflict caused only by one of those still opens this window (the checksum genuinely no longer matches), but
+    // produces zero rows — shown as this note instead of a table with nothing in it, so "Cancel"/"Take theirs" still
+    // make sense even though there is nothing here to compare (AC-247).
     public bool HasNoVisibleRows => Rows.Count == 0;
 
-    // Whether at least one row is a genuine collision — the operator's own edit disagrees with what changed
-    // remotely on the very same field (AC-247's own edge case: "botsen beide kanten op hetzelfde veld"). Drives the
-    // warning note under the table; every row still renders regardless; nothing is ever disabled — "Alleen mijn
-    // wijziging toepassen" stays available and, per row, wins on exactly the rows HasCollision is naming.
+    // Whether at least one row is a genuine collision — the operator's own edit disagrees with what changed remotely on
+    // the very same field (AC-247's own edge case: "botsen beide kanten op hetzelfde veld").
     public bool HasCollision { get; }
 
     [RelayCommand]

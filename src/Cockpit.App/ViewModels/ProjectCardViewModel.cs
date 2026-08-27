@@ -3,11 +3,8 @@ using Cockpit.Core.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-// One project as the Projects workspace list shows it (AC-618): the project itself plus a one-line origin badge —
-// "● This machine" or "◆ &lt;connection&gt;" — that replaces AC-245's separate "On this machine" heading over
-// every bound project. See `ProjectsViewModel`'s own remarks on where `OriginBadge` comes
-// from. An ObservableObject rather than a record (AC-709): `IsSelected` needs to change in place and notify the
-// card's own Border, the same reason `SessionPanelViewModel.IsSelected` isn't a plain field either.
+// An ObservableObject rather than a record (AC-709): `IsSelected` needs to change in place and notify the card's own
+// Border, the same reason `SessionPanelViewModel.IsSelected` isn't a plain field either (AC-618, AC-245).
 public sealed partial class ProjectCardViewModel(
     Project project,
     string originBadge,
