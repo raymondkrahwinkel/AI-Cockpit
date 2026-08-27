@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Verify;
@@ -20,8 +19,9 @@ internal sealed class SessionVerifyGateway(CockpitViewModel cockpit) : IVerifySe
         }
 
         // AC-1013 (AC-577): no CheckAccess() fast path — all callers arrive off the UI thread, so it would
-        // only ever be exercised by a test, a false-green. Not for a dispatcher-less process; that hangs, not fails.
-        return await Dispatcher.UIThread.InvokeAsync(() => session.FeedVerifyResultAsync(caption, screenshotPng)).ConfigureAwait(false);
+        // only ever be exercised by a test, a false-green. AC-1138 caps the wait; it does not restore a fast path.
+        return await UiThreadCall.DispatchAsync(() => session.FeedVerifyResultAsync(caption, screenshotPng))
+            .ConfigureAwait(false);
     }
 
     private SessionPanelViewModel? _Find(string paneId) =>

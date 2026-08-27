@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Text.Json.Nodes;
-using Avalonia.Threading;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
@@ -1136,7 +1135,6 @@ internal sealed class AssistantAgentGateway(
         auditLog.RecordAsync(entry, cancellationToken);
 
     // Runs `work` on the UI thread — inline when already there, so a test on the UI thread pays for
-    // no redundant dispatch. Same rule as `AssistantReadGateway`, awaited rather than blocked on.
-    private static Task<T> _OnUiThreadAsync<T>(Func<Task<T>> work) =>
-        Dispatcher.UIThread.CheckAccess() ? work() : Dispatcher.UIThread.InvokeAsync(work);
+    // no redundant dispatch. Capped from a request thread, and abandoned past the cap (AC-1138).
+    private static Task<T> _OnUiThreadAsync<T>(Func<Task<T>> work) => UiThreadCall.RunAsync(work);
 }

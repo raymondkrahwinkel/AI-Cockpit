@@ -95,7 +95,20 @@ internal sealed class DiscordChannelBridge : IDisposable
             _reportError($"Discord: an attachment never reached the assistant — {failures}");
         }
 
-        var result = await _gateway.SendAsync(senderId, text, images, cancellationToken).ConfigureAwait(false);
+        AssistantChannelSendResult result;
+        try
+        {
+            result = await _gateway.SendAsync(senderId, text, images, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // AC-1138: the host now refuses rather than waiting forever when its UI thread is away, and the caller
+            // discards this task — so without a word here the message would vanish. Reported for the same reason a
+            // dropped attachment is: the sender is owed the fact that it did not arrive.
+            _reportError($"Discord: a message never reached the assistant — {exception.Message}");
+            return;
+        }
+
         if (result.Ignored)
         {
             return;

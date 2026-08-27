@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia.Threading;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -64,7 +65,7 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
             _cockpit.Sessions.FirstOrDefault(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
                 ?.CurrentTurnImages ?? [];
 
-        return Dispatcher.UIThread.CheckAccess() ? Read() : Dispatcher.UIThread.Invoke(Read);
+        return UiThreadCall.Run(Read);
     }
 
     // The selected session's ctx/5h/wk as a plugin reads it (AC-54), built from the same fields the header

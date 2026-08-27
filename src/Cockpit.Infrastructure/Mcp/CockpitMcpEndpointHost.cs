@@ -133,6 +133,14 @@ internal sealed class CockpitMcpEndpointHost
                     _logger.LogWarning(exception, "Tool {Tool} was called with an invalid argument.", context.Params.Name);
                     result = _ToolArgumentErrorResult(context, exception);
                 }
+                // AC-1138: a tool that gave up waiting for the UI thread answers with its own code rather than a
+                // generic failure — the caller can tell "the cockpit is busy, try again" from "this went wrong",
+                // and nothing it asked for was applied.
+                catch (UiUnavailableException exception)
+                {
+                    _logger.LogWarning("Tool {Tool} gave up waiting for the UI thread after {Deadline}.", context.Params.Name, exception.Deadline);
+                    result = _UiUnavailableResult(exception);
+                }
 
                 return McpInboxPiggyback.Attach(result, _services.GetService<IAgentTurnInboxDelivery>(), _logger);
             }));
@@ -300,6 +308,15 @@ internal sealed class CockpitMcpEndpointHost
             : $"{context.Params.Name}: {exception.Message}";
 
         return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = message }] };
+    }
+
+    // AC-1138: the same `ok`/`error` shape the tools themselves answer in, plus the code an agent branches on.
+    private static CallToolResult _UiUnavailableResult(UiUnavailableException exception)
+    {
+        var payload = JsonSerializer.Serialize(
+            new { ok = false, code = UiUnavailableException.Code, error = exception.Message });
+
+        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = payload }] };
     }
 
     private static IReadOnlyList<string> _ExpectedParameterNames(IMcpServerPrimitive? primitive) =>

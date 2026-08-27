@@ -1,5 +1,5 @@
-using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
@@ -20,8 +20,6 @@ internal sealed class SessionProjectResolver(IServiceProvider services) : ISessi
 
         // The lookup walks the on-screen session collections, so it happens on the UI thread; a caller may ask from
         // any. FindSession reaches embedded sessions too, so a run started inside a workspace is not a blind spot.
-        return Dispatcher.UIThread.CheckAccess()
-            ? cockpit.FindSession(paneId)?.ProjectId
-            : await Dispatcher.UIThread.InvokeAsync(() => cockpit.FindSession(paneId)?.ProjectId);
+        return await UiThreadCall.RunAsync(() => cockpit.FindSession(paneId)?.ProjectId);
     }
 }

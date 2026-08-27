@@ -46,7 +46,9 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
         _consent.PromptOpened += _OnPromptOpened;
         _consent.PromptClosed += _OnPromptClosed;
 
-        Dispatcher.UIThread.Invoke(() => _WatchSession(_host.Session));
+        // AC-1138: capped like the rest. This runs wherever the container first resolves the gateway, which can be
+        // an MCP request thread — where waiting out a starved UI thread would hang that agent's whole turn.
+        UiThreadCall.Run(() => _WatchSession(_host.Session));
     }
 
     public event EventHandler<AssistantChannelRow>? RowChanged;
@@ -134,10 +136,9 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
         return (accepted, refusals.Count == 0 ? null : string.Join("; ", refusals.Distinct()));
     }
 
-    // AC-1023: awaits the send finishing rather than only its start — `InvokeAsync`'s own `Func<Task>` overload
-    // unwraps, and the inline branch spares a caller already on the UI thread a redundant dispatch.
-    private static Task _OnUiThreadAsync(Func<Task> work) =>
-        Dispatcher.UIThread.CheckAccess() ? work() : Dispatcher.UIThread.InvokeAsync(work);
+    // AC-1023: awaits the send finishing rather than only its start, and the inline branch spares a caller already
+    // on the UI thread a redundant dispatch. AC-1138 caps the hop for the callers that arrive off it.
+    private static Task _OnUiThreadAsync(Func<Task> work) => UiThreadCall.RunAsync(work);
 
     public void RespondToConsent(Guid promptId, ConsentOutcome outcome, bool remember = false)
     {
@@ -163,7 +164,7 @@ internal sealed class AssistantChannelGateway : IAssistantChannelGateway
         _host.PropertyChanged -= _OnHostPropertyChanged;
         _consent.PromptOpened -= _OnPromptOpened;
         _consent.PromptClosed -= _OnPromptClosed;
-        Dispatcher.UIThread.Invoke(() => _WatchSession(null));
+        UiThreadCall.Run(() => _WatchSession(null));
     }
 
     // ── transcript ─────────────────────────────────────────────────────────────────────────────────────────────

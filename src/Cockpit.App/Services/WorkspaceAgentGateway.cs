@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
@@ -9,7 +8,7 @@ namespace Cockpit.App.Services;
 
 // AC-1013: host-side `IWorkspaceAgentGateway` (AC-391) — resolves the caller's pane and reports every other
 // AI-session pane sharing its workspace, read live off `SessionWorkspacePlacement` rather than the persisted
-// `Workspace.Panes` intention (AC-410). Returns the UI-thread awaitable rather than blocking, since the caller is a Kestrel request thread with no timeout.
+// `Workspace.Panes` intention (AC-410). The caller is a Kestrel request thread, so the hop is capped (AC-1138).
 internal sealed class WorkspaceAgentGateway(
     CockpitViewModel cockpit,
     IWorkspaceAgentCoordinator coordinator,
@@ -17,22 +16,16 @@ internal sealed class WorkspaceAgentGateway(
     : IWorkspaceAgentGateway, ISingletonService
 {
     public Task<WorkspaceAgentSnapshot?> GetWorkspaceSnapshotAsync(string paneId) =>
-        Dispatcher.UIThread.CheckAccess()
-            ? Task.FromResult(_GetWorkspaceSnapshot(paneId))
-            : Dispatcher.UIThread.InvokeAsync(() => _GetWorkspaceSnapshot(paneId)).GetTask();
+        UiThreadCall.RunAsync(() => _GetWorkspaceSnapshot(paneId));
 
     public Task<AgentWakeOutcome> TryWakeAsync(string callerPaneId, string targetPaneId, string kind) =>
-        Dispatcher.UIThread.CheckAccess()
-            ? Task.FromResult(_TryWake(callerPaneId, targetPaneId, kind, checkDesk: true, AgentWakeTrigger.UrgentNotify))
-            : Dispatcher.UIThread.InvokeAsync(() => _TryWake(callerPaneId, targetPaneId, kind, checkDesk: true, AgentWakeTrigger.UrgentNotify)).GetTask();
+        UiThreadCall.RunAsync(() => _TryWake(callerPaneId, targetPaneId, kind, checkDesk: true, AgentWakeTrigger.UrgentNotify));
 
     // AC-656: the host giving a pane its own already-delivered mail promptly, not a peer asking to interrupt it —
     // so there is no caller desk to re-check here the way TryWakeAsync re-checks its sender's. The boundary already
     // ran once, at the moment that mail was accepted into this pane's inbox.
     public Task<AgentWakeOutcome> TryWakeForWaitingMailAsync(string fromPaneId, string targetPaneId, string kind) =>
-        Dispatcher.UIThread.CheckAccess()
-            ? Task.FromResult(_TryWake(fromPaneId, targetPaneId, kind, checkDesk: false, AgentWakeTrigger.WaitingMail))
-            : Dispatcher.UIThread.InvokeAsync(() => _TryWake(fromPaneId, targetPaneId, kind, checkDesk: false, AgentWakeTrigger.WaitingMail)).GetTask();
+        UiThreadCall.RunAsync(() => _TryWake(fromPaneId, targetPaneId, kind, checkDesk: false, AgentWakeTrigger.WaitingMail));
 
     private AgentWakeOutcome _TryWake(string fromPaneId, string targetPaneId, string kind, bool checkDesk, AgentWakeTrigger trigger)
     {

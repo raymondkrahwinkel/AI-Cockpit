@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Threading;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Screenshots;
 
@@ -13,9 +12,9 @@ internal sealed class AvaloniaDesktopDisplays : IDesktopDisplays, ISingletonServ
 {
     // AC-1013: AC-577, deliberately no CheckAccess() fast path — the only caller always asks from a background
     // task, so a fast path would only mask a missing dispatcher loop as a considered "no displays" answer.
-    // This type must not be constructed without a dispatcher loop, or this call hangs instead of failing.
+    // AC-1138 caps the wait, so this no longer hangs where it used to; the caller's token still cancels it.
     public Task<IReadOnlyList<DesktopDisplay>> EnumerateAsync(CancellationToken cancellationToken = default) =>
-        Dispatcher.UIThread.InvokeAsync(_Read).GetTask().WaitAsync(cancellationToken);
+        UiThreadCall.DispatchAsync(_Read).WaitAsync(cancellationToken);
 
     private static IReadOnlyList<DesktopDisplay> _Read()
     {
