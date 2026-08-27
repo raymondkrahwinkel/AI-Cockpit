@@ -50,6 +50,12 @@ public class MiniatureFrameCostBenchmark
 
         Assert.True(live.MsPerFrame > 0 && snapshot.MsPerFrame > 0,
             $"neither route measured anything:\n{report}");
+        Assert.True(
+            live.MsPerFrame > snapshot.MsPerFrame,
+            "expected snapshots to cost less per frame than live rendering");
+        Assert.Equal(0, live.CacheBytes);
+        // RenderTargetBitmap uses four bytes per pixel.
+        Assert.Equal((long)(FullWidth * Scale) * (long)(FullHeight * Scale) * 4 * Sessions, snapshot.CacheBytes);
     }
 
     private static Sample Measure(bool snapshotted)
