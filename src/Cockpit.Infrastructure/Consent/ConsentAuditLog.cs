@@ -5,9 +5,9 @@ using Cockpit.Infrastructure.Auditing;
 
 namespace Cockpit.Infrastructure.Consent;
 
-// Appends the consent audit trail (#AC-47) to `consent-audit.jsonl` next to `cockpit.json`.
-// Append-only/never-throws/tail-read machinery lives in `JsonlAuditLog{T}`; this only names the
-// file and trims the action literal, so the log stays a record of what was decided, not every command.
+// Appends the consent audit trail (#AC-47) to `consent-audit.jsonl` via `JsonlAuditLog{T}`,
+// trimming the action literal. Deliberately unbounded forever (AC-1128): a decision, once logged,
+// must not be erasable — see `SharedAuditTrailsDoNotRotateTests` for the reasoning and the guard.
 internal sealed class ConsentAuditLog : JsonlAuditLog<ConsentAuditEntry>, IConsentAuditLog, ISingletonService
 {
     // The action literal is trimmed: the log is for recognising a decision later, not for keeping a full copy of every command.

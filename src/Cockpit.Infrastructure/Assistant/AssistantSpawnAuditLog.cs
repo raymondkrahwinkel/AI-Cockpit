@@ -5,9 +5,9 @@ using Cockpit.Infrastructure.Auditing;
 
 namespace Cockpit.Infrastructure.Assistant;
 
-// Appends the assistant spawn trail (AC-545, criterion 5) to `assistant-spawn-audit.jsonl` next to
-// `cockpit.json`. The append-only, never-throws, tail-read machinery lives in `JsonlAuditLog{T}`, the same
-// base the consent and delegation trails use; this only names the file and trims the free-text refusal field.
+// Appends the assistant spawn trail (AC-545, criterion 5) to `assistant-spawn-audit.jsonl` via
+// `JsonlAuditLog{T}`, trimming the free-text refusal field. Unbounded: no adversarial writer (the
+// assistant itself writes this trail), and rollover for ~347 KB/6wk (AC-1128) was considered and not worth it.
 internal sealed class AssistantSpawnAuditLog : JsonlAuditLog<AssistantSpawnAuditEntry>, IAssistantSpawnAuditLog, ISingletonService
 {
     // The refusal reason is trimmed: the trail is for recognising what the gate stopped, not for keeping a full copy of every message a tool ever returned.

@@ -5,9 +5,9 @@ using Cockpit.Infrastructure.Auditing;
 
 namespace Cockpit.Infrastructure.Agents;
 
-// AC-1013: appends the AC-392 notify trail to `agent-notify-audit.jsonl` (owner-only, next to cockpit.json)
-// via `JsonlAuditLog{T}`, trimming the sender-controlled free-text fields. Deliberately keeps body text
-// (up to 300 chars) and grows unbounded — see ticket comment for the full accepted-risk trade-off.
+// AC-392: appends the notify trail to `agent-notify-audit.jsonl` (owner-only, next to cockpit.json) via
+// `JsonlAuditLog{T}`, trimming the sender-controlled free-text fields, keeping body text (300 chars) for its
+// forensic value. Deliberately unbounded (AC-1128): a size threshold is a displacement knob a sender could drive.
 internal sealed class AgentNotifyAuditLog : JsonlAuditLog<AgentNotifyAuditEntry>, IAgentNotifyAuditLog, ISingletonService
 {
     // The message body is trimmed: the trail is for recognising an attempt later, not for keeping a second copy of every message.
