@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using Cockpit.Infrastructure.Mentions;
 using Cockpit.TestSupport;
 
@@ -16,6 +17,20 @@ public sealed class WorkingDirectoryFileIndexTests : IDisposable
     public WorkingDirectoryFileIndexTests() => Directory.CreateDirectory(_root);
 
     public void Dispose() => TestGitDirectory.Remove(_root);
+
+    private sealed class StoppedClock(DateTimeOffset now) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = now;
+
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    private static int _CacheCount(WorkingDirectoryFileIndex index)
+    {
+        var cache = typeof(WorkingDirectoryFileIndex).GetField("_cache", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(index)!;
+        return (int)cache.GetType().GetProperty("Count")!.GetValue(cache)!;
+    }
 
     private void _InitRepo()
     {
@@ -127,5 +142,39 @@ public sealed class WorkingDirectoryFileIndexTests : IDisposable
 
         Assert.DoesNotContain("second.txt", second);
         Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public async Task GetPathsAsync_OneDirectoryAlwaysUsesOneCacheEntry()
+    {
+        var index = new WorkingDirectoryFileIndex(new StoppedClock(DateTimeOffset.UnixEpoch));
+
+        for (var i = 0; i < 200; i++)
+        {
+            await index.GetPathsAsync(_root, CancellationToken.None);
+        }
+
+        Assert.Equal(1, _CacheCount(index));
+    }
+
+    [Fact]
+    public async Task GetPathsAsync_ExpiredDirectoriesAreEvictedWhenANewDirectoryIsIndexed()
+    {
+        var clock = new StoppedClock(DateTimeOffset.UnixEpoch);
+        var index = new WorkingDirectoryFileIndex(clock);
+
+        for (var i = 0; i < 200; i++)
+        {
+            var directory = Path.Combine(_root, i.ToString());
+            Directory.CreateDirectory(directory);
+            await index.GetPathsAsync(directory, CancellationToken.None);
+        }
+
+        Assert.Equal(200, _CacheCount(index));
+
+        clock.Now += TimeSpan.FromSeconds(30);
+        await index.GetPathsAsync(Path.Combine(_root, "new"), CancellationToken.None);
+
+        Assert.Equal(1, _CacheCount(index));
     }
 }

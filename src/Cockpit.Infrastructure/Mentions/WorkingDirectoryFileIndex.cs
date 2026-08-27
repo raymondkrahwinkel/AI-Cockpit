@@ -21,14 +21,22 @@ internal sealed class WorkingDirectoryFileIndex : IMentionFileSource, ISingleton
         new(StringComparer.Ordinal) { ".git", ".svn", ".hg", ".jj", "node_modules", "bin", "obj", ".venv", "venv", "__pycache__" };
 
     private readonly ConcurrentDictionary<string, _CacheEntry> _cache = new(StringComparer.Ordinal);
+    private readonly TimeProvider _time;
+
+    public WorkingDirectoryFileIndex() : this(TimeProvider.System)
+    {
+    }
+
+    internal WorkingDirectoryFileIndex(TimeProvider time) => _time = time;
 
     public async Task<IReadOnlyList<string>> GetPathsAsync(string workingDirectory, CancellationToken cancellationToken)
     {
+        _EvictExpiredEntries();
         var entry = _cache.AddOrUpdate(
             workingDirectory,
-            static (key, ttl) => _CacheEntry.Fresh(key, ttl),
-            static (key, existing, ttl) => existing.IsExpired ? _CacheEntry.Fresh(key, ttl) : existing,
-            CacheTtl);
+            static (key, state) => _CacheEntry.Fresh(key, state.Ttl, state.Time),
+            static (key, existing, state) => existing.IsExpired(state.Time) ? _CacheEntry.Fresh(key, state.Ttl, state.Time) : existing,
+            (Ttl: CacheTtl, Time: _time));
 
         try
         {
@@ -48,14 +56,25 @@ internal sealed class WorkingDirectoryFileIndex : IMentionFileSource, ISingleton
         }
     }
 
+    private void _EvictExpiredEntries()
+    {
+        foreach (var entry in _cache)
+        {
+            if (entry.Value.IsExpired(_time))
+            {
+                _cache.TryRemove(entry);
+            }
+        }
+    }
+
     private sealed class _CacheEntry(Lazy<Task<IReadOnlyList<string>>> paths, DateTimeOffset expiresAt)
     {
         public Lazy<Task<IReadOnlyList<string>>> Paths { get; } = paths;
 
-        public bool IsExpired => DateTimeOffset.UtcNow >= expiresAt;
+        public bool IsExpired(TimeProvider time) => time.GetUtcNow() >= expiresAt;
 
-        public static _CacheEntry Fresh(string workingDirectory, TimeSpan ttl) =>
-            new(new Lazy<Task<IReadOnlyList<string>>>(() => _BuildAsync(workingDirectory)), DateTimeOffset.UtcNow + ttl);
+        public static _CacheEntry Fresh(string workingDirectory, TimeSpan ttl, TimeProvider time) =>
+            new(new Lazy<Task<IReadOnlyList<string>>>(() => _BuildAsync(workingDirectory)), time.GetUtcNow() + ttl);
     }
 
     // Not tied to any individual caller's token: the build is shared across every caller that lands on this
