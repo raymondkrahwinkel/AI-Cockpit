@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
@@ -38,7 +37,7 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public async Task ColdStart_ShowsThePersistedSnapshotBeforeAnyFetchCompletes()
     {
-        var storage = new JsonBackedStorage();
+        var storage = new InMemoryPluginStorage();
         var oldSnapshot = new PullRequestFeedSnapshot(
             new PullRequestFeedResult([SamplePullRequest], [], RepositoryMissing: false),
             DateTimeOffset.UtcNow - PullRequestRefreshSource.StaleAfter - TimeSpan.FromMinutes(1));
@@ -78,7 +77,7 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public async Task RestartSnapshot_PersistsRenderableFieldsWithoutBody()
     {
-        var storage = new JsonBackedStorage();
+        var storage = new InMemoryPluginStorage();
         var legacyPullRequest = SamplePullRequest with { Body = "legacy body" };
         storage.Set(
             "refreshSourceSnapshot",
@@ -161,13 +160,13 @@ public class PullRequestRefreshSourceTests
     // rather than throw out of the constructor. This runs inside `GitHubPullRequestsPlugin.Initialize`, before
     // `AddSettings`/`AddSideMenuSection`/`AddWidget` register anything — an unguarded throw here
     // used to make `PluginManager.Initialize` skip every one of this plugin's contributions over one bad key.
-    // `JsonBackedStorage` (unlike `InMemoryStorage`) round-trips through
+    // `InMemoryPluginStorage` (unlike `InMemoryStorage`) round-trips through
     // `System.Text.Json.JsonSerializer` like the host's real `PluginStorage` does, so this
     // actually drives the deserialize path the bug lives in.
     [Fact]
     public void ColdStart_WithUnparsableStoredJson_FallsBackToEmpty_InsteadOfThrowing()
     {
-        var storage = new JsonBackedStorage();
+        var storage = new InMemoryPluginStorage();
         storage.SeedRaw("refreshSourceSnapshot", "not json at all");
 
         var source = new PullRequestRefreshSource(storage, (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)), pollInterval: TimeSpan.FromMinutes(10));
@@ -190,7 +189,7 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public void ColdStart_WithWrongShapedJson_FallsBackToEmpty_InsteadOfCarryingANullResult()
     {
-        var storage = new JsonBackedStorage();
+        var storage = new InMemoryPluginStorage();
         storage.SeedRaw("refreshSourceSnapshot", """{"totally":"unrelated","shape":true}""");
 
         var source = new PullRequestRefreshSource(storage, (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)), pollInterval: TimeSpan.FromMinutes(10));
@@ -212,7 +211,7 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public void ColdStart_WithNullCollectionsInsideResult_FallsBackToEmpty_InsteadOfCarryingNullLists()
     {
-        var storage = new JsonBackedStorage();
+        var storage = new InMemoryPluginStorage();
         storage.SeedRaw("refreshSourceSnapshot", """{"Result":{}}""");
 
         var source = new PullRequestRefreshSource(storage, (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)), pollInterval: TimeSpan.FromMinutes(10));
@@ -380,20 +379,4 @@ public class PullRequestRefreshSourceTests
         public void Set<T>(string key, T value) => _values[key] = value;
     }
 
-    // Unlike `InMemoryStorage`, stores values as the raw JSON strings the host's real
-    // `PluginStorage` does — needed for the malformed/wrong-shape tests above, which are only real bugs on
-    // the JSON round trip; `InMemoryStorage` keeps the live object and would never exercise
-    // `JsonSerializer.Deserialize{TValue}(string, JsonSerializerOptions)` at all.
-    private sealed class JsonBackedStorage : IPluginStorage
-    {
-        private readonly Dictionary<string, string> _values = [];
-
-        public void SeedRaw(string key, string rawJson) => _values[key] = rawJson;
-
-        public string Raw(string key) => _values[key];
-
-        public T? Get<T>(string key) => _values.TryGetValue(key, out var json) ? JsonSerializer.Deserialize<T>(json) : default;
-
-        public void Set<T>(string key, T value) => _values[key] = JsonSerializer.Serialize(value);
-    }
 }
