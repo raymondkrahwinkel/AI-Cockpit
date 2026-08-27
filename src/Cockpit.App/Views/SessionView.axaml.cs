@@ -20,6 +20,9 @@ public partial class SessionView : UserControl
     // repair since AC-528 has landed on one half.
     private TranscriptFollower? _follower;
 
+    // AC-1165: the input half — key handling, paste, mentions — shared with AssistantChatView the same way.
+    private readonly TranscriptComposerInput _composerInput;
+
     // Watched for minimise: the paused renderer never commits recycled-row removal, so a minimised
     // streaming pane keeps every row instead of one viewport's worth (overnight multi-GB growth).
     // _ApplyRendererPause suspends realisation the same way an inactive tab already does.
@@ -76,13 +79,24 @@ public partial class SessionView : UserControl
         Cockpit.App.Diagnostics.LeakTracker.Register(this);
 #endif
 
+        _composerInput = new TranscriptComposerInput(
+            InputBox,
+            tryGetPastedBitmap: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetBitmapAsync() ?? Task.FromResult<Bitmap?>(null),
+            tryGetPastedText: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetTextAsync() ?? Task.FromResult<string?>(null),
+            hasComposer: () => DataContext is SessionViewModel,
+            mentionPicker: () => (DataContext as SessionViewModel)?.MentionPicker,
+            recallLastQueuedMessage: () => DataContext is SessionViewModel recallVm && recallVm.RecallLastQueuedMessage(),
+            resolveStopIfBusy: () => DataContext is SessionViewModel { IsBusy: true } busyVm ? busyVm.StopCommand : null,
+            sendCommand: () => (DataContext as SessionViewModel)?.SendCommand,
+            resolvePastedImageSink: () => DataContext is SessionViewModel vm ? vm.AddPastedImage : null);
+
         // Enter sends the message; Shift+Enter inserts a newline. Tunnel so we pre-empt the
         // TextBox's own Enter handling (which would otherwise insert a newline).
-        InputBox.AddHandler(InputElement.KeyDownEvent, _OnInputKeyDown, RoutingStrategies.Tunnel);
+        InputBox.AddHandler(InputElement.KeyDownEvent, _composerInput.OnKeyDown, RoutingStrategies.Tunnel);
 
         // AC-740: re-evaluates the @-mention token once the TextBox has applied the keystroke (character typed,
         // backspace, caret moved). Bubble is fine — nothing else claims KeyUp on this control.
-        InputBox.KeyUp += _OnInputKeyUp;
+        InputBox.KeyUp += _composerInput.OnKeyUp;
 
         // Push-to-talk (F9 by default): tunnel on the whole panel, not just the input box, so it fires
         // regardless of which control inside the panel has focus — the operator should not have to
@@ -317,6 +331,7 @@ public partial class SessionView : UserControl
 
     // A permission arrives without scrolling anything, so no ScrollChanged comes to re-evaluate the button —
     // this is the only notice the view gets that there is now something to point at.
+    // Deliberately diverges from AssistantChatView, which has no jump-button shield (AC-996) to keep in sync.
     private void _OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         // The status as well as the flag: whatever takes the session off needs-attention has to take the alarm
@@ -380,180 +395,6 @@ public partial class SessionView : UserControl
     }
 
 
-
-    // Whether the matching KeyDown already handled this keystroke — a tunnelled KeyDown's own `e.Handled` cannot
-    // be read back from the later KeyUp, so this is how `_OnInputKeyUp` tells caret-driven typing (unhandled,
-    // falls through to the TextBox's default editing) apart from a programmatic text mutation.
-    private bool _lastInputKeyWasHandled;
-
-    private void _OnInputKeyDown(object? sender, KeyEventArgs e)
-    {
-        _OnInputKeyDownCore(e);
-        _lastInputKeyWasHandled = e.Handled;
-    }
-
-    private void _OnInputKeyDownCore(KeyEventArgs e)
-    {
-        // AC-740: the open picker gets first refusal on these five keys, ahead of every handler below — Up
-        // otherwise recalls, Escape otherwise stops the turn, and Enter otherwise sends.
-        if (DataContext is SessionViewModel { MentionPicker.IsOpen: true } mentionVm)
-        {
-            var picker = mentionVm.MentionPicker;
-            switch (e.Key)
-            {
-                case Key.Up:
-                    picker.Move(-1);
-                    e.Handled = true;
-                    return;
-                case Key.Down:
-                    picker.Move(1);
-                    e.Handled = true;
-                    return;
-                case Key.Tab:
-                case Key.Enter:
-                    if (picker.Accept() is { } acceptance)
-                    {
-                        _InsertMention(acceptance);
-                    }
-
-                    e.Handled = true;
-                    return;
-                case Key.Escape:
-                    picker.Dismiss();
-                    e.Handled = true;
-                    return;
-            }
-        }
-
-        if (_IsPasteGesture(e))
-        {
-            // Clipboard read is async but the default TextBox paste runs synchronously on this same
-            // KeyDown, so the default is suppressed and the whole paste is routed by hand instead.
-            e.Handled = true;
-            _ = _HandlePasteAsync();
-            return;
-        }
-
-        // Arrow Up on an empty input recalls the most recently queued message back into the box for
-        // editing (mirrors shell history). Guarded on an empty input so it never clobbers text you are
-        // typing and Up otherwise moves the caret as usual.
-        if (e.Key == Key.Up
-            && string.IsNullOrEmpty(InputBox.Text)
-            && DataContext is SessionViewModel recallVm
-            && recallVm.RecallLastQueuedMessage())
-        {
-            e.Handled = true;
-            return;
-        }
-
-        // Esc interrupts the running turn (like the claude TUI), mirroring the Stop button. Only while
-        // a turn is in flight, so Esc is otherwise free to do its normal thing (clear selection, etc.).
-        if (e.Key == Key.Escape)
-        {
-            if (DataContext is SessionViewModel { IsBusy: true } busyVm && busyVm.StopCommand.CanExecute(null))
-            {
-                busyVm.StopCommand.Execute(null);
-                e.Handled = true;
-            }
-
-            return;
-        }
-
-        if (e.Key != Key.Enter || e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-        {
-            return;
-        }
-
-        e.Handled = true;
-        // Enter mirrors the Send button: SendAsync queues the message itself when a turn is in flight
-        // (T8), so gate only on there being something to send — not on IsBusy, which used to block
-        // Enter while busy and left queueing reachable via the Send button only.
-        if (DataContext is SessionViewModel vm && vm.SendCommand.CanExecute(null))
-        {
-            vm.SendCommand.Execute(null);
-        }
-    }
-
-    private static bool _IsPasteGesture(KeyEventArgs e) =>
-        e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control);
-
-    // Handles CTRL+V: a clipboard bitmap becomes a PNG pending attachment, otherwise text is
-    // inserted normally. AddPastedImage gates on CanPasteImages (#64) — a driver that can't send
-    // images gets a transcript notice instead of a silently vanishing attachment.
-    private async System.Threading.Tasks.Task _HandlePasteAsync()
-    {
-        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
-        if (clipboard is null || DataContext is not SessionViewModel vm)
-        {
-            return;
-        }
-
-        try
-        {
-            var bitmap = await clipboard.TryGetBitmapAsync();
-            if (bitmap is not null)
-            {
-                using (bitmap)
-                {
-                    using var stream = new MemoryStream();
-                    bitmap.Save(stream, PngBitmapEncoderOptions.Default);
-                    vm.AddPastedImage(stream.ToArray());
-                }
-
-                return;
-            }
-
-            var text = await clipboard.TryGetTextAsync();
-            if (!string.IsNullOrEmpty(text))
-            {
-                _InsertText(text);
-            }
-        }
-        catch (Exception)
-        {
-            // Clipboard unavailable (locked by another app, unsupported content): drop the paste
-            // rather than crash the UI thread.
-        }
-    }
-
-    // Inserts text at the caret, replacing any current selection — mirrors a normal paste.
-    private void _InsertText(string text)
-    {
-        var start = Math.Min(InputBox.SelectionStart, InputBox.SelectionEnd);
-        var end = Math.Max(InputBox.SelectionStart, InputBox.SelectionEnd);
-        var current = InputBox.Text ?? string.Empty;
-        var next = current[..start] + text + current[end..];
-        InputBox.Text = next;
-        InputBox.CaretIndex = start + text.Length;
-        InputBox.SelectionStart = InputBox.CaretIndex;
-        InputBox.SelectionEnd = InputBox.CaretIndex;
-    }
-
-    // AC-740: re-evaluates the @-mention token after a keystroke the TextBox itself handled (typed, backspace,
-    // caret moved) — `_lastInputKeyWasHandled` tells this apart from a programmatic mutation (voice, recall, a
-    // pasted block), all of which raise no KeyUp here except Ctrl+V, already marked handled above.
-    private void _OnInputKeyUp(object? sender, KeyEventArgs e)
-    {
-        if (_lastInputKeyWasHandled || DataContext is not SessionViewModel vm)
-        {
-            return;
-        }
-
-        vm.MentionPicker.OnTextChanged(InputBox.Text ?? string.Empty, InputBox.CaretIndex);
-    }
-
-    // Splices an accepted mention into the text: replaces [TokenStart..caret] with '@' + path + a trailing space.
-    private void _InsertMention(MentionAcceptance acceptance)
-    {
-        var current = InputBox.Text ?? string.Empty;
-        var end = Math.Clamp(InputBox.CaretIndex, 0, current.Length);
-        var start = Math.Clamp(acceptance.TokenStart, 0, end);
-        var replacement = $"@{acceptance.Path} ";
-        InputBox.Text = current[..start] + replacement + current[end..];
-        InputBox.CaretIndex = start + replacement.Length;
-        InputBox.SelectionStart = InputBox.CaretIndex;
-        InputBox.SelectionEnd = InputBox.CaretIndex;
-    }
 
     // KeyDown for push-to-talk. BeginVoiceHold itself guards OS key-repeat, so this only marks the
     // event handled when a hold actually started — an ignored press leaves the key free elsewhere.

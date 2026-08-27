@@ -27,6 +27,9 @@ public partial class AssistantChatView : UserControl
     // and the two drifted both ways — this half carried AC-953's fix, the other half AC-996's.
     private TranscriptFollower? _follower;
 
+    // AC-1165: the input half — key handling, paste, mentions — shared with SessionView the same way.
+    private readonly TranscriptComposerInput _composerInput;
+
     private PropertyChangedEventHandler? _sessionHandler;
     private SessionViewModel? _attachedSession;
 
@@ -78,13 +81,24 @@ public partial class AssistantChatView : UserControl
                 origin: "a “?” in the assistant window"));
         }
 
+        _composerInput = new TranscriptComposerInput(
+            InputBox,
+            tryGetPastedBitmap: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetBitmapAsync() ?? Task.FromResult<Bitmap?>(null),
+            tryGetPastedText: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetTextAsync() ?? Task.FromResult<string?>(null),
+            hasComposer: () => DataContext is AssistantChatViewModel,
+            mentionPicker: () => (DataContext as AssistantChatViewModel)?.MentionPicker,
+            recallLastQueuedMessage: () => DataContext is AssistantChatViewModel recallVm && recallVm.RecallLastQueuedMessage(),
+            resolveStopIfBusy: () => DataContext is AssistantChatViewModel { Session.IsBusy: true } busyVm ? busyVm.StopCommand : null,
+            sendCommand: () => (DataContext as AssistantChatViewModel)?.SendCommand,
+            resolvePastedImageSink: () => DataContext is AssistantChatViewModel { Session: { } session } ? session.AddPastedImage : null);
+
         // Enter sends; Shift+Enter inserts a newline — the same convention as the main session composer
-        // (SessionView._OnInputKeyDown). Tunnel so this pre-empts the TextBox's own Enter handling.
-        InputBox.AddHandler(InputElement.KeyDownEvent, _OnInputKeyDown, RoutingStrategies.Tunnel);
+        // (SessionView's own TranscriptComposerInput). Tunnel so this pre-empts the TextBox's own Enter handling.
+        InputBox.AddHandler(InputElement.KeyDownEvent, _composerInput.OnKeyDown, RoutingStrategies.Tunnel);
 
         // AC-740: re-evaluates the @-mention token once the TextBox has applied the keystroke — same split as
         // SessionView's.
-        InputBox.KeyUp += _OnInputKeyUp;
+        InputBox.KeyUp += _composerInput.OnKeyUp;
     }
 
     // What used to be the window's `Opened` handler. Everything wired here comes off again in
@@ -361,6 +375,7 @@ public partial class AssistantChatView : UserControl
 
     // AC-545: scrolls Allow/Deny into view when waiting — a permission turns an existing tool row
     // pending rather than adding one, so CollectionChanged stays quiet and the transcript handler can't.
+    // Deliberately diverges from SessionView, which also watches SessionStatus for its jump-button shield (AC-996) — this window has none.
     private void _OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(SessionViewModel.HasPendingPermission)
@@ -477,171 +492,4 @@ public partial class AssistantChatView : UserControl
         }
     }
 
-    // Whether the matching KeyDown already handled this keystroke — see SessionView's own field for the full
-    // reasoning; same split here.
-    private bool _lastInputKeyWasHandled;
-
-    private void _OnInputKeyDown(object? sender, KeyEventArgs e)
-    {
-        _OnInputKeyDownCore(e);
-        _lastInputKeyWasHandled = e.Handled;
-    }
-
-    private void _OnInputKeyDownCore(KeyEventArgs e)
-    {
-        // AC-740: the open picker gets first refusal on these five keys, ahead of every handler below.
-        if (DataContext is AssistantChatViewModel { MentionPicker.IsOpen: true } mentionVm)
-        {
-            var picker = mentionVm.MentionPicker;
-            switch (e.Key)
-            {
-                case Key.Up:
-                    picker.Move(-1);
-                    e.Handled = true;
-                    return;
-                case Key.Down:
-                    picker.Move(1);
-                    e.Handled = true;
-                    return;
-                case Key.Tab:
-                case Key.Enter:
-                    if (picker.Accept() is { } acceptance)
-                    {
-                        _InsertMention(acceptance);
-                    }
-
-                    e.Handled = true;
-                    return;
-                case Key.Escape:
-                    picker.Dismiss();
-                    e.Handled = true;
-                    return;
-            }
-        }
-
-        // CTRL+V taken over whole (AC-630), for the same reason SessionView does: the clipboard read is async
-        // while the TextBox's own paste is not, so leaving the default in place races binary content into the box.
-        if (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            e.Handled = true;
-            _ = _HandlePasteAsync();
-            return;
-        }
-
-        // Arrow-Up on an empty box pulls the most recently queued message back for editing — the session pane's
-        // gesture, on the same queue. Guarded on an empty box so it never clobbers what is being typed.
-        if (e.Key == Key.Up
-            && string.IsNullOrEmpty(InputBox.Text)
-            && DataContext is AssistantChatViewModel recallVm
-            && recallVm.RecallLastQueuedMessage())
-        {
-            e.Handled = true;
-            return;
-        }
-
-        // AC-942: Esc interrupts the running turn, mirroring the Stop button — the mention-picker block above
-        // already claimed Esc while the picker is open, so this only fires once that picker is closed.
-        if (e.Key == Key.Escape)
-        {
-            if (DataContext is AssistantChatViewModel { Session.IsBusy: true } busyVm && busyVm.StopCommand.CanExecute(null))
-            {
-                busyVm.StopCommand.Execute(null);
-                e.Handled = true;
-            }
-
-            return;
-        }
-
-        if (e.Key != Key.Enter || e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-        {
-            return;
-        }
-
-        e.Handled = true;
-        if (DataContext is AssistantChatViewModel vm && vm.SendCommand.CanExecute(null))
-        {
-            vm.SendCommand.Execute(null);
-        }
-    }
-
-    // The view owns the clipboard read and the view model only ever sees PNG bytes — the same split SessionView
-    // keeps. The vision gate stays `SessionViewModel.AddPastedImage`'s, so a provider that cannot see images says
-    // so in the transcript instead of dropping the paste silently.
-    private async System.Threading.Tasks.Task _HandlePasteAsync()
-    {
-        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
-        if (clipboard is null || DataContext is not AssistantChatViewModel vm)
-        {
-            return;
-        }
-
-        try
-        {
-            var bitmap = await clipboard.TryGetBitmapAsync();
-            if (bitmap is not null)
-            {
-                using (bitmap)
-                {
-                    // No session yet (the assistant is unavailable, or its lazy start failed) means nothing to
-                    // attach to — the transcript notice AddPastedImage would give needs a transcript.
-                    if (vm.Session is { } session)
-                    {
-                        using var stream = new MemoryStream();
-                        bitmap.Save(stream, PngBitmapEncoderOptions.Default);
-                        session.AddPastedImage(stream.ToArray());
-                    }
-                }
-
-                return;
-            }
-
-            var text = await clipboard.TryGetTextAsync();
-            if (!string.IsNullOrEmpty(text))
-            {
-                _InsertText(text);
-            }
-        }
-        catch (Exception)
-        {
-            // Clipboard unavailable (locked by another app, unsupported content): drop the paste rather than
-            // crash the UI thread.
-        }
-    }
-
-    // Inserts text at the caret, replacing any current selection — mirrors a normal paste.
-    private void _InsertText(string text)
-    {
-        var start = Math.Min(InputBox.SelectionStart, InputBox.SelectionEnd);
-        var end = Math.Max(InputBox.SelectionStart, InputBox.SelectionEnd);
-        var current = InputBox.Text ?? string.Empty;
-        InputBox.Text = current[..start] + text + current[end..];
-        InputBox.CaretIndex = start + text.Length;
-        InputBox.SelectionStart = InputBox.CaretIndex;
-        InputBox.SelectionEnd = InputBox.CaretIndex;
-    }
-
-    // AC-740: re-evaluates the @-mention token after a keystroke the TextBox handled itself — see SessionView's
-    // own for the full reasoning.
-    private void _OnInputKeyUp(object? sender, KeyEventArgs e)
-    {
-        if (_lastInputKeyWasHandled || DataContext is not AssistantChatViewModel vm)
-        {
-            return;
-        }
-
-        vm.MentionPicker.OnTextChanged(InputBox.Text ?? string.Empty, InputBox.CaretIndex);
-    }
-
-    // Splices an accepted mention into the text: replaces [TokenStart..caret] with '@' + path + a trailing space.
-    private void _InsertMention(MentionAcceptance acceptance)
-    {
-        var current = InputBox.Text ?? string.Empty;
-        var end = Math.Clamp(InputBox.CaretIndex, 0, current.Length);
-        var start = Math.Clamp(acceptance.TokenStart, 0, end);
-        var replacement = $"@{acceptance.Path} ";
-        InputBox.Text = current[..start] + replacement + current[end..];
-        InputBox.CaretIndex = start + replacement.Length;
-        InputBox.SelectionStart = InputBox.CaretIndex;
-        InputBox.SelectionEnd = InputBox.CaretIndex;
-    }
 }
