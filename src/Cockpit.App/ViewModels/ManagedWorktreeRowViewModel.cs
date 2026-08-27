@@ -23,10 +23,9 @@ public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
 
     public WorktreeRecord Record => Status.Record;
 
-    // True while the pane that owns this worktree still exists — reattach is blocked, removing it would pull the
-    // tree out from under it. Not necessarily a running session (AC-410): a restored, not-yet-started pane is
-    // "live" here too, on purpose — its worktree must stay reserved for the resume offer it is still showing,
-    // even though nothing on it is actually running yet.
+    // Not necessarily a running session (AC-410): a restored, not-yet-started pane is "live" here too, on purpose — its
+    // worktree must stay reserved for the resume offer it is still showing, even though nothing on it is actually
+    // running yet.
     public bool IsOwnerLive { get; }
 
     // Whether the owning pane currently shows an open restore offer (AC-410) — the reason `IsOwnerLive`
@@ -47,13 +46,16 @@ public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
 
     public bool IsClean => Status.IsClean;
 
-    // Reattach is offered only when the owning session is gone (Raymond 2026-07-19: GONE only) — never onto a live tree.
+    // Reattach is offered only when the owning session is gone (Raymond 2026-07-19: GONE only) — never onto a live
+    // tree.
     public bool CanReattach => !IsOwnerLive;
 
-    // Remove is blocked while a session is still on the tree (Raymond 2026-07-19): removing it would pull the working directory out from under a running session. Close the session first.
+    // Remove is blocked while a session is still on the tree (Raymond 2026-07-19): removing it would pull the working
+    // directory out from under a running session.
     public bool CanRemove => !IsOwnerLive;
 
-    // A plain-language state for the pill, in the order that matters for data safety: gone folder, then an emptied one, then unsaved work, then commits that exist nowhere else, then retained, then clean.
+    // A plain-language state for the pill, in the order that matters for data safety: gone folder, then an emptied one,
+    // then unsaved work, then commits that exist nowhere else, then retained, then clean.
     public string StatusLabel =>
         !Status.Exists ? "Folder missing"
         : Status.WorkingCopyMissing ? "No working copy"
@@ -81,11 +83,9 @@ public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
 
     public string OwnerBrushKey => IsOwnerLive ? "CockpitStatusBusyBrush" : "CockpitTextFaintBrush";
 
-    // A session can suggest its own name (set_status, AC-310), so it reaches this label unreviewed by the operator.
-    // Control characters — and the Unicode line/paragraph separators git's own ref-name check does not reject
-    // (same reasoning as WorktreeTools._SingleLine) — are folded to a space so a name can never break the status
-    // row onto more than one line. A name longer than one pill can comfortably hold is cut with an ellipsis rather
-    // than left to stretch the row to whatever width the agent picked.
+    // Control characters — and the Unicode line/paragraph separators git's own ref-name check does not reject (same
+    // reasoning as WorktreeTools._SingleLine) — are folded to a space so a name can never break the status row onto
+    // more than one line (AC-310).
     private const int MaxOwnerNameLength = 40;
 
     private static string? _SanitizeOwnerName(string? name)

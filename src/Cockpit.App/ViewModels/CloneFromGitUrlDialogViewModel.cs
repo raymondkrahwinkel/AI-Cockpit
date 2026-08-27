@@ -4,14 +4,9 @@ using Cockpit.Core.Abstractions.Clones;
 
 namespace Cockpit.App.ViewModels;
 
-// Backs the Clone-from-a-Git-URL dialog (AC-90): the operator pastes a repository URL, and the dialog clones it —
-// through `IRepositoryCloneManager` — into the managed clones area, then closes carrying the local path
-// the New-session dialog then starts the session in. Composes with worktree isolation (AC-85): the clone is a
-// repository root a session can worktree off.
 // The clone runs here rather than fire-and-forget so its outcome is shown in place: a spinner while it runs, and an
 // actionable message that keeps the dialog open on failure (a missing credential helper, a private repo, a bad URL)
-// rather than closing on a repository that is not there. Authentication is the host's own git credential helper —
-// the cockpit never handles a token.
+// rather than closing on a repository that is not there (AC-90, AC-85).
 public sealed partial class CloneFromGitUrlDialogViewModel : ObservableObject
 {
     private readonly IRepositoryCloneManager? _cloneManager;
@@ -39,11 +34,12 @@ public sealed partial class CloneFromGitUrlDialogViewModel : ObservableObject
     private bool _targetEdited;
     private bool _isSyncingTarget;
 
-    // True while the clone is running: the inputs disable and a progress line shows, so a slow clone reads as working, not hung.
+    // True while the clone is running: the inputs disable and a progress line shows, so a slow clone reads as working,
+    // not hung.
     [ObservableProperty]
     private bool _isCloning;
 
-    // The last clone failure, shown in place so the operator can fix it (auth, URL) without losing the dialog. Null when there is nothing to report.
+    // The last clone failure, shown in place so the operator can fix it (auth, URL) without losing the dialog.
     [ObservableProperty]
     private string? _errorMessage;
 
@@ -59,7 +55,8 @@ public sealed partial class CloneFromGitUrlDialogViewModel : ObservableObject
         _clonesRoot = clonesRoot;
     }
 
-    // The clones root a blank target folder falls back to — shown under the field so "default" is concrete, and pointing at where Options changes it.
+    // The clones root a blank target folder falls back to — shown under the field so "default" is concrete, and
+    // pointing at where Options changes it.
     public string DefaultRootHint => string.IsNullOrEmpty(_clonesRoot)
         ? string.Empty
         : $"Default: {_clonesRoot} — change it in Options → Sessions.";

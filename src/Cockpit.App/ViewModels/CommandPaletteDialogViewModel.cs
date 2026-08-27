@@ -4,10 +4,8 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace Cockpit.App.ViewModels;
 
-// Backs the command palette (#: command palette): a search box over every app action and plugin command, each
-// with its keyboard shortcut, VS-Code style. Type to filter, Enter/click to run. The chosen command's action
-// is exposed on `Chosen` and run by the host *after* the palette closes, so a command that
-// opens another dialog isn't stacked underneath this one.
+// Backs the command palette (#: command palette): a search box over every app action and plugin command, each with its
+// keyboard shortcut, VS-Code style.
 public partial class CommandPaletteDialogViewModel : ViewModelBase
 {
     private readonly IReadOnlyList<PaletteCommand> _all;
@@ -20,7 +18,8 @@ public partial class CommandPaletteDialogViewModel : ViewModelBase
 
     public ObservableCollection<PaletteCommand> Visible { get; } = [];
 
-    // The action of the command the operator picked, or null if they cancelled — run by the caller once the dialog has closed.
+    // The action of the command the operator picked, or null if they cancelled — run by the caller once the dialog has
+    // closed.
     public Action? Chosen { get; private set; }
 
     public event Action? CloseRequested;

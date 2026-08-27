@@ -4,20 +4,14 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels;
 
-// One checkbox row in an MCP-server checklist: a server's name plus whether it is ticked. Used both in the
-// New-session dialog for the per-session selection (#44) and in the profile editor for a profile's saved
-// pre-selection (AC-130). Defaults to checked, matching the pre-#44 behaviour of loading every enabled server.
-// Carries an optional pre-flight tool-token estimate (AC-134) so each row can show roughly what the server adds.
+// One checkbox row in an MCP-server checklist: a server's name plus whether it is ticked (#44, AC-130, AC-134).
 public partial class McpServerSelectionItemViewModel : ViewModelBase
 {
     public string Name { get; }
 
     // Whether the catalog offered this row only because the project being edited names its scheme
-    // (McpServerConfig.ProjectLinked, AC-766) — never true outside the project editor, since only a scoped
-    // catalog query can mark one. Read by ProjectDialogViewModel to route an unticked row to
-    // ProjectMcpOverlay.DisabledServerNames instead of the ordinary EnabledServerNames list: a project-linked
-    // server never had a row before its own project asked for it, so "off" for it can only ever be an explicit
-    // decision recorded there.
+    // (McpServerConfig.ProjectLinked, AC-766) — never true outside the project editor, since only a scoped catalog
+    // query can mark one.
     public bool IsProjectLinked { get; }
 
     [ObservableProperty]
@@ -35,10 +29,8 @@ public partial class McpServerSelectionItemViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(TokenTooltip))]
     private McpServerToolEstimate? _tokenEstimate;
 
-    // What the cockpit knows about this server's OAuth standing (AC-355), read once when the checklist is built —
-    // null for a server the dialog never asked (no coordinator, e.g. the design-time constructor) or that turned
-    // out not to need one (`McpAuthState.NotRequired` is folded to null here too, since neither
-    // case has anything worth telling the operator).
+    // What the cockpit knows about this server's OAuth standing (AC-355), read once when the checklist is built — null
+    // for a server the dialog never asked (no coordinator, e.g.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TokenTooltip))]
     private McpAuthState? _authState;
@@ -51,12 +43,9 @@ public partial class McpServerSelectionItemViewModel : ViewModelBase
         : !estimate.Available ? "?"
         : $"~{McpToolTokenMath.Format(estimate.EstimatedTokens)}";
 
-    // Hover text explaining the per-row figure (AC-134) — most usefully the "?": a server counts as unknown when
-    // it could not be reached to list its tools. That reason is usually a shrug ("offline, needs a sign-in, or its
-    // plugin isn't loaded"), but for an OAuth server the cockpit already knows which one applies
-    // (`AuthState` from AC-355's status read), so the tooltip says that instead of guessing — the pre-
-    // flight count itself still opens no browser (`McpAuthState.AuthorizationRequired` tells the
-    // operator to sign in, it does not sign them in). Null when there is nothing worth explaining (no estimate yet).
+    // That reason is usually a shrug ("offline, needs a sign-in, or its plugin isn't loaded"), but for an OAuth server
+    // the cockpit already knows which one applies (`AuthState` from AC-355's status read), so the tooltip says that
+    // instead of guessing — the pre- flight count itself still opens no browser (AC-134).
     public string? TokenTooltip =>
         IsEstimatingTokens ? "Counting this server's tools…"
         : TokenEstimate is not { } estimate ? null

@@ -7,10 +7,9 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.App.ViewModels;
 
-// Backs the MCP-servers dialog (#26): list the shared MCP servers, edit each one's transport/command or
-// URL and auth, and add/remove entries. Save persists the whole edited list through
-// `IMcpServerStore` — one registry that later feeds both the local-LLM tool-loop and the
-// Claude CLI. The view closes via `CloseRequested`.
+// Backs the MCP-servers dialog (#26): list the shared MCP servers, edit each one's transport/command or URL
+// and auth, and add/remove entries. Save persists the whole edited list through `IMcpServerStore` — one registry
+// that later feeds both the local-LLM tool-loop and the Claude CLI. The view closes via `CloseRequested`.
 public partial class McpServersViewModel : ViewModelBase
 {
     private readonly IMcpServerStore? _store;
@@ -21,9 +20,8 @@ public partial class McpServersViewModel : ViewModelBase
     private readonly IMcpOAuthCoordinator? _oauthCoordinator;
 
     // Cancelled once the dialog is going away by any route — a successful Save, Cancel, or the window's own close
-    // button (`OnWindowClosed`) — so a row's in-flight interactive sign-in has somewhere to hear that
-    // there is no view model left to report back to (AC-499 review fix, finding 6). Handed to every row as
-    // `EditableMcpServerViewModel`'s `dialogClosing` constructor argument.
+    // button (`OnWindowClosed`) — so a row's in-flight interactive sign-in has somewhere to hear that there is no view
+    // model left to report back to (AC-499 review fix, finding 6).
     private readonly CancellationTokenSource _dialogLifetime = new();
 
     public event Action? CloseRequested;
@@ -63,10 +61,8 @@ public partial class McpServersViewModel : ViewModelBase
             return;
         }
 
-        // The cockpit's own loopback servers (session-status, orchestrator, a plugin's endpoint) are not the
-        // operator's to edit here (AC-40): they are answered live to the session fan-out, controlled from Options or
-        // the owning plugin's settings, and are matched by name so an entry an older build left in the store is
-        // hidden too — and dropped from the store on the next Save.
+        // Hide cockpit-owned loopback servers because Options or the owning plugin controls them, not this editor
+        // (AC-40).
         var internalNames = _internalProviders
             .SelectMany(_NamesOf)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -120,10 +116,8 @@ public partial class McpServersViewModel : ViewModelBase
     [RelayCommand]
     private void AddServer()
     {
-        // A distinct placeholder, because the name is a key elsewhere and not just a label: a token is filed under
-        // it, and the fan-out writes each server into the agent's config by it (last one wins). Two rows both called
-        // "new server" therefore collapse into one mounted server while both sit ticked in the checklist, and that
-        // is invisible until an agent is missing tools it was promised.
+        // A distinct placeholder, because the name is a key elsewhere and not just a label: a token is filed under it,
+        // and the fan-out writes each server into the agent's config by it (last one wins).
         var added = new EditableMcpServerViewModel(
             new McpServerConfig { Id = McpServerIdentity.NewId(), Name = _UnusedServerName(), Command = "npx" },
             _oauthCoordinator,
@@ -215,10 +209,9 @@ public partial class McpServersViewModel : ViewModelBase
         }
     }
 
-    // Validates and writes the whole edited list without closing anything — what the Options dialog's Apply and
-    // Close (AC-1002) calls instead of Save, the same split AC-1001 made for ManageProfilesDialogViewModel's own
-    // PersistAsync. False means nothing was written; StatusMessage says why, and CockpitViewModel.ApplyOptionsAsync
-    // folds that into the shared PluginSettingsError footer (AC-1005's pattern, reused rather than duplicated).
+    // Validates and writes the whole edited list without closing anything — what the Options dialog's Apply and Close
+    // (AC-1002) calls instead of Save, the same split AC-1001 made for ManageProfilesDialogViewModel's own PersistAsync
+    // (AC-1005).
     public async Task<bool> PersistAsync()
     {
         if (_store is null)
@@ -229,23 +222,9 @@ public partial class McpServersViewModel : ViewModelBase
         return await _SaveAllForSignInAsync() is not null;
     }
 
-    // Validates and persists the whole edited list without closing the dialog (AC-499) — the one save route, shared
-    // by the Save button and a row's own sign-in (`EditableMcpServerViewModel.SignInAsync` saves through
-    // this before it authorizes, so a token is never filed under a name the operator has not actually saved). Only
-    // the Save button closes the dialog on success; a sign-in needs the dialog to stay open.
-    //
-    // On a successful write this also resyncs every row's stored name and auth status against the reloaded list
-    // (`_ResyncRowsAfterDialogSaveAsync`) — not just the row that asked for the save — and clears
-    // `StatusMessage`, since whatever it said before (a validation refusal, a hidden-servers notice
-    // this save just acted on) no longer describes the dialog. Returns what `IMcpServerStore.LoadAsync`
-    // reports back on success. Returns null on failure, with `StatusMessage` set to why — except from
-    // the parameterless design-time constructor's `_store is null` guard just below, which no real dialog ever
-    // reaches (there is no store to have failed, so there is nothing to say).
-    //
-    // A write that succeeds but cannot be read back afterward is reported as exactly that — "saved, but not
-    // confirmed" — never folded into the same wording as "nothing was saved" (AC-499 review fix, finding 2): the
-    // two are different facts for whoever is about to sign in on top of this, and only one of them is safe to
-    // treat as "try again from scratch".
+    // Validates and persists the whole edited list without closing the dialog (AC-499) — the one save route, shared by
+    // the Save button and a row's own sign-in (`EditableMcpServerViewModel.SignInAsync` saves through this before it
+    // authorizes, so a token is never filed under a name the operator has not actually saved).
     private async Task<IReadOnlyList<McpServerConfig>?> _SaveAllForSignInAsync()
     {
         if (_store is null)
@@ -269,9 +248,7 @@ public partial class McpServersViewModel : ViewModelBase
         }
 
         // The cockpit's own loopback servers and a plugin's endpoints are not in this list — they are filtered out of
-        // it — but they share the same namespace, and the catalog's merge lets them win. An operator's server that
-        // takes one of those names is dropped from the fan-out, hidden from this dialog on the next open, and gone
-        // from the store on the save after that: configured, saved, ticked, and silently not there.
+        // it — but they share the same namespace, and the catalog's merge lets them win.
         var reserved = _internalProviders.SelectMany(_NamesOf).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (Servers.FirstOrDefault(server => reserved.Contains(server.Name.Trim())) is { } clash)
         {
@@ -300,25 +277,15 @@ public partial class McpServersViewModel : ViewModelBase
         }
         catch (Exception)
         {
-            // The write above already happened — this only failed to confirm it back, which used to escape this
-            // method uncaught (AC-499 review fix, finding 2): a sign-in's own outer catch turned that into "Sign-in
-            // failed. Try again." even though the write had gone through, and the Save button's [RelayCommand]
-            // rethrew it into the CommunityToolkit default (an async-void continuation on the UI dispatcher) with
-            // nothing telling the operator anything landed on disk.
+            // The write above already happened — this only failed to confirm it back, which used to escape this method
+            // uncaught (AC-499 review fix, finding 2): a sign-in's own outer catch turned that into "Sign-in failed.
             StatusMessage = "Saved, but couldn't read the servers back to confirm. Try again to check.";
             return null;
         }
     }
 
-    // Resyncs every row against the entry carrying its own id in `reloaded` (AC-499 review fix,
-    // finding 1; matched by id since AC-403) — not just the row whose sign-in triggered this save. A row whose id
-    // is not in the reloaded list resyncs against null, which is how a row the store did not take reports itself as
-    // unsaved rather than borrowing the standing of whatever sat at its index.
-    //
-    // This used to match by list position, for want of anything else: a name was a row's only handle and a save
-    // rewrote every one of them at once, so the order the store round-tripped was the only thing tying a row to
-    // what had just been written for it. Matching on an id that a rename cannot move says the same thing without
-    // depending on save order at all.
+    // A row whose id is not in the reloaded list resyncs against null, which is how a row the store did not take
+    // reports itself as unsaved rather than borrowing the standing of whatever sat at its index (AC-499, AC-403).
     private async Task _ResyncRowsAfterDialogSaveAsync(IReadOnlyList<McpServerConfig> reloaded)
     {
         var byId = reloaded
@@ -337,10 +304,8 @@ public partial class McpServersViewModel : ViewModelBase
         CloseRequested?.Invoke();
     }
 
-    // Called from the dialog window's own Closed handler — the one close route (the OS close button, Escape) that
-    // never runs `SaveCommand` or `CancelCommand`, and so would otherwise leave
-    // `_dialogLifetime` live under a view model nothing shows any more (AC-499 review fix, finding 6).
-    // Idempotent: `CancellationTokenSource.Cancel()` on an already-cancelled source is a no-op, so this
-    // is safe to call after Save or Cancel already cancelled it too.
+    // Called from the dialog window's own Closed handler — the one close route (the OS close button, Escape) that never
+    // runs `SaveCommand` or `CancelCommand`, and so would otherwise leave `_dialogLifetime` live under a view model
+    // nothing shows any more (AC-499 review fix, finding 6).
     internal void OnWindowClosed() => _dialogLifetime.Cancel();
 }

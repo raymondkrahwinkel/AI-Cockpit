@@ -3,10 +3,9 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-// One control in the session header's generic live-control panel (#45 D4) — a plugin provider's model or
-// reasoning effort, rendered from the provider's own `SessionLiveOption` so the header can offer
-// controls it has no built-in vocabulary for. Picking a value forwards to the running session's driver through
-// `_apply`, which applies it to the next turn.
+// One control in the session header's generic live-control panel (#45 D4) — a plugin provider's model or reasoning
+// effort, rendered from the provider's own `SessionLiveOption` so the header can offer controls it has no built-in
+// vocabulary for.
 public partial class LiveControlViewModel : ViewModelBase
 {
     private readonly Func<string, string, Task> _apply;
@@ -23,7 +22,8 @@ public partial class LiveControlViewModel : ViewModelBase
     [ObservableProperty]
     private IReadOnlyList<string> _choices;
 
-    // The choices as label/value pairs for the combo, so a provider that supplied friendly labels shows them while `SelectedValue` still round-trips the raw value.
+    // The choices as label/value pairs for the combo, so a provider that supplied friendly labels shows them while
+    // `SelectedValue` still round-trips the raw value.
     [ObservableProperty]
     private IReadOnlyList<SelectableChoice> _choiceItems;
 
@@ -57,14 +57,8 @@ public partial class LiveControlViewModel : ViewModelBase
         }
     }
 
-    // Seeds this control with a value the driver reported after launch (AC-141 — the SDK route's `init`
-    // event names the model a session actually started under, which is unknown at construction time for a
-    // session launched with no explicit choice). Only fills in a still-unset value, and — like the constructor —
-    // never fires a live switch back at the driver for the value it just reported.
-    // A resolved model can be a pinned snapshot the suggestion list never offered (the same case
-    // `ClaudeSdkSessionDriver._BuildLiveOptions` handles for an explicitly-chosen one) — inserted into
-    // `Choices`/`ChoiceItems` too, or the combo would have a selected value with no
-    // matching item to show it against.
+    // Only fills in a still-unset value, and — like the constructor — never fires a live switch back at the driver for
+    // the value it just reported (AC-141).
     public void SeedIfUnset(string value)
     {
         if (string.IsNullOrEmpty(SelectedValue) && !string.IsNullOrEmpty(value))

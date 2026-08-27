@@ -5,7 +5,8 @@ namespace Cockpit.App;
 // (AC-229/AC-232).
 internal static class UsageSeverity
 {
-    // Where a figure lands when the host has no declared threshold to go on — a provider that reports a number but never said when it matters.
+    // Where a figure lands when the host has no declared threshold to go on — a provider that reports a number but
+    // never said when it matters.
     public const double FallbackThreshold = 85;
 
     // The theme brush resource key for a usage percentage against the threshold declared for its signal.

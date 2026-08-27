@@ -1,12 +1,5 @@
 namespace Cockpit.App.ViewModels;
 
-// One heading in the store dialog's *Installed* list — "Widgets", "AI providers", … — and the plugins
-// under it. The list is the local plugins, but the heading is the store's word for them: a manifest carries no
-// category, so the only place that knows a plugin is a widget is the catalogue it came from.
-//
-// `Header`:
-// The category, matched from the catalogue by plugin id, or `StorePluginRowViewModel.OtherCategory`
-// for one no configured store lists. That bucket is not a filler: a plugin nobody offers is either sideloaded
-// from a zip or left behind by a store that dropped it, and both are worth seeing as their own group rather
-// than filed under a category that no longer claims them.
+// The list is the local plugins, but the heading is the store's word for them: a manifest carries no category, so the
+// only place that knows a plugin is a widget is the catalogue it came from.
 public sealed record InstalledPluginGroup(string Header, IReadOnlyList<PluginRowViewModel> Plugins);
