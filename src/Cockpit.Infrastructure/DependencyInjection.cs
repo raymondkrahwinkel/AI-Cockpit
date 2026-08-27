@@ -84,11 +84,11 @@ public static class DependencyInjection
 
         // cockpit-node (AC-795): sessions on this machine, as its paired controller cockpit may see and drive
         // them. Must NOT be Internal — an Internal endpoint binds no network listener (AC-791), which is the one
-        // thing this needs. `IsEnabled: false` keeps it off; the real gate is the per-tool pane check below.
+        // thing this needs. AC-1148: NodeOnly keeps it out of every session's fan-out while it keeps that listener.
         services.AddSingleton(new CockpitMcpEndpoint(
             "cockpit-node",
             typeof(Mcp.NodeSessionMcpTools),
-            IsEnabled: () => false));
+            NodeOnly: true));
 
         // The advisory cross-instance claim behind AC-71 — one implementation, so (unlike the hotkey service
         // below) there is nothing for a platform switch to choose between.

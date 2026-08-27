@@ -10,6 +10,7 @@ using NSubstitute;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Tests.Mcp;
@@ -98,6 +99,7 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
                 keyring: new SessionMcpKeyring(),
                 nodeEndpointSettings: nodeSettings,
                 nodeCertificate: new NodeSelfSignedCertificate(Path.Combine(Path.GetTempPath(), $"ac-1028-{Guid.NewGuid():N}.pfx")),
+                mounts: new SessionMcpMounts(),
                 nodeSharedSecret: new NodeSharedSecret(),
                 loggerFactory: NullLoggerFactory.Instance);
 

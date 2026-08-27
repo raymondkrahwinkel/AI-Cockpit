@@ -519,6 +519,28 @@ public class TtyLauncherTests
         Assert.Equal(0, keyring.LiveTokenCount);
     }
 
+    // AC-1148: the property the whole authorization gate rests on. `COCKPIT_MCP_KEY` is what a session can read out
+    // of its own environment, and it has to be the token the keyring minted for this pane — the app key names no
+    // session, so a session holding that one would be authorized as the cockpit itself on every endpoint.
+    [Fact]
+    public void Launch_WithAPaneId_PutsThatPanesKeyringTokenInTheEnvironment_NeverTheSharedAppKey()
+    {
+        var (launcher, ptyHostFactory, authKey, keyring) = CreateLauncherWithKeyring();
+        var provider = Provider(new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []));
+
+        launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane-under-test");
+
+        ptyHostFactory.Received().Start(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Is<IReadOnlyDictionary<string, string>>(env =>
+                keyring.PaneFor(env["COCKPIT_MCP_KEY"]) == "tty-pane-under-test"
+                && env["COCKPIT_MCP_KEY"] != authKey.Value),
+            Arg.Any<short>(),
+            Arg.Any<short>());
+    }
+
     // A TTY session launched with no pane id (no session to name) never touches the keyring at all — nothing was
     // minted, so disposing must not throw trying to revoke something that was never there.
     [Fact]

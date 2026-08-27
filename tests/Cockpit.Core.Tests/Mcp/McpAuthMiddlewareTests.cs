@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Core.Tests.Mcp;
@@ -41,7 +42,7 @@ public class McpAuthMiddlewareTests
     {
         var keyring = new SessionMcpKeyring();
         var token = keyring.TokenFor("pane-42");
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, NodeSecret);
+        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, NodeSecret, _Mounting("pane-42"));
 
         Assert.Equal("pane-42", await listeners.WhoAmIAsync(listeners.LoopbackUrl, token));
 
@@ -108,6 +109,79 @@ public class McpAuthMiddlewareTests
         Assert.Empty(await response.Content.ReadAsStringAsync());
     }
 
+    // AC-1148, the loopback negative control that never existed: a live token, correctly stamped — and an endpoint
+    // this pane's launch never mounted. The old tests only ever asked "valid or not", which a wrong-scope call
+    // passes; this is the case the design of those tests could not see.
+    [Fact]
+    public async Task LoopbackListener_SessionTokenForAnEndpointItsLaunchNeverMounted_Is403BeforeAnyTool()
+    {
+        var keyring = new SessionMcpKeyring();
+        var token = keyring.TokenFor("pane-42");
+        var mounts = new SessionMcpMounts();
+        mounts.Grant("pane-42", ["cockpit-session", "cockpit-agents"]);
+
+        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, NodeSecret, mounts, serverName: "cockpit-shell");
+
+        using var response = await listeners.SendAsync(listeners.LoopbackUrl, token);
+
+        // 403 and not 401: the credential is fine and the cockpit says so, which is the whole difference between
+        // "I do not know you" and "you may not be here". The endpoint answered before /whoami ever ran.
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Contains("forbidden", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    // AC-1148: the measured one. `ShellAccess.Enabled = false` in the operator's own cockpit.json, and run_command
+    // ran anyway — because the switch only decided what a session was told about, never what the listener took.
+    // A pane that did mount the endpoint still gets nothing while the master switch is off.
+    [Fact]
+    public async Task LoopbackListener_EndpointTheOperatorSwitchedOff_Is403EvenForThePaneThatMountedIt()
+    {
+        var keyring = new SessionMcpKeyring();
+        var token = keyring.TokenFor("pane-42");
+
+        await using var listeners = await _AuthGatedListeners.StartAsync(
+            new McpAuthKey(), keyring, NodeSecret, _Mounting("pane-42", "cockpit-shell"), serverName: "cockpit-shell", isEnabled: false);
+
+        using var response = await listeners.SendAsync(listeners.LoopbackUrl, token);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    // AC-1148 (was AC-1158): the node's own negative control. The secret is right — it is the pairing that grants
+    // nothing, which is the normal state of a fresh one (AC-794), and an endpoint is not a thing you reach on
+    // authentication alone.
+    [Fact]
+    public async Task NodeListener_ValidSecretButAPairingWithAnEmptyScope_Is403()
+    {
+        await using var listeners = await _AuthGatedListeners.StartAsync(
+            new McpAuthKey(), new SessionMcpKeyring(), NodeSecret, nodeScopeGranted: false);
+
+        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeSecret);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    // AC-1148: and the master switch counts for the controller too — `bindNodeListener` now withholds the socket
+    // outright (see CockpitInternalMcpProviderTests), so this is the belt to that braces: were one ever bound, a
+    // switched-off endpoint still refuses.
+    [Fact]
+    public async Task NodeListener_EndpointTheOperatorSwitchedOff_Is403EvenWithAScopedPairing()
+    {
+        await using var listeners = await _AuthGatedListeners.StartAsync(
+            new McpAuthKey(), new SessionMcpKeyring(), NodeSecret, isEnabled: false);
+
+        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeSecret);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    private static SessionMcpMounts _Mounting(string paneId, string serverName = "cockpit-probe")
+    {
+        var mounts = new SessionMcpMounts();
+        mounts.Grant(paneId, [serverName]);
+        return mounts;
+    }
+
     /// <summary>
     /// One <see cref="WebApplication"/> behind <see cref="McpAuthMiddleware"/> with both listener kinds and a
     /// single endpoint that answers with whatever identity the middleware stamped — the one thing an MCP tool
@@ -119,7 +193,14 @@ public class McpAuthMiddlewareTests
 
         public string NodeUrl { get; } = nodeUrl;
 
-        public static async Task<_AuthGatedListeners> StartAsync(McpAuthKey authKey, SessionMcpKeyring keyring, string? nodeSharedSecret)
+        public static async Task<_AuthGatedListeners> StartAsync(
+            McpAuthKey authKey,
+            SessionMcpKeyring keyring,
+            string? nodeSharedSecret,
+            SessionMcpMounts? mounts = null,
+            string serverName = "cockpit-probe",
+            bool isEnabled = true,
+            bool nodeScopeGranted = true)
         {
             // AC-792: the node's certificate now lives in a file, so the test gets one of its own rather than the
             // real cockpit's — and a live secret holder rather than a captured string, which is what the
@@ -137,7 +218,16 @@ public class McpAuthMiddlewareTests
             });
 
             var app = builder.Build();
-            McpAuthMiddleware.Require(app, authKey, keyring, liveSecret);
+
+            // AC-1148: the real policy, wired the way both hosts wire it — so what these tests exercise is the
+            // decision itself and not a stand-in that happens to agree with it.
+            var grants = mounts ?? new SessionMcpMounts();
+            McpAuthMiddleware.Require(
+                app,
+                authKey,
+                keyring,
+                paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, serverName, isEnabled, nodeScopeGranted, grants)),
+                liveSecret);
             app.MapGet("/whoami", () => McpRequestContext.CurrentPaneId ?? "<none>");
             await app.StartAsync();
 

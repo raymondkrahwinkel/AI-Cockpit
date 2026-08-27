@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Infrastructure.Mcp;
@@ -20,7 +21,8 @@ internal sealed class McpToolProvider(
     McpAuthKey authKey,
     SessionMcpKeyring keyring,
     ILogger<McpToolProvider> logger,
-    IWorktreeManager? worktreeManager = null)
+    IWorktreeManager? worktreeManager = null,
+    SessionMcpMounts? mounts = null)
     : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default)
@@ -51,6 +53,14 @@ internal sealed class McpToolProvider(
         if (!string.IsNullOrWhiteSpace(confineFileToolsToDirectory))
         {
             enabledServers = _ConfinedServers(enabledServers, confineFileToolsToDirectory);
+        }
+
+        // AC-1148: the mount decision recorded before the first connect, not after it — the cockpit-hosted
+        // endpoints below refuse a pane they were never mounted for, and this route is one of their clients.
+        // A confined session (AC-174) is granted its confined set, so the sandbox holds at the door too.
+        if (!string.IsNullOrEmpty(paneId))
+        {
+            mounts?.Grant(paneId, [.. enabledServers.Select(server => server.Name)]);
         }
 
         // Connect concurrently rather than one-by-one — sequential round-trips added up once more than one

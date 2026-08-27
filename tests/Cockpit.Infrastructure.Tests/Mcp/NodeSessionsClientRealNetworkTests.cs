@@ -158,7 +158,9 @@ public sealed class NodeSessionsClientRealNetworkTests
             options.Listen(IPAddress.Loopback, 0, listenOptions => listenOptions.UseHttps(certificate.Value)));
 
         var app = builder.Build();
-        McpAuthMiddleware.Require(app, new McpAuthKey(), new SessionMcpKeyring(), sharedSecret);
+        // AC-1148: this stands in for the endpoint host's own policy — what is under test here is the client over a
+        // real socket, and the policy itself is covered where it lives (McpAuthMiddlewareTests).
+        McpAuthMiddleware.Require(app, new McpAuthKey(), new SessionMcpKeyring(), static _ => new ValueTask<bool>(true), sharedSecret);
         app.MapMcp("/mcp");
 
         await app.StartAsync().ConfigureAwait(false);

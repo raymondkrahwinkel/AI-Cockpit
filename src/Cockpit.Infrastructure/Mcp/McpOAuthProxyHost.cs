@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -20,6 +21,7 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
     private readonly IMcpOAuthCoordinator _coordinator;
     private readonly McpAuthKey _authKey;
     private readonly SessionMcpKeyring _keyring;
+    private readonly SessionMcpMounts _mounts;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<McpOAuthProxyHost> _logger;
     private readonly ConcurrentDictionary<string, string> _mounted = new(StringComparer.Ordinal);
@@ -40,11 +42,13 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
         IMcpOAuthCoordinator coordinator,
         McpAuthKey authKey,
         SessionMcpKeyring keyring,
+        SessionMcpMounts mounts,
         ILoggerFactory loggerFactory)
     {
         _coordinator = coordinator;
         _authKey = authKey;
         _keyring = keyring;
+        _mounts = mounts;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<McpOAuthProxyHost>();
     }
@@ -125,10 +129,14 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
 
         var app = builder.Build();
 
-        // The same gate the cockpit's own endpoints use (AC-40): without this run's key — or a live per-session
-        // token — a request never reaches the forwarder, so no local process can borrow the OAuth credential by
-        // finding the port.
-        McpAuthMiddleware.Require(app, _authKey, _keyring);
+        // The same gate the cockpit's own endpoints use (AC-40), so no local process can borrow the OAuth
+        // credential by finding the port. AC-1148: and the token must be a session that mounted this very server.
+        // No master switch of its own — an OAuth server the operator disabled is never proxied in the first place.
+        McpAuthMiddleware.Require(
+            app,
+            _authKey,
+            _keyring,
+            paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, server.Name, isEnabled: true, nodeScopeGranted: false, _mounts)));
 
         var forwarder = new McpOAuthProxyForwarder(
             server,
