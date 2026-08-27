@@ -57,7 +57,7 @@ public sealed class AssistantChatWindowTallReplyFollowTests
                 Dispatcher.UIThread.RunJobs();
                 window.UpdateLayout();
 
-                var scroll = window.ChatView.TranscriptScroll;
+                var scroll = window.ChatView.TranscriptScroll!;
                 var newest = window.ChatView.TranscriptItems.ContainerFromIndex(window.ChatView.TranscriptItems.ItemCount - 1);
                 Assert.NotNull(newest);
 

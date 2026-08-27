@@ -1,4 +1,3 @@
-using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
@@ -24,13 +23,10 @@ namespace Cockpit.App.Views;
 // model stays the host's business, not this view's — a host swap (AC-953) must not end the conversation.
 public partial class AssistantChatView : UserControl
 {
-    // Stick-to-bottom, mirroring SessionView (AC-528): follow the tail only while the operator is at it.
-    // _wheelTurned/_pointerHeld separate an operator scroll from the layout's own (a streaming row growing).
-    private bool _stickToBottom = true;
-    private bool _wheelTurned;
-    private bool _pointerHeld;
+    // AC-1121: the follow lives in TranscriptFollower, shared with SessionView. It existed here as a second copy
+    // and the two drifted both ways — this half carried AC-953's fix, the other half AC-996's.
+    private TranscriptFollower? _follower;
 
-    private NotifyCollectionChangedEventHandler? _transcriptHandler;
     private PropertyChangedEventHandler? _sessionHandler;
     private SessionViewModel? _attachedSession;
 
@@ -51,107 +47,20 @@ public partial class AssistantChatView : UserControl
     // AC-774: lives inside TranscriptItems' own template so the virtualising panel measures
     // against the viewport, not an enclosing ScrollViewer's infinite height (mirrors SessionView's
     // TranscriptScroll, AC-686) — resolved from the template since a template name isn't a field.
-    internal ScrollViewer TranscriptScroll =>
+    internal ScrollViewer? TranscriptScroll =>
         _transcriptScroll ??= _ResolveTranscriptScroll();
 
     // ApplyTemplate, not just a visual-tree walk: this is first asked for from the attach that wires the scroll
     // handlers, and at that point the transcript has not been measured, so its template child does not exist yet.
-    private ScrollViewer _ResolveTranscriptScroll()
+    // AC-1130: FirstOrDefault, not First — a throw here used to abort the whole of OnDetachedFromVisualTree.
+    private ScrollViewer? _ResolveTranscriptScroll()
     {
         TranscriptItems.ApplyTemplate();
-        return TranscriptItems.GetVisualChildren().OfType<ScrollViewer>().First();
+        return TranscriptItems.GetVisualChildren().OfType<ScrollViewer>().FirstOrDefault();
     }
 
-    // True while this itself is moving the viewport, so ScrollIntoView's own layout pass is never
-    // mistaken for a reason to re-enter (SessionView._following, AC-528).
-    private bool _following;
-
-    // AC-1113: carries that guard across the layout pass a plain Offset write drives, which runs after the call
-    // has returned and raises the ScrollChanged that would re-enter. Same field, same reasons, as SessionView.
-    private bool _followCorrected;
-
-    // The last row (SessionView._NewestVisibleIndex): this view binds to `Session.VisibleTranscript` too, so a
-    // folded tool call or a Thinking row is not an item here — following one of those could never terminate,
-    // having no height to bring into view.
-    private int _NewestVisibleIndex() => TranscriptItems.ItemCount - 1;
-
-    // AC-777: ScrollToEnd() jumped to Extent, which a virtualizing panel only estimates until the next arrange —
-    // see ticket for the full analysis.
-    private void _FollowNewest()
-    {
-        if (_following || TranscriptItems.ItemCount == 0 || _NewestRowIsFullyVisible())
-        {
-            return;
-        }
-
-        var newestIndex = _NewestVisibleIndex();
-        if (newestIndex < 0)
-        {
-            return;
-        }
-
-        _following = true;
-        try
-        {
-            // AC-1111: ScrollIntoView ran a whole nested layout pass here, once per streamed row, because a row
-            // that has just arrived is never realised yet. Assigning Offset only invalidates. Same change, and
-            // the same reasons, as SessionView._FollowNewest.
-            if (TranscriptItems.ContainerFromIndex(newestIndex) is null)
-            {
-                _MoveTo(Math.Max(0, TranscriptScroll.Extent.Height - TranscriptScroll.Viewport.Height));
-            }
-
-            if (_NewestRowIsFullyVisible())
-            {
-                return;
-            }
-
-            if (TranscriptItems.ContainerFromIndex(newestIndex) is not { } newest ||
-                newest.TranslatePoint(new Point(0, newest.Bounds.Height), TranscriptScroll) is not { } bottom)
-            {
-                return;
-            }
-
-            var shortfall = bottom.Y - TranscriptScroll.Viewport.Height;
-            if (shortfall > 0)
-            {
-                _MoveTo(TranscriptScroll.Offset.Y + shortfall);
-            }
-        }
-        finally
-        {
-            _following = false;
-        }
-    }
-
-    // AC-1113: a write that lands where the viewport already sits still invalidates layout, and every such pass
-    // counts towards Avalonia's own cut-off. Same helper, same reasons, as SessionView's.
-    private void _MoveTo(double offsetY)
-    {
-        if (!TranscriptScrollAnchor.IsSettled(TranscriptScroll.Offset.Y, offsetY))
-        {
-            TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(offsetY);
-        }
-    }
-
-    // Whether the newest visible row is on screen in full — see SessionView's own copy for why this measures the
-    // row rather than asking `Extent`, which is the estimate that caused AC-777 in the first place.
-    private bool _NewestRowIsFullyVisible()
-    {
-        var newestIndex = _NewestVisibleIndex();
-        if (newestIndex < 0)
-        {
-            return true;
-        }
-
-        if (TranscriptItems.ContainerFromIndex(newestIndex) is not { } newest)
-        {
-            return false;
-        }
-
-        var bottom = newest.TranslatePoint(new Point(0, newest.Bounds.Height), TranscriptScroll);
-        return bottom is not null && bottom.Value.Y <= TranscriptScroll.Viewport.Height + 1.0;
-    }
+    private TranscriptFollower Follower =>
+        _follower ??= new TranscriptFollower(TranscriptItems, () => TranscriptScroll);
 
     public AssistantChatView()
     {
@@ -196,31 +105,28 @@ public partial class AssistantChatView : UserControl
             _ = vm.EnsureOpenedAsync();
         }
 
-        // AC-777: AppendText never touches CollectionChanged, so a growing reply needs ScrollChanged too — see
-        // ticket for the full analysis.
-        TranscriptScroll.ScrollChanged += _OnTranscriptScrollChanged;
-
-        // Tunnel + handledEventsToo so a child's own scroller cannot hide the gesture; all removed on detach.
-        TranscriptScroll.AddHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel, RoutingStrategies.Tunnel, handledEventsToo: true);
-        TranscriptScroll.AddHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
-        TranscriptScroll.AddHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
-        TranscriptScroll.AddHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+        if (TranscriptScroll is { } scroll)
+        {
+            scroll.ScrollChanged += _OnTranscriptScrollChanged;
+            // Tunnel + handledEventsToo so a child's own scroller cannot hide the gesture; all removed on detach.
+            scroll.AddHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel, RoutingStrategies.Tunnel, handledEventsToo: true);
+            scroll.AddHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+            scroll.AddHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+            scroll.AddHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+        }
 
         Dispatcher.UIThread.Post(() => InputBox.Focus());
 
         // Posted, not run here: the transcript has not been arranged yet, so neither following the tail nor
         // restoring AC-953's handed-over position has any row to measure against until it has.
-        Dispatcher.UIThread.Post(() =>
+        if (_attachedViewModel?.TranscriptAnchor is { } anchor)
         {
-            if (_attachedViewModel?.TranscriptAnchor is { } anchor)
-            {
-                _RestoreScrollAnchor(anchor);
-            }
-            else if (_stickToBottom)
-            {
-                _FollowNewest();
-            }
-        });
+            Dispatcher.UIThread.Post(() => _RestoreScrollAnchor(anchor));
+        }
+        else
+        {
+            Follower.RequestFollow();
+        }
 
         if (Diagnostics is null && OperatingSystem.IsMacOS())
         {
@@ -243,11 +149,7 @@ public partial class AssistantChatView : UserControl
         // Before the handlers come off, while the rows are still arranged and measurable (AC-953).
         _CaptureScrollAnchor();
 
-        TranscriptScroll.ScrollChanged -= _OnTranscriptScrollChanged;
-        TranscriptScroll.RemoveHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel);
-        TranscriptScroll.RemoveHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed);
-        TranscriptScroll.RemoveHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased);
-        TranscriptScroll.RemoveHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased);
+        _DetachTranscript();
 
         // The one attached on the way in, not whatever DataContext reads now — a DataContext swapped while
         // attached would otherwise leave the old view model still holding this handler.
@@ -257,12 +159,20 @@ public partial class AssistantChatView : UserControl
             _attachedViewModel = null;
         }
 
-        _DetachTranscript();
-
         // The service outlives this view, so a missed unsubscribe keeps the whole detached view alive.
         if (Diagnostics is { } diagnostics)
         {
             diagnostics.RenderersShouldPauseChanged -= _OnRenderersShouldPauseChanged;
+        }
+
+        // Last, because resolving the scroll owner is the one step here that can come up empty (AC-1130).
+        if (_transcriptScroll is { } scroll)
+        {
+            scroll.ScrollChanged -= _OnTranscriptScrollChanged;
+            scroll.RemoveHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel);
+            scroll.RemoveHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed);
+            scroll.RemoveHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased);
+            scroll.RemoveHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased);
         }
 
         base.OnDetachedFromVisualTree(e);
@@ -271,30 +181,20 @@ public partial class AssistantChatView : UserControl
         // AssistantChatLeakHuntTests for the evidence this view does not carry that leak.
     }
 
-    // Pushed in by the host: AC-883's minimised-window pause, which only a window has. Guarded on the resolved
-    // scroll for the same reason SetRenderClockPaused is — a signal can arrive before attach has built it.
+    // Pushed in by the host: AC-883's minimised-window pause, which only a window has.
     internal void SetHostMinimised(bool minimised)
     {
         _hostMinimised = minimised;
-
-        if (_transcriptScroll is not null)
-        {
-            _ApplyRendererPause();
-        }
+        _ApplyRendererPause();
     }
 
     private void _OnRenderersShouldPauseChanged(object? sender, bool paused) => SetRenderClockPaused(paused);
 
-    // Internal so a view test can drive the edge; production reaches it through the event above. Guarded on the
-    // resolved scroll for the same reason SetHostMinimised is — a signal can arrive before attach built it.
+    // Internal so a view test can drive the edge; production reaches it through the event above.
     internal void SetRenderClockPaused(bool paused)
     {
         _renderClockPaused = paused;
-
-        if (_transcriptScroll is not null)
-        {
-            _ApplyRendererPause();
-        }
+        _ApplyRendererPause();
     }
 
     // Same leak/fix as SessionView's _ApplyRendererPause: while minimised the renderer is paused so
@@ -302,76 +202,49 @@ public partial class AssistantChatView : UserControl
     // scroll owner while paused so the panel dematerialises rows instead of piling them up.
     private void _ApplyRendererPause()
     {
-        var paused = _hostMinimised || _renderClockPaused;
-        TranscriptScroll.IsVisible = !paused;
-
-        // Re-read the follow inside the post, not just before it: _FollowNewest has no opinion of its own, so a
-        // post queued while sticky still jumps to the tail when it runs after something has stopped the follow —
-        // which is what AC-953's scroll handover is, on the very same attach.
-        if (!paused)
-        {
-            Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
-        }
-    }
-
-    private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)
-    {
-        // Our own correction, and the layout passes it drives: not something to draw conclusions from.
-        if (_following)
+        // AC-1130: a pause signal can arrive before attach has built the scroll owner, and both seams above are
+        // reachable before then.
+        if (TranscriptScroll is not { } scroll)
         {
             return;
         }
 
-        var byOperator = _wheelTurned || _pointerHeld;
-        _wheelTurned = false;
+        var paused = _hostMinimised || _renderClockPaused;
+        scroll.IsVisible = !paused;
 
-        // AC-1113: our own correction against a real change, told apart by the deltas. Same change, and the
-        // same reasons, as SessionView's own handler.
-        var ownCorrection = TranscriptScrollAnchor.IsOwnCorrection(e.ExtentDelta.Y, e.ViewportDelta.Y);
-        if (!ownCorrection)
+        if (!paused)
         {
-            _followCorrected = false;
+            // RequestFollow re-reads the follow when the step runs, not now: AC-953's scroll handover happens on
+            // this very attach, and a post queued while sticky used to jump to the tail after it.
+            Follower.RequestFollow();
         }
-
-        // Only an operator scroll re-derives whether we stick; content growing on its own just gets followed.
-        if (byOperator)
-        {
-            _stickToBottom = _NewestRowIsFullyVisible()
-                || TranscriptScrollAnchor.IsAtBottom(
-                    TranscriptScroll.Offset.Y, TranscriptScroll.Extent.Height, TranscriptScroll.Viewport.Height);
-        }
-        else if (_stickToBottom && TranscriptScrollAnchor.MayFollow(ownCorrection, _followCorrected))
-        {
-            _followCorrected |= ownCorrection;
-            _FollowNewest();
-        }
-
-        ScrollToBottomButton.IsVisible = !_stickToBottom;
     }
 
-    // A wheel turn at the bottom raises no ScrollChanged to consume the flag, so expire it after this turn's
-    // layout (Background sits below Layout/Render) rather than in the handler — SessionView's fix.
-    private void _OnTranscriptWheel(object? sender, PointerWheelEventArgs e)
+    // AC-1121: no follow from here — Avalonia raises this from LayoutUpdated, so following it queued a nested
+    // layout pass inside the pass that raised it.
+    private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
-        _wheelTurned = true;
-        Dispatcher.UIThread.Post(() => _wheelTurned = false, DispatcherPriority.Background);
+        Follower.NoteScrollChanged(e.ViewportDelta.Y);
+        ScrollToBottomButton.IsVisible = !Follower.StickToBottom;
     }
 
-    private void _OnTranscriptPointerPressed(object? sender, PointerPressedEventArgs e) => _pointerHeld = true;
+    private void _OnTranscriptWheel(object? sender, PointerWheelEventArgs e) => Follower.NoteWheel();
 
-    private void _OnTranscriptPointerReleased(object? sender, RoutedEventArgs e) => _pointerHeld = false;
+    private void _OnTranscriptPointerPressed(object? sender, PointerPressedEventArgs e) => Follower.NotePointerHeld(true);
+
+    private void _OnTranscriptPointerReleased(object? sender, RoutedEventArgs e) => Follower.NotePointerHeld(false);
 
     private void _OnScrollToBottomClick(object? sender, RoutedEventArgs e)
     {
-        _stickToBottom = true;
-        _FollowNewest();
+        Follower.StickToBottom = true;
+        Follower.RequestFollow();
         ScrollToBottomButton.IsVisible = false;
     }
 
     // AC-1022: lets the reply button send focus to the composer after setting its target.
     internal void FocusInput() => InputBox.Focus();
 
-    // AC-935: a reply's citation and a replied-to row's marker both jump here. `_stickToBottom` has to come off
+    // AC-935: a reply's citation and a replied-to row's marker both jump here. The follow has to come off
     // first, or the ScrollChanged handler reads "not an operator gesture, still sticky" and follows straight
     // back to the newest row — the jump-to-newest chevron is the way back, same as after a manual scroll.
     internal void ScrollToMessage(TranscriptEntryViewModel target)
@@ -387,7 +260,7 @@ public partial class AssistantChatView : UserControl
             return;
         }
 
-        _stickToBottom = false;
+        Follower.StickToBottom = false;
         TranscriptItems.ScrollIntoView(index);
         ScrollToBottomButton.IsVisible = true;
     }
@@ -402,17 +275,22 @@ public partial class AssistantChatView : UserControl
             return;
         }
 
-        vm.TranscriptAnchor = _stickToBottom ? null : _TopVisibleRow();
+        vm.TranscriptAnchor = Follower.StickToBottom ? null : _TopVisibleRow();
     }
 
     // The first row whose bottom edge is still below the viewport's top — the one the operator is reading from.
     // Only realised containers can be measured, and the topmost visible row is realised by definition.
     private TranscriptScrollPosition? _TopVisibleRow()
     {
+        if (TranscriptScroll is not { } scroll)
+        {
+            return null;
+        }
+
         for (var index = 0; index < TranscriptItems.ItemCount; index++)
         {
             if (TranscriptItems.ContainerFromIndex(index) is not { } row
-                || row.TranslatePoint(new Point(0, 0), TranscriptScroll) is not { } top)
+                || row.TranslatePoint(new Point(0, 0), scroll) is not { } top)
             {
                 continue;
             }
@@ -428,33 +306,25 @@ public partial class AssistantChatView : UserControl
 
     // AC-953 handover: two steps because ScrollIntoView only brings the row *into* view — from
     // below it lands at the bottom, not where it was — so an offset correction places it exactly.
-    // `_following` marks these layout passes as ours, not an operator scroll to draw conclusions from.
     private void _RestoreScrollAnchor(TranscriptScrollPosition anchor)
     {
-        if (anchor.Index < 0 || anchor.Index >= TranscriptItems.ItemCount)
+        if (anchor.Index < 0 || anchor.Index >= TranscriptItems.ItemCount || TranscriptScroll is not { } scroll)
         {
             return;
         }
 
-        _stickToBottom = false;
-        _following = true;
-        try
-        {
-            TranscriptItems.ScrollIntoView(anchor.Index);
+        // Before the move, not after: nothing here is an operator gesture, so the handler would otherwise read
+        // "still sticky" and the next request would follow straight back to the tail.
+        Follower.StickToBottom = false;
+        TranscriptItems.ScrollIntoView(anchor.Index);
 
-            if (TranscriptItems.ContainerFromIndex(anchor.Index) is { } row
-                && row.TranslatePoint(new Point(0, 0), TranscriptScroll) is { } top)
-            {
-                TranscriptScroll.Offset = TranscriptScroll.Offset
-                    .WithY(Math.Max(0, TranscriptScroll.Offset.Y + top.Y - anchor.Offset));
-            }
-        }
-        finally
+        if (TranscriptItems.ContainerFromIndex(anchor.Index) is { } row
+            && row.TranslatePoint(new Point(0, 0), scroll) is { } top)
         {
-            _following = false;
+            scroll.Offset = scroll.Offset.WithY(Math.Max(0, scroll.Offset.Y + top.Y - anchor.Offset));
         }
 
-        ScrollToBottomButton.IsVisible = !_NewestRowIsFullyVisible();
+        ScrollToBottomButton.IsVisible = !Follower.NewestRowIsFullyVisible();
     }
 
     // The host can flip Session from null to a real one after EnsureOpenedAsync's lazy start completes
@@ -483,12 +353,10 @@ public partial class AssistantChatView : UserControl
             return;
         }
 
-        _transcriptHandler ??= (_, _) => Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
-        session.Transcript.CollectionChanged += _transcriptHandler;
-
         _sessionHandler ??= _OnSessionPropertyChanged;
         session.PropertyChanged += _sessionHandler;
         _attachedSession = session;
+        Follower.Watch(session);
     }
 
     // AC-545: scrolls Allow/Deny into view when waiting — a permission turns an existing tool row
@@ -499,8 +367,8 @@ public partial class AssistantChatView : UserControl
             && sender is SessionViewModel { HasPendingPermission: true })
         {
             // A consent to act on outranks reading history: resume the follow so the Allow/Deny row shows (AC-545).
-            _stickToBottom = true;
-            Dispatcher.UIThread.Post(_FollowNewest);
+            Follower.StickToBottom = true;
+            Follower.RequestFollow();
         }
     }
 
@@ -508,11 +376,6 @@ public partial class AssistantChatView : UserControl
     {
         if (_attachedSession is { } session)
         {
-            if (_transcriptHandler is { } handler)
-            {
-                session.Transcript.CollectionChanged -= handler;
-            }
-
             if (_sessionHandler is { } sessionHandler)
             {
                 session.PropertyChanged -= sessionHandler;
@@ -520,6 +383,7 @@ public partial class AssistantChatView : UserControl
         }
 
         _attachedSession = null;
+        Follower.Watch(null);
     }
 
     // AC-895: session badge click focuses that session and brings the main window forward, same

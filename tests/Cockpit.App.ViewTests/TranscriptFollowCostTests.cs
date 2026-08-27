@@ -50,7 +50,7 @@ public sealed class TranscriptFollowCostTests
         window.Show();
         _Frame();
 
-        view.TranscriptScroll.ScrollToEnd();
+        view.TranscriptScroll!.ScrollToEnd();
         _Frame();
 
         var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
@@ -64,8 +64,8 @@ public sealed class TranscriptFollowCostTests
         var perRowMb = (GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore) / 1024.0 / 1024.0 / StreamedRows;
 
         var newest = view.TranscriptItems.ContainerFromIndex(view.TranscriptItems.ItemCount - 1);
-        var viewport = view.TranscriptScroll.Viewport.Height;
-        var tail = newest?.TranslatePoint(new Point(0, newest.Bounds.Height), view.TranscriptScroll)?.Y;
+        var viewport = view.TranscriptScroll!.Viewport.Height;
+        var tail = newest?.TranslatePoint(new Point(0, newest.Bounds.Height), view.TranscriptScroll!)?.Y;
 
         window.Close();
 
