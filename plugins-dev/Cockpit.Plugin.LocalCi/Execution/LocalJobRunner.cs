@@ -3,7 +3,9 @@ using Cockpit.Plugin.LocalCi.Runtime;
 
 namespace Cockpit.Plugin.LocalCi.Execution;
 
-/// <summary>Runs one workflow job on this machine, or says why it did not.</summary>
+/// <summary>
+/// Runs one workflow job on this machine, or says why it did not.
+/// </summary>
 internal interface ILocalJobRunner
 {
     /// <summary>

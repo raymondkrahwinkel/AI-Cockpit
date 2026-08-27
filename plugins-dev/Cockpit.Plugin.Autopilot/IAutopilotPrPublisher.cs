@@ -40,7 +40,9 @@ internal sealed record AutopilotPrPublishResult(bool Pushed, string? PrUrl, stri
 /// </summary>
 internal interface IAutopilotPrPublisher
 {
-    /// <summary>Probes what <paramref name="worktreePath"/> can do about a PR (git run, remote, gh). Never throws — an unprobeable path degrades to all-false.</summary>
+    /// <summary>
+    /// Probes what <paramref name="worktreePath"/> can do about a PR (git run, remote, gh). Never throws — an unprobeable path degrades to all-false.
+    /// </summary>
     Task<AutopilotPrProbe> ProbeAsync(string worktreePath, CancellationToken cancellationToken = default);
 
     /// <summary>

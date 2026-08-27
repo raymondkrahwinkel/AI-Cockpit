@@ -9,7 +9,9 @@ namespace Cockpit.Plugin.Docker.Compose;
 /// </summary>
 internal interface IDockerCli
 {
-    /// <summary>Runs <c>docker &lt;args&gt;</c> and returns its exit code and output.</summary>
+    /// <summary>
+    /// Runs <c>docker &lt;args&gt;</c> and returns its exit code and output.
+    /// </summary>
     Task<DockerCliResult> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken);
 }
 

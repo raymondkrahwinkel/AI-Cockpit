@@ -12,7 +12,9 @@ internal interface ILocalCiRuntime
     /// </summary>
     Task<LocalCiRuntimeStatus> GetStatusAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Drops the cached answer so the next <see cref="GetStatusAsync"/> probes again.</summary>
+    /// <summary>
+    /// Drops the cached answer so the next <see cref="GetStatusAsync"/> probes again.
+    /// </summary>
     void Invalidate();
 }
 

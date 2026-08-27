@@ -10,13 +10,19 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// </summary>
 internal interface IClaudeSdkSubprocess : IAsyncDisposable
 {
-    /// <summary>Starts the process. Must be called exactly once before any I/O.</summary>
+    /// <summary>
+    /// Starts the process. Must be called exactly once before any I/O.
+    /// </summary>
     void Start(string executablePath, IReadOnlyList<string> arguments, string workingDirectory, IReadOnlyDictionary<string, string?> environmentVariables);
 
-    /// <summary>Writes a single line (without trailing newline) to stdin and flushes — one stream-json object per line.</summary>
+    /// <summary>
+    /// Writes a single line (without trailing newline) to stdin and flushes — one stream-json object per line.
+    /// </summary>
     Task WriteLineAsync(string line, CancellationToken cancellationToken = default);
 
-    /// <summary>The process's stdout, split into lines, completing when the process exits.</summary>
+    /// <summary>
+    /// The process's stdout, split into lines, completing when the process exits.
+    /// </summary>
     IAsyncEnumerable<string> ReadStdoutLinesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -26,9 +32,13 @@ internal interface IClaudeSdkSubprocess : IAsyncDisposable
     /// </summary>
     IAsyncEnumerable<string> ReadStderrLinesAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>The OS process id once started; <see langword="null"/> before start or after exit/dispose (#78, D10).</summary>
+    /// <summary>
+    /// The OS process id once started; <see langword="null"/> before start or after exit/dispose (#78, D10).
+    /// </summary>
     int? ProcessId { get; }
 
-    /// <summary>True once the process has exited.</summary>
+    /// <summary>
+    /// True once the process has exited.
+    /// </summary>
     bool HasExited { get; }
 }

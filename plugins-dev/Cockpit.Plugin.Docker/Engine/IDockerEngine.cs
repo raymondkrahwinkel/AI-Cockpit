@@ -7,61 +7,99 @@ namespace Cockpit.Plugin.Docker.Engine;
 /// </summary>
 internal interface IDockerEngine
 {
-    /// <summary>Daemon version/platform info. Touches the daemon.</summary>
+    /// <summary>
+    /// Daemon version/platform info. Touches the daemon.
+    /// </summary>
     Task<DockerDaemonInfo> GetInfoAsync(CancellationToken cancellationToken);
 
-    /// <summary>Lists containers (<c>docker ps</c>). <paramref name="all"/> includes stopped ones.</summary>
+    /// <summary>
+    /// Lists containers (<c>docker ps</c>). <paramref name="all"/> includes stopped ones.
+    /// </summary>
     Task<IReadOnlyList<DockerContainer>> ListContainersAsync(bool all, CancellationToken cancellationToken);
 
-    /// <summary>Starts a stopped container.</summary>
+    /// <summary>
+    /// Starts a stopped container.
+    /// </summary>
     Task StartContainerAsync(string id, CancellationToken cancellationToken);
 
-    /// <summary>Stops a running container.</summary>
+    /// <summary>
+    /// Stops a running container.
+    /// </summary>
     Task StopContainerAsync(string id, CancellationToken cancellationToken);
 
-    /// <summary>Restarts a container.</summary>
+    /// <summary>
+    /// Restarts a container.
+    /// </summary>
     Task RestartContainerAsync(string id, CancellationToken cancellationToken);
 
-    /// <summary>Removes a container; <paramref name="force"/> removes a running one.</summary>
+    /// <summary>
+    /// Removes a container; <paramref name="force"/> removes a running one.
+    /// </summary>
     Task RemoveContainerAsync(string id, bool force, CancellationToken cancellationToken);
 
-    /// <summary>Runs a single, non-interactive command in a container (<c>docker exec</c>).</summary>
+    /// <summary>
+    /// Runs a single, non-interactive command in a container (<c>docker exec</c>).
+    /// </summary>
     Task<ExecResult> ExecAsync(string id, IReadOnlyList<string> command, CancellationToken cancellationToken);
 
-    /// <summary>Creates and starts a detached container (<c>docker run -d</c>); returns its id. Throws <see cref="ImageNotFoundException"/> when the image is not available locally and could not be found.</summary>
+    /// <summary>
+    /// Creates and starts a detached container (<c>docker run -d</c>); returns its id. Throws <see cref="ImageNotFoundException"/> when the image is not available locally and could not be found.
+    /// </summary>
     Task<string> RunContainerAsync(RunSpec spec, CancellationToken cancellationToken);
 
-    /// <summary>The last <paramref name="tail"/> lines of a container's logs (<c>docker logs --tail</c>), stdout and stderr separated. A read.</summary>
+    /// <summary>
+    /// The last <paramref name="tail"/> lines of a container's logs (<c>docker logs --tail</c>), stdout and stderr separated. A read.
+    /// </summary>
     Task<ContainerLogs> GetContainerLogsAsync(string id, int tail, CancellationToken cancellationToken);
 
-    /// <summary>Lists the images available locally (<c>docker images</c>). A read.</summary>
+    /// <summary>
+    /// Lists the images available locally (<c>docker images</c>). A read.
+    /// </summary>
     Task<IReadOnlyList<DockerImage>> ListImagesAsync(CancellationToken cancellationToken);
 
-    /// <summary>Pulls an image from its registry (<c>docker pull</c>). A change to local state, but not destructive.</summary>
+    /// <summary>
+    /// Pulls an image from its registry (<c>docker pull</c>). A change to local state, but not destructive.
+    /// </summary>
     Task PullImageAsync(string image, CancellationToken cancellationToken);
 
-    /// <summary>Inspects a container (<c>docker inspect</c>): its state, exit code, health, env, mounts and networks. A read.</summary>
+    /// <summary>
+    /// Inspects a container (<c>docker inspect</c>): its state, exit code, health, env, mounts and networks. A read.
+    /// </summary>
     Task<ContainerInspection> InspectContainerAsync(string id, CancellationToken cancellationToken);
 
-    /// <summary>A one-shot resource sample for a container (<c>docker stats --no-stream</c>): CPU, memory, network and block IO. A read.</summary>
+    /// <summary>
+    /// A one-shot resource sample for a container (<c>docker stats --no-stream</c>): CPU, memory, network and block IO. A read.
+    /// </summary>
     Task<ContainerStats> GetContainerStatsAsync(string id, CancellationToken cancellationToken);
 
-    /// <summary>The processes running inside a container (<c>docker top</c>). A read.</summary>
+    /// <summary>
+    /// The processes running inside a container (<c>docker top</c>). A read.
+    /// </summary>
     Task<ContainerProcesses> TopContainerAsync(string id, CancellationToken cancellationToken);
 
-    /// <summary>Lists local volumes (<c>docker volume ls</c>). A read.</summary>
+    /// <summary>
+    /// Lists local volumes (<c>docker volume ls</c>). A read.
+    /// </summary>
     Task<IReadOnlyList<DockerVolume>> ListVolumesAsync(CancellationToken cancellationToken);
 
-    /// <summary>Removes a volume (<c>docker volume rm</c>); <paramref name="force"/> removes one still referenced. Destructive.</summary>
+    /// <summary>
+    /// Removes a volume (<c>docker volume rm</c>); <paramref name="force"/> removes one still referenced. Destructive.
+    /// </summary>
     Task RemoveVolumeAsync(string name, bool force, CancellationToken cancellationToken);
 
-    /// <summary>Lists networks (<c>docker network ls</c>). A read.</summary>
+    /// <summary>
+    /// Lists networks (<c>docker network ls</c>). A read.
+    /// </summary>
     Task<IReadOnlyList<DockerNetwork>> ListNetworksAsync(CancellationToken cancellationToken);
 
-    /// <summary>Reclaims disk by pruning stopped containers, dangling images, or unused volumes (<c>docker … prune</c>). Destructive; returns what was removed.</summary>
+    /// <summary>
+    /// Reclaims disk by pruning stopped containers, dangling images, or unused volumes (<c>docker … prune</c>). Destructive; returns what was removed.
+    /// </summary>
     Task<PruneResult> PruneAsync(PruneTarget target, CancellationToken cancellationToken);
 
-    /// <summary>Tags an image under a new reference (<c>docker tag</c>). A change to local state, not destructive.</summary>
+    /// <summary>
+    /// Tags an image under a new reference (<c>docker tag</c>). A change to local state, not destructive.
+    /// </summary>
     Task TagImageAsync(string source, string target, CancellationToken cancellationToken);
 }
 
