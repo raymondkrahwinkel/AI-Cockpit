@@ -4,7 +4,7 @@ namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 // with the previous list marked old, and not cost more `gh` calls per unit time than before. Every test here
 // drives `PullRequestRefreshSource` directly — no `GitHubPullRequestsWidget` or the
 // AC-517 side-menu badge involved — via a fake load function (no `gh`, no network), which is exactly what
-// acceptance criterion 2 asks for ("aantoonbaar met een test op de verversingsbron, niet op een control").
+// acceptance criterion 2 asks for ("demonstrable with a test on the refresh source, not on a control").
 public class PullRequestRefreshSourceTests
 {
     private static readonly GitHubPullRequest SamplePullRequest = new(1, "Fix the thing", "https://github.com/octocat/hello-world/pull/1", null, "octocat/hello-world", "octocat");
