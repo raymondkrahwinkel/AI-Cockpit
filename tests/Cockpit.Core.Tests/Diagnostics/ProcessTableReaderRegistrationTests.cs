@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Diagnostics;
+using Cockpit.Core.Diagnostics;
 using Cockpit.Infrastructure;
 
 namespace Cockpit.Core.Tests.Diagnostics;
@@ -23,13 +25,18 @@ public class ProcessTableReaderRegistrationTests
         using var provider = services.BuildServiceProvider();
         var reader = provider.GetRequiredService<IProcessTableReader>();
 
+        var cache = Assert.IsType<CachedProcessTableReader>(reader);
+        var inner = typeof(CachedProcessTableReader)
+            .GetField("_inner", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(cache)!;
+
         var expected = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? "WmiProcessTableReader"
             : RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                 ? "PsProcessTableReader"
                 : "ProcProcessTableReader";
 
-        Assert.Equal(expected, reader.GetType().Name);
+        Assert.Equal(expected, inner.GetType().Name);
 
         // And it actually reads: a table with this very test process in it, which is the cheapest possible proof
         // that the platform path works at all rather than throwing.
