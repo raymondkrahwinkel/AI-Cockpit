@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Threading;
+using Cockpit.App.Diagnostics;
 
 namespace Cockpit.App.ViewTests;
 
@@ -54,25 +55,28 @@ public sealed class RenderClockRecoveryTests
         var window = new Window { Width = 400, Height = 300, Content = new StackPanel { Children = { looper, bystander } } };
         window.Show();
 
-        var cutOff = false;
+        // Caught the way the global net catches it, and judged by the same decision, so this test also guards the
+        // message RenderClockRecovery matches on: change it and the recovery below stops happening.
+        Exception? caught = null;
         void OnUnhandled(object? _, DispatcherUnhandledExceptionEventArgs e)
         {
-            if (e.Exception is InvalidOperationException { Message: "Infinite layout loop detected" })
-            {
-                cutOff = true;
-                e.Handled = true;
-            }
+            caught = e.Exception;
+            e.Handled = true;
         }
 
         Dispatcher.UIThread.UnhandledException += OnUnhandled;
         try
         {
-            for (var frame = 0; frame < 10 && !cutOff; frame++)
+            for (var frame = 0; frame < 10 && caught is null; frame++)
             {
                 _Frame();
             }
 
-            Assert.True(cutOff, "Avalonia never cut the layout loop off, so this test is not exercising AC-1104's case");
+            Assert.True(
+                caught is not null
+                && RenderClockRecovery.ShouldRecover(caught, RenderClockRecovery.MinimumInterval),
+                $"Avalonia raised {caught?.GetType().Name ?? "nothing"} rather than the cut-off RenderClockRecovery "
+                + "looks for, so this test is not exercising AC-1104's case");
 
             // Stop the loop, so what follows measures the render clock rather than the loop throwing again.
             looper.Looping = false;
@@ -86,7 +90,11 @@ public sealed class RenderClockRecoveryTests
 
             Assert.Equal(before, bystander.Measures);
 
-            window.RequestAnimationFrame(_ => { });
+            if (RenderClockRecovery.ShouldRecover(caught, RenderClockRecovery.MinimumInterval))
+            {
+                window.RequestAnimationFrame(_ => { });
+            }
+
             for (var frame = 0; frame < 5; frame++)
             {
                 _Frame();

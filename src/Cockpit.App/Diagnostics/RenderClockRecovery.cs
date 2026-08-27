@@ -12,6 +12,11 @@ internal static class RenderClockRecovery
     // clusters sat 1-2s apart, so this keeps a throw-recover cycle from turning into a hot one.
     public static readonly TimeSpan MinimumInterval = TimeSpan.FromSeconds(1);
 
+    // What "no recovery yet" is, as a stopwatch reading to subtract from: one interval ago, so the first cut-off
+    // clears the bar. Not TimeSpan.MinValue — its Ticks are long.MinValue, so subtracting it from a stopwatch that
+    // has run at all overflows and throws, inside the very handler this exists to serve.
+    public static readonly TimeSpan NeverRecovered = -MinimumInterval;
+
     public static bool ShouldRecover(Exception exception, TimeSpan sinceLastRecovery)
         => exception is InvalidOperationException { Message: CutOffLayoutLoopMessage }
            && sinceLastRecovery >= MinimumInterval;

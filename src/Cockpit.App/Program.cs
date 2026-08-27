@@ -228,7 +228,7 @@ sealed class Program
         // Log and handle recoverable dispatcher/render exceptions so one plugin surface cannot take down every
         // session and workspace. Fatal conditions still exit through their own paths.
         var uptime = System.Diagnostics.Stopwatch.StartNew();
-        var lastRenderClockRecovery = TimeSpan.MinValue;
+        var lastRenderClockRecovery = Cockpit.App.Diagnostics.RenderClockRecovery.NeverRecovered;
         Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
         {
             var logger = Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.UIThread");
