@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: `COCKPIT_STATE_ROOT` points an instance at a state directory of its own, so a second cockpit can run
+  without touching the one you use. It moves everything, not just the settings file — configuration, logs,
+  plugins, worktrees, clones, audit trails and caches all follow it, since an instance that looks isolated while
+  one path still writes into your real state is worse than one that never claimed to be. Leave it unset and
+  nothing changes. The path must be absolute; a relative one is refused at startup rather than resolved
+  differently by each process.
+
 - added: the plugin SDK now carries a named list of everything a plugin can ask the cockpit for — each
   entry with how much granting it would hand over, which SDK members it covers and the cockpit version it
   first appeared in. Nothing is asked or enforced yet; it is the vocabulary the later permission prompt
