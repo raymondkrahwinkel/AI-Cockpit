@@ -13,6 +13,7 @@ namespace Cockpit.MeasurementHarness;
 public static class Program
 {
     private static RunOutcome? _outcome;
+    private static readonly CancellationTokenSource _stop = new();
 
     public static int Main(string[] args)
     {
@@ -31,7 +32,7 @@ public static class Program
         }
 
         HarnessApp.Body = () => _RunScenarioAsync(identity, options);
-        _StartAvalonia(options.Headless);
+        _StartAvalonia(options);
 
         if (_outcome is not { } outcome)
         {
@@ -114,12 +115,33 @@ public static class Program
             e.Handled = true;
         };
 
-    private static void _StartAvalonia(bool headless)
+    private static void _StartAvalonia(Options options)
     {
-        var builder = AppBuilder.Configure<HarnessApp>();
-        builder = headless
+        var builder = options.Scenario == LayoutLoopScenario.Name
+            ? AppBuilder.Configure<Cockpit.App.App>()
+            : AppBuilder.Configure<HarnessApp>();
+        builder = options.Headless
             ? builder.UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).UseSkia()
             : builder.UsePlatformDetect();
+
+        if (options.Scenario == LayoutLoopScenario.Name)
+        {
+            builder = builder.WithInterFont();
+            builder.SetupWithoutStarting();
+            Dispatcher.UIThread.Post(async () =>
+            {
+                try
+                {
+                    await HarnessApp.Body!.Invoke().ConfigureAwait(true);
+                }
+                finally
+                {
+                    _stop.Cancel();
+                }
+            });
+            Dispatcher.UIThread.MainLoop(_stop.Token);
+            return;
+        }
 
         builder.StartWithClassicDesktopLifetime([]);
     }
