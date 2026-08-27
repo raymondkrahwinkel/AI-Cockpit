@@ -1,12 +1,10 @@
-using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
-using Avalonia.Data;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.App.Controls;
+using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.MeasurementHarness.Core;
 using Cockpit.MeasurementHarness.Meters;
 
@@ -160,7 +158,7 @@ public static class LayoutLoopScenario
     /// </summary>
     private static Control _NewPane(int index)
     {
-        var content = _NewTranscript(index);
+        var content = _NewRealTranscript(index);
         var host = new MiniatureHost { Child = content };
         var paneRoot = new Grid { Margin = new Thickness(4), Background = Brushes.Transparent };
         paneRoot.Children.Add(host);
@@ -175,53 +173,23 @@ public static class LayoutLoopScenario
         return paneRoot;
     }
 
-    /// <summary>
-    /// A streaming transcript with a stick-to-bottom follow, virtualised, with rows of very different
-    /// heights. This is the driver AC-1178 measured — the `_MoveTo` offset writes (`rail0..3=19 | rail4=325`)
-    /// come from here, not from the panel — and it is what turns a rail tile that is arranged off screen into
-    /// a frame that runs into Avalonia's cut-off.
-    /// </summary>
-    private static Control _NewTranscript(int index)
+    private static Control _NewRealTranscript(int index)
     {
-        var rows = new ObservableCollection<string>();
+        var session = new SessionViewModel();
+        session.Transcript.Clear();
         for (var i = 0; i < 40; i++)
         {
-            rows.Add(_Row(index, i));
+            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, _Row(index, i)));
         }
 
-        var list = new ItemsControl
-        {
-            ItemsSource = rows,
-            ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
-            ItemTemplate = new FuncDataTemplate<string>((_, _) =>
-            {
-                var text = new TextBlock { TextWrapping = TextWrapping.Wrap };
-                text.Bind(TextBlock.TextProperty, new Binding("."));
-                return text;
-            }, true),
-        };
-
-        var scroll = new ScrollViewer { Content = list, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-
-        // The fault under test, in the shape SessionView has it today: the follow hangs off ScrollChanged,
-        // which ScrollViewer raises from LayoutUpdated — that is, at the end of a layout pass, while the
-        // media context is still draining render callbacks. Writing the offset there re-enters layout.
-        scroll.ScrollChanged += (_, _) =>
-        {
-            var bottom = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
-            if (Math.Abs(scroll.Offset.Y - bottom) > 0.5)
-            {
-                scroll.Offset = new Vector(scroll.Offset.X, bottom);
-            }
-        };
-
-        var next = rows.Count;
+        var next = session.Transcript.Count;
         var streaming = new DispatcherTimer(DispatcherPriority.Default) { Interval = TimeSpan.FromMilliseconds(33) };
-        streaming.Tick += (_, _) => rows.Add(_Row(index, next++));
+        streaming.Tick += (_, _) => session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, _Row(index, next++)));
         streaming.Start();
-        scroll.DetachedFromVisualTree += (_, _) => streaming.Stop();
 
-        return scroll;
+        var view = new SessionView { DataContext = session };
+        view.DetachedFromVisualTree += (_, _) => streaming.Stop();
+        return view;
     }
 
     /// <summary>Rows of wildly different heights — the fault scales with the spread, not with the count.</summary>
