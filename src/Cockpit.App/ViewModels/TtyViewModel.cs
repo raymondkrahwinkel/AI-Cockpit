@@ -165,21 +165,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     private CancellationTokenSource? _limitsPollCancellation;
 
-    // Running token total for the session (AC-398), folded from every transcript reading that carried usage — see `SessionTranscriptActivity.Usage`.
-    private readonly SessionUsageMeter _usage = new();
-
     private bool _hasOutstandingBackgroundShells;
 
     public override bool HasOutstandingBackgroundShells => _hasOutstandingBackgroundShells;
-
-    // When this session's TUI actually came up, seeded again in `OnLaunchSucceeded` — mirrors `SessionViewModel`'s own `_startedAt` so a persisted snapshot measures working time, not launch setup.
-    private DateTimeOffset _startedAt = DateTimeOffset.Now;
-
-    // The most recent write to the usage trail, awaited on teardown — same reasoning as `SessionViewModel._pendingUsageWrite`.
-    private Task? _pendingUsageWrite;
-
-    // Where the running totals are kept so they outlive the session (AC-398). Null in the design-time graph and in tests built without one.
-    private readonly IUsageHistory? _usageHistory;
 
     // Tokens seen since the last completed turn (AC-398): a tool-using turn writes several assistant lines
     // before its own TurnComplete line, each with its own usage, and these hold the running sum until that line
@@ -234,11 +222,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null,
         VoiceOverlayCoordinator? voiceOverlay = null)
+        : base(usageHistory)
     {
         _launcher = launcher;
         _providerResolver = providerResolver;
         _transcriptReader = transcriptReader;
-        _usageHistory = usageHistory;
         KindLabel = "TTY";
         WorkingPath = ResolveWorkingPath(options);
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
@@ -826,33 +814,12 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // (`SessionViewModel._RecordUsageSnapshot`) and for the same reason: recording only at the end would
     // lose exactly the run that crashed. Not awaited — a turn settling must not wait on a file — but kept so
     // `DisposeCoreAsync` can drain it before the pane goes away.
-    private void _RecordUsageSnapshot()
-    {
-        if (_usageHistory is null || !_usage.HasData)
-        {
-            return;
-        }
+    // TTY sessions cannot be embedded; only the SDK route receives run metadata.
+    private protected override (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
+        (UsageRunKind.Interactive, null, null, _configuredModel);
 
-        _pendingUsageWrite = _usageHistory.RecordAsync(new UsageSnapshot
-        {
-            PaneId = PaneId,
-            StartedAt = _startedAt,
-            RecordedAt = DateTimeOffset.Now,
-            // Always Interactive/no run: nothing embeds a TTY session today (CockpitViewModel.Embed only ever
-            // builds an SDK SessionViewModel) — if that changes, this is where a run's id/label would come from.
-            RunKind = UsageRunKind.Interactive,
-            RunId = null,
-            RunLabel = null,
-            ProfileLabel = ActiveProfileLabel,
-            Model = _configuredModel,
-            InputTokens = _usage.InputTokens,
-            OutputTokens = _usage.OutputTokens,
-            CacheReadInputTokens = _usage.CacheReadInputTokens,
-            CacheCreationInputTokens = _usage.CacheCreationInputTokens,
-            TotalCostUsd = _usage.TotalCostUsd,
-            Turns = _usage.Turns,
-        });
-    }
+    // The transcript callback and disposal both run on the UI thread, so a queued callback can replace the write while drain awaits.
+    private protected override bool UsageWritesMayBeQueuedDuringDrain => true;
 
     // The pty produced output — the TUI is still drawing (a thinking spinner ticking, text streaming), so the
     // session is visibly alive (AC-75). Keeps the status tracker's safety-timeout clock fresh while a turn is busy,
@@ -1142,14 +1109,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         // _pendingUsageWrite with a newer task after the one just captured here. Relies on DisposeCoreAsync
         // itself running on the UI thread, same as the Post callback it is racing — otherwise the check-and-break
         // below would be a torn read against that callback's own field writes.
-        while (_pendingUsageWrite is { } pendingUsageWrite)
-        {
-            await pendingUsageWrite;
-            if (ReferenceEquals(_pendingUsageWrite, pendingUsageWrite))
-            {
-                break;
-            }
-        }
+        await _DrainUsageWritesAsync();
 
         // Dropped here rather than left to the view, which is not told when a session closes: the panel is simply
         // removed from the collection and its container leaves the tree, so the view's own DataContext hook never

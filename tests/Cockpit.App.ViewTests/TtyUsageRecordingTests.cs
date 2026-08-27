@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Usage;
+using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -126,14 +127,31 @@ public class TtyUsageRecordingTests
         // SDK path's stream-json result event) — the cockpit does not compute one itself from tokens.
         var history = new RecordingUsageHistory();
         var reader = _ReaderYielding(
-            new SessionTranscriptActivity(SessionActivity.TurnComplete, "line", new TokenUsage(10, 5, 0, 0)));
+            new SessionTranscriptActivity(SessionActivity.TurnComplete, "line", new TokenUsage(17, 19, 23, 29)));
         var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader, usageHistory: history);
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
 
         vm.OnLaunchSucceeded();
 
         await _WaitUntilAsync(() => history.Recorded.Count > 0);
-        Assert.Equal(0, Assert.Single(history.Recorded).TotalCostUsd);
+        var snapshot = Assert.Single(history.Recorded);
+        Assert.Equal(0, snapshot.TotalCostUsd);
+        Assert.NotEqual(default, snapshot.StartedAt);
+        Assert.NotEqual(default, snapshot.RecordedAt);
+        Assert.Empty(UsageSnapshotContract.CommonFieldDifferences(new UsageSnapshot
+        {
+            PaneId = vm.PaneId,
+            StartedAt = snapshot.StartedAt,
+            RecordedAt = snapshot.RecordedAt,
+            ProfileLabel = "work",
+            Model = "sonnet",
+            InputTokens = 17,
+            OutputTokens = 19,
+            CacheReadInputTokens = 23,
+            CacheCreationInputTokens = 29,
+            TotalCostUsd = 0,
+            Turns = 1,
+        }, snapshot));
     });
 
     [Fact]
@@ -171,6 +189,7 @@ public class TtyUsageRecordingTests
         var snapshot = Assert.Single(history.Recorded);
         Assert.Equal(UsageRunKind.Interactive, snapshot.RunKind);
         Assert.Null(snapshot.RunId);
+        Assert.Null(snapshot.RunLabel);
     });
 
     [Fact]

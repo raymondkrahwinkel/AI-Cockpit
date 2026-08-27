@@ -693,25 +693,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // True once at least one turn has finished, so an idle session reads as Done rather than Idle — independent of whether a (success) turn added a transcript row (T4).
     private bool _hasCompletedATurn;
 
-    // Running token/cost total for the session (#8), folded from each completed turn's result usage.
-    private readonly SessionUsageMeter _usage = new();
-
-    // When this session's runtime went up, so a persisted snapshot can say how long it had been working (AC-251).
-    // Taken at the launch rather than at construction: an isolated session is built, then waits on a
-    // `git worktree add` before it starts, and counting that setup as working time would inflate the very
-    // baseline the token-reduction work measures against. Seeded at construction so a session that never launches
-    // still has a sane value.
-    private DateTimeOffset _startedAt = DateTimeOffset.Now;
-
-    // The most recent write to the usage trail, awaited on teardown (AC-251). The write is not awaited per turn —
-    // a turn settling must not wait on a file — but a session that closes right after its last turn would otherwise
-    // race the process out and lose that turn from the record, which is the one case this ticket is named for.
-    private Task? _pendingUsageWrite;
-
-    // Where the running totals are kept so they outlive the session (AC-251). Null in the design-time graph and in
-    // tests that build a session without one, which simply keeps the meter in memory as it always was.
-    private readonly IUsageHistory? _usageHistory;
-
     // Carries messages other agents left for this pane out with its next turn (AC-394). Optional: a pane built
     // without it — every design-time and most test constructions — simply sends what it was given, which is the
     // behaviour every session had before this existed.
@@ -1139,10 +1120,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IProfileLoginStarter? loginStarter = null,
         IMentionFileSource? mentionFileSource = null,
         ISharedUsageCache? sharedUsageCache = null)
+        : base(usageHistory)
     {
         _eventQueue = new SessionEventQueue(Apply);
         _sessionManager = sessionManager;
-        _usageHistory = usageHistory;
         _turnInboxDelivery = turnInboxDelivery;
         _sessionStateRecorder = sessionStateRecorder;
         _pluginProviderRegistry = pluginProviderRegistry;
@@ -2997,31 +2978,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Not awaited here — a turn settling must not wait on a file, and the trail swallows its own failures by
     // contract — but kept so teardown can wait for it; without that the last turn races the process out.
     // A turn that reported nothing (an error result) leaves no record rather than a row of zeroes.
-    private void _RecordUsageSnapshot()
-    {
-        if (_usageHistory is null || !_usage.HasData)
-        {
-            return;
-        }
-
-        _pendingUsageWrite = _usageHistory.RecordAsync(new UsageSnapshot
-        {
-            PaneId = PaneId,
-            StartedAt = _startedAt,
-            RecordedAt = DateTimeOffset.Now,
-            RunKind = RunKind,
-            RunId = RunId,
-            RunLabel = RunLabel,
-            ProfileLabel = ActiveProfileLabel,
-            Model = SelectedModel.Value,
-            InputTokens = _usage.InputTokens,
-            OutputTokens = _usage.OutputTokens,
-            CacheReadInputTokens = _usage.CacheReadInputTokens,
-            CacheCreationInputTokens = _usage.CacheCreationInputTokens,
-            TotalCostUsd = _usage.TotalCostUsd,
-            Turns = _usage.Turns,
-        });
-    }
+    private protected override (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
+        (RunKind, RunId, RunLabel, SelectedModel.Value);
 
     public override async Task<bool> SendPromptAsync(string prompt)
     {
@@ -3221,10 +3179,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // settle without waiting on a file, and a session closing right behind it would otherwise take the
         // process down before the record reached disk (AC-251). The trail swallows its own failures, so this
         // waits on a task that does not fault.
-        if (_pendingUsageWrite is { } pendingUsageWrite)
-        {
-            await pendingUsageWrite;
-        }
+        await _DrainUsageWritesAsync();
 
         await _StopRuntimeAsync();
 
