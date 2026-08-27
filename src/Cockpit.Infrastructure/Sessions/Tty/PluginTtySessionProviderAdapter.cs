@@ -114,9 +114,15 @@ internal sealed class PluginTtySessionProviderAdapter(
                     continue;
                 }
 
-                if (_ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
+                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
                 {
                     servers.Add(mapped);
+                }
+                else
+                {
+                    logger?.LogWarning(
+                        "MCP server {Name} is agent-eligible but not mountable (no url for Http / no command for Stdio); it was skipped.",
+                        server.Name);
                 }
             }
             var canDelegate = selected.Any(server =>
@@ -205,35 +211,6 @@ internal sealed class PluginTtySessionProviderAdapter(
             return null;
         }
     }
-
-    // Mirrors PluginSessionDriverAdapter's mapping: an OAuth-proxied server addresses the loopback endpoint with no
-    // literal token (AC-524); HTTP otherwise carries the server's credential (static key or OAuth token, AC-353),
-    // with CockpitHosted marking auth via COCKPIT_MCP_KEY (AC-40) instead; stdio carries command/args.
-    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken, string? oauthProxyUrl) => server.Transport switch
-    {
-        McpTransport.Http when oauthProxyUrl is { Length: > 0 } => new PluginMcpServer
-        {
-            Name = server.Name,
-            Url = oauthProxyUrl,
-            Headers = McpAgentHeaders.For(server, null),
-            CockpitHosted = true,
-        },
-        McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
-        {
-            Name = server.Name,
-            Url = server.Url,
-            BearerToken = CockpitMcpBearer.UserCredential(server, oauthAccessToken),
-            Headers = McpAgentHeaders.For(server, CockpitMcpBearer.UserCredential(server, oauthAccessToken)),
-            CockpitHosted = server.CockpitHosted,
-        },
-        McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer
-        {
-            Name = server.Name,
-            Command = server.Command,
-            Args = server.Args,
-        },
-        _ => null,
-    };
 
     // A plugin says "resume this conversation, or the last one" and nothing else. The core's `SessionResume`
     // also has a "start fresh" case, which is the absence of a resume — so it maps to null rather than to an

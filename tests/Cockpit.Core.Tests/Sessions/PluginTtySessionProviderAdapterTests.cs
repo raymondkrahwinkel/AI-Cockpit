@@ -1,7 +1,10 @@
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Sessions;
@@ -72,6 +75,52 @@ public class PluginTtySessionProviderAdapterTests
 
         inner.Received(1).BuildLaunch(Arg.Is<PluginTtyLaunchContext>(pluginContext =>
             pluginContext.McpServers.Count == 1 && pluginContext.McpServers[0].Name == "project-own"));
+    }
+
+    [Fact]
+    public void BuildLaunch_AnAdvertisedServerWithNoTransportTarget_LogsAWarningNamingIt()
+    {
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "SQL Explorer", Transport = McpTransport.Http },
+        });
+        var inner = Substitute.For<IPluginTtyProvider>();
+        inner.BuildLaunch(Arg.Any<PluginTtyLaunchContext>()).Returns(new PluginTtyLaunchSpec("codex", [], new Dictionary<string, string?>(), "/wd", []));
+        var logger = Substitute.For<ILogger<PluginTtySessionProviderAdapter>>();
+        var adapter = new PluginTtySessionProviderAdapter("cli-agent-provider.codex", inner, """{"Command":"codex"}""", catalog, logger: logger);
+
+        adapter.BuildLaunch(new TtyLaunchContext(null, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string>()));
+
+        logger.Received(1).Log(
+            LogLevel.Warning,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(state => state!.ToString()!.Contains("SQL Explorer")),
+            null,
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    [Fact]
+    public void BuildLaunch_AValidServer_DoesNotLogTheUnmountableWarning()
+    {
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "youtrack", Transport = McpTransport.Http, Url = "https://example.test/mcp" },
+        });
+        var inner = Substitute.For<IPluginTtyProvider>();
+        inner.BuildLaunch(Arg.Any<PluginTtyLaunchContext>()).Returns(new PluginTtyLaunchSpec("codex", [], new Dictionary<string, string?>(), "/wd", []));
+        var logger = Substitute.For<ILogger<PluginTtySessionProviderAdapter>>();
+        var adapter = new PluginTtySessionProviderAdapter("cli-agent-provider.codex", inner, """{"Command":"codex"}""", catalog, logger: logger);
+
+        adapter.BuildLaunch(new TtyLaunchContext(null, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string>()));
+
+        logger.DidNotReceive().Log(
+            LogLevel.Warning,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(state => state!.ToString()!.Contains("not mountable")),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
     }
 
     [Fact]
