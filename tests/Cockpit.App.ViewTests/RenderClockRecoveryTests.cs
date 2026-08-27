@@ -72,11 +72,11 @@ public sealed class RenderClockRecoveryTests
                 _Frame();
             }
 
+            Assert.NotNull(caught);
             Assert.True(
-                caught is not null
-                && RenderClockRecovery.ShouldRecover(caught, RenderClockRecovery.MinimumInterval),
-                $"Avalonia raised {caught?.GetType().Name ?? "nothing"} rather than the cut-off RenderClockRecovery "
-                + "looks for, so this test is not exercising AC-1104's case");
+                RenderClockRecovery.ShouldRecover(caught, RenderClockRecovery.MinimumInterval),
+                $"Avalonia raised {caught.GetType().Name} rather than the cut-off RenderClockRecovery looks for, "
+                + "so this test is not exercising AC-1104's case");
 
             // Stop the loop, so what follows measures the render clock rather than the loop throwing again.
             looper.Looping = false;
