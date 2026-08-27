@@ -125,16 +125,8 @@ public partial class App : Application
         }
     }
 
-    // The wizard stands in for the main window the same way `_ShowUnlockWindow`'s own unlock window
-    // does: it is the app's only window until it is done, and the real cockpit is built and shown before this one
-    // closes — never the other way round — so the desktop lifetime never sees zero windows open.
-    // Built directly here rather than through `IFirstRunWizard`: that interface's contract is "show, wait for
-    // the operator, and only then return" — which for the Help menu's "Run setup again" (AC-512, cockpit already
-    // running) is exactly right, but here would close the wizard window before this method ever got a chance to
-    // build the cockpit's, reopening the same zero-window gap one step later. Hooked on `Closing` rather
-    // than the view model's `RequestClose` so every way of leaving reaches it uniformly — Skip, Next on the
-    // last step, and the operator's own close button all end up closing the window, and `Closing` fires
-    // before any of them actually do.
+    // Keep the wizard open until the cockpit is shown so desktop lifetime never sees zero windows. Building it
+    // here avoids IFirstRunWizard's close-before-return contract (AC-512); Closing covers every exit route.
     private void _ShowOnboardingWizard(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
@@ -151,18 +143,12 @@ public partial class App : Application
 
         desktop.MainWindow = window;
 
-        // Explicit, the same reason _StartCockpit's own comment gives for _mainWindow.Show(): the framework only
-        // auto-shows the very first MainWindow assignment at startup. When this replaces UnlockWindow instead (the
-        // locked-at-startup route through _ShowUnlockWindow's Unlocked handler), that first assignment was
-        // already the unlock window's, and nothing shows this one without an explicit call.
+        // Avalonia auto-shows only the first MainWindow; after startup unlock, this replacement needs Show().
         window.Show();
     }
 
-    // The startup probe reads cockpit.json through the same retry the settings stores use, so a save publishing at
-    // that exact moment no longer throws (review #9). Should the read fail anyway — a genuinely unreadable file —
-    // this must not crash the launch before a single window is up: fall through to a normal start, where the stores'
-    // own backup-recovery and refusal handle a broken config the way they do everywhere else, with a window to say
-    // so. Reading it as "locked" instead would send the operator to an unlock window backed by the same failing read.
+    // Use the settings-store retry for concurrent saves (review #9). An unreadable file falls through to normal
+    // startup so store recovery can report it in a window, rather than opening an unlock screen backed by that read.
     private static bool _IsLockedAtStartup(ISecretProtectionService protection)
     {
         try
@@ -194,13 +180,8 @@ public partial class App : Application
         desktop.MainWindow = window;
     }
 
-    // Locks the running cockpit's UI (AC-5): shows the unlock window over the main window, so the app behind it cannot
-    // be touched until the encryption password is entered again — the running-app twin of the startup unlock window
-    // being the only window. This is a pure UI lock: the encryption key stays in memory, so agents already running
-    // keep working (a background config write is not blocked) while the screen re-asks for the password. The returned
-    // task completes when the operator has unlocked, which is what lets a later OS lock lock again. Runs on the UI
-    // thread (the coordinator marshals here), and is idempotent through that coordinator, not on its own — a second
-    // call while the dialog is up would try to own a second modal, which the guard prevents.
+    // Locks only the running cockpit UI; the in-memory key and agents remain active (AC-5). The coordinator provides
+    // UI-thread dispatch and idempotence, while completion signals that a later OS lock may lock again.
     private async Task _LockToUnlockScreen()
     {
         if (_mainWindow is null)
@@ -208,12 +189,8 @@ public partial class App : Application
             return;
         }
 
-        // AC-509 Show()-inventory (2 of 3): _mainWindow already exists here, which only happens after
-        // _StartCockpitAndOnboard has already run once this session — the onboarding gate is already resolved by
-        // the time this route is reachable, so it needs no gate of its own.
-        //
-        // Bring the cockpit to the front first: a lock screen hidden behind a minimized or tray-hidden window reads
-        // as a freeze, not as a lock. ShowDialog also needs a shown owner.
+        // This route is reachable only after onboarding, so it needs no separate gate (AC-509). Bring a hidden or
+        // minimized cockpit forward first so the modal has a visible owner and does not look like a freeze.
         _mainWindow.Show();
         _mainWindow.WindowState = WindowState.Normal;
 
@@ -230,10 +207,8 @@ public partial class App : Application
         // the desktop was still locked, where activation does not stick.
         _screenLockWindow = window;
 
-        // The lock is modal over the main window, and modality holds an owner rather than that owner's siblings.
-        // Since AC-367 the work surfaces are siblings, so a locked cockpit still had options, MCP servers, the
-        // plugin store and every plugin window open beside it. Hidden for the duration and put back on unlock, so
-        // the lock covers the whole app without throwing away what was being filled in.
+        // Modality does not cover sibling work surfaces (AC-367), so hide and later restore them to lock the whole
+        // app without discarding their state.
         using var surfaces = Program.Services.GetRequiredService<SurfaceWindows>().HideAll();
 
         try
@@ -258,10 +233,8 @@ public partial class App : Application
             cockpitViewModel.PluginSupervisedActivities.Add(source);
         }
 
-        // The New-session profile picker's ProfileDisplayConverter is used via x:Static (not DI-constructed), so
-        // hand it the provider registry once here — that lets a plugin profile show its own provider's name (e.g.
-        // "Claude") in the dropdown instead of the generic "(Plugin)" placeholder. The bundled plugins have already
-        // registered by now, so the lookup resolves.
+        // ProfileDisplayConverter is x:Static rather than DI-created, so supply the now-populated registry here to
+        // show plugin provider names instead of "(Plugin)".
         Converters.ProfileDisplayConverter.PluginProviderRegistry =
             Program.Services.GetRequiredService<Cockpit.Infrastructure.Sessions.IPluginProviderRegistry>();
 
@@ -271,25 +244,17 @@ public partial class App : Application
         };
         desktop.MainWindow = _mainWindow;
 
-        // A closed window can never be shown again — Avalonia throws "Cannot re-show a closed window", and coming
-        // from a tray-icon handler that exception took the whole cockpit down with it. Forgetting the window here
-        // is what makes every route that shows it (the tray click, the tray menu's Show, the UI lock) fall through
-        // the null check each already has, instead of each having to learn what a closed window looks like.
+        // Avalonia cannot re-show a closed window; clearing it here makes every show route use its existing null
+        // guard instead of crashing from a tray handler.
         _mainWindow.Closed += (_, _) => _mainWindow = null;
 
-        // AC-509 Show()-inventory (1 of 3): the one route where _mainWindow is created — every call to
-        // _StartCockpit goes through _StartCockpitAndOnboard, which is the gate (see its own remarks).
-        //
-        // Shown here rather than left to the lifetime: when this replaces the unlock window, the framework has
-        // already shown its MainWindow and will not show a second one on its own.
+        // The onboarding gate owns every creation route (AC-509). Show explicitly because Avalonia will not
+        // auto-show a MainWindow that replaces the startup unlock window.
         _mainWindow.Show();
         _SetUpTrayIcon();
 
-        // Adopt the saved workspaces, then bring back the AI-session panes they name (AC-410). Fire-and-forget:
-        // the view model already holds the default single Sessions workspace, so the window renders today's
-        // cockpit immediately and the saved set — panes included — swaps in as the reads complete, rather than
-        // the window waiting on file IO to appear. Chained rather than two separate fire-and-forgets: restoring
-        // panes reads Workspaces.Settings, so it must not run until that load has actually landed.
+        // Render the default workspace immediately, then asynchronously load saved workspaces and their panes in
+        // sequence because pane restore reads Workspaces.Settings (AC-410).
         _ = _RestoreCockpitAsync(cockpitViewModel);
 
         // The feature coordinators are resolved for their constructors: each subscribes to the hotkey
@@ -297,16 +262,12 @@ public partial class App : Application
         // simply not be listening when its key fires.
         Program.Services.GetRequiredService<VoicePushToTalkCoordinator>();
 
-        // The assistant's own key (AC-543). Resolved for the same reason — the constructor is where it starts
-        // listening — and then pointed at the Options page, so a rebound key or the feature being switched off
-        // re-arms straight away instead of at the next restart. Resolving it starts no assistant: the instance is
-        // built on the first hold or the first click on the chip, never before.
+        // Resolve the assistant hotkey to start listening, and refresh it after Options saves so changes apply
+        // immediately (AC-543). This does not start an assistant instance.
         var assistantPushToTalk = Program.Services.GetRequiredService<AssistantPushToTalkCoordinator>();
 
-        // Read the assistant's switch off disk once at startup. Without this the host sits on its constructed
-        // default — "switched off" — until something happens to save Options, so on every launch after the one
-        // where it was turned on, the first F10 refused with a reason that was simply out of date. Starts
-        // nothing: it resolves availability, and the first hold or click is still what builds the instance.
+        // Load assistant availability at startup so the first F10 does not use the stale off-by-default state.
+        // Availability checks start no instance; the first hold or click still does that.
         var assistantHost = Program.Services.GetRequiredService<AssistantSessionHost>();
         _ = assistantHost.ApplySettingsAsync();
 
@@ -322,10 +283,8 @@ public partial class App : Application
         assistantIndicator.Start();
         assistantPushToTalk.FollowSettings(cockpitViewModel.AssistantOptions, assistantIndicator);
 
-        // AC-575: the consent bypass holds its switches as a snapshot, because the broker asks it synchronously in
-        // the middle of deciding and the store reads a file. Re-read here on the same Saved event the hotkey and
-        // the chip already follow, so a source the operator just switched off stops being bypassed on the next
-        // request rather than at the next restart. The singleton is the one the broker was handed.
+        // The broker reads the consent-bypass snapshot synchronously; refresh its singleton after Options saves so
+        // disabled sources stop bypassing on the next request, not the next restart (AC-575).
         var consentBypass = Program.Services.GetRequiredService<AssistantConsentBypassPolicy>();
         cockpitViewModel.AssistantOptions.Saved += (_, _) => _ = consentBypass.ApplySettingsAsync();
 
@@ -348,11 +307,8 @@ public partial class App : Application
         // operator who opted in.
         _ = Program.Services.GetRequiredService<GlobalHotkeyCoordinator>().ApplyAsync();
 
-        // AC-5: lock the cockpit's UI when the OS screen locks — put the unlock screen in front and ask for the
-        // encryption password again — but only when encryption is on and the operator left the option on. A pure UI
-        // lock: the key stays in memory so running agents keep working. The coordinator owns that gate and the
-        // idempotence; App owns the windows, so it supplies how to show the unlock screen over the running cockpit.
-        // Its task completes when the operator has unlocked again.
+        // When enabled, an OS lock triggers the pure UI lock while the key and agents stay active (AC-5). The
+        // coordinator owns gating/idempotence; App supplies and awaits the unlock window.
         var screenLock = Program.Services.GetRequiredService<ScreenLockCoordinator>();
         screenLock.LockAction = () => Dispatcher.UIThread.InvokeAsync(_LockToUnlockScreen);
         screenLock.RestoreFocusAction = () => Dispatcher.UIThread.Post(() => _screenLockWindow?.TakeFocus());
@@ -371,10 +327,8 @@ public partial class App : Application
         // AC-733: a plain background thread, not UI-bound — started here too, just to sit beside its sibling.
         Program.Services.GetRequiredService<Services.AdaptiveGcCompactor>().Start();
 
-        // AC-234: hand the running app its scheduler — resolved here rather than through the view-model's
-        // constructor, so the test and design-time graphs build a cockpit without one and never write to disk.
-        // Before the plugins, deliberately: a session takes its copy of this when it is built, and one built while
-        // this is still null never gets a second chance to hear about a resume waiting on it.
+        // Attach the scheduler outside the view-model constructor so test/design graphs never write to disk
+        // (AC-234), and do so before plugins can create sessions that would otherwise miss pending resumes.
         cockpitViewModel.ScheduledResumes = Program.Services.GetService<ScheduledResumeCoordinator>();
 
         // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
@@ -391,11 +345,8 @@ public partial class App : Application
         Program.Services.GetService<DevPluginReloadWatcher>()?.Start();
 #endif
 
-        // #59: one check right after plugin phase-2 (so a freshly discovered installed version is what
-        // gets compared), then every 15 minutes for the rest of the run.
-        // #71: and the cockpit itself. One look on startup, if the operator left that on — an update nobody is
-        // told about is an update nobody installs. It never nags: a failed check is silent here, and only says
-        // what went wrong when someone asks from Options.
+        // Check plugin updates after discovery and every 15 minutes (#59), plus the cockpit once at startup when
+        // enabled (#71). Background failures stay silent and surface only when requested from Options.
         _ = cockpitViewModel.InitialiseUpdatesAsync();
         // AC-188: and keep looking every hour after that, so a window left open for a workday still learns about a
         // build cut hours later. Reuses the same toast/banner/dedup path; stopped when the view model disposes.
@@ -529,10 +480,8 @@ public partial class App : Application
         var secretFieldStore = Program.Services.GetRequiredService<IPluginSecretFieldStore>();
         var dialogHost = Program.Services.GetRequiredService<IPluginDialogHost>();
 
-        // Which storage keys hold a credential, before any plugin's settings are read: a value under a key the
-        // host does not know to be a secret would be handed to the plugin as ciphertext, and left in a backup that
-        // says it carries no credentials. The plugins declare them (plugin.json / SetSecret); the names are not
-        // secrets themselves, so they are read without needing the key.
+        // Register plugin-declared secret key names before reading settings, or ciphertext could reach a plugin
+        // and remain in a backup labelled credential-free. The names themselves require no key.
         var declared = secretFieldStore.LoadAsync().GetAwaiter().GetResult()
             .Concat(pluginManager.Loaded.SelectMany(discovered => discovered.Manifest.SecretKeys))
             .ToList();
@@ -596,15 +545,9 @@ public partial class App : Application
             Program.Services.GetRequiredService<IWorkflowTemplateLibrary>(),
             Program.Services.GetRequiredService<IWorkflowTemplateRegistry>());
 
-        // AC-403: move an OAuth token an older build filed under a server's name onto the id that server is known by
-        // now. Here, at the tail of plugin phase 2, because a plugin's own connections are the only ones that need
-        // it and this is the first moment they can be asked for.
-        // Blocking, like the two settings reads at the top of this method, and for a stronger reason than either:
-        // the main window is already on screen by now, so an await here would hand the operator a window they could
-        // click in while the migration was still running — and a status read that lands in that gap says "sign-in
-        // needed" about a credential that is present and about to be moved. The UI thread is inside this method for
-        // the whole of plugin phase 2, so nothing can be clicked until it returns. It never throws (it logs), and
-        // after the launch that migrates it is one small config read that writes nothing.
+        // After plugin phase 2 exposes connections, migrate legacy name-keyed OAuth tokens to stable IDs (AC-403).
+        // Block the already-visible UI until completion so it cannot briefly report a present credential missing;
+        // later launches perform only a small, non-writing config read.
         Program.Services.GetRequiredService<McpOAuthTokenAdoption>().RunAsync().GetAwaiter().GetResult();
 
         // Surface any load/init failures (phase 1 or 2), and any plugins now awaiting approval (AC-208), as
@@ -655,10 +598,8 @@ public partial class App : Application
             });
     }
 
-    // Restores and focuses the main window (tray left-click / the tray menu's "Show …" entry).
-    // AC-509 Show()-inventory (3 of 3): reachable only once `_mainWindow` is non-null, i.e. after
-    // `_StartCockpitAndOnboard` already ran this session — same reasoning as `_LockToUnlockScreen`,
-    // no gate needed here.
+    // Restores and focuses the main window from the tray. A non-null window proves onboarding already ran, so this
+    // route needs no separate gate (AC-509).
     public void ShowMainWindow()
     {
         if (_mainWindow is null)
@@ -690,10 +631,8 @@ public partial class App : Application
         Dispatcher.UIThread.Post(() => _desktop?.Shutdown());
     }
 
-    // A tray icon is always present while the app runs so the operator can immediately see whether the
-    // tray works on their desktop (on GNOME/Wayland a legacy tray may need an AppIndicator extension).
-    // Only when the "minimize to tray on close" setting is on does closing hide to it (#33) — otherwise
-    // the tray is just a quick Show/Quit affordance and closing quits as usual.
+    // Keep the tray icon visible so support is obvious; only the setting changes close into hide (#33).
+    // Otherwise it remains a Show/Quit shortcut and closing exits normally.
     private void _SetUpTrayIcon()
     {
         var showItem = new NativeMenuItem($"Show {CockpitProduct.DisplayName}");
@@ -712,10 +651,8 @@ public partial class App : Application
         TrayIcon.SetIcons(this, [tray]);
     }
 
-    // Loads the saved workspaces and then brings back the AI-session panes they name (AC-410), in that order:
-    // `WorkspacesViewModel.InitializeAsync` never throws (its own doc says so), so this continuation
-    // always runs — including after a failed load, where `Settings` stays the in-memory default and there is
-    // simply nothing saved to restore.
+    // Load workspaces before restoring their AI-session panes (AC-410). InitializeAsync never throws, so a failed
+    // load continues safely with the in-memory default and nothing to restore.
     private static async Task _RestoreCockpitAsync(CockpitViewModel cockpit)
     {
         await cockpit.Workspaces.InitializeAsync();

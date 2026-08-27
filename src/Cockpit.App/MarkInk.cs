@@ -1,19 +1,8 @@
 namespace Cockpit.App;
 
-// The colours an operator can mark a screenshot in (AC-375) — ink rather than chrome.
-// Deliberately not theme tokens, and its own file so the exemption reaches nothing else. These are not the
-// cockpit's colours: they go onto somebody else's screen, in a picture that leaves the machine. Pointing them at
-// `Theme.axaml` would make an operator's red turn into whatever the cockpit's next repaint decided red
-// means, on screenshots already sent. The same argument the stand-in desktop is exempted under.
-//
-// The blue is missing on purpose. It is the theme's accent, read at runtime and handed to the surface, so that
-// the default a mark is drawn in stays the one colour this app does own — and stays in one place, which is the
-// mistake AC-334 spent a ticket undoing.
-//
-// Five is a judgement, not a limit: enough that two marks on one capture can differ, few enough to stay a row of
-// swatches rather than a colour picker. Light and dark are both here, which costs nothing — every mark that
-// needs contrast against what it lies on works that out from its own colour, so a white arrow rings itself in
-// black without being told.
+// Fixed screenshot-ink colours must not change with cockpit themes after an image is sent (AC-356/AC-375). Blue comes
+// from the runtime accent to keep that owned colour in one place (AC-334); five swatches provide useful contrast
+// without becoming a colour picker.
 internal static class MarkInk
 {
     // What most people reach for first on a screenshot.

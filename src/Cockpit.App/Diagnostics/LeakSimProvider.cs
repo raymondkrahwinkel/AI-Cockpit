@@ -6,10 +6,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Diagnostics;
 
-// Dev-only fake session provider for the leak simulation (CockpitViewModel.RunLeakSimAsync). It drives scripted
-// agent events through the REAL session pipeline — StartConfiguredAsync → SessionRuntime → SessionViewModel.Apply
-// — so the sim exercises the same runtime, activity timers and Focus "steps run" folding a real Claude session
-// does, instead of the design-ctor stand-in that could not reproduce the after-close retention.
+// Dev-only leak simulation that drives scripted events through the real session pipeline, because the design
+// constructor stand-in could not reproduce after-close retention.
 internal static class LeakSimProvider
 {
     public const string ProviderId = "leaksim";

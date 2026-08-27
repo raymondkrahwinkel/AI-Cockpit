@@ -21,10 +21,9 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App;
 
-// Headless startup mode that renders a window off-screen via the Avalonia Skia headless platform and
-// writes a single frame to disk as PNG. Lets an external caller verify the UI layout without a display
-// attached (Iron Law #9: automated visual verification). `scene` picks which window:
-// the main cockpit by default, or a dialog whose layout would otherwise be unverifiable.
+// Headless startup mode that renders a window off-screen via the Avalonia Skia headless platform and writes a single frame to
+// disk as PNG. Lets an external caller verify the UI layout without a display attached (Iron Law #9: automated visual
+// verification). `scene` picks which window: the main cockpit by default, or a dialog whose layout would otherwise be unverifiable.
 internal static class Screenshotter
 {
     private const int DefaultWindowWidth = 1100;
@@ -90,10 +89,9 @@ internal static class Screenshotter
         // AC-445: the workspace ⚙'s own Layout flyout, opened the way session-settings-flyout already proves
         // headless rendering can. Needs a session so `ShowSessionGrid` shows the toolbar the ⚙ lives in.
         ["workspace-layout-flyout"] = (width, height) => _MainWindowWithOneSession(width, height),
-        // AC-1000: Voice and Assistant are now separate top-level categories rather than Carousel sub-pages of one
-        // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
-        // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
-        // would see regress.
+        // AC-1000: Voice and Assistant are now separate top-level categories rather than Carousel sub-pages of one Voice tab —
+        // own scenes rather than reusing "options", since neither category renders on the category that scene opens on (Notifications)
+        // and a layout change to a page nothing captures is a layout change nobody would see regress.
         ["voice-transcribe"] = (_, _) => _OptionsOnTab("Voice"),
         ["voice-assistant"] = (_, _) => _OptionsAssistantPage(),
         // AC-1000: the consent-bypass state (one recognised source, one orphaned #K11 key) that used to render on
@@ -105,21 +103,18 @@ internal static class Screenshotter
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
         // sharing one page-wide ScrollViewer.
         ["options-profiles"] = (_, _) => _OptionsProfilesPage(),
-        // The assistant's own profile editor. Its own scene rather than a state of "profiles": it is a different
-        // window with a different, shorter set of blocks, and the one control this ticket moved — the restart, which
-        // only shows with a living assistant behind it — renders nowhere else. Taller than it opens, the way the
-        // Manage-profiles editor scenes are, so the environment-variables block at the bottom is not the part of
-        // the scene nobody can see.
+        // The assistant's own profile editor. Its own scene rather than a state of "profiles": it is a different window with a different, shorter set of blocks,
+        // and the one control this ticket moved — the restart, which only shows with a living assistant behind it — renders nowhere else. Taller than it
+        // opens, the way the Manage-profiles editor scenes are, so the environment-variables block at the bottom is not the part of the scene nobody can see.
         ["assistant-profile"] = (_, _) => new AssistantProfileDialog
         {
             DataContext = new ViewModels.AssistantProfileDialogViewModel(
                 new _FakeAssistantSessionHost(), new _FakeClaudeProviderRegistry()),
             Height = 1220,
         },
-        // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with
-        // the toggle pre-set to TTY, the same profile with it pre-set to SDK, and a local-provider profile (no TTY
-        // route at all) where the toggle disappears in favour of a plain "SDK-only" label. Tall enough that the
-        // section — well below the fold of the editor's resting height — is not the part of the scene you cannot see.
+        // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with the toggle pre-set to TTY, the same
+        // profile with it pre-set to SDK, and a local-provider profile (no TTY route at all) where the toggle disappears in favour of a plain "SDK-only" label.
+        // Tall enough that the section — well below the fold of the editor's resting height — is not the part of the scene you cannot see.
         ["profiles-default-kind-tty"] = (_, _) => _ManageProfilesWithDefaultKind(SessionKind.Tty),
         ["profiles-default-kind-sdk"] = (_, _) => _ManageProfilesWithDefaultKind(SessionKind.Sdk),
         ["profiles-default-kind-sdk-only"] = (_, _) => _ManageProfilesSdkOnlyDefaultKind(),
@@ -138,36 +133,27 @@ internal static class Screenshotter
         // rows — see _ProjectEditorWithResourceScopes's own remarks on why this is a separate scene rather than
         // more rows crammed into that one.
         ["project-editor-resource-scopes"] = (_, _) => _ProjectEditorWithResourceScopes(),
-        // AC-604: a project a plugin partly claims — the mixed case the whole ticket exists for. Name and
-        // Behaviour are shared (Name read-only, Behaviour editable — the badge's own two lock states), Description/
-        // Logo/MCP overlay/the worktree switch stay local, each carrying its own "● This machine" badge rather than
-        // no badge at all, since the project as a whole has a claim (HasFieldOwnership). Built through the async
-        // CreateAsync factory (unlike the other project-editor scenes above, which build the design-time
-        // constructor directly): the origin properties this scene exists to show are private-init, set only inside
-        // that factory.
+        // AC-604: a project a plugin partly claims — the mixed case the whole ticket exists for. Name and Behaviour are shared (Name read-only, Behaviour editable — the badge's own two lock states),
+        // Description/ Logo/MCP overlay/the worktree switch stay local, each carrying its own "● This machine" badge rather than no badge at all, since the project as a whole has a claim (HasFieldOwnership). Built
+        // through the async CreateAsync factory (unlike the other project-editor scenes above, which build the design-time constructor directly): the origin properties this scene exists to show are private-init, set only inside that factory.
         ["project-editor-ownership"] = (_, _) => _ProjectEditorWithOwnership(),
-        // AC-620, IL#9: the confirmation screen before a local project's first publish — the design-time sample
-        // already carries a portable resource, a machine-scope one and a filled connection/target picker, so this
-        // scene draws the same populated state the design-time previewer does rather than an empty shell.
-        // AC-699: taller than it opens, the way the profile-editor scenes are — both columns run past the resting
-        // height, and the machine-scope rows this ticket relabelled are the ones below the fold.
+        // AC-620, IL#9: the confirmation screen before a local project's first publish — the design-time sample already carries a portable resource, a machine-scope one and a filled
+        // connection/target picker, so this scene draws the same populated state the design-time previewer does rather than an empty shell. AC-699: taller than it opens, the way
+        // the profile-editor scenes are — both columns run past the resting height, and the machine-scope rows this ticket relabelled are the ones below the fold.
         ["share-project-dialog"] = (_, _) => new ShareProjectDialog { DataContext = new ShareProjectDialogViewModel(), Height = 900 },
-        // AC-499: the server row's own two states — a family with instances to pick from (its dropdown), and a
-        // family with none yet (its empty hint plus "Servers…" in the dropdown's place) — staged together since
-        // only one row of each is needed to prove both render, and DialogScreenClamp caps how much of this dialog
-        // any one scene can show anyway (see _ProjectEditorWithResources's own remarks on that ceiling).
+        // AC-499: the server row's own two states — a family with instances to pick from (its dropdown), and a family with none yet
+        // (its empty hint plus "Servers…" in the dropdown's place) — staged together since only one row of each is needed to prove both
+        // render, and DialogScreenClamp caps how much of this dialog any one scene can show anyway (see _ProjectEditorWithResources's own remarks on that ceiling).
         ["project-editor-memory-source-families"] = (_, _) => _ProjectEditorWithMemorySourceFamilies(),
-        // AC-502: the "Choose…" picker itself, in the state that paints the most of its own surface — a loaded
-        // list with a two-line entry (name plus its detail) — plus the two states that must never read as an empty
-        // list (not signed in, and a failed load), each its own scene since only one of the four states shows at a
-        // time and a resting-state screenshot would otherwise never catch the other three regressing silently.
+        // AC-502: the "Choose…" picker itself, in the state that paints the most of its own surface — a loaded list with a two-line entry (name plus
+        // its detail) — plus the two states that must never read as an empty list (not signed in, and a failed load), each its own scene
+        // since only one of the four states shows at a time and a resting-state screenshot would otherwise never catch the other three regressing silently.
         ["memory-source-location-picker"] = (_, _) => _MemorySourceLocationPicker(),
         ["memory-source-location-picker-sign-in"] = (_, _) => _MemorySourceLocationPickerSignIn(),
         ["memory-source-location-picker-error"] = (_, _) => _MemorySourceLocationPickerError(),
-        // AC-499: the row the operator already had, pre-selected and marked — a longer list (ten locations, one
-        // without a Detail line) than the plain scene above so the current row (seventh) needs an actual scroll
-        // into view, and the ragged-row-height question (a Detail-less row among Detail-carrying ones) is on
-        // screen rather than assumed away.
+        // AC-499: the row the operator already had, pre-selected and marked — a longer list (ten locations, one without
+        // a Detail line) than the plain scene above so the current row (seventh) needs an actual scroll into
+        // view, and the ragged-row-height question (a Detail-less row among Detail-carrying ones) is on screen rather than assumed away.
         ["memory-source-location-picker-current"] = (_, _) => _MemorySourceLocationPickerCurrent(),
         // AC-499: the other half of the same case — a Reference the picker's list does not contain (removed,
         // mistyped, no longer visible to this login). Nothing selected; see the view model's own remarks on why a
@@ -181,35 +167,25 @@ internal static class Screenshotter
         // _ProjectEditorWithInstructionsSendAlong's own remarks on why combining the two cost the resources scene
         // a hint it had already proved visible.
         ["project-editor-instructions-send-along"] = (_, _) => _ProjectEditorWithInstructionsSendAlong(),
-        // AC-612: a row pointing at a likely secrets location — its own scene rather than a row folded into
-        // project-editor-resources or project-editor-resource-scopes above, the same "no room left under the fold"
-        // reasoning both of those scenes' own remarks already give, and see _ProjectEditorWithSecretPath's own
-        // remarks on why a single row is enough here.
+        // AC-612: a row pointing at a likely secrets location — its own scene rather than a row folded
+        // into project-editor-resources or project-editor-resource-scopes above, the same "no room left under the fold" reasoning both of those scenes'
+        // own remarks already give, and see _ProjectEditorWithSecretPath's own remarks on why a single row is enough here.
         ["project-editor-secret-path"] = (_, _) => _ProjectEditorWithSecretPath(),
         ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
         // AC-245: the "Shared via Depot — …" groups beside the local projects — one healthy group with two rows
         // (name/description/role pill, "Not set up yet" badge), one group carrying a source error instead.
         ["projects-shared"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithSharedProjects() },
-        // AC-246: the "Finish setting up…" bind step — bare, Profile required and Folder optional, matching the
-        // AC-242 mockup section 4. The design-time instance (a project with a GitUrl, so "Clone…" shows beside
-        // "Choose…") is enough to prove the two universally-needed fields render; the row above already proves the
-        // button that opens this exists on a shared-project card.
+        // AC-246: the "Finish setting up…" bind step — bare, Profile required and Folder optional, matching the AC-242 mockup section
+        // 4. The design-time instance (a project with a GitUrl, so "Clone…" shows beside "Choose…") is enough to prove the
+        // two universally-needed fields render; the row above already proves the button that opens this exists on a shared-project card.
         ["shared-project-binding"] = (_, _) => new SharedProjectBindingDialog { DataContext = new ViewModels.SharedProjectBindingDialogViewModel() },
         // AC-247, mockup section 6: the conflict window ProjectDialogViewModel.SaveAsync opens on a checksum
         // mismatch — the design-time instance's own two rows (one collision, one one-sided remote change) prove
         // both row shapes render and the warning note only shows for the collision.
         ["project-conflict"] = (_, _) => new ProjectDefinitionConflictDialog { DataContext = new ViewModels.ProjectDefinitionConflictViewModel() },
-        // AC-246 vormwaarschuwing: the "Paths that differ on your machine" block with rows in it — proves the
-        // bounded, independently scrollable block actually renders and does not push Profile/Folder off the window
-        // the one time an operator meets a shared project with several machine-specific references at once.
-        //
-        // Width/Height set from the scene's own arguments (unlike the plain scene above, which is deliberately
-        // left at the dialog's built-in 520x420 — see its own remarks): this scene exists specifically to prove the
-        // block does not push everything else off screen, and the dialog's built-in height is exactly tall enough
-        // to hide that. A caller asking for a taller render (e.g. --size 900x900) used to get the built-in size
-        // back regardless — the block rendered, but entirely below the fold, which is what actually happened here
-        // (measured: at the built-in size only the section's heading, half-cut, was ever on screen). This scene is
-        // the one place that height is worth honouring.
+        // AC-246 vormwaarschuwing: the "Paths that differ on your machine" block with rows in it — proves the bounded, independently scrollable block actually renders and does not push Profile/Folder off the window the one time an operator meets a shared project with several machine-specific references at once. Width/Height set from the scene's own arguments
+        // (unlike the plain scene above, which is deliberately left at the dialog's built-in 520x420 — see its own remarks): this scene exists specifically to prove the block does not push everything else off screen, and the dialog's built-in height is exactly tall enough to hide that. A caller asking for a taller render
+        // (e.g. --size 900x900) used to get the built-in size back regardless — the block rendered, but entirely below the fold, which is what actually happened here (measured: at the built-in size only the section's heading, half-cut, was ever on screen). This scene is the one place that height is worth honouring.
         ["shared-project-binding-resource-rows"] = (width, height) =>
             new SharedProjectBindingDialog { DataContext = ViewModels.SharedProjectBindingDialogViewModel.DesignSampleWithResourceRows(), Width = width, Height = height },
         // AC-618: categories as the list's main grouping, in a non-alphabetical order ("Werk" before "Privé"), with
@@ -244,15 +220,9 @@ internal static class Screenshotter
         // AC-670: the focus+rail layout, which is the only way to see what a rail tile actually renders as — a
         // miniature of the terminal with the controls you drive it with taken out, one column deep.
         ["focus-rail"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalFocusRailLayout = true } },
-        // AC-543 criterion 11: the assistant chip in the sidebar it actually lives in, expanded and as the rail.
-        // The component has scenes of its own below, but those render it alone — what neither of them can show is
-        // whether it survives the collapse in place, which is the half of criterion 6 that is about the sidebar
-        // rather than about the chip.
-        // Every chip state at once, at the width the sidebar actually gives it. One scene rather than seven,
-        // because what goes wrong at this size is comparative — a label that wraps mid-word, a key hint that
-        // squeezes the text out, one state sitting taller than its neighbours — and none of that is visible in a
-        // render of a single state in a roomy window. Raymond's idea, after two rounds of exactly those defects
-        // reaching him instead of me.
+        // AC-543 criterion 11: the assistant chip in the sidebar it actually lives in, expanded and as the rail. The component has scenes of its own below, but those render it alone — what neither of them can show is whether it survives the collapse in place, which is
+        // the half of criterion 6 that is about the sidebar rather than about the chip. Every chip state at once, at the width the sidebar actually gives it. One scene rather than seven, because what goes wrong at this size is comparative — a label that wraps mid-word,
+        // a key hint that squeezes the text out, one state sitting taller than its neighbours — and none of that is visible in a render of a single state in a roomy window. Raymond's idea, after two rounds of exactly those defects reaching him instead of me.
         ["assistant-indicator-all-states"] = (_, _) => _AssistantIndicatorGallery(),
         ["sidebar-assistant"] = (_, _) => _SidebarWithAssistant(collapsed: false),
         ["sidebar-assistant-rail"] = (_, _) => _SidebarWithAssistant(collapsed: true),
@@ -269,10 +239,9 @@ internal static class Screenshotter
         // AC-1056: a blocking call and a background one in the same transcript — the pair that used to render
         // identically, which is the whole thing this scene exists to show apart.
         ["session-background-tool"] = (width, height) => new Window { Width = width, Height = height, Content = _BackgroundToolSession() },
-        // AC-558: the transcript lines Raymond reported — a bare URL, and a link wrapped in bold that used to
-        // print its own markdown syntax on screen. Rendered rather than only asserted on the parser, because
-        // "a link is there" and "it reads as a link, and the one next to it is a different link" are separate
-        // claims and only the second is visible.
+        // AC-558: the transcript lines Raymond reported — a bare URL, and a link wrapped in bold that used to print its own
+        // markdown syntax on screen. Rendered rather than only asserted on the parser, because "a link is there" and "it reads as a
+        // link, and the one next to it is a different link" are separate claims and only the second is visible.
         ["session-links"] = (width, height) => new Window { Width = width, Height = height, Content = _LinkTranscript() },
         // AC-745: the user's own message bubble now carries the same hover copy action the assistant reply
         // already had — focused via the Hovers table below, since the row keeps it at opacity 0 until then.
@@ -307,11 +276,9 @@ internal static class Screenshotter
         // (kind chip "TTY", no plugin host, no usage pill, shell name only in the cwd tooltip) is verifiable
         // headless — the SDK-only 'session' scene is exactly what let the earlier TTY-header miss slip through.
         ["terminal"] = (width, height) => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = ViewModels.TtyViewModel.DesignTerminal() } },
-        // The restore offer a pane comes back with after a crash (AC-410), in both the states that paint
-        // differently and on both views that carry the banner. Two scenes because the resumable case hides the
-        // degraded reason and the degraded case hides the Resume button, so neither renders the other's surface;
-        // two views because SessionView and TtyView each spell the banner out separately, and a banner added to
-        // only one of them is exactly the kind of half-landed change a single scene would attest to as finished.
+        // The restore offer a pane comes back with after a crash (AC-410), in both the states that paint differently and on both views that carry the banner. Two scenes
+        // because the resumable case hides the degraded reason and the degraded case hides the Resume button, so neither renders the other's surface; two views because SessionView and TtyView each
+        // spell the banner out separately, and a banner added to only one of them is exactly the kind of half-landed change a single scene would attest to as finished.
         ["restore-offer"] = (width, height) => _RestorePane(width, height, degraded: false),
         ["restore-offer-degraded"] = (width, height) => _RestorePane(width, height, degraded: true),
         ["plugin-update-badge"] = (_, _) => _PluginUpdateBadge(),
@@ -359,23 +326,18 @@ internal static class Screenshotter
             DataContext = new ViewModels.UnlockViewModel { Error = "That password does not unlock these credentials." },
         },
         ["worktrees"] = (_, _) => new WorktreesDialog { DataContext = new ViewModels.WorktreesViewModel() },
-        // The voice pill's rows are mutually exclusive, so one scene shows one row — and a row with no scene
-        // cannot be rendered at all, because a render is asked for by name and nothing walks this table. All five,
-        // therefore, rather than only the three that paint ink the others do not: speaking and unavailable would
-        // each produce a baseline that repeats another file, but that is a reason to keep a duplicate file, not a
-        // reason to leave a state of a window unlookable-at (the argument is in ThemePaletteBaselineTests).
+        // The voice pill's rows are mutually exclusive, so one scene shows one row — and a row with no scene cannot be rendered at all, because a render is asked for
+        // by name and nothing walks this table. All five, therefore, rather than only the three that paint ink the others do not: speaking and unavailable would each produce a baseline that
+        // repeats another file, but that is a reason to keep a duplicate file, not a reason to leave a state of a window unlookable-at (the argument is in ThemePaletteBaselineTests).
         ["voice-overlay-listening"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Listening),
         ["voice-overlay-preparing"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Preparing, "Downloading the speech model (1.1 of 1.6 GB)", progress: 0.7),
         ["voice-overlay-transcribing"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Transcribing),
         ["voice-overlay-speaking"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Speaking),
         ["voice-overlay-unavailable"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Unavailable, "Open mic is on"),
 
-        // AC-543 (strand 3): the reusable assistant indicator (AssistantIndicator.axaml), a row per acceptance
-        // criterion 11 — "a row with no scene is a row nobody looks at". All seven AssistantActivity states
-        // expanded, the same badge collapsed to its rail form (criterion 6/19), and the three listening-mode
-        // stands (criteria 17/18) including the one-time AlwaysOn cost confirmation. Wrapped in a small fixed
-        // Window rather than the default 1100x760 (the "tty"/"terminal" scenes' own approach) because this
-        // control is a sidebar chip, not a full pane — a full-size render would show mostly empty background.
+        // AC-543 (strand 3): the reusable assistant indicator (AssistantIndicator.axaml), a row per acceptance criterion 11 — "a row with no scene is a row nobody looks at". All seven AssistantActivity states
+        // expanded, the same badge collapsed to its rail form (criterion 6/19), and the three listening-mode stands (criteria 17/18) including the one-time AlwaysOn cost confirmation. Wrapped in a small fixed Window
+        // rather than the default 1100x760 (the "tty"/"terminal" scenes' own approach) because this control is a sidebar chip, not a full pane — a full-size render would show mostly empty background.
         ["assistant-indicator-ready"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Ready),
         ["assistant-indicator-listening"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Listening),
         ["assistant-indicator-listening-continuously"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously),
@@ -404,12 +366,9 @@ internal static class Screenshotter
         ["assistant-indicator-always-on-confirm"] = (_, _) => _AssistantIndicator(
             Cockpit.Core.Assistant.AssistantActivity.Ready, alwaysOnConfirmationPending: true),
 
-        // AC-543 (strand 4): the pop-out chat window (AssistantChatWindow.axaml), criterion 11's other half — the
-        // indicator is a badge, this is where the conversation actually reads. Three states: a standing
-        // conversation with a collapsed tool call in it (the existing SDK transcript rendering — markdown,
-        // collapsible tool calls — reused, not rebuilt, per the ticket's hard requirement), the window before
-        // anything has been said (criterion 7's "reads a conversation, it does not start one" has to hold even
-        // here, on the very first open), and read-aloud switched off (criterion 9).
+        // AC-543 (strand 4): the pop-out chat window (AssistantChatWindow.axaml), criterion 11's other half — the indicator is a badge, this is where the conversation actually reads. Three states: a standing conversation
+        // with a collapsed tool call in it (the existing SDK transcript rendering — markdown, collapsible tool calls — reused, not rebuilt, per the ticket's hard requirement), the window before anything
+        // has been said (criterion 7's "reads a conversation, it does not start one" has to hold even here, on the very first open), and read-aloud switched off (criterion 9).
         ["assistant-chat"] = (_, _) => _AssistantChat(withConversation: true),
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
@@ -431,10 +390,9 @@ internal static class Screenshotter
         // the assistant's one and only surface).
         ["assistant-chat-warnings"] = (_, _) => _AssistantChatWithWarnings(),
         ["assistant-chat-question"] = (_, _) => _AssistantChatQuestion(),
-        // AC-1018: the broker route (AssistantAgentGateway.AskStructuredQuestionAsync) builds its row with
-        // Kind = Question, not ToolUse like the scene above — the gap that let the card silently never render
-        // live. Built the same way the gateway builds it, so this screenshot is of the actual bug/fix, not of a
-        // fixture that always worked.
+        // AC-1018: the broker route (AssistantAgentGateway.AskStructuredQuestionAsync) builds its row with Kind = Question, not ToolUse like the scene above
+        // — the gap that let the card silently never render live. Built the same way the gateway builds
+        // it, so this screenshot is of the actual bug/fix, not of a fixture that always worked.
         ["assistant-chat-question-broker"] = (_, _) => _AssistantChatBrokerQuestion(),
 
         // AC-776 Deel 1: the session-status pill in all six SessionStatus values, and the same pill's "⋯" flyout
@@ -461,11 +419,9 @@ internal static class Screenshotter
                 ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
         },
 
-        // AC-510[b] criterion 6: the provider step's own catalogue, staged straight into the view model's
-        // collection rather than through a real store fetch (the plugin store dialog's own pattern) — a found CLI
-        // provider and a not-found one side by side (criterion 1's contrast), plus the two states the plugin
-        // store's own StorePluginRowViewModel already carries, reused rather than re-verified here: incompatible
-        // and already-installed (criterion 2, shown proactively, before any Install click).
+        // AC-510[b] criterion 6: the provider step's own catalogue, staged straight into the view model's collection rather than through a real store fetch (the plugin
+        // store dialog's own pattern) — a found CLI provider and a not-found one side by side (criterion 1's contrast), plus the two states the
+        // plugin store's own StorePluginRowViewModel already carries, reused rather than re-verified here: incompatible and already-installed (criterion 2, shown proactively, before any Install click).
         ["provider-step-catalogue"] = (_, _) => _AsWindow(_ProviderStepCatalogue(), 640, 560),
         // Criterion 3: offline is a plain statement, not styled as an error — the local-providers note above it
         // is unaffected either way.
@@ -556,10 +512,9 @@ internal static class Screenshotter
         return window;
     }
 
-    // Scenes whose subject is a flyout or a tooltip. Both attach to a host that does not exist until the window
-    // is up, so — like the selection surface's modes above — they are opened here rather than built into the
-    // scene. Headless renders them into the parent window's own frame, so the capture still shows them in place
-    // on the header they belong to.
+    // Scenes whose subject is a flyout or a tooltip. Both attach to a host that does not exist until the window is
+    // up, so — like the selection surface's modes above — they are opened here rather than built into the scene. Headless renders
+    // them into the parent window's own frame, so the capture still shows them in place on the header they belong to.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
@@ -619,10 +574,9 @@ internal static class Screenshotter
         where T : Control
         => window.GetVisualDescendants().OfType<T>().First(control => control.Name == name);
 
-    // The window a scene name asks for, built and sized but not shown. Its own step so the table above can be
-    // held to a test — a scene that stopped building was otherwise found by whoever next asked for a render,
-    // which on this surface has meant finding it after it shipped. An unknown name falls back to the main
-    // window, so a render never fails on a typo — the tests are what hold the names.
+    // The window a scene name asks for, built and sized but not shown. Its own step so the table above can be held to a test
+    // — a scene that stopped building was otherwise found by whoever next asked for a render, which on this surface has meant finding it after it
+    // shipped. An unknown name falls back to the main window, so a render never fails on a typo — the tests are what hold the names.
     internal static Window BuildScene(string? scene, int width = DefaultWindowWidth, int height = DefaultWindowHeight)
     {
         Window window;
@@ -660,11 +614,9 @@ internal static class Screenshotter
         File.WriteAllText(snapshotPath, VisualTreeSnapshot.Capture(root, target));
     }
 
-    // Renders the project editor as it looks with a memory source installed: the Memory row leads with the source
-    // picker, the box holds the bare identifier rather than a path, and "Choose…" has stepped aside. Staged on the
-    // view model directly rather than through a registry, because what this scene has to show is the row — the
-    // wiring that fills the picker is covered by tests, and a scene that needed a plugin loaded to render would not
-    // be renderable at all.
+    // Renders the project editor as it looks with a memory source installed: the Memory row leads with the source picker, the box holds the bare identifier rather than
+    // a path, and "Choose…" has stepped aside. Staged on the view model directly rather than through a registry, because what this scene has to show is the row
+    // — the wiring that fills the picker is covered by tests, and a scene that needed a plugin loaded to render would not be renderable at all.
     private static ProjectDialog _ProjectEditorWithMemorySource()
     {
         var viewModel = new ViewModels.ProjectDialogViewModel();
@@ -684,26 +636,9 @@ internal static class Screenshotter
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
-    // The resource section with two rows, in the state that paints the most of it (AC-414): a Memory row with a
-    // plugin source picked (mirroring the memory-source scene above, folded into this section instead of a
-    // dedicated field), and a Reference row that is both machine-bound and broken — the two things AC-485 requires
-    // be visible in the editor itself, not only in a prompt the operator never reads. Two rows rather than all
-    // three roles: `Controls.DialogScreenClamp` caps a dialog's height at 90% of the (headless) screen
-    // regardless of the `Height` set below, so a third row would sit past what any render of this scene can
-    // actually show — better two rows fully visible than three where the last is cut off mid-row. The
-    // broken/machine-bound flags are set directly rather than produced by running the real probe against real
-    // paths, so this scene paints the same way on every platform this repo builds on, regardless of what OS drew
-    // the screenshot.
-    //
-    // AC-486 review: an earlier version of this scene changed this second row's own Role to Instructions and
-    // ticked "Send along" on it too, on the theory that neither probe looks at Role so nothing here would cost
-    // anything. Rendered, that combined row's own two extra lines (the checkbox column plus its hint text) pushed
-    // the machine-bound hint below this scene's own fold — the exact same `Controls.DialogScreenClamp`
-    // ceiling this doc comment already warns about, just reached one row sooner. That silently broke the very thing
-    // this scene's own AC-485 review already confirmed visible, without a single test noticing (a palette baseline
-    // permits a screen to paint fewer colours than it lists, and no test here asserts on vertical position). "Send
-    // along" gets `_ProjectEditorWithInstructionsSendAlong` instead, its own scene, precisely so it
-    // never has to compete with this one for the same limited fold.
+    // The resource section with two rows, in the state that paints the most of it (AC-414): a Memory row with a plugin source picked (mirroring the memory-source scene above, folded into this section instead of a dedicated field), and a Reference row that is both machine-bound and broken — the two things AC-485 requires be visible in the editor itself, not only in a prompt the operator never reads. Two rows rather than all three roles: `Controls.DialogScreenClamp` caps a dialog's height at 90% of the (headless) screen regardless of the `Height` set below, so a third row would sit past what any
+    // render of this scene can actually show — better two rows fully visible than three where the last is cut off mid-row. The broken/machine-bound flags are set directly rather than produced by running the real probe against real paths, so this scene paints the same way on every platform this repo builds on, regardless of what OS drew the screenshot. AC-486 review: an earlier version of this scene changed this second row's own Role to Instructions and ticked "Send along" on it too, on the theory that neither probe looks at Role so nothing here would cost anything. Rendered, that combined row's
+    // own two extra lines (the checkbox column plus its hint text) pushed the machine-bound hint below this scene's own fold — the exact same `Controls.DialogScreenClamp` ceiling this doc comment already warns about, just reached one row sooner. That silently broke the very thing this scene's own AC-485 review already confirmed visible, without a single test noticing (a palette baseline permits a screen to paint fewer colours than it lists, and no test here asserts on vertical position). "Send along" gets `_ProjectEditorWithInstructionsSendAlong` instead, its own scene, precisely so it never has to compete with this one for the same limited fold.
     private static ProjectDialog _ProjectEditorWithResources()
     {
         var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = "/home/raymond/Cockpit" };
@@ -715,31 +650,9 @@ internal static class Screenshotter
         memoryRow.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
         viewModel.ResourceRows.Add(memoryRow);
 
-        // Reaching sessions, deliberately, even though an unticked row would show the checkbox contrast: a row that
-        // is switched off is never probed at all, so "switched off" and "broken" cannot both be true of it. Staged
-        // together they made this scene paint a state the app cannot produce — and the diagnostics pass corrects it
-        // the moment it runs, which is how the red hint disappeared from the render without a single test noticing
-        // (a palette baseline permits a screen to paint fewer colours than it lists).
-        //
-        // AC-605 finding: this row's reference used to be hardcoded C:\Users\raymond\OldNotes\handbook.md — fully
-        // qualified on Windows, but not on Linux (Path.IsPathFullyQualified is itself platform-specific, the same
-        // asymmetry ProjectResourcePathPortability's own class remarks document). On this repo's Linux CI/dev boxes
-        // that made the real diagnostics pass above — the one this very comment already says "corrects it the
-        // moment it runs" — silently reclassify the row as Repo-scoped and not-broken once it settled, some tens of
-        // milliseconds after this method returns and well before Screenshotter captures its frame: the IsBroken and
-        // Scope set below were never actually what rendered on Linux, they were only ever the first frame's
-        // head start. Rooted per platform now (mirroring how every test file in this repo already roots a path
-        // it means to keep absolute), so the real diagnostics pass settles on the same Machine/broken state these
-        // initializers describe on every platform this repo builds on, not only the one that authored the literal.
-        //
-        // AC-605 review: the first Linux-rooted literal was "/home/raymond/OldNotes/handbook.md" — this scene's own
-        // SourceDirectory above already hardcodes "/home/raymond" as this operator's home, so that literal is this
-        // scene's fiction, not a guarantee about any real machine, but a scene whose whole point is "this file does
-        // not exist" must not depend on that being true by chance. Renamed to a folder name no real project would
-        // ever have, so "does not exist" holds by construction rather than by nobody happening to have an
-        // "OldNotes" folder — the same reasoning ProjectResourceProbeTests' own _NonExistentAbsolutePath helper
-        // already applies with a GUID; a fixed literal is fine here only because a render scene must stay
-        // deterministic across runs; a marker in the name does the same job a GUID does in a test.
+        // Reaching sessions, deliberately, even though an unticked row would show the checkbox contrast: a row that is switched off is never probed at all, so "switched off" and "broken" cannot both be true of it. Staged together they made this scene paint a state the app cannot produce — and the diagnostics pass corrects it the moment it runs, which is how the red hint disappeared from the render without a single test noticing (a palette baseline permits a screen to paint fewer colours than it lists). AC-605 finding: this row's reference used to be hardcoded C:\Users\raymond\OldNotes\handbook.md — fully qualified on Windows, but not on Linux (Path.IsPathFullyQualified is itself platform-specific, the same asymmetry ProjectResourcePathPortability's own class remarks document). On this repo's Linux CI/dev boxes
+        // that made the real diagnostics pass above — the one this very comment already says "corrects it the moment it runs" — silently reclassify the row as Repo-scoped and not-broken once it settled, some tens of milliseconds after this method returns and well before Screenshotter captures its frame: the IsBroken and Scope set below were never actually what rendered on Linux, they were only ever the first frame's head start. Rooted per platform now (mirroring how every test file in this repo already roots a path it means to keep absolute), so the real diagnostics pass settles on the same Machine/broken state these initializers describe on every platform this repo builds on, not only the one that authored the literal. AC-605 review: the first
+        // Linux-rooted literal was "/home/raymond/OldNotes/handbook.md" — this scene's own SourceDirectory above already hardcodes "/home/raymond" as this operator's home, so that literal is this scene's fiction, not a guarantee about any real machine, but a scene whose whole point is "this file does not exist" must not depend on that being true by chance. Renamed to a folder name no real project would ever have, so "does not exist" holds by construction rather than by nobody happening to have an "OldNotes" folder — the same reasoning ProjectResourceProbeTests' own _NonExistentAbsolutePath helper already applies with a GUID; a fixed literal is fine here only because a render scene must stay deterministic across runs; a marker in the name does the same job a GUID does in a test.
         viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
             viewModel.MemorySourceChoices,
             ProjectResourceRole.Reference,
@@ -758,60 +671,9 @@ internal static class Screenshotter
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
-    // AC-605 criterion 10: the two scope shapes/one action `_ProjectEditorWithResources` has no room
-    // left to show alongside its own two rows (an Instance-scope Memory row, a Machine-scope broken Reference
-    // row) — `Controls.DialogScreenClamp`'s 90%-of-headless-screen ceiling already clips that scene's
-    // own second row's scope sentence at the very edge (measured, not assumed; this ceiling does not move for a
-    // taller requested `Height` here, nor for a taller `--size` passed to `Screenshotter.Run` — it
-    // clamps to the headless platform's own fixed screen size), so a third or fourth row there would not render at
-    // all. Its own scene rather than more rows crammed into that one, the same reason
-    // `_ProjectEditorWithInstructionsSendAlong` already exists apart from it — a coordinator review
-    // round asked for "all four scopes and the fix action visible" and explicitly offered this as one of two
-    // acceptable answers.
-    //
-    // Two rows, not four: `ProjectResourceScope.Repo` already renders in full, un-clipped, in
-    // `_ProjectEditorWithInstructionsSendAlong` ("docs/handbook.md" resolves through the same live
-    // diagnostics pass to "Travels with the repo.") — verified by rendering that scene during this same review
-    // round, not assumed — and `ProjectResourceScope.Instance`/`ProjectResourceScope.Machine`
-    // already render in `_ProjectEditorWithResources`. Adding a third row here to repeat
-    // `ProjectResourceScope.Repo` a second time was tried first and pushed the fix banner below the
-    // fold — exactly the failure this scene exists to avoid. Across the three scenes together, all four scopes and
-    // the fix action are each shown in full at least once; that is what "visible" means for a screenshot, not that
-    // every scene shows everything.
-    // - <description>
-    // A `"~"`-anchored reference (AC-605's own new form) — `ProjectResourceScope.Home`. Rendered
-    // broken: a coordinator review round asked whether a "found" anchor row could be shown instead, and it cannot
-    // be reproducibly — `$HOME` differs by machine and by CI runner, so no literal path under it is
-    // guaranteed to exist wherever this scene renders. A specific, invented nested path under it
-    // (`~/Notes/team-conventions.md`) not existing, on the other hand, is guaranteed everywhere — the same
-    // "guaranteed missing, not missing by chance" reasoning `_ProjectEditorWithResources`'s own broken
-    // row already applies to its folder name.
-    // </description>
-    // - <description>
-    // An absolute path that lives inside `SourceDirectory` but was never converted by
-    // `ProjectResourcePathPortability.ToStoredReference` (AC-605 criterion 5) — the one case that
-    // shows the "Make repo-relative" action at all. Unlike the older scenes above (which predate this concern and
-    // still hardcode a POSIX-only `SourceDirectory`), this scene roots `SourceDirectory` itself per
-    // platform, so "lives inside SourceDirectory" is actually true on whichever platform renders this scene, not
-    // only the one that authored the literal.
-    // </description>
-    //
-    // Both rows below *also* stage `ProjectResourceRowViewModel.IsBroken`,
-    // `ProjectResourceRowViewModel.Scope` and (for the first) `ProjectResourceRowViewModel.RepoRelativeFix`
-    // directly, the same as `_ProjectEditorWithResources`'s own two rows — this was tried without
-    // staging first, reasoning that the real background diagnostics pass would land on the same values anyway (it
-    // does, eventually, which is exactly why `_ProjectEditorWithResources`'s own literals are rooted
-    // the way they are). What that attempt missed: `ThemePaletteBaselineTests` calls
-    // `window.UpdateLayout()` immediately after construction, with no wait at all — measured against the
-    // baseline it recorded, not assumed — while `Screenshotter.Run`'s own plugin-loading and startup
-    // work happens to take long enough for the pass's 400 ms debounce to have already settled by the time it
-    // captures a frame. Those are two different amounts of elapsed time reading the same unstaged scene, and the
-    // theory one always wins that race and the other never does — nothing here — so an unstaged version of this
-    // scene recorded a baseline of the row's blank, not-yet-judged resting state: no red hint, no scope sentence,
-    // no button, and none of `CockpitStatusErrorColor` or the button's own styling on record, silently
-    // leaving exactly the UI this scene exists to guard unprotected by its own baseline. Staged values make the
-    // fast, unwaited capture path see the same thing the slow one eventually settles on, deterministically, the
-    // same reason `_ProjectEditorWithResources` already stages its own two rows.
+    // AC-605 criterion 10: the two scope shapes/one action `_ProjectEditorWithResources` has no room left to show alongside its own two rows (an Instance-scope Memory row, a Machine-scope broken Reference row) — `Controls.DialogScreenClamp`'s 90%-of-headless-screen ceiling already clips that scene's own second row's scope sentence at the very edge (measured, not assumed; this ceiling does not move for a taller requested `Height` here, nor for a taller `--size` passed to `Screenshotter.Run` — it clamps to the headless platform's own fixed screen size), so a third or fourth row there would not render at all. Its own scene rather than more rows crammed into that one, the same reason `_ProjectEditorWithInstructionsSendAlong` already exists apart from it — a coordinator review round asked for "all four scopes and the fix action visible" and explicitly offered this as one of two acceptable answers. Two rows, not four: `ProjectResourceScope.Repo` already renders in full, un-clipped, in `_ProjectEditorWithInstructionsSendAlong` ("docs/handbook.md" resolves through the same live diagnostics pass to "Travels with the repo.") — verified by rendering that scene during this same review round, not assumed — and `ProjectResourceScope.Instance`/`ProjectResourceScope.Machine` already render in `_ProjectEditorWithResources`. Adding a third row here to repeat `ProjectResourceScope.Repo` a second time was tried first and pushed the fix banner below the fold — exactly the failure this scene exists to avoid.
+    // Across the three scenes together, all four scopes and the fix action are each shown in full at least once; that is what "visible" means for a screenshot, not that every scene shows everything. - <description> A `"~"`-anchored reference (AC-605's own new form) — `ProjectResourceScope.Home`. Rendered broken: a coordinator review round asked whether a "found" anchor row could be shown instead, and it cannot be reproducibly — `$HOME` differs by machine and by CI runner, so no literal path under it is guaranteed to exist wherever this scene renders. A specific, invented nested path under it (`~/Notes/team-conventions.md`) not existing, on the other hand, is guaranteed everywhere — the same "guaranteed missing, not missing by chance" reasoning `_ProjectEditorWithResources`'s own broken row already applies to its folder name. </description> - <description> An absolute path that lives inside `SourceDirectory` but was never converted by `ProjectResourcePathPortability.ToStoredReference` (AC-605 criterion 5) — the one case that shows the "Make repo-relative" action at all. Unlike the older scenes above (which predate this concern and still hardcode a POSIX-only `SourceDirectory`), this scene roots `SourceDirectory` itself per platform, so "lives inside SourceDirectory" is actually true on whichever platform renders this scene, not only the one that authored the literal. </description> Both rows below *also* stage `ProjectResourceRowViewModel.IsBroken`, `ProjectResourceRowViewModel.Scope` and (for the first)
+    // `ProjectResourceRowViewModel.RepoRelativeFix` directly, the same as `_ProjectEditorWithResources`'s own two rows — this was tried without staging first, reasoning that the real background diagnostics pass would land on the same values anyway (it does, eventually, which is exactly why `_ProjectEditorWithResources`'s own literals are rooted the way they are). What that attempt missed: `ThemePaletteBaselineTests` calls `window.UpdateLayout()` immediately after construction, with no wait at all — measured against the baseline it recorded, not assumed — while `Screenshotter.Run`'s own plugin-loading and startup work happens to take long enough for the pass's 400 ms debounce to have already settled by the time it captures a frame. Those are two different amounts of elapsed time reading the same unstaged scene, and the theory one always wins that race and the other never does — nothing here — so an unstaged version of this scene recorded a baseline of the row's blank, not-yet-judged resting state: no red hint, no scope sentence, no button, and none of `CockpitStatusErrorColor` or the button's own styling on record, silently leaving exactly the UI this scene exists to guard unprotected by its own baseline. Staged values make the fast, unwaited capture path see the same thing the slow one eventually settles on, deterministically, the same reason `_ProjectEditorWithResources` already stages its own two rows.
     private static ProjectDialog _ProjectEditorWithResourceScopes()
     {
         var sourceDirectory = OperatingSystem.IsWindows() ? @"C:\Users\raymond\Cockpit" : "/home/raymond/Cockpit";
@@ -820,10 +682,9 @@ internal static class Screenshotter
         // _ProjectEditorWithMemorySourceReachability's own remarks on the same design-time sample rows.
         viewModel.AdditionalInfo.Clear();
 
-        // First, not second: the row with more to show (broken hint + the "Make repo-relative" action itself —
-        // the criterion 5 row this scene exists to prove renders at all) goes where the fold is furthest away.
-        // Staged to match exactly what the real diagnostics pass computes for this reference (an absolute path
-        // inside sourceDirectory that does not exist) — see this method's own doc comment on why both must agree.
+        // First, not second: the row with more to show (broken hint + the "Make repo-relative" action itself — the criterion 5 row this scene
+        // exists to prove renders at all) goes where the fold is furthest away. Staged to match exactly what the real diagnostics pass computes for
+        // this reference (an absolute path inside sourceDirectory that does not exist) — see this method's own doc comment on why both must agree.
         viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
             viewModel.MemorySourceChoices,
             ProjectResourceRole.Reference,
@@ -860,11 +721,9 @@ internal static class Screenshotter
             [HostProjectField.Behavior] = new ProjectFieldOwnership("Depot — Work", IsEditable: true),
         };
 
-        // Run on a pool thread rather than a bare .GetAwaiter().GetResult() on this (dispatcher-context-carrying)
-        // thread: CreateAsync's own resource-diagnostics pass does a genuine Task.Run + ConfigureAwait(true), whose
-        // continuation would otherwise be posted back to a headless dispatcher nothing is pumping — a deadlock
-        // reproduced while building this scene, not a hypothetical one. Task.Run carries no SynchronizationContext,
-        // so ConfigureAwait(true) inside it has nothing to capture and every continuation runs to completion.
+        // Run on a pool thread rather than a bare .GetAwaiter().GetResult() on this (dispatcher-context-carrying) thread: CreateAsync's own resource-diagnostics pass does a genuine Task.Run +
+        // ConfigureAwait(true), whose continuation would otherwise be posted back to a headless dispatcher nothing is pumping — a deadlock reproduced while building this scene,
+        // not a hypothetical one. Task.Run carries no SynchronizationContext, so ConfigureAwait(true) inside it has nothing to capture and every continuation runs to completion.
         var viewModel = Task.Run(() => ProjectDialogViewModel.CreateAsync(
             project, new _FakeSessionProfileStore(), new _FakeMcpServerCatalog(), fieldOwnership: fieldOwnership))
             .GetAwaiter().GetResult();
@@ -890,15 +749,9 @@ internal static class Screenshotter
             GetServersAsync(cancellationToken);
     }
 
-    // AC-499's second axis, both of its states in one scene (Iron Law #9): a "Depot" family with two instances to
-    // choose between (its own dropdown, populated), and a "Notes vault" family with none registered yet (its
-    // dropdown's place taken by a disabled box carrying `ProjectMemorySourceFamily.EmptyHint`, with
-    // "Servers…" sitting beside it either way). Built directly against `ProjectResourceRowViewModel`'s
-    // own constructor — passing `familyInstanceChoicesByKey` straight in — rather than through
-    // `ProjectDialogViewModel.CreateAsync`: `MemorySourceFamilyInstances` only has a private
-    // setter, so a scene (outside the view model's own assembly boundary in every way but the CLR's) builds the
-    // same shape by hand, exactly as `_ProjectEditorWithResources` already does for
-    // `MemorySourceChoices` itself.
+    // AC-499's second axis, both of its states in one scene (Iron Law #9): a "Depot" family with two instances to choose between (its own dropdown, populated), and a "Notes vault" family with none registered yet
+    // (its dropdown's place taken by a disabled box carrying `ProjectMemorySourceFamily.EmptyHint`, with "Servers…" sitting beside it either way). Built directly against `ProjectResourceRowViewModel`'s own constructor — passing `familyInstanceChoicesByKey` straight in — rather than through `ProjectDialogViewModel.CreateAsync`: `MemorySourceFamilyInstances` only
+    // has a private setter, so a scene (outside the view model's own assembly boundary in every way but the CLR's) builds the same shape by hand, exactly as `_ProjectEditorWithResources` already does for `MemorySourceChoices` itself.
     private static ProjectDialog _ProjectEditorWithMemorySourceFamilies()
     {
         var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = "/home/raymond/Cockpit" };
@@ -953,11 +806,9 @@ internal static class Screenshotter
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
-    // AC-502: a loaded picker, two locations so the list itself (not just a single row) is verifiable — one with
-    // a detail line, one without, since ProjectMemorySourceLocation.Detail is optional and both must render cleanly.
-    // AC-499: the two also carry different kinds (Project/Brain) in that same detail line — DepotMemorySource's own
-    // _DetailFor puts the kind first — so the picker's own "which sort of place is this" distinction (Raymond's own
-    // krahwinkel-it instance mixes Depot projects and Depot brains under one connection) is actually on screen.
+    // AC-502: a loaded picker, two locations so the list itself (not just a single row) is verifiable — one with a detail line, one without, since ProjectMemorySourceLocation.Detail is
+    // optional and both must render cleanly. AC-499: the two also carry different kinds (Project/Brain) in that same detail line — DepotMemorySource's own _DetailFor puts the kind first —
+    // so the picker's own "which sort of place is this" distinction (Raymond's own krahwinkel-it instance mixes Depot projects and Depot brains under one connection) is actually on screen.
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPicker()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
@@ -996,10 +847,9 @@ internal static class Screenshotter
         return new MemorySourceLocationPickerDialog { DataContext = viewModel };
     }
 
-    // AC-499: ten locations (Raymond's own krahwinkel-it instance mixes this many Depot projects and brains), the
-    // seventh carrying the Reference the row already had — proves the pre-selection, its "Current" badge, the
-    // scroll into view (this list does not fit the window's own resting height), and — via the one entry with no
-    // Detail line — whether a Detail-less row still sits noticeably shorter than its neighbours.
+    // AC-499: ten locations (Raymond's own krahwinkel-it instance mixes this many Depot projects and brains), the seventh carrying the Reference the row already
+    // had — proves the pre-selection, its "Current" badge, the scroll into view (this list does not fit the window's own resting height),
+    // and — via the one entry with no Detail line — whether a Detail-less row still sits noticeably shorter than its neighbours.
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerCurrent()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
@@ -1041,26 +891,15 @@ internal static class Screenshotter
         return new MemorySourceLocationPickerDialog { DataContext = viewModel };
     }
 
-    // AC-503, Iron Law #9: three of the four states a Memory row's own reachability check can land on, one row
-    // each — confirmed, not found, and not signed in — so they are actually visible on screen rather than only
-    // asserted in a test. AC-499 added a fourth (`CheckFailed` — the check ran but the call itself failed,
-    // kept apart from NotSignedIn precisely so a signed-in operator is never told to sign in again); not staged
-    // here too, only for the same fold reason the remark below already gives for not fitting a third row's full
-    // text — `ProjectResourceRowViewModel.IsCheckFailed`'s own XAML binding shares its brush
-    // (`CockpitStatusWaitingBrush`) with NotSignedIn, already proven legible by this very scene.
-    // `ProjectResourceRowViewModel.Reachability` is staged directly rather than through a real
-    // `ProjectMemorySourceRegistration.CheckReachability` delegate and a live dialog run, the same
-    // shortcut `_ProjectEditorWithResources` already takes for `IsBroken`/`Scope`:
-    // what this scene exists to prove is the view's own state rendering, not the plugin/host wiring behind it,
-    // which the ViewModel and Depot-plugin test suites already cover on their own.
+    // AC-503, Iron Law #9: three of the four states a Memory row's own reachability check can land on, one row each — confirmed, not found, and not signed in — so they are actually visible on screen rather than only asserted in a test. AC-499 added a fourth (`CheckFailed` — the check ran but the call itself
+    // failed, kept apart from NotSignedIn precisely so a signed-in operator is never told to sign in again); not staged here too, only for the same fold reason the remark below already gives for not fitting a third row's full text — `ProjectResourceRowViewModel.IsCheckFailed`'s own XAML binding shares its brush (`CockpitStatusWaitingBrush`) with NotSignedIn, already proven legible by this very
+    // scene. `ProjectResourceRowViewModel.Reachability` is staged directly rather than through a real `ProjectMemorySourceRegistration.CheckReachability` delegate and a live dialog run, the same shortcut `_ProjectEditorWithResources` already takes for `IsBroken`/`Scope`: what this scene exists to prove is the view's own state rendering, not the plugin/host wiring behind it, which the ViewModel and Depot-plugin test suites already cover on their own.
     private static ProjectDialog _ProjectEditorWithMemorySourceReachability()
     {
         var viewModel = new ViewModels.ProjectDialogViewModel();
-        // The design-time constructor's own sample "Repository"/"Customer" rows are cleared: three memory rows
-        // each carrying their own picker and hint already push this scene's own fold further down than
-        // _ProjectEditorWithResources's two rows do, and DialogScreenClamp still caps the window at 90% of the
-        // headless screen no matter what Height this scene asks for (BuildTraps.md's own note on this) — every bit
-        // of chrome this scene does not need earns back room for the states it exists to show.
+        // The design-time constructor's own sample "Repository"/"Customer" rows are cleared: three memory rows each carrying their own picker and hint already push this scene's own fold further
+        // down than _ProjectEditorWithResources's two rows do, and DialogScreenClamp still caps the window at 90% of the headless screen no matter what Height this scene asks for
+        // (BuildTraps.md's own note on this) — every bit of chrome this scene does not need earns back room for the states it exists to show.
         viewModel.AdditionalInfo.Clear();
         viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Folder", Scheme: null));
         viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Depot project", "depot"));
@@ -1072,12 +911,9 @@ internal static class Screenshotter
         confirmed.ReachabilityDetail = "24 documents, last changed 2 hours ago";
         viewModel.ResourceRows.Add(confirmed);
 
-        // Second, not third: DialogScreenClamp caps this dialog's own render at 90% of the headless screen no
-        // matter how tall this scene asks for (BuildTraps.md), so a screenshot of this scene alone cannot show all
-        // three states' full hint text below the fold either way. NotSignedIn (a colour — CockpitStatusWaitingBrush
-        // — this dialog has never shown before AC-503) is placed where it is guaranteed to render in full; NotFound
-        // reuses IsBroken's own established red/CockpitStatusErrorBrush treatment, which a render already proved
-        // legible for this dialog before this ticket existed.
+        // Second, not third: DialogScreenClamp caps this dialog's own render at 90% of the headless screen no matter how tall this scene asks for (BuildTraps.md), so a screenshot of this
+        // scene alone cannot show all three states' full hint text below the fold either way. NotSignedIn (a colour — CockpitStatusWaitingBrush — this dialog has never shown before AC-503) is
+        // placed where it is guaranteed to render in full; NotFound reuses IsBroken's own established red/CockpitStatusErrorBrush treatment, which a render already proved legible for this dialog before this ticket existed.
         var notSignedIn = new ViewModels.ProjectResourceRowViewModel(
             viewModel.MemorySourceChoices, ProjectResourceRole.Memory, "wispslate", "Wispslate notes");
         notSignedIn.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
@@ -1095,11 +931,9 @@ internal static class Screenshotter
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
-    // A single Instructions row with "Send along" ticked (AC-486): its own scene rather than a third row folded
-    // into `_ProjectEditorWithResources` above — see that method's own remarks on why combining the two
-    // pushed a hint *that* scene already had to prove visible below this dialog's fold. One row is enough to
-    // show what matters here: the checkbox sits beside "Tell sessions" without crowding it, and the hint underneath
-    // explaining what ticking it does is actually on screen, not merely present in the tree.
+    // A single Instructions row with "Send along" ticked (AC-486): its own scene rather than a third row folded into `_ProjectEditorWithResources` above — see that method's own remarks on
+    // why combining the two pushed a hint *that* scene already had to prove visible below this dialog's fold. One row is enough to show what matters here: the
+    // checkbox sits beside "Tell sessions" without crowding it, and the hint underneath explaining what ticking it does is actually on screen, not merely present in the tree.
     private static ProjectDialog _ProjectEditorWithInstructionsSendAlong()
     {
         var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = "/home/raymond/Cockpit" };
@@ -1109,30 +943,15 @@ internal static class Screenshotter
             SendsContent = true,
         });
 
-        // 1500 rather than a value nearer this scene's own resting height: DialogScreenClamp clamps down to 90% of
-        // the (headless) screen regardless, and _ProjectEditorWithResources found that ceiling comfortably fits
-        // every section above the resource list plus two full rows — a single row's own checkbox and hint fit with
-        // room to spare. A smaller value here was tried first and clipped this scene's own hint text mid-sentence,
-        // exactly what this scene exists to rule out.
+        // 1500 rather than a value nearer this scene's own resting height: DialogScreenClamp clamps down to 90% of the (headless) screen regardless, and _ProjectEditorWithResources found that
+        // ceiling comfortably fits every section above the resource list plus two full rows — a single row's own checkbox and hint fit with room to
+        // spare. A smaller value here was tried first and clipped this scene's own hint text mid-sentence, exactly what this scene exists to rule out.
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
-    // A single Instructions row pointing at a likely secrets location (AC-612): its own scene rather than a third
-    // row folded into `_ProjectEditorWithResources` or a fifth into `_ProjectEditorWithResourceScopes`
-    // — both already sit at their own fold ceiling per their own remarks. One row is enough to show all three of
-    // this ticket's effects at once: the red warning sentence itself (melden), the "Send along" checkbox visibly
-    // present but disabled rather than merely unticked (inhoud — see `ProjectResourceRowViewModel.IsSecretPath`'s
-    // own remarks on why this needs no staging: it is a pure synchronous property, unlike `Scope`/`IsBroken`
-    // above, which the other two resource scenes stage directly because they come from an async pass this scene has
-    // no need to race). The third effect (delen — excluded from `.cockpit/project.json`) has nothing to render
-    // in this dialog at all; `ProjectResourceRowViewModel.SecretPathWarning`'s own sentence is the only
-    // place it is said, and it renders here as the second half of that sentence.
-    //
-    // Role Instructions, not Reference or Memory: this is the one role whose warning sentence names "content" at
-    // all (see `ProjectResourceRowViewModel.SecretPathWarning`'s own remarks) — the more specific of the
-    // two sentences this ticket added, so the one worth a render over the shorter "will not be shared" sentence a
-    // Reference row would show instead. `~/.ssh/id_rsa`: the one path from the ticket's own minimum list an
-    // operator is most likely to actually type, not an invented edge case.
+    // A single Instructions row pointing at a likely secrets location (AC-612): its own scene rather than a third row folded into `_ProjectEditorWithResources` or a fifth into `_ProjectEditorWithResourceScopes` — both already sit at their own fold ceiling per their own remarks. One row is enough to show all three of this ticket's effects at once: the red warning sentence itself (melden), the "Send along" checkbox visibly present but disabled rather than merely unticked (inhoud — see `ProjectResourceRowViewModel.IsSecretPath`'s own
+    // remarks on why this needs no staging: it is a pure synchronous property, unlike `Scope`/`IsBroken` above, which the other two resource scenes stage directly because they come from an async pass this scene has no need to race). The third effect (delen — excluded from `.cockpit/project.json`) has nothing to render in this dialog at all; `ProjectResourceRowViewModel.SecretPathWarning`'s own sentence is the only place it is said, and it renders here as the second half of that sentence. Role
+    // Instructions, not Reference or Memory: this is the one role whose warning sentence names "content" at all (see `ProjectResourceRowViewModel.SecretPathWarning`'s own remarks) — the more specific of the two sentences this ticket added, so the one worth a render over the shorter "will not be shared" sentence a Reference row would show instead. `~/.ssh/id_rsa`: the one path from the ticket's own minimum list an operator is most likely to actually type, not an invented edge case.
     private static ProjectDialog _ProjectEditorWithSecretPath()
     {
         var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = "/home/raymond/Cockpit" };
@@ -1161,11 +980,9 @@ internal static class Screenshotter
     // TTY highlighted — are both verifiable headless.
     private static ManageProfilesDialog _ManageProfilesWithDefaultKind(SessionKind defaultKind)
     {
-        // The bundled Claude provider plugin's config, not a bare ClaudeConfig: Fase 4 only understands a Claude
-        // profile as one of these (a legacy ClaudeConfig is migrated to it on load through SessionProfileEntry, a
-        // step this design-time scene bypasses) — using the legacy shape directly here left the editor unable to
-        // resolve a provider option for it at all, silently falling back to Ollama and hiding the very state
-        // (a provider with a TTY route) this scene exists to show.
+        // The bundled Claude provider plugin's config, not a bare ClaudeConfig: Fase 4 only understands a Claude profile as one of these (a legacy ClaudeConfig is migrated to
+        // it on load through SessionProfileEntry, a step this design-time scene bypasses) — using the legacy shape directly here left the editor unable to resolve a provider option
+        // for it at all, silently falling back to Ollama and hiding the very state (a provider with a TTY route) this scene exists to show.
         var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null), Purpose: "Primary Claude profile")
         {
             DefaultKind = defaultKind == SessionKind.Sdk ? ProfileSessionKind.Sdk : ProfileSessionKind.Tty,
@@ -1215,10 +1032,9 @@ internal static class Screenshotter
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
-    // Renders the Options dialog with one of its sidebar categories selected (AC-1000: the sidebar's CategoryNav
-    // ListBox replaced the old per-tab TabControl), so a category other than the first one can be verified without
-    // a display. Matches by the category's Tag (its lowercase key), case-insensitively, so callers can keep
-    // spelling the category the way its label reads ("Shortcuts", "Debug", ...).
+    // Renders the Options dialog with one of its sidebar categories selected (AC-1000: the sidebar's CategoryNav ListBox replaced the old per-tab
+    // TabControl), so a category other than the first one can be verified without a display. Matches by the category's Tag
+    // (its lowercase key), case-insensitively, so callers can keep spelling the category the way its label reads ("Shortcuts", "Debug", ...).
     private static OptionsDialog _OptionsOnTab(string header)
     {
         var dialog = new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() };
@@ -1355,14 +1171,9 @@ internal static class Screenshotter
         };
     }
 
-    // A live-looking transcript with a Task tool call whose sub-agent is (or just was) active — its own text,
-    // tool call and result — nested under the Task row (AC-146), either at rest (collapsed, the default) or
-    // expanded so the nested activity actually shows.
-    // AC-563: the header in the states its two hovers read differently. The provider chip is expected to show
-    // nothing at all once opened — the tools card is gone, and an absence is exactly what a passing test suite
-    // also looks like, so it gets a render of its own. The activity column carries the MCP servers instead:
-    // named, unknown (criterion 6 — never an empty list), and with an agent's statusline in the column
-    // (criterion 8 — the list must not leave with the words it replaced).
+    // A live-looking transcript with a Task tool call whose sub-agent is (or just was) active — its own text, tool call and result — nested under the Task row (AC-146), either at rest (collapsed, the default) or expanded so the nested activity actually shows.
+    // AC-563: the header in the states its two hovers read differently. The provider chip is expected to show nothing at all once opened — the tools card is gone, and an absence is exactly what a passing test suite also looks like, so it
+    // gets a render of its own. The activity column carries the MCP servers instead: named, unknown (criterion 6 — never an empty list), and with an agent's statusline in the column (criterion 8 — the list must not leave with the words it replaced).
     private static SessionView _McpHeader(string? statusline = null, IReadOnlySet<string>? servers = null)
     {
         var viewModel = new SessionViewModel { Statusline = statusline ?? string.Empty, McpServerSelection = servers };
@@ -1677,20 +1488,14 @@ internal static class Screenshotter
         return new Views.Onboarding.ProviderStepView { DataContext = viewModel };
     }
 
-    // Renders the plugin store (#62) with a sample catalogue seeded straight into the manager's collections
-    // (no network browse — the dialog only loads on the real app's open), so its layout — the
-    // categories | plugins | details columns, the Installed/Updates group pinned to the sidebar foot, the
-    // list rows and their install-state — can be verified headless.
+    // Renders the plugin store (#62) with a sample catalogue seeded straight into the manager's collections (no network browse — the
+    // dialog only loads on the real app's open), so its layout — the categories | plugins | details columns, the
+    // Installed/Updates group pinned to the sidebar foot, the list rows and their install-state — can be verified headless.
     private static PluginStoreDialog _PluginStore() => new() { DataContext = _PluginStoreViewModel() };
 
-    // The store while it is working (AC-420): a single install, whose bar has no fraction to draw and runs
-    // indeterminate, and a batch update, whose bar is fed by the same counter the status line is. NeedsRestart
-    // is on in both because that is the state that was reported — "Update all" raises it after the first plugin
-    // of the batch, so the footer offers a restart while the rest are still downloading.
-    //
-    // What this scene does *not* show is the restart gate. It is built on the design-time view model, which has
-    // no restart service, so its restart button is dead here whatever IsBusy says. The gate is held by
-    // PluginStoreBusyGateTests, which builds a manager that can actually restart.
+    // The store while it is working (AC-420): a single install, whose bar has no fraction to draw and runs indeterminate, and a batch update, whose bar is fed by the same counter the status line is. NeedsRestart is on in
+    // both because that is the state that was reported — "Update all" raises it after the first plugin of the batch, so the footer offers a restart while the rest are still downloading. What this scene does *not* show is
+    // the restart gate. It is built on the design-time view model, which has no restart service, so its restart button is dead here whatever IsBusy says. The gate is held by PluginStoreBusyGateTests, which builds a manager that can actually restart.
     private static PluginStoreDialog _PluginStoreBusy(double? percent, string status)
     {
         var viewModel = _PluginStoreViewModel();
@@ -1759,12 +1564,9 @@ internal static class Screenshotter
         return new PluginStoreDialogViewModel(manager);
     }
 
-    // Renders the agent-line inspector (AC-397) with one row in each of its five sections, including a refused send
-    // and a claim old enough to look stale — the two rows an operator is actually scanning for, and the two a scene
-    // built only from happy-path data would leave undrawn.
-    // The design-time graph's three sample sessions split over two Sessions desks, the first one showing.
-    // The workspace set is assigned last on purpose: that assignment is what re-runs pane visibility, so the
-    // stamps have to be on the sessions before it lands.
+    // Renders the agent-line inspector (AC-397) with one row in each of its five sections, including a refused send and a claim old enough to look stale — the two rows an
+    // operator is actually scanning for, and the two a scene built only from happy-path data would leave undrawn. The design-time graph's three sample sessions split over two Sessions desks, the first
+    // one showing. The workspace set is assigned last on purpose: that assignment is what re-runs pane visibility, so the stamps have to be on the sessions before it lands.
     private static ViewModels.CockpitViewModel _TwoSessionDesks()
     {
         var vm = new ViewModels.CockpitViewModel();
@@ -1792,10 +1594,9 @@ internal static class Screenshotter
         return inspector;
     }
 
-    // Renders the Manage-stores dialog (#62, AC-7) with a few sample stores seeded straight into the manager's
-    // StoreInfos — a private remote one (a token, so the lock badge shows) with a logo, a public remote falling
-    // back to a URL-derived name and default glyph, and a local-folder one (the folder badge) — so its layout and
-    // the icon/name/count/badge rows can be verified headless.
+    // Renders the Manage-stores dialog (#62, AC-7) with a few sample stores seeded straight into the manager's StoreInfos — a private remote
+    // one (a token, so the lock badge shows) with a logo, a public remote falling back to a URL-derived name and
+    // default glyph, and a local-folder one (the folder badge) — so its layout and the icon/name/count/badge rows can be verified headless.
     private static ManageStoresDialog _ManageStores()
     {
         var manager = new PluginManagerViewModel();
@@ -1831,10 +1632,9 @@ internal static class Screenshotter
         },
     };
 
-    // The palette with commands in it, taken from the catalogue the real one is built from rather than written
-    // out here — a made-up row renders a shortcut this app does not have, on a picture that looks like the app.
-    // The catalogue also supplies what the scene is for: it binds some actions and deliberately leaves others
-    // unbound, and an unbound one shows a blank where the gesture goes, which a list of only-bound rows would not.
+    // The palette with commands in it, taken from the catalogue the real one is built from rather than written out here — a made-up row renders
+    // a shortcut this app does not have, on a picture that looks like the app. The catalogue also supplies what the scene is for: it binds
+    // some actions and deliberately leaves others unbound, and an unbound one shows a blank where the gesture goes, which a list of only-bound rows would not.
     private static CommandPaletteDialog _CommandPalette()
     {
         var commands = Cockpit.Core.Shortcuts.ShortcutCatalog.All
@@ -1884,11 +1684,9 @@ internal static class Screenshotter
         return new VoiceOverlayWindow { DataContext = viewModel };
     }
 
-    // Every assistant chip state stacked at the width the sidebar really gives it, so they can be judged against
-    // each other rather than one at a time in a window with room to spare.
-    // The width is the point. Rendered at 340px every state looks fine; at the sidebar's own ~164px the label
-    // wraps mid-word, the key hint pushes the text out, and the states stop lining up — which is how two rounds
-    // of visual defects got past a full set of green renders and reached the operator instead.
+    // Every assistant chip state stacked at the width the sidebar really gives it, so they can be judged against each other rather than one at a time in a window
+    // with room to spare. The width is the point. Rendered at 340px every state looks fine; at the sidebar's own ~164px the label wraps mid-word, the key hint pushes the
+    // text out, and the states stop lining up — which is how two rounds of visual defects got past a full set of green renders and reached the operator instead.
     private static Window _AssistantIndicatorGallery()
     {
         const double SidebarContentWidth = 164;
@@ -1938,10 +1736,9 @@ internal static class Screenshotter
         };
     }
 
-    // AC-543 criterion 11: the whole window, with the assistant chip where it actually sits. The chip is fed by
-    // AssistantIndicatorCoordinator at runtime; here it is set directly, for the reason the component takes its
-    // state rather than fetching it — a scene that had to stand up a session host to draw a sidebar would be
-    // testing the host.
+    // AC-543 criterion 11: the whole window, with the assistant chip where it actually sits. The chip is fed by AssistantIndicatorCoordinator
+    // at runtime; here it is set directly, for the reason the component takes its state rather than fetching it —
+    // a scene that had to stand up a session host to draw a sidebar would be testing the host.
     private static Window _SidebarWithAssistant(bool collapsed, bool featureEnabled = true)
     {
         var cockpit = new ViewModels.CockpitViewModel
@@ -1963,10 +1760,9 @@ internal static class Screenshotter
         return new MainWindow { DataContext = cockpit };
     }
 
-    // AC-543 (strand 3): builds the assistant indicator on a view model set directly to the state a scene name
-    // asks for — the indicator is fed its state rather than owning it (AssistantIndicatorViewModel's own remarks
-    // on why it does not bind to AssistantSessionHost), so a scene only ever has to set properties, never wire up
-    // a fake host.
+    // AC-543 (strand 3): builds the assistant indicator on a view model set directly to the state a scene name asks
+    // for — the indicator is fed its state rather than owning it (AssistantIndicatorViewModel's own remarks on why it does not
+    // bind to AssistantSessionHost), so a scene only ever has to set properties, never wire up a fake host.
     private static Window _AssistantIndicator(
         Cockpit.Core.Assistant.AssistantActivity activity,
         string? unavailableReason = null,
@@ -1998,14 +1794,9 @@ internal static class Screenshotter
         };
     }
 
-    // AC-543 (strand 4): the chat pop-out on a minimal fake of the host it reads from — a settled-on integration
-    // seam (AssistantChatViewModel's own remarks) rather than a Screenshotter invention: AssistantSessionHost
-    // (src/Cockpit.App/Services/AssistantSessionHost.cs) already carries this exact shape but is sealed with a
-    // live CockpitViewModel among its constructor dependencies, far too heavy to stand up for a render. Reuses
-    // SessionViewModel's own parameterless constructor sample data for "withConversation" (the same rows the
-    // "session" scene and the Avalonia previewer render) rather than inventing a second sample transcript —
-    // that data already includes one expanded and one collapsed tool call, so the collapsed one proves criterion
-    // 11's "an inklapbare tool-call" without a bespoke fixture.
+    // AC-543 (strand 4): the chat pop-out on a minimal fake of the host it reads from — a settled-on integration seam (AssistantChatViewModel's own remarks) rather than a Screenshotter invention: AssistantSessionHost (src/Cockpit.App/Services/AssistantSessionHost.cs) already carries this exact shape but
+    // is sealed with a live CockpitViewModel among its constructor dependencies, far too heavy to stand up for a render. Reuses SessionViewModel's own parameterless constructor sample data for "withConversation" (the same rows the "session" scene and the Avalonia
+    // previewer render) rather than inventing a second sample transcript — that data already includes one expanded and one collapsed tool call, so the collapsed one proves criterion 11's "an inklapbare tool-call" without a bespoke fixture.
     private static AssistantChatWindow _AssistantChat(bool withConversation, bool speakReplies = true, bool alwaysOn = false)
     {
         var viewModel = _AssistantChatViewModel(
@@ -2036,10 +1827,9 @@ internal static class Screenshotter
             host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue(), indicator: indicator);
     }
 
-    // AC-953: the assistant docked into the rail, built the way production builds it — the real
-    // `DockPanelRegistry` with the real registration shape, and `AssistantDocked`/`OpenDockPanelId` set the way
-    // they come back off `LayoutSettings` after a restart. Nothing about the rail is staged by hand here, so
-    // what this renders is what the restore path renders.
+    // AC-953: the assistant docked into the rail, built the way production builds it — the real `DockPanelRegistry` with
+    // the real registration shape, and `AssistantDocked`/`OpenDockPanelId` set the way they come back off `LayoutSettings` after a restart. Nothing
+    // about the rail is staged by hand here, so what this renders is what the restore path renders.
     private static Window _AssistantDockedInTheRail()
     {
         var conversation = new ViewModels.SessionViewModel { Title = "personal - webshop" };
@@ -2099,11 +1889,9 @@ internal static class Screenshotter
         return new MainWindow { DataContext = cockpit };
     }
 
-    // Cockpit.App has no project reference to Cockpit.Plugin.GitHubPullRequests — it is store-distributed, not
-    // bundled — so this stands in for GitHubPullRequestsWidget, copying its own _BuildRow shape (number/title
-    // line, faint repository line, amber left-border stripe for the one waiting on review) rather than plain
-    // text, verified against a real render of that widget (plugins-dev, own test project) before this shape was
-    // written back here.
+    // Cockpit.App has no project reference to Cockpit.Plugin.GitHubPullRequests — it is store-distributed, not bundled — so this stands in for GitHubPullRequestsWidget, copying
+    // its own _BuildRow shape (number/title line, faint repository line, amber left-border stripe for the one waiting on review) rather than plain
+    // text, verified against a real render of that widget (plugins-dev, own test project) before this shape was written back here.
     private static Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration _PullRequestsDockPanel() =>
         new("github.pull-requests", "Pull Requests", Material.Icons.MaterialIconKind.SourcePull, _BuildPullRequestsStandIn);
 
@@ -2292,10 +2080,9 @@ internal static class Screenshotter
         return window;
     }
 
-    // Bare-minimum IAssistantSessionHost: nothing mutates Session/Activity/UnavailableReason after a scene
-    // constructs one, so PropertyChanged never actually has to fire — a single captured frame never sees a
-    // change. EnsureStartedAsync/SendAsync just hand back what is already set rather than simulating the real
-    // host's lazy-start/queueing behaviour, which no scene exercises either.
+    // Bare-minimum IAssistantSessionHost: nothing mutates Session/Activity/UnavailableReason after a scene constructs one, so PropertyChanged never actually has to
+    // fire — a single captured frame never sees a change. EnsureStartedAsync/SendAsync just hand back what is
+    // already set rather than simulating the real host's lazy-start/queueing behaviour, which no scene exercises either.
     private sealed class _FakeAssistantSessionHost : ViewModels.IAssistantSessionHost
     {
         public ViewModels.SessionViewModel? Session { get; init; }
@@ -2337,13 +2124,9 @@ internal static class Screenshotter
         }
     }
 
-    // Stands in for the bundled Claude provider plugin, which a headless render has no way to load.
-    // Without it the assistant-profile scene renders a form for a provider that resolved to nothing: the label
-    // falls back to Ollama, the session-defaults block has no options to show, and the environment-variables block
-    // is hidden because `SupportsEnvVars` is a capability read off a registration. Three of the five blocks
-    // the dialog exists for, absent from the one picture that is supposed to prove them. The config panel itself
-    // stays a placeholder — that control belongs to the plugin, and its layout is proved by the Manage-profiles
-    // scenes rather than faked here.
+    // Stands in for the bundled Claude provider plugin, which a headless render has no way to load. Without it the assistant-profile scene renders a form for a provider that resolved to nothing: the label falls back
+    // to Ollama, the session-defaults block has no options to show, and the environment-variables block is hidden because `SupportsEnvVars` is a capability read off a registration. Three of the five blocks the dialog exists for, absent from
+    // the one picture that is supposed to prove them. The config panel itself stays a placeholder — that control belongs to the plugin, and its layout is proved by the Manage-profiles scenes rather than faked here.
     private sealed class _FakeClaudeProviderRegistry : Cockpit.Infrastructure.Sessions.IPluginProviderRegistry
     {
         private static readonly Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration Claude = new(
@@ -2483,10 +2266,9 @@ internal static class Screenshotter
     private static AppBuilder BuildHeadlessAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UseSkia()
-            // The app's own font, for the same reason it takes the app's own fonts options: a render is only
-            // worth looking at if it is of this program. Without it the harness measured text in whatever the
-            // machine happened to offer, which is also how the same window came out with a scroll bar here and
-            // none on CI.
+            // The app's own font, for the same reason it takes the app's own fonts options: a render is only worth
+            // looking at if it is of this program. Without it the harness measured text in whatever the machine happened to
+            // offer, which is also how the same window came out with a scroll bar here and none on CI.
             .WithInterFont()
             .With(Program.CockpitFontOptions())
             .UseHeadless(new AvaloniaHeadlessPlatformOptions

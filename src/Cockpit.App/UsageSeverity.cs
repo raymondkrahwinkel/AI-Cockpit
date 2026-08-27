@@ -1,14 +1,8 @@
 namespace Cockpit.App;
 
-// How full is full enough to say something, and the theme brush key each severity resolves to, so the header's
-// usage pill, `Controls.LimitBar`'s fill and the warning in the session bar all escalate at the same
-// point and can never drift apart. The tokens are the same ones the session status dots use, so a palette change
-// carries.
-//
-// The threshold comes from the provider that declared the signal (AC-229/AC-232), not from a constant here: the
-// provider knows what its window means and therefore when it is worth interrupting for. One number per signal,
-// with the two colour steps derived from it — a second configurable number is a second thing that can disagree
-// with the first.
+// Keeps all usage indicators on the same theme tokens and escalation points. The provider owns the threshold
+// because it knows what its window means; both colour steps derive from that one value to prevent drift
+// (AC-229/AC-232).
 internal static class UsageSeverity
 {
     // Where a figure lands when the host has no declared threshold to go on — a provider that reports a number but never said when it matters.

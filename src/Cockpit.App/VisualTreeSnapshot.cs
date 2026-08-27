@@ -8,10 +8,8 @@ using Avalonia.VisualTree;
 
 namespace Cockpit.App;
 
-// Serialises a rendered visual tree to indented text: per control its type, name, absolute bounds,
-// text content and resolved brushes. This is the provider-neutral half of the verify loop (AC-86) —
-// every session (Claude, Codex, local LLM) can read text, where only vision models can read the PNG.
-// The numbers are exact, so an agent verifies layout facts (overflow, colour, alignment) it cannot see.
+// Serialises exact rendered-tree details to text so every provider can verify layout facts without
+// needing vision support (AC-86).
 internal static class VisualTreeSnapshot
 {
     // A whole window is thousands of nodes; keep the dump bounded and say so when it is cut off.
