@@ -369,6 +369,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: on Linux, a cockpit whose AppImage mount has gone away now says so and shuts down cleanly instead of
+  dying without explanation. The mount an AppImage runs its own code from can stop serving while the app is
+  still running; from then on the first piece of code that has not been loaded yet kills the process, which
+  looked like a random crash and left a several-hundred-megabyte core file behind. The cockpit now checks its
+  own mount every ten seconds and, when it is gone, writes one line saying what happened and to restart.
+
 - fixed: the transcript no longer freezes the cockpit for seconds at a time while replies stream in. Keeping the
   newest row in view moved the viewport, and the layout that followed asked it to move again — over and over,
   until the toolkit cut the frame short. The cockpit stayed up, but the window stopped responding and a burst of

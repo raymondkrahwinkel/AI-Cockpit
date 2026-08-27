@@ -20,6 +20,16 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // costs one extra frame per interval on an otherwise idle app — the price of knowing the render clock still
     // wakes, which nothing else in the process can tell us.
     private static readonly TimeSpan RenderClockProbeInterval = TimeSpan.FromSeconds(10);
+
+    // AC-1114: how often to check that the AppImage mount this process runs from still serves.
+    private static readonly TimeSpan AppImageMountProbeInterval = TimeSpan.FromSeconds(10);
+
+    // Two in a row, so a one-off failure (a momentary descriptor shortage, say) cannot take the cockpit down.
+    // A mount that has lost its daemon never recovers, so waiting for the second probe costs nothing.
+    private const int FailedMountProbesBeforeExit = 2;
+
+    // Distinct from any exit the app makes itself, so this shows up as its own thing in the journal.
+    private const int AppImageMountLostExitCode = 70;
 #if DEBUG
     // Opt-in only: the leak-tracker's periodic report forces a full blocking gen2 GC, so a normal debug run must
     // not pay that stutter. Set COCKPIT_LEAKSIM=1 to arm the leak diagnostics (and the on-demand leak-sim trigger).
@@ -29,6 +39,10 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     private readonly ILogger<DiagnosticsBackgroundService> _logger;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
+
+    // AC-1114: null unless this process runs from an AppImage whose mount answered at startup. Set once in
+    // Start, before the loop that reads it exists.
+    private string? _appImageProbePath;
 
     private Thread? _thread;
     private volatile bool _stopping;
@@ -88,8 +102,27 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // dispatcher ownership). Called from App.axaml.cs instead, once the framework init has bound it.
     public void Start()
     {
+        _StartAppImageMountWatch();
+
         _thread = new Thread(_Run) { IsBackground = true, Name = "cockpit-diagnostics" };
         _thread.Start();
+    }
+
+    // AC-1114: probed once, here, so the loop only ever watches a mount that demonstrably served at startup.
+    // Without that, an APPDIR whose probe was never readable would read as a mount that died twenty seconds
+    // in — the same unexplained shutdown this check exists to prevent, only with an untrue reason.
+    private void _StartAppImageMountWatch()
+    {
+        var appDir = Environment.GetEnvironmentVariable("APPDIR");
+        _appImageProbePath = AppImageMount.WatchablePathFrom(appDir);
+
+        if (_appImageProbePath is null && !string.IsNullOrWhiteSpace(appDir))
+        {
+            _logger.LogInformation(
+                "appimage mount watch off — nothing readable to watch under APPDIR={AppDir} at startup, so a " +
+                "mount that goes away later will not be reported.",
+                appDir);
+        }
     }
 
     public void Dispose() => _stopping = true;
@@ -103,6 +136,8 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         var renderClockWarned = false;
         var renderStallStartedAt = TimeSpan.Zero;
         var nextProbeAt = TimeSpan.Zero;
+        var nextMountProbeAt = TimeSpan.Zero;
+        var failedMountProbes = 0;
 #if DEBUG
         var nextLeakAt = TimeSpan.Zero;
 #endif
@@ -165,6 +200,17 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 }
 
                 renderClockWarned = renderDecision.Warned;
+
+                if (_appImageProbePath is not null && now >= nextMountProbeAt)
+                {
+                    nextMountProbeAt = now + AppImageMountProbeInterval;
+
+                    failedMountProbes = AppImageMount.CanStillServe(_appImageProbePath) ? 0 : failedMountProbes + 1;
+                    if (failedMountProbes >= FailedMountProbesBeforeExit)
+                    {
+                        _ExitOnLostAppImageMount();
+                    }
+                }
 
                 if (_snapshotsEnabled && now >= nextSnapshotAt)
                 {
@@ -312,6 +358,25 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     private void _LogRecovery(TimeSpan hungFor) =>
         _logger.LogWarning("uifreeze recovered after={Duration:0.0}s", hungFor.TotalSeconds);
+
+    // AC-1114: there is nothing to recover here. The mount is gone, so every code page not already resident
+    // faults the moment it is needed — the process is going to die, the only open question is whether it does
+    // so with a 400 MB coredump and no explanation. Leaving on our own terms is the whole win.
+    private void _ExitOnLostAppImageMount()
+    {
+        const string message =
+            "appimage mount lost — the mount this cockpit runs its own code from no longer serves reads. " +
+            "Shutting down before an unreadable code page takes the process down with SIGBUS. Restart the cockpit.";
+
+        _logger.LogCritical("{Message} probe={ProbePath}", message, _appImageProbePath);
+
+        // AddConsole() hands its writes to a background queue that a plain Environment.Exit never drains, and
+        // this line is the entire point of the check — so it also goes straight out, unbuffered.
+        Console.Error.WriteLine($"{message} probe={_appImageProbePath}");
+        Console.Error.Flush();
+
+        Environment.Exit(AppImageMountLostExitCode);
+    }
 
     private static string _Compact(long bytes) => ByteSize.Human(bytes).Replace(" ", string.Empty);
 
