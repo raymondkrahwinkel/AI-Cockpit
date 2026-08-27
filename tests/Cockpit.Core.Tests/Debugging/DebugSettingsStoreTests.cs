@@ -22,14 +22,14 @@ public class DebugSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NoConfigFile_LeavesTheDiagnosticControlsHidden()
+    public async Task LoadAsync_NoConfigFile_HidesControlsButLogsSnapshotsByDefault()
     {
         var store = new DebugSettingsStore(_configFilePath);
 
         var settings = await store.LoadAsync();
 
         Assert.False(settings.ShowDebugControls);
-        Assert.False(settings.LogDiagnosticSnapshots);
+        Assert.True(settings.LogDiagnosticSnapshots); // AC-1125: on by default, so a fresh install has heap history from the first freeze.
     }
 
     [Fact]

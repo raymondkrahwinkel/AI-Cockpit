@@ -10,7 +10,7 @@ public sealed record ProcessMemoryInfo(
     long ResidentBytes,
     long PeakResidentBytes,
     long VirtualBytes,
-    long PrivateBytes,
+    long? PrivateBytes,
     long? SwapBytes)
 {
     public static ProcessMemoryInfo Current()
@@ -22,9 +22,15 @@ public sealed record ProcessMemoryInfo(
             process.WorkingSet64,
             _PeakResidentBytes(process),
             process.VirtualMemorySize64,
-            process.PrivateMemorySize64,
+            _PrivateBytes(process),
             _SwapBytes());
     }
+
+    // AC-1125: Process.PrivateMemorySize64 reads back 0 on Unix — not a real zero, an unsupported read. A
+    // measured 0B here would misreport a genuine reading; null lets the caller say "n/a" instead (same fix as
+    // handles on macOS, AC-718).
+    private static long? _PrivateBytes(Process process) =>
+        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? process.PrivateMemorySize64 : null;
 
     // AC-1013 (AC-57): .NET returns 0 for Process.PeakWorkingSet64 on macOS, hiding whether resident ever spiked
     // (Rick's trace showed 272 MB resident but "Peak resident: 0 B"). Read natively via getrusage's ru_maxrss

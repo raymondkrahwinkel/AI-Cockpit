@@ -322,7 +322,20 @@ public partial class App : Application
 
         // AC-718: started here, not as an IHostedService — Dispatcher.UIThread is only safe to touch once
         // Avalonia's own Setup() has bound it to this thread, which by this point in the lifecycle it has.
-        Program.Services.GetRequiredService<DiagnosticsBackgroundService>().Start();
+        var diagnosticsBackgroundService = Program.Services.GetRequiredService<DiagnosticsBackgroundService>();
+
+        // AC-1125 D: read on demand from the diag line, not pushed on every session/layout change — cheapest
+        // way to give the background service the three fields only the view model knows.
+        diagnosticsBackgroundService.SetSessionContext(() => (
+            cockpitViewModel.Sessions.Count,
+            cockpitViewModel switch
+            {
+                { SingleSessionLayout: true } => "single",
+                { FocusRailLayout: true } => "focus+rail",
+                { StackSessionsVertically: true } => "stacked",
+                _ => "grid",
+            }));
+        diagnosticsBackgroundService.Start();
 
         // AC-733: a plain background thread, not UI-bound — started here too, just to sit beside its sibling.
         Program.Services.GetRequiredService<Services.AdaptiveGcCompactor>().Start();
