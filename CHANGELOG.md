@@ -369,6 +369,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the cockpit no longer freezes for tens of seconds after a runaway layout pass. When the UI cut such a
+  pass off, the drawing that should have followed was skipped and nothing asked for another one, so the window
+  sat frozen — doing nothing at all, at almost no processor use — until some unrelated change happened to wake
+  it. Measured stalls of 38 and 168 seconds, during which a session still streaming its reply kept every row it
+  drew in memory instead of releasing them. The cockpit now asks for a new frame itself, so the same fault costs
+  a brief stutter instead of a freeze.
+
 - fixed: on Linux, a cockpit whose AppImage mount has gone away now says so and shuts down cleanly instead of
   dying without explanation. The mount an AppImage runs its own code from can stop serving while the app is
   still running; from then on the first piece of code that has not been loaded yet kills the process, which

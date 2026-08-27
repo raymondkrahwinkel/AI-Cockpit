@@ -227,6 +227,8 @@ sealed class Program
 
         // Log and handle recoverable dispatcher/render exceptions so one plugin surface cannot take down every
         // session and workspace. Fatal conditions still exit through their own paths.
+        var uptime = System.Diagnostics.Stopwatch.StartNew();
+        var lastRenderClockRecovery = Cockpit.App.Diagnostics.RenderClockRecovery.NeverRecovered;
         Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
         {
             var logger = Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.UIThread");
@@ -237,6 +239,14 @@ sealed class Program
             else
             {
                 Console.Error.WriteLine($"Unhandled UI-thread exception caught by the global net; the cockpit stays up.\n{exceptionEvent.Exception}");
+            }
+
+            if (Cockpit.App.Diagnostics.RenderClockRecovery.ShouldRecover(
+                    exceptionEvent.Exception, uptime.Elapsed - lastRenderClockRecovery))
+            {
+                lastRenderClockRecovery = uptime.Elapsed;
+                logger?.LogWarning("renderclock restart requested after a cut-off layout pass (AC-1104).");
+                _RequestRenderClockRestart();
             }
 
             exceptionEvent.Handled = true;
@@ -263,6 +273,21 @@ sealed class Program
             Environment.Exit(0);
         }
     }
+
+    // Posted rather than called here: this runs while the failed render operation is still unwinding, and only once
+    // that has finished is MediaContext's own _nextRenderOp cleared — a request made before then would be dropped as
+    // "a render is already scheduled". Any window will do; MediaContext is one instance per UI thread.
+    private static void _RequestRenderClockRestart() =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (Application.Current?.ApplicationLifetime
+                    is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime { Windows: [var window, ..] })
+                {
+                    window.RequestAnimationFrame(_ => { });
+                }
+            },
+            Avalonia.Threading.DispatcherPriority.Background);
 
     // Apply an operator-requested package only from a usable desktop launch, never a headless child or one that
     // will yield to an existing cockpit. Take the request last so an ineligible launch leaves it pending (AC-738).
