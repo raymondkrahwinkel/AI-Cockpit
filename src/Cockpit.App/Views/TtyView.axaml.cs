@@ -746,6 +746,12 @@ public partial class TtyView : UserControl
                 launch.Contributed,
                 // AC-218: the project this session runs under, so the MCP fan-out resolves against its registry view.
                 launch.ProjectId));
+            if (Parent is null)
+            {
+                pty.Dispose();
+                return;
+            }
+
             _pty = pty;
             _ptyColumns = columns;
             _ptyRows = rows;
