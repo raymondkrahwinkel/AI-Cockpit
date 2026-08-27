@@ -4,12 +4,8 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-// One `AutoCompleteBox` worth of state for a single identifier a `ProjectPluginFieldViewModel` field is linked
-// to (AC-884) — the single-value logic that field used to hold directly, one instance per row instead of shared.
-//
-// `Text` and `Identifier` are separate because the operator picks by name and the plugin queries by identifier:
-// "AI-Cockpit — AC" is what is read, `AC` is what is kept. They only agree for a value typed by hand, which is
-// exactly what a repository nobody granted read access to needs.
+// One `AutoCompleteBox` worth of state for a single identifier a `ProjectPluginFieldViewModel` field is linked to
+// (AC-884) — the single-value logic that field used to hold directly, one instance per row instead of shared.
 public partial class ProjectPluginFieldRowViewModel : ViewModelBase
 {
     private readonly ProjectPluginFieldViewModel _field;

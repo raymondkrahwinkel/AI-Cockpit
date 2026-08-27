@@ -17,12 +17,8 @@ using Cockpit.Core.Terminal;
 
 namespace Cockpit.App.ViewModels;
 
-// The Security tab: whether the credentials in `cockpit.json` are encrypted, and the migration that runs
-// when the operator changes their mind either way.
-//
-// Both directions migrate, and both are shown while they happen. The work is usually over in a blink, but this
-// is the one operation that rewrites every credential the operator has: a screen that flickers is better than
-// an app that goes quiet while it does that.
+// The Security tab: whether the credentials in `cockpit.json` are encrypted, and the migration that runs when the
+// operator changes their mind either way.
 public sealed partial class SecurityOptionsViewModel(
     ISecretProtectionService protection,
     IScreenLockSettingsStore? screenLockSettings = null,
@@ -45,14 +41,8 @@ public sealed partial class SecurityOptionsViewModel(
     // design-time/unit-test graph like every store above, and then the node cards simply do not appear.
     INodeSessionsClient? nodeSessions = null) : ObservableObject
 {
-    // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the
-    // view model, written only when the operator applies. The change handlers below therefore skip their write
-    // and `SaveStagedAsync` performs it once, which is also what makes Cancel able to put them back by simply
-    // reloading: it reloads a file this section never touched.
-    //
-    // Deliberately not folded into the `_loading*` flags: those say "this value came from disk, do not echo it
-    // back", which is a different claim and holds for exactly one assignment. Sharing one flag would mean a
-    // failed refresh mid-dialog could leave writes off.
+    // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the view
+    // model, written only when the operator applies.
     public bool SuspendPersistence { get; set; }
 
     // True only while RefreshAsync seeds the toggle from disk, so setting the property then does not turn around and
@@ -69,19 +59,11 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private bool _isEncrypted;
 
-    // AC-5: whether AI-Cockpit locks itself when the operating system locks (screen lock), re-asking for the
-    // encryption password just as at startup. On by default, and only shown while encryption is on — there is
-    // nothing to re-ask for otherwise. Its row is hidden, not disabled, when encryption is off: a control that does
-    // nothing is worse than an absent one. Persisted the moment it changes, in its own `ScreenLock` section so
-    // it survives turning encryption off and on again. Without a store (design-time/unit-test) it is an in-memory
-    // default that simply does not persist.
+    // On by default, and only shown while encryption is on — there is nothing to re-ask for otherwise (AC-5).
     [ObservableProperty]
     private bool _lockWithOperatingSystem = true;
 
-    // The terminal-access master switch (AC-34): off by default, an opt-in. While off, the `cockpit-terminal`
-    // MCP is not advertised to any session — for an agent the feature does not exist. Turning it on makes it
-    // reachable, still behind a per-pane Approve/Deny. Persisted, and flipped live so the next session sees the
-    // change without a restart.
+    // Persisted, and flipped live so the next session sees the change without a restart (AC-34).
     [ObservableProperty]
     private bool _terminalAccessEnabled;
 
@@ -90,10 +72,7 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private bool _shellAccessEnabled;
 
-    // The network-node master switch (AC-790): off by default. While off, every mounted MCP endpoint stays
-    // loopback-only. Turning it on takes effect on the next launch — unlike the terminal-access toggle above, this
-    // one reconfigures Kestrel listeners at startup (CockpitMcpEndpointHost.MountAsync), so there is nothing to
-    // flip live.
+    // While off, every mounted MCP endpoint stays loopback-only (AC-790).
     [ObservableProperty]
     private bool _nodeEndpointEnabled;
 
@@ -114,14 +93,8 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private string _allowedDiscoveryRangesText = "";
 
-    // ── AC-792, this cockpit as a node ─────────────────────────────────────────────────────────────────────────
-    //
     // The pairing prompt lives on this tab rather than in an app-wide notification, and that is a real ceiling: a
-    // request that arrives while the Options window is shut is never seen and expires after two minutes. It is
-    // chosen rather than settled for — the operator is standing at both machines during a pairing, and this tab is
-    // where they read the address they are about to type, so it is the screen they are already on.
-    // ponytail: no global prompt for an incoming pairing — upgrade path is routing it through the notification
-    // path if pairing ever starts happening while nobody is looking at this tab.
+    // request that arrives while the Options window is shut is never seen and expires after two minutes (AC-792).
 
     // The address a second cockpit types here to start a pairing with this one. One address, not one per endpoint:
     // the grant carries the endpoint list.
@@ -144,22 +117,15 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private string _pairedControllerText = "";
 
-    // ── AC-794, what the current pairing may use ───────────────────────────────────────────────────────────────
-    //
-    // Two checklists, one per kind — a project and a profile are named on separate rows in `NodePairing`, so there
-    // is no reason to force them into one combined list here. Both rebuild on every `RefreshAsync` (the dialog is
-    // rebuilt each time it opens, same reasoning as the pairing subscription above) rather than trying to diff the
-    // previous set against a changed profile/project list.
+    // Both rebuild on every `RefreshAsync` (the dialog is rebuilt each time it opens, same reasoning as the pairing
+    // subscription above) rather than trying to diff the previous set against a changed profile/project list (AC-794).
 
     public ObservableCollection<NodeScopeRowViewModel> ScopedProfiles { get; } = [];
 
     public ObservableCollection<NodeScopeRowViewModel> ScopedProjects { get; } = [];
 
-    // ── AC-795, the nodes this cockpit controls ────────────────────────────────────────────────────────────────
-    //
-    // The mirror of the two checklists above: those say what a controller may do *here*, these are what this
-    // cockpit may do *there*. One card per paired node, and no local session in any of them — see
-    // `NodeSessionsViewModel` for why that separation is structural rather than a badge.
+    // One card per paired node, and no local session in any of them — see `NodeSessionsViewModel` for why that
+    // separation is structural rather than a badge (AC-795).
 
     public ObservableCollection<NodeSessionsViewModel> PairedNodes { get; } = [];
 
@@ -173,11 +139,9 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private string _pairWithNodeAddress = "";
 
-    // ── AC-793, finding a node instead of typing its address ──────────────────────────────────────────────────
-    //
     // A second entrance to the same handshake above, not a separate one: picking a row here only fills
     // `PairWithNodeAddress` (`UseFoundNodeCommand`) — the pairing code, the certificate pin, everything from
-    // `StartPairingCommand` onward is unaware whether the address it received was typed or found.
+    // `StartPairingCommand` onward is unaware whether the address it received was typed or found (AC-793).
 
     public ObservableCollection<NodeDiscoveryFound> FoundNodes { get; } = [];
 
@@ -225,10 +189,8 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private string? _status;
 
-    // Whether the app-level awareness banner (AC-41) should show: encryption is off and the settings hold at
-    // least one credential in the clear that the operator has not dismissed the warning for. Bound by
-    // `CockpitView.axaml`'s banner, and re-read on every `RefreshAsync` — startup, a save that
-    // wrote a new credential, and after either migration — so a single property is the whole of its visibility.
+    // Whether the app-level awareness banner (AC-41) should show: encryption is off and the settings hold at least one
+    // credential in the clear that the operator has not dismissed the warning for.
     [ObservableProperty]
     private bool _showUnprotectedBanner;
 
@@ -321,25 +283,13 @@ public sealed partial class SecurityOptionsViewModel(
         await _LoadPairedNodesAsync().ConfigureAwait(true);
     }
 
-    // Serializes `_LoadPairedNodesAsync` (AC-796): `RefreshAsync` is called un-awaited from more than one place at
-    // startup — `CockpitViewModel`'s own constructor and, moments later, `App.axaml.cs` again once a plugin's
-    // declared secret keys are known — and neither waits for the other. Without this, two overlapping calls could
-    // each pass the empty-collection `Clear()` before either had added a card, then both populate `PairedNodes`
-    // from their own `ListNodesAsync()` result: the second call's cards land on top of the first's rather than
-    // replacing them, leaving the first call's cards — each with a live `DispatcherTimer` from `StartPolling` —
-    // outside anything that will ever `Dispose()` them again.
+    // Without this, two overlapping calls could each pass the empty-collection `Clear()` before either had added a
+    // card, then both populate `PairedNodes` from their own `ListNodesAsync()` result: the second call's cards land on
+    // top of the first's rather than replacing them, leaving the first call's cards (AC-796).
     private readonly SemaphoreSlim _pairedNodesGate = new(1, 1);
 
-    // AC-795: one card per node this cockpit is paired with as controller. Each card reads its own node when it is
-    // built, so a node that is off costs this tab a timeout and not the other nodes' contents — and the cards
-    // appear at once rather than after the slowest one.
-    //
-    // Built once, at startup, and again whenever `RefreshAsync` runs after that (an unprotected secret written, a
-    // plugin's declared keys arriving) — not on every Options open, which the Options window's own `Opened`
-    // handler never triggers. AC-796's poll (`card.StartPolling()`) therefore runs for as long as the cockpit
-    // itself does, not for as long as the window happens to be open; stopping it when the dialog closes would
-    // silence the very dropout it exists to catch the moment the operator was not looking. `CockpitViewModel.
-    // DisposeAsync` is what stops it, at the point the cockpit itself goes away.
+    // Each card reads its own node when it is built, so a node that is off costs this tab a timeout and not the other
+    // nodes' contents — and the cards appear at once rather than after the slowest one (AC-795, AC-796).
     private async Task _LoadPairedNodesAsync()
     {
         await _pairedNodesGate.WaitAsync().ConfigureAwait(true);
@@ -402,12 +352,8 @@ public sealed partial class SecurityOptionsViewModel(
             : $"Paired with \"{pairing.ControllerName}\" ({pairing.ControllerAddress}) since {pairing.PairedAtUtc.ToLocalTime():g}.";
     }
 
-    // AC-794: rebuilds both checklists from the current pairing and the profile/project stores, and seeds each
-    // row's IsAllowed from NodePairing.AllowedProfileLabels/AllowedProjectIds — rather than diffing against the
-    // previous build, since the dialog rebuilding on every open already makes "rebuild from scratch" the existing
-    // idiom (_subscribedToPairing's comment above). Unpaired, or no stores in this graph: both lists end up empty,
-    // which for the design-time/unit-test graph is the same "inert, not broken" posture every other store-backed
-    // section here takes.
+    // AC-794: rebuilds both checklists from the current pairing and the profile/project stores, and seeds each row's
+    // IsAllowed from NodePairing.AllowedProfileLabels/AllowedProjectIds.
     private async Task _LoadScopeRowsAsync()
     {
         _UnsubscribeScopeRows();
@@ -490,14 +436,7 @@ public sealed partial class SecurityOptionsViewModel(
         return nodePairing.SetScopeAsync(allowedProfiles, allowedProjects);
     }
 
-    // Node binding off: normally nothing to show — unless this run already bound an off-loopback listener earlier
-    // (the switch was on at this run's own startup, then turned off just now): Kestrel is only reconfigured on the
-    // next launch, so that listener — and the secret it still accepts — stays live regardless of the toggle. Saying
-    // so beats a blank line that reads as "access revoked" when it was not.
-    // On: the host has not (yet) reported an off-loopback address for any mounted endpoint — either this run has
-    // not restarted since the switch turned on (MountAsync reads the setting once, at mount time), or
-    // NodeReachableAddress found no LAN-facing IPv4 on this machine — the two are indistinguishable from here, so
-    // one explanation covers both rather than guessing which applies.
+    // Node binding off: normally nothing to show.
     private string _ResolveNodeEndpointAddressText(bool enabled)
     {
         var addresses = mcpEndpointHosts?.SelectMany(host => host.GetNodeAddresses()).ToList() ?? [];
@@ -621,11 +560,8 @@ public sealed partial class SecurityOptionsViewModel(
         await shellAccessSettings.SaveAsync(new ShellAccessSettings { Enabled = value }).ConfigureAwait(true);
     }
 
-    // The node toggle changed (AC-790). Unlike terminal access above, this never flips anything live — the
-    // Kestrel listeners it governs are only reconfigured at the next launch (CockpitMcpEndpointHost.MountAsync) —
-    // so this only persists. Turning it on for the first time (no secret saved yet) mints one; turning it off
-    // leaves whatever secret is there untouched, so a second Cockpit that already typed it in still works the
-    // next time binding is turned back on.
+    // Unlike terminal access above, this never flips anything live — the Kestrel listeners it governs are only
+    // reconfigured at the next launch (CockpitMcpEndpointHost.MountAsync) — so this only persists (AC-790).
     async partial void OnNodeEndpointEnabledChanged(bool value)
     {
         if (_loadingNodeEndpoint || SuspendPersistence || nodeEndpointSettings is null)
@@ -633,11 +569,8 @@ public sealed partial class SecurityOptionsViewModel(
             return;
         }
 
-        // AC-792: read-modify-write rather than a fresh record, and the secret comes from what is on disk right
-        // now rather than from this view model's copy. Two reasons, one shape. This section gained a `Pairing`
-        // field this toggle knows nothing about, and constructing a new record would erase who the node is paired
-        // with. And the copy held here goes stale the moment a pairing rotates it or a remote unpair clears it —
-        // writing that copy back would resurrect a revoked credential on the next flip of this switch.
+        // AC-792: read-modify-write rather than a fresh record, and the secret comes from what is on disk right now
+        // rather than from this view model's copy.
         var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
         var sharedSecret = current.SharedSecret is { Length: > 0 }
             ? current.SharedSecret
@@ -649,11 +582,8 @@ public sealed partial class SecurityOptionsViewModel(
         await nodeEndpointSettings.SaveAsync(current with { Enabled = value, SharedSecret = sharedSecret }).ConfigureAwait(true);
     }
 
-    // AC-793: persists as it changes, the same reactive-save shape as the toggle above — but the XAML binding
-    // pushes the text on lost focus, not per keystroke (`OptionsDialog.axaml`'s `UpdateSourceTrigger=LostFocus`),
-    // so typing a range does not turn into one full `cockpit.json` read-decrypt-encrypt-write cycle per
-    // character. A malformed entry is simply a range that never matches anything — `NodeVisibilityPolicy` skips
-    // what does not parse as a CIDR — so there is nothing here worth validating before it reaches disk.
+    // A malformed entry is simply a range that never matches anything — `NodeVisibilityPolicy` skips what does not
+    // parse as a CIDR — so there is nothing here worth validating before it reaches disk (AC-793).
     async partial void OnAllowedDiscoveryRangesTextChanged(string value)
     {
         if (_loadingNodeEndpoint || SuspendPersistence || nodeEndpointSettings is null)
@@ -882,11 +812,8 @@ public sealed partial class SecurityOptionsViewModel(
             // `NodeServerName` rather than built here and parsed there.
             Name = NodeServerName.For(handshake.NodeName, endpoint.ServerName),
             Transport = McpTransport.Http,
-            // `LocalOnly` is not a preference here, it is the reach of the pin. Only the in-process tool loop
-            // builds its own HTTP transport (`McpToolProvider`), so only it can be told which certificate to
-            // trust; a spawned CLI session gets an `--mcp-config` and brings its own client, which would meet a
-            // self-signed certificate it has no reason to accept and fail the TLS handshake outright. Fanning
-            // these rows out there would hand every session a server that cannot work.
+            // Only the in-process tool loop builds its own HTTP transport (`McpToolProvider`), so only it can be told
+            // which certificate to trust.
             Scope = McpServerScope.LocalOnly,
             Url = endpoint.Url,
             Auth = McpServerAuth.ApiKey,

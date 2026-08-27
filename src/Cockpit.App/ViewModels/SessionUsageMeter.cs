@@ -3,22 +3,9 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-// Accumulates the token usage and cost a session has run up (#8 token/cost meter), and formats it for the
-// compact meter next to the session status.
-//
-// The two halves of a `TurnCompleted` result are counted differently, because the CLI reports
-// them differently: `usage` covers only the turn that just finished, so it sums, while
-// `total_cost_usd` is what the session has cost so far, so it replaces the previous figure. Summing
-// the cost charged every earlier turn again, which grew with the turn count — the nine-turn session in the
-// pilot run recorded $29.23 against a real $5.38. Measured against a real `claude` run rather than
-// assumed.
-//
-// Following the newest figure is the whole story because a meter only ever counts one conversation:
-// `SessionViewModel.StartConfiguredAsync` returns early while a runtime exists, so the only way one
-// panel reaches a second CLI process is `ClearContextAsync` (AC-564) — which calls `Reset`
-// on the way, since the new process starts its own `total_cost_usd` back at zero. There is therefore
-// no earlier process whose spend could need carrying over, and no attempt is made to invent one from the
-// numbers.
+// The two halves of a `TurnCompleted` result are counted differently, because the CLI reports them differently: `usage`
+// covers only the turn that just finished, so it sums, while `total_cost_usd` is what the session has cost so far, so
+// it replaces the previous figure (AC-564).
 internal sealed class SessionUsageMeter
 {
     public int InputTokens { get; private set; }

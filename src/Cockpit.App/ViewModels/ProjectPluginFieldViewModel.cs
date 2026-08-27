@@ -6,13 +6,7 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
-// One field a plugin contributed to the project editor (AC-317): what this project is called in a tracker or on a
-// forge. The plugin described it and supplies the choices; this holds the field's state while the dialog is open —
-// which rows are on screen, what they resolve to, and whether the list is still coming.
-//
-// One row per identifier rather than one box holding several comma-separated (AC-884) — see
-// `ProjectPluginFieldRowViewModel` for why: an `AutoCompleteBox` already owns its own text on a pick, and a
-// second, comma-aware meaning layered onto that same text corrupted it the moment typing continued past a pick.
+// One row per identifier rather than one box holding several comma-separated (AC-884) (AC-317).
 public partial class ProjectPluginFieldViewModel : ViewModelBase
 {
     private readonly ProjectFieldRegistration _registration;

@@ -21,10 +21,9 @@ public sealed partial class ScheduleResumeDialogViewModel : ObservableObject
     {
         _zone = zone ?? TimeZoneInfo.Local;
 
-        // The pickers show a wall clock, so the suggestion has to arrive in the operator's zone first. An
-        // allowance reset is read off a Unix timestamp and therefore carries offset +00:00 (AC-369); taking
-        // .Date/.TimeOfDay straight off it would put UTC's wall clock in the pickers, which Moment then reads
-        // back as local — two hours before the reset in summer here, so a resume that never fires.
+        // An allowance reset is read off a Unix timestamp and therefore carries offset +00:00 (AC-369); taking
+        // .Date/.TimeOfDay straight off it would put UTC's wall clock in the pickers, which Moment then reads back as
+        // local — two hours before the reset in summer here, so a resume that never fires.
         _suggested = TimeZoneInfo.ConvertTime(suggested, _zone);
 
         _day = _suggested.Date;
