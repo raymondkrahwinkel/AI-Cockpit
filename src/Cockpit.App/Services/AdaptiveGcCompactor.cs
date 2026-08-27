@@ -124,6 +124,14 @@ public sealed class AdaptiveGcCompactor(
                 return;
             }
 
+            // AC-1133: The heap dropped well below where the last compact left it, so that live set is gone; arm
+            // the next compact above where it is now, not where it once was. Otherwise `_compactAtBytes` can only
+            // rise, and above the ceiling both gates reject everything forever.
+            if (heapBytes + GrowthBeforeNextCompactBytes < _compactAtBytes)
+            {
+                _compactAtBytes = Math.Max(CompactThresholdBytes, heapBytes + GrowthBeforeNextCompactBytes);
+            }
+
             if (heapBytes < _compactAtBytes)
             {
                 return;
