@@ -81,6 +81,45 @@ below it.** Two caveats belong with that number, not underneath it:
   ordinal, so a few rounds either side of the cut-off land in the same bucket. Treat it as "at the cut-off",
   not as an exact figure.
 
-**Not here yet:** the other six setups from the requirements' acceptance list (`ac1104`, `ac1120`, `ac1125`,
-`ac1169`, `ac1184-heavy`, `ac1119-cpu`), and none of AC-1169's three blind spots — operator input, window
-resize, a parked render clock. Therefore `C:\temp\cockpit-debug-app` cannot be deleted yet.
+## The second scenario: `--scenario=render-clock`
+
+Parks the render thread from inside `ICustomDrawOperation.Render` — which runs on the render thread, not on
+the dispatcher — so the compositor stops committing while the dispatcher carries on. That difference is the
+whole point: it is what tells trap 2 (render clock silent, UI thread idle) apart from a busy UI thread.
+
+**It is built and it does not work yet, and the run says so.** Measured 2026-08-27:
+
+```
+POSITIVE CONTROL: parked-render-thread FIRED
+VERDICT: MALFUNCTION
+  blocked by: the parked clock was detected: the render thread was parked past the app's own threshold
+              and no stall was detected
+stall detected: False · resume detected: False
+dispatcher during the stall: 189 ticks, longest gap 174,9 ms
+```
+
+The dispatcher kept ticking (189 ticks), so the negative control holds — the UI thread was genuinely left
+alone. What does not hold is the detection itself. **Two candidates, both written into the failure message:**
+the commit may complete without waiting for the draw operation, or the parking may not reach it. The most
+likely mechanism is that `RenderClockWitness.Probe` starts one probe at a time: if the healthy probe has not
+returned when the parked one is requested, the second call is a no-op and `OutstandingFor` ends up measuring
+the healthy probe, which then returns.
+
+> **One thing this cost, worth knowing before you touch it.** The first version of the gate counted
+> `renderclock-stalled` over the recorder, and it passed — because the *positive control* records into the
+> same recorder and satisfied the gate the measurement had just failed. The gate now holds the measurement
+> pass's own answer. **That is E2's fault one level up: a check that can be satisfied by something other than
+> the thing it is checking.**
+
+## What is here, and what is not
+
+**Here:** the core (`Core/`), the meters (`Meters/`), the session-count sweep (working, threshold
+reproduces), and the render-clock scenario (built, not yet detecting, refuses rather than reports).
+
+**Not here:** AC-1169's other two blind spots — **operator input** (wheel, scrollbar thumb, keyboard, touch)
+and **window resize** — and the remaining setups from the acceptance list (`ac1104`, `ac1120`, `ac1125`,
+`ac1184-heavy`, `ac1119-cpu`). Therefore `C:\temp\cockpit-debug-app` cannot be deleted yet.
+
+For whoever picks those up, the two things that cost this session a run each are in "What the sweep needs"
+above, and they generalise: **a stand-in for a real control measures a healthy app that does not exist**, and
+**the driver of the layout fault is the follow, not the panel.**

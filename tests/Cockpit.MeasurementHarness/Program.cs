@@ -22,7 +22,7 @@ public static class Program
         RunIdentity identity;
         try
         {
-            identity = RunIdentity.Capture(LayoutLoopScenario.Name, args, flags);
+            identity = RunIdentity.Capture(options.Scenario, args, flags);
         }
         catch (InvalidOperationException exception)
         {
@@ -56,7 +56,10 @@ public static class Program
     private static async Task _RunScenarioAsync(RunIdentity identity, Options options)
     {
         var pump = new Pump(options.Headless);
-        var run = new MeasurementRun(identity, LayoutLoopScenario.Control(pump, options.SettleMs));
+        var renderClock = options.Scenario == RenderClockScenario.Name;
+        var run = new MeasurementRun(
+            identity,
+            renderClock ? RenderClockScenario.Control(pump) : LayoutLoopScenario.Control(pump, options.SettleMs));
         var cpu = new CpuMeter();
         var gc = new GcMeter();
 
@@ -66,11 +69,19 @@ public static class Program
         gc.Start();
 
         _HookLayoutLoopDetector(run.Recorder);
-        await LayoutLoopScenario.SweepAsync(
-            run,
-            pump,
-            new SweepOptions(options.MinSessions, options.MaxSessions, options.Width, options.Height, options.SettleMs, options.Repeats))
-            .ConfigureAwait(true);
+        if (renderClock)
+        {
+            await RenderClockScenario.RunAsync(run, pump).ConfigureAwait(true);
+        }
+        else
+        {
+            await LayoutLoopScenario.SweepAsync(
+                run,
+                pump,
+                new SweepOptions(options.MinSessions, options.MaxSessions, options.Width, options.Height, options.SettleMs, options.Repeats))
+                .ConfigureAwait(true);
+        }
+
         await run.RunControlAsync().ConfigureAwait(true);
 
         run.Verify("cost of the run itself, after the measurement window closed", recorder =>
@@ -142,6 +153,8 @@ public sealed class HarnessApp : Avalonia.Application
 /// </summary>
 public sealed class Options(IReadOnlyDictionary<string, string> flags)
 {
+    public string Scenario { get; } = flags["scenario"];
+
     public bool Headless { get; } = flags["headless"] == "true";
 
     public int MinSessions { get; } = int.Parse(flags["min-sessions"]);
@@ -163,6 +176,7 @@ public sealed class Options(IReadOnlyDictionary<string, string> flags)
     {
         var flags = new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["scenario"] = LayoutLoopScenario.Name,
             ["headless"] = "false",
             ["min-sessions"] = "2",
             ["max-sessions"] = "6",

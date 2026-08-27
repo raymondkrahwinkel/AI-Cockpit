@@ -136,13 +136,25 @@ public sealed class DispatcherGapMeter
 public sealed class RenderClockWitness
 {
     private int _returned;
+    private long _startedAt;
+    private int _inFlight;
 
     public bool CompositorPresent { get; private set; }
 
     /// <summary>True once a commit has actually come back. Until then this harness knows nothing about stalls.</summary>
     public bool EverReturned => Volatile.Read(ref _returned) > 0;
 
-    /// <summary>Asks the compositor for a commit and notes whether it comes back. Safe to call repeatedly.</summary>
+    /// <summary>
+    /// How long the outstanding commit has been outstanding, or null when none is. This is the value the app's
+    /// own <c>RenderClockHeartbeat</c> decides on, so a scenario can hand it the real one instead of a story.
+    /// </summary>
+    public TimeSpan? OutstandingFor =>
+        Volatile.Read(ref _inFlight) == 0 ? null : Stopwatch.GetElapsedTime(Volatile.Read(ref _startedAt));
+
+    /// <summary>
+    /// Asks the compositor for a commit and notes whether it comes back. One probe at a time, mirroring the
+    /// app: a second in flight would make "outstanding for" mean two different things at once.
+    /// </summary>
     public void Probe()
     {
         if (Compositor.TryGetDefaultCompositor() is not { } compositor)
@@ -152,8 +164,18 @@ public sealed class RenderClockWitness
         }
 
         CompositorPresent = true;
+        if (Interlocked.CompareExchange(ref _inFlight, 1, 0) != 0)
+        {
+            return;
+        }
+
+        Volatile.Write(ref _startedAt, Stopwatch.GetTimestamp());
         compositor.RequestCommitAsync().ContinueWith(
-            _ => Interlocked.Increment(ref _returned),
+            _ =>
+            {
+                Interlocked.Increment(ref _returned);
+                Volatile.Write(ref _inFlight, 0);
+            },
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
