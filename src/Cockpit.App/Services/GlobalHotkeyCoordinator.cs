@@ -331,6 +331,11 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         }
     }
 
+    // AC-1202: bounded so a stuck ApplyAsync (a hung cockpit.json read, say) cannot hold shutdown open past this
+    // container's own dispose budget. The gate is normally held for tens of ms; 500ms leaves headroom above that
+    // without eating meaningfully into the teardown watchdog's budget (AC-1134: 3s teardown, 4s hard exit).
+    private static readonly TimeSpan DisposeGateTimeout = TimeSpan.FromMilliseconds(500);
+
     public void Dispose()
     {
         if (_disposed)
@@ -338,10 +343,18 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
             return;
         }
 
-        // Under the same gate as every arm attempt: a retry tick or a settings save already past the
-        // disposed-check above must finish (or itself see _disposed after acquiring the gate) before this
-        // clears the claims it might otherwise still be touching.
-        _applyGate.Wait();
+        // Same gate as every arm attempt, so this cannot clear _claims while one still touches it. AC-1202: on
+        // timeout, skip cleanup rather than race it — the kernel releases the mutex claims with the process.
+        if (!_applyGate.Wait(DisposeGateTimeout))
+        {
+            _logger.LogWarning(
+                "GlobalHotkeyCoordinator.Dispose() gave up waiting for an in-flight ApplyAsync after {Timeout}; " +
+                "hotkey claims and the retry timer were left for process exit to clean up.",
+                DisposeGateTimeout);
+
+            return;
+        }
+
         try
         {
             if (_disposed)

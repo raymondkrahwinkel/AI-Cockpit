@@ -2,7 +2,12 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Cockpit.App;
 using Cockpit.App.Logging;
+using Cockpit.App.Services;
+using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Tests.Hotkeys;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Services;
 
@@ -51,6 +56,147 @@ public partial class ShutdownTeardownTests
 
         Assert.DoesNotContain(log.Messages, message =>
             message.Contains("did not finish", StringComparison.Ordinal) || message.Contains("teardown failed", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// AC-1202: the container was never disposed on the real teardown route, so no singleton's <c>Dispose()</c>
+    /// ever ran — <see cref="GlobalHotkeyCoordinator"/>'s among them. Exercises the real
+    /// <see cref="Program.DisposeServiceContainerAsync"/>, not a reimplementation; <c>TearDownCockpitAsync</c>
+    /// itself is not called here because it also starts a hard-exit watchdog thread that a test process cannot
+    /// survive. Registered through a factory rather than <c>AddSingleton(instance)</c>: production's
+    /// <c>AddServices</c> scan resolves singletons through the container, and only container-resolved instances
+    /// are disposed with it — an instance handed in ready-made is treated as externally owned and never
+    /// captured for disposal.
+    /// </summary>
+    [Fact]
+    public async Task DisposeServiceContainerAsync_ReachesTheHotkeyCoordinatorTheContainerOwns()
+    {
+        var claim = Substitute.For<IDisposable>();
+        var guard = Substitute.For<IHotkeyExclusivityGuard>();
+        guard.TryAcquire(Arg.Any<string>()).Returns(claim);
+
+        var coordinator = TestGlobalHotkeys.Coordinator(
+            new FakeGlobalHotkeyService(), TestGlobalHotkeys.GlobalPushToTalkOn, guard: guard);
+
+        var container = new ServiceCollection()
+            .AddSingleton<GlobalHotkeyCoordinator>(_ => coordinator)
+            .BuildServiceProvider();
+        var previousServices = Program.Services;
+
+        try
+        {
+            Program.Services = container;
+
+            // Resolve once, as App.axaml.cs:339 does at startup, so the container actually caches (and so
+            // later owns) this instance rather than an unresolved factory it never called.
+            await container.GetRequiredService<GlobalHotkeyCoordinator>().ApplyAsync(); // arms a claim to release
+
+            await Program.DisposeServiceContainerAsync();
+
+            claim.Received(1).Dispose();
+        }
+        finally
+        {
+            Program.Services = previousServices;
+        }
+    }
+
+    /// <summary>
+    /// AC-1202: <c>CockpitViewModel</c> is <c>IAsyncDisposable</c>, not <c>IDisposable</c> — the sync
+    /// <c>ServiceProvider.Dispose()</c> throws on a captured instance that is only that. The async form must
+    /// not repeat the mistake for whatever else in the container is async-only.
+    /// </summary>
+    [Fact]
+    public async Task DisposeServiceContainerAsync_DoesNotThrowOnAnAsyncOnlySingleton()
+    {
+        var container = new ServiceCollection()
+            .AddSingleton<_AsyncOnlyDisposable>()
+            .BuildServiceProvider();
+        var previousServices = Program.Services;
+
+        try
+        {
+            Program.Services = container;
+            var singleton = container.GetRequiredService<_AsyncOnlyDisposable>();
+
+            await Program.DisposeServiceContainerAsync();
+
+            Assert.True(singleton.Disposed);
+        }
+        finally
+        {
+            Program.Services = previousServices;
+        }
+    }
+
+    /// <summary>
+    /// AC-1202: these paths never ran before this ticket, so nothing bounded them — including a Kestrel host
+    /// whose <c>StopAsync</c> Program.cs's own comment already says can ignore cancellation while draining SSE.
+    /// Same shape as <see cref="AwaitTeardownAsync_GivesUpOnAWedgedTeardownAndSaysSo"/>, one level up: the
+    /// container's own dispose gets a bound too, and logs what it gave up on.
+    /// </summary>
+    [Fact]
+    public async Task DisposeServiceContainerAsync_GivesUpOnAWedgedSingletonAndSaysSo()
+    {
+        var log = _CaptureLifecycleLog();
+        var container = new ServiceCollection()
+            .AddSingleton<_WedgedDisposable>()
+            .BuildServiceProvider();
+        var previousServices = Program.Services;
+
+        try
+        {
+            Program.Services = container;
+            container.GetRequiredService<_WedgedDisposable>();
+
+            var elapsed = Stopwatch.StartNew();
+            await Program.DisposeServiceContainerAsync();
+            elapsed.Stop();
+
+            Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(2), $"waited {elapsed.Elapsed} on a dispose that never finishes");
+            Assert.Contains(log.Messages, message => message.Contains("did not finish", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Program.Services = previousServices;
+        }
+    }
+
+    private sealed class _AsyncOnlyDisposable : IAsyncDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class _WedgedDisposable : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() => new(new TaskCompletionSource().Task);
+    }
+
+    /// <summary>
+    /// The half of AC-1202 the tests above cannot reach: that <c>DisposeServiceContainerAsync</c> is actually
+    /// wired into the real teardown route rather than just sitting there callable. Reads the source instead of
+    /// running <c>TearDownCockpitAsync</c>, for the same reason
+    /// <see cref="TheAppShutsTheLifetimeDownInExactlyOnePlace"/> does — it starts a hard-exit watchdog thread a
+    /// test process cannot survive.
+    /// </summary>
+    [Fact]
+    public void TearDownCockpitAsync_CallsDisposeServiceContainerAsync()
+    {
+        var appDirectory = _LocateRepositoryFolder(Path.Combine("src", "Cockpit.App"))
+            ?? throw new InvalidOperationException("No src/Cockpit.App directory above the test output — this test reads the repo it belongs to.");
+        var source = File.ReadAllText(Path.Combine(appDirectory, "Program.cs"));
+
+        var methodStart = source.IndexOf("internal static async Task TearDownCockpitAsync()", StringComparison.Ordinal);
+        var methodEnd = source.IndexOf("internal static async Task DisposeServiceContainerAsync()", StringComparison.Ordinal);
+        Assert.True(methodStart >= 0 && methodEnd > methodStart, "could not locate both methods — Program.cs moved, update the markers here with it");
+
+        Assert.Contains("DisposeServiceContainerAsync()", source[methodStart..methodEnd]);
     }
 
     /// <summary>

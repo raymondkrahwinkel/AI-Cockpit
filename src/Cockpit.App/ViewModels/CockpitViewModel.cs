@@ -7893,6 +7893,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // whole process) alive after the window closes (bug #32).
     public async ValueTask DisposeAsync()
     {
+        // AC-1202: IAsyncDisposable's contract is that a second call is a no-op — now exercised for real, since
+        // TearDownCockpitAsync disposes the DI container after already disposing this explicitly.
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
         // The shutdown gives this a bounded budget and then hard-exits (Program.DisposeCockpit), so where it got to
         // is the one thing worth knowing when something it should have cleaned up is still there afterwards. Three
         // lines, at the two ends and around the assistant, because a teardown that is cut off leaves no other trace.
@@ -7967,4 +7976,5 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public int PendingTeardownCount => Volatile.Read(ref _pendingTeardownCount);
 
     private int _pendingTeardownCount;
+    private bool _disposed;
 }

@@ -1527,6 +1527,32 @@ public class CockpitViewModelTests
         Assert.Contains(vm.ResourceRows, row => row.Title == "claude ×2");
     }
 
+    /// <summary>
+    /// AC-1202: <c>TearDownCockpitAsync</c> now disposes the DI container after already disposing this
+    /// explicitly, so a second <c>DisposeAsync()</c> call is no longer hypothetical. IAsyncDisposable's
+    /// contract is that a second call is a no-op — checked against how many times the body reads
+    /// <c>AssistantHost.Session</c> (three unconditional reads per real pass), not against session/pane state,
+    /// which stays empty either way and would not tell a guarded second call from an unguarded one.
+    /// </summary>
+    [Fact]
+    public async Task DisposeAsync_ASecondCallIsANoOp()
+    {
+        var vm = NewVm();
+        var assistantHost = Substitute.For<IAssistantSessionHost>();
+        vm.AssistantHost = assistantHost;
+
+        await vm.DisposeAsync();
+        var readsAfterFirstCall = _SessionGetterReads(assistantHost);
+
+        await vm.DisposeAsync();
+        var readsAfterSecondCall = _SessionGetterReads(assistantHost);
+
+        Assert.Equal(readsAfterFirstCall, readsAfterSecondCall);
+    }
+
+    private static int _SessionGetterReads(IAssistantSessionHost host) =>
+        host.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "get_Session");
+
     private static CockpitViewModel NewVm(
         ISessionDialogService? dialogService = null,
         ITerminalSettingsStore? terminalSettingsStore = null,
