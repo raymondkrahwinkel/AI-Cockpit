@@ -6656,7 +6656,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var monitor = _claimCollisionMonitor;
-        var colliding = await Task.Run(monitor.PanesInCollision).ConfigureAwait(true);
+        IReadOnlySet<string> colliding;
+        try
+        {
+            colliding = await Task.Run(monitor.PanesInCollision).ConfigureAwait(true);
+        }
+        catch (UiUnavailableException exception)
+        {
+            // AC-1201: the UI thread was starved past PaneWorkspaceDirectory's own marshal deadline (AC-1138/
+            // AC-1196) — expected under load, not a bug here. This round's chip is stale; the next tick tries again.
+            _logger?.LogWarning(exception, "A claim-collision check was skipped: the UI thread did not answer in time.");
+            return;
+        }
+        catch (Exception exception)
+        {
+            // Anything else is not the known starvation case, so it is worth a louder signal than the one above.
+            _logger?.LogError(exception, "A claim-collision check failed; the next tick will try again.");
+            return;
+        }
+
         foreach (var session in AllSessions())
         {
             session.HasClaimCollision = colliding.Contains(session.PaneId);
