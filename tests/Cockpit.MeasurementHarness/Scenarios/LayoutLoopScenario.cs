@@ -1,7 +1,11 @@
+using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Layout;
+using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
+using Avalonia.Data;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Cockpit.App.Controls;
 using Cockpit.MeasurementHarness.Core;
 using Cockpit.MeasurementHarness.Meters;
@@ -57,8 +61,14 @@ public static class LayoutLoopScenario
     /// </summary>
     public static async Task SweepAsync(MeasurementRun run, Pump pump, SweepOptions options)
     {
-        var points = new List<SeriesPoint>();
         var thinnest = int.MaxValue;
+
+        // AC-1178 repeated its threshold three times per session count, and so should anything claiming to
+        // reproduce it. Repeats live inside one run because the report identity is the argv (E4): a second
+        // process with the same flags is refused, which is right for evidence and useless for repetition.
+        for (var pass = 1; pass <= options.Repeats; pass++)
+        {
+        var points = new List<SeriesPoint>();
 
         for (var sessions = options.MinSessions; sessions <= options.MaxSessions; sessions++)
         {
@@ -90,7 +100,7 @@ public static class LayoutLoopScenario
                     points.Add(new SeriesPoint(count, rounds));
                 }
 
-                run.Write($"{count,3} sessions | worst frame {(worst is { } w ? $"{w,4}" : " n/a")} rounds "
+                run.Write($"pass {pass} | {count,3} sessions | worst frame {(worst is { } w ? $"{w,4}" : " n/a")} rounds "
                           + $"| {frames.TotalRounds,6} rounds total | {frames.FrameCount,5} frames | layout loops {loops}"
                           + (worst >= AvaloniaRoundLimit ? "   <-- at Avalonia's cut-off" : string.Empty));
             }).ConfigureAwait(true);
@@ -115,7 +125,8 @@ public static class LayoutLoopScenario
 
         // E5: more sessions may cost more rounds or the same, never fewer. 7452 rounds at 15 tiles against
         // 3146 at 20 stood in two reports for half a day because nothing put the numbers side by side.
-        run.Shape(Series.Monotonic("sessions -> worst frame rounds", points));
+        run.Shape(Series.Monotonic($"pass {pass}: sessions -> worst frame rounds", points));
+        }
     }
 
     private static Window _NewWindow(double width, double height) => new()
@@ -132,21 +143,92 @@ public static class LayoutLoopScenario
         var panel = new SessionTilePanel { FocusRailLayout = true };
         for (var i = 0; i < sessions; i++)
         {
-            var tile = new Border
-            {
-                Background = Brushes.DimGray,
-                Child = new TextBlock { Text = $"pane {i}", TextWrapping = TextWrapping.Wrap },
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                VerticalAlignment = VerticalAlignment.Stretch,
-            };
-
-            SessionTilePanel.SetRailSortKey(tile, i);
-            SessionTilePanel.SetIsFocusCandidate(tile, i == 0);
-            panel.Children.Add(tile);
+            var pane = _NewPane(i);
+            SessionTilePanel.SetIsFocusCandidate(pane, i == 0);
+            panel.Children.Add(pane);
         }
 
         return panel;
     }
+
+    /// <summary>
+    /// One pane, shaped like the real one in `CockpitView.axaml`: a `PaneRoot` container the panel writes its
+    /// attached boxes onto, with a <see cref="MiniatureHost"/> inside reading them back. **That path is the
+    /// amplifier** — `SessionTilePanel` writes `MiniatureFocusChildBox` from inside its own arrange, the host
+    /// binds it, and `FocusChildBoxProperty` is registered `AffectsMeasure`, so every arrange leaves measure
+    /// dirty again. A plain border in this place measures a healthy app that does not exist.
+    /// </summary>
+    private static Control _NewPane(int index)
+    {
+        var content = _NewTranscript(index);
+        var host = new MiniatureHost { Child = content };
+        var paneRoot = new Grid { Margin = new Thickness(4), Background = Brushes.Transparent };
+        paneRoot.Children.Add(host);
+
+        // The three bindings of the real markup, by observable rather than by element name. The panel writes
+        // onto the container it already holds; the host is what turns those boxes into a layout.
+        host.Bind(MiniatureHost.TileSizeProperty, paneRoot.GetObservable(SessionTilePanel.MiniatureTileSizeProperty));
+        host.Bind(MiniatureHost.FocusSizeProperty, paneRoot.GetObservable(SessionTilePanel.MiniatureFocusSizeProperty));
+        host.Bind(MiniatureHost.FocusChildBoxProperty, paneRoot.GetObservable(SessionTilePanel.MiniatureFocusChildBoxProperty));
+
+        SessionTilePanel.SetRailSortKey(paneRoot, index);
+        return paneRoot;
+    }
+
+    /// <summary>
+    /// A streaming transcript with a stick-to-bottom follow, virtualised, with rows of very different
+    /// heights. This is the driver AC-1178 measured — the `_MoveTo` offset writes (`rail0..3=19 | rail4=325`)
+    /// come from here, not from the panel — and it is what turns a rail tile that is arranged off screen into
+    /// a frame that runs into Avalonia's cut-off.
+    /// </summary>
+    private static Control _NewTranscript(int index)
+    {
+        var rows = new ObservableCollection<string>();
+        for (var i = 0; i < 40; i++)
+        {
+            rows.Add(_Row(index, i));
+        }
+
+        var list = new ItemsControl
+        {
+            ItemsSource = rows,
+            ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
+            ItemTemplate = new FuncDataTemplate<string>((_, _) =>
+            {
+                var text = new TextBlock { TextWrapping = TextWrapping.Wrap };
+                text.Bind(TextBlock.TextProperty, new Binding("."));
+                return text;
+            }, true),
+        };
+
+        var scroll = new ScrollViewer { Content = list, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+
+        // The fault under test, in the shape SessionView has it today: the follow hangs off ScrollChanged,
+        // which ScrollViewer raises from LayoutUpdated — that is, at the end of a layout pass, while the
+        // media context is still draining render callbacks. Writing the offset there re-enters layout.
+        scroll.ScrollChanged += (_, _) =>
+        {
+            var bottom = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
+            if (Math.Abs(scroll.Offset.Y - bottom) > 0.5)
+            {
+                scroll.Offset = new Vector(scroll.Offset.X, bottom);
+            }
+        };
+
+        var next = rows.Count;
+        var streaming = new DispatcherTimer(DispatcherPriority.Default) { Interval = TimeSpan.FromMilliseconds(33) };
+        streaming.Tick += (_, _) => rows.Add(_Row(index, next++));
+        streaming.Start();
+        scroll.DetachedFromVisualTree += (_, _) => streaming.Stop();
+
+        return scroll;
+    }
+
+    /// <summary>Rows of wildly different heights — the fault scales with the spread, not with the count.</summary>
+    private static string _Row(int pane, int row) =>
+        row % 4 == 0
+            ? string.Join(' ', Enumerable.Repeat($"pane {pane} row {row} long", 40))
+            : $"pane {pane} row {row}";
 
     private static void _SwitchFocus(SessionTilePanel panel)
     {
@@ -161,4 +243,4 @@ public static class LayoutLoopScenario
 }
 
 /// <summary>What the sweep varies and what it holds fixed.</summary>
-public sealed record SweepOptions(int MinSessions, int MaxSessions, double Width, double Height, int SettleMs);
+public sealed record SweepOptions(int MinSessions, int MaxSessions, double Width, double Height, int SettleMs, int Repeats);

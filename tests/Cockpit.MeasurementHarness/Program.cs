@@ -69,7 +69,7 @@ public static class Program
         await LayoutLoopScenario.SweepAsync(
             run,
             pump,
-            new SweepOptions(options.MinSessions, options.MaxSessions, options.Width, options.Height, options.SettleMs))
+            new SweepOptions(options.MinSessions, options.MaxSessions, options.Width, options.Height, options.SettleMs, options.Repeats))
             .ConfigureAwait(true);
         await run.RunControlAsync().ConfigureAwait(true);
 
@@ -154,6 +154,8 @@ public sealed class Options(IReadOnlyDictionary<string, string> flags)
 
     public int SettleMs { get; } = int.Parse(flags["settle-ms"]);
 
+    public int Repeats { get; } = int.Parse(flags["repeats"]);
+
     public string OutputDirectory { get; } = flags["out"];
 
     /// <summary>Defaults first, then whatever the argv overrides, so the report always lists every flag.</summary>
@@ -167,6 +169,7 @@ public sealed class Options(IReadOnlyDictionary<string, string> flags)
             ["width"] = "1400",
             ["height"] = "900",
             ["settle-ms"] = "700",
+            ["repeats"] = "1",
             ["out"] = ".",
         };
 

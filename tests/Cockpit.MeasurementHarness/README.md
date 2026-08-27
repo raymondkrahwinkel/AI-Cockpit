@@ -48,14 +48,39 @@ ran is the same fault as a positive control that does not fire.
 **Here:** the core (`Core/`), the meters (`Meters/`), and one scenario — the session-count sweep over the
 real `SessionTilePanel` in focus+rail, with a self-invalidating child as its positive control.
 
-**Measured on 2026-08-27, real window, sessions 2 to 6:** the control fires, the frame clock gives 60 to 77
-frames per sweep point, and every point reports **one** layout round and **zero** layout loops.
+### What the sweep needs before it reproduces anything
 
-**So the sweep does not yet reproduce AC-1178's threshold** (nothing at 2–4, 153 rounds and 2 loops from 5
-on). The setup is reproduced; the amplifier is not. AC-1178's driver is `rail0..3=19 | rail4=325` — the
-panel writing `MiniatureFocusChildBox` from inside its own arrange — and that only happens for real
-miniature children, where this scenario uses plain borders. **That is the next piece of work on this
-scenario, and until it is done this sweep proves the harness, not the threshold.**
+Two things had to be real before the threshold appeared, and each was worth a run of its own to establish:
+
+1. **The pane has to be shaped like a pane.** A `PaneRoot` container with a real `MiniatureHost` inside,
+   bound to the panel's attached boxes exactly as `CockpitView.axaml` does it. With plain borders in that
+   place every sweep point reported one layout round and zero loops — a picture of a healthy app.
+2. **There has to be a follow.** AC-1178's driver is `_MoveTo`, the scroll-offset write; adding the
+   miniature host alone changed nothing. Only with a streaming, virtualised transcript whose stick-to-bottom
+   follow writes the offset from `ScrollChanged` did the threshold appear.
+
+### What it measures now — 2026-08-27, real window, `--repeats=3`
+
+| sessions | worst frame (rounds) | layout loops | passes at the cut-off |
+|---|---|---|---|
+| 2 | 5–6 | 0 | 0 / 3 |
+| 3 | 8–9 | 0 | 0 / 3 |
+| 4 | 11 | 0 | 0 / 3 |
+| **5** | **159** | **2** | **3 / 3** |
+| 6 | 23 or 159 | 0 or 2 | **1 / 3** |
+
+**The threshold at five sessions reproduces deterministically, with the negative control holding 9 out of 9
+below it.** Two caveats belong with that number, not underneath it:
+
+- **Six sessions is flaky here: one pass in three.** AC-1178 reports 153 rounds and 2 loops at six sessions
+  on every repetition. This harness does not reproduce that, and the run says so — the shape test refuses
+  the sweep as a whole (`MALFUNCTION`) because rounds drop from 159 to 23 when a session is added.
+  **That refusal is the machinery working, not a bug in it**, and the discrepancy is a finding for AC-1178
+  rather than something to tune away here.
+- **`worst frame` reads 159 where Avalonia cuts off at 153.** The counter groups `LayoutUpdated` by frame
+  ordinal, so a few rounds either side of the cut-off land in the same bucket. Treat it as "at the cut-off",
+  not as an exact figure.
 
 **Not here yet:** the other six setups from the requirements' acceptance list (`ac1104`, `ac1120`, `ac1125`,
-`ac1169`, `ac1184-heavy`, `ac1119-cpu`), and therefore `C:\temp\cockpit-debug-app` cannot be deleted yet.
+`ac1169`, `ac1184-heavy`, `ac1119-cpu`), and none of AC-1169's three blind spots — operator input, window
+resize, a parked render clock. Therefore `C:\temp\cockpit-debug-app` cannot be deleted yet.

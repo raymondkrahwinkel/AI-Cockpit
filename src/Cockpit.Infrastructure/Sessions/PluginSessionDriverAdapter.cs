@@ -624,7 +624,11 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             yield break;
         }
 
-        var merged = Channel.CreateUnbounded<PluginSessionEvent>(new UnboundedChannelOptions { SingleReader = true });
+        var merged = Channel.CreateBounded<PluginSessionEvent>(new BoundedChannelOptions(4096)
+        {
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.Wait,
+        });
         var pumps = Task.WhenAll(
             _PumpAsync(inner.Events, merged.Writer, cancellationToken),
             _PumpAsync(toolset.Events.Events, merged.Writer, cancellationToken));
@@ -642,7 +646,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         {
             await foreach (var pluginEvent in source.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                destination.TryWrite(pluginEvent);
+                await destination.WriteAsync(pluginEvent, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
