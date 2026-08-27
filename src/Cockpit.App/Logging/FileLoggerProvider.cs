@@ -46,7 +46,8 @@ public sealed class FileLoggerProvider : ILoggerProvider
 
     private void Write(string category, LogLevel level, string message, Exception? exception)
     {
-        var line = $"{DateTimeOffset.Now:HH:mm:ss.fff} [{level}] {category}: {message}";
+        // AC-1147: pid distinguishes two instances of the same build writing to the same file.
+        var line = $"{DateTimeOffset.Now:HH:mm:ss.fff} [pid {Environment.ProcessId}] [{level}] {category}: {message}";
         if (exception is not null)
         {
             line += Environment.NewLine + exception;

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    AC-1147's positive control: a tiny real process that writes log lines through FileLoggerProvider.
+    Not part of Cockpit.slnx on purpose, same as the Diagram plugin build dependency below it in
+    Cockpit.App.ViewTests.csproj — the test locates and runs its build output rather than linking its types.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Cockpit.App/Cockpit.App.csproj" />
+  </ItemGroup>
+
+</Project>
