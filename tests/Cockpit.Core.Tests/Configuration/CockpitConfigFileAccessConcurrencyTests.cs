@@ -122,6 +122,29 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateAsync_WhileReaderHoldsDestination_WaitsAndWrites()
+    {
+        var access = new CockpitConfigFileAccess(ConfigPath);
+        await access.UpdateAsync(
+            config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("seed", new ClaudeConfig("/home/someone/.claude")))],
+            CancellationToken.None);
+
+        using var reader = new FileStream(ConfigPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var write = Task.Run(() => access.UpdateAsync(
+            config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("written", new ClaudeConfig("/home/someone/.claude")))],
+            CancellationToken.None));
+
+        await Task.Delay(100);
+        Assert.False(write.IsCompleted, "the reader holds the replacement destination");
+
+        reader.Dispose();
+        await write;
+
+        var written = await access.ReadAsync(CancellationToken.None);
+        Assert.Single(written!.Profiles, profile => profile.Label == "written");
+    }
+
+    [Fact]
     public async Task UpdateAsync_WhenManyWritersMutateAtOnce_KeepsEveryMutation()
     {
         // AC-1047 criterion 3. Each writer appends its own profile to what it read, which is the read-modify-write
