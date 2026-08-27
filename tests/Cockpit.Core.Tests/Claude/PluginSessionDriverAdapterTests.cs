@@ -9,6 +9,8 @@ using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using System.Reflection;
+using System.Threading.Channels;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -22,6 +24,33 @@ namespace Cockpit.Core.Tests.Claude;
 public class PluginSessionDriverAdapterTests
 {
     private static readonly McpAuthKey _authKey = new();
+
+    [Fact]
+    public async Task EventPump_WaitsForTheBoundedChannelBeforeReadingAnotherPluginEvent()
+    {
+        var produced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var channel = Channel.CreateBounded<PluginSessionEvent>(4096);
+        var pump = typeof(PluginSessionDriverAdapter).GetMethod("_PumpAsync", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var task = (Task)pump.Invoke(null, [_Events(produced), channel.Writer, CancellationToken.None])!;
+
+        await Task.Delay(50);
+        Assert.False(produced.Task.IsCompleted);
+
+        Assert.True(channel.Reader.TryRead(out _));
+        await produced.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await task;
+    }
+
+    private static async IAsyncEnumerable<PluginSessionEvent> _Events(TaskCompletionSource produced)
+    {
+        for (var index = 0; index <= 4096; index++)
+        {
+            yield return null!;
+        }
+
+        produced.TrySetResult();
+        await Task.CompletedTask;
+    }
 
     [Fact]
     public void Capabilities_MapsSupportsToolsAndSupportsPermissionsFromThePluginCapabilities()

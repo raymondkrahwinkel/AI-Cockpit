@@ -175,9 +175,9 @@ internal sealed class SessionRuntime : ISessionRuntime
             {
                 await _pump;
             }
-            catch (OperationCanceledException)
+            catch (Exception)
             {
-                // Expected: cancelling the lifetime is how the pump ends.
+                // Teardown is best-effort: a failed provider stream must not retain the driver or cap.
             }
 
             _pump = null;
@@ -185,16 +185,46 @@ internal sealed class SessionRuntime : ISessionRuntime
 
         if (_driver is not null)
         {
-            await _driver.DisposeAsync();
-            _driver = null;
+            try
+            {
+                await _driver.DisposeAsync();
+            }
+            catch (Exception)
+            {
+                // Best-effort: a failed driver must not retain the remaining session resources.
+            }
+            finally
+            {
+                _driver = null;
+            }
         }
 
         // After the driver, so the job object/cgroup is empty by the time it is released.
-        _memoryCap?.Dispose();
-        _memoryCap = null;
+        try
+        {
+            _memoryCap?.Dispose();
+        }
+        catch (Exception)
+        {
+            // Best-effort teardown continues with the lifetime.
+        }
+        finally
+        {
+            _memoryCap = null;
+        }
 
-        _lifetime?.Dispose();
-        _lifetime = null;
+        try
+        {
+            _lifetime?.Dispose();
+        }
+        catch (Exception)
+        {
+            // Best-effort teardown has no remaining resources to retain.
+        }
+        finally
+        {
+            _lifetime = null;
+        }
     }
 
     private async Task _PumpEventsAsync(CancellationToken cancellationToken)
@@ -214,6 +244,15 @@ internal sealed class SessionRuntime : ISessionRuntime
         catch (OperationCanceledException)
         {
             // Expected on shutdown.
+            return;
+        }
+        catch (Exception exception)
+        {
+            _Publish(new SessionError
+            {
+                SessionId = _lastSessionId,
+                Message = $"This session's provider stream ended in an error: {exception.Message}",
+            });
             return;
         }
 
