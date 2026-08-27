@@ -4,12 +4,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Logging;
 
-// A minimal append-to-file `ILoggerProvider` so the app has a readable log when it runs
-// detached (double-clicked / Start-Process) — where there is no console to capture. Writes are
-// serialized behind a lock; the file is truncated at startup so each run starts clean. Deliberately
-// tiny: a single-user desktop tool's diagnostic trail, not a logging framework — but size-bounded
-// (AC-741), same rollover shape as `UsageHistoryLog` (AC-399): a long, uninterrupted run (e.g.
-// diagnostic snapshots left on for days) would otherwise grow the file without a ceiling.
+// Minimal locked file logging for detached launches that have no console. Each startup truncates the log, while
+// rollover bounds growth during long runs (AC-741), following `UsageHistoryLog` (AC-399).
 public sealed class FileLoggerProvider : ILoggerProvider
 {
     // The live file rolls to `.1` once it reaches this size. Named constant so the trade-off (disk

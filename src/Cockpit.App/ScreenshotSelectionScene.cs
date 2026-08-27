@@ -9,13 +9,8 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.App;
 
-// The selection surface as scenes for the screenshot harness (AC-357), one per mode it can be in. Nothing here
-// changes what an operator sees; it exists so the surface can be looked at without a display and without anyone
-// present — which every other window in this app could already be, and this one could not.
-// The modes are reached by driving the window's own input handling rather than by setting the view model,
-// because a mode nobody can get to is not a mode. That is the whole reason this scene is worth having: the
-// surface once shipped unable to open at all while 152 view tests stayed green, every one of them stopping at
-// the arithmetic. A render of a posed view model would have stayed green too.
+// Headless harness scenes drive the surface's real input paths, because posing its view model would not prove a
+// mode is reachable. That gap once let a surface that could not open pass 152 view tests (AC-357).
 internal static class ScreenshotSelectionScene
 {
     // The resting surface: the frozen desktop, nothing marked out, the hint above it.
@@ -64,10 +59,8 @@ internal static class ScreenshotSelectionScene
     // whether the control panel found the screen the operator is actually on (AC-358).
     public const string TwoDisplays = "screenshot-selection-two-displays";
 
-    // How much bigger the stand-in capture is than the surface drawing it. Two, rather than one, so the ratio
-    // between window units and image pixels is not 1: a capture the same size as its window makes every
-    // conversion look right whether or not it is, and a surface that only worked at 1 is how AC-329 came to
-    // refuse every drag past two thirds of a scaled screen.
+    // Keep image pixels at 2x window units so coordinate conversion cannot pass accidentally at a 1:1 ratio, the
+    // failure that made scaled-screen drags stop at two thirds (AC-329).
     private const int CaptureScale = 2;
 
     // This surface's scene names. One list rather than a name test written out a second time, so a mode that is
@@ -173,21 +166,16 @@ internal static class ScreenshotSelectionScene
                 // under the wash survived it.
                 _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
                 surface.KeyPressQwerty(PhysicalKey.H, RawInputModifiers.None);
-                // Taken from a line low enough to clear the control panel: a press on the panel belongs to the
-                // panel, so a band begun under it is a band that never gets drawn at all. 0.305 cleared it at the
-                // 1440x900 the view tests use and did not at the 1100x760 a render defaults to, so this one is
-                // measured off the panel too: the scene had been rendering one band, over the terminal, which is
-                // the half that shows the tool works and not the half that shows it stays readable.
+                // Measure below the fixed-size panel rather than using a window fraction that clears it only at
+                // 1440x900; otherwise the document band silently disappears at the 1100x760 render size.
                 var band = _ClearOfTheControls(surface, height * 0.42);
                 _Drag(surface, new Point(width * 0.56, band), new Point(width * 0.90, band + (height * 0.045)));
                 _Drag(surface, new Point(width * 0.56, height * 0.625), new Point(width * 0.90, height * 0.675));
                 break;
 
             case Redaction:
-                // A region first: redaction is refused until there is something to hide part of, so a scene that
-                // skipped this would render the refusal rather than the mode. Taken from high enough up to run
-                // under where the control panel rests, so this is also the scene that shows the panel staying
-                // there — it does not step aside, and a scene where nothing reaches it could not show that.
+                // Redaction requires a region first; run it under the panel to prove both the mode and that the
+                // panel stays put rather than stepping aside.
                 _Drag(surface, new Point(width * 0.14, height * 0.06), new Point(width * 0.86, height * 0.86));
                 surface.KeyPressQwerty(PhysicalKey.B, RawInputModifiers.None);
                 _Drag(surface, new Point(width * 0.20, height * 0.30), new Point(width * 0.44, height * 0.35));
@@ -198,16 +186,8 @@ internal static class ScreenshotSelectionScene
         _AssertStaged(surface, scene);
     }
 
-    // How many marks each scene's staging has to leave behind. Everything above is driven through the pointer, so
-    // a press that lands somewhere it is not wanted is simply lost, and the scene then renders perfectly well and
-    // one mark short — looking like a tool that works. Two scenes were doing exactly that at the size a render
-    // defaults to: the note scene pressed its first note inside the control panel, so no note opened, the text
-    // that followed ran as shortcuts and Enter took the shot; and the highlighter lost the band over the
-    // document, leaving the one over the terminal.
-    //
-    // Both went unseen because the view tests stage at 1440x900 and a render defaults to 1100x760, and every
-    // position here is a fraction of the window while the panel it has to miss is a fixed size. So this is
-    // checked against the surface that was actually staged, rather than reasoned about from the numbers.
+    // Assert staged mark counts because pointer presses that hit the fixed-size panel are silently lost. This
+    // caught note/highlighter scenes that passed at the 1440x900 test size but rendered short at 1100x760.
     private static readonly Dictionary<string, int> StagedMarks = new(StringComparer.Ordinal)
     {
         [Marks] = 2,
@@ -237,10 +217,8 @@ internal static class ScreenshotSelectionScene
         }
     }
 
-    // A y far enough down to be clear of the control panel, whatever size the surface came up at. Every position
-    // in a scene is a fraction of the window and the panel is a fixed size, so a fraction that misses it at one
-    // size lands inside it at another — which is how two scenes came to stage marks that were never drawn, and
-    // why this is measured off the panel rather than tuned until the default size looked right.
+    // Derive y from the fixed-size panel, because a window fraction can clear it at one surface size and hit it at
+    // another, silently dropping staged marks.
     private static double _ClearOfTheControls(ScreenshotSelectionWindow surface, double preferred)
     {
         // The panels are placed once the surface has a region to place them against, and their bounds are whatever
@@ -304,10 +282,8 @@ internal static class ScreenshotSelectionScene
         surface.MouseUp(to, MouseButton.Left);
     }
 
-    // The displays the stand-in image is made of: one holding all of it, or two side by side splitting it down
-    // the middle. One is enough for everything that is only about how the surface looks; two is what the control
-    // panel needs, since its whole job is to be on the screen the operator is on rather than in the middle of a
-    // window that spans them all.
+    // Use one display for appearance scenes and two for control-panel placement, whose purpose is to follow the
+    // operator's screen rather than center across the combined window.
     private static ScreenCapture _Capture(CaptureRect desktop, PixelSize image, bool split) => new()
     {
         // The bytes are never decoded: the surface is handed the bitmap directly, and this only has to say where

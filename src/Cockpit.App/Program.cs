@@ -40,53 +40,33 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // Installing, updating and uninstalling all re-run this executable with arguments Velopack owns, and this
-        // call is what handles them and ends the process (AC-385). It is deliberately the first statement in Main:
-        // anything placed above it runs during every one of those passes, in a window nobody sees — a second
-        // cockpit claiming the single-instance lock mid-update, plugins being installed by an installer, a log
-        // being truncated.
-        //
-        // Auto-apply only when the operator asked for it (AC-738): applying is an action they take, and this same
-        // executable is re-run as the headless children below. On an ordinary launch this still reads the
-        // installation on disk — it is not a no-op — and then returns.
+        // Velopack must run first so its headless install/update passes cannot touch ordinary startup state
+        // (AC-385). Auto-apply only on the operator's request, never for the headless children below (AC-738).
         VelopackApp.Build().SetAutoApplyOnStartup(_AppliesAStagedUpdate(args)).Run();
 
-        // Headless calibration child (AC-68): a measurement of one Whisper backend, spawned by the running cockpit
-        // because Whisper.net loads its native runtime once per process. This must be the very first thing Main
-        // does — before the single-instance guard (which would refuse a second cockpit), before Avalonia, plugins
-        // and DI — so the child pays for none of that and only measures, prints its result, and exits.
+        // Run Whisper calibration before the single-instance guard and app stack so its one-runtime-per-process
+        // native load can measure, print, and exit in an isolated child (AC-68).
         if (Cockpit.Infrastructure.Voice.HeadlessCalibration.IsRequested(args))
         {
             Environment.Exit(Cockpit.Infrastructure.Voice.HeadlessCalibration.RunAsync(args, CancellationToken.None).GetAwaiter().GetResult());
             return;
         }
 
-        // Headless dictation worker (AC-174): the transcription child the running cockpit spawns so Whisper's native
-        // runtime — which can abort() and take a process down — loads here, isolated, instead of in the desktop. Same
-        // reason and same placement as the calibration child above: before the single-instance guard, Avalonia and DI,
-        // none of which a transcription worker should pay for. A native crash in here kills only this child.
+        // Run dictation before the guard and app stack so Whisper's abort-prone native runtime is isolated in a
+        // cheap child whose crash cannot take down the desktop (AC-174).
         if (Cockpit.Infrastructure.Voice.HeadlessDictation.IsRequested(args))
         {
             Environment.Exit(Cockpit.Infrastructure.Voice.HeadlessDictation.RunAsync(args, CancellationToken.None).GetAwaiter().GetResult());
             return;
         }
 
-        // Strip everything the host owns from this process's own environment before Avalonia starts or anything
-        // spawns a child: the agent-session markers of a Claude Code session the cockpit may have been launched
-        // from (else a spawned session adopts the parent's id — AC-42), the host terminal's self-identification
-        // (which drew every line underlined under Ghostty — #58), and any inherited Anthropic credential. Doing it
-        // once here means every spawn route inherits a clean base rather than each re-deriving its own scrub.
+        // Scrub inherited session identity (AC-42), terminal identity (#58), and credentials before any spawn.
+        // Doing it once gives every route the same clean environment.
         ScrubInheritedHostEnvironment();
 
-        // Only one cockpit at a time (AC-4). This goes first because the housekeeping directly below it deletes
-        // --mcp-config files, and the bundled-plugin install further down deletes plugin directories: run those
-        // in a second cockpit and they take them out from under the sessions of the first, which is still using
-        // them. A development build is exempt and keeps its state elsewhere — see CockpitBuild.
-        //
-        // A restart is the one case where two cockpits overlapping is intended: AppRestartService launches the new
-        // one before the old one has finished shutting down and released the claim. It marks that launch, and the
-        // new instance waits out the brief handoff instead of losing the race and refusing to start — the exit
-        // watchdog bounds the old side to a few seconds, so RestartHandoffWait comfortably covers it.
+        // Acquire before housekeeping or plugin installation can delete files used by another cockpit (AC-4).
+        // Development uses separate state; a marked restart waits through the intentional old/new overlap bounded
+        // by the exit watchdog.
         var restartHandoff = args.Contains(AppRestartService.RestartArgument);
         using var singleInstance = SingleInstanceGuard.TryAcquire(
             CockpitBuild.IsDevelopment,
@@ -103,10 +83,8 @@ sealed class Program
         // TERM_PROGRAM or TMUX. Set before anything can spawn a session.
         MarkCockpitEnvironment();
 
-        // Before anything reads or writes the cockpit's state: restrict the files an older version left
-        // world-readable, and delete the --mcp-config files (bearer headers and all) that a crash or that same
-        // older version left behind. Both must happen on every start, not when some lazily-built service
-        // happens to be constructed.
+        // Before any state access, restrict legacy world-readable files and remove crash-left --mcp-config files
+        // containing bearer headers. Run every startup rather than waiting for lazy service construction.
         CredentialFileHousekeeping.Run();
 
         var logPath = CockpitBuild.LogPath;
@@ -142,26 +120,17 @@ sealed class Program
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(Program).Assembly);
 
-        // #14 Plugins — phase 1, before the container is built: discover the plugins installed next to
-        // cockpit.json and let each load-decided plugin register its own services. The manager isolates a
-        // plugin that fails to load or configure; a discovery failure leaves the app running without plugins.
-        //
-        // AC-478 safe mode: a command-line switch, consistent with this file's other one-shot startup flags
-        // (--screenshot, --audio-spike) rather than an env var or a settings-file toggle — the whole point is a
-        // way in that does not depend on any UI (including the settings screen a broken plugin might have
-        // wedged) rendering successfully first. Discovery still runs below (a pending removal must still apply,
-        // and the operator still needs Plugin manager to see what is installed); only PluginManager's load
-        // phase is skipped.
+        // Discover plugins before building the container so selected plugins can register services (#14), with
+        // failures isolated. Safe mode is a UI-independent command-line escape hatch that still discovers plugins
+        // for pending removals and management, but skips loading them (AC-478).
         var safeMode = args.Contains(PluginManager.SafeModeArgument);
         var pluginDiagnostics = new PluginDiagnostics();
         services.AddSingleton(pluginDiagnostics);
         var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), pluginDiagnostics, safeMode);
         try
         {
-            // The plugins this build ships (transcript search, git status) are put in place before discovery, so
-            // they are simply there on first run — no install step for something that used to be a core feature.
-            // Failing to install one must not cost the operator the plugins they installed themselves, so this
-            // is best-effort and discovery runs regardless.
+            // Install bundled former-core plugins before discovery for first-run availability. This is best-effort
+            // so failure cannot hide operator-installed plugins.
             _InstallBundledPlugins(loggerFactory);
 #if DEBUG
             // Dev inner loop only: replace already-installed first-party plugins with their freshly built bytes,
@@ -241,12 +210,8 @@ sealed class Program
         var hostedServices = Services.GetServices<IHostedService>().ToArray();
         StartHostedServices(hostedServices);
 
-        // Reconcile the worktree registry against a fresh start (AC-85/AC-410), and fold duplicate session-state
-        // records left by earlier runs (AC-409) — both against the same roster of AI-session panes cockpit.json
-        // still names, so a worktree or a state record belonging to a pane a restore may yet bring back is never
-        // treated as orphaned just because nothing has rebuilt it into a live session yet. One fire-and-forget task
-        // for both, handed to IWorktreeReconcileGate before its own body starts running (see the method) so a
-        // restore that reaches the gate finds this task waiting rather than a stale "already complete" placeholder.
+        // Reconcile worktrees and compact state against one saved-pane roster so restorable panes are not treated
+        // as orphans (AC-85/AC-409/AC-410). Register the shared task with the gate before it starts so restore waits.
         var reconcileGate = Services.GetRequiredService<IWorktreeReconcileGate>();
         var reconcileWorktreesAndCompactState = ReconcileWorktreesAndCompactStateAsync(
             Services.GetRequiredService<IWorktreeManager>(),
@@ -260,11 +225,8 @@ sealed class Program
         // entries — a clone folder that still exists is never deleted, because it may hold uncommitted work.
         _ = Services.GetRequiredService<IRepositoryCloneManager>().ReconcileAsync();
 
-        // Global UI-thread safety net: a plugin body — or any dispatcher work — that throws while rendering must never
-        // take the whole cockpit down with it (a render exception in one workspace was tearing the process down). Log it
-        // and mark it handled so the app keeps running: the surface that threw fails on its own, every other session,
-        // terminal and workspace survives. A genuinely fatal condition still ends the process through other paths; this
-        // only stops a recoverable UI exception from being terminal.
+        // Log and handle recoverable dispatcher/render exceptions so one plugin surface cannot take down every
+        // session and workspace. Fatal conditions still exit through their own paths.
         Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
         {
             var logger = Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.UIThread");
@@ -290,35 +252,20 @@ sealed class Program
             // never reached here: nothing in the process asked to shut down, so it was ended from outside.
             Cockpit.App.Logging.LifecycleLog.Write("Desktop lifetime ended; tearing down sessions and exiting.");
 
-            // A background watchdog guarantees the process dies promptly even if a teardown step
-            // wedges — the exit must never hang again (bug #32). It fires a hard exit after a short
-            // deadline; the child claude processes are killed in DisposeCockpit first, so nothing is
-            // orphaned.
-            //
-            // AC-956: the watchdog's deadline and the teardown's own budget are derived from one another rather
-            // than written twice. They used to be 4 seconds and 10, which meant the watchdog always won and
-            // teardown was cut off at whatever it was doing at 4 — in practice its tail, where a session deletes
-            // the temp files it wrote. Five days of leftover mcp-configs (28 of them holding a bearer header)
-            // were the visible half of that. The exit stays as prompt as it was; what changed is that the
-            // teardown now gets a budget it can actually finish inside, and cannot silently outlive it.
+            // A hard-exit watchdog bounds wedged teardown (#32), after bounded child cleanup. Deriving its deadline
+            // from the teardown budget prevents the old 4s/10s mismatch from cutting off credential-file cleanup
+            // while preserving prompt exit (AC-956).
             StartExitWatchdog(TeardownBudget + TimeSpan.FromSeconds(1));
 
-            // Kill the child claude processes (DisposeCockpit is internally bounded), then hard-exit.
-            // We deliberately do NOT gracefully stop the MCP host: its Kestrel StopAsync was seen to
-            // block for minutes at "Application is shutting down..." draining a lingering SSE stream
-            // (ignoring its cancellation token), and a graceful drain buys nothing before
-            // Environment.Exit — the OS reclaims the loopback socket and its OS-assigned port on
-            // process death. Environment.Exit also sidesteps the singleton SoundFlow AudioEngine's
-            // native-thread dispose, which can itself hang on the miniaudio join.
+            // After bounded child cleanup, hard-exit: Kestrel StopAsync can ignore cancellation while draining SSE,
+            // and SoundFlow native disposal can hang. The OS reclaims the loopback socket anyway.
             DisposeCockpit();
             Environment.Exit(0);
         }
     }
 
-    // Whether this launch applies the package the operator asked for on their last visit (AC-738). Ruled out for the
-    // headless children this executable is re-run as, and for a launch that will stand down against a cockpit that is
-    // already running — applying force-stops that one. The request is taken last, so a launch that cannot use it
-    // leaves it for the one that can.
+    // Apply an operator-requested package only from a usable desktop launch, never a headless child or one that
+    // will yield to an existing cockpit. Take the request last so an ineligible launch leaves it pending (AC-738).
     private static bool _AppliesAStagedUpdate(string[] args) =>
         !Cockpit.Infrastructure.Voice.HeadlessCalibration.IsRequested(args)
         && !Cockpit.Infrastructure.Voice.HeadlessDictation.IsRequested(args)
@@ -404,10 +351,8 @@ sealed class Program
         }
     }
 
-    // AC-410: the worktree reconcile and the session-state compaction both need "which AI-session panes will this
-    // start offer back" — SessionRestoreRoster.PaneIdsAsync reads that once from cockpit.json, so the two cannot
-    // each derive a different answer (and, unlike before panes were persisted, compaction can now safely drop a
-    // pane's state instead of never dropping any).
+    // Read the saved AI-pane roster once so worktree reconciliation and state compaction cannot disagree, and
+    // compaction can safely drop state for panes that will not be restored (AC-410).
     private static async Task ReconcileWorktreesAndCompactStateAsync(
         IWorktreeManager worktreeManager,
         ISessionStateStore sessionStateStore,
@@ -415,10 +360,8 @@ sealed class Program
     {
         var restorablePaneIds = await SessionRestoreRoster.PaneIdsAsync(workspaceSettingsStore).ConfigureAwait(false);
 
-        // Reconcile the worktree registry against a fresh start (AC-85): no session is alive yet, so a worktree
-        // outside this roster is orphaned — a clean one is removed with its branch, one that holds work is kept
-        // and marked retained, and git's stale admin entries are pruned. A worktree the roster does name survives
-        // even though nothing has rebuilt its pane into a live session yet — a restore may still reattach it.
+        // At fresh start, retain roster worktrees for possible restore; outside it, remove clean worktrees, retain
+        // dirty ones, and prune stale Git metadata (AC-85).
         await worktreeManager.ReconcileAsync(restorablePaneIds).ConfigureAwait(false);
 
         // Fold duplicate session-state records left by earlier runs (AC-409), now against the same roster: a pane
@@ -427,10 +370,8 @@ sealed class Program
         await sessionStateStore.CompactAsync(restorablePaneIds).ConfigureAwait(false);
     }
 
-    // Belt-and-suspenders against a wedged shutdown: a background thread that hard-exits after a
-    // deadline no matter what the main-thread teardown is doing. This is the "hard exit after a
-    // graceful timeout" fallback the earlier #32 work anticipated — with it the process can never
-    // linger at "Application is shutting down..." again.
+    // A background hard-exit deadline ensures main-thread teardown cannot leave the process lingering at
+    // "Application is shutting down..." (#32).
     private static void StartExitWatchdog(TimeSpan deadline)
     {
         var watchdog = new Thread(() =>
@@ -499,21 +440,9 @@ sealed class Program
     }
 #endif
 
-    // Removes from this process's own environment everything the host owns and must not hand down to a spawned
-    // child (see the call in Main) — the same set TtyEnvironment scrubs for the claude pty, applied once here so
-    // every spawn route (TTY, SDK, MCP stdio) inherits a clean base instead of each re-deriving its own scrub with
-    // different coverage (AC-42). That set is:
-    //   - the markers of the agent session the cockpit was launched from (CLAUDECODE / CLAUDE_CODE_* /
-    //     CLAUDE_AGENT_*): an inherited CLAUDE_CODE_SESSION_ID makes a child adopt the parent's session id and
-    //     write its turns into the parent's transcript (AC-42). CLAUDE_CONFIG_DIR is deliberately not in this set
-    //     and is re-applied per profile;
-    //   - the host terminal's self-identification (TERM_PROGRAM(_VERSION), GHOSTTY_*): the pty child is rendered by
-    //     Cockpit's own Exclr8 emulator, and a leaked TERM_PROGRAM=ghostty caused every line to draw underlined (#58);
-    //   - any inherited Anthropic credential (ANTHROPIC_*): one that reaches the CLI silently moves the session onto
-    //     API-key billing.
-    // A normal desktop launch has none of these set, so this is a no-op there; it bites exactly when the cockpit is
-    // started from a shell that exports one. TERM is normalised to a generic terminfo name so the render is
-    // terminal-independent. COLORTERM is deliberately left untouched — a generic truecolor signal, not an identity.
+    // Scrub host session markers (prevent transcript adoption, AC-42), terminal identity (prevent Ghostty styling,
+    // #58), and inherited Anthropic credentials (prevent silent API billing) for every spawn route. Preserve
+    // per-profile CLAUDE_CONFIG_DIR and generic COLORTERM; normalize TERM for terminal-independent rendering.
     private static void ScrubInheritedHostEnvironment()
     {
         var markers = new List<string>();
@@ -542,10 +471,8 @@ sealed class Program
         }
     }
 
-    // Presence signal for nested agents (#45 D4 follow-up): a bare AI_COCKPIT=1, no version or per-session detail —
-    // a consumer keys off the variable existing. Via ProcessEnvironment so it lands in the native environment too,
-    // which is what a spawned process inherits whichever path launches it; every session spawn inherits this
-    // process's environment, so this one assignment reaches all of them (Claude CLI, Codex app-server, TTY).
+    // A bare native-process AI_COCKPIT presence signal reaches every nested agent regardless of spawn path; callers
+    // depend only on existence, not version or session detail (#45 D4 follow-up).
     private static void MarkCockpitEnvironment() => ProcessEnvironment.Assign("AI_COCKPIT", "1");
 
     // Avalonia configuration, don't remove; also used by visual designer.
@@ -560,11 +487,8 @@ sealed class Program
             .With(CockpitFontOptions())
             .LogToTrace();
 
-        // AC-57/AC-67: force a non-default macOS render backend when the operator picked one in Options (or set
-        // COCKPIT_RENDER_BACKEND, which wins), otherwise leave UsePlatformDetect()'s Metal auto-selection alone.
-        // The config is read directly here because this runs before the DI host; AvaloniaNativePlatformOptions is
-        // read only by the macOS backend, so applying it is inert on Windows/Linux. This is what lets a tester run
-        // the same build on OpenGL/Software to isolate whether Metal drives the runaway native-memory growth.
+        // Before DI, honor COCKPIT_RENDER_BACKEND or the saved macOS override while leaving default Metal detection
+        // alone. The inert-on-other-platforms option enables same-build Metal memory comparisons (AC-57/AC-67).
         if (RenderBackendOverride.Resolve(RenderBackendConfig.Read()) is { } selection)
         {
             builder = builder.With(new AvaloniaNativePlatformOptions { RenderingMode = [.. selection.Modes] });
@@ -573,10 +497,8 @@ sealed class Program
         return builder;
     }
 
-    // Emoji fallback so Claude's ✅/🔧/📊/⚠️ render as glyphs instead of tofu boxes — the UI fonts
-    // (Inter, Cascadia Mono) carry no emoji. Skia picks the first installed family per platform
-    // (Segoe UI Emoji on Windows, Noto Color Emoji on Linux, Apple Color Emoji on macOS). Shared so
-    // the headless Screenshotter renders the same fallbacks it verifies against.
+    // Add platform emoji fallbacks because Inter/Cascadia Mono lack those glyphs. Share the setup so headless
+    // Screenshotter verifies the same font selection as the UI.
     internal static FontManagerOptions CockpitFontOptions() => new()
     {
         FontFallbacks =

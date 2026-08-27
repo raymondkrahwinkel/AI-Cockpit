@@ -3,13 +3,8 @@ using System.Text;
 
 namespace Cockpit.App.Diagnostics;
 
-// DEBUG-only leak instrumentation. Every registered instance is held by a WeakReference; ReportAfterGc forces a
-// full GC and counts how many of each type are still alive. A type whose alive-count climbs without bound over a
-// session is leaking. Compiled out of Release entirely (the whole file is #if DEBUG), so production is untouched.
-//
-// Wired from the constructors of the types the heap dumps flagged (TranscriptRowView, MarkdownView, SessionView,
-// SessionViewModel). DiagnosticsBackgroundService logs the report every ~10 s to cockpit.log, so a real session
-// leaves a live trail: watch `leaktrack` lines climb, then gcroot the survivor in a dump to find its real root.
+// DEBUG-only weak-reference tracking for heap-dump suspects; rising `leaktrack` counts identify survivors to
+// inspect with gcroot. DiagnosticsBackgroundService logs it every ~10 s, while Release compiles it out entirely.
 internal static class LeakTracker
 {
     private static readonly object Gate = new();
