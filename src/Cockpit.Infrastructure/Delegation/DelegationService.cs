@@ -599,13 +599,22 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             return false;
         }
 
-        // Compared on the resolved full path, so "allowed/../../etc" cannot walk out of an allowed directory.
-        var requested = Path.GetFullPath(workingDirectory);
+        // Compared on the path the filesystem itself resolves, so neither "allowed/../../etc" nor a symlink
+        // pointing out of an allowed directory walks out of one. AC-1160: the comparison is `Ordinal` because
+        // the case folding has already happened -- on the volumes that do it, and only there.
+        if (FilesystemPath.Canonicalize(workingDirectory) is not { } requested)
+        {
+            // A link chain that never came to rest. Refused rather than judged on how far it got, because the
+            // OS follows the whole chain at spawn time and would land wherever its far end actually points.
+            return false;
+        }
+
         return allowed.Any(root =>
         {
-            var allowedRoot = Path.GetFullPath(root);
-            return requested.Equals(allowedRoot, StringComparison.OrdinalIgnoreCase) ||
-                   requested.StartsWith(allowedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            var allowedRoot = FilesystemPath.Canonicalize(root);
+            return allowedRoot is not null &&
+                   (requested.Equals(allowedRoot, StringComparison.Ordinal) ||
+                    requested.StartsWith(allowedRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal));
         });
     }
 
