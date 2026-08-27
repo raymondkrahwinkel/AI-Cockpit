@@ -25,6 +25,10 @@ public sealed class FileLoggerProvider : ILoggerProvider
         // Owner-only, dir and file (AC-46): the log lives under the state root beside the credential files, and a
         // stock umask would otherwise leave it world-readable. This truncates for a clean run; Write only appends
         // afterwards, so the restricted mode set here carries for the life of the file.
+        //
+        // AC-1216: that truncate also wipes a running instance's live log if a second instance shares its state
+        // root. AC-1214's COCKPIT_STATE_ROOT override removes this for an instance that opts in (AC-1217 tracks
+        // the rest); not addressed here — a lock of our own would just be a second, competing isolation mechanism.
         CredentialFileHousekeeping.PrepareLogFile(path);
     }
 
@@ -56,7 +60,34 @@ public sealed class FileLoggerProvider : ILoggerProvider
         lock (_writeGate)
         {
             _RollIfOverLimit();
-            File.AppendAllText(_path, line + Environment.NewLine);
+            _AppendWithRetry(line + Environment.NewLine);
+        }
+    }
+
+    // AC-1216: a logging call must never throw. A short retry absorbs a transient sharing violation from a
+    // second process writing the same file; it runs inside _writeGate, so the ceiling stays low (5 attempts,
+    // 2ms apart, ~10ms) — past it this swallows like _RollIfOverLimit, a dropped line beats a stalled thread.
+    private void _AppendWithRetry(string line)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.AppendAllText(_path, line);
+                return;
+            }
+            catch (IOException) when (attempt < 5)
+            {
+                Thread.Sleep(2);
+            }
+            catch (IOException)
+            {
+                return;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return;
+            }
         }
     }
 

@@ -38,28 +38,11 @@ internal static class Program
             }
         }
 
+        // AC-1216: the retry that used to live here belongs in FileLoggerProvider.Write itself — every
+        // caller of a shared log line needs it, not just this probe. No workaround left to do here.
         for (var i = 0; i < LineCount; i++)
         {
-            _WriteWithRetry(logger, label, i);
-        }
-    }
-
-    // Two processes appending to the same file can hit a transient sharing violation if their writes land in
-    // the same instant — an existing trait of File.AppendAllText, not something this ticket changes. A real
-    // multi-writer client would retry, so the probe does too.
-    private static void _WriteWithRetry(ILogger logger, string label, int index)
-    {
-        for (var attempt = 1; ; attempt++)
-        {
-            try
-            {
-                logger.LogInformation("probe {Label} line {Index}", label, index);
-                return;
-            }
-            catch (IOException) when (attempt < 20)
-            {
-                Thread.Sleep(5);
-            }
+            logger.LogInformation("probe {Label} line {Index}", label, i);
         }
     }
 }
