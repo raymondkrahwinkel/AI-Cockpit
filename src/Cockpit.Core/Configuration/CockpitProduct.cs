@@ -13,4 +13,8 @@ public static class CockpitProduct
 
     // Both halves, for the places that have a single string to put a name in.
     public const string DisplayName = $"{Brand} {Product}";
+
+    public static string WindowTitle => WindowTitleFor(CockpitBuild.IsDevelopment);
+
+    public static string WindowTitleFor(bool isDevelopment) => isDevelopment ? $"{DisplayName} — DEV" : DisplayName;
 }

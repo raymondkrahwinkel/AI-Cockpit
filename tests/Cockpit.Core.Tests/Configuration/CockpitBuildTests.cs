@@ -14,6 +14,14 @@ namespace Cockpit.Core.Tests.Configuration;
 /// </remarks>
 public sealed class CockpitBuildTests
 {
+    [Theory]
+    [InlineData(true, "Wispslate Cockpit — DEV")]
+    [InlineData(false, "Wispslate Cockpit")]
+    public void WindowTitleFor_MarksOnlyDevelopmentBuilds(bool isDevelopment, string expected)
+    {
+        Assert.Equal(expected, CockpitProduct.WindowTitleFor(isDevelopment));
+    }
+
     [Fact]
     public void StateFolders_ForDevelopmentAndProduction_AreDifferentDirectories()
     {

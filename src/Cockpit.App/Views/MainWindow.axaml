@@ -11,7 +11,7 @@
         Icon="/Assets/AppIcon.ico"
         Width="1280" Height="820" MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen"
-        Title="{x:Static config:CockpitProduct.DisplayName}">
+        Title="{x:Static config:CockpitProduct.WindowTitle}">
 
     <Design.DataContext>
         <!-- This only sets the DataContext for the previewer in an IDE,
