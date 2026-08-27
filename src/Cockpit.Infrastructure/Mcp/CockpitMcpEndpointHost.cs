@@ -267,14 +267,27 @@ internal sealed class CockpitMcpEndpointHost
     // The generic WithTools<TToolType>(builder, TToolType target, JsonSerializerOptions?) overload — the one that
     // registers a pre-built instance. Reached by reflection because the tools type is only known at runtime (a
     // plugin's), and the SDK exposes no non-generic "register this instance" overload for a runtime Type.
-    private static readonly MethodInfo _WithToolsGeneric = typeof(McpServerBuilderExtensions).GetMethods()
-        .Single(method => method.Name == "WithTools"
-            && method.IsGenericMethodDefinition
-            && method.GetParameters() is { Length: 3 } parameters
-            && parameters[1].ParameterType.IsGenericMethodParameter);
-
     private static void _WithToolsInstance(IMcpServerBuilder mcpBuilder, object tools) =>
-        _WithToolsGeneric.MakeGenericMethod(tools.GetType()).Invoke(null, [mcpBuilder, tools, null]);
+        ResolveWithToolsGeneric(typeof(McpServerBuilderExtensions)).MakeGenericMethod(tools.GetType()).Invoke(null, [mcpBuilder, tools, null]);
+
+    internal static MethodInfo ResolveWithToolsGeneric(Type extensionsType)
+    {
+        var methods = extensionsType.GetMethods();
+        var matches = methods.Where(method => method.Name == "WithTools"
+                && method.IsGenericMethodDefinition
+                && method.GetParameters() is { Length: 3 } parameters
+                && parameters[1].ParameterType.IsGenericMethodParameter)
+            .ToArray();
+        if (matches.Length == 1)
+        {
+            return matches[0];
+        }
+
+        var overloads = methods.Where(method => method.Name == "WithTools")
+            .Select(method => $"{method.Name}({string.Join(", ", method.GetParameters().Select(parameter => parameter.ParameterType.Name))})")
+            .DefaultIfEmpty("none");
+        throw new InvalidOperationException($"Could not resolve the generic WithTools(builder, target, options) overload in {extensionsType.FullName}. Found WithTools overloads: {string.Join("; ", overloads)}.");
+    }
 
     // Turns a marshalling failure (a missing required argument, or one that will not deserialize) into a tool
     // result the calling agent can act on (AC-1028). The parameter list comes from the tool's own advertised
