@@ -19,6 +19,23 @@ set -euo pipefail
 base="${1:?usage: check-plugin-versions.sh <base-ref> [head-ref]}"
 head="${2:-HEAD}"
 
+# Git Bash can misread a Windows worktree's gitdir as a converted path. Do not
+# let `set -e` turn that into a quiet, unlabelled exit: a guard that did not run
+# is a failed guard, never a clean one.
+git_or_fail() {
+  local output status
+  output="$(git "$@" 2>&1)" || {
+    status=$?
+    printf 'FAIL: check-plugin-versions.sh could not run git %q (exit %s).\n' "$1" "$status" >&2
+    printf 'The plugin version guard did not run; fix the Git/worktree setup and retry.\n' >&2
+    [ -z "$output" ] || printf '%s\n' "$output" >&2
+    return "$status"
+  }
+  printf '%s' "$output"
+}
+
+git_or_fail rev-parse --is-inside-work-tree >/dev/null || exit 2
+
 # The version as the manifest carries it at a given commit, or empty when the plugin did not exist there.
 # Deliberately grep/sed rather than jq: this runs on developer machines too, and a guard that needs a tool
 # the developer lacks is a guard that gets skipped. "version" is matched with its opening quote, so
@@ -58,19 +75,19 @@ for dir in plugins-dev/Cockpit.Plugin.*/; do
   # of their own: a directory pathspec matches on "<dir>/", so Cockpit.Plugin.Foo never picks up
   # Cockpit.Plugin.Foo.Tests (verified, not assumed). An extra grep here would look like protection and catch
   # nothing, which is worse than no guard. Markdown is excluded because a README is not in the zip.
-  changed="$(git diff --name-only "$base" "$head" -- "$dir" ':!*.md')"
+  changed="$(git_or_fail diff --name-only "$base" "$head" -- "$dir" ':!*.md')" || exit 2
 
   # A plugin that links shared source (plugins-dev/_shared, AC-964) ships that code inside its own dll, so a
   # change there changes what it publishes just as surely as a change in its own folder — and the pathspec above
   # cannot see it. Only the plugins whose project actually names the file are affected.
   if grep -q '_shared' "$dir"/*.csproj 2>/dev/null; then
-    changed="${changed}$(git diff --name-only "$base" "$head" -- plugins-dev/_shared ':!*.md')"
+    changed="${changed}$(git_or_fail diff --name-only "$base" "$head" -- plugins-dev/_shared ':!*.md')" || exit 2
   fi
 
   [ -n "$changed" ] || continue
 
-  before="$(manifest_version "$base" "$manifest")"
-  after="$(manifest_version "$head" "$manifest")"
+  before="$(manifest_version "$base" "$manifest")" || exit 2
+  after="$(manifest_version "$head" "$manifest")" || exit 2
 
   # A plugin that did not exist on the base ref is a first release; there is nothing to bump past.
   [ -n "$before" ] || continue
