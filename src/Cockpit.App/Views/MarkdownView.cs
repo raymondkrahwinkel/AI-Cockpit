@@ -95,6 +95,10 @@ public sealed class MarkdownView : ContentControl
     internal Task WaitForPendingRenderAsync() =>
         _pendingRebuild ? (_pendingRebuildSignal ??= new TaskCompletionSource()).Task : Task.CompletedTask;
 
+    // Exposed for tests only (AC-1129): counts full-tree rebuilds, so a test can assert a settling
+    // FilePathResolver probe no longer triggers one instead of inferring it from allocation size.
+    internal int DebugRenderCount { get; private set; }
+
     // Tree is kept and reconciled, not thrown away: the rate limit caps how OFTEN a repaint
     // happens, this caps how MUCH each costs. A delta only changes/adds the last block; without
     // this, a repaint is O(reply length) — quadratic overall, just at 30fps instead of per delta.
@@ -140,6 +144,7 @@ public sealed class MarkdownView : ContentControl
 
     private void _Render(string markdown)
     {
+        DebugRenderCount++;
         var parsed = MarkdownParser.Parse(markdown, PreserveLineBreaks);
 
         // Compares the colour, not brush identity: a recycled row's resource lookup returns a
@@ -225,21 +230,19 @@ public sealed class MarkdownView : ContentControl
         }
     }
 
-    // AC-642 valkuil 2: FilePathResolver's callback after a background probe lands. _Render compares
-    // parsed blocks for equality, so a run-brush-only change is invisible to it — force one full
-    // rebuild; an unattached view defers to the same _pendingRebuild path a recycled row uses.
-    private void _OnPathResolved()
+    // AC-1129: patches just the run whose probe landed instead of _Render-ing the whole tree. `epoch`
+    // skips a stale patch if the block was refilled with different content while the probe was in flight.
+    private void _OnPathResolved(InlineTextBlock block, int epoch, Run run, int offset, int length, string candidatePath, string? basePath, int? line)
     {
-        if (this.IsAttachedToVisualTree())
+        if (block.Epoch != epoch || FilePathResolver.Resolve(candidatePath, basePath, static () => { }) is not { } resolvedPath)
         {
-            _rendered = [];
-            _blocks.Children.Clear();
-            _Render(Markdown ?? string.Empty);
+            return;
         }
-        else
-        {
-            _pendingRebuild = true;
-        }
+
+        run.Foreground = ClickablePathForeground;
+        run.Background = ClickablePathBackground;
+        block.Links.Add((offset, length, resolvedPath, line));
+        block.Cursor = _handCursor ??= new Cursor(StandardCursorType.Hand);
     }
 
     private Control _RenderBlock(MarkdownBlock block) => block.Kind switch
@@ -637,6 +640,11 @@ public sealed class MarkdownView : ContentControl
     {
         public readonly List<(int Start, int Length, string Url, int? Line)> Links = [];
 
+        // Bumped by every _FillInlines call on this block — a settling FilePathResolver probe (AC-1129)
+        // checks its captured epoch against the current one before patching a run, so it never writes
+        // into a block that has since been refilled with different content.
+        public int Epoch;
+
         // Without this, Avalonia's implicit-theme lookup keys on the concrete type (AC-679) and finds no
         // ControlTheme for this private subclass — so it silently gets none at all: no SelectionBrush to paint
         // a selection with, no IBeam cursor, no right-click Copy menu. Styled as SelectableTextBlock instead.
@@ -677,9 +685,11 @@ public sealed class MarkdownView : ContentControl
     {
         block.Links.Clear();
         block.Inlines?.Clear();
+        var epoch = ++block.Epoch;
 
         var links = block.Links;
         var offset = 0;
+        var basePath = BasePath;
 
         foreach (var inline in inlines)
         {
@@ -712,12 +722,18 @@ public sealed class MarkdownView : ContentControl
                     // A code span that could be a file path (AC-642): the cheap vorm filter decides who gets
                     // asked, the memoised resolver — never on this thread — decides who is real. Still unknown
                     // or not a file: the run stays plain code, exactly as before.
-                    if (FilePathCandidate.TryParse(inline.Text, out var candidatePath, out var candidateLine) &&
-                        FilePathResolver.Resolve(candidatePath, BasePath, _OnPathResolved) is { } resolvedPath)
+                    if (FilePathCandidate.TryParse(inline.Text, out var candidatePath, out var candidateLine))
                     {
-                        run.Foreground = ClickablePathForeground;
-                        run.Background = ClickablePathBackground;
-                        links.Add((offset, inline.Text.Length, resolvedPath, candidateLine));
+                        var runOffset = offset;
+                        var runLength = inline.Text.Length;
+                        var resolvedPath = FilePathResolver.Resolve(candidatePath, basePath, () =>
+                            _OnPathResolved(block, epoch, run, runOffset, runLength, candidatePath, basePath, candidateLine));
+                        if (resolvedPath is not null)
+                        {
+                            run.Foreground = ClickablePathForeground;
+                            run.Background = ClickablePathBackground;
+                            links.Add((runOffset, runLength, resolvedPath, candidateLine));
+                        }
                     }
 
                     break;
