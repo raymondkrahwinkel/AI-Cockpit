@@ -257,6 +257,80 @@ public class McpToolProviderConnectAsyncTests
         await coordinator.Received(1).GetStateAsync(Arg.Is<McpServerConfig>(server => server.Name == "server-oauth"), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task ConnectAsync_DisposesAStdioServer_WhenListingItsToolsIsCancelled()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var directory = Directory.CreateTempSubdirectory();
+        var pidPath = Path.Combine(directory.FullName, "pid");
+        var scriptPath = Path.Combine(directory.FullName, "server.ps1");
+        await File.WriteAllTextAsync(scriptPath, _StdioServerScript);
+
+        try
+        {
+            var provider = _ProviderFor(_DisableBuiltIns().Append(new McpServerConfig
+            {
+                Name = "stdio-fail",
+                Transport = McpTransport.Stdio,
+                Command = "powershell.exe",
+                Args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, pidPath],
+            }));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+            await using var session = await provider.ConnectAsync(cancellationToken: timeout.Token);
+            var processId = int.Parse(await File.ReadAllTextAsync(pidPath));
+
+            Assert.Single(session.ConnectionIssues);
+            Assert.True(await _WaitForExitAsync(processId));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    private const string _StdioServerScript = """
+        param([string]$pidPath)
+        Set-Content -LiteralPath $pidPath -Value $PID
+        while ($null -ne ($request = [Console]::In.ReadLine())) {
+            $id = ([regex]::Match($request, '"id"\s*:\s*(\d+)')).Groups[1].Value
+            if ($request -match 'server/discover') {
+                [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":' + $id + ',"error":{"code":-32601,"message":"not found"}}')
+            } elseif ($request -match 'initialize') {
+                [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":' + $id + ',"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"test","version":"1.0"}}}')
+            } elseif ($request -match 'tools/list') {
+                while ($true) { Start-Sleep -Seconds 1 }
+            }
+            [Console]::Out.Flush()
+        }
+        """;
+
+    private static async Task<bool> _WaitForExitAsync(int processId)
+    {
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            try
+            {
+                if (System.Diagnostics.Process.GetProcessById(processId).HasExited)
+                {
+                    return true;
+                }
+            }
+            catch (ArgumentException)
+            {
+                return true;
+            }
+
+            await Task.Delay(100);
+        }
+
+        return false;
+    }
+
     private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry, SessionMcpKeyring? keyring = null, IMcpOAuthAuthorizer? oauthAuthorizer = null, IMcpOAuthCoordinator? oauthCoordinator = null)
     {
         var catalog = Substitute.For<IMcpServerCatalog>();

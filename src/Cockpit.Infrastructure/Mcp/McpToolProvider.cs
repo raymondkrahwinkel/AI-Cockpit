@@ -202,6 +202,9 @@ internal sealed class McpToolProvider(
     // which one failed.
     private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken)
     {
+        McpClient? client = null;
+        var connected = false;
+
         try
         {
             // AC-505 follow-up: the widened timeout is only worth paying when a sign-in might actually run —
@@ -209,7 +212,7 @@ internal sealed class McpToolProvider(
             var needsInteractiveOAuth = server.Auth == McpServerAuth.OAuth
                 && await oauthCoordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired;
             var clientOptions = needsInteractiveOAuth ? McpInteractiveOAuthClientOptions.Create() : null;
-            var client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken), clientOptions, cancellationToken).ConfigureAwait(false);
+            client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken), clientOptions, cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // AC-79: classify each tool from its MCP annotations at connect; an absent readOnlyHint stays
@@ -231,6 +234,7 @@ internal sealed class McpToolProvider(
                     : annotationClass;
             }
 
+            connected = true;
             return (new ServerConnection(client, [.. serverTools], server.Name, classes), null);
         }
         catch (Exception ex) when (server.Auth == McpServerAuth.OAuth)
@@ -245,6 +249,20 @@ internal sealed class McpToolProvider(
         {
             logger.LogWarning(ex, "MCP server {Name} could not be connected — skipping its tools", server.Name);
             return (null, _ShortReason(ex));
+        }
+        finally
+        {
+            if (!connected && client is not null)
+            {
+                try
+                {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "MCP server {Name} could not be disposed after its tools failed to load", server.Name);
+                }
+            }
         }
     }
 
