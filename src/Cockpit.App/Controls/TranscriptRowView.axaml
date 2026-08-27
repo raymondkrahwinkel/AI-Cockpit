@@ -480,7 +480,7 @@
                         <TextBlock Text="{Binding SubAgentSummaryText}"/>
                     </StackPanel>
                 </Button>
-                <ItemsControl IsVisible="{Binding IsSubAgentExpanded}" ItemsSource="{Binding SubAgentRows}" Margin="14,4,0,0">
+                <ItemsControl IsVisible="{Binding IsSubAgentExpanded}" ItemsSource="{Binding SubAgentRowsForDisplay}" Margin="14,4,0,0">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Spacing="4"/>
