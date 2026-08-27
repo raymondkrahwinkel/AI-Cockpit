@@ -7,11 +7,7 @@ namespace Cockpit.App.ViewModels;
 // clear at a glance which backend (and which local model) a profile runs.
 public static class ProfileDisplay
 {
-    // `pluginProviderName`:
-    // The specific plugin provider's own display name (e.g. "Claude") for a Plugin-provider profile, resolved by
-    // the caller from the provider registry — `ProfileDisplay` has no registry access to look up a
-    // plugin's label from the bare `SessionProvider.Plugin` enum value. When null, the generic
-    // provider label is used (the "Plugin" placeholder for a plugin profile), preserving the pre-registry behaviour.
+    // `pluginProviderName`: The specific plugin provider's own display name (e.g.
     public static string Format(string label, SessionProvider provider, string? model, string? pluginProviderName = null)
     {
         var providerLabel = string.IsNullOrWhiteSpace(pluginProviderName)

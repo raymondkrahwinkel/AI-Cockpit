@@ -6,13 +6,8 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace Cockpit.App.ViewModels;
 
-// The plugin store dialog (#62): a browsing/presentation layer over the existing
-// `PluginManagerViewModel` rather than a second catalogue or install path. It wraps the
-// same shared instance the Options→Plugins tab uses (`CockpitViewModel.Plugins`) and adds search,
-// sort, sidebar filtering (Discover/All/category/Installed/Available updates) and a
-// selected-plugin detail panel over its `PluginManagerViewModel.AvailablePlugins`. Every
-// install/update, the consent step and the restart banner all still go through `Manager`'s
-// own commands/properties unchanged — this view model never downloads or installs anything itself.
+// The plugin store dialog (#62): a browsing/presentation layer over the existing `PluginManagerViewModel` rather than a
+// second catalogue or install path.
 public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposable
 {
     private readonly PluginManagerViewModel _manager;
@@ -30,11 +25,8 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
     public ObservableCollection<PluginStoreSidebarItem> SidebarItems { get; } = [];
 
-    // The sidebar's top group — Discover, All plugins, the categories and Workflow templates —
-    // bound to the top ListBox. `SecondarySidebarItems` (Installed / Available updates) is
-    // split off so it can be pinned to the foot of the column, above "Manage stores", rather than trailing
-    // the categories. Both ListBoxes share `SelectedSidebarItem`; see its setter for why the
-    // split needs no extra selection plumbing.
+    // `SecondarySidebarItems` (Installed / Available updates) is split off so it can be pinned to the foot of the
+    // column, above "Manage stores", rather than trailing the categories.
     public ObservableCollection<PluginStoreSidebarItem> PrimarySidebarItems { get; } = [];
 
     // The sidebar's bottom group — Installed and Available updates — pinned to the foot of the
@@ -55,14 +47,8 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
     private PluginStoreSidebarItem? _selectedSidebarItem;
 
-    // The selected sidebar scope. Bound (two-way) by *both* sidebar ListBoxes — the top
-    // `PrimarySidebarItems` group and the bottom `SecondarySidebarItems` group.
-    // When the selection moves from one group to the other, the ListBox that no longer holds it resets its
-    // own SelectedItem to null and, two-way, pushes that null back here — which would blank the real
-    // selection the other list just made. The selection only ever moves from one real item to another, so a
-    // null (or an unchanged, value-equal) write is ignored: the owning list keeps the highlight and the
-    // other simply shows nothing selected. Ignoring the value-equal write also mirrors the source-generated
-    // property this replaced, so a catalogue rebuild that re-selects the same scope stays a no-op.
+    // The selection only ever moves from one real item to another, so a null (or an unchanged, value-equal) write is
+    // ignored: the owning list keeps the highlight and the other simply shows nothing selected.
     public PluginStoreSidebarItem? SelectedSidebarItem
     {
         get => _selectedSidebarItem;
@@ -87,13 +73,8 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     {
     }
 
-    // `manager`: The shared plugin manager instance (see `Manager`).
-    // `initialFilter`:
-    // The sidebar scope preselected when the dialog opens (#65) — e.g. a plugin-update toast opening
-    // straight onto `PluginStoreFilter.UpdatesAvailable` instead of the default Discover
-    // page. Falls back to `SidebarItems`'s first entry (Discover) when null or when no
-    // sidebar item matches it yet (the catalogue may still be empty at construction time — once it
-    // loads, `_RebuildSidebarItems` re-selects the same filter by value).
+    // a plugin-update toast opening straight onto `PluginStoreFilter.UpdatesAvailable` instead of the default Discover
+    // page (#65).
     public PluginStoreDialogViewModel(PluginManagerViewModel manager, PluginStoreFilter? initialFilter = null)
     {
         _manager = manager;
@@ -153,21 +134,16 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     // The Discover page's Featured/Recently-added rails only show above the "All plugins" grid when Discover is selected and there is no active search (§1.4).
     public bool ShowDiscoverRails => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Discover && string.IsNullOrWhiteSpace(SearchText);
 
-    // True when the *Installed* filter is selected, so the main pane swaps the catalogue grid for the
-    // local plugin-management view (install-from-zip + per-plugin enable/disable/remove/settings) — moved
-    // here from the old Options → Plugins tab so all plugin control lives in one place. Unlike catalogue
-    // browsing, this view works even with no store configured (installing from a zip needs no store).
+    // True when the *Installed* filter is selected, so the main pane swaps the catalogue grid for the local
+    // plugin-management view (install-from-zip + per-plugin enable/disable/remove/settings) — moved here from the old
+    // Options → Plugins tab so all plugin control lives in one place.
     public bool IsInstalledView => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Installed;
 
     // True while the sidebar's "Workflow templates" is selected — the flows the stores offer, not the plugins.
     public bool IsTemplatesView => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Templates;
 
-    // The installed plugins under their category headings (Raymond, 2026-07-15) — one flat list stopped being
-    // readable once widgets, providers, issue trackers and a workflow engine all lived in it.
-    // The heading comes from the catalogue, matched by plugin id, because a `plugin.json` carries no
-    // category — it is a store-index field. That is also why the grouping degrades rather than breaks: with no
-    // store configured (and this view is explicitly built to work without one) nothing matches, everything lands
-    // under one heading, and what is left is the flat list it replaced.
+    // The heading comes from the catalogue, matched by plugin id, because a `plugin.json` carries no category — it is a
+    // store-index field.
     public IReadOnlyList<InstalledPluginGroup> InstalledGroups =>
         [.. _manager.Plugins
             .GroupBy(_CategoryOf, StringComparer.OrdinalIgnoreCase)
@@ -180,15 +156,8 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     // True once there is more than one heading — with a single group the headings say nothing the list does not.
     public bool ShowInstalledGroupHeaders => InstalledGroups.Count > 1;
 
-    // Moves a plugin up the left menu, past the previous one *under its own heading* (Raymond, 2026-07-15).
-    // The arrows move a plugin through the left menu, which is one flat sequence — and this list is no longer
-    // shown as one. Left on the manager's plain ±1 they would have started lying: press ↑ on the first widget
-    // and the row above it in the menu order is some provider, so the menu shifts while nothing visibly moves.
-    //
-    // Within the heading is the reading that survives both: with one heading — no store configured, nothing
-    // matched — every plugin shares it and this is the old behaviour exactly. The menu order itself is never
-    // re-sorted by category; you simply cannot move a widget above an issue tracker, which was never a thing
-    // worth doing.
+    // Left on the manager's plain ±1 they would have started lying: press ↑ on the first widget and the row above it in
+    // the menu order is some provider, so the menu shifts while nothing visibly moves.
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task MoveInstalledPluginUpAsync(PluginRowViewModel row) => _MoveWithinGroupAsync(row, -1);
 
@@ -378,10 +347,8 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         OnPropertyChanged(nameof(ShowInstalledGroupHeaders));
     }
 
-    // Rebuilds the sidebar from the manager's current catalogue (categories + Installed/Updates counts
-    // are derived, never hardcoded — a store that adds a new category shows up on its own). Re-selects
-    // the same filter by value if it still exists, so browsing does not lose the selection on every
-    // catalogue refresh; falls back to Discover if the previously selected category/filter disappeared.
+    // Rebuilds the sidebar from the manager's current catalogue (categories + Installed/Updates counts are derived,
+    // never hardcoded — a store that adds a new category shows up on its own).
     private void _RebuildSidebarItems()
     {
         var previousFilter = SelectedSidebarItem?.Filter;

@@ -18,11 +18,8 @@ public enum ProviderDetectionState
     NotFound,
 }
 
-// One AI-provider row on the first-run wizard's provider step (AC-510[b]): the store's own catalogue entry,
-// wrapped in `StorePluginRowViewModel` so "already installed" and "incompatible with this build"
-// reuse the exact computation the plugin store dialog already shows rather than a second copy of it, plus
-// whether this host found the provider's CLI, whether the operator has it checked for install, and — once
-// `InstallSelectedCommand` has run — what actually happened to it.
+// Reuse StorePluginRowViewModel so onboarding and the plugin store compute provider compatibility identically
+// (AC-510[b]).
 public sealed partial class ProviderPickerRowViewModel : ObservableObject
 {
     public ProviderPickerRowViewModel(StorePluginRowViewModel row, ProviderDetectionState detection)
@@ -30,10 +27,9 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
         Row = row;
         Detection = detection;
 
-        // A suggestion, never a decision already made (AC-510[b] criterion 4): only a CLI provider this host
-        // actually found, not incompatible, starts checked — Skip/Next must be free to leave it exactly that, a
-        // suggestion nobody acted on. Not found, cloud (nothing observed), already installed and incompatible all
-        // start unselected; the operator opts in.
+        // A suggestion, never a decision already made (AC-510[b] criterion 4): only a CLI provider this host actually
+        // found, not incompatible, starts checked — Skip/Next must be free to leave it exactly that, a suggestion
+        // nobody acted on.
         IsSelected = detection == ProviderDetectionState.Found && !row.IsIncompatible && !row.IsInstalled;
     }
 
@@ -70,10 +66,8 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
 
     partial void OnOutcomeTextChanged(string? value) => OnPropertyChanged(nameof(HasOutcome));
 
-    // Applies one provisioning outcome to this row (AC-510[b] criterion 2) — the provisioning seam's own four
-    // shapes (`PluginProvisionOutcome`), translated to a line the operator reads instead of a raw
-    // result object. A fresh install is deliberately not claimed complete: it still needs the operator's consent
-    // in the plugin store before it runs anything, the same gate every other install path already goes through.
+    // Applies one provisioning outcome to this row (AC-510[b] criterion 2) — the provisioning seam's own four shapes
+    // (`PluginProvisionOutcome`), translated to a line the operator reads instead of a raw result object.
     public void ApplyOutcome(PluginProvisionResult result)
     {
         (OutcomeText, OutcomeBrushKey) = result.Outcome switch

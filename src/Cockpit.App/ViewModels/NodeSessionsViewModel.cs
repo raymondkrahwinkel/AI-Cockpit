@@ -6,22 +6,7 @@ using Cockpit.Core.Abstractions.Mcp;
 
 namespace Cockpit.App.ViewModels;
 
-// One paired node's sessions on the controller's screen (AC-795, criterion 1): what runs over there, with a way to
-// start one and to stop one.
-//
-// *Why this lives on the Security tab and not in the session grid.* The epic's own risk is criterion 3 — an action
-// landing on the wrong row, the AC-561 class of defect — and two machines' sessions in one list is precisely the
-// arrangement where that happens: same names, same shapes, one badge between them. Here the separation is
-// structural rather than typographic. This card only ever exists inside the pairing it belongs to, headed by the
-// node's name; no local session appears in it, and no pane id from it can be typed anywhere that would act on this
-// machine. It is also where the operator already is when they think about a node, since the pairing itself, its
-// address and its scope are all on this tab.
-// AC-796: the card now also polls on its own (see `StartPolling`) rather than only reading on open and on Refresh
-// — a node that drops out or comes back shows up without the operator doing anything, which is what criterion 1
-// asks for.
-// ponytail: a fixed interval, not a backoff. A node that has been unreachable for an hour is polled exactly as
-// often as one that answered a second ago, which is a wasted call every time but never a wrong one. Upgrade path
-// is backing off after a run of failures, if a paired node being off for long stretches turns out to be common.
+// Here the separation is structural rather than typographic (AC-795, AC-561, AC-796).
 public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, string nodeName) : ObservableObject, IDisposable
 {
     // 20s: often enough that a dropout or a return shows up without feeling like a bug report, rarely enough that
@@ -119,11 +104,9 @@ public sealed partial class NodeSessionsViewModel(INodeSessionsClient client, st
         }
     }
 
-    // Starts the poll (AC-796). Its own method rather than constructor logic: a `DispatcherTimer` only ever ticks
-    // on the thread that constructed it, and building one outside a running Avalonia dispatcher — a plain unit
-    // test, exactly what `Cockpit.Core.Tests`' own banned-symbols rule exists to keep out of that project — is the
-    // class of bug that stays quiet until it hangs a run. Call this once, from the UI thread, after the card is
-    // built; a test that only wants `RefreshAsync()` never has to touch it.
+    // Its own method rather than constructor logic: a `DispatcherTimer` only ever ticks on the thread that constructed
+    // it, and building one outside a running Avalonia dispatcher — a plain unit test, exactly what
+    // `Cockpit.Core.Tests`' own banned-symbols rule exists to keep out of that project — is the class of bug that stays
     public void StartPolling()
     {
         if (_pollTimer is not null)

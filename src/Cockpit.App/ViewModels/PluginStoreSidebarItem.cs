@@ -1,9 +1,7 @@
 namespace Cockpit.App.ViewModels;
 
-// One entry in the plugin store dialog's (#62) sidebar: its display label and the
-// `PluginStoreFilter` selecting it applies. `IsEnabled` is only false for the
-// bottom "Installed"/"Available updates" entries when their count is zero — they still show ("(0)")
-// but are greyed out and unclickable rather than disappearing.
+// `IsEnabled` is only false for the bottom "Installed"/"Available updates" entries when their count is zero — they
+// still show ("(0)") but are greyed out and unclickable rather than disappearing (#62).
 public sealed record PluginStoreSidebarItem(string Label, PluginStoreFilter Filter, bool IsEnabled = true)
 {
     public static PluginStoreSidebarItem Discover { get; } = new("Discover", PluginStoreFilter.Discover);

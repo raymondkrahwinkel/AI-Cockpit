@@ -2,10 +2,9 @@ using Avalonia.Controls;
 
 namespace Cockpit.App.ViewModels;
 
-// One row under the Options → PLUGINS group header (AC-1005). Built fresh every time Options opens
-// (CockpitViewModel._RebuildPluginOptionsRows, called from BeginOptionsEdit) rather than cached across
-// sessions — a fresh CreateView() per Options open is how Cancel "reverts" a plugin's settings without the
-// plugin's cooperation, the same trick ShowWidgetSettingsAsync already relies on for a widget's own form.
+// Build each row fresh so Cancel discards plugin settings without plugin cooperation (AC-1005).
+// rather than cached across sessions — a fresh CreateView() per Options open is how Cancel "reverts" a plugin's
+// settings without the plugin's cooperation, the same trick ShowWidgetSettingsAsync already relies on for a widget's
 public sealed class PluginOptionsRowViewModel(string pluginId, string displayName, Control? content, Control? rawView, string? unavailableReason, string? category = null)
 {
     public string PluginId => pluginId;
