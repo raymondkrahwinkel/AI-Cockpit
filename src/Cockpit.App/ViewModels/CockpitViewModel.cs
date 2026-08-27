@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Docking;
+using Cockpit.App.Diagnostics;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Plugins.Abstractions.Docking;
@@ -116,6 +117,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
     private readonly ILogger<CockpitViewModel>? _logger;
+    private OptionsOpenMeasurement? _optionsOpenMeasurement;
 
     // Composes what a session started from a project opens with (AC-164).
     private readonly ProjectQuickStart? _projectQuickStart;
@@ -5512,23 +5514,46 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        _optionsOpenMeasurement = new OptionsOpenMeasurement();
         await _RefreshAudioDevicesAsync();
+        _MarkOptionsOpen("audio");
         await Plugins.LoadAsync();
+        _MarkOptionsOpen("plugins");
 
         // Refreshed before BeginOptionsEdit (inside ShowOptionsDialogAsync) takes its fingerprint, so a profile
         // added or edited from elsewhere since the app started is what Cancel reverts to, not stale startup state.
         if (Profiles is not null)
         {
             await Profiles.LoadAsync();
+            _MarkOptionsOpen("profiles");
         }
 
         if (McpServers is not null)
         {
             await McpServers.LoadAsync();
+            _MarkOptionsOpen("mcp");
         }
 
         await _dialogService.ShowOptionsDialogAsync(this, category);
     }
+
+    internal void OptionsOpenPresented()
+    {
+        if (_optionsOpenMeasurement is not { } measurement)
+        {
+            return;
+        }
+
+        _MarkOptionsOpen("presented");
+        if (measurement.Finish() is { } line)
+        {
+            _logger?.LogWarning("{Message}", line);
+        }
+
+        _optionsOpenMeasurement = null;
+    }
+
+    private void _MarkOptionsOpen(string phase) => _optionsOpenMeasurement?.Mark(phase);
 
     // Opens the plugin store dialog (#62) with the "Available updates" filter preselected (#65) — the action
     // button on a plugin-update toast, so the operator lands straight on the updates list instead of
@@ -5834,14 +5859,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             seen.Add(row.FolderId);
             if (PluginSettings.TryGetValue(row.FolderId, out var registration))
             {
-                var view = registration.CreateView();
-                var body = PluginSettingsBodyBuilder.Build(view);
-                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, body.Content, view, unavailableReason: null, registration.Category));
+                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, registration.CreateView, unavailableReason: null, registration.Category));
             }
             else
             {
                 var reason = row.HasFailure ? $"{row.StatusText} — {row.FailureText}" : row.StatusText;
-                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, content: null, rawView: null, reason));
+                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, createView: null, reason));
             }
         }
 
@@ -5855,10 +5878,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 continue;
             }
 
-            var view = registration.CreateView();
-            var body = PluginSettingsBodyBuilder.Build(view);
-            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, body.Content, view, unavailableReason: null, registration.Category));
+            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, registration.CreateView, unavailableReason: null, registration.Category));
         }
+
     }
 
     // Any property on any of the three may be the one that moved, so the fingerprint decides rather than the
