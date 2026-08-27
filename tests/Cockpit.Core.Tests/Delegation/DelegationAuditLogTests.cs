@@ -58,6 +58,37 @@ public class DelegationAuditLogTests : IDisposable
     }
 
     [Fact]
+    public async Task SourceProfileAndEffectivePermission_AreRecorded()
+    {
+        var log = new DelegationAuditLog(_logPath, NullLogger<DelegationAuditLog>.Instance);
+
+        await log.RecordAsync(_Entry(DelegationAuditAction.Delegated, "task-1") with
+        {
+            SourceProfileLabel = "planner",
+            SourceEffectivePermission = "plan",
+        });
+        await log.RecordAsync(_Entry(DelegationAuditAction.Delegated, "task-2") with
+        {
+            SourceProfileLabel = "coder",
+            SourceEffectivePermission = "bypassPermissions",
+        });
+
+        var entries = await log.ReadRecentAsync();
+
+        Assert.Collection(entries,
+            entry =>
+            {
+                Assert.Equal("coder", entry.SourceProfileLabel);
+                Assert.Equal("bypassPermissions", entry.SourceEffectivePermission);
+            },
+            entry =>
+            {
+                Assert.Equal("planner", entry.SourceProfileLabel);
+                Assert.Equal("plan", entry.SourceEffectivePermission);
+            });
+    }
+
+    [Fact]
     public async Task ALongPrompt_IsTrimmed_SoTheLogDoesNotBecomeATranscript()
     {
         var log = new DelegationAuditLog(_logPath, NullLogger<DelegationAuditLog>.Instance);

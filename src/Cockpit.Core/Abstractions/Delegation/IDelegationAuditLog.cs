@@ -60,4 +60,6 @@ public sealed record DelegationAuditEntry(
     string? Label,
     string? TaskType,
     string? Prompt,
-    string? Reason);
+    string? Reason,
+    string? SourceProfileLabel = null,
+    string? SourceEffectivePermission = null);

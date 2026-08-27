@@ -65,6 +65,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     // exceeds the profile's ceiling (AC-117). Absent in a test graph or an off-path caller with no UI listening — that
     // degrades to the old behaviour, a silent clamp to the ceiling, never a widen nobody was there to approve.
     private readonly IConsentBroker? _consent;
+    private readonly ISessionStateStore? _sessionState;
 
     private readonly Func<int, TimeSpan> _timeout;
     private readonly TimeSpan _idleWindow;
@@ -82,8 +83,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         ISessionProjectResolver? projects = null,
         IWorktreeManager? worktrees = null,
         IConsentBroker? consent = null,
-        Func<IMcpServerCatalog?>? mcpServerCatalog = null)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog)
+        Func<IMcpServerCatalog?>? mcpServerCatalog = null,
+        ISessionStateStore? sessionState = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState)
     {
     }
 
@@ -102,7 +104,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         TimeSpan? idleWindow = null,
         IConsentBroker? consent = null,
         TimeSpan? taskRetention = null,
-        Func<IMcpServerCatalog?>? mcpServerCatalog = null)
+        Func<IMcpServerCatalog?>? mcpServerCatalog = null,
+        ISessionStateStore? sessionState = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
@@ -116,6 +119,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         _timeout = timeout;
         _idleWindow = idleWindow ?? IdleSessionWindow;
         _consent = consent;
+        _sessionState = sessionState;
         _taskRetention = taskRetention ?? TaskRetention;
     }
 
@@ -340,6 +344,20 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             request = request with { McpServers = cleaned.Count > 0 ? cleaned : null };
         }
 
+        SessionStateRecord? callerState = null;
+        if (callerPaneId is not null && _sessionState is not null)
+        {
+            try
+            {
+                callerState = (await _sessionState.LoadAsync(cancellationToken)).FirstOrDefault(state => state.PaneId == callerPaneId);
+            }
+            catch (Exception)
+            {
+                callerState = null;
+            }
+        }
+        var sourceProfileLabel = string.IsNullOrWhiteSpace(callerState?.ProfileId) ? "unknown" : callerState.ProfileId;
+        var sourceEffectivePermission = string.IsNullOrWhiteSpace(callerState?.PermissionMode) ? "unknown" : callerState.PermissionMode;
         var policy = profile.DelegationPolicy;
         try
         {
@@ -349,7 +367,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         {
             // A refusal is the interesting half of the trail: it says what an agent tried to do and what stopped
             // it, which a log of successes alone would never show.
-            await _Audit(DelegationAuditAction.Refused, profile.Label, null, request, ex.Message);
+            await _Audit(DelegationAuditAction.Refused, profile.Label, null, request, ex.Message, sourceProfileLabel: sourceProfileLabel, sourceEffectivePermission: sourceEffectivePermission);
             throw;
         }
 
@@ -372,12 +390,18 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 var reason =
                     $"Task requested MCP server(s) that profile '{profile.Label}' cannot delegate: {string.Join(", ", disallowed)}. " +
                     $"Available: {(allowed.Count == 0 ? "(none)" : string.Join(", ", allowed.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)))}.";
-                await _Audit(DelegationAuditAction.Refused, profile.Label, null, request, reason);
+                await _Audit(DelegationAuditAction.Refused, profile.Label, null, request, reason, sourceProfileLabel: sourceProfileLabel, sourceEffectivePermission: sourceEffectivePermission);
                 throw new DelegationRejectedException(reason);
             }
         }
 
-        var entry = new DelegatedTaskEntry(profile, request) { OwnerPaneId = callerPaneId, ProjectId = projectId };
+        var entry = new DelegatedTaskEntry(profile, request)
+        {
+            OwnerPaneId = callerPaneId,
+            ProjectId = projectId,
+            SourceProfileLabel = sourceProfileLabel,
+            SourceEffectivePermission = sourceEffectivePermission,
+        };
         lock (_tasksLock)
         {
             _tasks.RemoveAll(task => task.IsFinished && task.FinishedAt is { } finishedAt && DateTimeOffset.Now - finishedAt > _taskRetention);
@@ -391,7 +415,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         }
 
         TasksChanged?.Invoke();
-        await _Audit(DelegationAuditAction.Delegated, profile.Label, entry.TaskId, request, reason: null);
+        await _Audit(DelegationAuditAction.Delegated, profile.Label, entry.TaskId, request, reason: null, entry);
 
         // At the cap the task waits rather than being refused or, worse, started anyway: the caller gets an
         // honest "Queued" back and can decide what to do, and a freeing slot picks it up.
@@ -834,7 +858,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         string? taskId,
         DelegationRequest? request,
         string? reason,
-        DelegatedTaskEntry? entry = null) =>
+        DelegatedTaskEntry? entry = null,
+        string? sourceProfileLabel = null,
+        string? sourceEffectivePermission = null) =>
         _auditLog.RecordAsync(new DelegationAuditEntry(
             DateTimeOffset.Now,
             action,
@@ -843,7 +869,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             request?.Label ?? entry?.Label,
             request?.TaskType ?? entry?.TaskType,
             request?.Prompt ?? entry?.Prompt,
-            reason));
+            reason,
+            entry?.SourceProfileLabel ?? sourceProfileLabel ?? "unknown",
+            entry?.SourceEffectivePermission ?? sourceEffectivePermission ?? "unknown"));
 
     // The MCP servers a delegated session gets: everything the operator enabled, narrowed by the profile's
     // pre-selection and the caller's per-task selection, minus the orchestrator unless MayDelegateFurther —

@@ -41,6 +41,10 @@ internal sealed class DelegatedTaskEntry
     // The verified pane that created this task (AC-128), or null off the verified path. Scopes the task-addressed tools and list_tasks so an agent cannot reach another session's task by naming its id (confused deputy).
     public string? OwnerPaneId { get; init; }
 
+    public string? SourceProfileLabel { get; init; }
+
+    public string? SourceEffectivePermission { get; init; }
+
     // The project this task works on (AC-320) — inherited from the delegating session, since a sub-agent
     // works on the same thing its caller does. Null when that session has no project.
     // Resolved once and carried as a value, not looked up again on the start path (AC-218).

@@ -155,6 +155,51 @@ public class DelegationPermissionClampTests
         await consent.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task DelegationsFromDifferentCallerProfiles_RecordTheirOwnEffectivePermissions()
+    {
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var auditLog = Substitute.For<IDelegationAuditLog>();
+        var sessionState = Substitute.For<ISessionStateStore>();
+        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionStateRecord>>([
+            new SessionStateRecord("planner-pane", "planner", null, null, SessionConversationIdState.Unknown, null, null, null, "plan", DateTimeOffset.UtcNow),
+            new SessionStateRecord("coder-pane", "coder", null, null, SessionConversationIdState.Unknown, null, null, null, "bypassPermissions", DateTimeOffset.UtcNow),
+        ]));
+        var service = _ServiceWith(driver, "bypassPermissions", auditLog: auditLog, sessionState: sessionState);
+
+        await service.DelegateAsync(new DelegationRequest("local", "review", RequestedPermission: "acceptEdits"), "planner-pane");
+        await service.DelegateAsync(new DelegationRequest("local", "build", RequestedPermission: "acceptEdits"), "coder-pane");
+
+        await auditLog.Received().RecordAsync(
+            Arg.Is<DelegationAuditEntry>(entry => entry.Action == DelegationAuditAction.Delegated
+                && entry.SourceProfileLabel == "planner" && entry.SourceEffectivePermission == "plan"),
+            Arg.Any<CancellationToken>());
+        await auditLog.Received().RecordAsync(
+            Arg.Is<DelegationAuditEntry>(entry => entry.Action == DelegationAuditAction.Delegated
+                && entry.SourceProfileLabel == "coder" && entry.SourceEffectivePermission == "bypassPermissions"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AFailedCallerStateLookup_DoesNotStopDelegation_AndRecordsUnknownSource()
+    {
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var auditLog = Substitute.For<IDelegationAuditLog>();
+        var sessionState = Substitute.For<ISessionStateStore>();
+        sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException<IReadOnlyList<SessionStateRecord>>(new IOException("state unavailable")));
+        var service = _ServiceWith(driver, "bypassPermissions", auditLog: auditLog, sessionState: sessionState);
+
+        var task = await service.DelegateAsync(new DelegationRequest("local", "review", RequestedPermission: "acceptEdits"), "caller-pane");
+
+        Assert.Equal(DelegatedTaskStatus.Running, task.Status);
+        await auditLog.Received().RecordAsync(
+            Arg.Is<DelegationAuditEntry>(entry => entry.Action == DelegationAuditAction.Delegated
+                && entry.SourceProfileLabel == "unknown" && entry.SourceEffectivePermission == "unknown"),
+            Arg.Any<CancellationToken>());
+    }
+
     // A same-rank alias ("plan" and "default" both mean read-only-unattended) must never read as an escalation:
     // the caller asked for no more than the profile already allows, so no prompt, in either direction.
     [Theory]
@@ -237,7 +282,7 @@ public class DelegationPermissionClampTests
     }
 
     private static DelegationService _ServiceWith(
-        ISessionDriver driver, string ceiling, IConsentBroker? consent = null, IDelegationAuditLog? auditLog = null)
+        ISessionDriver driver, string ceiling, IConsentBroker? consent = null, IDelegationAuditLog? auditLog = null, ISessionStateStore? sessionState = null)
     {
         var profile = new SessionProfile(
             "local",
@@ -259,7 +304,8 @@ public class DelegationPermissionClampTests
             mcpServerStore,
             auditLog ?? Substitute.For<IDelegationAuditLog>(),
             minutes => TimeSpan.FromMilliseconds(minutes * 30),
-            consent: consent);
+            consent: consent,
+            sessionState: sessionState);
     }
 
     private static async IAsyncEnumerable<SessionEvent> _EmptyStream()
