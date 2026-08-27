@@ -16,6 +16,7 @@ internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
 
     private readonly IProcessTableReader _reader;
     private readonly ILogger _logger;
+    private readonly TimeSpan _pollInterval;
 
     // One loop and one process-table read for every watched session, rather than one `ps` per session per tick.
     private readonly ConcurrentDictionary<int, long> _watched = new();
@@ -29,9 +30,15 @@ internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
     private readonly Lock _loopLock = new();
 
     public PollingMemoryLimiter(IProcessTableReader reader, ILogger<PollingMemoryLimiter> logger)
+        : this(reader, logger, PollInterval)
+    {
+    }
+
+    internal PollingMemoryLimiter(IProcessTableReader reader, ILogger<PollingMemoryLimiter> logger, TimeSpan pollInterval)
     {
         _reader = reader;
         _logger = logger;
+        _pollInterval = pollInterval;
     }
 
     public IDisposable? Apply(int processId, long capBytes)
@@ -97,7 +104,7 @@ internal sealed class PollingMemoryLimiter : ISessionMemoryLimiter, IDisposable
 
     private async Task _PollAsync()
     {
-        using var timer = new PeriodicTimer(PollInterval);
+        using var timer = new PeriodicTimer(_pollInterval);
         try
         {
             while (await timer.WaitForNextTickAsync(_stopped.Token).ConfigureAwait(false))
