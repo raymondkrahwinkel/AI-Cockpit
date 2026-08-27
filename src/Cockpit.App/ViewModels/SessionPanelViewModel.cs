@@ -7,6 +7,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Usage;
 using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
@@ -21,6 +22,12 @@ namespace Cockpit.App.ViewModels;
 // (SDK) and `TtyViewModel` (TTY) panels through one type.
 public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable
 {
+    // Reset at launch, not construction: isolated sessions can wait for a worktree, which is not working time.
+    private protected readonly SessionUsageMeter _usage = new();
+    private protected DateTimeOffset _startedAt = DateTimeOffset.Now;
+    // Turn settlement never waits on disk; teardown drains this task so its final record is not lost.
+    private Task? _pendingUsageWrite;
+    private readonly IUsageHistory? _usageHistory;
     // Identifies this session pane for as long as it exists — what a plugin uses to say "this one, not the
     // other three on screen" (exposed as `IPluginSessionContext.PaneId` / `ICockpitSessionObserver.ActivePaneId`).
     // Deliberately not the provider's conversation id (the thing you resume by): panes come and go with the
@@ -1178,8 +1185,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Whether a divider sits between the last metric segment and the chevron — only when both are present.
     public bool ShowChevronDivider => UsagePillItems.Count > 0 && HasUsagePill;
 
-    protected SessionPanelViewModel()
+    protected SessionPanelViewModel(IUsageHistory? usageHistory = null)
     {
+        _usageHistory = usageHistory;
         // HasUsagePill and the mini-pills both depend on the RateLimits collection as well as ContextUsedPercent,
         // so a window being added/cleared has to refresh them too (the ctx setter is covered by the partials below).
         RateLimits.CollectionChanged += (_, _) =>
@@ -1188,6 +1196,55 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             RebuildUsagePillItems();
         };
     }
+
+    private protected void _RecordUsageSnapshot()
+    {
+        if (_usageHistory is null || !_usage.HasData)
+        {
+            return;
+        }
+
+        var metadata = GetUsageSnapshotMetadata();
+        _pendingUsageWrite = _usageHistory.RecordAsync(new UsageSnapshot
+        {
+            PaneId = PaneId,
+            StartedAt = _startedAt,
+            RecordedAt = DateTimeOffset.Now,
+            RunKind = metadata.RunKind,
+            RunId = metadata.RunId,
+            RunLabel = metadata.RunLabel,
+            ProfileLabel = ActiveProfileLabel,
+            Model = metadata.Model,
+            InputTokens = _usage.InputTokens,
+            OutputTokens = _usage.OutputTokens,
+            CacheReadInputTokens = _usage.CacheReadInputTokens,
+            CacheCreationInputTokens = _usage.CacheCreationInputTokens,
+            TotalCostUsd = _usage.TotalCostUsd,
+            Turns = _usage.Turns,
+        });
+    }
+
+    private protected async ValueTask _DrainUsageWritesAsync()
+    {
+        Task? pendingUsageWrite;
+        do
+        {
+            pendingUsageWrite = _pendingUsageWrite;
+            if (pendingUsageWrite is null)
+            {
+                return;
+            }
+
+            await pendingUsageWrite;
+        }
+        while (UsageWritesMayBeQueuedDuringDrain && !ReferenceEquals(_pendingUsageWrite, pendingUsageWrite));
+    }
+
+    private protected virtual bool UsageWritesMayBeQueuedDuringDrain => false;
+
+    // Run metadata is subtype-specific; the remaining snapshot fields are the shared recording contract.
+    private protected virtual (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
+        (UsageRunKind.Interactive, null, null, null);
 
     partial void OnContextUsedPercentChanged(double? value)
     {

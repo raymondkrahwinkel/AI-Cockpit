@@ -24,6 +24,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\UsageSnapshotContract.cs" Link="UsageSnapshotContract.cs" />
     <AdditionalFiles Include="BannedSymbols.Avalonia.txt" />
   </ItemGroup>
 
