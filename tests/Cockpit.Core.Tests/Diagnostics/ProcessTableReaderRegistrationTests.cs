@@ -26,9 +26,13 @@ public class ProcessTableReaderRegistrationTests
         var reader = provider.GetRequiredService<IProcessTableReader>();
 
         var cache = Assert.IsType<CachedProcessTableReader>(reader);
-        var inner = typeof(CachedProcessTableReader)
-            .GetField("_inner", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .GetValue(cache)!;
+        var innerField = typeof(CachedProcessTableReader)
+            .GetField("_inner", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.True(
+            innerField is not null,
+            "CachedProcessTableReader no longer has the _inner field; update this test to inspect its wrapped platform reader.");
+        Assert.NotNull(innerField);
+        var inner = innerField.GetValue(cache)!;
 
         var expected = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? "WmiProcessTableReader"
