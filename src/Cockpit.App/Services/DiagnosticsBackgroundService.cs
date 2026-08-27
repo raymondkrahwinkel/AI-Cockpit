@@ -57,9 +57,17 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // thread completes it. While true no second probe is posted, so an outstanding probe is the stall itself.
     private volatile bool _probeInFlight;
 
-    // Stamped on the UI thread when the commit is actually requested, not when the probe was posted: a hung UI
-    // thread then delays the probe rather than reading as a stalled render clock (that is _LogHang's job).
+    // Stamped on the UI thread when the commit is actually requested, not when the probe was posted: this is the
+    // "started, no render answer" half of AC-1196's two states, and the only one the render clock owns outright.
     private long _probeStartedTicks;
+
+    // AC-1196 T4: stamped on this thread, at the post. A probe that never gets picked up has to be measurable
+    // without help from the thread that would pick it up — which is exactly the thread that is in trouble.
+    private long _probeQueuedTicks;
+
+    // AC-1196: when work above the priorities a runaway layout loop reposts at last ran. This is the whole
+    // discriminator: a starved dispatcher still answers here, a blocked one answers nothing. -1 means never.
+    private long _highPriorityPongTicks = -1;
 
     // Last completed probe's round trip; -1 until one completes. Reported on the snapshot line as rclock=.
     private long _probeRoundTripTicks = -1;
@@ -77,10 +85,16 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // the dependency cannot run the other way). Null (falls back to "n/a") before that wiring runs, e.g. in tests.
     private Func<(int OpenSessions, string LayoutStand)>? _sessionContext;
 
-    public DiagnosticsBackgroundService(ILogger<DiagnosticsBackgroundService> logger, Func<long>? heapBytesProbe = null)
+    // AC-1196: the budget both alarms below are judged against. Injectable for the same reason heapBytesProbe is —
+    // a test would otherwise have to hold a thread hostage for a real quarter-minute per case, three times over.
+    private readonly TimeSpan _alarmAfter;
+
+    public DiagnosticsBackgroundService(
+        ILogger<DiagnosticsBackgroundService> logger, Func<long>? heapBytesProbe = null, TimeSpan? alarmAfter = null)
     {
         _logger = logger;
         _heapBytesProbe = heapBytesProbe ?? (() => GC.GetGCMemoryInfo().HeapSizeBytes);
+        _alarmAfter = alarmAfter ?? RenderClockHeartbeat.StallAfter;
     }
 
     // Wired once from App.axaml.cs: the three fields the diag line cannot compute on its own (AC-1125 D).
@@ -146,7 +160,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         // every run, past or present, without needing a reproduction.
         _logger.LogInformation(
             "diagnostics thread running snapshots={Snapshots} warnAfter={WarnAfter:0}s stallAfter={StallAfter:0}s",
-            _snapshotsEnabled, UiThreadHeartbeat.WarnAfter.TotalSeconds, RenderClockHeartbeat.StallAfter.TotalSeconds);
+            _snapshotsEnabled, UiThreadHeartbeat.WarnAfter.TotalSeconds, _alarmAfter.TotalSeconds);
 
         // AC-1125 F: one sampler per caller, not one shared between them — PercentSinceLastCall() resets its own
         // baseline on every call, so two callers sharing one instance stole each other's measurement window.
@@ -157,6 +171,8 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         var hangStartedAt = TimeSpan.Zero;
         var renderClockWarned = false;
         var renderStallStartedAt = TimeSpan.Zero;
+        var dispatchWarned = false;
+        var dispatchStarvedAt = TimeSpan.Zero;
         var nextProbeAt = TimeSpan.Zero;
         var nextMountProbeAt = TimeSpan.Zero;
         var failedMountProbes = 0;
@@ -175,6 +191,12 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 // is the complaint this exists to catch.
                 Dispatcher.UIThread.Post(() => Interlocked.Exchange(ref _lastPongTicks, _clock.Elapsed.Ticks), DispatcherPriority.Background);
 
+                // AC-1196: a measurement, not work — one Interlocked.Exchange per tick. AC-1138/AC-1204's "do not
+                // lift work to Render or Send" still holds; this is posted there precisely because Send outranks
+                // the Loaded(1)/Render(4) a layout loop reposts at, and surviving it is what says starved, not stuck.
+                Dispatcher.UIThread.Post(() => Interlocked.Exchange(ref _highPriorityPongTicks, _clock.Elapsed.Ticks), DispatcherPriority.Send);
+
+                var sinceHighPriorityPong = _SinceHighPriorityPong(now);
                 var lastPongTicks = Interlocked.Read(ref _lastPongTicks);
                 if (lastPongTicks >= 0)
                 {
@@ -184,7 +206,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                     if (decision.Warn)
                     {
                         hangStartedAt = now;
-                        _LogHang(sinceLastPong, hangCpu);
+                        _LogHang(sinceLastPong, hangCpu, sinceHighPriorityPong);
                     }
                     else if (decision.Recovered)
                     {
@@ -197,24 +219,52 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 if (!_probeInFlight && now >= nextProbeAt)
                 {
                     nextProbeAt = now + RenderClockProbeInterval;
-                    _probeInFlight = true;
                     Interlocked.Exchange(ref _probeStartedTicks, 0);
+                    Interlocked.Exchange(ref _probeQueuedTicks, now.Ticks);
+                    _probeInFlight = true;
                     Dispatcher.UIThread.Post(_StartRenderClockProbe, DispatcherPriority.Background);
                 }
 
-                var probeInFlightFor = _ProbeInFlightFor(now);
+                // AC-1196 T5: the two states, both read from here rather than from the thread under suspicion.
+                var probeStartedFor = _ProbeStartedFor(now);
+                var probePendingFor = _ProbePendingFor(now);
 
-                // AC-883: the pause has its own, much higher threshold — see RenderClockHeartbeat.PauseAfter.
+                // AC-883/AC-1196: fed the started half only. Pausing panes answers a clock that stopped after the
+                // commit was requested; a thread that never picked the probe up cannot render either way, and the
+                // event that would carry the pause is queued behind that very thread. So the macOS gate stays.
                 SetRenderersShouldPause(
-                    RenderClockHeartbeat.ShouldPauseRenderers(probeInFlightFor, OperatingSystem.IsMacOS()));
+                    RenderClockHeartbeat.ShouldPauseRenderers(probeStartedFor, OperatingSystem.IsMacOS()));
 
-                var renderDecision = RenderClockHeartbeat.Decide(probeInFlightFor, renderClockWarned);
+                var dispatchDecision = UiDispatchHeartbeat.Decide(
+                    probePendingFor, sinceHighPriorityPong, dispatchWarned, _alarmAfter);
+                if (dispatchDecision.Starved)
+                {
+                    dispatchStarvedAt = now;
+                    _logger.LogWarning(
+                        "uidispatch starved pending={Pending:0.0}s hipri={HiPri:0.0}s — the UI thread is running "
+                        + "and answering above its layout priority, but nothing at Background is being reached. "
+                        + "This is not a renderclock stall: the clock is ticking.",
+                        probePendingFor!.Value.TotalSeconds,
+                        sinceHighPriorityPong!.Value.TotalSeconds);
+                }
+                else if (dispatchDecision.Recovered)
+                {
+                    _logger.LogWarning("uidispatch recovered after={Duration:0.0}s", (now - dispatchStarvedAt).TotalSeconds);
+                }
+
+                dispatchWarned = dispatchDecision.Warned;
+
+                var renderDecision = RenderClockHeartbeat.Decide(
+                    UiDispatchHeartbeat.RenderClockOutstandingFor(
+                        probeStartedFor, probePendingFor, sinceHighPriorityPong, _alarmAfter),
+                    renderClockWarned,
+                    _alarmAfter);
                 if (renderDecision.Stalled)
                 {
                     renderStallStartedAt = now;
                     _logger.LogWarning(
                         "renderclock stalled since={Since:0.0}s — a forced compositor commit has not been processed",
-                        RenderClockHeartbeat.StallAfter.TotalSeconds);
+                        _alarmAfter.TotalSeconds);
                 }
                 else if (renderDecision.Resumed)
                 {
@@ -260,8 +310,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         }
     }
 
-    // Null while nothing is outstanding, and while a posted probe is still waiting for the UI thread to run it.
-    private TimeSpan? _ProbeInFlightFor(TimeSpan now)
+    // Started, and no render answer yet — null while nothing is outstanding and while a posted probe is still
+    // waiting for its turn. That second case used to be all this reported, and it is why AC-1196 saw nothing.
+    private TimeSpan? _ProbeStartedFor(TimeSpan now)
     {
         if (!_probeInFlight)
         {
@@ -270,6 +321,24 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
         var startedAt = Interlocked.Read(ref _probeStartedTicks);
         return startedAt > 0 ? TimeSpan.FromTicks(now.Ticks - startedAt) : null;
+    }
+
+    // Posted, never run — measured from the stamp this thread took at the post, so nothing here needs the UI
+    // thread to be well enough to answer. The other half of T5, and the half neither alarm could see before.
+    private TimeSpan? _ProbePendingFor(TimeSpan now)
+    {
+        if (!_probeInFlight || Interlocked.Read(ref _probeStartedTicks) > 0)
+        {
+            return null;
+        }
+
+        return TimeSpan.FromTicks(now.Ticks - Interlocked.Read(ref _probeQueuedTicks));
+    }
+
+    private TimeSpan? _SinceHighPriorityPong(TimeSpan now)
+    {
+        var pongTicks = Interlocked.Read(ref _highPriorityPongTicks);
+        return pongTicks < 0 ? null : TimeSpan.FromTicks(now.Ticks - pongTicks);
     }
 
     // AC-882: the one thing that proves the render clock can still be woken. Avalonia's commit chain wakes a
@@ -363,7 +432,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     // Not elsewhere in Cockpit.Core.Diagnostics because nothing else needs it: the Debug tab's report never
     // shows handle count, and this is the only caller.
-    private void _LogHang(TimeSpan sinceLastPong, CpuSampler cpu)
+    private void _LogHang(TimeSpan sinceLastPong, CpuSampler cpu, TimeSpan? sinceHighPriorityPong)
     {
         using var process = Process.GetCurrentProcess();
 
@@ -376,9 +445,13 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             .OrderBy(group => group.Key.ToString(), StringComparer.Ordinal)
             .Select(group => $"{group.Key}={group.Count()}");
 
+        // AC-1196: hipri= is what stops this line being read as "the thread is stuck" when it is not. A fresh
+        // reading means the thread is pumping and only its lower priorities are starved — a different fault, with
+        // its own uidispatch line, and the misdiagnosis that sent the last round after the wrong thing.
         _logger.LogWarning(
-            "uifreeze hang since={Since:0.0}s cpu={Cpu} retention={Retention} tpPending={Pending} tpThreads={ThreadPoolCount} gcpause={GcPause:0.0}% threadStates={States}",
+            "uifreeze hang since={Since:0.0}s hipri={HiPri} cpu={Cpu} retention={Retention} tpPending={Pending} tpThreads={ThreadPoolCount} gcpause={GcPause:0.0}% threadStates={States}",
             sinceLastPong.TotalSeconds,
+            AgoText(sinceHighPriorityPong),
             CpuText(cpu.PercentSinceLastCall()),
             SampleHangRetention(),
             ThreadPool.PendingWorkItemCount,
@@ -448,6 +521,11 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // AC-1125 E: same "0B is a measured value, n/a is the truth" rule as handles above — Process.PrivateMemorySize64
     // reads back 0 on Unix, which is not a real reading. Internal as a test seam for the formatting itself.
     internal static string PrivText(long? privateBytes) => privateBytes is { } bytes ? _Compact(bytes) : "n/a";
+
+    // AC-1196: same "never has" versus "measured" rule as the two above — a thread that has answered nothing yet
+    // is not a thread that answered a moment ago. Internal as a test seam for the formatting itself.
+    internal static string AgoText(TimeSpan? since) =>
+        since is { } age ? age.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + "s" : "n/a";
 
     // AC-1125 F: a sampler with no baseline yet is not "0% CPU", it has not measured anything — see CpuSampler
     // below. Internal as a test seam for the formatting itself.
