@@ -88,7 +88,7 @@ public class PullRequestRefreshSourceTests
         var freshPullRequest = legacyPullRequest with { Title = "Fresh title", Body = "body that must not persist" };
         var source = new PullRequestRefreshSource(
             storage,
-            (_, _) => Task.FromResult(new PullRequestFeedResult([freshPullRequest], [], RepositoryMissing: false)),
+            (_, _) => Task.FromResult(new PullRequestFeedResult([freshPullRequest], [freshPullRequest], RepositoryMissing: false)),
             pollInterval: TimeSpan.FromMinutes(10));
 
         Assert.Equal(legacyPullRequest.Title, source.Current.Result.PullRequests[0].Title);
@@ -103,7 +103,9 @@ public class PullRequestRefreshSourceTests
         var restarted = new PullRequestRefreshSource(storage, (_, _) => release.Task, pollInterval: TimeSpan.FromMinutes(10));
 
         Assert.Equal(freshPullRequest.Title, restarted.Current.Result.PullRequests[0].Title);
+        Assert.Equal(freshPullRequest.Title, restarted.Current.Result.ReviewRequested[0].Title);
         Assert.Null(restarted.Current.Result.PullRequests[0].Body);
+        Assert.False(restarted.Current.Result.RepositoryMissing);
 
         release.SetResult(PullRequestFeedResult.Missing);
         restarted.Dispose();
