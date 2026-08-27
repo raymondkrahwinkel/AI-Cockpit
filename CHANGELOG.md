@@ -38,6 +38,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   one path still writes into your real state is worse than one that never claimed to be. Leave it unset and
   nothing changes. The path must be absolute; a relative one is refused at startup rather than resolved
   differently by each process.
+- changed: the rule that only one cockpit runs at a time now covers one state directory rather than the whole
+  machine, so two instances pointed at directories of their own start side by side and two sharing a directory
+  still refuse — whichever way that directory is spelt. Without `COCKPIT_STATE_ROOT` nothing changes: every
+  instance shares the one directory, so exactly one runs, as before.
 
 - added: the plugin SDK now carries a named list of everything a plugin can ask the cockpit for — each
   entry with how much granting it would hand over, which SDK members it covers and the cockpit version it

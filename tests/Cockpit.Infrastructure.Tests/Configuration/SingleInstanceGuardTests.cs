@@ -1,3 +1,4 @@
+using Cockpit.Core.Configuration;
 using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
@@ -161,6 +162,88 @@ public sealed class SingleInstanceGuardTests
         using var production = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName);
 
         Assert.NotNull(production);
+    }
+
+    /// <summary>
+    /// The claim is keyed on the state root (AC-1217), so two instances pointed at roots of their own do not
+    /// block each other — and two pointed at one root still do, however they spell it.
+    /// </summary>
+    /// <remarks>
+    /// The spelling cases are the whole risk here: a claim derived straight from the string would be evaded by
+    /// typing a trailing separator or a different case, which reads as isolation and is not.
+    /// </remarks>
+    [Fact]
+    public void ClaimNameFor_TheDefaultRoot_IsTheNameEveryEarlierVersionUsed()
+    {
+        // Not cosmetic: during the one upgrade that introduces this change, the running old cockpit and the new
+        // one still share a state directory, and they only see each other while the name is unchanged.
+        Assert.Equal("AI-Cockpit-single-instance", SingleInstanceGuard.ClaimNameFor(CockpitBuild.DefaultStateRoot));
+    }
+
+    [Fact]
+    public void ClaimNameFor_TheDefaultRootSpeltOutInFull_IsStillTheDefaultClaim()
+    {
+        // Pointing the variable at the very directory the cockpit already uses must not buy a second claim: those
+        // two instances share everything, so this is exactly when the guard has to bite.
+        var spelt = CockpitBuild.DefaultStateRoot + Path.DirectorySeparatorChar;
+
+        Assert.Equal(SingleInstanceGuard.ClaimNameFor(CockpitBuild.DefaultStateRoot), SingleInstanceGuard.ClaimNameFor(spelt));
+    }
+
+    [Fact]
+    public void ClaimNameFor_TwoDifferentRoots_AreDifferentClaims()
+    {
+        Assert.NotEqual(
+            SingleInstanceGuard.ClaimNameFor(Path.Combine(Path.GetTempPath(), "cockpit-a")),
+            SingleInstanceGuard.ClaimNameFor(Path.Combine(Path.GetTempPath(), "cockpit-b")));
+    }
+
+    [Fact]
+    public void ClaimNameFor_ARootWithAndWithoutATrailingSeparator_IsOneClaim()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cockpit-normalise");
+
+        Assert.Equal(
+            SingleInstanceGuard.ClaimNameFor(root),
+            SingleInstanceGuard.ClaimNameFor(root + Path.DirectorySeparatorChar));
+    }
+
+    [Fact]
+    public void ClaimNameFor_ARootWithARelativeSegment_IsTheClaimOfTheDirectoryItLandsIn()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cockpit-relative");
+        var roundabout = Path.Combine(root, "sub", "..");
+
+        Assert.Equal(SingleInstanceGuard.ClaimNameFor(root), SingleInstanceGuard.ClaimNameFor(roundabout));
+    }
+
+    [Fact]
+    public void ClaimNameFor_OneRootInDifferentCase_IsOneClaimOnWindows()
+    {
+        // Windows compares paths case-insensitively, so C:\Temp\X and c:\temp\x are one directory and must be one
+        // claim. Linux and macOS are left alone: there they can genuinely be two directories.
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var root = Path.Combine(Path.GetTempPath(), "Cockpit-Case");
+
+        Assert.Equal(SingleInstanceGuard.ClaimNameFor(root), SingleInstanceGuard.ClaimNameFor(root.ToUpperInvariant()));
+    }
+
+    /// <summary>
+    /// The name has to be the same in every process that resolves the same root, which rules out
+    /// <see cref="string.GetHashCode()"/> — .NET seeds it per process, so two cockpits would never collide.
+    /// </summary>
+    [Fact]
+    public void ClaimNameFor_ARoot_IsAMutexNameAndNotAPath()
+    {
+        var name = SingleInstanceGuard.ClaimNameFor(Path.Combine(Path.GetTempPath(), "cockpit-shape"));
+
+        // Backslash is reserved in a mutex name; the scope is set through NamedWaitHandleOptions instead.
+        Assert.DoesNotContain('\\', name);
+        Assert.StartsWith("AI-Cockpit-single-instance-", name, StringComparison.Ordinal);
     }
 
     /// <summary>Another cockpit, started and left open on a thread of its own, until disposed.</summary>

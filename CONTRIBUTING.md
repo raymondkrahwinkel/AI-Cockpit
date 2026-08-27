@@ -66,8 +66,10 @@ fails immediately instead of isolating to two places while reading as one. And n
 application-data directory except `CockpitBuild`: a test fails the build otherwise, because a state root that
 moves for most paths but not all is worse than one that never moved.
 
-Note that a release build still takes the single-instance claim, which is not scoped to the state root — two
-release builds cannot run side by side yet, whatever their roots. A debug build takes no claim.
+The single-instance claim follows the state root too, so two release builds with roots of their own run side by
+side and two sharing a root still do not — however differently they spell that root. Leave the variable unset
+and the claim is the one every earlier version used, which is what keeps an upgrade from stepping over a
+running cockpit. A debug build takes no claim at all.
 
 ## Git hooks
 

@@ -23,6 +23,11 @@ public sealed class StateRootOverrideTests
     private static readonly string Override =
         Path.Combine(Path.GetTempPath(), "cockpit-state-root-override-test");
 
+    // The one path that must NOT move: it names the root the override replaces, which is how the single-instance
+    // claim tells a shared state directory from a private one (AC-1217). Listed by name rather than skipped by a
+    // rule, so a second path cannot join it without this line being edited.
+    private const string DoesNotMoveByDesign = "CockpitBuild.DefaultStateRoot";
+
     [Fact]
     public void WithoutTheVariable_TheStateRootIsExactlyWhatItWasBefore()
     {
@@ -80,6 +85,12 @@ public sealed class StateRootOverrideTests
             .ToList();
 
         Assert.NotEmpty(underRealRoot);
+
+        // The exemption is only honoured while it names something that exists, so deleting or renaming that
+        // property leaves a dead exemption rather than a quietly widened one.
+        Assert.Contains(underRealRoot, path => path.Name == DoesNotMoveByDesign);
+
+        underRealRoot = underRealRoot.Where(path => path.Name != DoesNotMoveByDesign).ToList();
 
         using var _ = new OverrideScope(Override);
 

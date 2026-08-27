@@ -24,12 +24,17 @@ public static class CockpitBuild
     // The folder this build keeps its state in, under the platform's application-data directory.
     public static string StateFolder => IsDevelopment ? DevelopmentStateFolder : ProductionStateFolder;
 
+    // Where this build's state lives when nothing overrides it. Named because the single-instance claim has to
+    // tell "the state root every install shares" from "a root this instance was pointed at" (AC-1217).
+    public static string DefaultStateRoot =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), StateFolder);
+
     // The root of everything this build persists, resolved here alone. A half-isolated instance is worse than
     // none: it reads as isolated while one path still writes into the operator's real state.
     public static string StateRoot =>
         Environment.GetEnvironmentVariable(StateRootVariable) is { } stateRoot && !string.IsNullOrWhiteSpace(stateRoot)
             ? RequireFullyQualified(stateRoot)
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), StateFolder);
+            : DefaultStateRoot;
 
     // The file this build logs to. Resolved here rather than at the point of writing because more than one thing
     // now needs to name it: the logger opens it, and the diagnostics report tells the operator where it is — every

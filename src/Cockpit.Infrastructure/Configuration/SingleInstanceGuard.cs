@@ -1,3 +1,7 @@
+using System.Security.Cryptography;
+using System.Text;
+using Cockpit.Core.Configuration;
+
 namespace Cockpit.Infrastructure.Configuration;
 
 // AC-4: the system-wide claim that this is the only cockpit running — a second start stands down before
@@ -22,18 +26,48 @@ public sealed class SingleInstanceGuard : IDisposable
     // Claims the right to run, or reports another cockpit already has it. `isDevelopmentBuild` takes no
     // claim and honours none, since a dev build's state lives elsewhere and cannot collide anyway.
     // Null means another cockpit holds the claim; otherwise a guard that holds it until disposed.
-    public static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild) => TryAcquire(isDevelopmentBuild, ClaimName);
+    public static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild) =>
+        TryAcquire(isDevelopmentBuild, ClaimNameFor(CockpitBuild.StateRoot));
 
     // As `TryAcquire(bool)`, but waits up to `claimWait` instead of giving up instantly. A restart's new
     // process starts while the old one is still shutting down and holding the claim, so it needs the wait
     // to avoid losing the race; a plain double-launch keeps zero wait and stands down at once.
     public static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild, TimeSpan claimWait) =>
-        TryAcquire(isDevelopmentBuild, ClaimName, claimWait);
+        TryAcquire(isDevelopmentBuild, ClaimNameFor(CockpitBuild.StateRoot), claimWait);
 
     // Whether some other cockpit already holds the claim, asked without taking it (AC-738). This runs before the
     // guard itself does — a launch that is about to stand down must not apply a staged update, because applying one
     // force-stops every process in the installation directory, the running cockpit included.
-    public static bool IsHeldByAnotherCockpit() => IsHeldByAnotherCockpit(ClaimName);
+    public static bool IsHeldByAnotherCockpit() => IsHeldByAnotherCockpit(ClaimNameFor(CockpitBuild.StateRoot));
+
+    // The claim covering `stateRoot` (AC-1217). The guard exists to stop two cockpits writing over one state
+    // directory, so it is keyed on that directory rather than on the build: an instance pointed at a root of its
+    // own shares nothing and has no one to block.
+    internal static string ClaimNameFor(string stateRoot)
+    {
+        var normalized = NormalizeRoot(stateRoot);
+
+        // The default root keeps the original name so a version carrying this change and one without it still see
+        // each other — during that one upgrade they do share a state directory, and a claim neither side answers
+        // to is the AC-4 corruption with nothing left to catch it.
+        return normalized == NormalizeRoot(CockpitBuild.DefaultStateRoot)
+            ? ClaimName
+            : $"{ClaimName}-{Fingerprint(normalized)}";
+    }
+
+    // Two spellings of one directory must produce one claim, or the guard is evaded by typing the path
+    // differently. GetFullPath settles separators and relative segments; Windows compares paths case-insensitively.
+    private static string NormalizeRoot(string stateRoot)
+    {
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(stateRoot));
+
+        return OperatingSystem.IsWindows() ? full.ToLowerInvariant() : full;
+    }
+
+    // SHA-256 rather than string.GetHashCode, which .NET seeds per process: two cockpits would hash one root to
+    // two names and neither would ever see the other. A path cannot be the name itself — backslash is reserved.
+    private static string Fingerprint(string normalizedRoot) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedRoot)))[..16];
 
     internal static bool IsHeldByAnotherCockpit(string claimName)
     {
