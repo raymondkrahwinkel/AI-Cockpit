@@ -15,8 +15,10 @@ public static class StaleSessionProcessSweep
         // group to end and no anchor to find one by, and that is a reported outcome rather than a quiet skip.
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            logger.LogWarning(
-                "Leftover session processes: this platform has no per-session containment (AC-692), so anything a previous run's session left running keeps running.");
+            // AC-1134: this is "I cannot tell", not "something was left running" — the constant that fires on
+            // every start here, so it must never outrank the branch below that actually found something.
+            logger.LogInformation(
+                "Session process containment: this platform has none (AC-692), so whether a previous run's sessions are still running cannot be checked from here.");
 
             return;
         }
@@ -122,8 +124,10 @@ public static class StaleSessionProcessSweep
 
         if (outcome.Groups > 0)
         {
-            logger.LogInformation(
-                "Leftover session processes: stopped {Processes} process(es) from {Groups} session(s) of a previous run.",
+            // AC-1134: this is the one branch that actually measured something — a previous run's session was
+            // still running and had to be stopped — so it outranks the "cannot tell" constant above it.
+            logger.LogWarning(
+                "Stopped {Processes} leftover session process(es) from {Groups} session(s) that a previous run left behind.",
                 outcome.Processes,
                 outcome.Groups);
         }

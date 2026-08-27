@@ -7916,22 +7916,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _worktreeManager.SourceRefreshed -= _ToastWorktreeSource;
         }
 
-        foreach (var session in Sessions.ToList())
+        var panes = Sessions.ToList();
+        var embedded = _embeddedSessions.Values.SelectMany(owned => owned).ToList();
+        _pendingTeardownCount = panes.Count + embedded.Count + (AssistantHost?.Session is null ? 0 : 1);
+
+        // AC-1134: parallel, not serial — there is no shared state between panes that requires an order, and a
+        // teardown that waited for each in turn let one slow pane starve every pane behind it.
+        await Task.WhenAll(panes.Select(async session =>
         {
             session.PropertyChanged -= OnSessionPropertyChanged;
             session.CloseRequested -= OnSessionCloseRequested;
             session.NameChanged -= OnSessionNameChanged;
             await session.DisposeAsync();
-        }
+            Interlocked.Decrement(ref _pendingTeardownCount);
+        }));
 
         // Embedded sessions (AC-122) live outside Sessions, so they need disposing here too or their pty outlives
         // the app.
-        foreach (var session in _embeddedSessions.Values.SelectMany(owned => owned))
+        await Task.WhenAll(embedded.Select(async session =>
         {
             session.PropertyChanged -= OnSessionPropertyChanged;
             session.CloseRequested -= OnEmbeddedSessionCloseRequested;
             await session.DisposeAsync();
-        }
+            Interlocked.Decrement(ref _pendingTeardownCount);
+        }));
 
         Cockpit.App.Logging.LifecycleLog.Write("Pane and embedded sessions torn down; the assistant is next.");
 
@@ -7941,6 +7949,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (AssistantHost?.Session is { } assistant)
         {
             await assistant.DisposeAsync();
+            Interlocked.Decrement(ref _pendingTeardownCount);
             Cockpit.App.Logging.LifecycleLog.Write("Assistant session torn down.");
         }
 
@@ -7950,4 +7959,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Cockpit.App.Logging.LifecycleLog.Write("Cockpit teardown complete.");
     }
+
+    // AC-1134: how many of this teardown's sessions had not yet finished disposing — read by Program's shutdown
+    // budget once it gives up waiting, so the exit can say what it did not achieve instead of just going quiet.
+    // Volatile.Read, not a plain field read: it is written with Interlocked.Decrement from the parallel per-session
+    // teardown tasks above, possibly off the thread that reads this.
+    public int PendingTeardownCount => Volatile.Read(ref _pendingTeardownCount);
+
+    private int _pendingTeardownCount;
 }

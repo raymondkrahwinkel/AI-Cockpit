@@ -15,6 +15,11 @@ internal sealed class SessionRuntime : ISessionRuntime
     // capabilities and `LastAssistantText` are folded as events arrive and stay correct.
     private const int MaxLoggedEvents = 5_000;
 
+    // AC-1134: the interrupt is a courtesy — asking a running turn to stop cleanly — not the obligation. Tearing
+    // down the process tree is the obligation, and a CLI that stopped answering its control protocol must not be
+    // able to hold that up indefinitely.
+    private static readonly TimeSpan InterruptGrace = TimeSpan.FromMilliseconds(250);
+
     private readonly ISessionDriverFactory _driverFactory;
     private readonly ISessionMemoryLimiter? _memoryLimiter;
     private readonly List<SessionEvent> _events = [];
@@ -151,16 +156,18 @@ internal sealed class SessionRuntime : ISessionRuntime
     public async ValueTask DisposeAsync()
     {
         // Interrupt first so a running turn is told to stop rather than having its process pulled from under
-        // it; then cancel the pump, then let the driver tear its process down.
+        // it; then cancel the pump, then let the driver tear its process down. Bounded by InterruptGrace: a CLI
+        // that stopped answering its control protocol must not hold up the process-tree teardown that follows.
         if (_driver is not null)
         {
             try
             {
-                await _driver.InterruptAsync();
+                await _driver.InterruptAsync().WaitAsync(InterruptGrace);
             }
             catch (Exception)
             {
-                // Best-effort: a session that is already gone must not make closing it throw.
+                // Best-effort: a session that is already gone, or that did not answer in time, must not make
+                // closing it throw or wait longer.
             }
         }
 

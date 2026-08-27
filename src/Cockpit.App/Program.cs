@@ -341,11 +341,13 @@ sealed class Program
             return;
         }
 
-        await AwaitTeardownAsync(cockpit.DisposeAsync().AsTask(), TeardownBudget);
+        await AwaitTeardownAsync(cockpit.DisposeAsync().AsTask(), TeardownBudget, () => cockpit.PendingTeardownCount);
     }
 
     // The bounded, logged half — its own method so a test can drive a teardown that wedges and one that throws.
-    internal static async Task AwaitTeardownAsync(Task teardown, TimeSpan budget)
+    // AC-1134: `pendingCount`, when given, is read only once the budget is spent, so the exit log says how many
+    // sessions had not finished tearing down instead of just falling silent.
+    internal static async Task AwaitTeardownAsync(Task teardown, TimeSpan budget, Func<int>? pendingCount = null)
     {
         try
         {
@@ -356,7 +358,8 @@ sealed class Program
                 return;
             }
 
-            Cockpit.App.Logging.LifecycleLog.Write($"Cockpit teardown did not finish within {budget}; exiting without it.");
+            var pendingClause = pendingCount is null ? string.Empty : $" {pendingCount()} session(s) had not finished tearing down.";
+            Cockpit.App.Logging.LifecycleLog.Write($"Cockpit teardown did not finish within {budget}; exiting without it.{pendingClause}");
         }
         catch (Exception exception)
         {
