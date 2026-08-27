@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Plugins.Abstractions.StatusBar;
 
@@ -130,9 +131,11 @@ internal sealed class PluginStatusBarHost : StackPanel
             {
                 await activity.StopAsync();
             }
-            catch (Exception)
+            catch (Exception exception)
             {
                 // Fail-soft: the source's own Changed event reconciles the counter; a failed stop should not crash the UI.
+                Program.Services?.GetService<ILoggerFactory>()?.CreateLogger<PluginStatusBarHost>()
+                    .LogWarning(exception, "Could not stop supervised activity '{ActivityId}'.", activity.Id);
             }
 
             flyout.Hide();
