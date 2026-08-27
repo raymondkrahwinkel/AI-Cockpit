@@ -33,6 +33,10 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Cockpit.App/Cockpit.App.csproj" />
     <ProjectReference Include="../Cockpit.TestSupport/Cockpit.TestSupport.csproj" />
+    <!-- AC-1131: the measurement harness's decision functions are tested from here, because they are the
+         part that needs no window and so the part CI can run. The harness itself is an exe; referencing it
+         gets the types without running it. -->
+    <ProjectReference Include="../Cockpit.MeasurementHarness/Cockpit.MeasurementHarness.csproj" />
     <!-- AC-809: a build dependency only (ReferenceOutputAssembly=false) — DiagramPluginLoadTests loads it
          through the real PluginActivator/PluginLoadContext from its build output, the same end-to-end proof
          Cockpit.Core.Tests uses for the other example plugins. Lives here rather than there because this is

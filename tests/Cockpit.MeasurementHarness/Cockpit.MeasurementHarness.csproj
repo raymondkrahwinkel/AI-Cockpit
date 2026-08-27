@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- AC-1131: the one measurement harness, in the repo, replacing the throwaway copies under C:\temp.
+       Sixteen of those existed by the end of 2026-08-27, 10.415 lines, several of them copies of copies.
+       The requirements this project implements are in Plans/AC-1131-meetharnas-eisen.md (Depot). -->
+
+  <!-- An exe rather than a test project: E4 derives the report's identity from the received argv, so the
+       entry point has to be the thing that receives it. The test project references this one back for the
+       pure decision functions, which is what keeps those in CI (see README, "the CI boundary"). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Cockpit.MeasurementHarness</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- E7: the real production classes, never copies. The `real/` folder in the old debug project held
+         files copied on 15 August that had drifted 1541 lines from origin/main without anyone noticing.
+         Referencing Cockpit.App also brings Avalonia.Desktop, which is what makes a real window possible. -->
+    <ProjectReference Include="../../src/Cockpit.App/Cockpit.App.csproj" />
+    <ProjectReference Include="../../src/Cockpit.Core/Cockpit.Core.csproj" />
+  </ItemGroup>
+
+</Project>
