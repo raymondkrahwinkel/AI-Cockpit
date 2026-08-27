@@ -46,7 +46,7 @@ internal sealed class PullRequestRefreshSource : IDisposable
 
     private const string StorageKey = "refreshSourceSnapshot";
 
-    // The restart cache draws the list and badges before the first fetch; prompt-only PR bodies stay in memory.
+    // The restart cache draws lists and badges before the first fetch; PR bodies arrive only with a live fetch.
     private sealed record PersistedSnapshot(PersistedResult Result, DateTimeOffset? FetchedAt)
     {
         public PullRequestFeedSnapshot ToRuntime() => new(Result.ToRuntime(), FetchedAt);

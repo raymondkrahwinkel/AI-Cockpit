@@ -1,6 +1,3 @@
-using System.Collections.Concurrent;
-using Cockpit.Plugins.Abstractions;
-
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // AC-515: refreshing has to run independent of any view, never make a caller wait on a miss, survive a restart
@@ -17,7 +14,7 @@ public class PullRequestRefreshSourceTests
     {
         var calls = 0;
         var source = new PullRequestRefreshSource(
-            new InMemoryStorage(),
+            new InMemoryPluginStorage(),
             (_, _) =>
             {
                 Interlocked.Increment(ref calls);
@@ -124,7 +121,7 @@ public class PullRequestRefreshSourceTests
         // is drained (awaited via firstCallSeen) before the overlap is measured, so what is under test is the three
         // calls issued here, not an accident of thread-pool scheduling.
         var source = new PullRequestRefreshSource(
-            new InMemoryStorage(),
+            new InMemoryPluginStorage(),
             (_, _) =>
             {
                 var n = Interlocked.Increment(ref calls);
@@ -157,14 +154,8 @@ public class PullRequestRefreshSourceTests
         Assert.Equal(2, ran.Count(x => !x));
     }
 
-    // AC-515 blocker 2: a snapshot that is not valid JSON at all — a truncated write (see blocker 1) or a leftover
-    // from an incompatible earlier build — must read as "nothing persisted yet", the same as a fresh install,
-    // rather than throw out of the constructor. This runs inside `GitHubPullRequestsPlugin.Initialize`, before
-    // `AddSettings`/`AddSideMenuSection`/`AddWidget` register anything — an unguarded throw here
-    // used to make `PluginManager.Initialize` skip every one of this plugin's contributions over one bad key.
-    // `InMemoryPluginStorage` (unlike `InMemoryStorage`) round-trips through
-    // `System.Text.Json.JsonSerializer` like the host's real `PluginStorage` does, so this
-    // actually drives the deserialize path the bug lives in.
+    // The JSON-backed test storage reproduces the host's deserialize path: malformed persisted data must fall
+    // back to an empty snapshot instead of aborting plugin initialization.
     [Fact]
     public void ColdStart_WithUnparsableStoredJson_FallsBackToEmpty_InsteadOfThrowing()
     {
@@ -252,7 +243,7 @@ public class PullRequestRefreshSourceTests
         var calls = 0;
 
         var source = new PullRequestRefreshSource(
-            new InMemoryStorage(),
+            new InMemoryPluginStorage(),
             (_, _) =>
             {
                 var n = Interlocked.Increment(ref calls);
@@ -289,7 +280,7 @@ public class PullRequestRefreshSourceTests
     public async Task RefreshAsync_CalledAfterDispose_IsGatedOutInsteadOfThrowing()
     {
         var source = new PullRequestRefreshSource(
-            new InMemoryStorage(),
+            new InMemoryPluginStorage(),
             (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)),
             pollInterval: TimeSpan.FromMinutes(10));
 
@@ -304,7 +295,7 @@ public class PullRequestRefreshSourceTests
     [Fact]
     public async Task AFailedFetch_StillRaisesUpdated_SoAFirstEverAttemptIsNotSilent()
     {
-        var storage = new InMemoryStorage();
+        var storage = new InMemoryPluginStorage();
 
         // The constructor's due-time-zero tick fetches straight away, so a handler attached on the line after it can
         // already be too late: the fetch fails, Updated fires with nothing listening, and the wait below then just
@@ -339,7 +330,7 @@ public class PullRequestRefreshSourceTests
     public async Task ExplicitRefresh_ThatRan_ReportsItsOwnFailure()
     {
         var source = new PullRequestRefreshSource(
-            new InMemoryStorage(),
+            new InMemoryPluginStorage(),
             (_, _) => Task.FromException<PullRequestFeedResult>(new InvalidOperationException("gh not installed")),
             pollInterval: TimeSpan.FromMinutes(10));
 
@@ -369,16 +360,6 @@ public class PullRequestRefreshSourceTests
         }
 
         return condition();
-    }
-
-    // Concurrent because a background poll writes here while a test's wait loop reads — a plain dictionary throws or returns garbage on that overlap.
-    private sealed class InMemoryStorage : IPluginStorage
-    {
-        private readonly ConcurrentDictionary<string, object?> _values = new();
-
-        public T? Get<T>(string key) => _values.TryGetValue(key, out var value) ? (T?)value : default;
-
-        public void Set<T>(string key, T value) => _values[key] = value;
     }
 
 }
