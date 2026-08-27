@@ -270,6 +270,7 @@ public class McpToolProviderConnectAsyncTests
         var scriptPath = Path.Combine(directory.FullName, "server.ps1");
         await File.WriteAllTextAsync(scriptPath, _StdioServerScript);
 
+        int? processId = null;
         try
         {
             var provider = _ProviderFor(_DisableBuiltIns().Append(new McpServerConfig
@@ -282,13 +283,18 @@ public class McpToolProviderConnectAsyncTests
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
             await using var session = await provider.ConnectAsync(cancellationToken: timeout.Token);
-            var processId = int.Parse(await File.ReadAllTextAsync(pidPath));
+            processId = int.Parse(await File.ReadAllTextAsync(pidPath));
 
             Assert.Single(session.ConnectionIssues);
-            Assert.True(await _WaitForExitAsync(processId));
+            Assert.True(await _WaitForExitAsync(processId.Value), $"Stdio child process {processId} did not exit within 5 seconds.");
         }
         finally
         {
+            if (processId is int pid)
+            {
+                await _StopProcessAsync(pid);
+            }
+
             directory.Delete(recursive: true);
         }
     }
@@ -311,24 +317,36 @@ public class McpToolProviderConnectAsyncTests
 
     private static async Task<bool> _WaitForExitAsync(int processId)
     {
-        for (var attempt = 0; attempt < 50; attempt++)
+        try
         {
-            try
-            {
-                if (System.Diagnostics.Process.GetProcessById(processId).HasExited)
-                {
-                    return true;
-                }
-            }
-            catch (ArgumentException)
-            {
-                return true;
-            }
-
-            await Task.Delay(100);
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            return true;
         }
+        catch (ArgumentException)
+        {
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
 
-        return false;
+    private static async Task _StopProcessAsync(int processId)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            if (!process.HasExited)
+            {
+                process.Kill();
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        }
+        catch (ArgumentException)
+        {
+        }
     }
 
     private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry, SessionMcpKeyring? keyring = null, IMcpOAuthAuthorizer? oauthAuthorizer = null, IMcpOAuthCoordinator? oauthCoordinator = null)
