@@ -40,10 +40,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     private readonly ILogger<DiagnosticsBackgroundService> _logger;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
-    // AC-1114: null unless this process runs from an AppImage. Read once — APPDIR cannot change underneath a
-    // running process, and the mount it names is the one holding this process's own code.
-    private readonly string? _appImageProbePath =
-        AppImageMount.ProbePathFrom(Environment.GetEnvironmentVariable("APPDIR"));
+    // AC-1114: null unless this process runs from an AppImage whose mount answered at startup. Set once in
+    // Start, before the loop that reads it exists.
+    private string? _appImageProbePath;
 
     private Thread? _thread;
     private volatile bool _stopping;
@@ -103,8 +102,27 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // dispatcher ownership). Called from App.axaml.cs instead, once the framework init has bound it.
     public void Start()
     {
+        _StartAppImageMountWatch();
+
         _thread = new Thread(_Run) { IsBackground = true, Name = "cockpit-diagnostics" };
         _thread.Start();
+    }
+
+    // AC-1114: probed once, here, so the loop only ever watches a mount that demonstrably served at startup.
+    // Without that, an APPDIR whose probe was never readable would read as a mount that died twenty seconds
+    // in — the same unexplained shutdown this check exists to prevent, only with an untrue reason.
+    private void _StartAppImageMountWatch()
+    {
+        var appDir = Environment.GetEnvironmentVariable("APPDIR");
+        _appImageProbePath = AppImageMount.WatchablePathFrom(appDir);
+
+        if (_appImageProbePath is null && !string.IsNullOrWhiteSpace(appDir))
+        {
+            _logger.LogInformation(
+                "appimage mount watch off — nothing readable to watch under APPDIR={AppDir} at startup, so a " +
+                "mount that goes away later will not be reported.",
+                appDir);
+        }
     }
 
     public void Dispose() => _stopping = true;

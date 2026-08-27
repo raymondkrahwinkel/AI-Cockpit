@@ -41,4 +41,24 @@ public class AppImageMountTests
             File.Delete(served);
         }
     }
+
+    [Fact]
+    public void AnAppDirWhoseProbeNeverReadIsNotWatchedAtAll()
+    {
+        var appDir = Directory.CreateTempSubdirectory("ac1114-appdir-").FullName;
+
+        try
+        {
+            // A dev shell sets APPDIR too, and an unpacked layout may name its AppRun differently. Watching
+            // that would report a mount as lost twenty seconds in while nothing was ever there to lose.
+            Assert.Null(AppImageMount.WatchablePathFrom(appDir));
+
+            File.WriteAllText(Path.Combine(appDir, "AppRun"), "#!/bin/sh");
+            Assert.NotNull(AppImageMount.WatchablePathFrom(appDir));
+        }
+        finally
+        {
+            Directory.Delete(appDir, recursive: true);
+        }
+    }
 }

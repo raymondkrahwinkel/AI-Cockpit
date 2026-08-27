@@ -8,9 +8,19 @@ public static class AppImageMount
     // AppRun sits in the AppDir root of every AppImage this project builds — see scripts/package-appimage.sh.
     private const string ProbeFileName = "AppRun";
 
-    // Null when APPDIR is unset, which is every run that is not from an AppImage.
-    public static string? ProbePathFrom(string? appDir) =>
-        string.IsNullOrWhiteSpace(appDir) ? null : Path.Combine(appDir, ProbeFileName);
+    // Only a mount that reads at startup is worth watching. APPDIR is also set by a dev shell, and by
+    // unpacked layouts whose AppRun is named differently — "could never read this" must not later come out
+    // as "the mount died". Null means there is nothing to watch.
+    public static string? WatchablePathFrom(string? appDir)
+    {
+        if (string.IsNullOrWhiteSpace(appDir))
+        {
+            return null;
+        }
+
+        var probePath = Path.Combine(appDir, ProbeFileName);
+        return CanStillServe(probePath) ? probePath : null;
+    }
 
     // Opens the file, because opening is the only thing a dead mount actually refuses: metadata keeps
     // answering on one, so File.Exists and any stat-shaped check both succeed while every open fails with
