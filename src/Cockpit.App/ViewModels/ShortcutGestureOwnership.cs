@@ -2,16 +2,8 @@ using Avalonia.Input;
 
 namespace Cockpit.App.ViewModels;
 
-// One gesture, one owner (AC-608). Deciding which rows have to give theirs up when another row takes it.
-// Nothing used to enforce this, and the dispatch does not either: `CockpitView._TryHandleShortcut` walks
-// `ActiveShortcuts` in catalog order and invokes the *first* gesture that matches. Bind a chord that
-// another action already holds and the winner is whichever sits earlier in the list — so the binding the operator
-// just made silently never fires, or the one they forgot about silently stops. Ctrl+Shift+M is the case that was
-// reported, because it is Toggle zoom's default and every row after it in the catalog loses to it.
-//
-// Gestures are compared parsed rather than as text: "Ctrl+Shift+M" and "Shift+Ctrl+M" are one gesture written two
-// ways, and a hand-edited `cockpit.json` can hold either. A string comparison would let the second one back
-// in through exactly the door this closes.
+// Bind a chord that another action already holds and the winner is whichever sits earlier in the list — so the binding
+// the operator just made silently never fires, or the one they forgot about silently stops (AC-608).
 public static class ShortcutGestureOwnership
 {
     // The positions in `gestures` that must be cleared because the row at

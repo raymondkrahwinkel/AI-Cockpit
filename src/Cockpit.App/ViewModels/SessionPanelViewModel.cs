@@ -15,32 +15,20 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-// The surface every cockpit session panel shares regardless of mode (SDK chat or TTY terminal):
-// the sidebar/overview title, selection, coarse status, and profile label, plus disposal. Lets
-// `CockpitViewModel` manage a mixed collection of `SessionViewModel`
-// (SDK) and `TtyViewModel` (TTY) panels through one type.
+// The surface every cockpit session panel shares regardless of mode (SDK chat or TTY terminal): the sidebar/overview
+// title, selection, coarse status, and profile label, plus disposal.
 public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable
 {
-    // Identifies this session pane for as long as it exists — what a plugin uses to say "this one, not the
-    // other three on screen" (exposed as `IPluginSessionContext.PaneId` / `ICockpitSessionObserver.ActivePaneId`).
-    // Deliberately not the provider's conversation id (the thing you resume by): panes come and go with the
-    // window, and two panes can even resume the same conversation.
-    //
-    // A fresh guid until `AdoptPaneId` overrides it (AC-410): a pane restored from a saved
-    // `WorkspacePane` after a restart keeps the id it was persisted under, so the worktree it owned, its
-    // audit-log entries and its scheduled resumes all still find it by the same identity.
+    // Deliberately not the provider's conversation id (the thing you resume by): panes come and go with the window, and
+    // two panes can even resume the same conversation (AC-410).
     public string PaneId { get; private set; } = Guid.NewGuid().ToString("n");
 
     // Whether AdoptPaneId has already run — guards the one-time-before-attach contract; a second call is a
     // programming error (a pane being restored twice), not something to silently allow.
     private bool _paneIdAdopted;
 
-    // Overrides `PaneId` with the id a saved pane was persisted under (AC-410), so a restored session
-    // keeps its earlier identity instead of minting a new one. Callable exactly once, and only before the pane is
-    // added to `CockpitViewModel.Sessions` — nothing has looked this pane up by id yet at that point, so
-    // there is nothing left holding the old one.
-    // <exception cref="InvalidOperationException">Called a second time on the same panel.</exception>
-    // <exception cref="ArgumentException">`paneId` is null or blank.</exception>
+    // Overrides `PaneId` with the id a saved pane was persisted under (AC-410), so a restored session keeps its earlier
+    // identity instead of minting a new one.
     internal void AdoptPaneId(string paneId)
     {
         if (_paneIdAdopted)
@@ -58,29 +46,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     }
 
     // Whether messages other agents address to this pane reach it on their own, carried by its next outgoing turn
-    // (AC-394), or whether it only ever sees them by calling `read_inbox` itself. Reported per pane by
-    // `list_agents`, so a sender can tell which of the two it is talking to.
-    //
-    // False on the base, and overridden by the one kind of pane that can actually do it, rather than the other way
-    // round. A pane kind added later inherits "no passive delivery" — which is the direction that is safe to be
-    // wrong in: a sender told a message will not arrive by itself goes and makes sure it does, while one told it
-    // will, wrongly, does nothing and never finds out. The claim is only worth making by a pane that implements it.
+    // (AC-394), or whether it only ever sees them by calling `read_inbox` itself.
     public virtual bool DeliversInboxAtTurnStart => false;
 
-    // Whether a prompt handed to `SendPromptAsync` right now would actually reach the agent — the
-    // precondition an unprompted turn needs before it is worth composing one (AC-395's wake, AC-234's scheduled
-    // resume).
-    //
-    // Asked separately from `SendPromptAsync`'s own return value because on one pane kind that return
-    // value is not the whole answer: a session whose driver never came up still holds a runtime, and a send into
-    // it completes without going anywhere (see `_SendWithWaitingMessagesAsync`, which is why mail is only
-    // taken from the inbox once the turn can leave). A wake that reads "true" there would be recorded as having
-    // woken a session that never heard it. Each pane kind answers from the one fact it already holds rather than
-    // from a second check of its own, so the two cannot drift.
-    //
-    // False on the base for the same reason `DeliversInboxAtTurnStart` is: a pane kind added later
-    // inherits "cannot be handed a turn", and a wake that does not fire is a message that waits, while one that
-    // fires into a pane that cannot take it is a turn the operator paid for and nobody read.
+    // Ask separately because a session whose driver never started can still hold a runtime (AC-395, AC-234).
     public virtual bool CanTakeAPrompt => false;
 
     // Display title for this session's sidebar/grid panel, e.g. "Session 1". Set by `CockpitViewModel`.
@@ -88,20 +57,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [NotifyPropertyChangedFor(nameof(SidebarCardTooltip))]
     private string _title = "Session";
 
-    // Whether `Title` is still one the cockpit composed itself — "&lt;profile&gt; - 3", the project's
-    // name, "&lt;original&gt; (copy)" — rather than one somebody chose, which is what lets
-    // `ICockpitHost.SuggestSessionName` label a session after the ticket just linked to it without erasing a
-    // name the operator typed (#AC-310). True until the session is named on purpose, which is any of: typed in the
-    // New-session dialog, an inline rename, an explicit `SetSessionName`, or a flow naming it through
-    // `ICockpitActions.SetActiveSessionStatusAsync`. Every one of those four is a decision; the composed ones
-    // are placeholders. Which of the two a starting session got is decided in one place — `AddSession`, from
-    // `NewSessionResult.NameIsComposed` — so a new start route cannot forget to say (#AC-324).
+    // Whether `Title` is still one the cockpit composed itself (AC-310, AC-324).
     public bool HasGeneratedName { get; set; } = true;
 
     // A short free-text line the agent or a plugin sets to say what this session is doing right now — a ticket it
-    // picked up ("AC-13"), a phase, whatever (#AC-13). Shown under the title in the header and the sidebar; blank
-    // hides it. Distinct from `SessionStatusLabel` (the derived Idle/Busy/Needs-attention state) and
-    // from the provider's own status bar: this one is set from outside — the agent via MCP, or a workflow.
+    // picked up ("AC-13"), a phase, whatever (#AC-13).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SidebarCardTooltip))]
     private string _statusline = string.Empty;
@@ -135,10 +95,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
     private IReadOnlyList<McpServerConnectionIssue> _mcpServerConnectionIssues = [];
 
-    // The header's activity line for the current selection (AC-537). An unknown selection is left unsaid rather
-    // than reported as zero — the count is the one figure here that describes the session's own setup, and a
-    // wrong one is worse than none. AC-997: a session where something fell over says so right here, so it is not
-    // only visible on hover; a clean session's line is unchanged.
+    // An unknown selection is left unsaid rather than reported as zero — the count is the one figure here that
+    // describes the session's own setup, and a wrong one is worse than none (AC-537, AC-997).
     public string ConnectedStatusLine => McpServerSelection is { Count: > 0 } servers
         ? $"Connected ({servers.Count} MCP server{(servers.Count == 1 ? string.Empty : "s")}{McpConnectionIssuesSuffix})."
         : "Connected.";
@@ -147,13 +105,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         ? $", {issues.Count} could not connect"
         : string.Empty;
 
-    // What the activity column says on hover: the servers this session mounts, by name (AC-563). It hangs on the
-    // column rather than on the text inside it, so an agent's `set_status` line cannot carry the list off
-    // with the words it replaces — the list would otherwise be unreachable exactly while a session is working.
-    //
-    // An unknown selection says so. Rendering it as an empty list would read as "this session has no MCP
-    // servers", which is a claim about the world that not being able to work something out does not support
-    // (same rule as AC-550 and AC-544 criterion 6).
+    // It hangs on the column rather than on the text inside it, so an agent's `set_status` line cannot carry the list
+    // off with the words it replaces — the list would otherwise be unreachable exactly while a session is working
+    // (AC-563, AC-550, AC-544).
     public string McpServersTooltip => McpServerSelection switch
     {
         null => "MCP servers\nNot known for this session — neither it nor its profile named a selection.",
@@ -238,17 +192,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // capable way to do it there would be the confusing one.
     public virtual bool SupportsClearContext => false;
 
-    // Whether this pane has a persisted `WorkspacePane` record in `cockpit.json` (AC-410) — true for an
-    // AI session (written when it starts, or already there when it is restored), false for a plain terminal pane,
-    // which is out of scope for this feature. Set by `CockpitViewModel`; gates whether closing this
-    // session also removes that record, so a plain terminal's close never writes a no-op workspace change.
+    // Set by `CockpitViewModel`; gates whether closing this session also removes that record, so a plain terminal's
+    // close never writes a no-op workspace change (AC-410).
     internal bool HasPersistedPane { get; set; }
 
-    // The restore plan this pane was brought back with (AC-410), or null for a session that was never restored —
-    // which is what keeps the banner below off every ordinary, freshly started session. Set once by
-    // `CockpitViewModel.RestoreSessionPanesAsync` right after the pane is attached, and cleared the
-    // moment the operator's choice actually starts the session, so the banner disappears exactly when the pane it
-    // describes stops being merely offered and starts running.
+    // The restore plan this pane was brought back with (AC-410), or null for a session that was never restored — which
+    // is what keeps the banner below off every ordinary, freshly started session.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRestoreOffer))]
     [NotifyPropertyChangedFor(nameof(CanResumeConversation))]
@@ -284,10 +233,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     public string RestoreDegradedReason =>
         RestoreOffer is { Availability: not SessionRestoreAvailability.Known } offer ? offer.Explanation : string.Empty;
 
-    // Raised when the operator resolves a restore offer by picking a start (AC-410) — `CockpitViewModel`
-    // starts the session accordingly and clears `RestoreOffer` once it lands. Closing the offer is not
-    // raised here: the banner's Close button goes through `RaiseCloseRequested` directly, the same
-    // self-close path a TTY's "exit" already uses.
+    // Raised when the operator resolves a restore offer by picking a start (AC-410) — `CockpitViewModel` starts the
+    // session accordingly and clears `RestoreOffer` once it lands.
     public event EventHandler<SessionRestoreChoice>? RestoreDecided;
 
     // "Resume conversation" — picks the earlier conversation back up.
@@ -310,17 +257,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
     }
 
-    // "Close" on the restore-offer banner: the pane was never started, so there is no busy turn to interrupt and
-    // no confirmation to ask for — the same reasoning a TTY's own "exit" close already relies on. Routes through
-    // the ordinary self-close path (`CloseRequested`), which is what makes this "the existing close
-    // path, worktree release included" rather than a bespoke discard.
+    // "Close" on the restore-offer banner: the pane was never started, so there is no busy turn to interrupt and no
+    // confirmation to ask for — the same reasoning a TTY's own "exit" close already relies on.
     [RelayCommand]
     private void CloseRestoredPane() => RaiseCloseRequested();
 
-    // Takes a name a plugin proposed — the ticket it just linked to this session (#AC-310) — unless the session
-    // already carries a name somebody chose, in which case it keeps that one and this reports false. The one place
-    // the rule lives, so the pane-id surface (`CockpitViewModel.SuggestSessionName`) and the plugin
-    // host cannot drift apart on what counts as a name worth keeping.
+    // Takes a name a plugin proposed — the ticket it just linked to this session (#AC-310) — unless the session already
+    // carries a name somebody chose, in which case it keeps that one and this reports false.
     public bool SuggestName(string name)
     {
         if (!HasGeneratedName || string.IsNullOrWhiteSpace(name))
@@ -329,10 +272,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         Title = name.Trim();
-        // AC-514: a suggested name only ever lived on this view model — the pane record a restart reads back
-        // still carried whatever title the session was created with. Raised so CockpitViewModel can persist it,
-        // same as an inline rename. HasGeneratedName is deliberately left as-is (still true): a suggestion is
-        // remembered, not "chosen" — a later, better suggestion must still be free to replace it (#AC-324).
+        // AC-514: a suggested name only ever lived on this view model — the pane record a restart reads back still
+        // carried whatever title the session was created with (AC-324).
         RaiseNameChanged();
         return true;
     }
@@ -356,12 +297,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         IsRenaming = false;
     }
 
-    // Sets the title outright — an operator's own word, the same as an inline rename, whether it arrived through
-    // one (`CommitRename`) or through `SetSessionName`/`SetActiveSessionStatusAsync`
-    // (#AC-13/#AC-312). `HasGeneratedName` always goes to false: unlike `SuggestName`,
-    // nothing here is a mere proposal a later suggestion may still replace. The one place this combination is
-    // written, so a caller cannot set the title and forget `RaiseNameChanged` (AC-514) — three call
-    // sites once did exactly that, silently, before this existed.
+    // Sets the title outright — an operator's own word, the same as an inline rename, whether it arrived through one
+    // (`CommitRename`) or through `SetSessionName`/`SetActiveSessionStatusAsync` (#AC-13/#AC-312) (AC-514).
     internal void SetNameDirectly(string name)
     {
         Title = name.Trim();
@@ -378,11 +315,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _isSelected;
 
-    // Whether this panel's view is shown in the session grid: always in multi-session (grid) mode, and
-    // only when selected in single-pane mode (#24 / Zoom). Set by `CockpitViewModel` whenever
-    // the selection or layout changes, so the one live grid can host every session's view (built once,
-    // keeping its TTY pty) and merely hide the deselected ones instead of a second control rebuilding
-    // them on each switch.
+    // Whether this panel's view is shown in the session grid: always in multi-session (grid) mode, and only when
+    // selected in single-pane mode (#24 / Zoom).
     [ObservableProperty]
     private bool _isPaneVisible = true;
 
@@ -392,10 +326,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _isOnActiveDesk = true;
 
-    // This pane's position in the sidebar's own order (AC-444), stamped by
-    // `CockpitViewModel._SyncVisibleSessionsCore` whenever that order is reconciled. Read by
-    // `Controls.SessionTilePanel`'s rail arrangement as the tie-breaker behind `RequestsAttention` —
-    // "then the sidebar order" (AC-444 #2) — via the `RailSortKey` it feeds.
+    // This pane's position in the sidebar's own order (AC-444), stamped by `CockpitViewModel._SyncVisibleSessionsCore`
+    // whenever that order is reconciled.
     [ObservableProperty]
     private int _sidebarIndex;
 
@@ -431,10 +363,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Signals `CockpitViewModel` to close this session through its own flow.
     protected void RaiseCloseRequested() => CloseRequested?.Invoke(this, EventArgs.Empty);
 
-    // Raised whenever `Title` changes after the session already exists — a suggested name
-    // (`SuggestName`) or an inline rename (`CommitRename`) — so `CockpitViewModel`
-    // can persist it to the pane's saved record (AC-514). Not raised for the initial title a session is created
-    // with; that one is written by the same call that first persists the pane.
+    // Raised whenever `Title` changes after the session already exists — a suggested name (`SuggestName`) or an inline
+    // rename (`CommitRename`) — so `CockpitViewModel` can persist it to the pane's saved record (AC-514).
     public event EventHandler? NameChanged;
 
     private void RaiseNameChanged() => NameChanged?.Invoke(this, EventArgs.Empty);
@@ -452,11 +382,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // whose background sub-agents are still going. Idle/waiting/done sessions close on a single click.
     public bool RequiresCloseConfirmation => SessionStatus is SessionStatus.Busy or SessionStatus.WorkingBackground;
 
-    // True while a backgrounded shell this session started is still running (AC-276). It deliberately does not
-    // affect `SessionStatus` — a dev server or a `tail -f` never ends, and holding the status on
-    // one would strand the session on "working" forever, which is worse than the premature Done it set out to fix.
-    // It only withholds the "session finished" notification, so a session that is still doing something is not
-    // announced as finished. False for a session kind that cannot observe this.
+    // It deliberately does not affect `SessionStatus` — a dev server or a `tail -f` never ends, and holding the status
+    // on one would strand the session on "working" forever, which is worse than the premature Done it set out to fix
+    // (AC-276).
     public virtual bool HasOutstandingBackgroundShells => false;
 
     // Short human-readable label for `SessionStatus`, for the sidebar status row.
@@ -478,10 +406,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _providerBadge = string.Empty;
 
-    // This session's working directory, once known — the SDK session learns it from its `init` event,
-    // the TTY session from its launch path. Exposed to plugins through the read/observe surface
-    // (`ICockpitSessionObserver.ActiveSessionWorkingDirectory`) so a directory-scoped contribution can
-    // follow the session in view. Null until known.
+    // This session's working directory, once known — the SDK session learns it from its `init` event, the TTY session
+    // from its launch path.
     [ObservableProperty]
     private string? _workingDirectory;
 
@@ -496,10 +422,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // TTY sessions render the same pill from one place.
     public ObservableCollection<SessionRateWindow> RateLimits { get; } = [];
 
-    // Whether the header's usage pill shows at all (AC-37): there is a context figure, or at least one usage window.
-    // Gating on ctx alone hid the 5h/wk windows — reachable only through the pill's flyout — whenever a provider
-    // reported rate limits without a ctx figure (e.g. right after a /compact). Depends on both ContextUsedPercent
-    // and the RateLimits collection, so both notify it (the ctx setter and a CollectionChanged subscription).
+    // Show the pill for context or rate windows so compaction cannot hide otherwise reachable limits (AC-37).
     public bool HasUsagePill => ContextUsedPercent is not null || RateLimits.Count > 0;
 
     // The whole usage story for the pill's hover, including when each window rolls over — the thing a bar cannot say.
@@ -630,10 +553,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnPropertyChanged(nameof(HasUsageWarning));
     }
 
-    // Sends a prompt into this session as if it had been typed (AC-234) — how a scheduled resume arrives. Each
-    // session kind knows its own route (the SDK runtime, the terminal's stdin); the base only knows that a session
-    // can be spoken to. Returns false when this session cannot take one right now, so a caller reports a resume
-    // that could not be delivered rather than assuming it landed.
+    // Each session kind knows its own route (the SDK runtime, the terminal's stdin); the base only knows that a session
+    // can be spoken to (AC-234).
     public virtual Task<bool> SendPromptAsync(string prompt) => Task.FromResult(false);
 
     // Back-compat for a caller that still asks the bar to dismiss itself without saying which line (AC-230's
@@ -669,11 +590,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         if (reading.UsedPercent < threshold)
         {
-            // Back under: forget it, so the next crossing is announced rather than swallowed as already-said, and
-            // take down what this signal still has on screen. Left standing, a warning outlives its own subject —
-            // the context empties on a /clear and the bar goes on saying it is half full until someone clicks a
-            // notice about a window that no longer exists away by hand. Being away also lifts the silence, so a
-            // signal that comes back is news again rather than staying muted for the life of the session.
+            // Back under: forget it, so the next crossing is announced rather than swallowed as already-said, and take
+            // down what this signal still has on screen.
             _RaiseOrClear(signal.Key, says: null, kind: signal.Kind);
 
             if (_offeredSignal == signal.Key)
@@ -691,21 +609,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         _RaiseOrClear(signal.Key, says, kind: signal.Kind);
 
-        // The offer waits for the allowance to actually be spent, not for the threshold that warns about it
-        // (Raymond, 2026-07-24): warning at 90% is "keep an eye on this", and there is nothing to pick up from
-        // yet — a session that can still work does not need scheduling. Measured on the figure as shown, so the
-        // offer appears exactly when the header reads 100%, whatever the provider reported behind the rounding.
-        //
-        // Only an allowance can carry it at all: a context window empties on a compaction rather than at a
-        // moment, so there is no reset to time a resume to however full it gets.
-        // Measured on every reading, not only on the one that crossed the warning threshold: an allowance climbs to
-        // spent, it does not usually arrive there. Gated on the first crossing, the offer only ever appeared for a
-        // signal whose very first reading past its line already read 100% — so in practice it appeared for nobody.
-        // One offer at a time, whichever allowance was spent first: there is one prompt box and one moment on the
-        // bar, so a second spent allowance must not take them over. Keyed on there being no offer rather than on
-        // this signal not holding it — two allowances at 100% would otherwise hand it back and forth on every
-        // poll, rewriting the prompt under whoever is typing into it. When the one holding it rolls over the
-        // offer is withdrawn, and the other can take its turn.
+        // The offer waits for the allowance to actually be spent, not for the threshold that warns about it (Raymond,
+        // 2026-07-24): warning at 90% is "keep an eye on this", and there is nothing to pick up from yet — a session
+        // that can still work does not need scheduling.
         if (_offeredSignal is null
             && signal is { Kind: PluginUsageSignalKind.Allowance, SupportsResume: true }
             && used >= 100
@@ -719,20 +625,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             ResumeReason = $"{name} is {used:0}% used";
             _offeredSignal = signal.Key;
 
-            // An offer is not the warning that was dismissed. "Keep an eye on this" is what got clicked away; this
-            // is the allowance actually being gone, and the buttons that act on it live inside the bar — so being
-            // silenced at 91% must not leave the offer sitting behind a hidden banner where nothing can reach it.
-            // Dismissing again covers this message too, which is the operator's call to make a second time.
+            // "Keep an eye on this" is what got clicked away; this is the allowance actually being gone, and the
+            // buttons that act on it live inside the bar — so being silenced at 91% must not leave the offer sitting
+            // behind a hidden banner where nothing can reach it.
             _silenced.Remove(signal.Key);
             _RebuildWarnings();
         }
     }
 
-    // The bookkeeping behind one line on the bar, shared by the provider's usage signals and the memory cap
-    // (AC-661): raised on the crossing, kept current while it stands, taken down when its subject goes away.
-    // `says` of null is "nothing to say about this any more". `blocks` is AC-683's severity flag — true only for
-    // a subject that blocks the session outright (the memory cap actually spent), which is what sorts it above
-    // subjects that merely limit it.
+    // `blocks` is AC-683's severity flag — true only for a subject that blocks the session outright (the memory cap
+    // actually spent), which is what sorts it above subjects that merely limit it (AC-661).
     private void _RaiseOrClear(string key, string? says, bool blocks = false, PluginUsageSignalKind? kind = null)
     {
         if (says is null)
@@ -882,12 +784,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         _offeredSignal = null;
     }
 
-    // Where the prompts waiting on a future moment are kept (AC-231/AC-234). Handed in by the cockpit, which owns
-    // the one scheduler; null in the graphs that schedule nothing, and the offer then never appears.
-    //
-    // Setting it subscribes to the scheduler, which is what makes `PendingResumeLabel` follow reality
-    // instead of being written once and never corrected (AC-368) — including where the session is built after the
-    // scheduler has already loaded, so no event is coming for it.
+    // Handed in by the cockpit, which owns the one scheduler; null in the graphs that schedule nothing, and the offer
+    // then never appears (AC-231, AC-234, AC-368).
     public ScheduledResumeCoordinator? Resumes
     {
         get => _resumes;
@@ -925,12 +823,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private void _OnPendingResumesChanged(object? sender, EventArgs e) => _SyncPendingResumeLabel();
 
     // Reads the pending line off the scheduler — the one place that decides what it says, so a resume that fired,
-    // lapsed or was cancelled cannot leave its banner behind, and a session handed a scheduler that already knows
-    // about it shows the banner without waiting for an event. A restored pane keeps the id it was saved under
-    // (`AdoptPaneId`, AC-410), so a resume whose moment falls within
-    // `ScheduledResumeCoordinator`'s restart grace can find this pane again — but only once the operator has
-    // actually started it: `CanTakeAPrompt` is what `RunDueAsync` checks before sending, so a
-    // pane still only showing its restore offer never receives one silently.
+    // lapsed or was cancelled cannot leave its banner behind, and a session handed a scheduler that already knows about
+    // it shows the banner without waiting for an event (AC-410).
     private void _SyncPendingResumeLabel() =>
         PendingResumeLabel = _resumes?.PendingFor(PaneId) is { } waiting
             ? $"Resuming {waiting.DueAt.ToLocalTime():ddd HH:mm}"
@@ -1061,24 +955,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string? _worktreeBranch;
 
-    // AC-439: whether a resource this session has claimed (`mcp__cockpit-agents__claim`) is also claimed by a
-    // session on a *different* workspace — a collision AC-393's per-desk partition hides from both agents on
-    // purpose. Recomputed on a UI-thread timer in `Cockpit.App.Views.CockpitView` from
-    // `IClaimCollisionMonitor`, never from anything an agent's tool result carries: this is operator-only, the
-    // chip `Controls.SessionHeaderBar` shows and nothing else. Not a count or a resource name — every
-    // collision reads the same in phase 1 (see `IClaimCollisionMonitor` for why).
+    // Recomputed on a UI-thread timer in `Cockpit.App.Views.CockpitView` from `IClaimCollisionMonitor`, never from
+    // anything an agent's tool result carries: this is operator-only, the chip `Controls.SessionHeaderBar` shows and
+    // nothing else (AC-439, AC-393).
     [ObservableProperty]
     private bool _hasClaimCollision;
 
-    // The project this session works on (AC-163), or null for one belonging to none. On the base for the same
-    // reason as the branch above: every kind of session can start under a project. Carried rather than resolved
-    // on demand because a session outlives the dialog that started it — and a project the operator has since
-    // deleted must not change what a running session was launched with.
-    //
-    // Written at launch and not yet read: what a project decides is resolved into the launch itself (its folder,
-    // its server names, its instructions), so nothing downstream needs to ask which project a running session
-    // belongs to. It is here for the half that does — a session-scoped MCP fan-out that resolves servers as the
-    // project sees them rather than by name out of the unscoped registry.
+    // Carried rather than resolved on demand because a session outlives the dialog that started it — and a project the
+    // operator has since deleted must not change what a running session was launched with (AC-163).
     [ObservableProperty]
     private string? _projectId;
 
@@ -1124,18 +1008,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     partial void OnKindLabelChanged(string? value) => OnPropertyChanged(nameof(ShowKindChip));
 
-    // AC-549: a window the operator ticked in Options that no figure has arrived for. Ticking "5-hour window" on
-    // such a session used to do nothing at all — no segment, no bar, no word — which reads as a broken setting.
-    // The pill itself stays empty (AC-530 criterion 5 — a window whose fill is unknown must not render as 0%);
-    // this is the flyout's line, where the operator looks when they wonder where it went.
-    //
-    // It says "no figure reported", not "not reported by this provider", and the distinction is measured rather
-    // than cautious: captured from a real SDK stream (CLI 2.1.220), `rate_limit_event` *does* carry
-    // the five-hour window — `{"status":"allowed","resetsAt":…,"rateLimitType":"five_hour"}` — but with no
-    // `utilization` field while the account is not near that limit. The window is reported; its fill is
-    // not. Blaming the provider would have been false, and a terminal session proves it: that route reads
-    // `used_percentage` straight out of the statusline payload and shows a bar.
-    // Empty when every ticked window has a figure.
+    // The pill itself stays empty (AC-530 criterion 5 — a window whose fill is unknown must not render as 0%); this is
+    // the flyout's line, where the operator looks when they wonder where it went (AC-549).
     [ObservableProperty]
     private string _unreportedWindowsNotice = string.Empty;
 
@@ -1243,10 +1117,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 yield return new UsagePillItem($"ctx {percent:0}%", UsageSeverity.BrushKeyFor(percent, _ThresholdFor("ctx")), $"Context window: {percent:0}% used");
                 break;
 
-            // Gated on SuppressCostMeter as well as on being selected: this segment is now the only place the
-            // token/cost figure renders (the standalone meter beside the pill was the same UsageSummary and the
-            // same tooltip, so unticking "Session usage" moved the figure instead of removing it — Raymond, live
-            // test 2026-07-31). Simple's "no cost" promise therefore has to hold here rather than on the meter.
+            // Suppress cost here because this is its only rendering; deselecting usage must remove it, not move it.
             case UsagePillField.SessionUsage when HasUsage && !SuppressCostMeter:
                 yield return new UsagePillItem(UsageSummary, "CockpitTextSecondaryBrush", UsageTooltip);
                 break;
@@ -1268,10 +1139,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // from a route that declares none (an SDK driver reporting windows without signals, or a design-time stub).
     private double? _ThresholdFor(string label) => _thresholds.TryGetValue(label, out var threshold) ? threshold : null;
 
-    // Raised for each chunk of visible text this session produces (assistant text, tool output, or — for the
-    // TTY session — a tailed transcript line), surfaced to plugins via the read/observe surface so a watcher
-    // can scan for an output signal such as a new pull-request url. Fired on the thread the producing code
-    // runs on; the host-side observer marshals to the UI thread before handing it to plugins.
+    // Raised for each chunk of visible text this session produces (assistant text, tool output, or — for the TTY
+    // session — a tailed transcript line), surfaced to plugins via the read/observe surface so a watcher can scan for
+    // an output signal such as a new pull-request url.
     public event EventHandler<string>? OutputTextProduced;
 
     // Surfaces a chunk of produced text to `OutputTextProduced` subscribers (the read/observe surface). No-op for empty text.
@@ -1283,10 +1153,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
     }
 
-    // Raised when this session's agent completes a tool call (AC-116), coupling its name and input with the
-    // result — surfaced to plugins via `ICockpitSessionObserver.ToolActivityObserved` so a
-    // contribution can react to a specific tool rather than scan prose. Only the SDK session raises it; the
-    // TTY session does not parse tool calls. Marshalled to the UI thread by the host-side observer.
+    // Raised when this session's agent completes a tool call (AC-116), coupling its name and input with the result —
+    // surfaced to plugins via `ICockpitSessionObserver.ToolActivityObserved` so a contribution can react to a specific
+    // tool rather than scan prose.
     public event EventHandler<SessionToolActivity>? ToolActivityProduced;
 
     // Surfaces a completed tool call to `ToolActivityProduced` subscribers (the read/observe surface). No-op for a blank tool name (nothing to attribute the result to).
@@ -1300,10 +1169,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     private IReadOnlyList<SessionImageAttachment> _currentTurnImages = [];
 
-    // The images the user message that started the current turn carried (AC-116), or empty. Turn-scoped: set
-    // when an image-bearing message is sent (`SetCurrentTurnImages`) and cleared when the turn
-    // completes (`ClearCurrentTurnImages`), so the host-side observer can hand a plugin exactly
-    // this turn's images when it reacts to a tool call, never a stale earlier set.
+    // Turn-scoped: set when an image-bearing message is sent (`SetCurrentTurnImages`) and cleared when the turn
+    // completes (`ClearCurrentTurnImages`), so the host-side observer can hand a plugin exactly this turn's images when
+    // it reacts to a tool call, never a stale earlier set (AC-116).
     public IReadOnlyList<SessionImageAttachment> CurrentTurnImages => _currentTurnImages;
 
     // Records the images the just-sent message carried as this turn's images (AC-116).
@@ -1338,35 +1206,19 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _pushToTalkKeyName = "F9";
 
-    // Mirrors `Cockpit.Core.Voice.VoiceSettings.GlobalPushToTalk`. When true, the
-    // `VoicePushToTalkCoordinator` already routes the OS-wide hotkey to whichever session is
-    // selected, so this session's own local KeyDown/KeyUp handler must no-op — see
-    // `PushToTalkKeyGate` — to avoid firing the same hold twice.
+    // When true, the `VoicePushToTalkCoordinator` already routes the OS-wide hotkey to whichever session is selected,
+    // so this session's own local KeyDown/KeyUp handler must no-op — see `PushToTalkKeyGate` — to avoid firing the same
+    // hold twice.
     [ObservableProperty]
     private bool _globalPushToTalkEnabled;
 
-    // The workspace this session belongs to — stamped at creation from whichever workspace was active then.
-    // Two Sessions workspaces are separate desks: each shows only its own sessions, and switching away hides
-    // the rest rather than closing them, so a session keeps running (and keeps its pty) while you look
-    // elsewhere. Empty means "not assigned", which the cockpit reads as belonging to the first workspace —
-    // what a session created before workspaces existed, or in the design-time graph, gets.
+    // Two Sessions workspaces are separate desks: each shows only its own sessions, and switching away hides the rest
+    // rather than closing them, so a session keeps running (and keeps its pty) while you look elsewhere.
     [ObservableProperty]
     private string _workspaceId = string.Empty;
 
-    // This session sits on no workspace at all, and no fallback may give it one (AC-543). True only for the
-    // voice assistant — the third session kind, which is neither a pane on a desk nor a headless task with an
-    // owner pane.
-    // Distinct from an empty `WorkspaceId`, which means "not assigned" and reads as the first
-    // Sessions workspace. That fallback is right for a session created before workspaces existed and wrong for
-    // this one: it would put the assistant on a roster its neighbours can see, and the mistake would only
-    // surface later, as an agent finding a session nothing accounts for.
-    //
-    // Set once, by `Services.AssistantSessionHost`, at construction. That the host is the only
-    // writer is what makes the assistant's identity established by construction rather than claimed: no agent
-    // can declare that it is the assistant, because nothing it can say sets this.
-    //
-    // `Services.SessionWorkspacePlacement` is what reads it. Nothing else should ask directly —
-    // the point of that helper is that the rule has one home.
+    // True only for the voice assistant — the third session kind, which is neither a pane on a desk nor a headless task
+    // with an owner pane (AC-543).
     public bool BelongsToNoWorkspace { get; internal set; }
 
     // Mirrors `Cockpit.Core.Voice.VoiceSettings.AutoSubmitAfterVoice`: when true a finished transcript is submitted right after injection (see `OnVoiceSubmitRequested`) instead of waiting for a manual send.
@@ -1381,10 +1233,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _readAloudLanguage = "en";
 
-    // Per-session read-aloud toggle (#35): when true, completed assistant replies are extracted and
-    // enqueued for TTS playback as the SDK session's event stream completes a turn. Shared on the base
-    // (the assistant's own session sets it directly, with no header button of its own). Ephemeral
-    // runtime state, off by default.
+    // Per-session read-aloud toggle (#35): when true, completed assistant replies are extracted and enqueued for TTS
+    // playback as the SDK session's event stream completes a turn.
     [ObservableProperty]
     private bool _readResponsesAloud;
 
@@ -1431,12 +1281,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         ReadAloudLanguage = settings.ReadAloudLanguage;
     }
 
-    // Extracts the prose from assistant text and enqueues it for read-aloud (#35). The extractor strips
-    // code/tables and swaps paths/URLs for spoken words before anything is queued. A no-op when the playback
-    // queue was never wired (design-time/tests) or there is nothing to say.
-    //
-    // AC-729: `PaneId` (AC-410, the same check `AssistantSessionHost` uses) tells the assistant's own session
-    // apart from an ordinary one, for the source tag below.
+    // A no-op when the playback queue was never wired (design-time/tests) or there is nothing to say (AC-729, AC-410).
     protected Task EnqueueReadAloudAsync(string text)
     {
         if (_voicePlaybackQueue is null)
@@ -1460,11 +1305,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return Task.CompletedTask;
         }
 
-        // Read before the call, not after it: a barge-in that lands while NotifyPreparing is running — a subscriber
-        // to its PlaybackActiveChanged event calling StopAll, or the push-to-talk hold doing so from its own thread —
-        // bumps the generation in between. Taking the reading afterwards compares a value to itself and lets every
-        // such batch through, which is what this guard did before AC-546 removed the awaited rewrite step it used to
-        // straddle.
+        // Read before the call, not after it: a barge-in that lands while NotifyPreparing is running — a subscriber to
+        // its PlaybackActiveChanged event calling StopAll, or the push-to-talk hold doing so from its own thread —
+        // bumps the generation in between (AC-546).
         var generation = _voicePlaybackQueue.Generation;
 
         // Show the overlay now: the first synthesis (and any first-use model download) runs before a word is
@@ -1482,14 +1325,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         return Task.CompletedTask;
     }
 
-    // Whether this session's replies are spoken as one synthesis rather than sentence by sentence. The queue
-    // normally synthesises one sentence ahead while the previous plays, which is right when the reply is long:
-    // you hear the first sentence within a second instead of waiting for the whole thing. It only works while
-    // synthesis keeps up with playback, and measured on this machine it does not — four short sentences took
-    // 14.7 seconds to get through about 8 seconds of speech, so roughly half of it was silence at the sentence
-    // boundaries. False here, because a session's reply can run for paragraphs and one synthesis would be a
-    // long silence before the first word; the assistant sets it, because its answers are short by instruction
-    // and the gaps between sentences are the whole of how it sounds.
+    // Whether this session's replies are spoken as one synthesis rather than sentence by sentence.
     public bool ReadAloudAsOneUtterance { get; set; }
 
     // Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the
@@ -1520,13 +1356,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         return started;
     }
 
-    // Ends the push-to-talk hold (KeyUp), transcribes it, and hands any resulting text to
-    // `OnVoiceTextReady` for this session kind to inject. No-op when voice was never wired.
-    //
-    // Every way this can end is reported on the pill, including the two that used to end in silence: a capture
-    // with no speech in it, and a transcription that threw. Both routes into this method — the in-window KeyUp and
-    // the global `Services.VoicePushToTalkCoordinator` — get the same answer, which is the point of
-    // saying it here rather than at either caller (AC-557).
+    // No-op when voice was never wired (AC-557).
     public async Task EndVoiceHoldAsync()
     {
         if (_voicePushToTalk is null)
@@ -1593,13 +1423,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private void _ReportVoiceFailure(string message) =>
         _voiceOverlay?.ShowPushToTalkThenClear(VoiceOverlayState.Failed, message, VoiceFailureLinger);
 
-    // Injects text into this session's input surface (chat input box for SDK, raw pty bytes for TTY) —
-    // the public seam plugins use via `ICockpitActions.InjectIntoActiveSessionAsync`, reusing the
-    // same per-kind path as a finished voice transcript.
-    //
-    // Places only: whatever the text contains, it does not send. The TTY path reduces it to text a person could have
-    // typed before it reaches the pty, so a line break in an injected issue body cannot act as the Enter the operator
-    // never pressed — that is what separates this from `InjectAndSubmit`.
+    // Places only: whatever the text contains, it does not send.
     public void InjectText(string text)
     {
         if (!string.IsNullOrEmpty(text))
@@ -1625,39 +1449,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // The brief handed to `SubmitPromptWhenReady` before this session could take one, kept until it can. At most one: a session is spawned with a single opening brief, and a second would be a second turn, not a longer one.
     private string? _promptHeldUntilReady;
 
-    // True while a brief is waiting for this session to become able to take it — see
-    // `SubmitPromptWhenReady`, whose two `false` results (held, and refused because one
-    // is already held) this is what tells apart. Read by `AssistantAgentGateway.SendPromptAsync` before it
-    // hands one over, so the assistant is refused out loud instead of being told "held" about a brief it does not
-    // own.
+    // True while a brief is waiting for this session to become able to take it — see `SubmitPromptWhenReady`, whose two
+    // `false` results (held, and refused because one is already held) this is what tells apart.
     public bool HasPromptWaitingToBeDelivered => _promptHeldUntilReady is not null;
 
-    // Hands this session an opening brief and submits it, waiting for the session to be able to receive one first.
-    // Returns `true` when it went out on the spot and `false` when it is being held
-    // or was refused — never that it was delivered when it was not.
-    // What a freshly spawned session needs and `InjectAndSubmit` alone cannot give it. That one is the
-    // operator's-hands seam (a voice transcript, a paste), so it assumes the session is already on screen and able to
-    // hear: on a TTY pane it publishes to the view's pty writer, and a pane whose view has not been realised yet has
-    // no such writer, so the brief goes to nobody and the caller is told nothing. That is the failure the spawn tool
-    // reported `ok:true` for.
-    //
-    // The condition waited on is `CanTakeAPrompt` — the property that already answers "would a send
-    // actually reach the agent" for AC-234's scheduled resume and AC-395's wake, rather than a new signal or a delay
-    // long enough to work on the machine it was written on. It is strictly stronger than "something is subscribed":
-    // on a TTY pane it is `TtyViewModel.PromptSink`, which the view wires only once the pty process has actually
-    // spawned (`TtyView.StartPty`), and on an SDK pane it is a running runtime. Each kind flushes the hold from
-    // the one place its own answer changes, so nothing polls and nothing sleeps.
-    //
-    // A brief that is held and whose session never comes up is never delivered, and
-    // `HasPromptWaitingToBeDelivered` stays true so a caller can say so rather than claim it landed.
-    //
-    // *The first brief wins; a second while one is still waiting is refused.* The field holds one by design
-    // (a session is spawned with a single opening brief, and a second is a second turn rather than a longer one),
-    // and the three ways to enforce that are refuse, queue, or overwrite. Overwrite is the one this method's own
-    // contract forbids: the first caller was told `false` — held, not lost — and a silent
-    // replacement makes that a lie with no refusal, no trace and no signal. A queue was not built because nothing
-    // asks for one: two briefs are a caller mistake (or a retry invited by reading `false` as "try
-    // again"), not a workload. Refusing keeps the promise the first caller was given.
+    // Returns `true` when it went out on the spot and `false` when it is being held or was refused — never that it was
+    // delivered when it was not (AC-234, AC-395).
     public bool SubmitPromptWhenReady(string prompt)
     {
         if (string.IsNullOrWhiteSpace(prompt))
@@ -1724,12 +1521,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
     }
 
-    // Hands a screenshot the operator just took (AC-220) to this session's own input surface, and says what
-    // happened: `null` when it landed, otherwise a short reason to show them.
-    // The reason is the point. This is the operator asking for something — they pressed a key, they dragged a
-    // region — so a session kind that cannot carry an image owes them a sentence, not the silence
-    // `FeedVerifyResultAsync` is allowed (that one is an agent's tool call, and the text snapshot
-    // already reached it another way).
+    // Hands a screenshot the operator just took (AC-220) to this session's own input surface, and says what happened:
+    // `null` when it landed, otherwise a short reason to show them.
     public Task<string?> InjectScreenshotAsync(byte[] screenshotPng)
     {
         if (screenshotPng.Length == 0)
@@ -1742,12 +1535,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             : OnScreenshotCapturedAsync(screenshotPng);
     }
 
-    // Takes a captured screenshot into this session kind's input surface — only called once
-    // `ScreenshotRefusalReason` has said it can. Abstract for the reason
-    // `OnVoiceTextReady` is: a chat session has an input box to hold an attachment, a terminal has a
-    // pty and hands its TUI a path to read.
-    // Asynchronous because the terminal route genuinely is: it writes the image to a file first. The chat
-    // session keeps the bytes in hand and simply returns a finished task.
+    // Takes a captured screenshot into this session kind's input surface — only called once `ScreenshotRefusalReason`
+    // has said it can.
     protected abstract Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng);
 
     // Why a screenshot cannot go into this session right now, or null when it can (AC-220). One sentence with
@@ -1801,9 +1590,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     }
 
     // Pushes a visual verify screenshot (AC-86) into this session as a real user turn — the text snapshot rides the
-    // verify tool result instead, so this is only the image a tool result cannot carry. An SDK session on a vision
-    // provider shows it; a TTY session (no image in a pty) and a non-vision provider ignore it. Returns true only
-    // when the screenshot was actually shown. This is the per-kind half of the host verify-feed capability.
+    // verify tool result instead, so this is only the image a tool result cannot carry.
     public abstract Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng);
 
     // Theme brush resource key for the status dot — resolved in the view via a converter.
@@ -1865,10 +1652,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         _disposed = true;
 
-        // Closing a session that is reading responses aloud must silence it too — otherwise its queued
-        // and in-flight utterances keep playing after the panel is gone. The playback queue is one shared
-        // singleton (#35), so this is the same blanket stop push-to-talk uses; gating it on this session's
-        // own toggle keeps closing a silent session from cutting another that is mid-sentence.
+        // Closing a session that is reading responses aloud must silence it too — otherwise its queued and in-flight
+        // utterances keep playing after the panel is gone.
         if (ReadResponsesAloud)
         {
             _voicePlaybackQueue?.StopAll();
