@@ -26,14 +26,11 @@ internal static class WorktreeSourceUpdater
         CancellationToken cancellationToken,
         TimeSpan? mergeTimeout = null)
     {
-        if (repository.CurrentBranch is not { } branch)
-        {
-            return WorktreeSourceRefresh.Quiet(WorktreeSourceOutcome.DetachedHead);
-        }
-
         try
         {
-            return await _UpdateAsync(repository.Root, branch, handling, mergeTimeout ?? MergeTimeout, cancellationToken).ConfigureAwait(false);
+            return repository.CurrentBranch is { } branch
+                ? await _UpdateAsync(repository.Root, branch, handling, mergeTimeout ?? MergeTimeout, cancellationToken).ConfigureAwait(false)
+                : await _UpdateDetachedAsync(repository.Root, repository.HeadCommit, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -43,8 +40,122 @@ internal static class WorktreeSourceUpdater
         {
             // A git that timed out, could not be run, or answered something unreadable. None of that is worth failing
             // a session start over — but nor is it worth pretending the base is current, so it is reported instead.
-            return _CouldNotCheck(branch);
+            return repository.CurrentBranch is { } branch ? _CouldNotCheck(branch) : _CouldNotCheckDetached();
         }
+    }
+
+    // AC-1218: HEAD detached has no branch to fast-forward, but the commit it points at can still be stale — a
+    // shared checkout left detached overnight silently became every spawned session's fork base. Only ever picks a
+    // fresher commit to fork FROM; unlike the branch path above, nothing here ever writes to the checkout itself.
+    private static async Task<WorktreeSourceRefresh> _UpdateDetachedAsync(string root, string headCommit, CancellationToken cancellationToken)
+    {
+        var remote = await _DefaultRemoteAsync(root, cancellationToken).ConfigureAwait(false);
+        if (remote is null)
+        {
+            return WorktreeSourceRefresh.Quiet(WorktreeSourceOutcome.DetachedHead);
+        }
+
+        if (!await _FetchAsync(root, remote, cancellationToken).ConfigureAwait(false))
+        {
+            return new WorktreeSourceRefresh(
+                WorktreeSourceOutcome.FetchFailed,
+                0,
+                null,
+                $"Could not reach '{GitCli.RedactUrlCredentials(remote)}', so this session forked from the checkout's "
+                + "detached HEAD as it is.");
+        }
+
+        var defaultBranch = await _DefaultBranchAsync(root, remote, cancellationToken).ConfigureAwait(false);
+        if (defaultBranch is not { } resolved)
+        {
+            return WorktreeSourceRefresh.Quiet(WorktreeSourceOutcome.DetachedHead);
+        }
+
+        var behind = await _CountCommitsAsync(root, $"{headCommit}..{resolved}", cancellationToken).ConfigureAwait(false);
+        if (behind is null)
+        {
+            return _CouldNotCheckDetached();
+        }
+
+        if (behind == 0)
+        {
+            return WorktreeSourceRefresh.Quiet(WorktreeSourceOutcome.UpToDate);
+        }
+
+        var target = await _RevParseAsync(root, resolved, cancellationToken).ConfigureAwait(false);
+        if (target is null)
+        {
+            return _CouldNotCheckDetached();
+        }
+
+        return new WorktreeSourceRefresh(
+            WorktreeSourceOutcome.ForkedFromUpstream,
+            behind.Value,
+            resolved,
+            $"The checkout's detached HEAD was {_Commits(behind.Value)} behind {resolved}, so this session forked "
+            + $"from {resolved} instead — the checkout itself was left untouched.",
+            target);
+    }
+
+    private static WorktreeSourceRefresh _CouldNotCheckDetached() => new(
+        WorktreeSourceOutcome.CheckFailed,
+        0,
+        null,
+        "Could not work out whether the checkout's detached HEAD was up to date, so this session forked from it as it is.");
+
+    // The remote a detached checkout's default branch is expected to live on — "origin" when it exists, the same
+    // remote every other convention in this file assumes, otherwise the sole remote if there is exactly one. More
+    // than one non-origin remote is ambiguous, so nothing is picked rather than guessing which one matters.
+    private static async Task<string?> _DefaultRemoteAsync(string root, CancellationToken cancellationToken)
+    {
+        var listing = await GitCli.RunAsync(root, ["remote"], cancellationToken).ConfigureAwait(false);
+        if (listing.ExitCode != 0)
+        {
+            return null;
+        }
+
+        var remotes = listing.StandardOutput
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(remote => remote.Trim())
+            .Where(remote => remote.Length > 0)
+            .ToList();
+
+        if (remotes.Contains("origin", StringComparer.Ordinal))
+        {
+            return "origin";
+        }
+
+        return remotes.Count == 1 ? remotes[0] : null;
+    }
+
+    // The remote's own idea of its default branch, read fresh after the fetch above; "main" and "master" are
+    // fallbacks for a repository whose origin/HEAD symbolic ref was never set locally (only `clone` creates it —
+    // a plain `fetch` does not). Returns the remote-tracking ref name, or null when none of them resolve.
+    private static async Task<string?> _DefaultBranchAsync(string root, string remote, CancellationToken cancellationToken)
+    {
+        var originHead = await GitCli.RunAsync(
+            root, ["symbolic-ref", "--short", $"refs/remotes/{remote}/HEAD"], cancellationToken).ConfigureAwait(false);
+
+        var candidates = new List<string>();
+        var trimmed = originHead.StandardOutput.Trim();
+        if (originHead.ExitCode == 0 && trimmed.StartsWith($"{remote}/", StringComparison.Ordinal))
+        {
+            candidates.Add(trimmed[(remote.Length + 1)..]);
+        }
+
+        candidates.Add("main");
+        candidates.Add("master");
+
+        foreach (var candidate in candidates.Distinct(StringComparer.Ordinal))
+        {
+            var reference = $"{remote}/{candidate}";
+            if (await _RevParseAsync(root, reference, cancellationToken).ConfigureAwait(false) is not null)
+            {
+                return reference;
+            }
+        }
+
+        return null;
     }
 
     private static async Task<WorktreeSourceRefresh> _UpdateAsync(
