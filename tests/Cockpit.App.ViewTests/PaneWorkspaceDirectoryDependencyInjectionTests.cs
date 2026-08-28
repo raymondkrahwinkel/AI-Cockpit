@@ -15,13 +15,18 @@ public class PaneWorkspaceDirectoryDependencyInjectionTests
         services.AddLogging();
         services.AddCore().AddInfrastructure().AddServices(
             typeof(Cockpit.Core.DependencyInjection).Assembly,
-        typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
-        typeof(CockpitViewModel).Assembly);
-    services.AddSessionPanes();
-    return services.BuildServiceProvider();
+            typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
+            typeof(CockpitViewModel).Assembly);
+        services.AddSessionPanes();
+        return services.BuildServiceProvider();
     }
 
     // Core.Tests has no pumped dispatcher; this path would otherwise be false-green or time out.
+    /// <summary>
+    /// AC-439: <c>PaneWorkspaceDirectory</c> resolves <c>CockpitViewModel</c> lazily in
+    /// <c>WorkspaceIdsByPane</c>, breaking the circular dependency. This test proves the deferred resolve
+    /// succeeds and returns real data, rather than merely compiling.
+    /// </summary>
     [Fact]
     public async Task TheContainer_ResolvesThePaneWorkspaceDirectory_AndItsLazyCockpitViewModelResolveSucceeds()
     {
