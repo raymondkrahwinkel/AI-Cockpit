@@ -343,7 +343,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                     continue;
                 }
 
-                if (_ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
+                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
                 {
                     servers.Add(mapped);
                 }
@@ -417,36 +417,6 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // applicable, or a listener that would not bind — all three mean the same thing here: write the token).
     private async Task<string?> _ProxyUrlAsync(McpServerConfig server, CancellationToken cancellationToken) =>
         oauthProxy is null ? null : await oauthProxy.MountAsync(server, cancellationToken).ConfigureAwait(false);
-
-    // HTTP → url with the credential (static API key or AC-353 OAuth token), plus CockpitHosted for a
-    // loopback endpoint whose auth rides COCKPIT_MCP_KEY (AC-40); stdio → command/args; no transport → dropped.
-    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken, string? oauthProxyUrl) => server.Transport switch
-    {
-        // AC-524: an OAuth server behind a loopback endpoint is addressed there instead, carrying no
-        // literal token — the session's config file holds no OAuth token to go stale or leak to another process.
-        McpTransport.Http when oauthProxyUrl is { Length: > 0 } => new PluginMcpServer
-        {
-            Name = server.Name,
-            Url = oauthProxyUrl,
-            Headers = McpAgentHeaders.For(server, null),
-            CockpitHosted = true,
-        },
-        McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
-        {
-            Name = server.Name,
-            Url = server.Url,
-            BearerToken = CockpitMcpBearer.UserCredential(server, oauthAccessToken),
-            Headers = McpAgentHeaders.For(server, CockpitMcpBearer.UserCredential(server, oauthAccessToken)),
-            CockpitHosted = server.CockpitHosted,
-        },
-        McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer
-        {
-            Name = server.Name,
-            Command = server.Command,
-            Args = server.Args,
-        },
-        _ => null,
-    };
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>
         inner.SendUserMessageAsync(
@@ -624,7 +594,11 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             yield break;
         }
 
-        var merged = Channel.CreateUnbounded<PluginSessionEvent>(new UnboundedChannelOptions { SingleReader = true });
+        var merged = Channel.CreateBounded<PluginSessionEvent>(new BoundedChannelOptions(4096)
+        {
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.Wait,
+        });
         var pumps = Task.WhenAll(
             _PumpAsync(inner.Events, merged.Writer, cancellationToken),
             _PumpAsync(toolset.Events.Events, merged.Writer, cancellationToken));
@@ -642,7 +616,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         {
             await foreach (var pluginEvent in source.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                destination.TryWrite(pluginEvent);
+                await destination.WriteAsync(pluginEvent, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)

@@ -52,7 +52,7 @@ public sealed partial class DiagnosticsViewModel(
         builder.AppendLine($"  Resident      : {ByteSize.Human(memory.ResidentBytes)}   ← physical memory in use (the figure that matters)");
         builder.AppendLine($"  Peak resident : {ByteSize.Human(memory.PeakResidentBytes)}");
         builder.AppendLine($"  Virtual       : {ByteSize.Human(memory.VirtualBytes)}   ← reserved address space, not usage (large is normal for .NET)");
-        builder.AppendLine($"  Private       : {ByteSize.Human(memory.PrivateBytes)}");
+        builder.AppendLine($"  Private       : {(memory.PrivateBytes is { } priv ? ByteSize.Human(priv) : "n/a on this platform")}");
         builder.AppendLine($"  Swap          : {(memory.SwapBytes is { } swap ? ByteSize.Human(swap) : "n/a on this platform")}");
         builder.AppendLine($"  Machine total : {ByteSize.Human(snapshot.MachineMemoryBytes)}");
 

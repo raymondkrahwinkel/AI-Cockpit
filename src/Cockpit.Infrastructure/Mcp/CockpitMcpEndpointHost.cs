@@ -13,6 +13,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -29,6 +30,7 @@ internal sealed class CockpitMcpEndpointHost
     private readonly INodeEndpointSettingsStore _nodeEndpointSettings;
     private readonly NodeSelfSignedCertificate _nodeCertificate;
     private readonly NodeSharedSecret _nodeSharedSecret;
+    private readonly SessionMcpMounts _mounts;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CockpitMcpEndpointHost> _logger;
     private readonly List<WebApplication> _apps = [];
@@ -59,6 +61,7 @@ internal sealed class CockpitMcpEndpointHost
         INodeEndpointSettingsStore nodeEndpointSettings,
         NodeSelfSignedCertificate nodeCertificate,
         NodeSharedSecret nodeSharedSecret,
+        SessionMcpMounts mounts,
         ILoggerFactory loggerFactory)
     {
         _endpoints = [.. endpoints];
@@ -68,6 +71,7 @@ internal sealed class CockpitMcpEndpointHost
         _nodeEndpointSettings = nodeEndpointSettings;
         _nodeCertificate = nodeCertificate;
         _nodeSharedSecret = nodeSharedSecret;
+        _mounts = mounts;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<CockpitMcpEndpointHost>();
     }
@@ -82,7 +86,7 @@ internal sealed class CockpitMcpEndpointHost
                 // registered service (the statusline sink, etc.). An endpoint with no gate is always enabled; one that
                 // carries an IsEnabled (AC-34's master switch) is hosted but only advertised to a session while it is on.
                 var tools = ActivatorUtilities.CreateInstance(_services, endpoint.ToolsType);
-                await MountAsync(endpoint.ServerName, tools, isEnabled: endpoint.IsEnabled, isInternal: endpoint.Internal, alwaysMounted: endpoint.AlwaysMounted, cancellationToken).ConfigureAwait(false);
+                await _MountAsync(endpoint.ServerName, tools, endpoint.IsEnabled, endpoint.Internal, endpoint.AlwaysMounted, endpoint.NodeOnly, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -93,7 +97,12 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
-    public async Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default)
+    // A plugin's endpoint is never NodeOnly: that flag exists for this cockpit's own node-control endpoint, and a
+    // plugin has no way to ask for a listener the operator's switches do not govern.
+    public Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default) =>
+        _MountAsync(serverName, tools, isEnabled, isInternal, alwaysMounted, nodeOnly: false, cancellationToken);
+
+    private async Task _MountAsync(string serverName, object tools, Func<bool>? isEnabled, bool isInternal, bool alwaysMounted, bool nodeOnly, CancellationToken cancellationToken)
     {
         await _mountGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -133,6 +142,19 @@ internal sealed class CockpitMcpEndpointHost
                     _logger.LogWarning(exception, "Tool {Tool} was called with an invalid argument.", context.Params.Name);
                     result = _ToolArgumentErrorResult(context, exception);
                 }
+                // AC-1138: a tool that gave up waiting for the UI thread answers with its own code rather than a
+                // generic failure — the caller can tell "the cockpit is busy, try again" from "this went wrong",
+                // and nothing it asked for was applied.
+                catch (UiUnavailableException exception)
+                {
+                    _logger.LogWarning("Tool {Tool} gave up waiting for the UI thread after {Deadline}.", context.Params.Name, exception.Deadline);
+                    result = _UiUnavailableResult(exception);
+                }
+                catch (UiOutcomeUnknownException exception)
+                {
+                    _logger.LogWarning("Tool {Tool} timed out after UI work had begun at {Deadline}.", context.Params.Name, exception.Deadline);
+                    result = _UiOutcomeUnknownResult(exception);
+                }
 
                 return McpInboxPiggyback.Attach(result, _services.GetService<IAgentTurnInboxDelivery>(), _logger);
             }));
@@ -140,8 +162,10 @@ internal sealed class CockpitMcpEndpointHost
             var nodeSettings = _nodeSettings ??= await _nodeEndpointSettings.LoadAsync(cancellationToken).ConfigureAwait(false);
 
             // AC-791: an Internal endpoint (AC-204) gets no network listener whatever the master switch says —
-            // withholding the socket rather than refusing the request leaves a remote prober nothing to learn.
-            var bindNodeListener = nodeSettings.Enabled && !isInternal;
+            // withholding the socket rather than refusing leaves a remote prober nothing to learn. AC-1148: nor
+            // does one the operator switched off, so the switch decides the bind and not only the advertisement.
+            var enabled = isEnabled ?? (static () => true);
+            var bindNodeListener = nodeSettings.Enabled && !isInternal && enabled();
 
             builder.WebHost.ConfigureKestrel(options =>
             {
@@ -165,8 +189,14 @@ internal sealed class CockpitMcpEndpointHost
             }
 
             var app = builder.Build();
-            // Guard the endpoint before its tools: a request without this run's key never reaches the tool set (AC-40).
-            McpAuthMiddleware.Require(app, _authKey, _keyring, bindNodeListener ? _nodeSharedSecret : null);
+            // Guard the endpoint before its tools: a request without this run's key never reaches the tool set (AC-40),
+            // and AC-1148: nor does one this endpoint's own mount decision never granted.
+            McpAuthMiddleware.Require(
+                app,
+                _authKey,
+                _keyring,
+                paneId => _AuthorizeAsync(paneId, serverName, enabled),
+                bindNodeListener ? _nodeSharedSecret : null);
             app.MapMcp("/mcp");
             _apps.Add(app);
 
@@ -196,7 +226,7 @@ internal sealed class CockpitMcpEndpointHost
 
             lock (_mountedLock)
             {
-                _mounted.Add(new MountedEndpoint(serverName, url, isEnabled ?? (static () => true), isInternal, alwaysMounted, nodeUrl));
+                _mounted.Add(new MountedEndpoint(serverName, url, enabled, isInternal, alwaysMounted, nodeUrl, nodeOnly));
             }
 
             _logger.LogInformation("Cockpit MCP endpoint {ServerName} listening at {McpUrl}.", serverName, url);
@@ -222,7 +252,9 @@ internal sealed class CockpitMcpEndpointHost
                     Transport = McpTransport.Http,
                     Scope = McpServerScope.All,
                     Url = endpoint.Url,
-                    Enabled = endpoint.IsEnabled(),
+                    // AC-1148: a NodeOnly endpoint is never offered to a session — it exists for the paired
+                    // controller, which does not read this list.
+                    Enabled = endpoint.IsEnabled() && !endpoint.NodeOnly,
                     CockpitHosted = true,
                     Internal = endpoint.Internal,
                     AlwaysMounted = endpoint.AlwaysMounted,
@@ -243,6 +275,29 @@ internal sealed class CockpitMcpEndpointHost
                     .Select(endpoint => new NodeEndpointAddress(endpoint.Name, endpoint.NodeUrl!)),
             ];
         }
+    }
+
+    // AC-1148: the mount decision this host already makes, enforced at the door. Every input is read now rather
+    // than captured at mount time, so a master switch flipped off or a pairing narrowed applies to the next call.
+    private async ValueTask<bool> _AuthorizeAsync(string? paneId, string serverName, Func<bool> isEnabled)
+    {
+        var nodeScopeGranted = paneId == NodeCallerIdentity.PaneId && await _NodeScopeGrantedAsync().ConfigureAwait(false);
+        return McpEndpointAuthorization.Allows(paneId, serverName, isEnabled(), nodeScopeGranted, _mounts);
+    }
+
+    // AC-794: a pairing grants nothing until the operator ticks a profile or a project, so an empty scope reaches
+    // no endpoint. Resolved from the service provider rather than injected — the broker asks this host for its
+    // node addresses, and taking it as a constructor dependency closes that cycle.
+    private async ValueTask<bool> _NodeScopeGrantedAsync()
+    {
+        if (_services.GetService<INodePairingBroker>() is not { } broker)
+        {
+            return false;
+        }
+
+        await broker.EnsureLoadedAsync().ConfigureAwait(false);
+        return broker.Pairing is { } pairing
+            && (pairing.AllowedProfileLabels.Count > 0 || pairing.AllowedProjectIds.Count > 0);
     }
 
     private string? _GetReachableAddress()
@@ -267,14 +322,27 @@ internal sealed class CockpitMcpEndpointHost
     // The generic WithTools<TToolType>(builder, TToolType target, JsonSerializerOptions?) overload — the one that
     // registers a pre-built instance. Reached by reflection because the tools type is only known at runtime (a
     // plugin's), and the SDK exposes no non-generic "register this instance" overload for a runtime Type.
-    private static readonly MethodInfo _WithToolsGeneric = typeof(McpServerBuilderExtensions).GetMethods()
-        .Single(method => method.Name == "WithTools"
-            && method.IsGenericMethodDefinition
-            && method.GetParameters() is { Length: 3 } parameters
-            && parameters[1].ParameterType.IsGenericMethodParameter);
-
     private static void _WithToolsInstance(IMcpServerBuilder mcpBuilder, object tools) =>
-        _WithToolsGeneric.MakeGenericMethod(tools.GetType()).Invoke(null, [mcpBuilder, tools, null]);
+        ResolveWithToolsGeneric(typeof(McpServerBuilderExtensions)).MakeGenericMethod(tools.GetType()).Invoke(null, [mcpBuilder, tools, null]);
+
+    internal static MethodInfo ResolveWithToolsGeneric(Type extensionsType)
+    {
+        var methods = extensionsType.GetMethods();
+        var matches = methods.Where(method => method.Name == "WithTools"
+                && method.IsGenericMethodDefinition
+                && method.GetParameters() is { Length: 3 } parameters
+                && parameters[1].ParameterType.IsGenericMethodParameter)
+            .ToArray();
+        if (matches.Length == 1)
+        {
+            return matches[0];
+        }
+
+        var overloads = methods.Where(method => method.Name == "WithTools")
+            .Select(method => $"{method.Name}({string.Join(", ", method.GetParameters().Select(parameter => parameter.ParameterType.Name))})")
+            .DefaultIfEmpty("none");
+        throw new InvalidOperationException($"Could not resolve the generic WithTools(builder, target, options) overload in {extensionsType.FullName}. Found WithTools overloads: {string.Join("; ", overloads)}.");
+    }
 
     // Turns a marshalling failure (a missing required argument, or one that will not deserialize) into a tool
     // result the calling agent can act on (AC-1028). The parameter list comes from the tool's own advertised
@@ -287,6 +355,23 @@ internal sealed class CockpitMcpEndpointHost
             : $"{context.Params.Name}: {exception.Message}";
 
         return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = message }] };
+    }
+
+    // AC-1138: the same `ok`/`error` shape the tools themselves answer in, plus the code an agent branches on.
+    private static CallToolResult _UiUnavailableResult(UiUnavailableException exception)
+    {
+        var payload = JsonSerializer.Serialize(
+            new { ok = false, code = UiUnavailableException.Code, error = exception.Message });
+
+        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = payload }] };
+    }
+
+    private static CallToolResult _UiOutcomeUnknownResult(UiOutcomeUnknownException exception)
+    {
+        var payload = JsonSerializer.Serialize(
+            new { ok = false, code = UiOutcomeUnknownException.Code, error = exception.Message });
+
+        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = payload }] };
     }
 
     private static IReadOnlyList<string> _ExpectedParameterNames(IMcpServerPrimitive? primitive) =>
@@ -316,5 +401,5 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
-    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal, bool AlwaysMounted = false, string? NodeUrl = null);
+    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal, bool AlwaysMounted = false, string? NodeUrl = null, bool NodeOnly = false);
 }

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -367,6 +369,29 @@ public class GlobalHotkeyCoordinatorTests
         await coordinator.ApplyAsync();
 
         claim.Received(1).Dispose();
+    }
+
+    /// <summary>
+    /// AC-1202: <c>Dispose()</c> used to wait on the gate with no bound at all — measured (AC-1199) at up to
+    /// 4.9s when <c>ApplyAsync</c> held it that long. Reaches into the real gate rather than racing a stubbed
+    /// <c>ApplyAsync</c>, since a fake's timing proves nothing about the field this bounds.
+    /// </summary>
+    [Fact]
+    public void Dispose_GivesUpOnAHeldGateRatherThanBlockingForever()
+    {
+        var coordinator = TestGlobalHotkeys.Coordinator(new FakeGlobalHotkeyService());
+        var gate = (SemaphoreSlim)typeof(GlobalHotkeyCoordinator)
+            .GetField("_applyGate", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(coordinator)!;
+        gate.Wait(); // simulates an ApplyAsync in flight, exactly as production holds it
+
+        var elapsed = Stopwatch.StartNew();
+        coordinator.Dispose();
+        elapsed.Stop();
+
+        Assert.True(
+            elapsed.Elapsed < TimeSpan.FromSeconds(2),
+            $"Dispose() blocked for {elapsed.Elapsed} instead of giving up on its grace");
     }
 
     /// <summary>

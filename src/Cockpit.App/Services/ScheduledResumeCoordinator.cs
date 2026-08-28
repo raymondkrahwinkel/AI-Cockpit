@@ -96,7 +96,7 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         // AC-368: built on the UI thread deliberately — Avalonia binds a DispatcherTimer to the thread that
         // creates it, and the load above's continuation can otherwise land on a thread pool thread with no message
         // loop, where Start() throws nothing and Tick never fires. AC-577: no CheckAccess() fast path either, since that would reintroduce the same bug for whichever thread happens to call in; this coordinator must be constructed on a dispatcher thread.
-        await Dispatcher.UIThread.InvokeAsync(() =>
+        await UiThreadCall.DispatchAsync(() =>
         {
             // Disposed while the load was still running: the timer is built here regardless, so it has to be
             // checked here too, or shutdown leaves one ticking that Dispose already looked for and did not find.

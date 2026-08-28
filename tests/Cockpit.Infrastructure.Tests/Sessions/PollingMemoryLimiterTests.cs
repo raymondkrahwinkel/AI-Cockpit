@@ -102,15 +102,30 @@ public class PollingMemoryLimiterTests
         Assert.Equal(0, table.Reads);
     }
 
+    [Fact]
+    public async Task ApplyingAWatchStartsThePeriodicSweep()
+    {
+        var table = new FakeProcessTable(new ProcessRow(400, 1, TimeSpan.Zero, 1));
+        using var limiter = new PollingMemoryLimiter(table, NullLogger<PollingMemoryLimiter>.Instance, TimeSpan.FromMilliseconds(1));
+
+        using var watch = limiter.Apply(400, 2);
+
+        await table.WasRead.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.True(table.Reads > 0);
+    }
+
     private sealed class FakeProcessTable(params ProcessRow[] rows) : IProcessTableReader
     {
         public IReadOnlyList<ProcessRow> Rows { get; set; } = rows;
 
         public int Reads { get; private set; }
 
+        public TaskCompletionSource<bool> WasRead { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public IReadOnlyList<ProcessRow> Read()
         {
             Reads++;
+            WasRead.TrySetResult(true);
             return Rows;
         }
     }

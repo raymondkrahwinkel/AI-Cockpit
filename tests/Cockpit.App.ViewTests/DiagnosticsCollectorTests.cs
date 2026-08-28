@@ -56,7 +56,7 @@ public class DiagnosticsCollectorTests
         Assert.False(string.IsNullOrWhiteSpace(snapshot.Platform.AvaloniaVersion));
         Assert.False(string.IsNullOrWhiteSpace(snapshot.Rendering.Mode));
         Assert.True(snapshot.Memory.ResidentBytes > 0);
-        Assert.True(snapshot.ManagedHeap.HeapSizeBytes >= 0);
+        Assert.True(snapshot.ManagedHeap.HeapSizeBytes > 0);
     }
 
     private sealed class FakeProcessTable(IReadOnlyList<ProcessRow> rows) : IProcessTableReader

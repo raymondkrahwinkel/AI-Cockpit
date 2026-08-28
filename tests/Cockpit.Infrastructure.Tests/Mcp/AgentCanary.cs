@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
 
@@ -72,6 +73,15 @@ internal sealed class AgentCanaryDesk : IAsyncDisposable
         services.AddSingleton<IAgentNotifyAuditLog>(new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance));
 
         var keyring = new SessionMcpKeyring();
+        // AC-1148: cockpit-agents is AlwaysMounted, so every real launch reports it for its pane before the session
+        // can call anything. A canary pane stands in for one, and its grant has to stand in too or the endpoint
+        // refuses it at the door — which is the point of the gate, not a quirk of this harness.
+        var mounts = new SessionMcpMounts();
+        foreach (var paneId in paneIds)
+        {
+            mounts.Grant(paneId, ["cockpit-agents"]);
+        }
+
         // Node binding (AC-790) is not what this canary is testing — a throwaway, never-saved-to store keeps it off,
         // the same default a real store gives an untouched cockpit.json.
         var nodeEndpointSettings = new NodeEndpointSettingsStore(Path.Combine(Path.GetTempPath(), $"canary-node-{Guid.NewGuid():N}.json"));
@@ -83,6 +93,7 @@ internal sealed class AgentCanaryDesk : IAsyncDisposable
             nodeEndpointSettings,
             new NodeSelfSignedCertificate(Path.Combine(Path.GetTempPath(), $"canary-node-{Guid.NewGuid():N}.pfx")),
             new NodeSharedSecret(),
+            mounts,
             NullLoggerFactory.Instance);
 
         await host.StartAsync(CancellationToken.None);

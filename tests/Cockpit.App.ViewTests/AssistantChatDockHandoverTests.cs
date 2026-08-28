@@ -52,7 +52,7 @@ public sealed class AssistantChatDockHandoverTests
         for (var index = 0; index < items.ItemCount; index++)
         {
             if (items.ContainerFromIndex(index) is { } row
-                && row.TranslatePoint(new Point(0, 0), view.TranscriptScroll) is { } top
+                && row.TranslatePoint(new Point(0, 0), view.TranscriptScroll!) is { } top
                 && top.Y + row.Bounds.Height > 0)
             {
                 return index;

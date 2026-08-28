@@ -34,13 +34,13 @@ public sealed class Ac1104ExtentDeltaProbeTests(ITestOutputHelper output)
         var window = new Window { Width = 800, Height = 600, Content = view };
         window.Show();
         _Frame();
-        view.TranscriptScroll.ScrollToEnd();
+        view.TranscriptScroll!.ScrollToEnd();
         _Frame();
 
         var total = 0;
         var ownCorrection = 0;
         var extentOnly = 0;
-        view.TranscriptScroll.ScrollChanged += (_, e) =>
+        view.TranscriptScroll!.ScrollChanged += (_, e) =>
         {
             total++;
             if (Math.Abs(e.ExtentDelta.Y) < 0.5 && Math.Abs(e.ViewportDelta.Y) < 0.5)
@@ -84,13 +84,13 @@ public sealed class Ac1104ExtentDeltaProbeTests(ITestOutputHelper output)
         var window = new Window { Width = 800, Height = 600, Content = view };
         window.Show();
         _Frame();
-        view.TranscriptScroll.ScrollToEnd();
+        view.TranscriptScroll!.ScrollToEnd();
         _Frame();
 
         var perRow = 0;
         var offsetMoved = 0;
         var ownCorrection = 0;
-        view.TranscriptScroll.ScrollChanged += (_, e) =>
+        view.TranscriptScroll!.ScrollChanged += (_, e) =>
         {
             perRow++;
             if (Math.Abs(e.OffsetDelta.Y) >= 0.5)

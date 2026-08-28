@@ -20,7 +20,10 @@ public class AssistantTranscriptFileTests : IDisposable
         _filePath = Path.Combine(_tempDir, "assistant-transcript.json");
     }
 
-    private AssistantTranscriptFile CreateStore() => new(_filePath, NullLogger<AssistantTranscriptFile>.Instance);
+    // AC-1151: a zero debounce window so these round-trip tests keep seeing an awaited `SaveAsync` land on disk
+    // immediately, same as before debouncing existed — the debounce window itself has its own tests.
+    private AssistantTranscriptFile CreateStore() =>
+        new(_filePath, NullLogger<AssistantTranscriptFile>.Instance, TimeSpan.Zero);
 
     [Fact]
     public async Task NothingWasEverSaved_ReadsAsEmpty_RatherThanFailing()

@@ -110,7 +110,8 @@ internal static class WorkflowParser
 
     private static WorkflowStep _ReadStep(YamlMappingNode step) =>
         new(step.Children.Keys.OfType<YamlScalarNode>().Select(key => key.Value ?? string.Empty).ToList(),
-            _Scalar(step, "uses"));
+            _Scalar(step, "uses"),
+            _Scalar(step, "if"));
 
     private static RunsOnSpec _ReadRunsOn(YamlNode? node) => node switch
     {

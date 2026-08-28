@@ -5,6 +5,7 @@ using SoundFlow.Backends.MiniAudio;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Diagnostics;
+using Cockpit.Core.Diagnostics;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -83,11 +84,11 @@ public static class DependencyInjection
 
         // cockpit-node (AC-795): sessions on this machine, as its paired controller cockpit may see and drive
         // them. Must NOT be Internal — an Internal endpoint binds no network listener (AC-791), which is the one
-        // thing this needs. `IsEnabled: false` keeps it off; the real gate is the per-tool pane check below.
+        // thing this needs. AC-1148: NodeOnly keeps it out of every session's fan-out while it keeps that listener.
         services.AddSingleton(new CockpitMcpEndpoint(
             "cockpit-node",
             typeof(Mcp.NodeSessionMcpTools),
-            IsEnabled: () => false));
+            NodeOnly: true));
 
         // The advisory cross-instance claim behind AC-71 — one implementation, so (unlike the hotkey service
         // below) there is nothing for a platform switch to choose between.
@@ -244,22 +245,22 @@ public static class DependencyInjection
 #pragma warning disable CA1416
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            services.AddSingleton<IProcessTableReader, WmiProcessTableReader>();
+            services.AddSingleton<IProcessTableReader>(_ => new CachedProcessTableReader(new WmiProcessTableReader()));
             services.AddSingleton<ICrashLogReader, WindowsCrashLogReader>();
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
-            services.AddSingleton<IProcessTableReader, PsProcessTableReader>();
+            services.AddSingleton<IProcessTableReader>(_ => new CachedProcessTableReader(new PsProcessTableReader()));
             services.AddSingleton<ICrashLogReader, MacCrashLogReader>();
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            services.AddSingleton<IProcessTableReader, ProcProcessTableReader>();
+            services.AddSingleton<IProcessTableReader>(_ => new CachedProcessTableReader(new ProcProcessTableReader()));
             services.AddSingleton<ICrashLogReader, LinuxCrashLogReader>();
         }
         else
         {
-            services.AddSingleton<IProcessTableReader, ProcProcessTableReader>();
+            services.AddSingleton<IProcessTableReader>(_ => new CachedProcessTableReader(new ProcProcessTableReader()));
             services.AddSingleton<ICrashLogReader, NoOpCrashLogReader>();
         }
 #pragma warning restore CA1416

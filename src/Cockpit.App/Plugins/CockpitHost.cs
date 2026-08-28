@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Controls;
@@ -7,6 +6,7 @@ using Cockpit.App.Docking;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
@@ -224,7 +224,19 @@ internal sealed class CockpitHost(
 
         // AC-577: no CheckAccess() fast path, deliberately — that shortcut would let a test pass inline
         // without proving anything about marshalling; a test for this belongs in Cockpit.App.ViewTests.
-        await Dispatcher.UIThread.InvokeAsync(() => workspaces.OpenWorkspaceAsync(workspaceTypeId));
+        try
+        {
+            await UiThreadCall.DispatchAsync(() => workspaces.OpenWorkspaceAsync(workspaceTypeId));
+        }
+        catch (UiUnavailableException exception)
+        {
+            // AC-1138: logged and passed on, not swallowed. A plugin that starts this from a menu button
+            // discards the task, and then the workspace not opening is all the operator has to go on — the
+            // reason would be nowhere. An awaiting caller still gets the exception.
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>()
+                .LogWarning(exception, "Opening workspace '{WorkspaceTypeId}' for plugin '{PluginId}' gave up waiting for the UI thread", workspaceTypeId, pluginId);
+            throw;
+        }
     }
 
     public void AddProjectField(ProjectFieldRegistration registration)
@@ -855,10 +867,15 @@ internal sealed class CockpitHost(
             // AC-577, no fast path — deliberately, and here it is not even a trade: what this marshals to is a
             // modal dialog, which has nowhere to appear in a process without a dispatcher loop. An inline branch
             // would turn "no UI thread" from a hang into a dialog nobody can answer.
-            paneId = await Dispatcher.UIThread.InvokeAsync(() =>
+            var dialog = await UiThreadCall.DispatchAsync<Task<string?>>(() =>
                 services.GetService<CockpitViewModel>() is { } cockpit
                     ? cockpit.ShowNewSessionDialogForPluginAsync(prefill)
                     : Task.FromResult<string?>(null));
+
+            // AC-1138: the explicit type argument caps the hop onto the thread and hands the dialog's own task
+            // back unopened — what comes after is an operator reading a dialog, not a wait to cap. The
+            // unwrapping overload would have capped both.
+            paneId = await dialog;
         }
         catch (Exception ex)
         {
@@ -908,7 +925,7 @@ internal sealed class CockpitHost(
         // FindSession walks the session collections, which only the UI thread may do while panes come and go.
         bool IsLive() => cockpit.FindSession(paneId) is not null;
 
-        return (Dispatcher.UIThread.CheckAccess() ? IsLive() : Dispatcher.UIThread.Invoke(IsLive))
+        return UiThreadCall.Run(IsLive)
             ? new CockpitSessionBinding(paneId, cockpit, sessions, SendToSessionAsync)
             : new DetachedSessionBinding(paneId);
     }
@@ -975,13 +992,7 @@ internal sealed class CockpitHost(
         // AC-577: fast path here, unlike this file's other two dispatcher sites — usually called on the UI
         // thread and marshals a field write rather than a dialog, so the inline CheckAccess() branch costs
         // nothing; a test covering that branch belongs in Cockpit.App.ViewTests, not here.
-        if (Dispatcher.UIThread.CheckAccess())
-        {
-            Apply();
-            return Task.CompletedTask;
-        }
-
-        return Dispatcher.UIThread.InvokeAsync(Apply).GetTask();
+        return UiThreadCall.RunAsync(Apply);
     }
 
     // AC-1033. `article` is resolved against this plugin's own branch first, then as written, so a plugin

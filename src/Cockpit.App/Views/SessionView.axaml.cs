@@ -16,25 +16,12 @@ namespace Cockpit.App.Views;
 
 public partial class SessionView : UserControl
 {
-    // Follow the newest transcript row while parked at the bottom; pause when the user scrolls up to
-    // read history, resume once they scroll back down (#21). Avalonia has no built-in stick-to-bottom.
-    private bool _stickToBottom = true;
+    // AC-1121: the follow lives in TranscriptFollower, shared with AssistantChatView. It ran twice, and every
+    // repair since AC-528 has landed on one half.
+    private TranscriptFollower? _follower;
 
-    // True while `_FollowNewest` is moving the viewport itself, so the scroll changes it
-    // causes are never mistaken for the operator's — and never re-enter it.
-    private bool _following;
-
-    // AC-1113: `_following` only covers a scroll change raised inside the call. Since AC-1111 the viewport move
-    // is a plain Offset write, whose layout pass — and the ScrollChanged that ends it — runs after the call has
-    // returned. This carries the guard across it: the follow's own correction may be answered once, not forever.
-    private bool _followCorrected;
-
-    // Marks a real scroll gesture happened; the next ScrollChanged is its consequence. Delta fields
-    // can't stand in — a panel's own offset correction has the same fingerprint (three rounds of
-    // this ticket died on that ambiguity). Needs an expiry — see _OnTranscriptWheel.
-    private bool _wheelTurned;
-
-    private bool _pointerHeld;
+    // AC-1165: the input half — key handling, paste, mentions — shared with AssistantChatView the same way.
+    private readonly TranscriptComposerInput _composerInput;
 
     // Watched for minimise: the paused renderer never commits recycled-row removal, so a minimised
     // streaming pane keeps every row instead of one viewport's worth (overnight multi-GB growth).
@@ -68,16 +55,22 @@ public partial class SessionView : UserControl
     // The transcript's scroll owner. It lives inside TranscriptItems' own template since AC-686, so the virtualising
     // panel measures against the viewport rather than the infinite height an enclosing ScrollViewer hands it — and a
     // name inside a template is not a code-behind field, so it is resolved from the template instead.
-    internal ScrollViewer TranscriptScroll =>
+    internal ScrollViewer? TranscriptScroll =>
         _transcriptScroll ??= _ResolveTranscriptScroll();
 
-    // ApplyTemplate, not just a visual-tree walk: this is first asked for from the attach that wires the scroll
-    // handlers, and at that point the transcript has not been measured, so its template child does not exist yet.
-    private ScrollViewer _ResolveTranscriptScroll()
+    // ApplyTemplate, not just a visual-tree walk: the attach that wires the scroll handlers asks for this first,
+    // and the transcript has not been measured then, so its template child does not exist yet.
+    // AC-1130: FirstOrDefault, because a throw here used to skip the whole of OnDetachedFromVisualTree.
+    private ScrollViewer? _ResolveTranscriptScroll()
     {
         TranscriptItems.ApplyTemplate();
-        return TranscriptItems.GetVisualChildren().OfType<ScrollViewer>().First();
+        return TranscriptItems.GetVisualChildren().OfType<ScrollViewer>().FirstOrDefault();
     }
+
+    // Internal so a view test can assert the structural claim of AC-1121: no scroll change is ever answered
+    // with a follow, so `Following` is never true while one is being handled.
+    internal TranscriptFollower Follower =>
+        _follower ??= new TranscriptFollower(TranscriptItems, () => TranscriptScroll);
 
     public SessionView()
     {
@@ -86,13 +79,24 @@ public partial class SessionView : UserControl
         Cockpit.App.Diagnostics.LeakTracker.Register(this);
 #endif
 
+        _composerInput = new TranscriptComposerInput(
+            InputBox,
+            tryGetPastedBitmap: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetBitmapAsync() ?? Task.FromResult<Bitmap?>(null),
+            tryGetPastedText: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetTextAsync() ?? Task.FromResult<string?>(null),
+            hasComposer: () => DataContext is SessionViewModel,
+            mentionPicker: () => (DataContext as SessionViewModel)?.MentionPicker,
+            recallLastQueuedMessage: () => DataContext is SessionViewModel recallVm && recallVm.RecallLastQueuedMessage(),
+            resolveStopIfBusy: () => DataContext is SessionViewModel { IsBusy: true } busyVm ? busyVm.StopCommand : null,
+            sendCommand: () => (DataContext as SessionViewModel)?.SendCommand,
+            resolvePastedImageSink: () => DataContext is SessionViewModel vm ? vm.AddPastedImage : null);
+
         // Enter sends the message; Shift+Enter inserts a newline. Tunnel so we pre-empt the
         // TextBox's own Enter handling (which would otherwise insert a newline).
-        InputBox.AddHandler(InputElement.KeyDownEvent, _OnInputKeyDown, RoutingStrategies.Tunnel);
+        InputBox.AddHandler(InputElement.KeyDownEvent, _composerInput.OnKeyDown, RoutingStrategies.Tunnel);
 
         // AC-740: re-evaluates the @-mention token once the TextBox has applied the keystroke (character typed,
         // backspace, caret moved). Bubble is fine — nothing else claims KeyUp on this control.
-        InputBox.KeyUp += _OnInputKeyUp;
+        InputBox.KeyUp += _composerInput.OnKeyUp;
 
         // Push-to-talk (F9 by default): tunnel on the whole panel, not just the input box, so it fires
         // regardless of which control inside the panel has focus — the operator should not have to
@@ -121,15 +125,19 @@ public partial class SessionView : UserControl
             }
         });
 
-        TranscriptScroll.ScrollChanged += _OnTranscriptScrollChanged;
-        // Tunnel, and handled events too: the ScrollViewer's own presenter marks the wheel handled while
-        // scrolling on it, and a scrollbar thumb handles its own pointer press.
-        TranscriptScroll.AddHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel, RoutingStrategies.Tunnel, handledEventsToo: true);
-        TranscriptScroll.AddHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
-        TranscriptScroll.AddHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
-        TranscriptScroll.AddHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+        if (TranscriptScroll is { } scroll)
+        {
+            scroll.ScrollChanged += _OnTranscriptScrollChanged;
+            // Tunnel, and handled events too: the ScrollViewer's own presenter marks the wheel handled while
+            // scrolling on it, and a scrollbar thumb handles its own pointer press.
+            scroll.AddHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel, RoutingStrategies.Tunnel, handledEventsToo: true);
+            scroll.AddHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+            scroll.AddHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+            scroll.AddHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+        }
+
         // Land on the newest row if the panel re-attaches with an existing transcript.
-        Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
+        Follower.RequestFollow();
 
         // AC-996: a pane re-attaching onto a session that is already waiting on a permission — reselected in the
         // sidebar because it went to needs-attention, most likely — must show the way to it straight away.
@@ -159,12 +167,6 @@ public partial class SessionView : UserControl
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        TranscriptScroll.ScrollChanged -= _OnTranscriptScrollChanged;
-        TranscriptScroll.RemoveHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel);
-        TranscriptScroll.RemoveHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed);
-        TranscriptScroll.RemoveHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased);
-        TranscriptScroll.RemoveHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased);
-
         _activityAgeTicker?.Stop();
         _activityAgeTicker = null;
 
@@ -181,6 +183,18 @@ public partial class SessionView : UserControl
         if (Diagnostics is { } diagnostics)
         {
             diagnostics.RenderersShouldPauseChanged -= _OnRenderersShouldPauseChanged;
+        }
+
+        // Last, because resolving the scroll owner is the one step here that can come up empty — and before
+        // AC-1130 it was first, so a template without one leaked everything above (the timer, the session, the
+        // window, and a process-lifetime singleton's handler).
+        if (_transcriptScroll is { } scroll)
+        {
+            scroll.ScrollChanged -= _OnTranscriptScrollChanged;
+            scroll.RemoveHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel);
+            scroll.RemoveHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed);
+            scroll.RemoveHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased);
+            scroll.RemoveHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased);
         }
 
         base.OnDetachedFromVisualTree(e);
@@ -225,12 +239,21 @@ public partial class SessionView : UserControl
     // The scroll owner, not TranscriptItems, whose IsVisible is already bound to HasTranscript.
     private void _ApplyRendererPause()
     {
-        var paused = _windowMinimised || _renderClockPaused;
-        TranscriptScroll.IsVisible = !paused;
-
-        if (!paused && _stickToBottom)
+        // AC-1130: a pause signal can arrive before attach has built the scroll owner, and this is reachable from
+        // the internal test seam before then.
+        if (TranscriptScroll is not { } scroll)
         {
-            Dispatcher.UIThread.Post(_FollowNewest);
+            return;
+        }
+
+        var paused = _windowMinimised || _renderClockPaused;
+        scroll.IsVisible = !paused;
+
+        if (!paused)
+        {
+            // RequestFollow re-reads the follow when the step runs, not now: AC-953's scroll handover happens on
+            // this very attach, and a post queued while sticky used to jump to the tail after it.
+            Follower.RequestFollow();
         }
 
         // Rows dematerialise while paused, so what is reachable changed even though nothing scrolled (AC-996).
@@ -250,44 +273,11 @@ public partial class SessionView : UserControl
         vm.RefreshBackgroundTaskAges();
     }
 
+    // AC-1121: no follow from here. Avalonia raises this from LayoutUpdated, so the ScrollIntoView the old
+    // handler reached ran a nested layout pass inside the pass that raised it — the chain in AC-1178's stacks.
     private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
-        // Our own correction, and the layout passes it drives: not something to draw conclusions from.
-        if (_following)
-        {
-            return;
-        }
-
-        var byOperator = _wheelTurned || _pointerHeld;
-        _wheelTurned = false;
-
-        // AC-1113: this reads the deltas to tell our own correction from a real change, which is a different
-        // question from the one the `_wheelTurned` comment warns about — that ambiguity is about the operator,
-        // and a panel's own offset correction belongs on this side of the line anyway.
-        var ownCorrection = TranscriptScrollAnchor.IsOwnCorrection(e.ExtentDelta.Y, e.ViewportDelta.Y);
-        if (!ownCorrection)
-        {
-            _followCorrected = false;
-        }
-
-        if (byOperator)
-        {
-            // Only the operator can stop the follow, and only the operator can resume it, so only a change they
-            // caused re-derives it. Where they ended up is the same fact after a wheel turn as after a scrollbar
-            // drag — no need to tell those two apart.
-            _stickToBottom = _NewestRowIsFullyVisible()
-                || TranscriptScrollAnchor.IsAtBottom(
-                    TranscriptScroll.Offset.Y, TranscriptScroll.Extent.Height, TranscriptScroll.Viewport.Height);
-        }
-        else if (_stickToBottom && TranscriptScrollAnchor.MayFollow(ownCorrection, _followCorrected))
-        {
-            // Content grew or shrank (a row streamed in), or the viewport resized (the composer's activity line,
-            // the starting banner, the usage-warning and pending-resume bars all dock above the transcript and
-            // take their band out of it, AC-459). Nobody scrolled: keep the newest row in view.
-            _followCorrected |= ownCorrection;
-            _FollowNewest();
-        }
-
+        Follower.NoteScrollChanged(e.ViewportDelta.Y);
         _UpdateJumpAffordance();
     }
 
@@ -301,7 +291,7 @@ public partial class SessionView : UserControl
         ToolTip.SetTip(ScrollToBottomButton, awaiting
             ? "A tool is waiting for your approval — jump to it"
             : "Jump to the newest message");
-        ScrollToBottomButton.IsVisible = awaiting || !_stickToBottom;
+        ScrollToBottomButton.IsVisible = awaiting || !Follower.StickToBottom;
     }
 
     // The newest row still waiting on the operator, as an index into what the transcript is showing. -1 for none.
@@ -326,21 +316,22 @@ public partial class SessionView : UserControl
     }
 
     // Whether this row's top edge is on screen — enough to see a consent card and reach for it. Not
-    // _NewestRowIsFullyVisible: that one must keep answering "yes" for a row taller than the viewport or the
+    // TranscriptFollower.NewestRowIsFullyVisible: that one must keep answering "yes" for a row taller than the viewport or the
     // follow can never terminate (AC-528), and it is only ever asked about the last row.
     private bool _RowTopIsInView(int index)
     {
-        if (!TranscriptScroll.IsVisible || TranscriptItems.ContainerFromIndex(index) is not { } row)
+        if (TranscriptScroll is not { IsVisible: true } scroll || TranscriptItems.ContainerFromIndex(index) is not { } row)
         {
             return false;
         }
 
-        var top = row.TranslatePoint(new Point(0, 0), TranscriptScroll);
-        return top is { } point && point.Y >= -1 && point.Y < TranscriptScroll.Viewport.Height;
+        var top = row.TranslatePoint(new Point(0, 0), scroll);
+        return top is { } point && point.Y >= -1 && point.Y < scroll.Viewport.Height;
     }
 
     // A permission arrives without scrolling anything, so no ScrollChanged comes to re-evaluate the button —
     // this is the only notice the view gets that there is now something to point at.
+    // Deliberately diverges from AssistantChatView, which has no jump-button shield (AC-996) to keep in sync.
     private void _OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         // The status as well as the flag: whatever takes the session off needs-attention has to take the alarm
@@ -370,6 +361,8 @@ public partial class SessionView : UserControl
         {
             session.PropertyChanged += _OnSessionPropertyChanged;
         }
+
+        Follower.Watch(session);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -378,298 +371,30 @@ public partial class SessionView : UserControl
         _WatchSession(DataContext as SessionViewModel);
     }
 
-    // A wheel turn at the bottom raises no ScrollChanged, so its flag stood until an unrelated later
-    // change consumed it (AC-621: misread an outgoing message as scrolling away). Expire it at
-    // end-of-turn layout instead, after any real ScrollChanged the wheel caused has fired.
-    private void _OnTranscriptWheel(object? sender, PointerWheelEventArgs e)
-    {
-        _wheelTurned = true;
-        Dispatcher.UIThread.Post(() => _wheelTurned = false, DispatcherPriority.Background);
-    }
+    private void _OnTranscriptWheel(object? sender, PointerWheelEventArgs e) => Follower.NoteWheel();
 
-    private void _OnTranscriptPointerPressed(object? sender, PointerPressedEventArgs e) => _pointerHeld = true;
+    private void _OnTranscriptPointerPressed(object? sender, PointerPressedEventArgs e) => Follower.NotePointerHeld(true);
 
-    private void _OnTranscriptPointerReleased(object? sender, RoutedEventArgs e) => _pointerHeld = false;
+    private void _OnTranscriptPointerReleased(object? sender, RoutedEventArgs e) => Follower.NotePointerHeld(false);
 
     private void _OnScrollToBottomClick(object? sender, RoutedEventArgs e)
     {
         // AC-996: when something is waiting to be approved, that card is the destination — and it is the newest
         // row in all but the rare case of an older prompt still open, which is the only reason for the branch.
         var pending = _PendingPermissionIndex();
-        if (pending >= 0 && pending != _NewestVisibleIndex())
+        if (pending >= 0 && pending != TranscriptItems.ItemCount - 1)
         {
             TranscriptItems.ScrollIntoView(pending);
             _UpdateJumpAffordance();
             return;
         }
 
-        _stickToBottom = true;
-        _FollowNewest();
+        Follower.StickToBottom = true;
+        Follower.RequestFollow();
         _UpdateJumpAffordance();
     }
 
-    // The last row VisibleTranscript shows — following one it hides could never terminate (AC-800, AC-611).
-    private int _NewestVisibleIndex() => TranscriptItems.ItemCount - 1;
 
-    private void _FollowNewest()
-    {
-        // Moving the viewport raises ScrollChanged from the pass it drives — so without this guard the
-        // handler calls itself until the stack runs out (measured: it does).
-        if (_following || TranscriptItems.ItemCount == 0 || _NewestRowIsFullyVisible())
-        {
-            return;
-        }
-
-        var newestIndex = _NewestVisibleIndex();
-        if (newestIndex < 0)
-        {
-            return;
-        }
-
-        _following = true;
-        try
-        {
-            // A row that is not realised is below the viewport, so the estimated end is the way towards it.
-            // Assigning Offset only invalidates; ScrollIntoView ran a whole nested layout pass here instead,
-            // once per streamed row — 6.8MB and tens of milliseconds each, which is AC-1111 (measured).
-            if (TranscriptItems.ContainerFromIndex(newestIndex) is null)
-            {
-                _MoveTo(Math.Max(0, TranscriptScroll.Extent.Height - TranscriptScroll.Viewport.Height));
-            }
-
-            // The estimated end is Extent-derived and lands short of the true bottom (~300px, AC-528), and a
-            // row taller than the viewport keeps its bottom below it anyway. Both leave a residue that only the
-            // realised row's own geometry can close, which is what the rest of this method does.
-            if (_NewestRowIsFullyVisible())
-            {
-                return;
-            }
-
-            if (TranscriptItems.ContainerFromIndex(newestIndex) is not { } newest ||
-                newest.TranslatePoint(new Point(0, newest.Bounds.Height), TranscriptScroll) is not { } bottom)
-            {
-                return;
-            }
-
-            var shortfall = bottom.Y - TranscriptScroll.Viewport.Height;
-            if (shortfall > 0)
-            {
-                _MoveTo(TranscriptScroll.Offset.Y + shortfall);
-            }
-        }
-        finally
-        {
-            _following = false;
-        }
-    }
-
-    // AC-1113: a write that lands where the viewport already sits still invalidates layout, and every such pass
-    // counts towards Avalonia's own cut-off. The follow reaches a fixpoint here instead of asking again.
-    private void _MoveTo(double offsetY)
-    {
-        if (!TranscriptScrollAnchor.IsSettled(TranscriptScroll.Offset.Y, offsetY))
-        {
-            TranscriptScroll.Offset = TranscriptScroll.Offset.WithY(offsetY);
-        }
-    }
-
-    // Whether the newest row is fully on screen — not Extent, which is only an estimate that
-    // (measured, AC-528) sat ~300px above a reachable bottom. The row's own bottom edge is measured.
-    private bool _NewestRowIsFullyVisible()
-    {
-        // The newest row the reading level actually shows — following one it hides can never terminate, see
-        // _NewestVisibleIndex. Nothing shown at all is trivially "at the bottom".
-        var newestIndex = _NewestVisibleIndex();
-        if (newestIndex < 0)
-        {
-            return true;
-        }
-
-        // Not realised means it is off-screen below, which is the whole point of virtualisation — so not at the
-        // bottom. (Above the viewport it cannot be: it is the last row.)
-        if (TranscriptItems.ContainerFromIndex(newestIndex) is not { } newest)
-        {
-            return false;
-        }
-
-        var bottom = newest.TranslatePoint(new Point(0, newest.Bounds.Height), TranscriptScroll);
-        // A pixel of slack for layout rounding, in the same spirit as TranscriptScrollAnchor's tolerance.
-        return bottom is not null && bottom.Value.Y <= TranscriptScroll.Viewport.Height + 1.0;
-    }
-
-    // Whether the matching KeyDown already handled this keystroke — a tunnelled KeyDown's own `e.Handled` cannot
-    // be read back from the later KeyUp, so this is how `_OnInputKeyUp` tells caret-driven typing (unhandled,
-    // falls through to the TextBox's default editing) apart from a programmatic text mutation.
-    private bool _lastInputKeyWasHandled;
-
-    private void _OnInputKeyDown(object? sender, KeyEventArgs e)
-    {
-        _OnInputKeyDownCore(e);
-        _lastInputKeyWasHandled = e.Handled;
-    }
-
-    private void _OnInputKeyDownCore(KeyEventArgs e)
-    {
-        // AC-740: the open picker gets first refusal on these five keys, ahead of every handler below — Up
-        // otherwise recalls, Escape otherwise stops the turn, and Enter otherwise sends.
-        if (DataContext is SessionViewModel { MentionPicker.IsOpen: true } mentionVm)
-        {
-            var picker = mentionVm.MentionPicker;
-            switch (e.Key)
-            {
-                case Key.Up:
-                    picker.Move(-1);
-                    e.Handled = true;
-                    return;
-                case Key.Down:
-                    picker.Move(1);
-                    e.Handled = true;
-                    return;
-                case Key.Tab:
-                case Key.Enter:
-                    if (picker.Accept() is { } acceptance)
-                    {
-                        _InsertMention(acceptance);
-                    }
-
-                    e.Handled = true;
-                    return;
-                case Key.Escape:
-                    picker.Dismiss();
-                    e.Handled = true;
-                    return;
-            }
-        }
-
-        if (_IsPasteGesture(e))
-        {
-            // Clipboard read is async but the default TextBox paste runs synchronously on this same
-            // KeyDown, so the default is suppressed and the whole paste is routed by hand instead.
-            e.Handled = true;
-            _ = _HandlePasteAsync();
-            return;
-        }
-
-        // Arrow Up on an empty input recalls the most recently queued message back into the box for
-        // editing (mirrors shell history). Guarded on an empty input so it never clobbers text you are
-        // typing and Up otherwise moves the caret as usual.
-        if (e.Key == Key.Up
-            && string.IsNullOrEmpty(InputBox.Text)
-            && DataContext is SessionViewModel recallVm
-            && recallVm.RecallLastQueuedMessage())
-        {
-            e.Handled = true;
-            return;
-        }
-
-        // Esc interrupts the running turn (like the claude TUI), mirroring the Stop button. Only while
-        // a turn is in flight, so Esc is otherwise free to do its normal thing (clear selection, etc.).
-        if (e.Key == Key.Escape)
-        {
-            if (DataContext is SessionViewModel { IsBusy: true } busyVm && busyVm.StopCommand.CanExecute(null))
-            {
-                busyVm.StopCommand.Execute(null);
-                e.Handled = true;
-            }
-
-            return;
-        }
-
-        if (e.Key != Key.Enter || e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-        {
-            return;
-        }
-
-        e.Handled = true;
-        // Enter mirrors the Send button: SendAsync queues the message itself when a turn is in flight
-        // (T8), so gate only on there being something to send — not on IsBusy, which used to block
-        // Enter while busy and left queueing reachable via the Send button only.
-        if (DataContext is SessionViewModel vm && vm.SendCommand.CanExecute(null))
-        {
-            vm.SendCommand.Execute(null);
-        }
-    }
-
-    private static bool _IsPasteGesture(KeyEventArgs e) =>
-        e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control);
-
-    // Handles CTRL+V: a clipboard bitmap becomes a PNG pending attachment, otherwise text is
-    // inserted normally. AddPastedImage gates on CanPasteImages (#64) — a driver that can't send
-    // images gets a transcript notice instead of a silently vanishing attachment.
-    private async System.Threading.Tasks.Task _HandlePasteAsync()
-    {
-        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
-        if (clipboard is null || DataContext is not SessionViewModel vm)
-        {
-            return;
-        }
-
-        try
-        {
-            var bitmap = await clipboard.TryGetBitmapAsync();
-            if (bitmap is not null)
-            {
-                using (bitmap)
-                {
-                    using var stream = new MemoryStream();
-                    bitmap.Save(stream, PngBitmapEncoderOptions.Default);
-                    vm.AddPastedImage(stream.ToArray());
-                }
-
-                return;
-            }
-
-            var text = await clipboard.TryGetTextAsync();
-            if (!string.IsNullOrEmpty(text))
-            {
-                _InsertText(text);
-            }
-        }
-        catch (Exception)
-        {
-            // Clipboard unavailable (locked by another app, unsupported content): drop the paste
-            // rather than crash the UI thread.
-        }
-    }
-
-    // Inserts text at the caret, replacing any current selection — mirrors a normal paste.
-    private void _InsertText(string text)
-    {
-        var start = Math.Min(InputBox.SelectionStart, InputBox.SelectionEnd);
-        var end = Math.Max(InputBox.SelectionStart, InputBox.SelectionEnd);
-        var current = InputBox.Text ?? string.Empty;
-        var next = current[..start] + text + current[end..];
-        InputBox.Text = next;
-        InputBox.CaretIndex = start + text.Length;
-        InputBox.SelectionStart = InputBox.CaretIndex;
-        InputBox.SelectionEnd = InputBox.CaretIndex;
-    }
-
-    // AC-740: re-evaluates the @-mention token after a keystroke the TextBox itself handled (typed, backspace,
-    // caret moved) — `_lastInputKeyWasHandled` tells this apart from a programmatic mutation (voice, recall, a
-    // pasted block), all of which raise no KeyUp here except Ctrl+V, already marked handled above.
-    private void _OnInputKeyUp(object? sender, KeyEventArgs e)
-    {
-        if (_lastInputKeyWasHandled || DataContext is not SessionViewModel vm)
-        {
-            return;
-        }
-
-        vm.MentionPicker.OnTextChanged(InputBox.Text ?? string.Empty, InputBox.CaretIndex);
-    }
-
-    // Splices an accepted mention into the text: replaces [TokenStart..caret] with '@' + path + a trailing space.
-    private void _InsertMention(MentionAcceptance acceptance)
-    {
-        var current = InputBox.Text ?? string.Empty;
-        var end = Math.Clamp(InputBox.CaretIndex, 0, current.Length);
-        var start = Math.Clamp(acceptance.TokenStart, 0, end);
-        var replacement = $"@{acceptance.Path} ";
-        InputBox.Text = current[..start] + replacement + current[end..];
-        InputBox.CaretIndex = start + replacement.Length;
-        InputBox.SelectionStart = InputBox.CaretIndex;
-        InputBox.SelectionEnd = InputBox.CaretIndex;
-    }
 
     // KeyDown for push-to-talk. BeginVoiceHold itself guards OS key-repeat, so this only marks the
     // event handled when a hold actually started — an ignored press leaves the key free elsewhere.

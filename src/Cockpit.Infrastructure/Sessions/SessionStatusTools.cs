@@ -90,7 +90,7 @@ internal sealed class SessionStatusTools(
         var runId = Guid.NewGuid().ToString("N");
         var unreachable = await _UnreachableAtStartAsync(caller).ConfigureAwait(false);
 
-        using var stopping = new CancellationTokenSource();
+        var stopping = new CancellationTokenSource();
         var label = effectiveArguments.Length is 0 ? command : $"{command} {string.Join(' ', effectiveArguments)}";
         tracker.Begin(runId, label, DateTimeOffset.UtcNow, () =>
         {

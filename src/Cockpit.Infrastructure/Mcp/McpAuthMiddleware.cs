@@ -6,15 +6,20 @@ using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
-// AC-790/AC-791: auth gate shared by both hosts — loopback accepts the app key or a per-session token (AC-89),
-// the off-loopback listener only the node's shared secret. AC-247/DEP-172: a refusal on the node listener
-// returns a classifiable 401 (RFC 6750 challenge + JSON body); loopback keeps its original bare 401.
+// AC-790/AC-791: auth gate shared by every host — loopback accepts the app key or a per-session token (AC-89),
+// the off-loopback listener only the node's shared secret; a node refusal is a classifiable 401 (AC-247/DEP-172).
+// AC-1148: `authorize` then decides on that identity before any tool — 401 is "who?", 403 "not you", and required.
 internal static class McpAuthMiddleware
 {
     // `nodeSharedSecret` is a holder, not a value (AC-792): pairing mints a new secret and unpairing removes one
     // while this process runs, and a copy captured at mount time would keep letting an unpaired controller in until
     // the next launch. Revocation that waits for a restart is not revocation.
-    public static void Require(WebApplication app, McpAuthKey authKey, SessionMcpKeyring keyring, NodeSharedSecret? nodeSharedSecret = null) =>
+    public static void Require(
+        WebApplication app,
+        McpAuthKey authKey,
+        SessionMcpKeyring keyring,
+        Func<string?, ValueTask<bool>> authorize,
+        NodeSharedSecret? nodeSharedSecret = null) =>
         app.Use(async (context, next) =>
         {
             var header = context.Request.Headers.Authorization.ToString();
@@ -27,8 +32,7 @@ internal static class McpAuthMiddleware
                 // Read now rather than closed over, so the answer follows the current pairing.
                 if (nodeSharedSecret?.Value is { } secret && _ConstantTimeEquals(token, secret))
                 {
-                    McpRequestContext.Set(NodeCallerIdentity.PaneId);
-                    await next(context).ConfigureAwait(false);
+                    await _DispatchIfAuthorizedAsync(context, next, authorize, NodeCallerIdentity.PaneId).ConfigureAwait(false);
                     return;
                 }
 
@@ -39,21 +43,37 @@ internal static class McpAuthMiddleware
             // The shared app key: authorized, but names no session (verified identity stays null).
             if (authKey.IsAuthorized(header))
             {
-                McpRequestContext.Set(null);
-                await next(context).ConfigureAwait(false);
+                await _DispatchIfAuthorizedAsync(context, next, authorize, null).ConfigureAwait(false);
                 return;
             }
 
             // Otherwise it must be a live per-session token; if so, the request is attributed to that pane.
             if (keyring.PaneFor(token) is { } paneId)
             {
-                McpRequestContext.Set(paneId);
-                await next(context).ConfigureAwait(false);
+                await _DispatchIfAuthorizedAsync(context, next, authorize, paneId).ConfigureAwait(false);
                 return;
             }
 
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
         });
+
+    // AC-1148: the identity is stamped either way, so a refusal is attributable; only the dispatch is withheld.
+    // The body names no policy source — a caller learns it may not be here, and nothing about what it missed.
+    private static async Task _DispatchIfAuthorizedAsync(HttpContext context, RequestDelegate next, Func<string?, ValueTask<bool>> authorize, string? paneId)
+    {
+        McpRequestContext.Set(paneId);
+        if (!await authorize(paneId).ConfigureAwait(false))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                """{"error":"forbidden","error_description":"This cockpit endpoint is not available to this caller."}""")
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await next(context).ConfigureAwait(false);
+    }
 
     // AC-791: written out rather than a bare status code so a controller can tell it from silence — see the class
     // comment.

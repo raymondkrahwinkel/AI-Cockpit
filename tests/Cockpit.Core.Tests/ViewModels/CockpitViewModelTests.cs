@@ -1214,7 +1214,7 @@ public class CockpitViewModelTests
     // Applying Options must run a plugin's settings-saved handlers exactly as any other saved category would —
     // a plugin that re-registers its MCP server on save cannot depend on which gear opened Options.
     [Fact]
-    public async Task ApplyingOptions_RunsThePluginsSettingsSavedHandlers()
+    public async Task ApplyingOptions_RunsTheSettingsSavedHandlersForOpenedPluginViews()
     {
         var vm = NewVm();
         var sink = (IPluginContributionSink)vm;
@@ -1225,21 +1225,45 @@ public class CockpitViewModelTests
         // BeginOptionsEdit is what SessionDialogService.ShowOptionsDialogAsync calls before showing the window
         // (builds PluginOptionsRows); driven directly here since the dialog service itself is faked out above.
         vm.BeginOptionsEdit();
+        vm.PluginOptionsRows.Single().EnsureContent();
         await vm.ApplyOptionsCommand.ExecuteAsync(null);
 
         Assert.Equal(1, saves);
     }
 
+    [Fact]
+    public async Task ApplyingOptions_DoesNotConstructOrStageAnUnopenedPluginView()
+    {
+        var vm = NewVm();
+        var sink = (IPluginContributionSink)vm;
+        var constructed = 0;
+        var saves = 0;
+        sink.AddPluginSettings("youtrack", "YouTrack", () =>
+        {
+            constructed++;
+            return new FakeSettingsView();
+        });
+        sink.AddSettingsSavedHandler("youtrack", () => saves++);
+
+        vm.BeginOptionsEdit();
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, constructed);
+        Assert.Equal(0, saves);
+    }
+
     // A plugin settings view that refuses to save (IPluginSettingsView.TryStage returning false) blocks the
     // whole Apply, the same as a rejected profile (AC-1001 criterion 5) — it must not close over the error.
+    // Plugin views are lazy since AC-1207; an unopened view cannot refuse staging by contract.
     [Fact]
-    public async Task ApplyingOptions_WithARefusingPluginView_BlocksApply()
+    public async Task ApplyingOptions_WithAnOpenedRefusingPluginView_BlocksApply()
     {
         var vm = NewVm();
         var sink = (IPluginContributionSink)vm;
         sink.AddPluginSettings("youtrack", "YouTrack", () => new FakeSettingsView(accepts: false, error: "Two connections are named 'work'"));
 
         vm.BeginOptionsEdit();
+        vm.PluginOptionsRows.Single().EnsureContent();
         await vm.ApplyOptionsCommand.ExecuteAsync(null);
 
         Assert.True(vm.OptionsApplyBlocked);
@@ -1526,6 +1550,32 @@ public class CockpitViewModelTests
         Assert.DoesNotContain(vm.ResourceRows, row => row.Title == "Assistant");
         Assert.Contains(vm.ResourceRows, row => row.Title == "claude ×2");
     }
+
+    /// <summary>
+    /// AC-1202: <c>TearDownCockpitAsync</c> now disposes the DI container after already disposing this
+    /// explicitly, so a second <c>DisposeAsync()</c> call is no longer hypothetical. IAsyncDisposable's
+    /// contract is that a second call is a no-op — checked against how many times the body reads
+    /// <c>AssistantHost.Session</c> (three unconditional reads per real pass), not against session/pane state,
+    /// which stays empty either way and would not tell a guarded second call from an unguarded one.
+    /// </summary>
+    [Fact]
+    public async Task DisposeAsync_ASecondCallIsANoOp()
+    {
+        var vm = NewVm();
+        var assistantHost = Substitute.For<IAssistantSessionHost>();
+        vm.AssistantHost = assistantHost;
+
+        await vm.DisposeAsync();
+        var readsAfterFirstCall = _SessionGetterReads(assistantHost);
+
+        await vm.DisposeAsync();
+        var readsAfterSecondCall = _SessionGetterReads(assistantHost);
+
+        Assert.Equal(readsAfterFirstCall, readsAfterSecondCall);
+    }
+
+    private static int _SessionGetterReads(IAssistantSessionHost host) =>
+        host.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "get_Session");
 
     private static CockpitViewModel NewVm(
         ISessionDialogService? dialogService = null,

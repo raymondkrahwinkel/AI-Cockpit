@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
 using Avalonia.Threading;
 using Cockpit.Core.Sessions;
@@ -12,10 +11,19 @@ internal sealed class SessionEventQueue
     // anyway, so folding the deltas that arrive between two repaints removes work no one could have seen.
     private const int DrainDelayMs = 33;
 
+    // Comfortably past what a healthy drain cadence ever lets build up, so this never engages under normal load —
+    // only once a starved dispatcher has already let the tail-only fold below fall behind (AC-1204).
+    private const int WideFoldThreshold = 128;
+
     private readonly Action<SessionEvent> _apply;
     private readonly Action<Action> _post;
     private readonly Action<Action> _postAfterWindow;
-    private readonly ConcurrentQueue<SessionEvent> _pending = new();
+
+    // Guards `_pending` itself, not just its contents: a drain swaps the whole list out (see `_ApplyQueued`), so
+    // an enqueue racing that swap must either land in the list about to be taken or the fresh one replacing it,
+    // never be lost between the two.
+    private readonly Lock _pendingLock = new();
+    private List<SessionEvent> _pending = [];
     private int _drainPending;
 
     // `post`/`postAfterWindow`: Test seams, the same shape as `ToastHostViewModel`'s scheduler and
@@ -48,16 +56,52 @@ internal sealed class SessionEventQueue
     // Whether a flush would do anything. A pane that closes off the UI thread posts its flush, and a posted action
     // holds the pane until the dispatcher gets to it — worth not asking for when there is nothing to apply and no
     // flag to clear (AC-787).
-    public bool HasWork => !_pending.IsEmpty || Volatile.Read(ref _drainPending) != 0;
+    public bool HasWork => !_IsPendingEmpty || Volatile.Read(ref _drainPending) != 0;
 
-    // Takes one event from the runtime's pump thread and makes sure a drain is coming.
+    // Takes one event from the runtime's pump thread and makes sure a drain is coming. Folds it onto the last
+    // still-pending event when they'd fold on a drain anyway (AC-1204) — without this, a starved dispatcher let
+    // an unbroken run of streamed deltas pile up one entry per delta for as long as the starvation lasted.
     public void Enqueue(SessionEvent evt)
     {
-        _pending.Enqueue(evt);
+        lock (_pendingLock)
+        {
+            var lastIndex = _pending.Count - 1;
+            if (lastIndex >= 0 && SessionEventCoalescer.TryFoldOnArrival(_pending[lastIndex], evt) is { } folded)
+            {
+                _pending[lastIndex] = folded;
+            }
+            else if (_pending.Count < WideFoldThreshold || !_TryFoldOntoAnyPending(evt))
+            {
+                _pending.Add(evt);
+            }
+        }
+
         if (Interlocked.Exchange(ref _drainPending, 1) == 0)
         {
             _post(Drain);
         }
+    }
+
+    // Bounds interleaved lanes the tail-only fold can't reach (AC-1204), only past `WideFoldThreshold`. Stops at
+    // the first same-lane event it can't fold onto — that lane's routing may have moved on since (a tool call
+    // closes the row) — but skips an unrelated lane's freely, since that never touches this lane's state.
+    private bool _TryFoldOntoAnyPending(SessionEvent evt)
+    {
+        for (var i = _pending.Count - 1; i >= 0; i--)
+        {
+            if (SessionEventCoalescer.TryFoldOnArrival(_pending[i], evt) is { } folded)
+            {
+                _pending[i] = folded;
+                return true;
+            }
+
+            if (SessionEventCoalescer.SameLane(_pending[i], evt))
+            {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     // Now that the flag is only released at the end of a burst, an escape that skipped the release would latch it at 1
@@ -105,26 +149,50 @@ internal sealed class SessionEventQueue
     {
         Interlocked.Exchange(ref _drainPending, 0);
 
-        if (!_pending.IsEmpty && Interlocked.Exchange(ref _drainPending, 1) == 0)
+        if (!_IsPendingEmpty && Interlocked.Exchange(ref _drainPending, 1) == 0)
         {
             _post(Drain);
+        }
+    }
+
+    private bool _IsPendingEmpty
+    {
+        get
+        {
+            lock (_pendingLock)
+            {
+                return _pending.Count == 0;
+            }
+        }
+    }
+
+    // Test-only (AC-1204): the direct measurement of the bound on-arrival folding gives the queue.
+    internal int PendingCount
+    {
+        get
+        {
+            lock (_pendingLock)
+            {
+                return _pending.Count;
+            }
         }
     }
 
     // Applies everything queued so far, in arrival order, with adjacent deltas folded. Returns whether it found any.
     private bool _ApplyQueued()
     {
-        // A fresh list per drain rather than a reused field: Coalesce hands this very instance back when a batch had
-        // nothing to fold, so a reused buffer would be cleared underneath an iteration if a drain ever nested.
-        var batch = new List<SessionEvent>();
-        while (_pending.TryDequeue(out var evt))
+        // Swapped out under the lock rather than drained item by item: an enqueue that arrives mid-swap must land
+        // in one of the two lists whole, never see a partly-emptied one to fold onto (AC-1204).
+        List<SessionEvent> batch;
+        lock (_pendingLock)
         {
-            batch.Add(evt);
-        }
+            if (_pending.Count == 0)
+            {
+                return false;
+            }
 
-        if (batch.Count == 0)
-        {
-            return false;
+            batch = _pending;
+            _pending = [];
         }
 
         foreach (var evt in SessionEventCoalescer.Coalesce(batch))

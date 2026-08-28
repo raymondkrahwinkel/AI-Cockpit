@@ -141,6 +141,23 @@ set -e
 assert_equals "once both are bumped the run is green" 0 "$status"
 assert_contains "and says so" "ok:" "$output"
 
+# A worktree stores its gitdir in a .git file. A malformed Windows-style
+# target used to make the guard exit from `set -e` with only Git's raw 128.
+broken_worktree="${work}-broken-worktree"
+git worktree add --detach --quiet "$broken_worktree" HEAD
+original_gitdir="$(cat "${broken_worktree}/.git")"
+printf 'gitdir: D:/missing-worktree-gitdir\n' >"${broken_worktree}/.git"
+set +e
+output="$(cd "$broken_worktree" && "$guard" "$base" HEAD 2>&1)"
+status=$?
+set -e
+
+assert_equals "a broken worktree makes the guard fail distinctly" 2 "$status"
+assert_contains "a broken worktree says FAIL" "FAIL: check-plugin-versions.sh could not run git" "$output"
+assert_contains "a broken worktree says the guard did not run" "The plugin version guard did not run" "$output"
+printf '%s\n' "$original_gitdir" >"${broken_worktree}/.git"
+git worktree remove --force "$broken_worktree"
+
 if [ "$failures" -ne 0 ]; then
   printf '\n%d test(s) failed\n' "$failures" >&2
   exit 1

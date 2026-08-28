@@ -405,18 +405,43 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // ToolUseId. Nested here rather than flattened into the top-level Transcript, and collapsed by default
     // (Raymond, 2026-07-29): an operator sees that a sub-agent ran, and expands to see what it did.
 
+    private ObservableCollection<TranscriptEntryViewModel>? _subAgentRows;
+
     // Events belonging to the sub-agent this tool-use row spawned, in arrival order.
-    public ObservableCollection<TranscriptEntryViewModel> SubAgentRows { get; } = [];
+    public ObservableCollection<TranscriptEntryViewModel> SubAgentRows
+    {
+        get
+        {
+            if (_subAgentRows is not null)
+            {
+                return _subAgentRows;
+            }
+
+            _subAgentRows = [];
+            _subAgentRows.CollectionChanged += _OnSubAgentRowsChanged;
+            OnPropertyChanged(nameof(SubAgentRowsForDisplay));
+            return _subAgentRows;
+        }
+    }
+
+    public IEnumerable<TranscriptEntryViewModel> SubAgentRowsForDisplay => _subAgentRows ?? (IEnumerable<TranscriptEntryViewModel>)Array.Empty<TranscriptEntryViewModel>();
 
     // True once at least one sub-agent event has arrived — the anchor row shows its expand toggle only then.
-    public bool HasSubAgentRows => SubAgentRows.Count > 0;
+    public bool HasSubAgentRows => _subAgentRows is { Count: > 0 };
 
     // Collapsed by default; the operator expands to see the sub-agent's own activity.
     [ObservableProperty]
     private bool _isSubAgentExpanded;
 
     // The expand toggle's label, e.g. "3 sub-agent events".
-    public string SubAgentSummaryText => $"{SubAgentRows.Count} sub-agent event{(SubAgentRows.Count == 1 ? "" : "s")}";
+    public string SubAgentSummaryText
+    {
+        get
+        {
+            var count = _subAgentRows?.Count ?? 0;
+            return $"{count} sub-agent event{(count == 1 ? "" : "s")}";
+        }
+    }
 
     // Chevron for the sub-agent toggle, matching the expanded/collapsed state.
     public MaterialIconKind SubAgentToggleIconKind => IsSubAgentExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
@@ -469,7 +494,6 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         Kind = kind;
         _text = text;
         Timestamp = timestamp;
-        SubAgentRows.CollectionChanged += _OnSubAgentRowsChanged;
     }
 
     public void AppendText(string delta)

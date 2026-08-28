@@ -169,6 +169,43 @@ public class SessionStatusToolsTests
         }
     }
 
+    [Fact]
+    public async Task StartRun_StopAsync_CancelsTheTokenHandedToTheRunner()
+    {
+        var runnerStarted = new TaskCompletionSource();
+        var neverCompletes = new TaskCompletionSource<TrackedRunResult>();
+        CancellationToken handedToRunner = default;
+        var runner = Substitute.For<ITrackedCommandRunner>();
+        runner.RunAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                handedToRunner = callInfo.ArgAt<CancellationToken>(5);
+                runnerStarted.TrySetResult();
+                return neverCompletes.Task;
+            });
+        var tracker = new RunTracker();
+        var tools = _Tools(runner: runner, tracker: tracker, workspaces: _WorkspacesReachableAtTurnStart("caller-pane"));
+
+        McpRequestContext.Set("caller-pane");
+        try
+        {
+            await tools.StartRunAsync("/tmp", "dotnet", ["test"]);
+            await runnerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var activity = Assert.Single(tracker.Snapshot());
+            var exception = await Record.ExceptionAsync(activity.StopAsync);
+
+            Assert.Multiple(
+                () => Assert.Null(exception),
+                () => Assert.True(handedToRunner.IsCancellationRequested));
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+            neverCompletes.TrySetResult(new TrackedRunResult(0, "", "", TimeSpan.Zero, false));
+        }
+    }
+
     // AC-1094 criterion 2: on completion the verdict reaches the caller's own inbox without it doing anything —
     // proven here by awaiting the delivery itself rather than polling for it.
     [Fact]

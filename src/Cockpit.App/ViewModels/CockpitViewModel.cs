@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Docking;
+using Cockpit.App.Diagnostics;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Plugins.Abstractions.Docking;
@@ -116,6 +117,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
     private readonly ILogger<CockpitViewModel>? _logger;
+    private OptionsOpenMeasurement? _optionsOpenMeasurement;
 
     // Composes what a session started from a project opens with (AC-164).
     private readonly ProjectQuickStart? _projectQuickStart;
@@ -5512,23 +5514,46 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        _optionsOpenMeasurement = new OptionsOpenMeasurement();
         await _RefreshAudioDevicesAsync();
+        _MarkOptionsOpen("audio");
         await Plugins.LoadAsync();
+        _MarkOptionsOpen("plugins");
 
         // Refreshed before BeginOptionsEdit (inside ShowOptionsDialogAsync) takes its fingerprint, so a profile
         // added or edited from elsewhere since the app started is what Cancel reverts to, not stale startup state.
         if (Profiles is not null)
         {
             await Profiles.LoadAsync();
+            _MarkOptionsOpen("profiles");
         }
 
         if (McpServers is not null)
         {
             await McpServers.LoadAsync();
+            _MarkOptionsOpen("mcp");
         }
 
         await _dialogService.ShowOptionsDialogAsync(this, category);
     }
+
+    internal void OptionsOpenPresented()
+    {
+        if (_optionsOpenMeasurement is not { } measurement)
+        {
+            return;
+        }
+
+        _MarkOptionsOpen("presented");
+        if (measurement.Finish() is { } line)
+        {
+            _logger?.LogWarning("{Message}", line);
+        }
+
+        _optionsOpenMeasurement = null;
+    }
+
+    private void _MarkOptionsOpen(string phase) => _optionsOpenMeasurement?.Mark(phase);
 
     // Opens the plugin store dialog (#62) with the "Available updates" filter preselected (#65) — the action
     // button on a plugin-update toast, so the operator lands straight on the updates list instead of
@@ -5834,14 +5859,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             seen.Add(row.FolderId);
             if (PluginSettings.TryGetValue(row.FolderId, out var registration))
             {
-                var view = registration.CreateView();
-                var body = PluginSettingsBodyBuilder.Build(view);
-                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, body.Content, view, unavailableReason: null, registration.Category));
+                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, registration.CreateView, unavailableReason: null, registration.Category));
             }
             else
             {
                 var reason = row.HasFailure ? $"{row.StatusText} — {row.FailureText}" : row.StatusText;
-                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, content: null, rawView: null, reason));
+                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, createView: null, reason));
             }
         }
 
@@ -5855,10 +5878,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 continue;
             }
 
-            var view = registration.CreateView();
-            var body = PluginSettingsBodyBuilder.Build(view);
-            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, body.Content, view, unavailableReason: null, registration.Category));
+            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, registration.CreateView, unavailableReason: null, registration.Category));
         }
+
     }
 
     // Any property on any of the three may be the one that moved, so the fingerprint decides rather than the
@@ -6656,7 +6678,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var monitor = _claimCollisionMonitor;
-        var colliding = await Task.Run(monitor.PanesInCollision).ConfigureAwait(true);
+        IReadOnlySet<string> colliding;
+        try
+        {
+            colliding = await Task.Run(monitor.PanesInCollision).ConfigureAwait(true);
+        }
+        catch (UiUnavailableException exception)
+        {
+            // AC-1201: the UI thread was starved past PaneWorkspaceDirectory's own marshal deadline (AC-1138/
+            // AC-1196) — expected under load, not a bug here. This round's chip is stale; the next tick tries again.
+            _logger?.LogWarning(exception, "A claim-collision check was skipped: the UI thread did not answer in time.");
+            return;
+        }
+        catch (Exception exception)
+        {
+            // Anything else is not the known starvation case, so it is worth a louder signal than the one above.
+            _logger?.LogError(exception, "A claim-collision check failed; the next tick will try again.");
+            return;
+        }
+
         foreach (var session in AllSessions())
         {
             session.HasClaimCollision = colliding.Contains(session.PaneId);
@@ -7893,6 +7933,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // whole process) alive after the window closes (bug #32).
     public async ValueTask DisposeAsync()
     {
+        // AC-1202: IAsyncDisposable's contract is that a second call is a no-op — now exercised for real, since
+        // TearDownCockpitAsync disposes the DI container after already disposing this explicitly.
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
         // The shutdown gives this a bounded budget and then hard-exits (Program.DisposeCockpit), so where it got to
         // is the one thing worth knowing when something it should have cleaned up is still there afterwards. Three
         // lines, at the two ends and around the assistant, because a teardown that is cut off leaves no other trace.
@@ -7916,22 +7965,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _worktreeManager.SourceRefreshed -= _ToastWorktreeSource;
         }
 
-        foreach (var session in Sessions.ToList())
+        var panes = Sessions.ToList();
+        var embedded = _embeddedSessions.Values.SelectMany(owned => owned).ToList();
+        _pendingTeardownCount = panes.Count + embedded.Count + (AssistantHost?.Session is null ? 0 : 1);
+
+        // AC-1134: parallel, not serial — there is no shared state between panes that requires an order, and a
+        // teardown that waited for each in turn let one slow pane starve every pane behind it.
+        await Task.WhenAll(panes.Select(async session =>
         {
             session.PropertyChanged -= OnSessionPropertyChanged;
             session.CloseRequested -= OnSessionCloseRequested;
             session.NameChanged -= OnSessionNameChanged;
             await session.DisposeAsync();
-        }
+            Interlocked.Decrement(ref _pendingTeardownCount);
+        }));
 
         // Embedded sessions (AC-122) live outside Sessions, so they need disposing here too or their pty outlives
         // the app.
-        foreach (var session in _embeddedSessions.Values.SelectMany(owned => owned))
+        await Task.WhenAll(embedded.Select(async session =>
         {
             session.PropertyChanged -= OnSessionPropertyChanged;
             session.CloseRequested -= OnEmbeddedSessionCloseRequested;
             await session.DisposeAsync();
-        }
+            Interlocked.Decrement(ref _pendingTeardownCount);
+        }));
 
         Cockpit.App.Logging.LifecycleLog.Write("Pane and embedded sessions torn down; the assistant is next.");
 
@@ -7941,6 +7998,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (AssistantHost?.Session is { } assistant)
         {
             await assistant.DisposeAsync();
+            Interlocked.Decrement(ref _pendingTeardownCount);
             Cockpit.App.Logging.LifecycleLog.Write("Assistant session torn down.");
         }
 
@@ -7950,4 +8008,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Cockpit.App.Logging.LifecycleLog.Write("Cockpit teardown complete.");
     }
+
+    // AC-1134: how many of this teardown's sessions had not yet finished disposing — read by Program's shutdown
+    // budget once it gives up waiting, so the exit can say what it did not achieve instead of just going quiet.
+    // Volatile.Read, not a plain field read: it is written with Interlocked.Decrement from the parallel per-session
+    // teardown tasks above, possibly off the thread that reads this.
+    public int PendingTeardownCount => Volatile.Read(ref _pendingTeardownCount);
+
+    private int _pendingTeardownCount;
+    private bool _disposed;
 }

@@ -15,6 +15,11 @@ internal sealed class SessionRuntime : ISessionRuntime
     // capabilities and `LastAssistantText` are folded as events arrive and stay correct.
     private const int MaxLoggedEvents = 5_000;
 
+    // AC-1134: the interrupt is a courtesy — asking a running turn to stop cleanly — not the obligation. Tearing
+    // down the process tree is the obligation, and a CLI that stopped answering its control protocol must not be
+    // able to hold that up indefinitely.
+    private static readonly TimeSpan InterruptGrace = TimeSpan.FromMilliseconds(250);
+
     private readonly ISessionDriverFactory _driverFactory;
     private readonly ISessionMemoryLimiter? _memoryLimiter;
     private readonly List<SessionEvent> _events = [];
@@ -151,16 +156,18 @@ internal sealed class SessionRuntime : ISessionRuntime
     public async ValueTask DisposeAsync()
     {
         // Interrupt first so a running turn is told to stop rather than having its process pulled from under
-        // it; then cancel the pump, then let the driver tear its process down.
+        // it; then cancel the pump, then let the driver tear its process down. Bounded by InterruptGrace: a CLI
+        // that stopped answering its control protocol must not hold up the process-tree teardown that follows.
         if (_driver is not null)
         {
             try
             {
-                await _driver.InterruptAsync();
+                await _driver.InterruptAsync().WaitAsync(InterruptGrace);
             }
             catch (Exception)
             {
-                // Best-effort: a session that is already gone must not make closing it throw.
+                // Best-effort: a session that is already gone, or that did not answer in time, must not make
+                // closing it throw or wait longer.
             }
         }
 
@@ -175,9 +182,9 @@ internal sealed class SessionRuntime : ISessionRuntime
             {
                 await _pump;
             }
-            catch (OperationCanceledException)
+            catch (Exception)
             {
-                // Expected: cancelling the lifetime is how the pump ends.
+                // Teardown is best-effort: a failed provider stream must not retain the driver or cap.
             }
 
             _pump = null;
@@ -185,16 +192,46 @@ internal sealed class SessionRuntime : ISessionRuntime
 
         if (_driver is not null)
         {
-            await _driver.DisposeAsync();
-            _driver = null;
+            try
+            {
+                await _driver.DisposeAsync();
+            }
+            catch (Exception)
+            {
+                // Best-effort: a failed driver must not retain the remaining session resources.
+            }
+            finally
+            {
+                _driver = null;
+            }
         }
 
         // After the driver, so the job object/cgroup is empty by the time it is released.
-        _memoryCap?.Dispose();
-        _memoryCap = null;
+        try
+        {
+            _memoryCap?.Dispose();
+        }
+        catch (Exception)
+        {
+            // Best-effort teardown continues with the lifetime.
+        }
+        finally
+        {
+            _memoryCap = null;
+        }
 
-        _lifetime?.Dispose();
-        _lifetime = null;
+        try
+        {
+            _lifetime?.Dispose();
+        }
+        catch (Exception)
+        {
+            // Best-effort teardown has no remaining resources to retain.
+        }
+        finally
+        {
+            _lifetime = null;
+        }
     }
 
     private async Task _PumpEventsAsync(CancellationToken cancellationToken)
@@ -214,6 +251,15 @@ internal sealed class SessionRuntime : ISessionRuntime
         catch (OperationCanceledException)
         {
             // Expected on shutdown.
+            return;
+        }
+        catch (Exception exception)
+        {
+            _Publish(new SessionError
+            {
+                SessionId = _lastSessionId,
+                Message = $"This session's provider stream ended in an error: {exception.Message}",
+            });
             return;
         }
 

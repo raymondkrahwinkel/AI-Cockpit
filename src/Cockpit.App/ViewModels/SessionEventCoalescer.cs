@@ -59,6 +59,17 @@ internal static class SessionEventCoalescer
         return result ?? events;
     }
 
+    // Folds `incoming` onto `pending` right away, or returns null (AC-1204): the same rule `Coalesce` applies to
+    // a whole drained batch, exposed here so a queue can fold on arrival instead of waiting for a drain that a
+    // starved dispatcher may not run for a long time.
+    public static SessionEvent? TryFoldOnArrival(SessionEvent pending, SessionEvent incoming) =>
+        _Mergeable(pending, incoming) ? _WithText(pending, _TextOf(pending) + _TextOf(incoming)) : null;
+
+    // Whether two events share a lane (AC-1204): same session, same sub-agent or both top-level. A queue
+    // searching past its own tail must stop at the first same-lane event it cannot fold onto — that lane's
+    // own routing state may have moved on (a tool call closes the open text row) — but may skip an unrelated lane's.
+    public static bool SameLane(SessionEvent first, SessionEvent second) => _SameLane(first, second);
+
     // Whether `next` can be folded into the run `head` started. Deliberately
     // strict: every field that decides which row a delta lands on must match, and so must the session it belongs to,
     // which leaves the merged event indistinguishable from its parts for every reader except `Uuid`.

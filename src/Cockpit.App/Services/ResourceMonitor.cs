@@ -8,17 +8,30 @@ namespace Cockpit.App.Services;
 // Samples what the cockpit and its sessions are using (#78): one process-table read per tick serves every
 // session, and each session is measured as a *tree* (the `claude` process plus everything it spawned) so the
 // CPU shown is the build the agent just started, not the idle parent.
-public sealed class ResourceMonitor(IProcessTableReader reader) : ISingletonService
+public sealed class ResourceMonitor : ISingletonService
 {
+    private readonly IProcessTableReader _reader;
+    private readonly Func<int, double?> _pressureAvg10;
     private readonly Dictionary<int, ResourceSample> _previous = [];
     private DateTimeOffset _sampledAt = DateTimeOffset.MinValue;
+
+    public ResourceMonitor(IProcessTableReader reader) : this(reader, LinuxSessionCgroup.PressureAvg10)
+    {
+    }
+
+    // AC-1233: allocation tests replace Linux procfs pressure reads to measure snapshot indexing deterministically.
+    internal ResourceMonitor(IProcessTableReader reader, Func<int, double?> pressureAvg10)
+    {
+        _reader = reader;
+        _pressureAvg10 = pressureAvg10;
+    }
 
     // Reads the machine once and reports what the cockpit itself and each of `sessionProcessIds`
     // (with their children) is using. The first call has nothing to compare against, so it reports memory and a
     // CPU of zero — a percentage only exists between two samples.
     public ResourceUsage Sample(IReadOnlyDictionary<string, int> sessionProcessIds)
     {
-        var rows = reader.Read();
+        var rows = _reader.Read();
         var now = DateTimeOffset.UtcNow;
         var elapsed = _sampledAt == DateTimeOffset.MinValue ? TimeSpan.Zero : now - _sampledAt;
         var cores = Environment.ProcessorCount;
@@ -36,7 +49,7 @@ public sealed class ResourceMonitor(IProcessTableReader reader) : ISingletonServ
                 title,
                 measured.CpuPercent,
                 measured.MemoryBytes,
-                LinuxSessionCgroup.PressureAvg10(processId)));
+                _pressureAvg10(processId)));
         }
 
         _sampledAt = now;

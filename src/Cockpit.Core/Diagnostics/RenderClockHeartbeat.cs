@@ -14,10 +14,11 @@ public static class RenderClockHeartbeat
     public static readonly TimeSpan PauseAfter = TimeSpan.FromMinutes(1);
 
     // A null probeInFlightFor means no probe is outstanding: either none has been posted, or the last one came
-    // back. Both are the healthy case, and both are what ends a stall.
-    public static RenderClockHeartbeatDecision Decide(TimeSpan? probeInFlightFor, bool warned)
+    // back. Both are the healthy case, and both are what ends a stall. stallAfter overrides the budget so a test
+    // can drive this at seconds instead of waiting a real quarter-minute per case (AC-1196).
+    public static RenderClockHeartbeatDecision Decide(TimeSpan? probeInFlightFor, bool warned, TimeSpan? stallAfter = null)
     {
-        if (!warned && probeInFlightFor > StallAfter)
+        if (!warned && probeInFlightFor > (stallAfter ?? StallAfter))
         {
             return new RenderClockHeartbeatDecision(Stalled: true, Resumed: false, Warned: true);
         }
@@ -36,6 +37,7 @@ public static class RenderClockHeartbeat
     public static bool ShouldPauseRenderers(TimeSpan? probeInFlightFor, bool isMacOs) =>
         // Windows and X11 drive the clock from a software sleep loop the OS cannot take away, and WindowState.
         // Minimized is full coverage of pausing there — so their existing, working behaviour stays untouched.
+        // AC-1196 reconsidered this gate and left it: see the caller, which is where the answer lives.
         isMacOs && probeInFlightFor > PauseAfter;
 }
 

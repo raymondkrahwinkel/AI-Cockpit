@@ -1425,16 +1425,51 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateAsync_DetachedHead_LeavesTheSourceUntouched()
+    public async Task CreateAsync_DetachedHeadBehindOrigin_ForksFromOriginInstead()
     {
+        // AC-1218: a shared checkout left detached on a commit origin has since moved past — the state a worktree
+        // spawned from it silently inherited as its base, with nothing telling anyone it happened.
         _AddRemote();
-        _PushFromAnotherClone("shipped.txt");
+        var pushedAt = _PushFromAnotherClone("shipped.txt");
         var detachedAt = _Git(_repo, "rev-parse", "HEAD");
         _Git(_repo, "checkout", detachedAt);
 
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
-        // There is no source branch to update, so the commit HEAD points at stays the fork base.
+        // Forked from origin's current tip, not the stale commit HEAD was detached at — and the checkout itself
+        // never moved (still detached at the old commit, nothing written to it).
+        Assert.Equal(pushedAt, record.BaseCommit);
+        Assert.Equal(detachedAt, _Git(_repo, "rev-parse", "HEAD"));
+        var refresh = _SourceRefreshOf(record);
+        Assert.Equal(WorktreeSourceOutcome.ForkedFromUpstream, refresh.Outcome);
+        Assert.NotNull(refresh.Notice);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DetachedHeadAtOriginTip_LeavesTheSourceUntouched()
+    {
+        // Negative control for AC-1218: a detached checkout that already matches origin must not change behaviour.
+        _AddRemote();
+        var detachedAt = _Git(_repo, "rev-parse", "HEAD");
+        _Git(_repo, "checkout", detachedAt);
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        Assert.Equal(detachedAt, record.BaseCommit);
+        var refresh = _SourceRefreshOf(record);
+        Assert.Equal(WorktreeSourceOutcome.UpToDate, refresh.Outcome);
+        Assert.Null(refresh.Notice);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DetachedHeadNoRemote_LeavesTheSourceUntouched()
+    {
+        var detachedAt = _Git(_repo, "rev-parse", "HEAD");
+        _Git(_repo, "checkout", detachedAt);
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // Nothing to compare the detached commit against, so it stays the fork base exactly as before AC-1218.
         Assert.Equal(detachedAt, record.BaseCommit);
         var refresh = _SourceRefreshOf(record);
         Assert.Equal(WorktreeSourceOutcome.DetachedHead, refresh.Outcome);

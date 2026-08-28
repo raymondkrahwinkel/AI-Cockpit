@@ -5,6 +5,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Usage;
+using Cockpit.Tests.Shared;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Usage;
@@ -99,6 +100,22 @@ public class SessionUsageRecordingTests
         Assert.Equal(1, snapshot.Turns);
         Assert.Equal("raymond", snapshot.ProfileLabel);
         Assert.Equal("opus", snapshot.Model);
+        Assert.NotEqual(default, snapshot.StartedAt);
+        Assert.NotEqual(default, snapshot.RecordedAt);
+        Assert.Empty(UsageSnapshotContract.CommonFieldDifferences(new UsageSnapshot
+        {
+            PaneId = session.PaneId,
+            StartedAt = snapshot.StartedAt,
+            RecordedAt = snapshot.RecordedAt,
+            ProfileLabel = "raymond",
+            Model = "opus",
+            InputTokens = 120,
+            OutputTokens = 40,
+            CacheReadInputTokens = 9_000,
+            CacheCreationInputTokens = 300,
+            TotalCostUsd = 0.25,
+            Turns = 1,
+        }, snapshot));
     }
 
     [Fact]

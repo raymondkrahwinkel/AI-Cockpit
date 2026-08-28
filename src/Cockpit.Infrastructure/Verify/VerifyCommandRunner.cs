@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using Cockpit.Core.Abstractions;
@@ -54,49 +53,16 @@ internal sealed class VerifyCommandRunner : IVerifyCommandRunner, ISingletonServ
         catch (OperationCanceledException)
         {
             timedOut = !cancellationToken.IsCancellationRequested;
-            _KillTree(process);
+            CommandRunnerProcess._KillTree(process);
         }
 
         stopwatch.Stop();
-        var standardOutput = await _DrainAsync(readStandardOutput).ConfigureAwait(false);
-        var standardError = await _DrainAsync(readStandardError).ConfigureAwait(false);
+        var standardOutput = await CommandRunnerProcess._DrainAsync(readStandardOutput).ConfigureAwait(false);
+        var standardError = await CommandRunnerProcess._DrainAsync(readStandardError).ConfigureAwait(false);
         // Reading ExitCode before the process has actually exited throws; the external-cancel path kills without a
         // synchronous exit, so treat "not exited" as the same failure sentinel a timeout uses.
         var exitCode = timedOut || !process.HasExited ? -1 : process.ExitCode;
         return new VerifyRunResult(exitCode, standardOutput, standardError, stopwatch.Elapsed, timedOut);
     }
 
-    private static void _KillTree(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
-        {
-            // The child raced us to exit, or the OS refused the kill; either way the run is already over.
-        }
-    }
-
-    // The pipes close on the child's exit or kill, which normally completes these reads at once. But a kill that the
-    // OS refuses (a detached grandchild, a zombie) would leave them open forever and hang the whole verify call on the
-    // already-granted consent — so give the drain a short grace and then give up rather than wait unbounded.
-    private static readonly TimeSpan ReadGrace = TimeSpan.FromSeconds(5);
-
-    private static async Task<string> _DrainAsync(Task<string> read)
-    {
-        try
-        {
-            return await read.WaitAsync(ReadGrace).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is IOException or InvalidOperationException or OperationCanceledException or TimeoutException)
-        {
-            // A killed child can fault its own pipe read, and a kill the OS refused can leave it open past the grace;
-            // either way the exit code and timing still describe the run.
-            return string.Empty;
-        }
-    }
 }

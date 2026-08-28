@@ -51,7 +51,7 @@ internal static class CockpitConfigPath
     public static string AssistantCurrentState => Path.Combine(Root, "assistant-state.md");
 
     // What the operator saw in the assistant window (AC-684): a JSON snapshot next to `cockpit.json`, overwritten
-    // whole on every new transcript row — the conversation's current shape, not a trail with its own retention.
+    // whole (debounced, AC-1151) as rows come in — the conversation's current shape, not a trail with its own retention.
     public static string AssistantTranscript => Path.Combine(Root, "assistant-transcript.json");
 
     // AC-792: this machine's node TLS certificate, written via `CreatePrivateFile` like every other

@@ -6,11 +6,11 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Cockpit.App.Services;
 
 // Host-side `IPaneWorkspaceDirectory` (AC-439): `WorkspaceAgentGateway`'s single-desk seam generalised to
-// every live pane, called from the UI-thread timer so it never needs to marshal like the gateway does.
+// every live pane, marshalled through `UiThreadCall` like the gateway — AC-1201: `Task.Run` calls it off-thread too.
 // AC-1013: resolves `CockpitViewModel` lazily via `IServiceProvider`, not constructor injection, since it depends on `IClaimCollisionMonitor` which chains back through here and would make the container recurse.
 internal sealed class PaneWorkspaceDirectory(IServiceProvider services) : IPaneWorkspaceDirectory, ISingletonService
 {
-    public IReadOnlyDictionary<string, string> WorkspaceIdsByPane()
+    public IReadOnlyDictionary<string, string> WorkspaceIdsByPane() => UiThreadCall.Run(() =>
     {
         var cockpit = services.GetRequiredService<CockpitViewModel>();
         var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(cockpit.Workspaces.Settings);
@@ -27,5 +27,5 @@ internal sealed class PaneWorkspaceDirectory(IServiceProvider services) : IPaneW
         }
 
         return byPane;
-    }
+    });
 }

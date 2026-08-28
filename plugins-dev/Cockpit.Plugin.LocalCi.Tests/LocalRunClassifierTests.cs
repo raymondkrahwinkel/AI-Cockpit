@@ -19,6 +19,11 @@ public class LocalRunClassifierTests
                       dotnet-version: '10.0.x'
                   - name: Build
                     run: dotnet build
+                  - if: ${{ always() && !env.ACT }}
+                    uses: actions/upload-artifact@v7
+                    with:
+                      name: test-results
+                      path: TestResults
             """);
 
         Assert.True(verdict.CanRunLocally);
@@ -128,6 +133,53 @@ public class LocalRunClassifierTests
                 runs-on: ubuntu-latest
                 steps:
                   - uses: {uses}
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Contains("exchanges artifacts with another job", verdict.Reason);
+    }
+
+    [Fact]
+    public void UploadGuardedAgainstAct_CanRunLocally()
+    {
+        var verdict = _ClassifyOne("""
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - if: ${{ always() && !env.ACT }}
+                    uses: actions/upload-artifact@v7
+            """);
+
+        Assert.True(verdict.CanRunLocally, verdict.Reason);
+    }
+
+    [Fact]
+    public void UploadWithAlwaysOnly_IsStillRefused()
+    {
+        var verdict = _ClassifyOne("""
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - if: always()
+                    uses: actions/upload-artifact@v7
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Contains("exchanges artifacts with another job", verdict.Reason);
+    }
+
+    [Fact]
+    public void UploadWithUnknownCondition_IsStillRefused()
+    {
+        var verdict = _ClassifyOne("""
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - if: ${{ !env.SOMETHING_ELSE }}
+                    uses: actions/upload-artifact@v7
             """);
 
         Assert.False(verdict.CanRunLocally);

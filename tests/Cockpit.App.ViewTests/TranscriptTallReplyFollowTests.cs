@@ -43,7 +43,7 @@ public sealed class TranscriptTallReplyFollowTests
             Dispatcher.UIThread.RunJobs();
             window.UpdateLayout();
 
-            var scroll = view.TranscriptScroll;
+            var scroll = view.TranscriptScroll!;
             var newest = view.TranscriptItems.ContainerFromIndex(view.TranscriptItems.ItemCount - 1);
             Assert.NotNull(newest);
 

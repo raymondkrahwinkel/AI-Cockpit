@@ -32,6 +32,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: `COCKPIT_STATE_ROOT` points an instance at a state directory of its own, so a second cockpit can run
+  without touching the one you use. It moves everything, not just the settings file — configuration, logs,
+  plugins, worktrees, clones, audit trails and caches all follow it, since an instance that looks isolated while
+  one path still writes into your real state is worse than one that never claimed to be. Leave it unset and
+  nothing changes. The path must be absolute; a relative one is refused at startup rather than resolved
+  differently by each process.
+- changed: the rule that only one cockpit runs at a time now covers one state directory rather than the whole
+  machine, so two instances pointed at directories of their own start side by side and two sharing a directory
+  still refuse — whichever way that directory is spelt. Without `COCKPIT_STATE_ROOT` nothing changes: every
+  instance shares the one directory, so exactly one runs, as before.
+
 - added: the plugin SDK now carries a named list of everything a plugin can ask the cockpit for — each
   entry with how much granting it would hand over, which SDK members it covers and the cockpit version it
   first appeared in. Nothing is asked or enforced yet; it is the vocabulary the later permission prompt
@@ -368,6 +379,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   window to the front, then closes the flyout so it doesn't linger over a window that just moved to the background.
 
 ### Fixed
+
+- fixed: a session's transcript, status and progress no longer stall for as long as a runaway drawing pass keeps
+  the window busy. Incoming updates used to pile up one at a time until drawing let up, however long that took;
+  they now merge into the same row as they arrive, so the same stall costs a short delay in what you see instead
+  of the window going quiet while it looks perfectly healthy.
 
 - fixed: the cockpit no longer freezes for tens of seconds after a runaway layout pass. When the UI cut such a
   pass off, the drawing that should have followed was skipped and nothing asked for another one, so the window

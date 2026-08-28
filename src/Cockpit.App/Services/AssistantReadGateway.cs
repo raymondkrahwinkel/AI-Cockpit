@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
@@ -13,24 +12,17 @@ namespace Cockpit.App.Services;
 internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProjectSourceRegistry sharedProjectSources)
     : IAssistantReadGateway, ISingletonService
 {
-    public Task<IReadOnlyList<AssistantSessionRow>> ListSessionsAsync() =>
-        Dispatcher.UIThread.CheckAccess()
-            ? Task.FromResult(_ListSessions())
-            : Dispatcher.UIThread.InvokeAsync(_ListSessions).GetTask();
+    public Task<IReadOnlyList<AssistantSessionRow>> ListSessionsAsync() => UiThreadCall.RunAsync(_ListSessions);
 
-    public Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync() =>
-        Dispatcher.UIThread.CheckAccess()
-            ? Task.FromResult(_ListProjects())
-            : Dispatcher.UIThread.InvokeAsync(_ListProjects).GetTask();
+    public Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync() => UiThreadCall.RunAsync(_ListProjects);
 
     // The registered sources and the bound/hidden filter ids, read together on the UI thread via
     // `ProjectsViewModel.SharedProjectVisibilityFilterIds` (AC-797) — the same rule the Projects workspace
     // itself filters on, not a second copy of it. The per-source network calls then run off the UI thread.
     public async Task<IReadOnlyList<AssistantSharedProjectSourceRow>> ListSharedProjectsAsync()
     {
-        var (sources, boundIds, hiddenIds) = Dispatcher.UIThread.CheckAccess()
-            ? _SharedProjectSourcesAndVisibilityFilterIds()
-            : await Dispatcher.UIThread.InvokeAsync(_SharedProjectSourcesAndVisibilityFilterIds).GetTask().ConfigureAwait(false);
+        var (sources, boundIds, hiddenIds) = await UiThreadCall
+            .RunAsync(_SharedProjectSourcesAndVisibilityFilterIds).ConfigureAwait(false);
 
         if (sources.Count == 0)
         {
@@ -67,10 +59,7 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProj
     // the UI thread — that is where the roster lives — and only the file read is handed off.
     public async Task<AssistantTranscript?> ReadTranscriptAsync(string paneId, int count)
     {
-        var found = Dispatcher.UIThread.CheckAccess()
-            ? _ReadTranscript(paneId, count)
-            : await Dispatcher.UIThread.InvokeAsync(() => _ReadTranscript(paneId, count)).GetTask()
-                .ConfigureAwait(false);
+        var found = await UiThreadCall.RunAsync(() => _ReadTranscript(paneId, count)).ConfigureAwait(false);
 
         return found switch
         {

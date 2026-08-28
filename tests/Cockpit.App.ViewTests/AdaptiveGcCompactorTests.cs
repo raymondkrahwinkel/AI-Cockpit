@@ -177,6 +177,38 @@ public class AdaptiveGcCompactorTests
         }
     }
 
+    /// <summary>
+    /// AC-1150: a dump left over from a hunt that ended still holds every session's live credentials. It must
+    /// not become a permanent archive, so a start sweeps anything past retention — while a dump still inside
+    /// the window (the positive control) is left alone, proving the sweep isn't just deleting everything.
+    /// </summary>
+    [Fact]
+    public void PruneStaleHeapDumps_DeletesADumpPastRetentionButKeepsAFreshOne()
+    {
+        var directory = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var now = new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc);
+            var retention = TimeSpan.FromDays(2);
+
+            var stale = Path.Combine(directory, "cockpit-heap-20260101-000000.dmp");
+            var fresh = Path.Combine(directory, "cockpit-heap-20260109-120000.dmp");
+            File.WriteAllText(stale, "old");
+            File.WriteAllText(fresh, "new");
+            File.SetLastWriteTimeUtc(stale, now - retention - TimeSpan.FromDays(1));
+            File.SetLastWriteTimeUtc(fresh, now - TimeSpan.FromHours(12));
+
+            AdaptiveGcCompactor.PruneStaleHeapDumps(directory, now, retention);
+
+            Assert.False(File.Exists(stale));
+            Assert.True(File.Exists(fresh));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private sealed class _CapturingLogger : ILogger<AdaptiveGcCompactor>
     {
         public List<string> Messages { get; } = [];

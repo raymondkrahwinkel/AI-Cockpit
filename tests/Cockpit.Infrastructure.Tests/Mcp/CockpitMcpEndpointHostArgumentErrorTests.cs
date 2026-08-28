@@ -1,13 +1,16 @@
 using System.ComponentModel;
 using System.Net.Http.Headers;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using NSubstitute;
+using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Tests.Mcp;
@@ -47,11 +50,55 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
         Assert.Equal("pane-1", text);
     }
 
+    /// <summary>
+    /// AC-1138: a tool whose gateway gave up waiting for the UI thread answers with the <c>ui_unavailable</c> code
+    /// rather than a generic failure, so an agent can tell "the cockpit is busy, retry" from "this went wrong".
+    /// </summary>
+    [Fact]
+    public async Task AToolThatGaveUpOnTheUiThread_AnswersWithTheUiUnavailableCode()
+    {
+        await using var endpoint = await _MountedEndpoint.StartAsync();
+
+        var result = await endpoint.Client.CallToolAsync("needs_ui", new Dictionary<string, object?>());
+
+        Assert.True(result.IsError);
+        var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+        using var payload = JsonDocument.Parse(text);
+        Assert.Equal(UiUnavailableException.Code, payload.RootElement.GetProperty("code").GetString());
+        Assert.False(payload.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Contains("did not answer within", payload.RootElement.GetProperty("error").GetString()!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AToolWhoseUiWorkMayStillLand_AnswersWithTheUnknownOutcomeCode()
+    {
+        await using var endpoint = await _MountedEndpoint.StartAsync();
+
+        var result = await endpoint.Client.CallToolAsync("ui_outcome_unknown", new Dictionary<string, object?>());
+
+        Assert.True(result.IsError);
+        var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+        using var payload = JsonDocument.Parse(text);
+        Assert.Equal(UiOutcomeUnknownException.Code, payload.RootElement.GetProperty("code").GetString());
+        Assert.False(payload.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Contains("do not retry", payload.RootElement.GetProperty("error").GetString()!, StringComparison.Ordinal);
+    }
+
     internal sealed class EchoTools
     {
         [McpServerTool(Name = "echo_pane")]
         [Description("Echoes the given pane id back.")]
         public string Echo([Description("Required pane id.")] string toPaneId) => toPaneId;
+
+        // AC-1138: stands in for any gateway hop that hit its cap — what the tool did to get here does not change
+        // what the caller must be able to read off the answer.
+        [McpServerTool(Name = "needs_ui")]
+        [Description("Fails the way a gateway does when the UI thread never answered.")]
+        public string NeedsUi() => throw new UiUnavailableException(TimeSpan.FromSeconds(5));
+
+        [McpServerTool(Name = "ui_outcome_unknown")]
+        [Description("Fails when UI work began but its eventual effect cannot be known.")]
+        public string UiOutcomeUnknown() => throw new UiOutcomeUnknownException(TimeSpan.FromSeconds(5));
     }
 
     private sealed class _MountedEndpoint(CockpitMcpEndpointHost host, McpClient client) : IAsyncDisposable
@@ -71,6 +118,7 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
                 keyring: new SessionMcpKeyring(),
                 nodeEndpointSettings: nodeSettings,
                 nodeCertificate: new NodeSelfSignedCertificate(Path.Combine(Path.GetTempPath(), $"ac-1028-{Guid.NewGuid():N}.pfx")),
+                mounts: new SessionMcpMounts(),
                 nodeSharedSecret: new NodeSharedSecret(),
                 loggerFactory: NullLoggerFactory.Instance);
 

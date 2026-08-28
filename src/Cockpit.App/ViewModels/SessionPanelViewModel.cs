@@ -7,6 +7,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Usage;
 using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
@@ -19,6 +20,19 @@ namespace Cockpit.App.ViewModels;
 // title, selection, coarse status, and profile label, plus disposal.
 public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable
 {
+    // Running token/cost total for the session (#8), folded from each completed turn's result usage.
+    private protected readonly SessionUsageMeter _usage = new();
+    // Taken at the launch rather than at construction: an isolated session is built, then waits on a `git worktree add`
+    // before it starts, and counting that setup as working time would inflate the very baseline the token-reduction
+    // work measures against (AC-251).
+    private protected DateTimeOffset _startedAt = DateTimeOffset.Now;
+    // The most recent write to the usage trail, awaited on teardown (AC-251). The write is not awaited per turn —
+    // a turn settling must not wait on a file — but a session that closes right after its last turn would otherwise
+    // race the process out and lose that turn from the record, which is the one case this ticket is named for.
+    private Task? _pendingUsageWrite;
+    // Where the running totals are kept so they outlive the session (AC-251). Null in the design-time graph and in
+    // tests that build a session without one, which simply keeps the meter in memory as it always was.
+    private readonly IUsageHistory? _usageHistory;
     // Deliberately not the provider's conversation id (the thing you resume by): panes come and go with the window, and
     // two panes can even resume the same conversation (AC-410).
     public string PaneId { get; private set; } = Guid.NewGuid().ToString("n");
@@ -1052,8 +1066,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Whether a divider sits between the last metric segment and the chevron — only when both are present.
     public bool ShowChevronDivider => UsagePillItems.Count > 0 && HasUsagePill;
 
-    protected SessionPanelViewModel()
+    protected SessionPanelViewModel(IUsageHistory? usageHistory = null)
     {
+        _usageHistory = usageHistory;
         // HasUsagePill and the mini-pills both depend on the RateLimits collection as well as ContextUsedPercent,
         // so a window being added/cleared has to refresh them too (the ctx setter is covered by the partials below).
         RateLimits.CollectionChanged += (_, _) =>
@@ -1062,6 +1077,55 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             RebuildUsagePillItems();
         };
     }
+
+    private protected void _RecordUsageSnapshot()
+    {
+        if (_usageHistory is null || !_usage.HasData)
+        {
+            return;
+        }
+
+        var metadata = GetUsageSnapshotMetadata();
+        _pendingUsageWrite = _usageHistory.RecordAsync(new UsageSnapshot
+        {
+            PaneId = PaneId,
+            StartedAt = _startedAt,
+            RecordedAt = DateTimeOffset.Now,
+            RunKind = metadata.RunKind,
+            RunId = metadata.RunId,
+            RunLabel = metadata.RunLabel,
+            ProfileLabel = ActiveProfileLabel,
+            Model = metadata.Model,
+            InputTokens = _usage.InputTokens,
+            OutputTokens = _usage.OutputTokens,
+            CacheReadInputTokens = _usage.CacheReadInputTokens,
+            CacheCreationInputTokens = _usage.CacheCreationInputTokens,
+            TotalCostUsd = _usage.TotalCostUsd,
+            Turns = _usage.Turns,
+        });
+    }
+
+    private protected async ValueTask _DrainUsageWritesAsync()
+    {
+        Task? pendingUsageWrite;
+        do
+        {
+            pendingUsageWrite = _pendingUsageWrite;
+            if (pendingUsageWrite is null)
+            {
+                return;
+            }
+
+            await pendingUsageWrite;
+        }
+        while (UsageWritesMayBeQueuedDuringDrain && !ReferenceEquals(_pendingUsageWrite, pendingUsageWrite));
+    }
+
+    private protected virtual bool UsageWritesMayBeQueuedDuringDrain => false;
+
+    // Run metadata is subtype-specific; the remaining snapshot fields are the shared recording contract.
+    private protected virtual (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
+        (UsageRunKind.Interactive, null, null, null);
 
     partial void OnContextUsedPercentChanged(double? value)
     {

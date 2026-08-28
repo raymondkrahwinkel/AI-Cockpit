@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
@@ -79,6 +81,218 @@ public class DelegationGuardTests
             new DelegationRequest("local", "escape", WorkingDirectory: "/home/raymond/projects/../../.ssh"));
 
         await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+    }
+
+    // AC-1160: the allow-list compared `OrdinalIgnoreCase` on every platform, so where the filesystem keeps
+    // `repo` and `Repo` apart the guard still called them one root. What is asserted here is not a platform but
+    // what the volume under the temp directory actually does -- the two answers are not the same question.
+    [Fact]
+    public async Task DelegateAsync_WithAWorkingDirectoryDifferingOnlyInCase_FollowsTheVolume()
+    {
+        var root = _TempRoot();
+        try
+        {
+            var allowed = Directory.CreateDirectory(Path.Combine(root, "repo")).FullName;
+            var asked = Path.Combine(root, "Repo");
+            var service = _ServiceWith(_Target("local", policy => policy with { AllowedWorkingDirs = [allowed] }));
+
+            var delegate_ = async () => await service.DelegateAsync(
+                new DelegationRequest("local", "work", WorkingDirectory: asked));
+
+            if (_FoldsCase(root))
+            {
+                // The negative control: where the filesystem itself says these are one directory, the guard has to
+                // go on allowing it. This fix may not cost a Windows or macOS operator a directory that works.
+                Assert.NotEqual(DelegatedTaskStatus.Failed, (await delegate_()).Status);
+                return;
+            }
+
+            await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        }
+        finally
+        {
+            _Discard(root);
+        }
+    }
+
+    // The same question on a volume that is made to keep the two apart, so the refusing half is covered on a
+    // machine that is not Linux: NTFS carries case sensitivity per directory, and `fsutil` sets it.
+    [Fact]
+    public async Task DelegateAsync_WithAWorkingDirectoryDifferingOnlyInCase_IsRefused_WhereTheVolumeKeepsThemApart()
+    {
+        var root = _TempRoot();
+        try
+        {
+            _MakeCaseSensitive(root);
+            Assert.False(
+                _FoldsCase(root),
+                $"This test needs a directory whose volume keeps two spellings apart, and '{root}' folds them. " +
+                "It has not been measured here rather than having passed.");
+
+            var allowed = Directory.CreateDirectory(Path.Combine(root, "repo")).FullName;
+
+            // The shape the ticket describes: `Repo` is a real directory of its own, and it is not the one the
+            // operator allowed. An entry spelled exactly as asked is never the differently-cased sibling.
+            var asked = Directory.CreateDirectory(Path.Combine(root, "Repo")).FullName;
+            var service = _ServiceWith(_Target("local", policy => policy with { AllowedWorkingDirs = [allowed] }));
+
+            var delegate_ = async () => await service.DelegateAsync(
+                new DelegationRequest("local", "work", WorkingDirectory: asked));
+
+            var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+            Assert.Contains("does not allow a task to run in", thrown.Message);
+        }
+        finally
+        {
+            _Discard(root);
+        }
+    }
+
+    // AC-1160: `Path.GetFullPath` canonicalises lexically, so a link under an allowed root used to be inside it
+    // by spelling while the process landed outside it. The second half is the one .NET will not do for you: it
+    // resolves a link that is the last segment and returns null for one halfway up a path.
+    [Fact]
+    public async Task DelegateAsync_ThroughASymlinkPointingOutOfAnAllowedRoot_IsRefused()
+    {
+        var root = _TempRoot();
+        try
+        {
+            var allowed = Directory.CreateDirectory(Path.Combine(root, "allowed")).FullName;
+            var outside = Directory.CreateDirectory(Path.Combine(root, "outside")).FullName;
+            Directory.CreateDirectory(Path.Combine(outside, "sub"));
+            var link = Path.Combine(allowed, "link");
+            Directory.CreateSymbolicLink(link, outside);
+
+            var service = _ServiceWith(_Target("local", policy => policy with { AllowedWorkingDirs = [allowed] }));
+
+            var throughTheLink = async () => await service.DelegateAsync(
+                new DelegationRequest("local", "escape", WorkingDirectory: link));
+            var pastTheLink = async () => await service.DelegateAsync(
+                new DelegationRequest("local", "escape", WorkingDirectory: Path.Combine(link, "sub")));
+
+            Assert.Contains("does not allow a task to run in", (await Assert.ThrowsAsync<DelegationRejectedException>(throughTheLink)).Message);
+            Assert.Contains("does not allow a task to run in", (await Assert.ThrowsAsync<DelegationRejectedException>(pastTheLink)).Message);
+        }
+        finally
+        {
+            _Discard(root);
+        }
+    }
+
+    // AC-1160: a chain of links that never comes to rest has to refuse, not be judged on how far it got. Links
+    // that stay inside the allowed root until one past the budget leaves it would otherwise be waved through on
+    // the spelling at that point, while the OS follows the whole chain at spawn time and lands outside.
+    [Fact]
+    public async Task DelegateAsync_ThroughALinkChainLongerThanTheHopBudget_IsRefused()
+    {
+        var root = _TempRoot();
+        try
+        {
+            var allowed = Directory.CreateDirectory(Path.Combine(root, "allowed")).FullName;
+            var outside = Directory.CreateDirectory(Path.Combine(root, "outside")).FullName;
+
+            const int Links = 41;
+            for (var index = 0; index < Links; index++)
+            {
+                var step = Directory.CreateDirectory(Path.Combine(allowed, $"d{index}")).FullName;
+                Directory.CreateSymbolicLink(
+                    Path.Combine(step, "l"),
+                    index == Links - 1 ? outside : Path.Combine(allowed, $"d{index + 1}"));
+            }
+
+            var asked = Path.Combine(
+                allowed,
+                "d0",
+                string.Join(Path.DirectorySeparatorChar, Enumerable.Repeat("l", Links)));
+            var service = _ServiceWith(_Target("local", policy => policy with { AllowedWorkingDirs = [allowed] }));
+
+            var delegate_ = async () => await service.DelegateAsync(
+                new DelegationRequest("local", "escape", WorkingDirectory: asked));
+
+            var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+            Assert.Contains("does not allow a task to run in", thrown.Message);
+        }
+        finally
+        {
+            _Discard(root);
+        }
+    }
+
+    // The same rule at the seam, both ways round. The budget counts passes rather than links, and the last pass
+    // is the one that finds no further link -- so a two-link chain settles on the third and not the second.
+    [Fact]
+    public void Canonicalize_ResolvesAChainWithinItsBudget_AndYieldsNothingBeyondIt()
+    {
+        var root = _TempRoot();
+        try
+        {
+            var first = Directory.CreateDirectory(Path.Combine(root, "d0")).FullName;
+            var second = Directory.CreateDirectory(Path.Combine(root, "d1")).FullName;
+            var target = Directory.CreateDirectory(Path.Combine(root, "target")).FullName;
+            Directory.CreateSymbolicLink(Path.Combine(first, "l"), second);
+            Directory.CreateSymbolicLink(Path.Combine(second, "l"), target);
+
+            var asked = Path.Combine(first, "l", "l");
+
+            Assert.Equal(target, FilesystemPath.Canonicalize(asked, maxLinkHops: 3));
+            Assert.Null(FilesystemPath.Canonicalize(asked, maxLinkHops: 2));
+        }
+        finally
+        {
+            _Discard(root);
+        }
+    }
+
+    private static string _TempRoot([CallerMemberName] string name = "")
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ac1160-{name}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        return root;
+    }
+
+    // Asked of the directory rather than of the operating system, because the answer belongs to the volume: a
+    // case-insensitive mount on Linux and a case-sensitive volume on macOS both exist.
+    private static bool _FoldsCase(string directory)
+    {
+        var probe = Path.Combine(directory, $"probe-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(probe);
+        try
+        {
+            return Directory.Exists(probe.ToUpperInvariant());
+        }
+        finally
+        {
+            Directory.Delete(probe);
+        }
+    }
+
+    // Windows only, and only on NTFS: the flag is per directory and children inherit it. Elsewhere the default
+    // already keeps spellings apart, and the caller's own assertion is what says whether that held.
+    private static void _MakeCaseSensitive(string directory)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var fsutil = Process.Start(new ProcessStartInfo("fsutil", $"file setCaseSensitiveInfo \"{directory}\" enable")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        })!;
+        fsutil.WaitForExit();
+    }
+
+    private static void _Discard(string root)
+    {
+        try
+        {
+            Directory.Delete(root, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A leftover temp directory is not worth failing a test that already made its point.
+        }
     }
 
     [Fact]

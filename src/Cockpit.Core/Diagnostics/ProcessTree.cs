@@ -5,25 +5,36 @@ namespace Cockpit.Core.Diagnostics;
 // the grep it started. Measuring the parent alone would read 0% at precisely the moment they look.
 public static class ProcessTree
 {
-    public static ResourceSample Sum(IReadOnlyList<ProcessRow> rows, int rootProcessId)
-    {
-        var children = new Dictionary<int, List<int>>();
-        var byId = new Dictionary<int, ProcessRow>();
+    public static ResourceSample Sum(IReadOnlyList<ProcessRow> rows, int rootProcessId) =>
+        rows is ProcessTableSnapshotRows snapshotRows
+            ? snapshotRows.Snapshot.Sum(rootProcessId)
+            : new ProcessTableSnapshot(rows).Sum(rootProcessId);
+}
 
+public sealed class ProcessTableSnapshot
+{
+    private readonly Dictionary<int, List<int>> _children = [];
+    private readonly Dictionary<int, ProcessRow> _byId = [];
+
+    public ProcessTableSnapshot(IReadOnlyList<ProcessRow> rows)
+    {
         foreach (var row in rows)
         {
-            byId[row.ProcessId] = row;
+            _byId[row.ProcessId] = row;
 
-            if (!children.TryGetValue(row.ParentProcessId, out var list))
+            if (!_children.TryGetValue(row.ParentProcessId, out var list))
             {
                 list = [];
-                children[row.ParentProcessId] = list;
+                _children[row.ParentProcessId] = list;
             }
 
             list.Add(row.ProcessId);
         }
+    }
 
-        if (!byId.ContainsKey(rootProcessId))
+    public ResourceSample Sum(int rootProcessId)
+    {
+        if (!_byId.ContainsKey(rootProcessId))
         {
             // The session's process is gone — that is an exited session, not an error.
             return ResourceSample.None;
@@ -47,13 +58,13 @@ public static class ProcessTree
                 continue;
             }
 
-            if (byId.TryGetValue(current, out var row))
+            if (_byId.TryGetValue(current, out var row))
             {
                 cpu += row.CpuTime;
                 memory += row.WorkingSetBytes;
             }
 
-            if (children.TryGetValue(current, out var kids))
+            if (_children.TryGetValue(current, out var kids))
             {
                 foreach (var kid in kids)
                 {

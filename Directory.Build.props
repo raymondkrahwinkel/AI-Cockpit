@@ -245,6 +245,7 @@
        compiler when EnforceCodeStyleInBuild is on, so without this the .editorconfig severity is advisory in
        the IDE and invisible in CI. -->
   <PropertyGroup>
+    <RunSettingsFilePath>$(MSBuildThisFileDirectory)test.runsettings</RunSettingsFilePath>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!-- IDE0005 is only reported by the compiler when a documentation file is generated (a Roslyn quirk:
          dotnet/roslyn#41640). We want the rule, not the XML: CS1591 ("missing doc comment on a public member")

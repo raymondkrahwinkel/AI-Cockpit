@@ -9,6 +9,7 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Mcp;
 using NSubstitute;
@@ -46,6 +47,25 @@ public class CockpitInternalMcpProviderTests
         }
     }
 
+    // AC-1148: the services a node-reachable endpoint resolves its pairing scope from. A scoped pairing is the
+    // normal state of a coupling the operator has actually ticked something for (AC-794); an empty one grants
+    // nothing, which is what a fresh pairing looks like.
+    private static IServiceProvider _ServicesWithPairing(bool scoped)
+    {
+        var broker = Substitute.For<INodePairingBroker>();
+        broker.Pairing.Returns(new NodePairing
+        {
+            ControllerName = "controller",
+            ControllerAddress = "10.0.0.2",
+            PairedAtUtc = DateTimeOffset.UnixEpoch,
+            AllowedProfileLabels = scoped ? ["default"] : [],
+        });
+
+        var services = new ServiceCollection();
+        services.AddSingleton(broker);
+        return services.BuildServiceProvider();
+    }
+
     // AC-792 made the node's TLS identity a file that outlives the process. These tests must never touch the real
     // one, so each gets a path of its own under the temp directory — and since the certificate is lazy, a test that
     // leaves node binding off never creates the file at all.
@@ -63,6 +83,7 @@ public class CockpitInternalMcpProviderTests
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
+            mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance);
 
         // Nothing mounted yet: the fan-out sees no cockpit-hosted server.
@@ -94,6 +115,7 @@ public class CockpitInternalMcpProviderTests
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
+            mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance);
 
         // An ordinary endpoint is not internal; an internal-only one (AC-204, e.g. the Autopilot CEO/step tools)
@@ -119,6 +141,7 @@ public class CockpitInternalMcpProviderTests
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
+            mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
@@ -142,6 +165,7 @@ public class CockpitInternalMcpProviderTests
                 new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
+            mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
@@ -171,6 +195,7 @@ public class CockpitInternalMcpProviderTests
                 new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
+            mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-public", new ProbeTools(), isEnabled: () => true);
@@ -192,13 +217,16 @@ public class CockpitInternalMcpProviderTests
 
         await using var host = new CockpitMcpEndpointHost(
             endpoints: [],
-            services: new ServiceCollection().BuildServiceProvider(),
+            // AC-1148: a pairing the operator has scoped, so what this test measures stays the credential and not
+            // the authorization beside it.
+            services: _ServicesWithPairing(scoped: true),
             authKey: new McpAuthKey(),
             keyring: new SessionMcpKeyring(),
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
                 new NodeEndpointSettings { Enabled = true, SharedSecret = sharedSecret }),
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
+            mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
@@ -245,6 +273,7 @@ public class CockpitInternalMcpProviderTests
                 new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
+            mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
@@ -272,6 +301,7 @@ public class CockpitInternalMcpProviderTests
                 new NodeEndpointSettings { Enabled = true, SharedSecret = sharedSecret }),
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
+            mounts: new SessionMcpMounts(),
             loggerFactory: NullLoggerFactory.Instance);
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
@@ -283,6 +313,110 @@ public class CockpitInternalMcpProviderTests
         using var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    // AC-1148 (was AC-1158): an endpoint the operator switched off gets no node socket at all. Withholding it
+    // beats refusing on it — the master switch used to decide only what a session was told about, so a switched-off
+    // endpoint was still reachable from another machine for anyone holding the node secret. A switched-on endpoint
+    // is mounted beside it, so the difference can only come from the switch.
+    [Fact]
+    public async Task EndpointHost_NodeBindingOn_BindsNoNodeListenerForAnEndpointTheOperatorSwitchedOff()
+    {
+        await using var host = new CockpitMcpEndpointHost(
+            endpoints: [],
+            services: _ServicesWithPairing(scoped: true),
+            authKey: new McpAuthKey(),
+            keyring: new SessionMcpKeyring(),
+            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
+                new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
+            mounts: new SessionMcpMounts(),
+            loggerFactory: NullLoggerFactory.Instance);
+
+        await host.MountAsync("cockpit-on", new ProbeTools(), isEnabled: () => true);
+        await host.MountAsync("cockpit-off", new ProbeTools(), isEnabled: () => false);
+
+        Assert.Equal("cockpit-on", Assert.Single(host.GetNodeAddresses()).ServerName);
+
+        // Loopback still hosts both: the switch decides who may call, and the fan-out already skips a disabled one.
+        Assert.Equal(2, host.GetServers().Count);
+    }
+
+    // AC-1148, the loopback negative control on the real host: a session's own live token, on a mounted endpoint
+    // its launch never selected. Every existing test here asked only "valid credential or not"; a wrong-scope call
+    // is valid, which is exactly why it went unseen.
+    [Fact]
+    public async Task EndpointHost_SessionTokenForAnEndpointItsLaunchNeverMounted_Is403ButThePaneThatDidGetsThrough()
+    {
+        var keyring = new SessionMcpKeyring();
+        var mounts = new SessionMcpMounts();
+        mounts.Grant("pane-allowed", ["cockpit-probe"]);
+        mounts.Grant("pane-denied", ["cockpit-something-else"]);
+
+        await using var host = new CockpitMcpEndpointHost(
+            endpoints: [],
+            services: new ServiceCollection().BuildServiceProvider(),
+            authKey: new McpAuthKey(),
+            keyring: keyring,
+            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
+            mounts: mounts,
+            loggerFactory: NullLoggerFactory.Instance);
+
+        await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
+        var url = Assert.IsType<string>(Assert.Single(host.GetServers()).Url);
+
+        Assert.Equal(HttpStatusCode.Forbidden, await _PostStatusAsync(url, keyring.TokenFor("pane-denied")));
+
+        // And the positive control beside it: the pane that did mount this endpoint is not held up by the check.
+        Assert.NotEqual(HttpStatusCode.Forbidden, await _PostStatusAsync(url, keyring.TokenFor("pane-allowed")));
+    }
+
+    // AC-1148 (was AC-1161, first half): the heaviest of the three. "A session only gets these tools if started
+    // with delegation enabled" was the fan-out talking — the listener took any live token, so a session whose
+    // profile has no delegation could start a bypassPermissions sub-agent by finding the port.
+    [Fact]
+    public async Task Orchestrator_SessionThatNeverGotDelegation_Is403AndSoIsEveryoneWhileTheToggleIsOff()
+    {
+        var store = Substitute.For<IDelegationSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new DelegationSettings { McpEnabled = true });
+
+        var keyring = new SessionMcpKeyring();
+        var mounts = new SessionMcpMounts();
+        mounts.Grant("pane-delegating", [DelegationMcp.ServerName]);
+        mounts.Grant("pane-plain", ["cockpit-session"]);
+
+        await using var server = new OrchestratorMcpServer(
+            Substitute.For<IDelegationService>(),
+            new McpAuthKey(),
+            keyring,
+            store,
+            mounts,
+            NullLoggerFactory.Instance);
+        await server.StartAsync(CancellationToken.None);
+
+        var url = Assert.IsType<string>(server.OrchestratorMcpUrl);
+        Assert.Equal(HttpStatusCode.Forbidden, await _PostStatusAsync(url, keyring.TokenFor("pane-plain")));
+        Assert.NotEqual(HttpStatusCode.Forbidden, await _PostStatusAsync(url, keyring.TokenFor("pane-delegating")));
+
+        // And the Options toggle is a boundary now too, not just an entry the fan-out leaves out.
+        await server.SetMcpEnabledAsync(false);
+        Assert.Equal(HttpStatusCode.Forbidden, await _PostStatusAsync(url, keyring.TokenFor("pane-delegating")));
+
+        await server.StopAsync(CancellationToken.None);
+    }
+
+    // The status of a bare POST at an MCP endpoint: enough to tell a refusal from anything the transport makes of
+    // a body it never got to read, which is all these authorization tests ask.
+    private static async Task<HttpStatusCode> _PostStatusAsync(string url, string bearer)
+    {
+        using var client = new HttpClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent("{}") };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+        using var response = await client.SendAsync(request);
+        return response.StatusCode;
     }
 
     // The self-signed certificate (AC-790) has no CA behind it by design (see NodeSelfSignedCertificate) — a real
@@ -310,6 +444,7 @@ public class CockpitInternalMcpProviderTests
             new McpAuthKey(),
             new SessionMcpKeyring(),
             store,
+            new SessionMcpMounts(),
             NullLoggerFactory.Instance);
 
         // Before it has bound a port there is nothing to hand the fan-out.

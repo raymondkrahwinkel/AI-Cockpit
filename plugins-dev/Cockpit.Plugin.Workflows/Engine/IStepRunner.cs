@@ -9,7 +9,9 @@ namespace Cockpit.Plugin.Workflows.Engine;
 /// </summary>
 public interface IStepRunner
 {
-    /// <summary>The type this runs, e.g. <c>cockpit.notify</c>.</summary>
+    /// <summary>
+    /// The type this runs, e.g. <c>cockpit.notify</c>.
+    /// </summary>
     string TypeId { get; }
 
     /// <summary>

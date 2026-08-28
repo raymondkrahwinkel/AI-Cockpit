@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Diagnostics;
+using Cockpit.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -88,6 +89,10 @@ public sealed class AdaptiveGcCompactor(
             return;
         }
 
+        // AC-1150: swept here, not only on a fresh capture — an operator who unsets the env var after a hunt
+        // still leaves the last dump behind, and a start is the next point that catches it.
+        PruneStaleHeapDumps(HeapDumpDirectory, _utcNow(), HeapDumpRetention);
+
         _thread = new Thread(_Run) { IsBackground = true, Name = "cockpit-gc-compact" };
         _thread.Start();
     }
@@ -122,6 +127,14 @@ public sealed class AdaptiveGcCompactor(
                 }
 
                 return;
+            }
+
+            // AC-1133: The heap dropped well below where the last compact left it, so that live set is gone; arm
+            // the next compact above where it is now, not where it once was. Otherwise `_compactAtBytes` can only
+            // rise, and above the ceiling both gates reject everything forever.
+            if (heapBytes + GrowthBeforeNextCompactBytes < _compactAtBytes)
+            {
+                _compactAtBytes = Math.Max(CompactThresholdBytes, heapBytes + GrowthBeforeNextCompactBytes);
             }
 
             if (heapBytes < _compactAtBytes)
@@ -241,8 +254,10 @@ public sealed class AdaptiveGcCompactor(
             }
 
             _logger.LogError(
-                "Heap dump written to {Path} (about {Size} of disk, the heap as it stands). Open it with "
-                + "`dotnet-dump analyze` to see what is holding the memory, and attach it to the report.",
+                "Heap dump written to {Path} (about {Size} of disk, the heap as it stands) — it carries the "
+                + "live credentials of every session in this process, not only the one being hunted. Open it "
+                + "with `dotnet-dump analyze`; scrub or encrypt it before it leaves this machine, including "
+                + "attaching it to a report.",
                 path,
                 ByteSize.Human(heapBytes));
         }
@@ -258,8 +273,43 @@ public sealed class AdaptiveGcCompactor(
     // specific instance — which is the only time anyone wants the file.
     internal const string HeapDumpEnvironmentVariable = "COCKPIT_HEAP_DUMP_ON_ALARM";
 
+    // AC-1150: long enough to span a hunt that runs into a second day, short enough that forgetting to unset
+    // the env var afterwards does not turn the logs folder into a permanent credential archive.
+    internal static readonly TimeSpan HeapDumpRetention = TimeSpan.FromDays(2);
+
     private static bool HeapDumpRequested =>
         Environment.GetEnvironmentVariable(HeapDumpEnvironmentVariable) is "1" or "true";
+
+    // AC-1150: its own subdirectory rather than trusting the logs folder's ACL, which the state root does not
+    // control on every platform (open item: the umask on Linux).
+    private static string HeapDumpDirectory =>
+        Path.Combine(Path.GetDirectoryName(CockpitBuild.LogPath) ?? Path.GetTempPath(), "heap-dumps");
+
+    // AC-1150: deletes a dump past its retention. Static and directory/clock-injectable so a test can drive it
+    // against a temp folder instead of the real state root, with a fresh file as the positive control.
+    internal static void PruneStaleHeapDumps(string directory, DateTime utcNow, TimeSpan retention)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        var staleBefore = utcNow - retention;
+        foreach (var dump in Directory.EnumerateFiles(directory, "cockpit-heap-*.dmp"))
+        {
+            try
+            {
+                if (File.GetLastWriteTimeUtc(dump) < staleBefore)
+                {
+                    File.Delete(dump);
+                }
+            }
+            catch (IOException)
+            {
+                // Tried again on the next start; a dump still open under an analyzer is not worth failing over.
+            }
+        }
+    }
 
     // Uses the runtime's own `createdump`, which ships beside coreclr on every platform .NET supports — no
     // diagnostic package to add and nothing for an operator to install first. Returns null when it is not there.
@@ -271,9 +321,12 @@ public sealed class AdaptiveGcCompactor(
             return null;
         }
 
-        var target = Path.Combine(
-            Path.GetDirectoryName(CockpitBuild.LogPath) ?? Path.GetTempPath(),
-            $"cockpit-heap-{DateTime.UtcNow:yyyyMMdd-HHmmss}.dmp");
+        var directory = HeapDumpDirectory;
+        // Same owner-only mechanism as cockpit.json and the other credential files, not a reimplementation of
+        // it — the dump holds the same class of secret.
+        OwnerOnlyStorage.EnsurePrivateDirectory(directory);
+
+        var target = Path.Combine(directory, $"cockpit-heap-{DateTime.UtcNow:yyyyMMdd-HHmmss}.dmp");
 
         using var process = Process.Start(new ProcessStartInfo(tool)
         {
@@ -290,7 +343,13 @@ public sealed class AdaptiveGcCompactor(
         }
 
         process.WaitForExit();
-        return process.ExitCode == 0 && File.Exists(target) ? target : null;
+        if (process.ExitCode != 0 || !File.Exists(target))
+        {
+            return null;
+        }
+
+        OwnerOnlyStorage.RestrictExistingFile(target);
+        return target;
     }
 
     public void Dispose() => _stopping = true;

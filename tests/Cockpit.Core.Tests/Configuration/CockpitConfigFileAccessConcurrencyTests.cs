@@ -121,6 +121,34 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
         Assert.Single(written.Profiles, profile => profile.Label == "written-39");
     }
 
+    [SkippableFact]
+    public async Task UpdateAsync_WhileReaderHoldsDestination_WaitsAndWrites()
+    {
+        Skip.IfNot(OperatingSystem.IsWindows(), "Only Windows takes a mandatory sharing lock on the replacement destination.");
+
+        // Unix `rename`, used by File.Replace, replaces the directory entry while this reader retains
+        // the old inode; only Windows' mandatory sharing lock makes the writer wait.
+
+        var access = new CockpitConfigFileAccess(ConfigPath);
+        await access.UpdateAsync(
+            config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("seed", new ClaudeConfig("/home/someone/.claude")))],
+            CancellationToken.None);
+
+        using var reader = new FileStream(ConfigPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var write = Task.Run(() => access.UpdateAsync(
+            config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("written", new ClaudeConfig("/home/someone/.claude")))],
+            CancellationToken.None));
+
+        await Task.Delay(100);
+        Assert.False(write.IsCompleted, "the reader holds the replacement destination");
+
+        reader.Dispose();
+        await write;
+
+        var written = await access.ReadAsync(CancellationToken.None);
+        Assert.Single(written!.Profiles, profile => profile.Label == "written");
+    }
+
     [Fact]
     public async Task UpdateAsync_WhenManyWritersMutateAtOnce_KeepsEveryMutation()
     {

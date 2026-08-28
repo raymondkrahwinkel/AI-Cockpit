@@ -34,7 +34,7 @@ public sealed class PluginActions(
     // AC-577: always marshals to the UI thread (no fast path) since this mutates a bound property directly;
     // PluginActions must never be constructed in a process without a dispatcher loop.
     public Task SetActiveSessionStatusAsync(string? statusline = null, string? name = null) =>
-        Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+        UiThreadCall.DispatchAsync(() =>
         {
             if (cockpit.SelectedSession is { } session)
             {
@@ -50,7 +50,7 @@ public sealed class PluginActions(
                     session.SetNameDirectly(name);
                 }
             }
-        }).GetTask();
+        });
 
     // #67, #69: hands work to another profile as a background task via the cockpit's own delegation service,
     // so it is refused by the same rules and shows up in the delegated-tasks view like any agent's delegation.

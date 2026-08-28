@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -70,11 +69,11 @@ internal sealed class TrackedCommandRunner(ILogger<TrackedCommandRunner> logger)
         // Unconditional, not just on timeout: a run that finished on its own can still leave a reused build server
         // running (AC-1094 criterion 8) — that is exactly the case a tree walk never reached either.
         group.KillAll();
-        _KillTree(process);
+        CommandRunnerProcess._KillTree(process);
 
         stopwatch.Stop();
-        var standardOutput = await _DrainAsync(readStandardOutput).ConfigureAwait(false);
-        var standardError = await _DrainAsync(readStandardError).ConfigureAwait(false);
+        var standardOutput = await CommandRunnerProcess._DrainAsync(readStandardOutput).ConfigureAwait(false);
+        var standardError = await CommandRunnerProcess._DrainAsync(readStandardError).ConfigureAwait(false);
         var exitCode = timedOut || !process.HasExited ? -1 : process.ExitCode;
         return new TrackedRunResult(exitCode, standardOutput, standardError, stopwatch.Elapsed, timedOut);
     }
@@ -100,32 +99,4 @@ internal sealed class TrackedCommandRunner(ILogger<TrackedCommandRunner> logger)
 
     // Best-effort fallback for when the cgroup could not contain the run (non-Linux, no delegation) — the same
     // ppid-tree kill ShellCommandRunner uses, with the same known gap this class exists to close.
-    private static void _KillTree(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
-        {
-            // The child raced us to exit, or the OS refused the kill; either way the run is already over.
-        }
-    }
-
-    private static readonly TimeSpan ReadGrace = TimeSpan.FromSeconds(5);
-
-    private static async Task<string> _DrainAsync(Task<string> read)
-    {
-        try
-        {
-            return await read.WaitAsync(ReadGrace).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is IOException or InvalidOperationException or OperationCanceledException or TimeoutException)
-        {
-            return string.Empty;
-        }
-    }
 }

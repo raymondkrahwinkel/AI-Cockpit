@@ -43,6 +43,7 @@ public class TerminalRenderAllocationBenchmark
         File.WriteAllText(ResultFile,
             $"streaming: {streaming:F0} bytes/frame\ncache-hit: {cacheHit:F0} bytes/frame");
         Assert.True(streaming > 0 && cacheHit > 0, "expected the render path to allocate something measurable");
+        Assert.True(streaming > cacheHit, "expected streaming to allocate more than cache-hit rendering");
     }
 
     private static double Measure(Func<int, byte[]> lineFor)

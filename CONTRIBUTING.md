@@ -53,6 +53,24 @@ it keeps a one-person project alive.
    in [`CHANGELOG.md`](CHANGELOG.md) — see *Changelog* below. A finished item that leaves no trace
    there is not finished.
 
+## Running a second instance
+
+Set `COCKPIT_STATE_ROOT` to an absolute path and that instance keeps *everything* there — configuration,
+logs, plugins, worktrees, clones, audit trails and caches. Unset, nothing changes: the state root stays
+`%APPDATA%\Cockpit` (`~/.config/Cockpit`), or `Cockpit-Dev` for a debug build. Use it to run a release build
+beside the cockpit you actually work in, or to put an instance on a prepared configuration for a repro.
+
+Two rules the code enforces rather than documents. The path must be absolute — a relative one would resolve
+against each process's working directory, and the cockpit gives its children their own, so a launch with one
+fails immediately instead of isolating to two places while reading as one. And nothing may resolve the
+application-data directory except `CockpitBuild`: a test fails the build otherwise, because a state root that
+moves for most paths but not all is worse than one that never moved.
+
+The single-instance claim follows the state root too, so two release builds with roots of their own run side by
+side and two sharing a root still do not — however differently they spell that root. Leave the variable unset
+and the claim is the one every earlier version used, which is what keeps an upgrade from stepping over a
+running cockpit. A debug build takes no claim at all.
+
 ## Git hooks
 
 After cloning, wire the repo's git hooks once:

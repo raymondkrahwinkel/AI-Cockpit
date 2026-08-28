@@ -7,73 +7,119 @@ namespace Cockpit.Plugin.Proxmox.Engine;
 /// </summary>
 internal interface IProxmoxEngine
 {
-    /// <summary>The API's version (<c>/version</c>). Touches the API — the first call that does, in an MCP session.</summary>
+    /// <summary>
+    /// The API's version (<c>/version</c>). Touches the API — the first call that does, in an MCP session.
+    /// </summary>
     Task<ProxmoxVersion> GetVersionAsync(CancellationToken cancellationToken);
 
-    /// <summary>Lists the nodes in this target (<c>/nodes</c>) with their status and resource usage. A read.</summary>
+    /// <summary>
+    /// Lists the nodes in this target (<c>/nodes</c>) with their status and resource usage. A read.
+    /// </summary>
     Task<IReadOnlyList<ProxmoxNode>> ListNodesAsync(CancellationToken cancellationToken);
 
-    /// <summary>Whether this target is a cluster and, if so, its name and quorum state (<c>/cluster/status</c>). A read.</summary>
+    /// <summary>
+    /// Whether this target is a cluster and, if so, its name and quorum state (<c>/cluster/status</c>). A read.
+    /// </summary>
     Task<ProxmoxClusterInfo> GetClusterInfoAsync(CancellationToken cancellationToken);
 
-    /// <summary>Lists every VM (QEMU) across the target (<c>/cluster/resources?type=vm</c>) — works for a single host or a cluster alike. A read.</summary>
+    /// <summary>
+    /// Lists every VM (QEMU) across the target (<c>/cluster/resources?type=vm</c>) — works for a single host or a cluster alike. A read.
+    /// </summary>
     Task<IReadOnlyList<ProxmoxGuest>> ListVmsAsync(CancellationToken cancellationToken);
 
-    /// <summary>Lists every LXC container across the target (<c>/cluster/resources?type=lxc</c>). A read.</summary>
+    /// <summary>
+    /// Lists every LXC container across the target (<c>/cluster/resources?type=lxc</c>). A read.
+    /// </summary>
     Task<IReadOnlyList<ProxmoxGuest>> ListLxcAsync(CancellationToken cancellationToken);
 
-    /// <summary>Starts a stopped VM; waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Starts a stopped VM; waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> StartVmAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Gracefully shuts a VM down (ACPI); waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Gracefully shuts a VM down (ACPI); waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> ShutdownVmAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Hard-powers a VM off (immediate, no guest cooperation); waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Hard-powers a VM off (immediate, no guest cooperation); waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> StopVmAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Gracefully reboots a VM (ACPI); waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Gracefully reboots a VM (ACPI); waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> RebootVmAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Deletes a VM outright; waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Deletes a VM outright; waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> DeleteVmAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Starts a stopped LXC container; waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Starts a stopped LXC container; waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> StartLxcAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Gracefully shuts an LXC container down; waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Gracefully shuts an LXC container down; waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> ShutdownLxcAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Hard-stops an LXC container (immediate); waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Hard-stops an LXC container (immediate); waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> StopLxcAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Reboots an LXC container; waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Reboots an LXC container; waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> RebootLxcAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Deletes an LXC container outright; waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Deletes an LXC container outright; waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> DeleteLxcAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Lists a VM's snapshots (name, description, creation time). A read.</summary>
+    /// <summary>
+    /// Lists a VM's snapshots (name, description, creation time). A read.
+    /// </summary>
     Task<IReadOnlyList<ProxmoxSnapshot>> ListVmSnapshotsAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Lists an LXC container's snapshots. A read.</summary>
+    /// <summary>
+    /// Lists an LXC container's snapshots. A read.
+    /// </summary>
     Task<IReadOnlyList<ProxmoxSnapshot>> ListLxcSnapshotsAsync(string node, string vmId, CancellationToken cancellationToken);
 
-    /// <summary>Creates a VM snapshot; waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Creates a VM snapshot; waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> SnapshotVmAsync(string node, string vmId, string name, string? description, CancellationToken cancellationToken);
 
-    /// <summary>Creates an LXC container snapshot; waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Creates an LXC container snapshot; waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> SnapshotLxcAsync(string node, string vmId, string name, string? description, CancellationToken cancellationToken);
 
-    /// <summary>Rolls a VM back to a snapshot — destructive for everything since; waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Rolls a VM back to a snapshot — destructive for everything since; waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> RollbackVmSnapshotAsync(string node, string vmId, string name, CancellationToken cancellationToken);
 
-    /// <summary>Rolls an LXC container back to a snapshot; waits for and reports the task's real outcome.</summary>
+    /// <summary>
+    /// Rolls an LXC container back to a snapshot; waits for and reports the task's real outcome.
+    /// </summary>
     Task<ProxmoxTaskOutcome> RollbackLxcSnapshotAsync(string node, string vmId, string name, CancellationToken cancellationToken);
 
-    /// <summary>Lists storage pools across the target with how full each is (<c>/cluster/resources?type=storage</c>). A read.</summary>
+    /// <summary>
+    /// Lists storage pools across the target with how full each is (<c>/cluster/resources?type=storage</c>). A read.
+    /// </summary>
     Task<IReadOnlyList<ProxmoxStoragePool>> ListStorageAsync(CancellationToken cancellationToken);
 
-    /// <summary>Lists a node's recent tasks — what ran or is running, with outcome. A read.</summary>
+    /// <summary>
+    /// Lists a node's recent tasks — what ran or is running, with outcome. A read.
+    /// </summary>
     Task<IReadOnlyList<ProxmoxTaskSummary>> ListTasksAsync(string node, CancellationToken cancellationToken);
 }
 

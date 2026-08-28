@@ -57,9 +57,17 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // thread completes it. While true no second probe is posted, so an outstanding probe is the stall itself.
     private volatile bool _probeInFlight;
 
-    // Stamped on the UI thread when the commit is actually requested, not when the probe was posted: a hung UI
-    // thread then delays the probe rather than reading as a stalled render clock (that is _LogHang's job).
+    // Stamped on the UI thread when the commit is actually requested, not when the probe was posted: this is the
+    // "started, no render answer" half of AC-1196's two states, and the only one the render clock owns outright.
     private long _probeStartedTicks;
+
+    // AC-1196 T4: stamped on this thread, at the post. A probe that never gets picked up has to be measurable
+    // without help from the thread that would pick it up — which is exactly the thread that is in trouble.
+    private long _probeQueuedTicks;
+
+    // AC-1196: when work above the priorities a runaway layout loop reposts at last ran. This is the whole
+    // discriminator: a starved dispatcher still answers here, a blocked one answers nothing. -1 means never.
+    private long _highPriorityPongTicks = -1;
 
     // Last completed probe's round trip; -1 until one completes. Reported on the snapshot line as rclock=.
     private long _probeRoundTripTicks = -1;
@@ -68,10 +76,29 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // subscribe rather than waiting for the next edge sees the current answer.
     private volatile bool _renderersShouldPause;
 
-    public DiagnosticsBackgroundService(ILogger<DiagnosticsBackgroundService> logger)
+    // AC-1125 C: injectable so a test can force the forced-full-GC hang sample's ceiling branch without growing
+    // a real multi-gigabyte heap. Defaults to the real heap size.
+    private readonly Func<long> _heapBytesProbe;
+
+    // AC-1125 D: read at snapshot time, not pushed on every session/layout change — set once from App.axaml.cs
+    // once both this service and CockpitViewModel exist (CockpitViewModel already depends on this service, so
+    // the dependency cannot run the other way). Null (falls back to "n/a") before that wiring runs, e.g. in tests.
+    private Func<(int OpenSessions, string LayoutStand)>? _sessionContext;
+
+    // AC-1196: the budget both alarms below are judged against. Injectable for the same reason heapBytesProbe is —
+    // a test would otherwise have to hold a thread hostage for a real quarter-minute per case, three times over.
+    private readonly TimeSpan _alarmAfter;
+
+    public DiagnosticsBackgroundService(
+        ILogger<DiagnosticsBackgroundService> logger, Func<long>? heapBytesProbe = null, TimeSpan? alarmAfter = null)
     {
         _logger = logger;
+        _heapBytesProbe = heapBytesProbe ?? (() => GC.GetGCMemoryInfo().HeapSizeBytes);
+        _alarmAfter = alarmAfter ?? RenderClockHeartbeat.StallAfter;
     }
+
+    // Wired once from App.axaml.cs: the three fields the diag line cannot compute on its own (AC-1125 D).
+    public void SetSessionContext(Func<(int OpenSessions, string LayoutStand)> provider) => _sessionContext = provider;
 
     // AC-883: raised on the UI thread when the render clock starts or stops being able to process commits. Panes
     // subscribe to suspend their transcripts; nothing else in the process can tell them the clock is gone.
@@ -129,12 +156,23 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     private void _Run()
     {
-        var cpu = new _CpuSampler();
+        // AC-1125 A: a silent log cannot be told apart from a dead thread — this line settles that question for
+        // every run, past or present, without needing a reproduction.
+        _logger.LogInformation(
+            "diagnostics thread running snapshots={Snapshots} warnAfter={WarnAfter:0}s stallAfter={StallAfter:0}s",
+            _snapshotsEnabled, UiThreadHeartbeat.WarnAfter.TotalSeconds, _alarmAfter.TotalSeconds);
+
+        // AC-1125 F: one sampler per caller, not one shared between them — PercentSinceLastCall() resets its own
+        // baseline on every call, so two callers sharing one instance stole each other's measurement window.
+        var hangCpu = new CpuSampler();
+        var snapshotCpu = new CpuSampler();
         var nextSnapshotAt = TimeSpan.Zero;
         var warned = false;
         var hangStartedAt = TimeSpan.Zero;
         var renderClockWarned = false;
         var renderStallStartedAt = TimeSpan.Zero;
+        var dispatchWarned = false;
+        var dispatchStarvedAt = TimeSpan.Zero;
         var nextProbeAt = TimeSpan.Zero;
         var nextMountProbeAt = TimeSpan.Zero;
         var failedMountProbes = 0;
@@ -153,6 +191,12 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 // is the complaint this exists to catch.
                 Dispatcher.UIThread.Post(() => Interlocked.Exchange(ref _lastPongTicks, _clock.Elapsed.Ticks), DispatcherPriority.Background);
 
+                // AC-1196: a measurement, not work — one Interlocked.Exchange per tick. AC-1138/AC-1204's "do not
+                // lift work to Render or Send" still holds; this is posted there precisely because Send outranks
+                // the Loaded(1)/Render(4) a layout loop reposts at, and surviving it is what says starved, not stuck.
+                Dispatcher.UIThread.Post(() => Interlocked.Exchange(ref _highPriorityPongTicks, _clock.Elapsed.Ticks), DispatcherPriority.Send);
+
+                var sinceHighPriorityPong = _SinceHighPriorityPong(now);
                 var lastPongTicks = Interlocked.Read(ref _lastPongTicks);
                 if (lastPongTicks >= 0)
                 {
@@ -162,7 +206,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                     if (decision.Warn)
                     {
                         hangStartedAt = now;
-                        _LogHang(sinceLastPong, cpu);
+                        _LogHang(sinceLastPong, hangCpu, sinceHighPriorityPong);
                     }
                     else if (decision.Recovered)
                     {
@@ -175,24 +219,52 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 if (!_probeInFlight && now >= nextProbeAt)
                 {
                     nextProbeAt = now + RenderClockProbeInterval;
-                    _probeInFlight = true;
                     Interlocked.Exchange(ref _probeStartedTicks, 0);
+                    Interlocked.Exchange(ref _probeQueuedTicks, now.Ticks);
+                    _probeInFlight = true;
                     Dispatcher.UIThread.Post(_StartRenderClockProbe, DispatcherPriority.Background);
                 }
 
-                var probeInFlightFor = _ProbeInFlightFor(now);
+                // AC-1196 T5: the two states, both read from here rather than from the thread under suspicion.
+                var probeStartedFor = _ProbeStartedFor(now);
+                var probePendingFor = _ProbePendingFor(now);
 
-                // AC-883: the pause has its own, much higher threshold — see RenderClockHeartbeat.PauseAfter.
+                // AC-883/AC-1196: fed the started half only. Pausing panes answers a clock that stopped after the
+                // commit was requested; a thread that never picked the probe up cannot render either way, and the
+                // event that would carry the pause is queued behind that very thread. So the macOS gate stays.
                 SetRenderersShouldPause(
-                    RenderClockHeartbeat.ShouldPauseRenderers(probeInFlightFor, OperatingSystem.IsMacOS()));
+                    RenderClockHeartbeat.ShouldPauseRenderers(probeStartedFor, OperatingSystem.IsMacOS()));
 
-                var renderDecision = RenderClockHeartbeat.Decide(probeInFlightFor, renderClockWarned);
+                var dispatchDecision = UiDispatchHeartbeat.Decide(
+                    probePendingFor, sinceHighPriorityPong, dispatchWarned, _alarmAfter);
+                if (dispatchDecision.Starved)
+                {
+                    dispatchStarvedAt = now;
+                    _logger.LogWarning(
+                        "uidispatch starved pending={Pending:0.0}s hipri={HiPri:0.0}s — the UI thread is running "
+                        + "and answering above its layout priority, but nothing at Background is being reached. "
+                        + "This is not a renderclock stall: the clock is ticking.",
+                        probePendingFor!.Value.TotalSeconds,
+                        sinceHighPriorityPong!.Value.TotalSeconds);
+                }
+                else if (dispatchDecision.Recovered)
+                {
+                    _logger.LogWarning("uidispatch recovered after={Duration:0.0}s", (now - dispatchStarvedAt).TotalSeconds);
+                }
+
+                dispatchWarned = dispatchDecision.Warned;
+
+                var renderDecision = RenderClockHeartbeat.Decide(
+                    UiDispatchHeartbeat.RenderClockOutstandingFor(
+                        probeStartedFor, probePendingFor, sinceHighPriorityPong, _alarmAfter),
+                    renderClockWarned,
+                    _alarmAfter);
                 if (renderDecision.Stalled)
                 {
                     renderStallStartedAt = now;
                     _logger.LogWarning(
                         "renderclock stalled since={Since:0.0}s — a forced compositor commit has not been processed",
-                        RenderClockHeartbeat.StallAfter.TotalSeconds);
+                        _alarmAfter.TotalSeconds);
                 }
                 else if (renderDecision.Resumed)
                 {
@@ -214,7 +286,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
                 if (_snapshotsEnabled && now >= nextSnapshotAt)
                 {
-                    _WriteSnapshot(cpu, renderClockWarned);
+                    WriteSnapshot(snapshotCpu, renderClockWarned);
                     nextSnapshotAt = now + SnapshotInterval;
                 }
 #if DEBUG
@@ -238,8 +310,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         }
     }
 
-    // Null while nothing is outstanding, and while a posted probe is still waiting for the UI thread to run it.
-    private TimeSpan? _ProbeInFlightFor(TimeSpan now)
+    // Started, and no render answer yet — null while nothing is outstanding and while a posted probe is still
+    // waiting for its turn. That second case used to be all this reported, and it is why AC-1196 saw nothing.
+    private TimeSpan? _ProbeStartedFor(TimeSpan now)
     {
         if (!_probeInFlight)
         {
@@ -248,6 +321,24 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
         var startedAt = Interlocked.Read(ref _probeStartedTicks);
         return startedAt > 0 ? TimeSpan.FromTicks(now.Ticks - startedAt) : null;
+    }
+
+    // Posted, never run — measured from the stamp this thread took at the post, so nothing here needs the UI
+    // thread to be well enough to answer. The other half of T5, and the half neither alarm could see before.
+    private TimeSpan? _ProbePendingFor(TimeSpan now)
+    {
+        if (!_probeInFlight || Interlocked.Read(ref _probeStartedTicks) > 0)
+        {
+            return null;
+        }
+
+        return TimeSpan.FromTicks(now.Ticks - Interlocked.Read(ref _probeQueuedTicks));
+    }
+
+    private TimeSpan? _SinceHighPriorityPong(TimeSpan now)
+    {
+        var pongTicks = Interlocked.Read(ref _highPriorityPongTicks);
+        return pongTicks < 0 ? null : TimeSpan.FromTicks(now.Ticks - pongTicks);
     }
 
     // AC-882: the one thing that proves the render clock can still be woken. Avalonia's commit chain wakes a
@@ -285,7 +376,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         }
     }
 
-    private void _WriteSnapshot(_CpuSampler cpu, bool renderClockStalled)
+    // Internal (a test seam, same idiom as AdaptiveGcCompactor.CheckOnce): one snapshot line, driven directly
+    // instead of through the thread's 10s cadence.
+    internal void WriteSnapshot(CpuSampler cpu, bool renderClockStalled)
     {
         var snapshot = DiagnosticsCollector.SelfReadSnapshot();
         var memory = snapshot.Memory;
@@ -293,14 +386,17 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
         using var process = Process.GetCurrentProcess();
 
+        // AC-1125 D: known right where the line is built, so nothing has to be pushed here in advance.
+        var (openSessions, layoutStand) = _sessionContext?.Invoke() ?? (0, "n/a");
+
         _logger.LogInformation(
-            "diag rss={Rss} peak={Peak} virt={Virt} priv={Priv} heap={Heap} live={Live} alloc={Alloc} " +
+            "diag rss={Rss} peak={Peak} virt={Virt} priv={Priv} heap={Heap} managed={Managed} alloc={Alloc} " +
             "gc={Gen0}/{Gen1}/{Gen2} gcpause={GcPause:0.0}% handles={Handles} threads={Threads} tp={Pending}/{ThreadPoolCount} " +
-            "cpu={Cpu:0.0}% rclock={RenderClock}",
+            "cpu={Cpu} rclock={RenderClock} uptime={Uptime} sessions={Sessions} layout={Layout}",
             _Compact(memory.ResidentBytes),
             _Compact(memory.PeakResidentBytes),
             _Compact(memory.VirtualBytes),
-            _Compact(memory.PrivateBytes),
+            PrivText(memory.PrivateBytes),
             _Compact(heap.HeapSizeBytes),
             _Compact(heap.LiveManagedBytes),
             _Compact(heap.TotalAllocatedBytes),
@@ -312,8 +408,11 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             process.Threads.Count,
             ThreadPool.PendingWorkItemCount,
             ThreadPool.ThreadCount,
-            cpu.PercentSinceLastCall(),
-            _RenderClockText(renderClockStalled));
+            CpuText(cpu.PercentSinceLastCall()),
+            _RenderClockText(renderClockStalled),
+            _UptimeText(_clock.Elapsed),
+            openSessions,
+            layoutStand);
     }
 
     // AC-882: the field that makes a future macOS reproduction decisive instead of inferred — how long the last
@@ -333,7 +432,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     // Not elsewhere in Cockpit.Core.Diagnostics because nothing else needs it: the Debug tab's report never
     // shows handle count, and this is the only caller.
-    private void _LogHang(TimeSpan sinceLastPong, _CpuSampler cpu)
+    private void _LogHang(TimeSpan sinceLastPong, CpuSampler cpu, TimeSpan? sinceHighPriorityPong)
     {
         using var process = Process.GetCurrentProcess();
 
@@ -346,14 +445,45 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             .OrderBy(group => group.Key.ToString(), StringComparer.Ordinal)
             .Select(group => $"{group.Key}={group.Count()}");
 
+        // AC-1196: hipri= is what stops this line being read as "the thread is stuck" when it is not. A fresh
+        // reading means the thread is pumping and only its lower priorities are starved — a different fault, with
+        // its own uidispatch line, and the misdiagnosis that sent the last round after the wrong thing.
         _logger.LogWarning(
-            "uifreeze hang since={Since:0.0}s cpu={Cpu:0.0}% tpPending={Pending} tpThreads={ThreadPoolCount} gcpause={GcPause:0.0}% threadStates={States}",
+            "uifreeze hang since={Since:0.0}s hipri={HiPri} cpu={Cpu} retention={Retention} tpPending={Pending} tpThreads={ThreadPoolCount} gcpause={GcPause:0.0}% threadStates={States}",
             sinceLastPong.TotalSeconds,
-            cpu.PercentSinceLastCall(),
+            AgoText(sinceHighPriorityPong),
+            CpuText(cpu.PercentSinceLastCall()),
+            SampleHangRetention(),
             ThreadPool.PendingWorkItemCount,
             ThreadPool.ThreadCount,
             GC.GetGCMemoryInfo().PauseTimePercentage,
             string.Join(' ', threadStates));
+    }
+
+    // AC-1125 C: a heap ceiling above which forceFullCollection:true is skipped — extrapolated with margin from
+    // the one measurement we have (17.1s on a 10.2GB heap, AC-1184), not itself measured. Internal so a test can
+    // drive both branches without growing a real multi-gigabyte heap.
+    internal const long HangGcSampleCeilingBytes = 1L * 1024 * 1024 * 1024;
+
+    internal string SampleHangRetention()
+    {
+        var heapBytes = _heapBytesProbe();
+        if (heapBytes > HangGcSampleCeilingBytes)
+        {
+            _logger.LogWarning(
+                "uifreeze GC retention sample skipped — heap ({Heap}) is over the {Ceiling} ceiling; a forced " +
+                "full collection there costs seconds and would trip this same alarm.",
+                ByteSize.Human(heapBytes),
+                ByteSize.Human(HangGcSampleCeilingBytes));
+            return "skipped";
+        }
+
+        // Same meter on both sides of the arrow (AC-1125 review): HeapSizeBytes above is only the ceiling gate —
+        // committed heap and GetTotalMemory's live-bytes estimate are different quantities, and printing one as
+        // "before" the other as "after" would misreport their gap as reclaimed memory.
+        var before = GC.GetTotalMemory(forceFullCollection: false);
+        var after = GC.GetTotalMemory(forceFullCollection: true);
+        return $"{_Compact(before)}->{_Compact(after)}";
     }
 
     private void _LogRecovery(TimeSpan hungFor) =>
@@ -388,15 +518,36 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             ? "n/a"
             : process.HandleCount.ToString(CultureInfo.InvariantCulture);
 
-    // Same idiom as plugins-dev/Cockpit.Plugin.SystemMonitor/SystemUsage.CpuPercent (Environment.CpuUsage over
-    // Process.TotalProcessorTime — no native Process handle held per reading), duplicated rather than shared
-    // because plugins-dev sits outside Cockpit.slnx and nothing in the host is meant to reference it.
-    private sealed class _CpuSampler
+    // AC-1125 E: same "0B is a measured value, n/a is the truth" rule as handles above — Process.PrivateMemorySize64
+    // reads back 0 on Unix, which is not a real reading. Internal as a test seam for the formatting itself.
+    internal static string PrivText(long? privateBytes) => privateBytes is { } bytes ? _Compact(bytes) : "n/a";
+
+    // AC-1196: same "never has" versus "measured" rule as the two above — a thread that has answered nothing yet
+    // is not a thread that answered a moment ago. Internal as a test seam for the formatting itself.
+    internal static string AgoText(TimeSpan? since) =>
+        since is { } age ? age.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + "s" : "n/a";
+
+    // AC-1125 F: a sampler with no baseline yet is not "0% CPU", it has not measured anything — see CpuSampler
+    // below. Internal as a test seam for the formatting itself.
+    internal static string CpuText(double? percent) =>
+        percent is { } value ? value.ToString("0.0", CultureInfo.InvariantCulture) + "%" : "n/a";
+
+    // AC-1125 D: minutes are unreadable at "154 GB after 10653 minutes" — one compact token, no internal space.
+    private static string _UptimeText(TimeSpan uptime) =>
+        uptime.TotalHours >= 1 ? $"{(int)uptime.TotalHours}h{uptime.Minutes}m" : $"{(int)uptime.TotalMinutes}m";
+
+    // Same idiom as plugins-dev/Cockpit.Plugin.SystemMonitor/SystemUsage.CpuPercent, duplicated because
+    // plugins-dev sits outside Cockpit.slnx. AC-1125 F: one instance per caller now — a shared instance let
+    // _LogHang and WriteSnapshot reset each other's measurement window (measured: 4.4% read where truth was 4.8-6.0%).
+    internal sealed class CpuSampler
     {
         private TimeSpan _lastCpuTime = TimeSpan.Zero;
         private DateTimeOffset _lastSampledAt = DateTimeOffset.MinValue;
 
-        public double PercentSinceLastCall()
+        // Null on the first call, not 0 — a sampler with no baseline has not measured anything yet (same
+        // reasoning as handles/priv above). This is also why a hang logged before any snapshot ever ran used to
+        // always read cpu=0.0%: it was every such sampler's first call.
+        public double? PercentSinceLastCall()
         {
             var now = DateTimeOffset.UtcNow;
             var cpu = Environment.CpuUsage.TotalTime;
@@ -404,7 +555,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             if (_lastSampledAt == DateTimeOffset.MinValue)
             {
                 (_lastCpuTime, _lastSampledAt) = (cpu, now);
-                return 0;
+                return null;
             }
 
             var elapsedMs = (now - _lastSampledAt).TotalMilliseconds;

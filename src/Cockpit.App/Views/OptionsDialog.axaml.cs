@@ -25,6 +25,7 @@ namespace Cockpit.App.Views;
 // code, not XAML, since its rows come from whichever plugins are installed this session.
 public partial class OptionsDialog : Window
 {
+    private readonly Dictionary<string, PluginOptionsRowViewModel> _pluginRows = new(StringComparer.Ordinal);
     // AC-1040: a `?` beside each page's title, landing on the section of the knowledge base that describes that
     // page — not on the top of a long article. Two of them leave this dialog on purpose: the assistant is a
     // feature with a page of its own, and where isolated sessions put their work is the worktrees page's subject.
@@ -52,6 +53,7 @@ public partial class OptionsDialog : Window
         InitializeComponent();
         CockpitWindowChrome.Apply(this);
         _AddHelpHints();
+        CategoryNav.SelectionChanged += (_, _) => _EnsurePluginContent();
 
         // The plugin list is built when the dialog opens rather than when the app started: a plugin installed since
         // then should not be missing from its own backup. The diagnostics panel is read the same way — once, on
@@ -63,6 +65,7 @@ public partial class OptionsDialog : Window
                 cockpit.RefreshBackupPlugins();
                 cockpit.Diagnostics.Refresh();
                 _BuildPluginCategories(cockpit);
+                RequestAnimationFrame(_ => RequestAnimationFrame(_ => cockpit.OptionsOpenPresented()));
             }
         };
 
@@ -198,7 +201,7 @@ public partial class OptionsDialog : Window
             var keywords = _PluginSearchKeywords.GetValueOrDefault(row.PluginId, row.DisplayName);
 
             CategoryNav.Items.Add(_BuildPluginNavItem(tag, row.DisplayName, keywords));
-            CategoryContent.Children.Add(_BuildPluginContent(tag, row));
+            _pluginRows.Add(tag, row);
         }
     }
 
@@ -246,6 +249,7 @@ public partial class OptionsDialog : Window
 
     private ScrollViewer _BuildPluginContent(string tag, PluginOptionsRowViewModel row)
     {
+        row.EnsureContent();
         var body = new StackPanel { Margin = new Thickness(24, 20), MaxWidth = 900, Spacing = 8 };
 
         // AC-1033's second door, and the one the question usually comes through: where you are pasting a token
@@ -285,6 +289,18 @@ public partial class OptionsDialog : Window
             ConverterParameter = tag,
         });
         return scroll;
+    }
+
+    private void _EnsurePluginContent()
+    {
+        if (CategoryNav.SelectedItem is not ListBoxItem { Tag: string tag }
+            || !_pluginRows.TryGetValue(tag, out var row)
+            || CategoryContent.Children.OfType<Control>().Any(content => Equals(content.Tag, tag)))
+        {
+            return;
+        }
+
+        CategoryContent.Children.Add(_BuildPluginContent(tag, row));
     }
 
     private static IBrush? _Brush(string key) =>
@@ -338,7 +354,9 @@ public partial class OptionsDialog : Window
         if (CategoryNav.Items.OfType<ListBoxItem>().FirstOrDefault(item => item.Tag as string == tag) is { } match)
         {
             CategoryNav.SelectedItem = match;
+            return;
         }
+
     }
 
     // Browse buttons for the Profiles category (AC-1001) — same file/folder pickers ManageProfilesDialog uses,

@@ -60,9 +60,16 @@ public sealed class LimitBar : TemplatedControl
         AffectsRender<LimitBar>(PercentProperty, LabelProperty, StretchTrackProperty, ThresholdProperty);
         AffectsMeasure<LimitBar>(PercentProperty, LabelProperty, StretchTrackProperty);
 
-        // Nothing to report, nothing to draw: Claude says nothing about the rate limits before the first response,
-        // and a bar sitting at zero would be a claim rather than a silence.
-        PercentProperty.Changed.AddClassHandler<LimitBar>((bar, args) => bar.IsVisible = args.NewValue is double);
+        // Nothing to report, nothing to draw (a bar sitting at zero would be a claim, not a silence).
+        // AC-1126: guarded because IsVisible invalidates the parent's measure and this handler can run mid-measure.
+        PercentProperty.Changed.AddClassHandler<LimitBar>((bar, args) =>
+        {
+            var shouldBeVisible = args.NewValue is double;
+            if (bar.IsVisible != shouldBeVisible)
+            {
+                bar.IsVisible = shouldBeVisible;
+            }
+        });
     }
 
     public LimitBar() => IsVisible = false;

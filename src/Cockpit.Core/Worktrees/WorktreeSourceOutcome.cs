@@ -35,6 +35,7 @@ public enum WorktreeSourceOutcome
     // The branch tracks nothing, so there is no upstream to be behind — a local-only repository, or a branch never pushed.
     NoUpstream,
 
-    // HEAD was detached, so there is no source branch to update; the fork commit is the one HEAD points at.
+    // HEAD was detached and either origin had nothing newer or it could not be compared against at all (no
+    // remote, or no resolvable default branch) — so the commit HEAD already pointed at is the fork commit.
     DetachedHead,
 }

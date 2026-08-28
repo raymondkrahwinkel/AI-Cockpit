@@ -18,7 +18,9 @@ namespace Cockpit.Plugin.Autopilot;
 /// </summary>
 internal interface IEpicSubMergeChecker
 {
-    /// <summary>Loads (or reloads) what <c>origin/main</c> looks like right now — call once before any <see cref="IsMerged"/> call.</summary>
+    /// <summary>
+    /// Loads (or reloads) what <c>origin/main</c> looks like right now — call once before any <see cref="IsMerged"/> call.
+    /// </summary>
     Task RefreshAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

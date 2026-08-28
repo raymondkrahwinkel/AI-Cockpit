@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -68,7 +69,7 @@ public class McpOAuthProxyTests
     private static (McpOAuthProxyHost Proxy, McpAuthKey Key) _Proxy(IMcpOAuthCoordinator coordinator, ILoggerFactory? loggerFactory = null)
     {
         var key = new McpAuthKey();
-        return (new McpOAuthProxyHost(coordinator, key, new SessionMcpKeyring(), loggerFactory ?? NullLoggerFactory.Instance), key);
+        return (new McpOAuthProxyHost(coordinator, key, new SessionMcpKeyring(), new SessionMcpMounts(), loggerFactory ?? NullLoggerFactory.Instance), key);
     }
 
     // Mounting has one answer a test can build on and one it cannot, so the check belongs here rather than repeated

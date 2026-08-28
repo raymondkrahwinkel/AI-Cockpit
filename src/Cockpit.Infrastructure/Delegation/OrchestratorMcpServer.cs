@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Delegation;
@@ -27,6 +28,7 @@ internal sealed class OrchestratorMcpServer
     private readonly McpAuthKey _authKey;
     private readonly SessionMcpKeyring _keyring;
     private readonly IDelegationSettingsStore _settingsStore;
+    private readonly SessionMcpMounts _mounts;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<OrchestratorMcpServer> _logger;
     private WebApplication? _app;
@@ -37,12 +39,14 @@ internal sealed class OrchestratorMcpServer
         McpAuthKey authKey,
         SessionMcpKeyring keyring,
         IDelegationSettingsStore settingsStore,
+        SessionMcpMounts mounts,
         ILoggerFactory loggerFactory)
     {
         _delegation = delegation;
         _authKey = authKey;
         _keyring = keyring;
         _settingsStore = settingsStore;
+        _mounts = mounts;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<OrchestratorMcpServer>();
     }
@@ -90,9 +94,13 @@ internal sealed class OrchestratorMcpServer
 
         _app = builder.Build();
         // Guard the endpoint before its tools: a request without this run's key never reaches delegation (AC-40).
-        // The orchestrator stays loopback-only — AC-790's off-loopback listener is a `CockpitMcpEndpointHost`
-        // concern only — so there is no node secret to pass here.
-        McpAuthMiddleware.Require(_app, _authKey, _keyring);
+        // Loopback-only, so no node secret to pass. AC-1148: and a key alone is not enough — "a session only gets
+        // these tools if started with delegation enabled" was the fan-out talking, and this is the listener.
+        McpAuthMiddleware.Require(
+            _app,
+            _authKey,
+            _keyring,
+            paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, ServerName, _mcpEnabled, nodeScopeGranted: false, _mounts)));
         _app.MapMcp("/mcp");
 
         await _app.StartAsync(cancellationToken).ConfigureAwait(false);

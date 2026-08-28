@@ -2,12 +2,12 @@ using Cockpit.Core.Sessions.Tty;
 
 namespace Cockpit.Core.Mcp;
 
-// The environment handed to a stdio MCP server the cockpit starts. It inherits the cockpit's environment
-// (a third-party tool server has no business receiving the operator's Anthropic credential) minus that one
-// family — deliberately a deny-list, since an allowlist would have to guess every variable a server needs.
+// The environment handed to a stdio MCP server: the cockpit's own, minus what `TtyEnvironment.IsHostControlled`
+// already treats as host-owned — the Anthropic credential and COCKPIT_MCP_KEY, the latter per AC-1148 the
+// bearer for every loopback endpoint. Deliberately a deny-list; an allowlist would have to guess every variable.
 public static class StdioServerEnvironment
 {
-    // The current process environment, minus the Anthropic credentials.
+    // The current process environment, minus everything the host owns.
     public static Dictionary<string, string?> Build() =>
         Build(Environment.GetEnvironmentVariables()
             .Cast<System.Collections.DictionaryEntry>()
@@ -19,7 +19,7 @@ public static class StdioServerEnvironment
         var environment = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in baseEnvironment)
         {
-            if (TtyEnvironment.IsAnthropicCredentialMarker(key))
+            if (TtyEnvironment.IsHostControlled(key))
             {
                 continue;
             }

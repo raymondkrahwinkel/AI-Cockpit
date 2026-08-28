@@ -45,7 +45,7 @@ public sealed class AssistantChatViewLifecycleTests
 
             try
             {
-                var followedInTheFirstHost = view.TranscriptScroll.Offset.Y;
+                var followedInTheFirstHost = view.TranscriptScroll!.Offset.Y;
 
                 // The host swap: out of one visual tree and into another, the same view instance throughout.
                 first.Content = null;
@@ -68,7 +68,7 @@ public sealed class AssistantChatViewLifecycleTests
                 Assert.True(viewModel.HasMessages);
 
                 // And the follow is wired again — this is what a missed re-attach loses, silently.
-                var before = view.TranscriptScroll.Offset.Y;
+                var before = view.TranscriptScroll!.Offset.Y;
                 session.Transcript.Add(new TranscriptEntryViewModel(
                     TranscriptEntryKind.AssistantText, "a reply that arrives in the second host"));
                 Dispatcher.UIThread.RunJobs();
@@ -76,7 +76,7 @@ public sealed class AssistantChatViewLifecycleTests
 
                 Assert.True(followedInTheFirstHost > 0, "the first host has to have been following, or this proves nothing");
                 Assert.True(
-                    view.TranscriptScroll.Offset.Y > before,
+                    view.TranscriptScroll!.Offset.Y > before,
                     "a row arriving after the host swap must still scroll into view");
             }
             finally
