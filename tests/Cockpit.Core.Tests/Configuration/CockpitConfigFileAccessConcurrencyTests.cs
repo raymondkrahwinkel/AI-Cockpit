@@ -124,6 +124,13 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
     [Fact]
     public async Task UpdateAsync_WhileReaderHoldsDestination_WaitsAndWrites()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            // Unix `rename`, used by File.Replace, replaces the directory entry while this reader retains
+            // the old inode; only Windows' mandatory sharing lock makes the writer wait.
+            return;
+        }
+
         var access = new CockpitConfigFileAccess(ConfigPath);
         await access.UpdateAsync(
             config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("seed", new ClaudeConfig("/home/someone/.claude")))],
