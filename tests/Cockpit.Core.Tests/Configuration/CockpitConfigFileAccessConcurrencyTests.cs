@@ -121,15 +121,13 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
         Assert.Single(written.Profiles, profile => profile.Label == "written-39");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task UpdateAsync_WhileReaderHoldsDestination_WaitsAndWrites()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            // Unix `rename`, used by File.Replace, replaces the directory entry while this reader retains
-            // the old inode; only Windows' mandatory sharing lock makes the writer wait.
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsWindows(), "Only Windows takes a mandatory sharing lock on the replacement destination.");
+
+        // Unix `rename`, used by File.Replace, replaces the directory entry while this reader retains
+        // the old inode; only Windows' mandatory sharing lock makes the writer wait.
 
         var access = new CockpitConfigFileAccess(ConfigPath);
         await access.UpdateAsync(
