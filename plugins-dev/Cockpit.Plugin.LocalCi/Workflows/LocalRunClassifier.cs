@@ -9,18 +9,18 @@ namespace Cockpit.Plugin.LocalCi.Workflows;
 // assert a reason rather than a set of them.
 internal static class LocalRunClassifier
 {
-    // The two actions that cost nothing locally: the worktree already is the checkout, and the SDK is in the image.
+    // The checkout and SDK are already local; uploading diagnostics cannot change the job's own result.
     // Every other `uses:` blocks the job unless someone adds it here with the reason it is free.
     private static readonly HashSet<string> LocallyFreeActions = new(StringComparer.OrdinalIgnoreCase)
     {
         "actions/checkout",
         "actions/setup-dotnet",
+        "actions/upload-artifact",
     };
 
     // Named apart from the rest only so the reason names the thing the operator recognises.
     private static readonly HashSet<string> ArtifactActions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "actions/upload-artifact",
         "actions/download-artifact",
     };
 

@@ -19,6 +19,10 @@ public class LocalRunClassifierTests
                       dotnet-version: '10.0.x'
                   - name: Build
                     run: dotnet build
+                  - uses: actions/upload-artifact@v7
+                    with:
+                      name: test-results
+                      path: TestResults
             """);
 
         Assert.True(verdict.CanRunLocally);
@@ -118,7 +122,6 @@ public class LocalRunClassifierTests
     }
 
     [Theory]
-    [InlineData("actions/upload-artifact@v7")]
     [InlineData("actions/download-artifact@v8")]
     public void ArtifactExchange_IsRefusedWithItsOwnWording(string uses)
     {
