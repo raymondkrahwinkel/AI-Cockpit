@@ -1254,14 +1254,16 @@ public class CockpitViewModelTests
 
     // A plugin settings view that refuses to save (IPluginSettingsView.TryStage returning false) blocks the
     // whole Apply, the same as a rejected profile (AC-1001 criterion 5) — it must not close over the error.
+    // Plugin views are lazy since AC-1207; an unopened view cannot refuse staging by contract.
     [Fact]
-    public async Task ApplyingOptions_WithARefusingPluginView_BlocksApply()
+    public async Task ApplyingOptions_WithAnOpenedRefusingPluginView_BlocksApply()
     {
         var vm = NewVm();
         var sink = (IPluginContributionSink)vm;
         sink.AddPluginSettings("youtrack", "YouTrack", () => new FakeSettingsView(accepts: false, error: "Two connections are named 'work'"));
 
         vm.BeginOptionsEdit();
+        vm.PluginOptionsRows.Single().EnsureContent();
         await vm.ApplyOptionsCommand.ExecuteAsync(null);
 
         Assert.True(vm.OptionsApplyBlocked);
