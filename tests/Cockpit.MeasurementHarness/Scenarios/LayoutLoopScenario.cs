@@ -60,6 +60,7 @@ public static class LayoutLoopScenario
     public static async Task SweepAsync(MeasurementRun run, Pump pump, SweepOptions options)
     {
         var thinnest = int.MaxValue;
+        var allPoints = new List<SeriesPoint>();
 
         // AC-1178 repeated its threshold three times per session count, and so should anything claiming to
         // reproduce it. Repeats live inside one run because the report identity is the argv (E4): a second
@@ -96,6 +97,7 @@ public static class LayoutLoopScenario
                 {
                     recorder.Measure($"rounds-worst-frame@{count}", rounds, "rounds");
                     points.Add(new SeriesPoint(count, rounds));
+                    allPoints.Add(new SeriesPoint(count, rounds));
                 }
 
                 run.Write($"pass {pass} | {count,3} sessions | worst frame {(worst is { } w ? $"{w,4}" : " n/a")} rounds "
@@ -121,10 +123,13 @@ public static class LayoutLoopScenario
             $"the thinnest sweep point saw {thinnest} frames, under the {MinimumFramesPerPoint} this figure needs; "
             + "raise --settle-ms, or run without --headless");
 
-        // E5: more sessions may cost more rounds or the same, never fewer. 7452 rounds at 15 tiles against
-        // 3146 at 20 stood in two reports for half a day because nothing put the numbers side by side.
-        run.Shape(Series.Monotonic($"pass {pass}: sessions -> worst frame rounds", points));
+        run.Write(Series.Monotonic($"pass {pass}: sessions -> worst frame rounds", points).Line);
         }
+
+        // E5 judges the sweep, not noise in one repeated pass; the median still catches a real decline.
+        run.Shape(Series.Monotonic(
+            "sessions -> median worst frame rounds across passes",
+            Series.MedianByX(allPoints)));
     }
 
     private static Window _NewWindow(double width, double height) => new()

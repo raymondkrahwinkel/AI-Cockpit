@@ -16,6 +16,22 @@ public static class Series
     /// <summary>Fewer points than this cannot distinguish a shape from noise, so the test says so instead of guessing.</summary>
     public const int MinimumPoints = 4;
 
+    /// <summary>Reduces repeated readings at every sweep value to their median before judging the sweep's shape.</summary>
+    public static IReadOnlyList<SeriesPoint> MedianByX(IReadOnlyList<SeriesPoint> points) =>
+        points
+            .GroupBy(point => point.X)
+            .OrderBy(group => group.Key)
+            .Select(group =>
+            {
+                var values = group.Select(point => point.Y).OrderBy(value => value).ToList();
+                var middle = values.Count / 2;
+                var median = values.Count % 2 == 0
+                    ? (values[middle - 1] + values[middle]) / 2
+                    : values[middle];
+                return new SeriesPoint(group.Key, median);
+            })
+            .ToList();
+
     /// <summary>
     /// Tests a series against the straight line the theory predicts, and names the points that do not
     /// belong to it. Each point is judged against a fit of the others, so one bad value cannot widen the

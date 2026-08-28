@@ -20,6 +20,32 @@ public sealed class MeasurementHarnessTests
         Assert.Contains("no compositor", options.UnsupportedReason, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Median_shape_allows_a_noisy_plateau()
+    {
+        var medians = Series.MedianByX([
+            new SeriesPoint(2, 4), new SeriesPoint(2, 5), new SeriesPoint(2, 5),
+            new SeriesPoint(3, 3), new SeriesPoint(3, 6), new SeriesPoint(3, 8),
+            new SeriesPoint(4, 6), new SeriesPoint(4, 8), new SeriesPoint(4, 10),
+            new SeriesPoint(5, 6), new SeriesPoint(5, 8), new SeriesPoint(5, 8),
+            new SeriesPoint(6, 8), new SeriesPoint(6, 8), new SeriesPoint(6, 9),
+        ]);
+
+        Assert.True(Series.Monotonic("sessions -> median worst frame rounds", medians).Holds);
+    }
+
+    [Fact]
+    public void Median_shape_rejects_a_genuine_drop()
+    {
+        var medians = Series.MedianByX([
+            new SeriesPoint(2, 6), new SeriesPoint(2, 7), new SeriesPoint(2, 8),
+            new SeriesPoint(3, 8), new SeriesPoint(3, 9), new SeriesPoint(3, 10),
+            new SeriesPoint(4, 4), new SeriesPoint(4, 5), new SeriesPoint(4, 6),
+        ]);
+
+        Assert.False(Series.Monotonic("sessions -> median worst frame rounds", medians).Holds);
+    }
+
     // E1. The fault this replaces: ac1104's positive control silently stopped firing, and every report it
     // produced said "Infinite layout loop detected : 0" — which is what a healthy app says too (AC-1171).
     [Fact]

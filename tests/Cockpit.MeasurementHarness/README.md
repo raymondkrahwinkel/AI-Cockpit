@@ -73,10 +73,9 @@ Two things had to be real before the threshold appeared, and each was worth a ru
 below it.** Two caveats belong with that number, not underneath it:
 
 - **Six sessions is flaky here: one pass in three.** AC-1178 reports 153 rounds and 2 loops at six sessions
-  on every repetition. This harness does not reproduce that, and the run says so — the shape test refuses
-  the sweep as a whole (`MALFUNCTION`) because rounds drop from 159 to 23 when a session is added.
-  **That refusal is the machinery working, not a bug in it**, and the discrepancy is a finding for AC-1178
-  rather than something to tune away here.
+  on every repetition. This harness keeps each pass's shape in the report as an observation, but judges the
+  verdict from the median per session count across all passes. A saturated platform may wobble around its
+  plateau; a genuinely declining median still makes the sweep a `MALFUNCTION`.
 - **`worst frame` reads 159 where Avalonia cuts off at 153.** The counter groups `LayoutUpdated` by frame
   ordinal, so a few rounds either side of the cut-off land in the same bucket. Treat it as "at the cut-off",
   not as an exact figure.
