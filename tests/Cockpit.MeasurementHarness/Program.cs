@@ -20,6 +20,13 @@ public static class Program
         var flags = Options.Parse(args);
         var options = new Options(flags);
 
+        if (options.UnsupportedReason is { } unsupported)
+        {
+            Console.WriteLine("VERDICT: MALFUNCTION");
+            Console.WriteLine($"  blocked by: {unsupported}");
+            return 4;
+        }
+
         RunIdentity identity;
         try
         {
@@ -178,6 +185,11 @@ public sealed class Options(IReadOnlyDictionary<string, string> flags)
     public string Scenario { get; } = flags["scenario"];
 
     public bool Headless { get; } = flags["headless"] == "true";
+
+    public string? UnsupportedReason =>
+        Scenario == RenderClockScenario.Name && Headless
+            ? "render-clock has no compositor in --headless=true, so it cannot measure it"
+            : null;
 
     public int MinSessions { get; } = int.Parse(flags["min-sessions"]);
 

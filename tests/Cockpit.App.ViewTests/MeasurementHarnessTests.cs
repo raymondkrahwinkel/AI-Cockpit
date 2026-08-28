@@ -1,5 +1,6 @@
 using Cockpit.MeasurementHarness.Core;
 using Cockpit.MeasurementHarness.Meters;
+using Cockpit.MeasurementHarness;
 
 namespace Cockpit.App.ViewTests;
 
@@ -10,6 +11,14 @@ public sealed class MeasurementHarnessTests
 {
     private static RunIdentity _Identity(string[]? args = null, string sha = "7d331771") =>
         RunIdentity.Capture("test", args ?? ["--a=1"], new Dictionary<string, string> { ["a"] = "1" }, () => sha);
+
+    [Fact]
+    public void Render_clock_in_headless_mode_is_refused_before_the_scenario_starts()
+    {
+        var options = new Options(Options.Parse(["--scenario=render-clock", "--headless=true"]));
+
+        Assert.Contains("no compositor", options.UnsupportedReason, StringComparison.Ordinal);
+    }
 
     // E1. The fault this replaces: ac1104's positive control silently stopped firing, and every report it
     // produced said "Infinite layout loop detected : 0" — which is what a healthy app says too (AC-1171).

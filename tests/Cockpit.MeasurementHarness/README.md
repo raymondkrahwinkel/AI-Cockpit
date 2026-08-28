@@ -15,8 +15,8 @@ COCKPIT_GIT_SHA=$(git rev-parse HEAD) \
 ```
 
 `COCKPIT_GIT_SHA` is required, not defaulted: a report that cannot name the code it measured is not
-evidence. Flags: `--headless`, `--min-sessions`, `--max-sessions`, `--width`, `--height`, `--settle-ms`,
-`--out`. An unknown flag is refused rather than ignored.
+evidence. Flags: `--scenario`, `--headless`, `--min-sessions`, `--max-sessions`, `--width`, `--height`,
+`--settle-ms`, `--out`. An unknown flag is refused rather than ignored.
 
 Exit codes: `0` measurement, `1` a report with this identity already exists, `2` no SHA, `3` the scenario
 produced nothing, `4` the run is a malfunction (see the verdict in its header).
@@ -86,6 +86,9 @@ below it.** Two caveats belong with that number, not underneath it:
 Parks the render thread from inside `ICustomDrawOperation.Render` — which runs on the render thread, not on
 the dispatcher — so the compositor stops committing while the dispatcher carries on. That difference is the
 whole point: it is what tells trap 2 (render clock silent, UI thread idle) apart from a busy UI thread.
+
+`--headless=true` is refused immediately with `VERDICT: MALFUNCTION`: headless has no compositor, so this
+scenario cannot measure there. It does not wait for a draw operation that cannot run.
 
 **It is built and it does not work yet, and the run says so.** Measured 2026-08-27:
 
