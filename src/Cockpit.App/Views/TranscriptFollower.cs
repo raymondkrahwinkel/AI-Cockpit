@@ -19,7 +19,7 @@ internal sealed class TranscriptFollower
 
     // Loaded is above Default, and work above Default that reposts itself starves everything below it completely
     // (AC-1200: the MCP hop never got in over 8s). No step ever posts the next one — the continuation comes from
-    // the scroll change our own move raises — and a cue buys at most this many of them.
+    // the scroll change our own move raises — and one tail gets at most this many before yielding to Background.
     private const int MaxSteps = 8;
 
     private readonly ItemsControl _items;
@@ -35,6 +35,7 @@ internal sealed class TranscriptFollower
 
     private bool _posted;
     private int _steps;
+    private bool _wasOnScreen;
 
     internal TranscriptFollower(ItemsControl items, Func<ScrollViewer?> scroll)
     {
@@ -43,7 +44,16 @@ internal sealed class TranscriptFollower
 
         // The one edge the data cannot announce: a rail tile scrolling back into view has no new row to follow,
         // so without this it stays wherever the gate below left it until its session next says something.
-        _items.EffectiveViewportChanged += (_, _) => RequestFollow();
+        _items.EffectiveViewportChanged += (_, _) =>
+        {
+            var onScreen = _IsOnScreen(_items);
+            if (onScreen && !_wasOnScreen)
+            {
+                RequestFollow();
+            }
+
+            _wasOnScreen = onScreen;
+        };
     }
 
     // Whether the operator is parked at the tail. Settable because three callers move the viewport on purpose and
@@ -112,7 +122,8 @@ internal sealed class TranscriptFollower
     {
         if (e.PropertyName is nameof(TranscriptEntryViewModel.Text))
         {
-            RequestFollow();
+            // A token continues this tail's sequence; after its Loaded budget, following yields to Background.
+            _Request(fresh: false);
         }
     }
 
@@ -126,13 +137,13 @@ internal sealed class TranscriptFollower
             _steps = 0;
         }
 
-        if (_posted || _steps >= MaxSteps)
+        if (_posted)
         {
             return;
         }
 
         _posted = true;
-        Dispatcher.UIThread.Post(_Step, FollowPriority);
+        Dispatcher.UIThread.Post(_Step, _steps < MaxSteps ? FollowPriority : DispatcherPriority.Background);
     }
 
     // A scroll change is never followed from here: Avalonia raises it from LayoutUpdated, so doing the move here
@@ -256,7 +267,11 @@ internal sealed class TranscriptFollower
             return;
         }
 
-        _steps++;
+        if (_steps < MaxSteps)
+        {
+            _steps++;
+        }
+
         _MoveOneStep(scroll);
     }
 
@@ -273,12 +288,13 @@ internal sealed class TranscriptFollower
         Following = true;
         try
         {
-            // A row that is not realised is below the viewport, so the estimated end is the way towards it.
+            // Reach the current scrollbar end before using realised geometry to close any estimate residue.
             // Assigning Offset only invalidates; ScrollIntoView ran a whole nested layout pass here instead,
             // once per streamed row — 6.8MB and tens of milliseconds each, which is AC-1111 (measured).
-            if (_items.ContainerFromIndex(newestIndex) is null)
+            var estimatedEnd = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
+            if (!TranscriptScrollAnchor.IsSettled(scroll.Offset.Y, estimatedEnd))
             {
-                _MoveTo(scroll, Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height));
+                _MoveTo(scroll, estimatedEnd);
                 return;
             }
 
