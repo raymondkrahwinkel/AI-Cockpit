@@ -51,22 +51,41 @@ internal static class CommandRunnerProcess
 
     private static IEnumerable<int> _ChildProcessIds(int parentId)
     {
-        string children;
+        string[] childFiles;
         try
         {
-            children = File.ReadAllText($"/proc/{parentId}/task/{parentId}/children");
+            childFiles = Directory.GetFiles($"/proc/{parentId}/task", "children");
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             yield break;
         }
 
-        foreach (var child in children.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        var childIds = new HashSet<int>();
+        foreach (var childFile in childFiles)
         {
-            if (int.TryParse(child, out var childId))
+            string children;
+            try
             {
-                yield return childId;
+                children = File.ReadAllText(childFile);
             }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var child in children.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (int.TryParse(child, out var childId))
+                {
+                    childIds.Add(childId);
+                }
+            }
+        }
+
+        foreach (var childId in childIds)
+        {
+            yield return childId;
         }
     }
 
