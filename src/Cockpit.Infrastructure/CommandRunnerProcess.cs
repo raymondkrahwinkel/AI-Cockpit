@@ -54,7 +54,9 @@ internal static class CommandRunnerProcess
         string[] childFiles;
         try
         {
-            childFiles = Directory.GetFiles($"/proc/{parentId}/task", "children");
+            childFiles = Directory.GetDirectories($"/proc/{parentId}/task")
+                .Select(task => Path.Combine(task, "children"))
+                .ToArray();
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
