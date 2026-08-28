@@ -2,12 +2,8 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-// The single source of the selectable session options (permission mode, model, effort) shared by
-// the New-session dialog and the running-session panel. Splitting `AllPermissionModes`
-// (the four real CLI modes, offered only at launch) from `LivePermissionModes` (the
-// three that can be switched mid-session) keeps the panel honest: bypass can only be chosen when a
-// session is launched, never as a live switch, so it never appears as a dead control in the panel
-// dropdown (see bug #15 / the no-dead-controls convention).
+// Separate launch and live permission lists keep bypass mode out of the live panel, where it would be a dead control
+// (bug #15).
 public static class SessionOptionCatalog
 {
     // The CLI's four real --permission-mode values. There is no "auto" mode — passing it made the
@@ -26,10 +22,8 @@ public static class SessionOptionCatalog
     public static IReadOnlyList<PermissionModeOption> LivePermissionModes { get; } =
         AllPermissionModes.Where(mode => mode.Value != BypassPermissionModeValue).ToArray();
 
-    // A label names the family, never a release: the value is an alias the CLI re-points at will, so a label like
-    // "Opus 4.8" would keep claiming a release the field no longer launches (AC-418). Ordered most capable first for
-    // the picker; this order says nothing about price, and nothing may read cost out of it — a provider states what
-    // its own models cost (AC-256).
+    // A label names the family, never a release: the value is an alias the CLI re-points at will, so a label like "Opus
+    // 4.8" would keep claiming a release the field no longer launches (AC-418) (AC-256).
     public static IReadOnlyList<ModelOption> Models { get; } =
     [
         new("Fable", "fable"),
@@ -38,10 +32,9 @@ public static class SessionOptionCatalog
         new("Haiku", "haiku"),
     ];
 
-    // "Effort" maps to a thinking-token budget: that budget is the one live control the protocol
-    // exposes (set_max_thinking_tokens, verified against claude.exe 2.1.197), so the effort level
-    // simply picks a budget the session runs with and can switch mid-flight. The per-level counts are
-    // Cockpit's own tuning, not a fixed SDK constant.
+    // "Effort" maps to a thinking-token budget: that budget is the one live control the protocol exposes
+    // (set_max_thinking_tokens, verified against claude.exe 2.1.197), so the effort level simply picks a budget the
+    // session runs with and can switch mid-flight.
     public static IReadOnlyList<EffortOption> Efforts { get; } =
     [
         new("Low", "low", 4_000),
@@ -94,10 +87,9 @@ public static class SessionOptionCatalog
     // no per-release upkeep. The field stays free text, so an operator can still pin a specific model or snapshot.
     public static IReadOnlyList<string> ClaudeModelSuggestions { get; } = [.. Models.Select(model => model.Value)];
 
-    // Turns what the operator typed or picked in the editable model field back into a `ModelOption`:
-    // a known alias keeps its friendly label, anything else (a pinned model/snapshot) becomes its own value, and
-    // a blank field falls back to the app default — so the `ModelOption` pipeline is unchanged whether
-    // the value came from a dropdown or free text.
+    // Turns what the operator typed or picked in the editable model field back into a `ModelOption`: a known alias
+    // keeps its friendly label, anything else (a pinned model/snapshot) becomes its own value, and a blank field falls
+    // back to the app default.
     public static ModelOption ModelForValue(string? value) =>
         string.IsNullOrWhiteSpace(value)
             ? DefaultModel

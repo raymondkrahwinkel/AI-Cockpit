@@ -24,10 +24,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-// F-C1 cockpit: a single Claude Code session rendered as a streaming transcript with a
-// chat-style input box and read-only-so-far allow/deny affordances for tool use.
-// Visual layout has not been verified against a running Avalonia window in this sandbox
-// (no display available here) — treat the XAML as unverified until Raymond runs it.
+// F-C1 cockpit: a single Claude Code session rendered as a streaming transcript with a chat-style input box and
+// read-only-so-far allow/deny affordances for tool use.
 public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 {
     private readonly ISessionManager? _sessionManager;
@@ -35,10 +33,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-409: written on a live permission-mode switch (see `OnSelectedPermissionModeChanged`). Null in the design-time/unit-test graph, where the switch simply is not persisted.
     private readonly SessionStateRecorder? _sessionStateRecorder;
 
-    // Resolves a Plugin-provider profile's own display name for the header's kind chip (AC-537) — the same
-    // registry `Converters.ProfileDisplayConverter` uses for the profile picker, injected here rather
-    // than reaching into that converter's static seam. Null in the design-time/unit-test graph, where a plugin
-    // profile's chip falls back to nothing rather than a resolved name (see `StartWithProfileAsync`).
+    // Resolves a Plugin-provider profile's own display name for the header's kind chip (AC-537) — the same registry
+    // `Converters.ProfileDisplayConverter` uses for the profile picker, injected here rather than reaching into that
+    // converter's static seam.
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
 
     // AC-713: the generic login gate/starter, dispatched to whichever provider plugin the profile below names.
@@ -67,28 +64,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // StartWithProfileAsync. The manager owns it and is the one place it gets stopped.
     private ISessionRuntime? _runtime;
 
-    // The offer this pane was restored with, captured at the top of `StartConfiguredAsync` when it is
-    // still set (AC-410) — the caller (`CockpitViewModel._StartRestoredSessionAsync`) clears
-    // `SessionPanelViewModel.RestoreOffer` as soon as this method returns, well before the first turn's
-    // result has come back. Consumed, and cleared, by the first `TurnCompleted` this session reports —
-    // a resume that fails does so on that very first turn (`error_during_execution`, no history to fail on
-    // later), so nothing past it should still read as "this was a resume attempt".
+    // The offer this pane was restored with, captured at the top of `StartConfiguredAsync` when it is still set
+    // (AC-410).
     private SessionRestorePlan? _restoredOfferSnapshot;
 
     // The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as `SessionPanelViewModel.McpServerSelection` just before `StartWithProfileAsync` reads them.
     private IReadOnlyDictionary<string, string>? _launchOptions;
 
-    // Tool names this session auto-allows without an operator prompt (AC-215) — an autonomous embedded run's own
-    // control tools (Autopilot's `autopilot_step_done`, `autopilot_validate`, …), pre-authorized at embed
-    // time so a self-driving run does not stall mid-run on a permission prompt it has no one to answer. Empty for an
-    // ordinary session, which keeps prompting as before. Only the plugin's own endpoint tools are ever placed here;
-    // file/shell/egress tools are never pre-approved and stay gated by the permission mode and the ConsentBroker.
+    // Tool names this session auto-allows without an operator prompt (AC-215).
     private IReadOnlySet<string> _preApprovedTools = new HashSet<string>(StringComparer.Ordinal);
 
     // Whether this session auto-allows every tool call without a prompt (AC-215, Raymond 2026-07-23) — the "worktree is
     // the boundary" stance for an autonomous run isolated in a throwaway worktree, which must run its work tools (Bash,
-    // edits, git) with no one to answer a prompt. False for an ordinary session, which keeps prompting. Set from the
-    // embedded request's `EmbeddedSessionRequest.PreApproveAllTools`.
+    // edits, git) with no one to answer a prompt.
     private bool _preApproveAllTools;
 
     private TranscriptEntryViewModel? _currentAssistantEntry;
@@ -102,10 +90,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Assistant-text rows added since the last `TurnCompleted` — a turn can produce several (text, tool call, more text), so the read-aloud trigger (#35) reads all of them, not just the last.
     private readonly List<TranscriptEntryViewModel> _currentTurnAssistantEntries = [];
 
-    // One sub-agent's own streaming state (AC-146) — the same shape as the top-level fields above
-    // (`_currentAssistantEntry`/`_currentThinkingEntry`/`_currentThinkingBlockIndex`),
-    // scoped to one Task tool call's own activity rather than the parent conversation, so a sub-agent's
-    // streamed text/thinking accumulates onto its own rows instead of the top-level ones it runs alongside.
+    // One sub-agent's own streaming state (AC-146).
     private sealed class SubAgentLane(TranscriptEntryViewModel anchor)
     {
         public TranscriptEntryViewModel Anchor { get; } = anchor;
@@ -120,25 +105,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // One top-level tool call the turn is currently waiting on (AC-532).
     private readonly record struct ActiveToolCall(string ToolUseId, string Label, DateTimeOffset StartedAt);
 
-    // Top-level tool calls requested but not yet resulted, oldest first (AC-532). Provider-neutral by
-    // construction: driven only by `ToolUseRequested`/`ToolResult`, the two events every
-    // provider that reports tool calls at all raises. Covers exactly the gap "Thinking…" used to leave blank —
-    // a tool call surfacing to its result landing, the longest stretch of a turn with no visible signal. A
-    // sub-agent's own tool calls never reach here (they nest under their Task row via `_ResolveSubAgentLane`,
-    // which is already visible activity); a `PermissionRequested` for one of these does not remove
-    // it either — the call is still outstanding, and the existing pending-permission chip is a separate, stronger
-    // signal alongside it. Only `TurnCompleted`/`SessionError` clear this unconditionally,
-    // so a driver that never sends a matching result (an interrupt, a crash) cannot leave the composer looking
-    // like it is still running a tool that finished with everything else.
+    // Provider-neutral by construction: driven only by `ToolUseRequested`/`ToolResult`, the two events every provider
+    // that reports tool calls at all raises (AC-532).
     private readonly List<ActiveToolCall> _activeToolCalls = [];
 
     // True while a top-level tool call is outstanding — drives the composer's activity band in place of "Thinking…" (AC-532).
     public bool HasActiveToolActivity => _activeToolCalls.Count > 0;
 
-    // The call the composer's activity band currently reflects (AC-532): the oldest outstanding call still
-    // waiting on a permission decision, if any — that is the one actually stalling the turn, and the whole point
-    // of naming it here — else the most recently requested call, matching the pre-existing "what's the current
-    // step" behaviour for two ordinary tool calls in flight at once.
+    // The call the composer's activity band currently reflects (AC-532): the oldest outstanding call still waiting on a
+    // permission decision, if any.
     private ActiveToolCall? _CurrentActiveToolCall()
     {
         if (_activeToolCalls.Count == 0)
@@ -166,13 +141,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // The currently-shown activity's label ("Bash  ·  dotnet build"), or empty when none is active.
     public string ActiveToolActivityLabel => _CurrentActiveToolCall()?.Label ?? string.Empty;
 
-    // "running m:ss" since the currently-shown activity's tool call was requested, recomputed against
-    // `DateTimeOffset.Now` each time it is read — `RefreshActiveToolActivityAge` is what
-    // makes it tick in the view. While that call is paused on a permission prompt this reads "waiting for
-    // permission" instead: the tool is not running, it is blocked on the operator, and a still-climbing number
-    // under a "running" label would misreport a human wait as tool work. No elapsed count is shown for that wait —
-    // once it resolves (allow, deny, or the call otherwise completes) this reverts to the running text or goes
-    // blank, per `_CurrentActiveToolCall`.
+    // While that call is paused on a permission prompt this reads "waiting for permission" instead: the tool is not
+    // running, it is blocked on the operator, and a still-climbing number under a "running" label would misreport a
+    // human wait as tool work.
     public string ActiveToolActivityAgeText
     {
         get
@@ -205,25 +176,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return $"{totalSeconds / 60}:{totalSeconds % 60:00}";
     }
 
-    // True while the "Thinking…" band should show (AC-532): a turn is in flight and no tool-activity band is
-    // already covering it. The two bands occupy the same composer slot and are never both visible — the activity
-    // band replaces "Thinking…" for the span it is active, rather than stacking on top (composer height must not
-    // grow).
-    // Round 2 moved this off a "first visible output not yet seen" flag onto `IsBusy`, because that
-    // flag was the defect. It was cleared by the assistant's first text and only ever re-armed by a
-    // `ToolResult` — so a model that said something and then went back to work showed nothing at all
-    // until its next tool call. Measured in Raymond's own transcript of 2026-08-01: three such stretches in one
-    // session, 16.6 s, 65.0 s and 82.9 s, every one of them a text block ending and the next
-    // `ToolUseRequested` breaking the silence. The 82.9 s one is the incident he reported.
-    //
-    // A turn being in flight is the honest invariant, and it is the same one that keeps this from hanging:
-    // `IsBusy` is raised on send and dropped on `TurnCompleted`, on
-    // `SessionError` and on a send that never left — the three ways a turn can end, one of which
-    // always happens. Nothing else needs to re-arm anything, which is precisely why the old flag leaked.
-    //
-    // The trade-off is that "Thinking…" now also stands under streaming text, where it used to vanish at the
-    // first token. That is the deliberate side the ticket asks for — a band that says the session is working
-    // while it visibly writes is redundant; one that says nothing for 83 seconds is wrong.
+    // The two bands occupy the same composer slot and are never both visible — the activity band replaces "Thinking…"
+    // for the span it is active, rather than stacking on top (composer height must not grow) (AC-532).
     public bool ShowThinkingIndicator => IsBusy && !HasActiveToolActivity;
 
     // Raises every notification the active-tool-activity fields need after `_activeToolCalls` changes.
@@ -237,11 +191,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(ShowThinkingIndicator));
 
-    // When this pane first saw each currently-outstanding `BackgroundTask.TaskId` in a
-    // `BackgroundTasksChanged` snapshot (AC-531 #8) — the CLI reports no start time, so this stamp is
-    // what each row's `BackgroundTaskViewModel.AgeText` counts up from. A TaskId no longer in the
-    // latest snapshot is removed rather than kept: if the same id is ever reused, it starts a fresh clock instead
-    // of resuming a stale one.
+    // A TaskId no longer in the latest snapshot is removed rather than kept: if the same id is ever reused, it starts a
+    // fresh clock instead of resuming a stale one (AC-531).
     private readonly Dictionary<string, DateTimeOffset> _backgroundTaskFirstSeen = [];
 
     // Outstanding sub-agents, shells and unrecognised-kind tasks (AC-531), grouped the way the approved mockup
@@ -314,13 +265,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         task.IsSelected = makeSelected;
     }
 
-    // Rebuilds the pop-out's grouped rows from `_backgroundTasks` after every
-    // `BackgroundTasksChanged` (and the wipe on `SessionError`). Reuses row instances by
-    // TaskId rather than recreating them, so a row the operator has expanded stays expanded across an unrelated
-    // task starting or ending elsewhere in the list. Deliberately never called from `TurnCompleted`:
-    // unlike `_activeToolCalls`, background work does not end just because a turn did (AC-531) — a
-    // detached sub-agent or shell keeps running, and this list (and the button's own count) is what still says so
-    // while the composer's tool-activity band and "Thinking…" both go quiet.
+    // Reuses row instances by TaskId rather than recreating them, so a row the operator has expanded stays expanded
+    // across an unrelated task starting or ending elsewhere in the list (AC-531).
     private void _RebuildBackgroundTaskRows()
     {
         var now = DateTimeOffset.Now;
@@ -416,13 +362,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // AC-146 defensive fallback: accumulates streaming text for an event that names a parent tool_use_id this
-    // pane never resolved to a lane (the Task tool-use row it names as parent was never seen — a dropped event,
-    // or a stray id; not expected with the current CLI/adapter, which always emits the Task tool-use row before
-    // anything naming it as parent, but not trusted blindly). Kept entirely separate from
-    // `_currentAssistantEntry` so an orphaned chunk can never merge into the genuine top-level reply
-    // it happens to interleave with — still shown, so nothing vanishes silently, but never queued for read-aloud
-    // and never raises the output-text signal, since it cannot be vouched as the session's own answer.
+    // Keep orphaned sub-agent text separate so it cannot merge into the top-level reply or be read aloud (AC-146).
     private TranscriptEntryViewModel? _currentOrphanedSubAgentTextEntry;
 
     // The transcript row for a tool call — the same shape wherever one is built, top-level or in a sub-agent lane.
@@ -444,12 +384,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return row;
     }
 
-    // Resolves the sub-agent lane an event with this parent id belongs to (AC-146), lazily creating one the
-    // first time an event names a parent whose anchor tool-use row is already in the top-level transcript. Null
-    // for a top-level event (no parent id) or one naming a parent this pane never saw the tool-use row for — a
-    // caller then treats the latter as an orphaned sub-agent event (still shown, kept out of read-aloud/output
-    // signals — see the call sites), never as a genuine top-level one, so nothing is silently lost *and*
-    // nothing gets attributed to the operator's own reply that was not it.
+    // Null for a top-level event (no parent id) or one naming a parent this pane never saw the tool-use row for
+    // (AC-146).
     private SubAgentLane? _ResolveSubAgentLane(string? parentToolUseId)
     {
         if (string.IsNullOrEmpty(parentToolUseId))
@@ -473,11 +409,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return lane;
     }
 
-    // How many characters of this turn's assistant prose have already been sent to read-aloud (AC-97). A turn
-    // pauses on a question/permission and then keeps streaming into the same growing entry afterwards — the Claude
-    // driver never re-emits a completed snapshot, so a turn is one appending entry — which is why this tracks a
-    // text offset, not an entry count: counting entries would mark the whole (still-growing) entry "spoken" at the
-    // first flush and lose everything the reply says after a tool approval. Reset with the list at the turn boundary.
+    // A turn pauses on a question/permission and then keeps streaming into the same growing entry afterwards (AC-97).
     private int _readAloudFlushedLength;
 
     // AC-597/598: whether anything has actually been spoken this turn. What decides both fillers — a lead-in is
@@ -524,13 +456,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // False until the first transcript row arrives, so the panel can show a calm empty-state hint instead of a void.
     public bool HasTranscript => Transcript.Count > 0;
 
-    // True once the runtime is up and can accept a turn. Gates the empty-state's "type to start" prompt
-    // so it only invites input once the session is actually ready.
-    //
-    // Virtual only so a test can stand in a session that is *alive*. A running runtime cannot be faked —
-    // it is a real child process — and "alive" is the input to decisions that only exist for a live session:
-    // `AssistantSessionHost` replaces a dead instance but not a healthy one, and its restart is defined as
-    // the opposite. Without an override, both branches read the same in a test and neither could be told apart.
+    // Gates the empty-state's "type to start" prompt so it only invites input once the session is actually ready.
     public virtual bool IsSessionReady => _runtime is { IsRunning: true };
 
     // The headless route is the one with no `/clear` of its own, so this is where the action belongs (AC-564).
@@ -548,11 +474,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // True while at least one image is queued, so the chip strip can hide when empty.
     public bool HasPendingAttachments => PendingAttachments.Count > 0;
 
-    // True when this session's driver actually sends pasted images to the model (#64) — gates
-    // `AddPastedImage` so a provider without `SessionCapabilities.SupportsVision`
-    // (Ollama/LM Studio, the current plugin providers) never silently drops a pasted image. Notified
-    // alongside `SessionPanelViewModel.Capabilities` in `StartWithProfileAsync`,
-    // the one place that property changes after the driver starts.
+    // True when this session's driver actually sends pasted images to the model (#64) — gates `AddPastedImage` so a
+    // provider without `SessionCapabilities.SupportsVision` (Ollama/LM Studio, the current plugin providers) never
+    // silently drops a pasted image.
     public bool CanPasteImages => Capabilities is { SupportsVision: true };
 
     // Messages typed while a turn was in flight, dispatched in order as turns complete (T8).
@@ -594,10 +518,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Assistant-chat host that shares this view model.
     public MentionPickerViewModel MentionPicker { get; }
 
-    // When on, every message queued while a turn was in flight is dispatched together as a single follow-up
-    // turn once the turn completes (AC-145), instead of one-per-turn. Seeded from the operator's
-    // session-behaviour setting at creation and kept live by the cockpit. SDK/chat-session only — TTY has no
-    // local send queue.
+    // When on, every message queued while a turn was in flight is dispatched together as a single follow-up turn once
+    // the turn completes (AC-145), instead of one-per-turn.
     [ObservableProperty]
     private bool _combineQueuedMessages;
 
@@ -606,19 +528,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // (T8) rather than being disabled, so you can keep typing ahead without losing input.
     public bool CanSend => !string.IsNullOrWhiteSpace(InputText) || PendingAttachments.Count > 0;
 
-    // Whether the operator can type into this session's composer (AC-174). An autonomous embedded run (an Autopilot
-    // step agent) starts with this false so the input box reads as off — the run drives itself — and the surface's
-    // "intervene" affordance flips it true to hand the keyboard back. It gates only the *view* (the input box
-    // is disabled), deliberately not `CanSend`: the host still submits the run's opening brief through the
-    // send path programmatically, which must work even while the composer is off. Defaults to true for every ordinary
-    // session.
+    // It gates only the *view* (the input box is disabled), deliberately not `CanSend`: the host still submits the
+    // run's opening brief through the send path programmatically, which must work even while the composer is off
+    // (AC-174).
     [ObservableProperty]
     private bool _isInputEnabled = true;
 
     // Permission modes offered in the running panel: the three live-switchable modes
-    // (`SessionOptionCatalog.LivePermissionModes`), or — once a session was launched in
-    // bypass — a single locked "Bypass permissions" entry, since the CLI cannot switch a running
-    // session into or out of bypass. The dialog offers the full four via the catalog.
+    // (`SessionOptionCatalog.LivePermissionModes`), or — once a session was launched in bypass — a single locked
+    // "Bypass permissions" entry, since the CLI cannot switch a running session into or out of bypass.
     public IReadOnlyList<PermissionModeOption> PermissionModes =>
         IsPermissionModeLocked ? [SelectedPermissionMode] : SessionOptionCatalog.LivePermissionModes;
 
@@ -666,11 +584,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // Status now lives on the shared SessionPanelViewModel base (AC-37), read by the one SessionHeaderBar.
 
-    // How many tools this session connected, or why there are none — the line the empty-state card introduces a
-    // fresh session with. The names behind it used to hang off the provider chip as a card; AC-563 removed that,
-    // on AC-537's finding that a total of everything the agent can call (109, in Raymond's case) says nothing
-    // about the operator's own setup. What does is the MCP-server list, which now hangs off the activity column
-    // (`SessionPanelViewModel.McpServersTooltip`).
+    // How many tools this session connected, or why there are none — the line the empty-state card introduces a fresh
+    // session with (AC-563, AC-537).
     [ObservableProperty]
     private string _connectedToolsHeading = string.Empty;
 
@@ -725,12 +640,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private ReadingLevel _readingLevel = ReadingLevel.Developer;
 
     // Only Simple hides the standalone "$" token/cost meter unconditionally (AC-138: "no cost" is that level's
-    // plain-language promise). Focus's own promise — "cost moves to the usage pill" — only holds once the
-    // operator has actually put `UsagePillField.SessionUsage` on the pill (AC-105, a global
-    // preference defaulted to ctx only); Focus used to veto the figure regardless, so a Focus session on default
-    // settings lost the token count with no reachable substitute (AC-536, measured). Since the standalone meter
-    // was retired the figure lives on the pill alone, so this veto now drops that segment — which is what keeps
-    // Simple's promise true even when the operator has session usage selected.
+    // plain-language promise) (AC-105, AC-536).
     protected override bool SuppressCostMeter => ReadingLevel == ReadingLevel.Simple;
 
     // Simple drops the model/provider kind chip (AC-138) — a tag that is jargon the level exists to hide.
@@ -901,23 +811,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return -1;
     }
 
-    // Whether a tool call is waiting on the operator's Allow/Deny *right now*.
-    // Distinct from `SessionStatus.NeedsAttention`, which is deliberately stickier: `_needsAttention`
-    // is set when a prompt appears and cleared only when the operator sends the next message, so a session keeps
-    // flagging itself in the sidebar until someone has actually been back to it. That is right for a list of panes
-    // you are not looking at, and wrong for anything reporting a live state — read as "now", it says a session is
-    // waiting long after it was answered and the turn finished.
-    //
-    // Recomputed from the rows rather than tracked as a second flag: the rows are where a permission is answered
-    // (`RespondToPermissionAsync` clears `IsPendingPermission` on the entry), so anything keeping its own
-    // copy would be one more thing to clear on every path that resolves one.
+    // Distinct from `SessionStatus.NeedsAttention`, which is deliberately stickier: `_needsAttention` is set when a
+    // prompt appears and cleared only when the operator sends the next message, so a session keeps flagging itself in
+    // the sidebar until someone has actually been back to it.
     public bool HasPendingPermission => Transcript.Any(entry => entry.IsPendingPermission);
 
-    // Re-forms the Focus "N steps run" fold groups (AC-138): a group is a maximal run of two or more consecutive
-    // auto tool calls, its first row the anchor that carries the expand toggle and the rest folding under it. Only
-    // Focus folds — Developer shows every row, Simple hides auto tools outright — so at the other levels every row is
-    // simply un-grouped. The whole-transcript pass — for a reading-level switch or a reset; a row arriving or
-    // changing takes `_RegroupAround` instead.
+    // Only Focus folds — Developer shows every row, Simple hides auto tools outright — so at the other levels every row
+    // is simply un-grouped (AC-138).
     private void _RecomputeReadingGroups()
     {
         if (ReadingLevel != ReadingLevel.Focus)
@@ -1031,22 +931,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
-    // few sample transcript rows so the previewer/Screenshotter render the styled components
-    // (thinking, tool-use, collapsed tool-result, pending permission) — does not touch the real
-    // DI-backed session.
-    // `mentionFileSource` is the one seam a Screenshotter scene needs to stage the picker with real-looking rows
-    // (Screenshotter has no DI container to resolve the real ISessionManager the full constructor below needs) —
-    // every other design-time/previewer call site leaves it null, same as before this parameter existed.
+    // Parameterless constructor kept for the Avalonia previewer design-time context.
     public SessionViewModel(IMentionFileSource? mentionFileSource = null)
     {
         _eventQueue = new SessionEventQueue(Apply);
         _mentionFileSource = mentionFileSource;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
-        // Sample MCP selection, and the status line derived from it rather than typed out beside it (AC-563):
-        // a hard-coded "Connected (3 MCP servers)." next to an unset selection would have every previewer and
-        // render showing a count of three over a hover saying the selection is unknown — the exact divergence
-        // this ticket's own criterion 5 rules out, staged as if it were normal.
+        // Sample MCP selection, and the status line derived from it rather than typed out beside it (AC-563): a
+        // hard-coded "Connected (3 MCP servers)." next to an unset selection would have every previewer and render
+        // showing a count of three over a hover saying the selection is unknown.
         McpServerSelection = new HashSet<string>(StringComparer.Ordinal) { "youtrack", "depot", "cockpit-local-ci" };
         Status = ConnectedStatusLine;
         ActiveProfileLabel = "raymond@work";
@@ -1142,25 +1035,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // This is the pane kind turn-start delivery works on (AC-394): the host composes its turns as typed calls on a
-    // runtime, so there is a real moment before one goes out to put a peer's message in — unlike a CLI in a pty,
-    // where the program on the other side decides what a turn is and the host only has bytes.
-    //
-    // Answered from the seam this instance actually holds rather than from its type. The two come apart: a pane
-    // built without one — the design-time graph, and any test that does not ask for it — is a `SessionViewModel`
-    // that will never carry a message, and a hard-coded `true` would have it tell the roster otherwise. What a
-    // sender needs to know is whether *this* pane delivers, not whether panes of its kind can.
-    //
-    // It is a claim about wiring, not about health. A pane whose session failed to start still answers true: it is
-    // wired for delivery and will deliver once it runs, and nothing waiting for it is lost in the meantime — the
-    // funnel does not take mail for a turn that cannot leave. Whether a pane is answering at all is what
-    // `enrolled` and its statusline are for, and conflating the two would make this flag flap through every
-    // start-up.
+    // runtime, so there is a real moment before one goes out to put a peer's message in.
     public override bool DeliversInboxAtTurnStart => _turnInboxDelivery is not null;
 
-    // The same condition the cockpit already gates its own unprompted first turn on
-    // (`CockpitViewModel._StartEmbeddedSessionAsync` checks `IsSessionReady` before injecting an
-    // embedded run's brief), rather than a second reading of the runtime: a driver that never came up leaves a
-    // runtime behind that accepts a send and does nothing with it.
+    // Use `IsSessionReady` because a driver that never started can leave a runtime accepting sends into nothing.
     public override bool CanTakeAPrompt => IsSessionReady;
 
     // AC-740: no source registered (design-time/unit-test graph) or no working directory yet both answer empty
@@ -1190,10 +1068,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Keeps the Send button's enabled state in sync as the input text changes (T8 CanSend).
     partial void OnInputTextChanged(string value) => OnPropertyChanged(nameof(CanSend));
 
-    // Starts the session immediately under the profile and options chosen up front in the New-session
-    // dialog (#31) — this replaces the old in-panel Start button and inline profile picker. When
-    // launched in bypass the panel mode dropdown locks, since bypass cannot be switched into or out of
-    // on a running session (#15).
+    // Starts the session immediately under the profile and options chosen up front in the New-session dialog (#31) —
+    // this replaces the old in-panel Start button and inline profile picker.
     public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, ReadingLevel? readingLevel = null, IReadOnlyList<string>? preApprovedTools = null, bool preApproveAllTools = false)
     {
         if (_runtime is not null)
@@ -1213,10 +1089,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // profile's default view, else the app default (Developer). The header dropdown can still switch it live.
         ReadingLevel = readingLevel ?? profile?.Defaults?.DefaultReadingLevel ?? ReadingLevel.Developer;
 
-        // Set the live selectors before starting: the session has no event loop yet, so these do not
-        // fire a live control request — they are the launch values StartWithProfileAsync reads. For
-        // bypass, lock immediately (right after selecting it) so the dropdown shows the single locked
-        // "Bypass permissions" entry without a frame where the selection sits outside the bound list.
+        // For bypass, lock immediately (right after selecting it) so the dropdown shows the single locked "Bypass
+        // permissions" entry without a frame where the selection sits outside the bound list.
         var isBypass = mode.Value == SessionOptionCatalog.BypassPermissionModeValue;
         SelectedPermissionMode = mode;
         IsPermissionModeLocked = isBypass;
@@ -1224,9 +1098,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         LiveModelText = model.Value;
         SelectedEffort = effort;
         // AC-537: fold in the profile's own saved selection here (same merge PluginSessionDriverAdapter.StartAsync
-        // applies before resolving the registry), so a caller that passed none — but whose profile has one — is
-        // not read back as "nothing" for the header. See McpServerSelection's own doc for why this is safe to
-        // do eagerly.
+        // applies before resolving the registry), so a caller that passed none — but whose profile has one — is not
+        // read back as "nothing" for the header.
         McpServerSelection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
         // Pre-authorized tools for a self-driving run (AC-215): auto-allowed in the permission handler below instead
         // of raising a prompt an autonomous run has no one to answer. Empty for an ordinary session.
@@ -1267,17 +1140,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         DeliverHeldPrompt();
     }
 
-    // AC-564: the SDK route's equivalent of `/clear`. A headless stream-json session has no slash-command
-    // surface, so a full context could only be escaped by closing the pane and opening another — which also
-    // costs the operator the pane's name and its place in the workspace. This restarts the session in place
-    // instead: the same panel, the same `SessionPanelViewModel.PaneId`, the same profile, working
-    // directory and MCP selection, started through the ordinary path with no `SessionResume`. That
-    // missing resume is the entire difference, and it is what makes the new conversation know nothing.
-    //
-    // The transcript is kept and marked with a divider (decision 1): it is the pane's audit surface, and a line
-    // showing exactly where the agent's memory stops is more use than an empty window. The old conversation is
-    // untouched on disk and stays resumable under its own id — the new one simply has a different id, which is
-    // what the caller's confirmation says before any of this runs (decision 2).
+    // A headless stream-json session has no slash-command surface, so a full context could only be escaped by closing
+    // the pane and opening another — which also costs the operator the pane's name and its place in the workspace
+    // (AC-564).
     public async Task ClearContextAsync(SessionProfile profile)
     {
         if (_runtime is null)
@@ -1290,14 +1155,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // this side would only be the same call again.
         await _StopRuntimeAsync();
 
-        // A turn parked on a permission prompt is answered here, or the pane goes on asking for attention over a
-        // decision nothing is waiting for — half of the half-state AC-564 calls out. The tool never ran, and
-        // IsPendingPermission is what the chip and the status actually read.
-        //
-        // AC-529: after the teardown, not before. The teardown flushes what the drain window was still holding, so a
-        // permission request the window caught lands in the transcript after this point — swept first it would stay
-        // pending for the life of the pane, since _ResetForNewConversation deliberately leaves the transcript
-        // standing. Nothing in this loop talks to the driver, so waiting for the teardown costs it nothing.
+        // The tool never ran, and IsPendingPermission is what the chip and the status actually read (AC-564, AC-529).
         foreach (var pending in Transcript.Where(entry => entry.IsPendingPermission).ToList())
         {
             pending.PermissionDecision = "Cancelled — context cleared";
@@ -1367,15 +1225,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _RecomputeStatus();
     }
 
-    // The header kind chip's label for a profile's provider (AC-537): a built-in provider's own label, nothing
-    // for a plain Claude SDK session (the chip then falls back to "SDK"), and — for a Plugin-provider profile —
-    // the specific plugin's own display name, resolved through `_pluginProviderRegistry` the same
-    // way the New-session profile picker resolves it (`Converters.ProfileDisplayConverter`) rather
-    // than the generic "Plugin" placeholder `SessionProviderCatalog` falls back to when it cannot
-    // tell one plugin provider from another. No registry, or nothing registered under the profile's provider
-    // id, yields no label at all — a placeholder that names nothing is worse than no chip. A registered but
-    // blank/whitespace-only display name (a plugin author's own mistake, measured while proving this out) is
-    // treated the same as nothing resolved, rather than showing a technically-visible, actually-empty chip.
+    // The header kind chip's label for a profile's provider (AC-537): a built-in provider's own label, nothing for a
+    // plain Claude SDK session (the chip then falls back to "SDK"), and.
     private string _ResolveProviderBadge(SessionProfile? profile)
     {
         if (profile?.Provider is null or SessionProvider.ClaudeCli)
@@ -1402,10 +1253,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ProviderBadge = _ResolveProviderBadge(profile);
         // The shared header's kind chip (AC-37): the provider tag, or "SDK" for a plain Claude SDK session.
         KindLabel = string.IsNullOrEmpty(ProviderBadge) ? "SDK" : ProviderBadge;
-        // Set before the launch is even attempted, not after it succeeds (AC-545 follow-up): the label is a fact
-        // about what was launched, not about whether it came up, so a launch that throws inside the try below must
-        // not leave this session looking never-launched (empty profile) forever. Matches
-        // TtyViewModel.LaunchConfigured, which sets it before TryRaiseLaunch() for the same reason.
+        // Set before the launch is even attempted, not after it succeeds (AC-545 follow-up): the label is a fact about
+        // what was launched, not about whether it came up, so a launch that throws inside the try below must not leave
+        // this session looking never-launched (empty profile) forever.
         ActiveProfileLabel = profile?.Label;
 
         // A per-session working directory override reflects immediately on the shared base (so the header and
@@ -1421,11 +1271,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         try
         {
-            // The runtime owns the driver and the event pump (#68); this panel subscribes to its events and
-            // marshals them onto the UI thread itself. Inside the try: a profile referencing a missing or
-            // unresolvable plugin provider (or an invalid persisted ConfigJson) throws during the runtime's
-            // start — catching it degrades to the existing failed-launch path (Status set, no running runtime)
-            // instead of an unhandled throw stranding the panel that CockpitViewModel already added.
+            // Inside the try: a profile referencing a missing or unresolvable plugin provider (or an invalid persisted
+            // ConfigJson) throws during the runtime's start.
             var runtime = _sessionManager.Create(profile);
             runtime.EventAppended += _OnSessionEvent;
             _runtime = runtime;
@@ -1451,11 +1298,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // The process the meter weighs (#78) exists only once the driver started it.
             ProcessId = runtime.ProcessId;
 
-            // Capabilities (notably SupportsTools) only settle once the driver has actually started — the
-            // local (OpenAI-compatible) driver's SupportsTools flips true only after its MCP tool session
-            // connects during StartAsync — so read them here rather than right after Create(), which would
-            // always see the driver's pre-start (all-false) defaults.
-            // The runtime only knows them once its driver is up, which it now is.
+            // Capabilities (notably SupportsTools) only settle once the driver has actually started.
             if (runtime.Capabilities is { } capabilities)
             {
                 Capabilities = capabilities;
@@ -1471,13 +1314,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             var isLocalToolSession = Capabilities is { SupportsTools: true, SupportsPermissions: false };
             ShowToolAutoApprove = isLocalToolSession;
 
-            // A profile marked "auto-approve tools" (#26) seeds the toggle for a fresh local tool session, so
-            // it starts already on instead of needing the operator to flip it every time for a profile they
-            // trust. wasAlreadyOn distinguishes that from a choice the operator flipped before the session
-            // finished starting: assigning the property below only calls the driver (through
-            // OnAutoApproveToolsChanged) when the value actually changes, i.e. exactly the freshly-seeded
-            // case — the pre-set case needs its own explicit re-apply just after, since any hook call at
-            // flip-time hit a session that wasn't running yet.
+            // A profile marked "auto-approve tools" (#26) seeds the toggle for a fresh local tool session, so it starts
+            // already on instead of needing the operator to flip it every time for a profile they trust.
             var wasAlreadyOn = AutoApproveTools;
             AutoApproveTools = AutoApproveTools || (isLocalToolSession && profile?.Defaults?.AutoApproveTools == true);
 
@@ -1537,9 +1375,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // Applies the edited Claude model as a live switch, called by the view when the model field commits (Enter,
-    // focus-loss, or picking a suggestion). Routes through `SelectedModel` so the model of record and
-    // the live control request (via `OnSelectedModelChanged`) stay one path; a blank field or an
-    // unchanged value is ignored so a commit that changed nothing fires no request.
+    // focus-loss, or picking a suggestion).
     public void CommitLiveModel()
     {
         var text = LiveModelText?.Trim();
@@ -1719,13 +1555,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Queues a pasted image as a pending attachment for the next message. Called from the view's
-    // CTRL+V handler, which owns the Avalonia clipboard read; the view model only sees PNG bytes so
-    // it stays free of UI-toolkit types and unit-testable.
-    // Gated on `CanPasteImages` (#64): the CTRL+V gesture has no button to hide, so a session
-    // whose driver would otherwise silently drop the image (`SessionCapabilities.SupportsVision`
-    // false — today's Ollama/LM Studio/plugin sessions) gets a transcript notice instead of a queued
-    // attachment that vanishes unsent.
+    // Called from the view's CTRL+V handler, which owns the Avalonia clipboard read; the view model only sees PNG bytes
+    // so it stays free of UI-toolkit types and unit-testable.
     public void AddPastedImage(byte[] pngBytes)
     {
         if (!CanPasteImages)
@@ -1766,12 +1597,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     protected override void OnVoiceTextReady(string text) =>
         InputText = string.IsNullOrEmpty(InputText) ? text : $"{InputText} {text}";
 
-    // Queues a captured screenshot (AC-220) as a pending attachment, the same chip a CTRL+V paste produces —
-    // so the operator can type a sentence with it and send when they mean to, rather than the image being shot
-    // off on its own. Deliberately no auto-submit: a screenshot is nearly always "look at this, because…".
-    // The vision gate is `ScreenshotKindRefusal`'s and is checked before this runs, rather than left
-    // to `AddPastedImage` — which answers a non-vision provider with a transcript row of its own,
-    // and would mean telling the operator twice.
+    // Queues a captured screenshot (AC-220) as a pending attachment, the same chip a CTRL+V paste produces — so the
+    // operator can type a sentence with it and send when they mean to, rather than the image being shot off on its own.
     protected override Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
     {
         PendingAttachments.Add(new ImageAttachmentViewModel(screenshotPng, _RemovePendingAttachment));
@@ -1792,9 +1619,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // Shows a verify screenshot (AC-86) as a real user turn, captioned, only when this provider can see images
-    // (`CanPasteImages`) — the same vision gate a pasted image passes through; the text snapshot already
-    // reached the agent on the tool result. A turn already in flight queues it (T8), so it lands as the next user
-    // turn rather than erroring against the mid-turn input the CLI rejects. Returns whether the screenshot was shown.
+    // (`CanPasteImages`) — the same vision gate a pasted image passes through; the text snapshot already reached the
+    // agent on the tool result.
     public override async Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng)
     {
         if (_runtime is not { IsRunning: true } || !CanPasteImages)
@@ -1822,12 +1648,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        // Sending before the session has started reaches the CLI process before its I/O is wired and
-        // surfaces a raw "Start must be called before I/O" error (#16). Post-#31 a session starts as
-        // soon as it is created, so this only bites a failed-to-start panel — guard it with a plain
-        // message and keep the typed text rather than clearing it into a raw error. The driver itself is
-        // only created once the session starts (#26), so a null session means "not started" too. Queued
-        // dispatch never lands here: a queue only exists once a turn was in flight, i.e. after a start.
+        // Sending before the session has started reaches the CLI process before its I/O is wired and surfaces a raw
+        // "Start must be called before I/O" error (#16).
         if (_runtime is not { IsRunning: true })
         {
             Transcript.Add(new TranscriptEntryViewModel(
@@ -1924,10 +1746,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _needsAttention = false;
         _RecomputeStatus();
 
-        // Remember this message's images as the turn's images (AC-116) before the send, so a tool result that
-        // races ahead of this method's continuation still sees them; a plugin reacting to a tool call later in the
-        // turn — a YouTrack tracker attaching them to an issue the agent just created — reads exactly this turn's
-        // images off the read/observe surface. Cleared when the turn completes, or here if the send never happened.
+        // Cleared when the turn completes, or here if the send never happened (AC-116).
         _RememberTurnImages(images);
 
         try
@@ -1959,11 +1778,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ? "This session's process has stopped, so the message was not sent."
             : $"Send failed: {exception.Message}";
 
-    // The one place this pane hands a turn to its runtime, so that turn-start delivery (AC-394) cannot be reached
-    // by one send path and missed by another — `SessionViewModelSendPathTests` holds it to that. Messages
-    // waiting for this pane ride out ahead of `text`, as a block that says where they came from;
-    // with nothing waiting the runtime is handed the very same string it would have been handed before, so an idle
-    // desk adds no tokens to any turn.
+    // The one place this pane hands a turn to its runtime, so that turn-start delivery (AC-394) cannot be reached by
+    // one send path and missed by another — `SessionViewModelSendPathTests` holds it to that.
     private async Task _SendWithWaitingMessagesAsync(
         ISessionRuntime runtime,
         string text,
@@ -1971,19 +1787,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         Action<AgentInboxTurnNotice>? note = null)
     {
         // Only a runtime that is actually running can carry a turn, and "did not throw" is not enough to tell.
-        // A runtime whose driver never came up — a profile naming a provider that fails to resolve leaves one
-        // behind, and the pane keeps holding it — accepts a send and hands back a completed task with nothing
-        // having gone anywhere. Taking mail for that turn would then confirm a delivery that never happened and
-        // drop the messages for good, with every sender having been told they arrived: the exact loss the rest of
-        // this handshake is built to make impossible. So the mail is only taken once the turn can leave.
         var waiting = runtime.IsRunning ? _turnInboxDelivery?.TakeForTurn(PaneId) : null;
 
         try
         {
-            // Rendering is inside the try along with the send, not before it: once TakeForTurn has run, the messages
-            // are held in flight and something has to say which way they went. A throw between the taking and the
-            // try would leave them held for the life of the pane — counted against its inbox cap, invisible to
-            // read_inbox, and freed only when the session closes.
+            // A throw between the taking and the try would leave them held for the life of the pane — counted against
+            // its inbox cap, invisible to read_inbox, and freed only when the session closes.
             var outgoing = waiting is null ? text : $"{waiting.Render()}\n\n{text}";
             await runtime.SendUserMessageAsync(outgoing, images);
         }
@@ -2007,19 +1816,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Puts a note in the transcript that a peer's mail rode out on this turn (AC-394), in the same bracketed form
-    // the turn's images already use.
-    //
-    // It exists because this is the first text that enters a session's context which the operator neither typed nor
-    // can see. The route it replaces — the agent calling `read_inbox` — was a tool call, and a tool call is a
-    // transcript row: mail arriving was visible, and so was its content. Without this the agent answers something
-    // that is not in the transcript, and the operator reads the reply as though their own sentence had prompted it.
-    //
-    // The note says that mail arrived and from where, not what it said. The bodies are another agent's prose, up to
-    // a few thousand characters of it, and inlining that into the operator's own row would drown the sentence they
-    // wrote. Showing the bodies in full belongs with a transcript row of their own, which is a larger change than
-    // this ticket — what matters here is that the operator can no longer be surprised by an answer with no visible
-    // question.
+    // It exists because this is the first text that enters a session's context which the operator neither typed nor can
+    // see (AC-394).
     private void _NoteDeliveredMail(AgentInboxTurnNotice notice)
     {
         var senders = notice.Messages
@@ -2074,12 +1872,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        // Combine mode (AC-145): drain the whole queue into one follow-up turn so the agent sees every queued
-        // message at once, instead of answering each as its own turn. Texts join with a blank line between them
-        // (empties — image-only chips — are dropped from the text); images carry over in queue order and land as
-        // one echo row via _DispatchMessageAsync. Consequence: a queued "exit" merged with other text no longer
-        // auto-closes (the combined text is not exactly "exit"); a lone queued "exit" is a count of 1, so it falls
-        // through to the single-dispatch path below and still closes as before.
+        // Combine mode (AC-145): drain the whole queue into one follow-up turn so the agent sees every queued message
+        // at once, instead of answering each as its own turn.
         if (CombineQueuedMessages && QueuedMessages.Count > 1)
         {
             // AC-935: each sub-message gets its own prefix — one prefix over the whole merged blob would
@@ -2203,10 +1997,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await _runtime.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
     }
 
-    // Enqueues the assistant prose accumulated since the last flush (#35, AC-97). Called both when the turn
-    // finishes and when it pauses on a question/permission prompt mid-turn — so the lead-in a reply gives before
-    // asking ("let me check…") is spoken right away instead of staying silent until the operator answers. The
-    // flushed-count marks each entry spoken exactly once, no matter how many prompts one turn raises.
+    // Called both when the turn finishes and when it pauses on a question/permission prompt mid-turn — so the lead-in a
+    // reply gives before asking ("let me check…") is spoken right away instead of staying silent until the operator
+    // answers (AC-97).
     private void _FlushPendingProseForReadAloud()
     {
         if (!ReadResponsesAloud)
@@ -2229,10 +2022,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _ = EnqueueReadAloudAsync(pending);
     }
 
-    // Says out loud that it is about to go and look, when the model went straight to a tool without saying so
-    // (AC-597). The assistant's own session only: an ordinary pane speaks its replies, it does not chat.
-    // The standing instruction asks for this lead-in and gets one about three turns in five. The rest go quiet
-    // from the question until the whole answer is ready, which sounds exactly like not having been heard.
+    // Says out loud that it is about to go and look, when the model went straight to a tool without saying so (AC-597).
     internal void _SpeakLeadInIfTheModelGaveNone()
     {
         if (!ReadResponsesAloud || _spokenSomethingThisTurn || !IsTheVoiceAssistant)
@@ -2302,14 +2092,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _signOfLifeRepeat = 0;
     }
 
-    // The runtime pumps the driver off the UI thread and raises each event here (#68); marshalling onto the UI
-    // thread is this panel's job, because it is the consumer that touches UI — a headless consumer of the same
-    // runtime marshals nothing.
-    //
-    // AC-529: through the queue rather than a post per event. A streaming turn raises hundreds of few-character
-    // deltas, and one post each meant one full re-realisation of the row's text and one re-measure each; the queue
-    // hands the UI thread whatever piled up since the last drain, with adjacent deltas folded into one. Order and
-    // content are unchanged — see SessionEventQueue for why nothing is left behind at the end of a turn.
+    // The runtime pumps the driver off the UI thread and raises each event here (#68); marshalling onto the UI thread
+    // is this panel's job, because it is the consumer that touches UI — a headless consumer of the same runtime
+    // marshals nothing (AC-529).
     private void _OnSessionEvent(SessionEvent evt) => _eventQueue.Enqueue(evt);
 
     private readonly SessionEventQueue _eventQueue;
@@ -2322,16 +2107,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // internal (rather than private) so `Cockpit.Core.Tests` can drive it directly, bypassing `Dispatcher.UIThread` — see `_OnSessionEvent`.
     internal void Apply(SessionEvent evt)
     {
-        // No per-event bookkeeping for the "Thinking…" band any more (AC-532 round 2). It used to track "no visible
-        // output yet" — cleared by the first text, re-armed only by a ToolResult — and that is what left the
-        // composer blank for a minute at a time when the model said something and then went back to work. It now
-        // reads IsBusy, which the turn's own start and end already maintain; see ShowThinkingIndicator.
+        // It used to track "no visible output yet" — cleared by the first text, re-armed only by a ToolResult — and
+        // that is what left the composer blank for a minute at a time when the model said something and then went back
+        // to work (AC-532).
 
         // Real tool progress (AC-215/stall): a tool call surfacing or a tool result landing is the agent actually
         // working — the signal that distinguishes a busy-but-progressing step from a genuinely stuck one (AC-192: a
-        // turn that emits text describing a tool it never runs, so no tool event ever fires). An embedder that fails a
-        // silent step on a stall deadline (Autopilot) resets that deadline on this, so a long, hard-working step is not
-        // failed for being slow. Deliberately NOT raised on text/thinking — a stuck agent still produces those.
+        // turn that emits text describing a tool it never runs, so no tool event ever fires).
         if (evt is ToolUseRequested or ToolResult)
         {
             ToolActivity?.Invoke();
@@ -2347,15 +2129,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     WorkingDirectory = init.Cwd;
                 }
 
-                // AC-537: the tool count said nothing an operator could act on, and cwd duplicated the folder
-                // icon's own tooltip (SessionHeaderBar.axaml). The MCP-server count is the one figure here that
-                // actually describes the session's setup. Read off McpServerSelection, which is also what the
-                // activity column's hover lists (AC-563) — one fact, two readings.
+                // AC-537: the tool count said nothing an operator could act on, and cwd duplicated the folder icon's
+                // own tooltip (SessionHeaderBar.axaml) (AC-563).
                 Status = ConnectedStatusLine;
-                // AC-563 took the tool names off the provider chip's hover — the same count AC-537 had already
-                // ruled uninformative, one hover further along. The heading itself stays: the empty-state card
-                // (SessionView.axaml) introduces a fresh session with it, where "no tools connected" is the one
-                // thing worth saying before anything has happened.
+                // AC-563 took the tool names off the provider chip's hover — the same count AC-537 had already ruled
+                // uninformative, one hover further along.
                 ConnectedToolsHeading = init.Tools.Count == 0
                     ? "No tools connected — add an MCP server (e.g. filesystem) to give this session tools."
                     : $"{init.Tools.Count} tools connected";
@@ -2364,10 +2142,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // kept out of the prompt behind search_tools. Only the init event knows which of the two happened.
                 McpToolReach = McpToolReachFor(init.Tools);
 
-                // AC-141: a session launched with no explicit model (Auto/default) built its Model live-control
-                // with nothing to show — the init event is the one place the CLI states which model it actually
-                // picked. Seed it in, don't fire a switch: the driver already reported this, and set_model would
-                // be the host talking back a choice the operator never made.
+                // Seed it in, don't fire a switch: the driver already reported this, and set_model would be the host
+                // talking back a choice the operator never made (AC-141).
                 if (init.Model is { Length: > 0 } resolvedModel)
                 {
                     foreach (var control in LiveControls)
@@ -2474,10 +2250,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     _currentTurnAssistantEntries.Add(completedEntry);
                 }
 
-                // Assistant prose is one of the two channels a plugin watches for an output signal (the other
-                // is tool output below) — e.g. Claude announcing "opened https://github.com/…/pull/5". A
-                // sub-agent's own narration is not the session's answer to the operator, so it never reaches
-                // this signal either (kept inside the branch above).
+                // A sub-agent's own narration is not the session's answer to the operator, so it never reaches this
+                // signal either (kept inside the branch above).
                 RaiseOutputText(completed.Text);
                 break;
 
@@ -2507,12 +2281,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _activeToolCalls.Add(new ActiveToolCall(toolUse.ToolUseId, toolUseRow.ToolHeader, DateTimeOffset.Now));
                 _RaiseActiveToolActivityChanged();
 
-                // The wait starts here, so the lead-in is spoken here. Until now the only mid-turn flushes were a
-                // permission prompt and a question, which was enough while every tool call raised one — and stopped
-                // being enough the moment an operator turned on bypassPermissions or the cockpit's consent bypass
-                // (AC-575). Then nothing paused the turn, nothing flushed, and a spoken assistant went silent from
-                // the question until the whole answer was ready. Flushing on the call itself does not depend on
-                // anyone being asked anything.
+                // Until now the only mid-turn flushes were a permission prompt and a question, which was enough while
+                // every tool call raised one — and stopped being enough the moment an operator turned on
+                // bypassPermissions or the cockpit's consent bypass (AC-575).
                 _FlushPendingProseForReadAloud();
 
                 // AC-597: and when there was no lead-in to flush, say one of our own. Two turns in five reach this
@@ -2574,10 +2345,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     _RaiseActiveToolActivityChanged();
                 }
 
-                // AC-146: a result naming a parent this pane never resolved to a lane (the anchor tool-use row
-                // was never seen) is coupled/shown above like any other, so nothing vanishes silently — but it is
-                // an orphaned sub-agent event, not a genuine top-level one, so it must not be mistaken for the
-                // session's own output: neither signal below is for anything but the top-level conversation.
+                // AC-146: a result naming a parent this pane never resolved to a lane (the anchor tool-use row was
+                // never seen) is coupled/shown above like any other, so nothing vanishes silently.
                 if (!string.IsNullOrEmpty(toolResult.ParentToolUseId))
                 {
                     break;
@@ -2587,11 +2356,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // it is the primary channel the PR watcher scans (the read/observe surface).
                 RaiseOutputText(toolResult.Content);
 
-                // And, coupled with its call, the structured tool-activity signal (AC-116): the tool-use row we
-                // just found carries the name and input, the result carries the content — together they let a
-                // plugin react to a specific tool completing (a YouTrack tracker attaching this turn's images to
-                // an issue the agent created) rather than pattern-matching prose. Only raised when the matching
-                // tool-use is in view, so the name is known.
+                // And, coupled with its call, the structured tool-activity signal (AC-116): the tool-use row we just
+                // found carries the name and input, the result carries the content.
                 if (toolUseEntry is { ToolName: { } toolName })
                 {
                     RaiseToolActivity(toolName, toolUseEntry.InputJson ?? "{}", toolResult.Content, toolResult.IsError);
@@ -2606,14 +2372,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 var entry = Transcript.LastOrDefault(t => t.ToolUseId == permission.ToolUseId)
                     ?? _ResolveSubAgentLane(permission.ParentToolUseId)?.Anchor.SubAgentRows.LastOrDefault(t => t.ToolUseId == permission.ToolUseId);
 
-                // A pre-authorized tool for a self-driving run (AC-215): auto-allow it here rather than raising a prompt
-                // the autonomous run has no one to answer — that stall left the run stuck first on its own
-                // autopilot_step_done, then on the Bash its work needs. Either the named control-tool set (the narrow
-                // default) or the "worktree is the boundary" stance (Raymond 2026-07-23), where an autonomous run
-                // isolated in a throwaway worktree auto-allows every tool so it can actually run its work — the run's
-                // isolation is the containment, not the per-call gate. Sends the same allow the Allow button does, but
-                // fire-and-forget: Apply is a synchronous event handler, so it cannot await the driver call the way the
-                // command can (a driver fault here is rare and would surface as the run stalling on this one permission).
+                // A pre-authorized tool for a self-driving run (AC-215): auto-allow it here rather than raising a
+                // prompt the autonomous run has no one to answer — that stall left the run stuck first on its own
+                // autopilot_step_done, then on the Bash its work needs.
                 if ((_preApproveAllTools || _preApprovedTools.Contains(permission.ToolName)) && _runtime is not null)
                 {
                     if (entry is not null)
@@ -2714,11 +2475,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     Transcript.Add(failedTurnRow);
                 }
 
-                // AC-410: the first turn of a restored pane's own launch settles the resume snapshot, one way or
-                // the other. A failure here is a resume that was actually tried and refused (an expired
-                // conversation id makes claude --resume print "No conversation found" and end the turn as
-                // error_during_execution with no Result) — the offer comes back with that reason instead of
-                // leaving the operator looking at a silently failed session with no banner explaining why.
+                // A failure here is a resume that was actually tried and refused (an expired conversation id makes
+                // claude --resume print "No conversation found" and end the turn as error_during_execution with no
+                // Result) (AC-410).
                 if (_restoredOfferSnapshot is { } restoredOffer)
                 {
                     _restoredOfferSnapshot = null;
@@ -2749,10 +2508,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // This turn's images belong to this turn only (AC-116): drop them so a later image-less turn's
                 // tool call attaches nothing stale.
                 ClearCurrentTurnImages();
-                // AC-532 safety net: every turn ends here or in SessionError below, whether or not each of its
-                // tool calls got a matching ToolResult first (an interrupt ends the turn without one) — clearing
-                // unconditionally is what keeps the activity band from surviving into a turn that is not running
-                // anymore, the "stuck showing busy" failure mode a plain per-ToolResult clear cannot cover.
+                // AC-532 safety net: every turn ends here or in SessionError below, whether or not each of its tool
+                // calls got a matching ToolResult first (an interrupt ends the turn without one).
                 if (_activeToolCalls.Count > 0)
                 {
                     _activeToolCalls.Clear();
@@ -2760,11 +2517,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 }
 
                 // AC-531: deliberately no _backgroundTasks/_RebuildBackgroundTaskRows() call here, unlike
-                // _activeToolCalls just above. A sub-agent or shell does not end just because this turn did — that
-                // is the whole reason SessionStatus.WorkingBackground exists — so clearing it on TurnCompleted
-                // would reopen the exact gap this ticket closed: the composer's tool-activity band and
-                // "Thinking…" both go quiet here, and the background-work button is what still tells the operator
-                // something is running. It only ever changes on its own BackgroundTasksChanged event.
+                // _activeToolCalls just above.
                 _hasCompletedATurn = true;
                 IsBusy = false;
                 _AccumulateUsage(turn);
@@ -2851,12 +2604,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case SessionStatusChanged statusChanged:
-                // needs_action non-empty is the CLI telling the host the session wants attention
-                // (e.g. a pending question) — same "jump out in the sidebar" signal as a pending
-                // tool permission. RateLimitInfo/UnknownEvent stay out of scope for status (a
-                // per-session status overview is a later increment; sub-agent nesting shipped in
-                // AC-146 via ParentToolUseId, above); ConsumeEventsAsync
-                // already delivers them to any future subscriber.
+                // A non-empty needs_action requests sidebar attention, like a pending permission (AC-146).
                 if (!string.IsNullOrEmpty(statusChanged.NeedsAction))
                 {
                     _needsAttention = true;
@@ -2865,13 +2613,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _RecomputeStatus();
                 break;
 
-            // Reasoning/thinking deltas stream into their own dimmed, collapsible row (AC-213, revising AC-144).
-            // The row is added at every reading level but only *renders* at Developer — its IsRowVisible gates it
-            // off at Focus/Simple, which stay calm (AC-138). Contiguous deltas of the same provider block append
-            // onto one row (like assistant prose); a new block index starts a fresh row. The "Thinking…" indicator
-            // is left untouched (thinking is deliberately absent from the clear-set above), so the pulse still
-            // signals the model is working and this row does not double it. Empty deltas (a bare block_start) add
-            // nothing.
+            // The row is added at every reading level but only *renders* at Developer — its IsRowVisible gates it off
+            // at Focus/Simple, which stay calm (AC-138) (AC-213, AC-144).
             case AssistantThinkingDelta thinkingDelta:
                 if (!string.IsNullOrEmpty(thinkingDelta.Thinking))
                 {
@@ -2921,21 +2664,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _currentThinkingBlockIndex = -1;
     }
 
-    // Derives `SessionStatus` from the flags this view model already tracks:
-    // busy while a turn is in flight, needs-attention while a permission/needs_action signal is
-    // outstanding (takes priority over busy so it still surfaces if a new send arrives before the
-    // user reacts), done once a turn completed and nothing is pending, idle otherwise.
-    //
-    // A finished turn is not the same as a finished session (AC-276). The main agent legitimately reaches
-    // `end_turn` several times per instruction while sub-agents it spawned keep running — measured at 1195
-    // of 3054 turn endings across 77 real sessions — so `IsBusy` alone flips to Done and back on
-    // every one of them. A still-running sub-agent therefore holds the session on
-    // `SessionStatus.WorkingBackground`, which is what makes that value reachable on the SDK route
-    // at all.
-    //
-    // A shell deliberately does *not*: it may be a dev server or a `tail -f` that never ends, and
-    // pinning the status on that would be worse than the premature Done it set out to fix. It is held back at the
-    // notification instead — see `HasOutstandingBackgroundShells`.
+    // Derives `SessionStatus` from the flags this view model already tracks: busy while a turn is in flight; see
+    // AC-276.
     private void _RecomputeStatus()
     {
         SessionStatus = (_needsAttention, IsBusy, _HasOutstandingSubAgents) switch
@@ -2947,10 +2677,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         };
     }
 
-    // The work outliving the current turn, as the driver last reported it. Replaced wholesale rather than
-    // added to and removed from: the event carries the complete set every time (see
-    // `BackgroundTasksChanged`), so a dropped event costs one stale reading instead of permanently
-    // desynchronising a ledger.
+    // Replaced wholesale rather than added to and removed from: the event carries the complete set every time (see
+    // `BackgroundTasksChanged`), so a dropped event costs one stale reading instead of permanently desynchronising a
+    // ledger.
     private IReadOnlyList<BackgroundTask> _backgroundTasks = [];
 
     private bool _HasOutstandingSubAgents => _backgroundTasks.Any(task => task.Kind == BackgroundTaskKind.SubAgent);
@@ -2960,10 +2689,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // would otherwise announce a session that is still doing something.
     public override bool HasOutstandingBackgroundShells => _backgroundTasks.Any(task => task.Kind == BackgroundTaskKind.Shell);
 
-    // Give this turn's reported usage and cost to the session meter (#8) and refresh the bound meter text.
-    // The meter sums the tokens and follows the cost, which the result reports as a session total rather
-    // than a per-turn share. A turn whose result carried neither (e.g. an error) leaves the totals where
-    // they were but is still counted as a turn.
+    // The meter sums the tokens and follows the cost, which the result reports as a session total rather than a
+    // per-turn share.
     internal void _AccumulateUsage(TurnCompleted turn)
     {
         _usage.Add(turn.Usage, turn.TotalCostUsd);
@@ -2973,22 +2700,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _RecordUsageSnapshot();
     }
 
-    // Write the running totals to the usage trail after every turn (AC-251), so they outlive the session and the
-    // app — recording only at the end would lose exactly the run that crashed, which is the case worth measuring.
-    // Not awaited here — a turn settling must not wait on a file, and the trail swallows its own failures by
-    // contract — but kept so teardown can wait for it; without that the last turn races the process out.
-    // A turn that reported nothing (an error result) leaves no record rather than a row of zeroes.
+    // Write the running totals to the usage trail after every turn (AC-251), so they outlive the session and the app —
+    // recording only at the end would lose exactly the run that crashed, which is the case worth measuring.
     private protected override (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
         (RunKind, RunId, RunLabel, SelectedModel.Value);
 
     public override async Task<bool> SendPromptAsync(string prompt)
     {
-        // Running, not merely present. A runtime whose driver never came up is still held by the pane, and it accepts
-        // a send and hands back a completed task with nothing having gone anywhere — so the old "is there a runtime"
-        // check reported a turn that never happened, and, once this method began marking turns in flight, marked one
-        // that nothing would ever finish: no driver means no event pump, and TurnCompleted and SessionError are the
-        // only two things that clear the flag. The pane would have read as working for the rest of its life, queueing
-        // every later message behind a turn that was never there.
+        // A runtime whose driver never came up is still held by the pane, and it accepts a send and hands back a
+        // completed task with nothing having gone anywhere.
         if (_runtime is not { IsRunning: true } runtime)
         {
             return false;
@@ -2996,13 +2716,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // A turn started from here is as real as one the operator typed, and the rest of the cockpit only learns that
         // from these flags: the composer queues behind IsBusy rather than sending on top of a running turn, and
-        // AC-395's wake refuses a pane that is already working. Marked here as well as in _DispatchMessageAsync
-        // because a turn nobody marked busy is one the session goes on reporting itself idle through — and the next
-        // urgent message, or the operator's own send, then lands on top of it.
-        //
-        // Set before the first await on purpose. Both callers reach this from the UI thread, so the flag is up before
-        // control returns to whoever asked for the turn; a second wake arriving in that same moment sees Busy rather
-        // than the state from before this one started.
+        // AC-395's wake refuses a pane that is already working.
         IsBusy = true;
         _RecomputeStatus();
 
@@ -3026,11 +2740,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return true;
     }
 
-    // What a restored pane's degraded offer shows for why (AC-410) — the provider's own `errors[]` when it reported one, else the bare subtype, since `TurnCompleted.Result` is exactly what an error_during_execution turn does not carry.
-    //
     // AC-539: that reason names the id but not what decides whether it can be found — Claude keeps its saved
     // conversations per working directory, so a pane that came back somewhere else gets the message with nothing
-    // pointing at the cause. Naming the directory the resume was made in is what makes it actionable.
+    // pointing at the cause (AC-410).
     private static string _DegradedTurnExplanation(TurnCompleted turn, string? workingDirectory)
     {
         var reason = _TurnFailureReason(turn) ?? $"Claude could not resume the earlier conversation ({turn.Subtype}).";
@@ -3108,14 +2820,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private const double _FallbackAllowanceThresholdPercent = 90;
 
-    // Pulls the driver's latest limits into the header bars — turn boundary, right after start (AC-660), and now
-    // also the idle catch-up timer (AC-761 F3). Routed through the shared ApplyUsage (AC-761) instead of setting
-    // ContextUsedPercent/RateLimits directly, so a merge survives an incomplete snapshot and gets a threshold.
-    //
-    // AC-775: a fresh reading from this session's own driver is written through to the shared cache (keyed on
-    // the profile's underlying credential, never its label) for any sibling session on the same account to
-    // read; a session with nothing fresh of its own reads that cache instead of showing stale/no bars. An
-    // empty or expired cache falls straight back through to today's behaviour below — no new failure mode.
+    // Routed through the shared ApplyUsage (AC-761) instead of setting ContextUsedPercent/RateLimits directly, so a
+    // merge survives an incomplete snapshot and gets a threshold (AC-660, AC-775).
     private void _RefreshLimits()
     {
         var status = _runtime?.CurrentStatus;
@@ -3175,10 +2881,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     protected override async ValueTask DisposeCoreAsync()
     {
-        // Before anything else: let the last turn's usage write land. It was left unawaited so the turn could
-        // settle without waiting on a file, and a session closing right behind it would otherwise take the
-        // process down before the record reached disk (AC-251). The trail swallows its own failures, so this
-        // waits on a task that does not fault.
+        // It was left unawaited so the turn could settle without waiting on a file, and a session closing right behind
+        // it would otherwise take the process down before the record reached disk (AC-251).
         await _DrainUsageWritesAsync();
 
         await _StopRuntimeAsync();
@@ -3198,14 +2902,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Ends this panel's runtime and detaches from it, leaving the panel itself intact. Two callers: the panel
-    // going away (DisposeCoreAsync) and a context clear that starts a new conversation in the same pane (AC-564).
-    //
-    // Stop through the manager, which owns the runtime: the same path an orchestrator's stop_task (#67) takes,
-    // so a session ends in one state however it was ended. Unsubscribing first means the teardown cannot post
-    // another event at a panel that is no longer listening — and since the pump no longer marshals to the UI
-    // thread, killing the child no longer depends on the dispatcher still being alive, which is what used to
-    // hang shutdown with a live child claude (#32).
+    // Ends this panel's runtime and detaches from it, leaving the panel itself intact (AC-564).
     private async Task _StopRuntimeAsync()
     {
         if (_runtime is not null)
@@ -3214,10 +2911,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         // AC-529: ahead of the null guard, because a teardown that finds the runtime already gone still has the last
-        // window's events queued. `Flush` applies inline and `Transcript` is bound, so it owes the UI thread — but
-        // never by blocking on it. Every caller today is already on it and takes the first branch; an off-thread one
-        // would post rather than wait, because a blocking hop here sits in front of the child kill below and that
-        // dependency on a live dispatcher is exactly what hung shutdown before (#32).
+        // window's events queued.
         if (_eventQueue.HasWork)
         {
             if (Dispatcher.UIThread.CheckAccess())

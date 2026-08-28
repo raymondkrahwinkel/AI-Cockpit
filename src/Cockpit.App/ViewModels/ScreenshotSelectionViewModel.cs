@@ -3,17 +3,8 @@ using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.App.ViewModels;
 
-// The selection surface's arithmetic (AC-329): a drag on a window turned into a rectangle of the captured
-// image's own pixels, and back again for drawing. Everything the operator does to a selection lives here rather
-// than in the window, because none of it is visual — and the window is the one part of this nobody can test.
-// One window covers the whole virtual desktop and shows the capture as its background, which is how Flameshot
-// and Spectacle both work: what feels like dragging on the live screen is dragging on a frozen image. That makes
-// the conversion window-size versus image-size, one ratio, and keeps `Screens.Scaling` out of it — which
-// matters, because on this app's XWayland path those numbers come through XRandR and KDE bug 502390 has them
-// doubled on some fractionally-scaled multi-monitor setups.
-//
-// The ratio is deliberately not assumed to be 1. The window is laid out in logical units and the image is in
-// pixels; on a scaled display those differ, and a selection that ignored it would crop somewhere else entirely.
+// Everything the operator does to a selection lives here rather than in the window, because none of it is visual — and
+// the window is the one part of this nobody can test (AC-329).
 public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 {
     // How thick a frame is drawn, in the captured image's pixels. Fixed rather than scaled to the mark: a thin
@@ -59,25 +50,12 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     // that gets clamped at an edge and then reverses has to be able to give back exactly what the clamp took.
     private CaptureRect? _dragBase;
 
-    // How much further than a grip's own drawn size the pointer may miss it by, in the window's own units
-    // (AC-565). Wider than what gets drawn for it on purpose: missing a corner by a pixel used to throw the
-    // whole selection away and start a new one in its place, which is the costliest way this surface can
-    // misread a press, and it gave no sign that it had happened.
+    // How much further than a grip's own drawn size the pointer may miss it by, in the window's own units (AC-565).
     private const double GripHitRadius = 10;
 
-    // `markColour`:
-    // What a mark is drawn in, as 0xAARRGGBB. Handed in without a default on purpose: the accent lives in the
-    // theme, which is the view's to read, and a default here would be a second copy of a colour that is supposed
-    // to have exactly one home — the mistake AC-334 spent a ticket undoing.
-    // `brightnessUnder`:
-    // How light the capture is inside a rectangle, 0 to 255. A wash has to know, because ink over paper and ink
-    // over a terminal have to move the pixels in opposite directions (AC-361), and only the picture can say which
-    // of the two this is. Handed in because the decoded picture is the view's — this class holds the arithmetic,
-    // not the pixels.
-    //
-    // Left out, a wash darkens, which is what a marker pen does and what is right for the documents these are
-    // mostly dragged over. It is a fallback rather than a preference: a surface that cannot look at its own
-    // picture cannot tell a terminal from a page, and over a terminal this one is close to invisible.
+    // Handed in without a default on purpose: the accent lives in the theme, which is the view's to read, and a default
+    // here would be a second copy of a colour that is supposed to have exactly one home — the mistake AC-334 spent a
+    // ticket undoing (AC-361).
     public ScreenshotSelectionViewModel(
         ScreenCapture capture,
         int imageWidth,
@@ -113,11 +91,9 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     // The captured image's height in its own pixels.
     public int ImageHeight { get; }
 
-    // What the next mark is drawn in, as 0xAARRGGBB (AC-375). Starts as the theme's accent — the one colour this
-    // app owns — and changes when the operator picks an ink.
-    // The *next* mark, not the ones already placed. A mark is finished when the drag ends, the same as
-    // everywhere else on this surface; recolouring what is already down would need a notion of "the selected
-    // mark", which this layer deliberately does not have — there is a list and an undo, and that is all.
+    // A mark is finished when the drag ends, the same as everywhere else on this surface; recolouring what is already
+    // down would need a notion of "the selected mark", which this layer deliberately does not have — there is a list
+    // and an undo, and that is all (AC-375).
     public uint MarkColour { get; private set; }
 
     // How heavily the next mark's lines are drawn. A note's letters are not affected — see `ViewModels.MarkWeight`.
@@ -190,12 +166,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     // Whether the surface is waiting for a spot to type a note on.
     public bool Labelling => MarkingWith == MarkTool.Text;
 
-    // Whether a note is being typed right now (AC-363). While this is on, the surface's keys are not shortcuts:
-    // they are what the operator is typing, and every one of them has to reach the note instead.
-    // Its own state rather than a consequence of the tool being in hand. Holding the tool means the next click
-    // starts a note; this means one is open — and the difference is the whole of what stands the shortcuts down.
-    // Without it, pressing the tool would silently disarm `Enter` and `Escape` before there was anything
-    // to type into.
+    // While this is on, the surface's keys are not shortcuts: they are what the operator is typing, and every one of
+    // them has to reach the note instead (AC-363).
     public bool Typing => TypingAt is not null;
 
     // Where the note being typed will sit, or nothing when none is open.
@@ -245,18 +217,13 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         OnPropertyChanged(nameof(Hint));
     }
 
-    // Whether the surface is standing on what taking everything left behind: the whole capture marked out, and
-    // no other tool chosen since. Both halves are needed. Without the selection it would survive a drag that
-    // replaced it; without the flag, pressing Region here would light nothing, because everything is a region
-    // too — and a tool that does not answer being pressed is what marking the resting one was added to stop.
+    // Without the selection it would survive a drag that replaced it; without the flag, pressing Region here would
+    // light nothing, because everything is a region too — and a tool that does not answer being pressed is what marking
+    // the resting one was added to stop.
     public bool TakingEverything => _tookEverything && Selection == new CaptureRect(0, 0, ImageWidth, ImageHeight);
 
-    // Whether the pointer is doing the ordinary thing — dragging out a region. The resting state said as a
-    // property of its own, so the control panel can mark it the same way it marks the other two rather than
-    // leaving the one you are actually in as the only unlit button (AC-358).
-    // Taking everything is subtracted so that exactly one tool is ever lit: two at once stops answering the
-    // question the row is there for. It is safe to subtract because choosing this tool clears it — the operator
-    // who presses Region while everything is marked has said which tool is in hand, and gets told so.
+    // The resting state said as a property of its own, so the control panel can mark it the same way it marks the other
+    // two rather than leaving the one you are actually in as the only unlit button (AC-358).
     public bool DraggingRegion => !PickingWindow && MarkingWith is null && !TakingEverything;
 
     // Set by taking everything, cleared by choosing any other tool. What the selection is cannot answer this on
@@ -313,11 +280,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         _SaidTheModeChanged();
     }
 
-    // Takes back the last mark, whatever it was (AC-359) — one stack for the lot, because two undo histories on
-    // one surface is two things to keep straight while the picture is the only thing worth looking at.
-    // Only the last, and there is no redo. A mark is one drag, so putting it back costs the gesture that made
-    // it; a redo stack, meanwhile, has to be dropped the moment a new mark is placed, and getting that wrong
-    // brings back a redaction the operator took away. That failure is a leak, not an inconvenience.
+    // Takes back the last mark, whatever it was (AC-359) — one stack for the lot, because two undo histories on one
+    // surface is two things to keep straight while the picture is the only thing worth looking at.
     public void Undo()
     {
         if (_marks.Count > 0)
@@ -350,10 +314,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     {
         var point = ToImagePixel(surfaceX, surfaceY);
 
-        // Cleared unconditionally, not just where a grip or a move takes hold: a drag that ends without going
-        // through EndDrag — the pointer leaves for window-picking mid-grip and comes back, say — would otherwise
-        // leave a stale grip or base rectangle for the next, unrelated drag to resize instead of drawing what is
-        // actually being dragged.
+        // Cleared unconditionally, not just where a grip or a move takes hold: a drag that ends without going through
+        // EndDrag.
         _resizingGrip = null;
         _movingSelection = false;
         _dragBase = null;
@@ -376,14 +338,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             return true;
         }
 
-        // A press on the existing selection means something other than starting over, and which of the two it
-        // means is decided here, once, rather than left to whichever branch of DragTo happens to run first. A
-        // grip takes priority over the plain "inside" case even though a grip sits right on the edge of it: the
-        // hit area is deliberately wider than the selection's own border, so a press that is on both answers to
-        // the one the operator most likely meant to reach.
-        // Not while everything is taken: that selection covers the whole window, so every press would read as
-        // "inside" and a smaller drag could never get away from it — the one thing taking everything already
-        // promises works like an ordinary drag the moment it stops being untouched (AC-358).
+        // A press on the existing selection means something other than starting over, and which of the two it means is
+        // decided here, once, rather than left to whichever branch of DragTo happens to run first (AC-358).
         if (!TakingEverything && Selection is { Width: > 0, Height: > 0 } current)
         {
             if (GripAt(surfaceX, surfaceY) is { } grip)
@@ -455,11 +411,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             Math.Abs(point.Y - anchor.Y));
     }
 
-    // The rectangle a grip dragged to that point makes, from the rectangle it started as. Only the edge or edges
-    // the grip sits on move; the other side stays exactly where it was. Normalised the same way `_Between`
-    // already normalises a mark's two corners (AC-565): a grip dragged past the side it does not own tips the
-    // rectangle over rather than turning it negative, and the one-pixel floor keeps it from collapsing to
-    // nothing when the drag lands exactly on that side.
+    // Only the edge or edges the grip sits on move; the other side stays exactly where it was (AC-565).
     private static CaptureRect _Resized(CaptureRect original, SelectionGrip grip, CapturePoint point)
     {
         var left = original.X;
@@ -584,11 +536,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         _ => null,
     };
 
-    // The mark a drag along that path makes with the tool in hand, or nothing where the drag has no extent. What
-    // counts as no extent is the kind's own business: a box or a frame needs area, an arrow needs only to have
+    // What counts as no extent is the kind's own business: a box or a frame needs area, an arrow needs only to have
     // gone somewhere — a tall thin one is a perfectly good arrow and a rectangle of no width.
-    // Most kinds are made from the two ends and ignore the rest of the path. A stroke is the exception and is the
-    // reason the path is carried at all: the way the pointer got from one end to the other *is* the mark.
     private Mark? _MarkOf(MarkTool tool, IReadOnlyList<CapturePoint> trail) =>
         trail.Count == 0 ? null : _MarkOf(tool, trail[0], trail[^1], trail);
 
@@ -626,13 +575,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             Math.Abs(point.X - anchor.X),
             Math.Abs(point.Y - anchor.Y));
 
-    // Everything, in one press — the whole capture, gaps and all, since that is what was on the screens.
-    // Says so out loud rather than leaving it to the selection changing. Coming back here from a mark tool, the
-    // selection is *already* the whole capture — nothing changed, so nothing was raised, and the row stayed
-    // dark while everything was taken. That is the dead button AC-358 exists to have got rid of, one path along.
-    //
-    // Whichever mark tool was in hand is put down too, the way taking one up stops this from being lit. The row
-    // lights exactly one tool, and it cannot do that if the two sides disagree about who clears whom.
+    // Says so out loud rather than leaving it to the selection changing (AC-358).
     public void SelectEverything()
     {
         if (MarkingWith is { } tool)
@@ -646,11 +589,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         OnPropertyChanged(nameof(DraggingRegion));
     }
 
-    // Back to dragging out a region, from whichever tool was in hand — including from having taken everything,
-    // which leaves what is marked out alone and only says which tool the next drag belongs to.
-    // Whatever mark tool is in hand is put down, rather than one named kind of it. This asked to put down
-    // redaction by name until AC-360, from when redaction was the only tool there was to be holding — so pressing
-    // Region while drawing frames left you drawing frames, and the row went on saying so.
+    // Back to dragging out a region, from whichever tool was in hand — including from having taken everything, which
+    // leaves what is marked out alone and only says which tool the next drag belongs to (AC-360).
     public void ChooseRegion()
     {
         PickWindows(false);
@@ -771,10 +711,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             .Select(mapped => (mapped.Window, mapped.Image!.Value))
             .ToList();
 
-    // A window's rectangle in the image, built from the part of it each display actually holds. Mapping its two
-    // corners straight through would drop any window that hangs over the edge of the captured desktop — half
-    // off the side of a screen, or across the gap a staggered arrangement leaves — even though the rest of it is
-    // plainly visible and croppable.
+    // A window's rectangle in the image, built from the part of it each display actually holds.
     private CaptureRect? _ToImageBounds(CaptureRect desktop)
     {
         CaptureRect? bounds = null;
@@ -806,10 +743,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         return new CaptureRect(left, top, Math.Max(first.Right, second.Right) - left, Math.Max(first.Bottom, second.Bottom) - top);
     }
 
-    // Moves the selection by whole image pixels, or resizes its far corner when `resize` is
-    // set. One image pixel, not one of the window's units: on a scaled display those are not the same distance,
-    // and a nudge that moved by a logical unit could not reach every pixel at all — which is the entire reason
-    // the keys exist.
+    // Moves the selection by whole image pixels, or resizes its far corner when `resize` is set.
     public void Nudge(int dx, int dy, bool resize = false, int step = 1)
     {
         if (Selection is not { } selection)
@@ -847,10 +781,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         }
 
         // Moved into the crop's own space here rather than when they were drawn: the operator draws on the whole
-        // capture, and what is sent is the crop — so a mark has to be told where it sits in the picture that
-        // actually leaves the machine, which is not known until the region is settled. Each kind does its own
-        // clipping, because they do not survive the edge the same way: a box loses the part that is outside, a
-        // frame keeps its shape and simply has that side fall off the picture.
+        // capture, and what is sent is the crop — so a mark has to be told where it sits in the picture that actually
+        // leaves the machine, which is not known until the region is settled.
         Result = new ScreenshotSelection
         {
             Region = region,
@@ -893,13 +825,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     // further apart than the image's own pixels — so the preview would be the blunter shape of the two.
     public MarkPoint ToSurface(MarkPoint point) => new(point.X / _RatioX, point.Y / _RatioY);
 
-    // How wide a line of that many image pixels is on the window. A stroke has one width where the surface has
-    // two ratios, so this takes the horizontal one — they are the same number whenever the window covers the
-    // desktop at a single scale, which is the arrangement it is built for, and where a mixed-DPI window comes
-    // out the wrong size a mark is drawn a hair off rather than in the wrong place.
-    // Without this the preview would be a different picture from the one that gets sent: a mark's thickness is
-    // in the image's pixels, and drawing that number as window units makes it twice too heavy on a display
-    // scaled by two — the operator checks a frame that is thicker than the one they are about to hand over.
+    // A stroke has one width where the surface has two ratios, so this takes the horizontal one.
     public double ToSurfaceLength(double imagePixels) => imagePixels / _RatioX;
 
     // Where a rectangle of the image sits on the window — the way back, for drawing what is selected.

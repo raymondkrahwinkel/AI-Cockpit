@@ -23,10 +23,8 @@ public static class SessionProviderCatalog
     public static SessionProviderOption Resolve(SessionProvider provider) =>
         Providers.FirstOrDefault(option => option.Value == provider) ?? Providers[0];
 
-    // The full provider picker for the profile editor (#45): the built-in providers plus one option per
-    // provider a plugin has registered, each carrying its own `SessionProviderOption.PluginProviderId`
-    // so several plugin-registered providers are individually selectable rather than collapsing onto the
-    // generic `Providers` "Plugin" placeholder.
+    // The full provider picker for the profile editor (#45): the built-in providers plus one option per provider a
+    // Keep each registered plugin provider distinct instead of collapsing them onto the generic placeholder (#45).
     public static IReadOnlyList<SessionProviderOption> AllProviders(IPluginProviderRegistry pluginProviderRegistry) =>
     [
         .. Providers.Where(option => option.Value != SessionProvider.Plugin),
