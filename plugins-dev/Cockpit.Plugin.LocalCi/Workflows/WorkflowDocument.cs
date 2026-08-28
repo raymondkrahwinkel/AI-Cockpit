@@ -25,7 +25,8 @@ internal sealed record WorkflowJob(
 
 // `Keys`: Every key written on this step, in file order.
 // `Uses`: The action reference, e.g. `actions/checkout@v7`, or null for a `run:` step.
-internal sealed record WorkflowStep(IReadOnlyList<string> Keys, string? Uses)
+// `If`: The raw condition, when it is a scalar; the classifier only recognises conditions it names explicitly.
+internal sealed record WorkflowStep(IReadOnlyList<string> Keys, string? Uses, string? If)
 {
     // The action without its version — `actions/checkout@v7` becomes `actions/checkout`.
     public string? ActionId => Uses?.Split('@', 2)[0].Trim();

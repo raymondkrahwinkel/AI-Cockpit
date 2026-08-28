@@ -9,7 +9,7 @@ namespace Cockpit.Plugin.LocalCi.Workflows;
 // assert a reason rather than a set of them.
 internal static class LocalRunClassifier
 {
-    // The checkout and SDK are already local; uploading diagnostics cannot change the job's own result.
+    // The checkout and SDK are already local.
     // Every other `uses:` blocks the job unless someone adds it here with the reason it is free.
     private static readonly HashSet<string> LocallyFreeActions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -21,8 +21,13 @@ internal static class LocalRunClassifier
     // Named apart from the rest only so the reason names the thing the operator recognises.
     private static readonly HashSet<string> ArtifactActions = new(StringComparer.OrdinalIgnoreCase)
     {
+        "actions/upload-artifact",
         "actions/download-artifact",
     };
+
+    // WHY: Exact matching is deliberately fail-closed: a later variant is refused rather than accidentally run.
+    // This is the one guard that makes an upload a no-op under act while preserving CI's failure-report upload.
+    private const string SkipArtifactUploadUnderAct = "${{ always() && !env.ACT }}";
 
     // Job keys we have read and that do not change whether the job can run here. `permissions`, `concurrency`
     // and `timeout-minutes` are on the list because they only govern GitHub's own scheduling; `needs` is on
@@ -175,6 +180,12 @@ internal static class LocalRunClassifier
         if (action.StartsWith("docker://", StringComparison.OrdinalIgnoreCase))
         {
             return $"it uses {action}, a container action, which this check does not run";
+        }
+
+        if (action.Equals("actions/upload-artifact", StringComparison.OrdinalIgnoreCase)
+            && step.If == SkipArtifactUploadUnderAct)
+        {
+            return null;
         }
 
         if (ArtifactActions.Contains(action))
