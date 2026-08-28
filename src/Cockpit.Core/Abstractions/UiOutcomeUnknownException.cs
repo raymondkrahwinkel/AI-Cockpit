@@ -1,6 +1,6 @@
 namespace Cockpit.Core.Abstractions;
 
-/// <summary>UI work began before its deadline, so its eventual effect is unknown and must not be retried.</summary>
+// UI work began before its deadline, so its eventual effect is unknown and must not be retried.
 public sealed class UiOutcomeUnknownException(TimeSpan deadline) : Exception(_Message(deadline))
 {
     public const string Code = "ui_outcome_unknown";
