@@ -81,7 +81,14 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                     $"This plugin needs {CockpitProduct.DisplayName} {manifest.MinHostVersion} or later, but this cockpit is {hostVersion}.");
             }
 
-            if (!File.Exists(Path.Combine(stagingDir, manifest.EntryAssembly)))
+            // AC-1159: rejects a rooted entryAssembly or one that walks out of stagingDir via `..` or a
+            // mid-path symlink, before the closure hash below is ever computed over it.
+            if (!PluginEntryPath.TryResolve(stagingDir, manifest.EntryAssembly, out var entryPath))
+            {
+                return PluginInstallResult.Failure($"The entry assembly path '{manifest.EntryAssembly}' is not allowed.");
+            }
+
+            if (!File.Exists(entryPath))
             {
                 return PluginInstallResult.Failure($"The archive is missing its entry assembly '{manifest.EntryAssembly}'.");
             }

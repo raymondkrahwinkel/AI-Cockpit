@@ -51,8 +51,9 @@ internal sealed class PluginDiscovery : ISingletonService
                 continue;
             }
 
-            var entryPath = Path.Combine(folder, manifest.EntryAssembly);
-            if (!File.Exists(entryPath))
+            // AC-1159: rejects a rooted entryAssembly or one that walks out of `folder` via `..` or a
+            // mid-path symlink, before the closure hash below is ever computed over it.
+            if (!PluginEntryPath.TryResolve(folder, manifest.EntryAssembly, out var entryPath) || !File.Exists(entryPath))
             {
                 continue;
             }

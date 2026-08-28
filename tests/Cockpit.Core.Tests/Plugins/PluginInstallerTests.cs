@@ -158,6 +158,40 @@ public class PluginInstallerTests : IDisposable
         Assert.Contains("Plugin.dll", result.Error);
     }
 
+    // AC-1159: entryAssembly is manifest data, not a zip entry name -- PluginInstallPath's zip-slip guard
+    // (above) never sees it. Left unchecked, `Path.Combine(stagingDir, "../approved-plugin/entry.dll")`
+    // walks out of staging and hashes/installs over an already-approved sibling's real assembly instead.
+    [Fact]
+    public async Task InstallFromZipAsync_EntryAssemblyEscapesViaDotDot_Rejected()
+    {
+        await _installer.InstallFromZipAsync(_PluginZip("approved-plugin", dll: "MZ-approved"), HostMajor);
+        var zip = _CreateZip(new()
+        {
+            ["plugin.json"] = _Manifest("victim", "Victim", "../approved-plugin/Plugin.dll", abstractionsVersion: 1),
+        });
+
+        var result = await _installer.InstallFromZipAsync(zip, HostMajor);
+
+        Assert.False(result.IsSuccess);
+        Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "victim")));
+    }
+
+    [Fact]
+    public async Task InstallFromZipAsync_EntryAssemblyIsRooted_Rejected()
+    {
+        var outside = Path.Combine(_tempDir, "elsewhere.dll");
+        await File.WriteAllTextAsync(outside, "elsewhere-bytes");
+        var zip = _CreateZip(new()
+        {
+            ["plugin.json"] = _Manifest("victim", "Victim", outside.Replace('\\', '/'), abstractionsVersion: 1),
+        });
+
+        var result = await _installer.InstallFromZipAsync(zip, HostMajor);
+
+        Assert.False(result.IsSuccess);
+        Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "victim")));
+    }
+
     [Fact]
     public async Task InstallFromZipAsync_ZipSlipEntry_Rejected()
     {

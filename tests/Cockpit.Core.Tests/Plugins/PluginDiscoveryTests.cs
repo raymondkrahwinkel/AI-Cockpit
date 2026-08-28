@@ -125,6 +125,38 @@ public class PluginDiscoveryTests : IDisposable
         Assert.Empty(found);
     }
 
+    // AC-1159: the entryPath check that used to be a bare File.Exists let a `Path.Combine` with `..` walk
+    // out of `folder` and hash/pick up a sibling's real, already-installed assembly instead.
+    [Fact]
+    public async Task DiscoverAsync_EntryAssemblyEscapesViaDotDot_SkipsIt()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "victim"));
+        await File.WriteAllTextAsync(Path.Combine(_root, "victim", "plugin.json"),
+            """{"id":"victim","name":"v","version":"1.0.0","entryAssembly":"../approved-plugin/entry.dll","abstractionsVersion":1}""");
+        WritePlugin("approved-plugin", entryAssembly: "entry.dll", abstractionsVersion: 1);
+        var discovery = new PluginDiscovery();
+
+        var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
+
+        Assert.Single(found);
+        Assert.Equal("approved-plugin", found[0].FolderId);
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_EntryAssemblyIsRooted_SkipsIt()
+    {
+        var outside = Path.Combine(_root, "elsewhere.dll");
+        await File.WriteAllTextAsync(outside, "elsewhere-bytes");
+        Directory.CreateDirectory(Path.Combine(_root, "victim"));
+        await File.WriteAllTextAsync(Path.Combine(_root, "victim", "plugin.json"),
+            $$"""{"id":"victim","name":"v","version":"1.0.0","entryAssembly":"{{outside.Replace('\\', '/')}}","abstractionsVersion":1}""");
+        var discovery = new PluginDiscovery();
+
+        var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
+
+        Assert.Empty(found);
+    }
+
     [Fact]
     public async Task DiscoverAsync_SkipsReservedDotPrefixedFolders_EvenWithAValidManifest()
     {
