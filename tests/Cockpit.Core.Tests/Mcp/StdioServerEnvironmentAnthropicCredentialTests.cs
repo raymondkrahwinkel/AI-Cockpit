@@ -27,4 +27,24 @@ public class StdioServerEnvironmentAnthropicCredentialTests
         Assert.Contains(new KeyValuePair<string, string?>("PATH", "/usr/bin"), environment);
         Assert.Contains(new KeyValuePair<string, string?>("HOME", "/home/raymond"), environment);
     }
+
+    // AC-1150: a cockpit started as a stdio MCP server (a nested cockpit, or the dev app launched from an
+    // agent session) has COCKPIT_MCP_KEY in its own process environment — the bearer for every loopback
+    // endpoint (AC-1148). Build used to drop only the Anthropic family, so that bearer passed straight
+    // through to the child. The unmarked variable inheriting is the positive control: without it, "the key
+    // is scrubbed" would be indistinguishable from "everything is scrubbed".
+    [Fact]
+    public void Build_DropsTheCockpitMcpKeyButKeepsAnUnmarkedVariable()
+    {
+        var inherited = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["PATH"] = "/usr/bin",
+            ["COCKPIT_MCP_KEY"] = new string('a', 64),
+        };
+
+        var environment = StdioServerEnvironment.Build(inherited);
+
+        Assert.DoesNotContain("COCKPIT_MCP_KEY", environment);
+        Assert.Contains(new KeyValuePair<string, string?>("PATH", "/usr/bin"), environment);
+    }
 }
