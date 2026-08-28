@@ -126,7 +126,9 @@ public static class LayoutLoopScenario
         run.Write(Series.Monotonic($"pass {pass}: sessions -> worst frame rounds", points).Line);
         }
 
-        // E5 judges the sweep, not noise in one repeated pass; the median still catches a real decline.
+        // E5: more sessions may cost more rounds or the same, never fewer. 7452 rounds at 15 tiles against
+        // 3146 at 20 stood in two reports for half a day because nothing put the numbers side by side.
+        // It judges the sweep median, not noise in one pass; a real declining median still fails.
         run.Shape(Series.Monotonic(
             "sessions -> median worst frame rounds across passes",
             Series.MedianByX(allPoints)));

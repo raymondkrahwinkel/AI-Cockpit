@@ -76,6 +76,10 @@ below it.** Two caveats belong with that number, not underneath it:
   on every repetition. This harness keeps each pass's shape in the report as an observation, but judges the
   verdict from the median per session count across all passes. A saturated platform may wobble around its
   plateau; a genuinely declining median still makes the sweep a `MALFUNCTION`.
+  The former per-pass check refused the whole sweep when rounds fell from 159 to 23 after adding a session;
+  that refusal was the machinery working, and a finding for AC-1178 rather than something to tune away.
+  The median check deliberately does not flag one such pass when the other two remain at 159: this is a
+  known limitation, not an erased observation, and each pass remains in the report for that reason.
 - **`worst frame` reads 159 where Avalonia cuts off at 153.** The counter groups `LayoutUpdated` by frame
   ordinal, so a few rounds either side of the cut-off land in the same bucket. Treat it as "at the cut-off",
   not as an exact figure.
