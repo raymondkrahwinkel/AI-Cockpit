@@ -32,6 +32,74 @@ public sealed class Ac1138UiThreadDeadlineTests
 {
     private const string PaneId = "ac-1138-pane";
 
+    [Fact]
+    public async Task ATimeoutThatClaimsTheHop_PreventsTheCallbackFromRunning()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var deadline = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.UIThread.Post(() => { entered.SetResult(); release.Task.GetAwaiter().GetResult(); });
+        await entered.Task;
+
+        var runs = 0;
+        var wait = Task.Run(() => UiThreadCall.DispatchAsync(
+            () => { Interlocked.Increment(ref runs); return "ran"; }, deadline.Task, TimeSpan.Zero));
+        deadline.SetResult();
+
+        await Assert.ThrowsAsync<UiUnavailableException>(() => wait);
+        release.SetResult();
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        Assert.Equal(0, runs);
+    }
+
+    [Fact]
+    public async Task ACallbackThatClaimsTheHop_MakesTheTimeoutOutcomeUnknown_AndFinishesWorkOnce()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var deadline = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runs = 0;
+        var wait = Task.Run(() => UiThreadCall.DispatchAsync(() =>
+        {
+            Interlocked.Increment(ref runs);
+            started.SetResult();
+            release.Task.GetAwaiter().GetResult();
+            return "complete";
+        }, deadline.Task, TimeSpan.Zero));
+
+        await started.Task;
+
+        deadline.SetResult();
+
+        await Assert.ThrowsAsync<UiOutcomeUnknownException>(() => wait);
+        release.SetResult();
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        Assert.Equal(1, runs);
+    }
+
+    [Fact]
+    public void AClaimAllowsOnlyOneCallback_AndNeverAfterTheTimeout()
+    {
+        var callbackFirst = new UiThreadCallClaim();
+        var runs = 0;
+        if (callbackFirst.TryClaimCallback())
+        {
+            Interlocked.Increment(ref runs);
+        }
+
+        if (callbackFirst.TryClaimCallback())
+        {
+            Interlocked.Increment(ref runs);
+        }
+
+        Assert.Equal(1, runs);
+        Assert.False(callbackFirst.TryClaimTimeout());
+
+        var timeoutFirst = new UiThreadCallClaim();
+        Assert.True(timeoutFirst.TryClaimTimeout());
+        Assert.False(timeoutFirst.TryClaimCallback());
+    }
+
     /// <summary>T1 — the UI thread held by one non-yielding job: capped, not waited out.</summary>
     [Fact]
     public async Task AGatewayCalledWhileTheUiThreadIsBlocked_AnswersUiUnavailable_RatherThanWaitingItOut()

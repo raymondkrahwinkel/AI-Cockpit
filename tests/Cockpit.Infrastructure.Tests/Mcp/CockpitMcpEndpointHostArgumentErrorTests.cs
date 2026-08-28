@@ -69,6 +69,21 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
         Assert.Contains("did not answer within", payload.RootElement.GetProperty("error").GetString()!, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task AToolWhoseUiWorkMayStillLand_AnswersWithTheUnknownOutcomeCode()
+    {
+        await using var endpoint = await _MountedEndpoint.StartAsync();
+
+        var result = await endpoint.Client.CallToolAsync("ui_outcome_unknown", new Dictionary<string, object?>());
+
+        Assert.True(result.IsError);
+        var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+        using var payload = JsonDocument.Parse(text);
+        Assert.Equal(UiOutcomeUnknownException.Code, payload.RootElement.GetProperty("code").GetString());
+        Assert.False(payload.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Contains("do not retry", payload.RootElement.GetProperty("error").GetString()!, StringComparison.Ordinal);
+    }
+
     internal sealed class EchoTools
     {
         [McpServerTool(Name = "echo_pane")]
@@ -80,6 +95,10 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
         [McpServerTool(Name = "needs_ui")]
         [Description("Fails the way a gateway does when the UI thread never answered.")]
         public string NeedsUi() => throw new UiUnavailableException(TimeSpan.FromSeconds(5));
+
+        [McpServerTool(Name = "ui_outcome_unknown")]
+        [Description("Fails when UI work began but its eventual effect cannot be known.")]
+        public string UiOutcomeUnknown() => throw new UiOutcomeUnknownException(TimeSpan.FromSeconds(5));
     }
 
     private sealed class _MountedEndpoint(CockpitMcpEndpointHost host, McpClient client) : IAsyncDisposable

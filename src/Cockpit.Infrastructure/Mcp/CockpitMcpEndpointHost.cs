@@ -150,6 +150,11 @@ internal sealed class CockpitMcpEndpointHost
                     _logger.LogWarning("Tool {Tool} gave up waiting for the UI thread after {Deadline}.", context.Params.Name, exception.Deadline);
                     result = _UiUnavailableResult(exception);
                 }
+                catch (UiOutcomeUnknownException exception)
+                {
+                    _logger.LogWarning("Tool {Tool} timed out after UI work had begun at {Deadline}.", context.Params.Name, exception.Deadline);
+                    result = _UiOutcomeUnknownResult(exception);
+                }
 
                 return McpInboxPiggyback.Attach(result, _services.GetService<IAgentTurnInboxDelivery>(), _logger);
             }));
@@ -357,6 +362,14 @@ internal sealed class CockpitMcpEndpointHost
     {
         var payload = JsonSerializer.Serialize(
             new { ok = false, code = UiUnavailableException.Code, error = exception.Message });
+
+        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = payload }] };
+    }
+
+    private static CallToolResult _UiOutcomeUnknownResult(UiOutcomeUnknownException exception)
+    {
+        var payload = JsonSerializer.Serialize(
+            new { ok = false, code = UiOutcomeUnknownException.Code, error = exception.Message });
 
         return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = payload }] };
     }
