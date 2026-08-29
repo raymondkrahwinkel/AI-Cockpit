@@ -810,9 +810,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
+    // ponytail: rescans the whole open row with Split per chunk — O(n²) and one allocation each; track fence state on the row if it shows up.
     private static char? _OpenFence(string text, char? open = null)
     {
-        // ponytail: re-scans an open row per chunk; cache fence state on the row if long replies regress.
         foreach (var line in text.Split('\n'))
         {
             var content = line.AsSpan();
