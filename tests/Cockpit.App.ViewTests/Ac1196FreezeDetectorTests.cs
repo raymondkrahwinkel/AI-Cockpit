@@ -42,7 +42,7 @@ public sealed class Ac1196FreezeDetectorTests
     public Task ABlockedUiThread_IsFinallyReportedAsARenderClockStall() =>
         _ABlockIsTheRenderClocksToAnswerFor(dispatcherBusyFirst: false);
 
-    /// <summary>AC-1255 — the same block, reached late enough that the thread got one high-priority answer in first.</summary>
+    /// <summary>AC-1255 — the same block behind a busy dispatcher, the arrangement that let the pong land first.</summary>
     [Fact]
     public Task ABlockedUiThreadThatAnsweredOnce_IsStillNotCalledStarvation() =>
         _ABlockIsTheRenderClocksToAnswerFor(dispatcherBusyFirst: true);
@@ -94,8 +94,8 @@ public sealed class Ac1196FreezeDetectorTests
         {
             if (dispatcherBusyFirst)
             {
-                // Holds the thread long enough that the block below is still queued when the service starts, so the
-                // service's Send pong outranks it and lands — the ordering AC-1255 was reported from.
+                // Spent by the time the wait below returns, so it changes nothing here — it is what makes this case
+                // go red if that wait is ever dropped, which is the only way the pong gets in front of the block.
                 Dispatcher.UIThread.Post(() => Thread.Sleep(300), DispatcherPriority.Send);
             }
 
@@ -109,8 +109,8 @@ public sealed class Ac1196FreezeDetectorTests
                 },
                 DispatcherPriority.Default);
 
-            // AC-1255: only once the thread is truly gone. Started while the block is still queued, that Send pong
-            // lands, and one stale answer inside the alarm budget reads as a thread that is merely starved.
+            // AC-1255: signalled, not timed — swap this wait for a delay and the Send pong outranks the still-queued
+            // block, lands, and dates a dead thread as one that just pumped.
             Assert.True(blocked.Wait(Deadline), "the blocking job never reached the UI thread");
             service.Start();
 
