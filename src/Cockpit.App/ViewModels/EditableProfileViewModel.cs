@@ -438,7 +438,7 @@ public partial class EditableProfileViewModel : ViewModelBase
                 ? _pluginProviderRegistry?.Resolve(providerId)?.CreateConfigView(null)
                 : null;
 
-            // A freshly added profile has no stored defaults yet — start each option on its own declared default.
+            // A freshly added profile has no stored defaults yet — every option starts unset.
             _RefreshPluginOptionDefaults(storedDefaults: null);
         }
 
@@ -458,7 +458,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     }
 
     // Rebuilds `PluginOptionDefaults` from the selected plugin provider's declared launch options, each pre-filled from
-    // `storedDefaults` (the profile's saved value) or the option's own declared default.
+    // `storedDefaults` (the profile's saved value) and otherwise left unset.
     private void _RefreshPluginOptionDefaults(IReadOnlyDictionary<string, string>? storedDefaults)
     {
         PluginOptionDefaults.Clear();
@@ -470,7 +470,9 @@ public partial class EditableProfileViewModel : ViewModelBase
         {
             foreach (var option in registration.Options)
             {
-                var value = storedDefaults?.GetValueOrDefault(option.Key) ?? option.DefaultValue;
+                // AC-1102: a key the profile does not store stays blank, never borrowing the option's declared
+                // default — Apply would persist that as the operator's own choice and pin a value nobody picked.
+                var value = storedDefaults?.GetValueOrDefault(option.Key);
                 PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
             }
         }

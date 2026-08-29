@@ -34,7 +34,11 @@ blank on a machine that already has `codex login` done.
 
 ## 3. Pick a sandbox mode {#sandbox-mode}
 
-**Sandbox mode** controls what Codex is allowed to touch once it's running:
+**Sandbox** is set under **Session defaults**, further down the profile, alongside Model, Effort and Approval —
+not in this panel. Leaving it unset is a real choice: the profile then starts on whatever sandbox it already
+carried, which for a profile made before Session defaults existed is the one it has always run on.
+
+Sandbox controls what Codex is allowed to touch once it's running:
 
 - `read-only` — Codex's safe default; no edits at all.
 - `workspace-write` — allows edits inside the working directory.
