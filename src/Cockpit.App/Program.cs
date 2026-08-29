@@ -232,6 +232,14 @@ sealed class Program
         Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
         {
             var logger = Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.UIThread");
+
+            // AC-1236: read the tree before anything else, while it still carries what the cut pass left unfinished.
+            if (Cockpit.App.Diagnostics.RenderClockRecovery.IsCutOff(exceptionEvent.Exception))
+            {
+                Cockpit.App.Diagnostics.LayoutLoopReport.Record(
+                    _OpenWindows(), Cockpit.App.Diagnostics.LayoutLoopReport.RecordPathFor(logPath), logger);
+            }
+
             if (logger is not null)
             {
                 logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception caught by the global net; the cockpit stays up.");
@@ -277,6 +285,12 @@ sealed class Program
     // Posted rather than called here: this runs while the failed render operation is still unwinding, and only once
     // that has finished is MediaContext's own _nextRenderOp cleared — a request made before then would be dropped as
     // "a render is already scheduled". Any window will do; MediaContext is one instance per UI thread.
+    private static IReadOnlyList<Avalonia.Controls.Window> _OpenWindows() =>
+        Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.Windows
+            : [];
+
     private static void _RequestRenderClockRestart() =>
         Avalonia.Threading.Dispatcher.UIThread.Post(
             () =>
