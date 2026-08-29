@@ -1138,13 +1138,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             // AC-1239: the quieter half — StartAsync returned without throwing and nothing is running, which used to
             // leave Status reading "Session started." on a session that never did. A launch that threw already spoke.
-            if (StartFailure is null)
+            // Only with a runtime in hand: a null one means no launch was attempted (the design-time graph) or that a
+            // teardown took it mid-start, and neither of those failed to start.
+            if (StartFailure is null && _runtime is not null)
             {
                 StartFailure = "The provider returned without a running session.";
                 _logger?.LogWarning("A session under profile {Profile} is not running after its start.", profile?.Label ?? "(none)");
             }
 
-            Status = $"Failed to start: {StartFailure}";
+            if (StartFailure is not null)
+            {
+                Status = $"Failed to start: {StartFailure}";
+            }
+
             IsPermissionModeLocked = false;
             SelectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
         }
