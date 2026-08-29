@@ -5,8 +5,9 @@ namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// AC-1147's positive control: two real, separately started processes (never looked up by name — their
-/// pids come straight from <see cref="Process.Start(ProcessStartInfo)"/>) write to the same log file, and
-/// every line each one wrote must carry that process's own pid.
+/// pids come straight from <see cref="Process.Start(ProcessStartInfo)"/>) write to the same log file.
+/// Every line reaching that file carries its writer's pid, and both writers are represented.
+/// It deliberately does not count lines: <c>FileLoggerProvider._AppendWithRetry</c> drops a line after five attempts (AC-1216).
 /// </summary>
 public class LogPidPositiveControlTests
 {
@@ -36,10 +37,10 @@ public class LogPidPositiveControlTests
             var lines = File.ReadAllLines(logPath);
             var fromA = lines.Where(line => line.Contains("probe A line", StringComparison.Ordinal)).ToList();
             var fromB = lines.Where(line => line.Contains("probe B line", StringComparison.Ordinal)).ToList();
-            Assert.Equal(50, fromA.Count);
-            Assert.Equal(50, fromB.Count);
+            Assert.NotEmpty(fromA);
+            Assert.NotEmpty(fromB);
 
-            // One process, one pid: every line a process wrote carries only that process's own pid.
+            // One process, one pid: every line reaching the log file carries its writer's own pid.
             Assert.All(fromA, line => Assert.Equal(pidA, _ExtractPid(line)));
             Assert.All(fromB, line => Assert.Equal(pidB, _ExtractPid(line)));
         }
