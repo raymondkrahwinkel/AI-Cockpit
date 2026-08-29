@@ -46,6 +46,9 @@ internal sealed class FakeWorktreeManager : IWorktreeManager
     public Task ReleaseAsync(string sessionId, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
+    public Task CleanupDockerNetworksAsync(string sessionId, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
     public Task ReconcileAsync(IReadOnlyCollection<string> liveSessionIds, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 }

@@ -1,4 +1,5 @@
 using Cockpit.Infrastructure.Worktrees;
+using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Infrastructure.Tests.Worktrees;
 
@@ -14,6 +15,7 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
     private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), $"cockpit-worktree-docker-{Guid.NewGuid():n}");
     private readonly string _repo;
     private readonly WorktreeManager _manager;
+    private readonly WorktreeRegistryStore _registry;
     private readonly FakeDockerCli _docker = new();
 
     public WorktreeManagerDockerCleanupTests()
@@ -28,8 +30,9 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
         _Git(_repo, "commit", "-m", "first");
 
         var configPath = Path.Combine(_tempRoot, "cockpit.json");
+        _registry = new WorktreeRegistryStore(configPath);
         _manager = new WorktreeManager(
-            new WorktreeRegistryStore(configPath),
+            _registry,
             Path.Combine(_tempRoot, "worktrees"),
             logger: null,
             dockerCli: _docker);
@@ -79,6 +82,57 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
         Assert.Contains("Could not clean up docker containers", notice);
     }
 
+    [Fact]
+    public async Task CleanupDockerNetworksAsync_RemovesOnlyAnEmptyComposeNetworkForTheClosedWorktree()
+    {
+        var closed = await _manager.CreateAsync("session-closed", "closed", _repo);
+        var live = await _manager.CreateAsync("session-live", "live", _repo);
+        _docker.AddNetwork(Path.GetFileName(closed.Path), "network-closed", containerCount: 0);
+        _docker.AddNetwork(Path.GetFileName(live.Path), "network-live", containerCount: 1);
+
+        await _manager.CleanupDockerNetworksAsync("session-closed");
+
+        Assert.True(_docker.IsNetworkRemoved("network-closed"));
+        Assert.False(_docker.IsNetworkRemoved("network-live"));
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_RemovesAnEmptyComposeNetworkForANormallyClosedSession()
+    {
+        var record = await _manager.CreateAsync("session-closed", "closed", _repo);
+        File.WriteAllText(Path.Combine(record.Path, "unfinished.txt"), "keep\n");
+        _docker.AddNetwork(Path.GetFileName(record.Path), "network-closed", containerCount: 0);
+
+        await _manager.ReleaseAsync("session-closed");
+
+        Assert.True(_docker.IsNetworkRemoved("network-closed"));
+    }
+
+    [Fact]
+    public async Task ReconcileAsync_RemovesAnEmptyComposeNetworkForACrashedSession()
+    {
+        var record = await _manager.CreateAsync("session-crashed", "crashed", _repo);
+        File.WriteAllText(Path.Combine(record.Path, "unfinished.txt"), "keep\n");
+        _docker.AddNetwork(Path.GetFileName(record.Path), "network-crashed", containerCount: 0);
+
+        await _manager.ReconcileAsync([]);
+
+        Assert.True(_docker.IsNetworkRemoved("network-crashed"));
+    }
+
+    [Fact]
+    public async Task CleanupDockerNetworksAsync_NormalizesTheWorktreeFolderForComposeProjectLabel()
+    {
+        var path = Path.Combine(_tempRoot, "worktrees", "Cockpit.Worktree_ABC");
+        await _registry.AddAsync(new WorktreeRecord("session-normalized", _repo, path, "branch", "main", DateTimeOffset.UtcNow));
+        _docker.AddNetwork("cockpitworktree_abc", "network-normalized", containerCount: 0);
+
+        await _manager.CleanupDockerNetworksAsync("session-normalized");
+
+        Assert.Equal("label=com.docker.compose.project=cockpitworktree_abc", _docker.LastNetworkFilter);
+        Assert.True(_docker.IsNetworkRemoved("network-normalized"));
+    }
+
     private static void _Git(string workingDirectory, params string[] arguments)
     {
         var result = GitCli.RunAsync(workingDirectory, arguments, CancellationToken.None).GetAwaiter().GetResult();
@@ -107,7 +161,10 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
         private readonly List<(string ContainerId, string WorkingDir, string Project, string VolumeId)> _stacks = [];
         private readonly HashSet<string> _removedContainers = [];
         private readonly HashSet<string> _removedVolumes = [];
+        private readonly List<(string Project, string NetworkId, int ContainerCount)> _networks = [];
+        private readonly HashSet<string> _removedNetworks = [];
         private Exception? _failure;
+        public string? LastNetworkFilter { get; private set; }
 
         public void AddStack(string workingDir, string project, string containerId, string volumeId) =>
             _stacks.Add((containerId, workingDir, project, volumeId));
@@ -115,6 +172,11 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
         public void FailWith(Exception exception) => _failure = exception;
 
         public bool IsContainerRemoved(string containerId) => _removedContainers.Contains(containerId);
+
+        public void AddNetwork(string project, string networkId, int containerCount) =>
+            _networks.Add((project, networkId, containerCount));
+
+        public bool IsNetworkRemoved(string networkId) => _removedNetworks.Contains(networkId);
 
         public bool IsVolumeRemoved(string volumeId) => _removedVolumes.Contains(volumeId);
 
@@ -157,6 +219,26 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
                     _removedVolumes.Add(id);
                 }
 
+                return Task.FromResult(new DockerCliResult(0, string.Empty, string.Empty));
+            }
+
+            if (arguments is ["network", "ls", "-q", "--filter", var networkFilter])
+            {
+                LastNetworkFilter = networkFilter;
+                var project = networkFilter["label=com.docker.compose.project=".Length..];
+                var matches = _networks.Where(network => network.Project == project && !_removedNetworks.Contains(network.NetworkId));
+                return Task.FromResult(new DockerCliResult(0, string.Join('\n', matches.Select(network => network.NetworkId)), string.Empty));
+            }
+
+            if (arguments is ["network", "inspect", var inspectedNetworkId, "--format", _])
+            {
+                var network = _networks.Single(network => network.NetworkId == inspectedNetworkId);
+                return Task.FromResult(new DockerCliResult(0, network.ContainerCount.ToString(), string.Empty));
+            }
+
+            if (arguments is ["network", "rm", var removedNetworkId])
+            {
+                _removedNetworks.Add(removedNetworkId);
                 return Task.FromResult(new DockerCliResult(0, string.Empty, string.Empty));
             }
 

@@ -813,7 +813,17 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
         foreach (var record in records.Where(record => string.Equals(record.SessionId, sessionId, StringComparison.Ordinal)))
         {
+            await _CleanupNetworksAsync(record, cancellationToken).ConfigureAwait(false);
             await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task CleanupDockerNetworksAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var record in records.Where(record => string.Equals(record.SessionId, sessionId, StringComparison.Ordinal)))
+        {
+            await _CleanupNetworksAsync(record, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -829,6 +839,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         {
             try
             {
+                await _CleanupNetworksAsync(record, cancellationToken).ConfigureAwait(false);
                 await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception)
@@ -853,6 +864,39 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
                 // A repository that itself vanished cannot be pruned; the registry drop above already forgot its
                 // worktrees, so there is nothing left to leak.
             }
+        }
+    }
+
+    private async Task _CleanupNetworksAsync(WorktreeRecord record, CancellationToken cancellationToken)
+    {
+        if (_dockerCli is null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Compose normalizes its default project name, so a raw worktree folder can silently miss its labels.
+            var project = new string(Path.GetFileName(record.Path).ToLowerInvariant().Where(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-').ToArray());
+            var networks = await _dockerCli.RunAsync(
+                ["network", "ls", "-q", "--filter", $"label=com.docker.compose.project={project}"], cancellationToken).ConfigureAwait(false);
+            if (networks.ExitCode != 0)
+            {
+                return;
+            }
+
+            foreach (var network in networks.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(id => id.Trim()))
+            {
+                var inspection = await _dockerCli.RunAsync(["network", "inspect", network, "--format", "{{len .Containers}}"], cancellationToken).ConfigureAwait(false);
+                if (inspection.ExitCode == 0 && inspection.StandardOutput.Trim() == "0")
+                {
+                    await _dockerCli.RunAsync(["network", "rm", network], cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Could not clean up Docker networks for worktree '{Path}'.", record.Path);
         }
     }
 
