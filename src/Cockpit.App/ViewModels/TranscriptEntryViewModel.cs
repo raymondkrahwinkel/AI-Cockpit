@@ -80,6 +80,29 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // AC-715/AC-955 share QuestionBranch for permission and broker questions; mutable branches raise their own flags.
     public object? ToolBranch => IsToolUse || HasQuestionPrompts ? this : null;
     public object? UserBranch => IsUserRow ? this : null;
+    // AC-1238: a streamed reply arrives as one row per finished markdown block, because a row that keeps growing
+    // while the virtualising panel has it realised is what makes that panel lose its own anchor. The group still
+    // reads as one reply: the badge and the name sit on the first row, the actions on the last.
+    [ObservableProperty]
+    private bool _isReplyContinuation;
+
+    [ObservableProperty]
+    private bool _isReplyTail = true;
+
+    // The badge keeps its box on a continuation row — hiding it outright would step the prose beside it left
+    // halfway through an answer.
+    public double ReplyBadgeOpacity => IsReplyContinuation ? 0 : 1;
+
+    partial void OnIsReplyContinuationChanged(bool value) => OnPropertyChanged(nameof(ReplyBadgeOpacity));
+
+    // Every row of the reply this row belongs to, in order. Null for a row that was never part of a split.
+    internal IReadOnlyList<TranscriptEntryViewModel>? ReplyRows { get; set; }
+
+    // What "copy this reply" hands over: the whole reply, not the block the button happens to sit under.
+    public string ReplyTextWithImageSuffix => ReplyRows is null
+        ? TextWithImageSuffix
+        : string.Concat(ReplyRows.Select(row => row.TextWithImageSuffix));
+
     public object? AssistantBranch => IsAssistantMarkdown ? this : null;
     public object? ThinkingBranch => IsThinking ? this : null;
     public object? DividerBranch => IsDivider ? this : null;

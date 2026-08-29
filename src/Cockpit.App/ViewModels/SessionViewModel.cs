@@ -85,6 +85,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private TranscriptEntryViewModel? _currentAssistantEntry;
 
+    // AC-1238: the rows one reply has been split across, and whether the row now open has already been finished
+    // by a blank line. A fresh list per reply — the rows of an older one keep pointing at their own.
+    private List<TranscriptEntryViewModel> _replyRows = [];
+    private bool _assistantBlockSealed;
+
     // The reasoning/thinking row currently being streamed into (AC-213), or null when no thinking block is open. Mirrors `_currentAssistantEntry`: contiguous thinking deltas append onto one row rather than spawning a row per delta.
     private TranscriptEntryViewModel? _currentThinkingEntry;
 
@@ -722,6 +727,105 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _RebuildVisibleTranscript();
+    }
+
+    // AC-1238: a row that grows while the virtualising panel has it realised makes that panel's own StartU
+    // unstable (Avalonia's RealizedStackElements.ValidateStartU), after which it re-anchors on an average row
+    // height this one row is the whole of — measured as one painted frame per streamed chunk showing a different
+    // part of the transcript entirely. Finished markdown blocks become their own rows, so the row that grows is
+    // always the last and always small. The same stream delivered this way is green on all three of
+    // TranscriptStreamFlickerTests' readings with no other change (AC-1238, six of six runs).
+    private void _AppendAssistantProse(string delta)
+    {
+        var pending = delta;
+        while (pending.Length > 0)
+        {
+            var row = _OpenAssistantRow();
+            var end = _FinishedBlockEnd(row.Text, pending);
+            if (end < 0)
+            {
+                row.AppendText(pending);
+                return;
+            }
+
+            row.AppendText(pending[..end]);
+            _assistantBlockSealed = true;
+            pending = pending[end..];
+        }
+    }
+
+    // The row this reply is currently streaming into: the open one until a blank line finished it, a new one
+    // after that. A continuation carries neither the badge nor the name, so the group still reads as one reply.
+    private TranscriptEntryViewModel _OpenAssistantRow()
+    {
+        if (_currentAssistantEntry is { } open && !_assistantBlockSealed)
+        {
+            return open;
+        }
+
+        var continuing = _currentAssistantEntry is not null && _assistantBlockSealed;
+        if (continuing)
+        {
+            _currentAssistantEntry!.IsReplyTail = false;
+        }
+        else
+        {
+            _replyRows = [];
+        }
+
+        var row = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty)
+        {
+            IsReplyContinuation = continuing,
+        };
+
+        _replyRows.Add(row);
+        row.ReplyRows = _replyRows;
+        _currentAssistantEntry = row;
+        _assistantBlockSealed = false;
+        Transcript.Add(row);
+        _currentTurnAssistantEntries.Add(row);
+        return row;
+    }
+
+    // Where in `pending` the blank line that finishes a markdown block ends, or -1 while the row is still inside
+    // one. A blank line inside a fenced code block finishes nothing, so the fences opened before it are counted.
+    private static int _FinishedBlockEnd(string existing, string pending)
+    {
+        var from = 0;
+        while (true)
+        {
+            var at = pending.IndexOf("\n\n", from, StringComparison.Ordinal);
+            if (at < 0)
+            {
+                return -1;
+            }
+
+            var end = at + 2;
+            // ponytail: counts by pairs, so an unbalanced fence — a stray ``` in prose, a reply fenced with ~~~ —
+            // leaves the parity stuck and the rest of that reply on one row. Nothing is lost and nothing errors;
+            // it falls back to how this behaved before AC-1238, flicker included, and says nothing about it
+            // (StreamedReplySplitTests pins the no-loss half). Track the fence state on the row itself if that
+            // ever needs to be right. Also re-counts over the open row's text each time, which is one block
+            // unless that block is a long code fence.
+            if ((_FenceCount(existing) + _FenceCount(pending[..end])) % 2 == 0)
+            {
+                return end;
+            }
+
+            from = end;
+        }
+    }
+
+    private static int _FenceCount(string text)
+    {
+        var count = 0;
+        for (var at = text.IndexOf("```", StringComparison.Ordinal); at >= 0;
+             at = text.IndexOf("```", at + 3, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
     }
 
     // Puts one row in or out of `VisibleTranscript` when — and only when — its visibility actually moved.
@@ -2039,7 +2143,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // Only the last entry grows (deltas append to the current one), so the prose up to _readAloudFlushedLength
         // is stable and the tail from there is exactly what has not been spoken yet.
-        var prose = string.Join("\n\n", _currentTurnAssistantEntries.Select(entry => entry.Text));
+        // AC-1238: a reply split at its own blank lines already carries them, so a continuation is concatenated
+        // rather than separated — inserting a separator there would shift every index past it by two characters
+        // and re-speak or skip that much. Rows separated by a tool call still get theirs.
+        var prose = string.Concat(_currentTurnAssistantEntries.Select(
+            (entry, index) => index == 0 || entry.IsReplyContinuation ? entry.Text : "\n\n" + entry.Text));
         if (_readAloudFlushedLength >= prose.Length)
         {
             return;
@@ -2222,14 +2330,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // Visible prose has started, so the reasoning block that preceded it is done: close the thinking
                 // row (AC-213) so a later thinking block opens a fresh row instead of appending onto this one.
                 _CloseThinkingRow();
-                if (_currentAssistantEntry is null)
-                {
-                    _currentAssistantEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
-                    Transcript.Add(_currentAssistantEntry);
-                    _currentTurnAssistantEntries.Add(_currentAssistantEntry);
-                }
-
-                _currentAssistantEntry.AppendText(delta.Text);
+                _AppendAssistantProse(delta.Text);
                 break;
 
             case AssistantTextCompleted completed:
