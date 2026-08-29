@@ -64,6 +64,9 @@ version_gt() {
 # machine it is meant to protect is worse than none.
 offenders=''
 
+changed_files="$(git_or_fail diff --name-only "$base" "$head" -- plugins-dev ':!*.md')" || exit 2
+case $'\n'"$changed_files"$'\n' in *$'\nplugins-dev/_shared/'*) shared_changed=1;; *) shared_changed=0;; esac
+
 for dir in plugins-dev/Cockpit.Plugin.*/; do
   dir="${dir%/}"
   case "$dir" in *.Tests) continue;; esac
@@ -75,13 +78,16 @@ for dir in plugins-dev/Cockpit.Plugin.*/; do
   # of their own: a directory pathspec matches on "<dir>/", so Cockpit.Plugin.Foo never picks up
   # Cockpit.Plugin.Foo.Tests (verified, not assumed). An extra grep here would look like protection and catch
   # nothing, which is worse than no guard. Markdown is excluded because a README is not in the zip.
-  changed="$(git_or_fail diff --name-only "$base" "$head" -- "$dir" ':!*.md')" || exit 2
+  changed=''
+  while IFS= read -r path; do
+    case "$path" in "$dir"/*) changed=1; break;; esac
+  done <<<"$changed_files"
 
   # A plugin that links shared source (plugins-dev/_shared, AC-964) ships that code inside its own dll, so a
   # change there changes what it publishes just as surely as a change in its own folder — and the pathspec above
   # cannot see it. Only the plugins whose project actually names the file are affected.
-  if grep -q '_shared' "$dir"/*.csproj 2>/dev/null; then
-    changed="${changed}$(git_or_fail diff --name-only "$base" "$head" -- plugins-dev/_shared ':!*.md')" || exit 2
+  if [ "$shared_changed" -eq 1 ] && grep -q '_shared' "$dir"/*.csproj 2>/dev/null; then
+    changed=1
   fi
 
   [ -n "$changed" ] || continue
