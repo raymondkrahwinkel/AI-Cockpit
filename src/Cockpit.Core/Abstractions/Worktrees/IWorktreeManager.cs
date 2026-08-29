@@ -101,6 +101,12 @@ public interface IWorktreeManager
     Task ReleaseAsync(string sessionId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Removes empty Docker Compose networks belonging to a closed session's worktrees. Networks with containers are
+    /// left alone.
+    /// </summary>
+    Task CleanupDockerNetworksAsync(string sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Reconciles the registry at startup against the sessions actually alive (AC-85): a worktree whose owning
     /// session is gone — a crash or a hard close that missed teardown — is released the same way (clean removed,
     /// work retained), and git's own admin entries for folders that vanished are pruned. This is the crash net.

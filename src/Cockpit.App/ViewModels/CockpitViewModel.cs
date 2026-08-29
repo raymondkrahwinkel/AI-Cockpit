@@ -8012,6 +8012,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             Cockpit.App.Logging.LifecycleLog.Write("Assistant session torn down.");
         }
 
+        if (_worktreeManager is not null)
+        {
+            await Task.WhenAll(panes.Concat(embedded).Select(session => _worktreeManager.CleanupDockerNetworksAsync(session.PaneId)));
+        }
+
         _embeddedSessions.Clear();
         Sessions.Clear();
         _lastStatus.Clear();
