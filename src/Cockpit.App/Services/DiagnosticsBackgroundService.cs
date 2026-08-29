@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
+using Cockpit.App.Diagnostics;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Diagnostics;
 using Microsoft.Extensions.Logging;
@@ -85,6 +88,10 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // the dependency cannot run the other way). Null (falls back to "n/a") before that wiring runs, e.g. in tests.
     private Func<(int OpenSessions, string LayoutStand)>? _sessionContext;
 
+    // AC-1256: the windows the starvation probe reads the layout tree from. Same shape as Program's own
+    // `_OpenWindows`, kept here rather than plumbed in so production needs no wiring for a diagnostic.
+    private Func<IReadOnlyList<Visual>>? _layoutRoots;
+
     // AC-1196: the budget both alarms below are judged against. Injectable for the same reason heapBytesProbe is —
     // a test would otherwise have to hold a thread hostage for a real quarter-minute per case, three times over.
     private readonly TimeSpan _alarmAfter;
@@ -99,6 +106,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     // Wired once from App.axaml.cs: the three fields the diag line cannot compute on its own (AC-1125 D).
     public void SetSessionContext(Func<(int OpenSessions, string LayoutStand)> provider) => _sessionContext = provider;
+
+    // AC-1256: test seam only. The default below is what production uses, so nothing has to wire this.
+    internal void SetLayoutRoots(Func<IReadOnlyList<Visual>> provider) => _layoutRoots = provider;
 
     // AC-883: raised on the UI thread when the render clock starts or stops being able to process commits. Panes
     // subscribe to suspend their transcripts; nothing else in the process can tell them the clock is gone.
@@ -246,6 +256,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                         + "This is not a renderclock stall: the clock is ticking.",
                         probePendingFor!.Value.TotalSeconds,
                         sinceHighPriorityPong!.Value.TotalSeconds);
+                    _AskTheStarvedThreadWhatIsDirty();
                 }
                 else if (dispatchDecision.Recovered)
                 {
@@ -375,6 +386,36 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             _logger.LogWarning(exception, "A render-clock probe could not be started; the next one will try again.");
         }
     }
+
+    // AC-1256: the starved line says a pass never finishes, never whose. AC-1236 already reads that off the tree
+    // for a cut-off pass; a starved one leaves the same trace but never throws, so nothing went to look. Send
+    // outranks the Loaded/Render such a loop reposts at (`hipri` is that proof), so the busy thread still runs it.
+    private void _AskTheStarvedThreadWhatIsDirty()
+    {
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                try
+                {
+                    var elements = LayoutLoopReport.Describe(_layoutRoots?.Invoke() ?? _OpenWindows());
+                    _logger.LogWarning(
+                        "uidispatch starved-where {Count} element(s) still in layout: {Elements}",
+                        elements.Count,
+                        elements.Count == 0 ? "(none — the loop is not a layout pass)" : string.Join(" | ", elements));
+                }
+                catch (Exception exception)
+                {
+                    // A diagnostic that throws on the thread it is diagnosing would be the second freeze.
+                    _logger.LogWarning("Could not read the layout tree while the dispatcher was starved: {Failure}", exception);
+                }
+            },
+            DispatcherPriority.Send);
+    }
+
+    private static IReadOnlyList<Visual> _OpenWindows() =>
+        Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            ? [.. desktop.Windows]
+            : [];
 
     // Internal (a test seam, same idiom as AdaptiveGcCompactor.CheckOnce): one snapshot line, driven directly
     // instead of through the thread's 10s cadence.
