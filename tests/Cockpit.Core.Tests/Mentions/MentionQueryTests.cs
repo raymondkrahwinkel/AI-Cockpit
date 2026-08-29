@@ -43,7 +43,8 @@ public class MentionQueryTests
 
     [Fact]
     public void From_CaretBeforeTheAt_DoesNotTrigger() =>
-        Assert.Null(MentionQuery.From("@foo", 0));
+        // The '@' is ahead of the caret, so it is not the caret's mention — only what lies behind it counts.
+        Assert.Null(MentionQuery.From("hi @foo", 2));
 
     [Fact]
     public void From_WhitespaceBetweenAtAndCaret_DoesNotTrigger() =>

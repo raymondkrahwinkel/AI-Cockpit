@@ -228,6 +228,20 @@ jobs:
       - name: Guard's own tests
         run: python3 scripts/check-comment-length.test.py
 
+  # AC-1244: five tests were copied to cover a second case, renamed, and never given the arrange the new name
+  # promises. All five were found by looking for byte-equal test bodies within one file -- so that is the check.
+  duplicate-test-bodies:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: No two tests in one file share a body
+        run: python3 scripts/check-duplicate-test-bodies.py
+
+      - name: Guard's own tests
+        run: python3 scripts/check-duplicate-test-bodies.test.py
+
   # AC-998: one selector of this shape held 95% of the live heap. The form is used 35 more times legitimately,
   # so what is guarded is the right-hand side, not the form.
   descendant-selector-scope:

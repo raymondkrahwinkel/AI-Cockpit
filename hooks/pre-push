@@ -45,8 +45,9 @@ if echo "$changed" | grep -q '\.cs$'; then
   if python=$(pick_python); then
     guard scripts/check-comment-length.py "$python" scripts/check-comment-length.py
     guard scripts/check-xmldoc-scope.py "$python" scripts/check-xmldoc-scope.py
+    guard scripts/check-duplicate-test-bodies.py "$python" scripts/check-duplicate-test-bodies.py
   else
     # Skipped rather than blocking the push -- CI runs these either way.
-    printf 'pre-push: no working python3, py or python; skipping 2 guards. CI still runs them.\n' >&2
+    printf 'pre-push: no working python3, py or python; skipping 3 guards. CI still runs them.\n' >&2
   fi
 fi

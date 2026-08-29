@@ -57,5 +57,8 @@ public class ClaudeTranscriptClassifyTests
     // Busy the same as any other user turn.
     [Fact]
     public void TheAnswerLine_AfterAnAskUserQuestion_IsBusy() =>
-        Assert.Equal(PluginSessionActivity.Busy, ClaudeTranscriptReader.ClassifyLine("""{"type":"user","message":{"role":"user"}}"""));
+        Assert.Equal(
+            PluginSessionActivity.Busy,
+            ClaudeTranscriptReader.ClassifyLine(
+                """{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"Commit it"}]}}"""));
 }
