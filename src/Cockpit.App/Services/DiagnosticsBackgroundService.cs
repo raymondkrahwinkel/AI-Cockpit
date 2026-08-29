@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
+using Cockpit.App.Diagnostics;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Diagnostics;
 using Microsoft.Extensions.Logging;
@@ -20,6 +23,12 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // costs one extra frame per interval on an otherwise idle app — the price of knowing the render clock still
     // wakes, which nothing else in the process can tell us.
     private static readonly TimeSpan RenderClockProbeInterval = TimeSpan.FromSeconds(10);
+
+    // AC-1256: how many times one freeze episode is asked what is still in layout, and how far apart. Three is
+    // what tells a stuck subtree from one walking the tree; more would only lengthen the log.
+    private const int DirtySamplesPerEpisode = 3;
+
+    private static readonly TimeSpan DirtySampleInterval = TimeSpan.FromSeconds(10);
 
     // AC-1114: how often to check that the AppImage mount this process runs from still serves.
     private static readonly TimeSpan AppImageMountProbeInterval = TimeSpan.FromSeconds(10);
@@ -85,6 +94,10 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // the dependency cannot run the other way). Null (falls back to "n/a") before that wiring runs, e.g. in tests.
     private Func<(int OpenSessions, string LayoutStand)>? _sessionContext;
 
+    // AC-1256: the windows the starvation probe reads the layout tree from. Same shape as Program's own
+    // `_OpenWindows`, kept here rather than plumbed in so production needs no wiring for a diagnostic.
+    private Func<IReadOnlyList<Visual>>? _layoutRoots;
+
     // AC-1196: the budget both alarms below are judged against. Injectable for the same reason heapBytesProbe is —
     // a test would otherwise have to hold a thread hostage for a real quarter-minute per case, three times over.
     private readonly TimeSpan _alarmAfter;
@@ -99,6 +112,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     // Wired once from App.axaml.cs: the three fields the diag line cannot compute on its own (AC-1125 D).
     public void SetSessionContext(Func<(int OpenSessions, string LayoutStand)> provider) => _sessionContext = provider;
+
+    // AC-1256: test seam only. The default below is what production uses, so nothing has to wire this.
+    internal void SetLayoutRoots(Func<IReadOnlyList<Visual>> provider) => _layoutRoots = provider;
 
     // AC-883: raised on the UI thread when the render clock starts or stops being able to process commits. Panes
     // subscribe to suspend their transcripts; nothing else in the process can tell them the clock is gone.
@@ -174,6 +190,8 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         var dispatchWarned = false;
         var dispatchStarvedAt = TimeSpan.Zero;
         var nextProbeAt = TimeSpan.Zero;
+        var nextDirtySampleAt = TimeSpan.Zero;
+        var dirtySamplesTaken = 0;
         var nextMountProbeAt = TimeSpan.Zero;
         var failedMountProbes = 0;
 #if DEBUG
@@ -253,6 +271,23 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 }
 
                 dispatchWarned = dispatchDecision.Warned;
+
+                // AC-1256: whichever alarm stands, not the starvation edge alone — on the reported freeze uifreeze
+                // fired at 5.1s and starvation only at 15.4s, so the later of the two reads a quarter-minute late.
+                // Repeated, because one reading cannot tell a stuck subtree from one walking through the tree.
+                if (warned || dispatchWarned)
+                {
+                    if (now >= nextDirtySampleAt && dirtySamplesTaken < DirtySamplesPerEpisode)
+                    {
+                        nextDirtySampleAt = now + DirtySampleInterval;
+                        _AskWhatIsStillInLayout(++dirtySamplesTaken, now);
+                    }
+                }
+                else
+                {
+                    dirtySamplesTaken = 0;
+                    nextDirtySampleAt = TimeSpan.Zero;
+                }
 
                 var renderDecision = RenderClockHeartbeat.Decide(
                     UiDispatchHeartbeat.RenderClockOutstandingFor(
@@ -375,6 +410,42 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             _logger.LogWarning(exception, "A render-clock probe could not be started; the next one will try again.");
         }
     }
+
+    // AC-1256: the alarms say a pass never finishes, never whose. AC-1236 already reads that off the tree for a
+    // cut-off pass; a stuck or starved one leaves the same trace but never throws, so nothing went to look. Send
+    // outranks the Loaded/Render such a loop reposts at (`hipri` is that proof), so a busy thread still runs it.
+    private void _AskWhatIsStillInLayout(int sample, TimeSpan requestedAt)
+    {
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                try
+                {
+                    var elements = LayoutLoopReport.Describe(_layoutRoots?.Invoke() ?? _OpenWindows());
+
+                    // `queued` is how long this reading waited for the thread: a sample taken long after it was
+                    // asked for is not a reading of the moment it was asked about, and has to say so itself.
+                    _logger.LogWarning(
+                        "uilayout dirty sample={Sample}/{Total} queued={Queued:0.0}s {Count} element(s) still in layout: {Elements}",
+                        sample,
+                        DirtySamplesPerEpisode,
+                        (_clock.Elapsed - requestedAt).TotalSeconds,
+                        elements.Count,
+                        elements.Count == 0 ? "(none — the loop is not a layout pass)" : string.Join(" | ", elements));
+                }
+                catch (Exception exception)
+                {
+                    // A diagnostic that throws on the thread it is diagnosing would be the second freeze.
+                    _logger.LogWarning("Could not read the layout tree during a freeze: {Failure}", exception);
+                }
+            },
+            DispatcherPriority.Send);
+    }
+
+    private static IReadOnlyList<Visual> _OpenWindows() =>
+        Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            ? [.. desktop.Windows]
+            : [];
 
     // Internal (a test seam, same idiom as AdaptiveGcCompactor.CheckOnce): one snapshot line, driven directly
     // instead of through the thread's 10s cadence.

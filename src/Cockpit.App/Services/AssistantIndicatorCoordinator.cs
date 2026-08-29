@@ -318,6 +318,11 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // writes its scroll position before the arriving view reads it — build-then-tear-down would read it stale.
     private async Task _ShowInAsync(bool docked)
     {
+        // AC-1256: the freeze that ticket is about started seconds after an undock, and the log held no record
+        // that one had happened — the whole correlation rested on the operator remembering. One line, so the next
+        // reconstruction does not have to.
+        _logger.LogInformation("Assistant chat moving to {Host}.", docked ? "the dock rail" : "its own window");
+
         if (_chatViewModel is { } chat)
         {
             chat.IsDocked = docked;

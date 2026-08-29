@@ -27,7 +27,8 @@ public sealed class AssistantDockHostSwapTests
 {
     // The coordinator's dependencies are all interfaces or thin wrappers around them, so the real class is what
     // runs here — the point is its host choice, and a stand-in for that would be testing the stand-in.
-    internal static (AssistantIndicatorCoordinator Coordinator, CockpitViewModel Cockpit, IDockPanelRegistry Panels) Build()
+    internal static (AssistantIndicatorCoordinator Coordinator, CockpitViewModel Cockpit, IDockPanelRegistry Panels) Build(
+        Microsoft.Extensions.Logging.ILogger<AssistantIndicatorCoordinator>? logger = null)
     {
         // One registry, shared by the cockpit and the coordinator, exactly as the container hands it out — with two
         // of them the rail lists nothing and every assertion about it would pass for the wrong reason.
@@ -72,7 +73,8 @@ public sealed class AssistantDockHostSwapTests
             Substitute.For<IVoicePlaybackQueue>(),
             Substitute.For<IAssistantSpawnAuditLog>(),
             cockpit,
-            panels);
+            panels,
+            logger);
 
         coordinator.Start();
         return (coordinator, cockpit, panels);
@@ -134,7 +136,8 @@ public sealed class AssistantDockHostSwapTests
     {
         await HeadlessAvalonia.RunAsync(async () =>
         {
-            var (coordinator, cockpit, panels) = Build();
+            var lines = new List<string>();
+            var (coordinator, cockpit, panels) = Build(new _CollectingLogger(lines));
             await cockpit.SetAssistantDockedAsync(true, AssistantIndicatorCoordinator.DockPanelId);
 
             var docked = (AssistantChatView)_OpenTheRailPanel(panels);
@@ -149,10 +152,38 @@ public sealed class AssistantDockHostSwapTests
             Assert.False(cockpit.AssistantDocked);
             Assert.Null(cockpit.OpenDockPanelId);
 
+            // AC-1256: the freeze this line exists for started seconds after an undock, and the log held no record
+            // that one had happened. Asserted here rather than in its own test because this is the undock.
+            Assert.Contains(lines, line => line.Contains("moving to its own window", StringComparison.Ordinal));
+
             var floating = coordinator.OpenChatWindow;
             Assert.NotNull(floating);
             Assert.Same(chat, floating!.DataContext);
         });
+    }
+
+    // Only the formatted message is kept: what the assertion above is about is that the swap says so at all.
+    private sealed class _CollectingLogger(List<string> lines) : Microsoft.Extensions.Logging.ILogger<AssistantIndicatorCoordinator>
+    {
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => _Scope.Instance;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            Microsoft.Extensions.Logging.LogLevel logLevel,
+            Microsoft.Extensions.Logging.EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) => lines.Add(formatter(state, exception));
+
+        private sealed class _Scope : IDisposable
+        {
+            public static readonly _Scope Instance = new();
+
+            public void Dispose()
+            {
+            }
+        }
     }
 
     // The same undock, but through the real rail rather than the registration alone: the settings saying the panel
