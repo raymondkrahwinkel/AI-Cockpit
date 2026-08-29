@@ -382,7 +382,7 @@ inline	plugins-dev/Cockpit.Plugin.YouTrack/YouTrackWorkflowTemplates.cs	1
 inline	plugins-dev/_shared/OpenAiCompatPluginSessionDriver.cs	1
 inline	src/Cockpit.App/Screenshotter.cs	1
 inline	src/Cockpit.App/ViewModels/EditableProfileViewModel.cs	1
-inline	src/Cockpit.App/ViewModels/SessionViewModel.cs	4
+inline	src/Cockpit.App/ViewModels/SessionViewModel.cs	3
 inline	tests/Cockpit.App.ViewTests/AssistantAgentGatewayTests.cs	3
 inline	tests/Cockpit.App.ViewTests/AssistantAgentGatewayUiThreadTests.cs	1
 inline	tests/Cockpit.App.ViewTests/AssistantChatComposerTests.cs	1
