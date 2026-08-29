@@ -5,8 +5,9 @@ namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// AC-1147's positive control: two real, separately started processes (never looked up by name — their
-/// pids come straight from <see cref="Process.Start(ProcessStartInfo)"/>) write to the same log file, and
-/// every line each one wrote must carry that process's own pid.
+/// pids come straight from <see cref="Process.Start(ProcessStartInfo)"/>) write to the same log file.
+/// Every line reaching that file carries its writer's pid, and both writers are represented.
+/// It deliberately does not count lines: <c>FileLoggerProvider._AppendWithRetry</c> drops a line after five attempts (AC-1216).
 /// </summary>
 public class LogPidPositiveControlTests
 {
