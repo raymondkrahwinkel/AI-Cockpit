@@ -11,4 +11,4 @@
 # cleanly. Without this, `act -j build` cannot pass on a Windows checkout — the local CI is unusable
 # there for a reason that has nothing to do with the change under test.
 *.sh text eol=lf
-hooks/commit-msg text eol=lf
+hooks/* text eol=lf

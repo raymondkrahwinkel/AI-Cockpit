@@ -7,6 +7,12 @@ on:
     branches: [main]
   pull_request:
 
+# A superseded run holds a runner to the end for a result nobody reads (AC-1243: 14 of 75 pull-request
+# runs). Never on main -- that run is the full-suite net behind the per-PR scoping.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Skips downstream jobs via job-level `if:`, never by filtering the `on:` trigger: GitHub counts a job
   # skipped by `if:` as a passing required check, but a filtered trigger means the workflow never runs at
@@ -124,10 +130,13 @@ jobs:
           cache: true
           cache-dependency-path: 'plugins-dev/**/*.csproj'
 
-      - name: Build every plugin against the current SDK
+      - name: Build the plugins PluginTests.slnx does not cover
         run: |
+          # The next step builds 27 of the 31 plugins via PluginTests.slnx; building them here too cost the
+          # job a second pass over the same graph (AC-1243).
           for plugin in plugins-dev/Cockpit.Plugin.*/; do
             case "$plugin" in *.Tests/) continue;; esac
+            if grep -qF "$(basename "$plugin")/" PluginTests.slnx; then continue; fi
             echo "::group::$plugin"
             dotnet build "$plugin" --configuration Release -warnaserror
             echo "::endgroup::"

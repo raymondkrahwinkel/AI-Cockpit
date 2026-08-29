@@ -1,0 +1,52 @@
+#!/usr/bin/env sh
+# CI's build-free guards, run before the push instead of five minutes into the run. A guard that fails in
+# CI costs a full round, a fix commit and another round -- AC-1243 measured 11 such failures in a week,
+# each one worth ~670 s of waiting. Only the guards that actually failed are here, and each is gated on the
+# paths it can fail over, so a push that touches neither plugins-dev/ nor C# pays almost nothing.
+#
+# Wire it with scripts/install-hooks.sh. This is a net in front of CI, never a replacement: every guard
+# below still runs there, so a push made without the hook is caught exactly as before.
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Nothing to compare against (no origin/main yet) means nothing to check.
+base=$(git rev-parse --verify --quiet origin/main) || exit 0
+changed=$(git diff --name-only "$base" HEAD)
+
+# Silent while it passes: a hook that chatters on every push gets uninstalled.
+guard() {
+  label="$1"
+  shift
+  output=$("$@" 2>&1) || {
+    [ -z "$output" ] || printf '%s\n' "$output" >&2
+    printf '\npre-push: %s would fail CI. Fix it, or push again with --no-verify.\n' "$label" >&2
+    exit 1
+  }
+}
+
+if echo "$changed" | grep -q '^plugins-dev/'; then
+  guard scripts/check-plugin-versions.sh bash scripts/check-plugin-versions.sh "$base" HEAD
+fi
+
+# CI has python3; a Windows box usually has the `py` launcher instead, and its `python3`/`python` are
+# Store stubs that exit 49 without running anything. So take the first name that survives `-c ''`.
+pick_python() {
+  for candidate in python3 py python; do
+    if "$candidate" -c '' >/dev/null 2>&1; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if echo "$changed" | grep -q '\.cs$'; then
+  if python=$(pick_python); then
+    guard scripts/check-comment-length.py "$python" scripts/check-comment-length.py
+    guard scripts/check-xmldoc-scope.py "$python" scripts/check-xmldoc-scope.py
+  else
+    # Skipped rather than blocking the push -- CI runs these either way.
+    printf 'pre-push: no working python3, py or python; skipping 2 guards. CI still runs them.\n' >&2
+  fi
+fi
