@@ -65,6 +65,22 @@ public class RenderedInkTests
     });
 
     [Fact]
+    public void LimitBarAndUsagePillsHaveTheSameSeverityForEveryWholePercentAndThreshold() => HeadlessAvalonia.Run(() =>
+    {
+        var fillFor = typeof(LimitBar).GetMethod("FillFor", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        foreach (var threshold in Enumerable.Range(0, 101))
+        {
+            var bar = new LimitBar { Threshold = threshold };
+            foreach (var percent in Enumerable.Range(0, 101))
+            {
+                var actual = Assert.IsType<SolidColorBrush>(fillFor.Invoke(bar, [percent]));
+                Assert.Equal(_FallbackColourFor(UsageSeverity.BrushKeyFor(percent, threshold)), actual.Color);
+            }
+        }
+    });
+
+    [Fact]
     public void AMicMeterOverItsThreshold_PaintsTheThemesAccent() => HeadlessAvalonia.Run(() =>
     {
         // The meter says "this is loud enough to interrupt with" by colour alone, so which colour is the message.
@@ -159,6 +175,14 @@ public class RenderedInkTests
         Height = BarHeight,
         HorizontalAlignment = HorizontalAlignment.Left,
         VerticalAlignment = VerticalAlignment.Top,
+    };
+
+    private static Color _FallbackColourFor(string brushKey) => brushKey switch
+    {
+        "CockpitStatusErrorBrush" => Color.Parse("#D64545"),
+        "CockpitStatusWaitingBrush" => Color.Parse("#E0A33E"),
+        "CockpitTextSecondaryBrush" => Color.Parse("#949AA5"),
+        _ => throw new ArgumentOutOfRangeException(nameof(brushKey)),
     };
 
     private static MicLevelMeter _Meter(double level, double threshold, double width = 200) => new()
