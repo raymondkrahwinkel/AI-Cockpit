@@ -25,10 +25,10 @@ from its settings — the **?** beside the token field.
    empty body — the assistant never responds, because from its side no one said anything. This plugin
    requests the intent unconditionally (`GatewayIntents.MessageContent` in `DiscordGatewayConnection`), so
    there is no lesser mode that works around it.
-3. **Choose bot permissions and generate an invite link.** **OAuth2** page → **OAuth2 URL Generator** → tick
-   the **bot** scope → tick at least **Send Messages** and **Read Message History** under **Bot Permissions**
-   → copy the generated URL.
-4. **Invite the bot to your server.** Open that URL, pick the server, confirm.
+3. **Choose bot permissions and copy the install link.** **Installation** → under **Installation Contexts**,
+   enable **Guild Install** → under **Default Install Settings**, add the **bot** scope plus **Send Messages**,
+   **Read Message History**, and **Use Slash Commands** → copy the **Install Link**.
+4. **Invite the bot to your server.** Open that link, select **Add to server**, pick the server, confirm.
 5. **Find the channel id.** Turn on **Developer Mode** (**User Settings → Advanced**), then right-click the
    channel → **Copy Channel ID**.
 
