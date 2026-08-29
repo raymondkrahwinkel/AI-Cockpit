@@ -111,6 +111,17 @@ with tempfile.TemporaryDirectory() as td:
 
     gate.BASELINE_PATH = original_baseline_path
 
+# --- AC-1257: a non-directory root must fail, not scan nothing and report green ---
+
+with tempfile.TemporaryDirectory() as td:
+    a_file = Path(td) / "Case.cs"
+    a_file.touch()
+    try:
+        list(gate.iter_source_files([a_file]))
+        failures.append("a file path passed as a root should exit, but it scanned nothing quietly")
+    except SystemExit:
+        print("ok: a file path passed as a root exits instead of reporting green")
+
 if failures:
     print(f"\n{len(failures)} test(s) failed:", file=sys.stderr)
     for f in failures:
