@@ -2254,6 +2254,73 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    // AC-1239: a launch that threw used to leave nothing a waiter could read — `IsSessionReady` false, the same
+    // answer a session still coming up gives — so a start that died in 76 ms was waited out for a minute.
+    [Fact]
+    public async Task AStartThatThrows_NamesItsReason_RatherThanReadingAsStillComingUp()
+    {
+        var vm = new SessionViewModel(ManagerFor(RuntimeThatFailsWith(new InvalidOperationException("codex not found"))));
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        Assert.Equal("codex not found", vm.StartFailure);
+        Assert.False(vm.IsSessionReady);
+        // The pair that carries the distinction: not ready AND no longer starting means failed, not slow.
+        Assert.False(vm.IsStarting);
+        Assert.Contains("codex not found", vm.Status, StringComparison.Ordinal);
+
+        await vm.DisposeAsync();
+    }
+
+    // The quieter half of the same defect: StartAsync returned without throwing and nothing is running, which left
+    // Status reading "Session started." on a session that never did.
+    [Fact]
+    public async Task AStartThatReturnsWithNothingRunning_IsReportedAsFailedToo()
+    {
+        var vm = new SessionViewModel(ManagerFor(Substitute.For<ISessionRuntime>()));
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        Assert.NotNull(vm.StartFailure);
+        Assert.False(vm.IsSessionReady);
+        Assert.DoesNotContain("Session started", vm.Status, StringComparison.Ordinal);
+
+        await vm.DisposeAsync();
+    }
+
+    // The control the two above are only meaningful against: a start that took reports no failure. Without it a
+    // StartFailure that is always set would pass them both and tell a waiter nothing.
+    [Fact]
+    public async Task AStartThatTook_ReportsNoFailure()
+    {
+        var (vm, _) = await StartedVm();
+
+        Assert.Null(vm.StartFailure);
+        Assert.True(vm.IsSessionReady);
+
+        await vm.DisposeAsync();
+    }
+
+    private static ISessionRuntime RuntimeThatFailsWith(Exception failure)
+    {
+        var runtime = Substitute.For<ISessionRuntime>();
+        runtime.StartAsync(
+            Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(),
+            Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
+            Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw failure);
+        return runtime;
+    }
+
+    private static ISessionManager ManagerFor(ISessionRuntime runtime)
+    {
+        var manager = Substitute.For<ISessionManager>();
+        manager.Create(Arg.Any<SessionProfile?>()).Returns(runtime);
+        return manager;
+    }
+
     private static async Task<(SessionViewModel Vm, ISessionDriver Session)> StartedVm()
     {
         var session = Substitute.For<ISessionDriver>();

@@ -7570,6 +7570,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
+            // AC-1239: the launch said why it failed, so end the run on that — before the confinement check below
+            // answers for it and an embedder is told about a worktree when the provider was simply not there.
+            if (session.StartFailure is { Length: > 0 } startFailure)
+            {
+                var failed = $"The session did not start: {startFailure}";
+                session.Statusline = failed;
+                await _CloseEmbeddedSessionAsync(session, failed);
+                return;
+            }
+
             // Confinement was asked for, so run the agent only when the session actually started AND its provider keeps
             // its file tools inside the directory it runs in.
             if (_EmbeddedConfinementRefusal(request, profile.Label, session.IsSessionReady, session.Capabilities.ConfinesFileAccessToWorkingDirectory) is { } refusal)

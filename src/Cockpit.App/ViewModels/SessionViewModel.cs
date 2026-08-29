@@ -21,6 +21,7 @@ using Cockpit.Core.Usage;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
 
@@ -48,6 +49,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-775: the process-wide usage cache shared across sessions on the same underlying credential. Null in
     // the design-time/unit-test graph, where `_RefreshLimits` simply falls back to the driver's own status.
     private readonly ISharedUsageCache? _sharedUsageCache;
+
+    // AC-1239: a swallowed launch failure left no trace anywhere. Null in the design-time/unit-test graph.
+    private readonly ILogger<SessionViewModel>? _logger;
 
     // AC-713: the profile this session started under — what an auth error or the poll timer below check against.
     private SessionProfile? _profile;
@@ -467,6 +471,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // after a launch that failed (where the runtime is assigned but never running).
     [ObservableProperty]
     private bool _isStarting;
+
+    // AC-1239: why the last launch did not take, else null. A start that failed and one still coming up both leave
+    // `IsSessionReady` false, so this is the only thing that tells them apart — and it carries the reason.
+    [ObservableProperty]
+    private string? _startFailure;
 
     // Images pasted into the input, sent with the next message and cleared afterwards.
     public ObservableCollection<ImageAttachmentViewModel> PendingAttachments { get; } = [];
@@ -1012,7 +1021,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IProfileLoginChecker? loginChecker = null,
         IProfileLoginStarter? loginStarter = null,
         IMentionFileSource? mentionFileSource = null,
-        ISharedUsageCache? sharedUsageCache = null)
+        ISharedUsageCache? sharedUsageCache = null,
+        ILogger<SessionViewModel>? logger = null)
         : base(usageHistory)
     {
         _eventQueue = new SessionEventQueue(Apply);
@@ -1024,6 +1034,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _loginStarter = loginStarter;
         _mentionFileSource = mentionFileSource;
         _sharedUsageCache = sharedUsageCache;
+        _logger = logger;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay);
@@ -1121,11 +1132,25 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         await StartWithProfileAsync(profile, workingDirectory, resume);
 
-        // StartWithProfileAsync swallows launch failures (it only sets Status); the runtime is left un-started
-        // when the CLI never came up. In that case unlock and reset the mode so a failed bypass launch doesn't
-        // strand the panel on a phantom, disabled "Bypass permissions" with no session.
+        // The runtime is left un-started when the CLI never came up. Unlock and reset the mode so a failed bypass
+        // launch doesn't strand the panel on a phantom, disabled "Bypass permissions" with no session.
         if (_runtime is not { IsRunning: true })
         {
+            // AC-1239: the quieter half — StartAsync returned without throwing and nothing is running, which used to
+            // leave Status reading "Session started." on a session that never did. A launch that threw already spoke.
+            // Only with a runtime in hand: a null one means no launch was attempted (the design-time graph) or that a
+            // teardown took it mid-start, and neither of those failed to start.
+            if (StartFailure is null && _runtime is not null)
+            {
+                StartFailure = "The provider returned without a running session.";
+                _logger?.LogWarning("A session under profile {Profile} is not running after its start.", profile?.Label ?? "(none)");
+            }
+
+            if (StartFailure is not null)
+            {
+                Status = $"Failed to start: {StartFailure}";
+            }
+
             IsPermissionModeLocked = false;
             SelectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
         }
@@ -1267,6 +1292,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         IsStarting = true;
+        StartFailure = null;
         Status = "Starting...";
 
         try
@@ -1339,7 +1365,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
         catch (Exception ex)
         {
+            // AC-1239: recorded and logged, not only written into Status — a failure nothing can read apart from a
+            // still-starting session is what made three launches wait out a poll on a session that died in 76 ms.
+            StartFailure = ex.Message;
             Status = $"Failed to start: {ex.Message}";
+            _logger?.LogWarning(ex, "Starting a session under profile {Profile} ({Provider}) failed.", profile?.Label ?? "(none)", ProviderBadge is { Length: > 0 } ? ProviderBadge : "SDK");
             // The launch failed — clear the "still starting" banner so it does not sit there implying the
             // session is about to come up. IsSessionReady stays false (no running runtime); the caller settles it.
             IsStarting = false;
