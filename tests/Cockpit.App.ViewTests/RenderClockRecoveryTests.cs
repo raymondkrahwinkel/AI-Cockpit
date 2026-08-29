@@ -57,6 +57,8 @@ public sealed class RenderClockRecoveryTests
 
         // Caught the way the global net catches it, and judged by the same decision, so this test also guards the
         // message RenderClockRecovery matches on: change it and the recovery below stops happening.
+        // AC-1220 measured that guard: mutating the constant turns this red, and the cut-off fires headless, so the
+        // string coupling to Avalonia needs no window and no CI job of its own. Do not prune this to a unit test.
         Exception? caught = null;
         void OnUnhandled(object? _, DispatcherUnhandledExceptionEventArgs e)
         {
