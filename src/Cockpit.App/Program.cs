@@ -282,15 +282,15 @@ sealed class Program
         }
     }
 
-    // Posted rather than called here: this runs while the failed render operation is still unwinding, and only once
-    // that has finished is MediaContext's own _nextRenderOp cleared — a request made before then would be dropped as
-    // "a render is already scheduled". Any window will do; MediaContext is one instance per UI thread.
     private static IReadOnlyList<Avalonia.Controls.Window> _OpenWindows() =>
         Application.Current?.ApplicationLifetime
             is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
             ? desktop.Windows
             : [];
 
+    // Posted rather than called here: this runs while the failed render operation is still unwinding, and only once
+    // that has finished is MediaContext's own _nextRenderOp cleared — a request made before then would be dropped as
+    // "a render is already scheduled". Any window will do; MediaContext is one instance per UI thread.
     private static void _RequestRenderClockRestart() =>
         Avalonia.Threading.Dispatcher.UIThread.Post(
             () =>
