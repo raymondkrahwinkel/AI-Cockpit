@@ -328,7 +328,7 @@
                             <Border Background="{StaticResource CockpitSecondaryBgBrush}"
                                     BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                                     CornerRadius="{StaticResource CockpitControlRadius}"
-                                    Padding="8,4" Margin="0,0,6,6">
+                                    Padding="8,4" Margin="0,0,6,6" ToolTip.Tip="{Binding Text}">
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Queued" FontSize="11" VerticalAlignment="Center"
                                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
