@@ -8,6 +8,7 @@ using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -2273,6 +2274,21 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    [Fact]
+    public async Task ALoggerFailureDuringAStartFailure_StillStopsStarting()
+    {
+        var vm = new SessionViewModel(
+            ManagerFor(RuntimeThatFailsWith(new InvalidOperationException("provider unavailable"))),
+            logger: new ThrowingLogger());
+
+        await Assert.ThrowsAsync<IOException>(() => vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort));
+
+        Assert.False(vm.IsStarting);
+
+        await vm.DisposeAsync();
+    }
+
     // The quieter half of the same defect: StartAsync returned without throwing and nothing is running, which left
     // Status reading "Session started." on a session that never did.
     [Fact]
@@ -2312,6 +2328,16 @@ public class SessionViewModelTests
             Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns<Task>(_ => throw failure);
         return runtime;
+    }
+
+    private sealed class ThrowingLogger : ILogger<SessionViewModel>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            throw new IOException("disk full");
     }
 
     private static ISessionManager ManagerFor(ISessionRuntime runtime)
