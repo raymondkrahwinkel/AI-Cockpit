@@ -121,6 +121,9 @@ internal static class Screenshotter
         ["profiles-default-kind-tty"] = (_, _) => _ManageProfilesWithDefaultKind(SessionKind.Tty),
         ["profiles-default-kind-sdk"] = (_, _) => _ManageProfilesWithDefaultKind(SessionKind.Sdk),
         ["profiles-default-kind-sdk-only"] = (_, _) => _ManageProfilesSdkOnlyDefaultKind(),
+        // AC-1102: SESSION DEFAULTS had no scene at all, so the one block where an option can read as set or unset
+        // could not be looked at. Stages both states and both control shapes at once — see the builder's remarks.
+        ["profiles-plugin-option-defaults"] = (_, _) => _ManageProfilesPluginOptionDefaults(),
         ["verify-runners"] = (_, _) => new VerifyRunnersDialog { DataContext = new ViewModels.VerifyRunnersViewModel() },
         ["verify-runners-edit"] = (_, _) => _VerifyRunnersEditing(),
         ["new-session"] = (_, _) => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
@@ -979,6 +982,42 @@ internal static class Screenshotter
     // in favour of a plain "SDK-only" label, rather than offering a choice that could never take effect.
     private static ManageProfilesDialog _ManageProfilesSdkOnlyDefaultKind() =>
         _ManageProfilesEditing(new SessionProfile("local", new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null), Purpose: "cheap local model"));
+
+    // A Codex-shaped plugin profile that stores one of its four declared start options and leaves three unset — the
+    // state the profile editor produces since AC-1102, when it stopped persisting a default nobody chose. Both
+    // control shapes are here: Sandbox and Approval draw combo boxes (one set, one not), Model and Effort declare no
+    // choices and draw text boxes, so the unset placeholder is visible in each of the two places it can appear.
+    // Rendered in the Options dialog rather than the standalone editor: that is where the operator meets this block,
+    // and its detail column is the narrower of the two — the width at which an unset row would truncate if it were
+    // going to. Taller than the page rests at, so SESSION DEFAULTS is above the fold.
+    private static OptionsDialog _ManageProfilesPluginOptionDefaults()
+    {
+        var profile = new SessionProfile(
+            "codex",
+            new PluginProviderConfig(_FakeCodexProviderRegistry.ProviderId, "{}"),
+            Purpose: "Codex CLI profile",
+            Defaults: new ProfileDefaults(string.Empty, string.Empty, string.Empty)
+            {
+                OptionDefaults = new Dictionary<string, string> { ["sandbox"] = "workspace-write" },
+            });
+
+        var profiles = new ViewModels.ManageProfilesDialogViewModel();
+        var editable = new ViewModels.EditableProfileViewModel(
+            profile,
+            isLoggedIn: true,
+            providers: SessionProviderCatalog.AllProviders(new _FakeCodexProviderRegistry()),
+            pluginProviderRegistry: new _FakeCodexProviderRegistry());
+        profiles.Profiles.Clear();
+        profiles.Profiles.Add(editable);
+        profiles.SelectedProfile = editable;
+
+        var dialog = new OptionsDialog { DataContext = new ViewModels.CockpitViewModel { Profiles = profiles }, Height = 1500 };
+        var nav = dialog.FindControl<ListBox>("CategoryNav")
+            ?? throw new InvalidOperationException("The Options dialog has no 'CategoryNav' sidebar to select on.");
+        nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "profiles");
+
+        return dialog;
+    }
 
     private static ManageProfilesDialog _ManageProfilesEditing(SessionProfile profile)
     {
@@ -2137,6 +2176,55 @@ internal static class Screenshotter
 
         public Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration? Resolve(string providerId) =>
             providerId == ClaudePluginProfile.ProviderId ? Claude : null;
+    }
+
+    // Codex's four declared start options, in the shapes the editor renders them in: Sandbox and Approval carry
+    // choices (combo), Model and Effort declare none (text box). Only Sandbox has a declared default, which since
+    // AC-1102 no longer pre-fills anything — it is the New-session dialog's pre-selection, not the profile's.
+    private sealed class _FakeCodexProviderRegistry : Cockpit.Infrastructure.Sessions.IPluginProviderRegistry
+    {
+        public const string ProviderId = "cli-agent-provider.codex";
+
+        private static readonly Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration Codex = new(
+            ProviderId,
+            "Codex (CLI)",
+            _ => throw new NotSupportedException("A screenshot starts no session."),
+            new Cockpit.Plugins.Abstractions.Sessions.PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
+            _ => new _CodexPlaceholderConfigView())
+        {
+            Options =
+            [
+                new Cockpit.Plugins.Abstractions.Sessions.PluginSessionLaunchOption(
+                    "sandbox", "Sandbox", ["read-only", "workspace-write", "danger-full-access"], "read-only"),
+                new Cockpit.Plugins.Abstractions.Sessions.PluginSessionLaunchOption("model", "Model", Choices: []),
+                new Cockpit.Plugins.Abstractions.Sessions.PluginSessionLaunchOption("effort", "Effort", Choices: []),
+                new Cockpit.Plugins.Abstractions.Sessions.PluginSessionLaunchOption(
+                    "approvalPolicy", "Approval", ["untrusted", "on-request", "never"]),
+            ],
+        };
+
+        public void Register(Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration registration) { }
+
+        public IReadOnlyList<Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration> Registrations => [Codex];
+
+        public Cockpit.Plugins.Abstractions.Sessions.SessionProviderRegistration? Resolve(string providerId) =>
+            providerId == ProviderId ? Codex : null;
+    }
+
+    private sealed class _CodexPlaceholderConfigView : Cockpit.Plugins.Abstractions.Sessions.IPluginProviderConfigView
+    {
+        public Control View { get; } = new TextBlock
+        {
+            Text = "The Codex plugin's own settings render here — command, working directory, managed CLI, API key.",
+            FontSize = 11,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+        };
+
+        public bool TryGetConfigJson(out string configJson)
+        {
+            configJson = "{}";
+            return true;
+        }
     }
 
     private sealed class _PlaceholderConfigView : Cockpit.Plugins.Abstractions.Sessions.IPluginProviderConfigView
