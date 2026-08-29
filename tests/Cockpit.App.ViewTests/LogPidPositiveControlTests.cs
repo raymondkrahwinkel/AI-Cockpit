@@ -40,7 +40,7 @@ public class LogPidPositiveControlTests
             Assert.NotEmpty(fromA);
             Assert.NotEmpty(fromB);
 
-            // One process, one pid: every line a process wrote carries only that process's own pid.
+            // One process, one pid: every line reaching the log file carries its writer's own pid.
             Assert.All(fromA, line => Assert.Equal(pidA, _ExtractPid(line)));
             Assert.All(fromB, line => Assert.Equal(pidB, _ExtractPid(line)));
         }
