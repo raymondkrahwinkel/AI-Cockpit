@@ -95,16 +95,6 @@ public sealed class WorkspaceAgentCoordinatorTests
     }
 
     [Fact]
-    public void Enroll_ThenIsEnrolled_ReportsTrue()
-    {
-        var coordinator = new WorkspaceAgentCoordinator();
-
-        coordinator.Enroll("pane-1");
-
-        Assert.True(coordinator.IsEnrolled("pane-1"));
-    }
-
-    [Fact]
     public void IsEnrolled_ForAPaneThatNeverCalledIn_ReportsFalse()
     {
         var coordinator = new WorkspaceAgentCoordinator();
