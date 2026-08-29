@@ -26,15 +26,6 @@ public class SessionHeaderUsagePillTests
     }
 
     [Fact]
-    public void WithNeitherContextNorWindows_ThePillIsHidden()
-    {
-        var vm = new SessionViewModel { ContextUsedPercent = null };
-        vm.RateLimits.Clear();
-
-        Assert.False(vm.HasUsagePill);
-    }
-
-    [Fact]
     public void AddingARateWindow_RaisesHasUsagePill()
     {
         var vm = new SessionViewModel { ContextUsedPercent = null };

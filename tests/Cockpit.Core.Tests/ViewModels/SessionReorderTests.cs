@@ -14,19 +14,6 @@ namespace Cockpit.Core.Tests.ViewModels;
 public class SessionReorderTests
 {
     [Fact]
-    public void MoveSessionToVisibleIndex_MovesTheSessionToTheTargetPosition()
-    {
-        var cockpit = _Create(out var workspaces);
-        var a = _AddSession(cockpit, workspaces.Active!.Id);
-        var b = _AddSession(cockpit, workspaces.Active!.Id);
-        var c = _AddSession(cockpit, workspaces.Active!.Id);
-
-        cockpit.MoveSessionToVisibleIndex(a, 2);
-
-        Assert.Equal(new[] { b, c, a }, cockpit.VisibleSessions);
-    }
-
-    [Fact]
     public void MoveSessionToVisibleIndex_ReordersTheSidebarOnly_LeavingTheGridCollectionAlone()
     {
         // The session grid binds straight to Sessions and keeps its own positional cell layout, so a sidebar

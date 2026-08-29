@@ -330,6 +330,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: **the test suite is 22 tests smaller — 11,848 down to 11,826 — without losing any coverage.** Every one
+  of them was removed only after the behaviour it asserted had been deliberately broken and a *different* test went
+  red in its place; none was dropped for merely looking duplicated, and none was dropped for being red or flaky.
+  This buys no measurable time and is not meant to: the 22 together ran in about a millisecond, and the difference
+  between the two full runs on the same machine (286 s before, 274 s after) is that machine, not this change. What
+  it buys is a suite with less to read and keep.
+
 - changed: **a session's memory cap now also covers the tool servers it started.** The cap is applied a few
   seconds after a session launches, and anything the agent had already started in those seconds — its MCP tool
   servers, which start immediately — stayed outside it and was counted against the cockpit itself instead. That

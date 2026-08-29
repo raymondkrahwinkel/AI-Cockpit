@@ -1774,16 +1774,6 @@ public class SessionViewModelTests
         Assert.True(entry.IsErrorRow);
     }
 
-    [Fact]
-    public void Apply_TurnCompleted_SetsStatusToDone()
-    {
-        var vm = NewVm();
-
-        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
-
-        Assert.Equal(SessionStatus.Done, vm.SessionStatus);
-    }
-
     /// <summary>
     /// AC-410: the SDK route for a restored pane whose resume failed — mirrors what the real CLI does for an
     /// unresolvable --resume id (verified 2026-07-29): an error_during_execution result with no Result and the

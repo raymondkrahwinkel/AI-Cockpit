@@ -138,16 +138,6 @@ public class TtyEnvironmentTests
         Assert.Equal(@"C:\Windows", environment["PATH"]);
     }
 
-    [Fact]
-    public void BuildBase_WithoutHostTerminalIdentityMarkers_LeavesUnrelatedVariablesUntouched()
-    {
-        var environment = TtyEnvironment.BuildBase(BaseEnvironment);
-
-        Assert.Equal(UserProfileDir, environment["USERPROFILE"]);
-        Assert.Equal(@"C:\Windows;C:\Windows\System32", environment["PATH"]);
-        Assert.Equal(@"C:\Users\raymo\AppData\Roaming", environment["APPDATA"]);
-    }
-
     [Theory]
     [InlineData("ANTHROPIC_API_KEY")]
     [InlineData("ANTHROPIC_AUTH_TOKEN")]

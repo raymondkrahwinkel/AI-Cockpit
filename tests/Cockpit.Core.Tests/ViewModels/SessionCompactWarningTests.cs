@@ -42,22 +42,13 @@ public class SessionCompactWarningTests
     }
 
     [Fact]
-    public void TheContextFillLine_HidesCompact_WithoutTheCapability()
-    {
-        // Default SessionCapabilities.ClaudeCli does not declare SupportsContextCompaction — the pre-AC-664 shape.
-        var panel = new TtyViewModel();
-
-        panel.ApplyUsage([Context], [new PluginUsageReading("context", 60, null)]);
-
-        Assert.False(panel.Warnings.Single(w => w.Key == "context").ShowCompact);
-    }
-
-    [Fact]
     public void ShowCompact_RecoversWhenCapabilitiesArriveAfterTheWarningAlreadyStood()
     {
         // AC-893: StartWithProfileAsync's own ordering — usage refreshed before Capabilities is set — reproduced
         // directly on the base VM. OnCapabilitiesChanged must rebuild the bar on its own, without a second
         // ApplyUsage call, or a session that starts already over threshold shows Compact-less until its next turn.
+        // The opening assertion is the pre-AC-664 shape in its own right: default SessionCapabilities.ClaudeCli
+        // does not declare SupportsContextCompaction, so Compact must stay hidden until the capability arrives.
         var panel = new TtyViewModel();
         panel.ApplyUsage([Context], [new PluginUsageReading("context", 60, null)]);
         Assert.False(panel.Warnings.Single(w => w.Key == "context").ShowCompact);

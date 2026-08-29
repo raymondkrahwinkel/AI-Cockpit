@@ -17,11 +17,4 @@ public class PluginSessionDriverConversationDefaultTests
         Assert.Equal(PluginConversationId.Unknown, driver.Conversation);
     }
 
-    [Fact]
-    public void Conversation_IsKnown_OnceTheDriverHasASessionId()
-    {
-        IPluginSessionDriver driver = new FakePluginSessionDriver { SessionId = "session-a" };
-
-        Assert.Equal(PluginConversationId.Known("session-a"), driver.Conversation);
-    }
 }

@@ -93,15 +93,6 @@ public class TtyActivityStatusTrackerTests
     }
 
     [Fact]
-    public void Poll_WhenABusyTurnGoesSilentPastTheSafetyTimeout_FallsBackToDone()
-    {
-        var tracker = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
-        tracker.OnActivity(SessionActivity.Busy, T0);
-
-        Assert.Equal(SessionStatus.Done, tracker.Poll(T0 + SafetyTimeout));
-    }
-
-    [Fact]
     public void OnActivity_TurnStartsAgainAfterDone_ReturnsToBusy()
     {
         var tracker = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);

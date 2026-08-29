@@ -8,12 +8,6 @@ public class AudioDeviceResolverTests
     private static readonly string[] Devices = ["Built-in Microphone", "Yeti Stereo Microphone", "Webcam Mic"];
 
     [Fact]
-    public void FindIndex_EmptyName_ReturnsSystemDefaultSentinel()
-    {
-        Assert.Equal(-1, AudioDeviceResolver.FindIndex("", Devices));
-    }
-
-    [Fact]
     public void FindIndex_NullName_ReturnsSystemDefaultSentinel()
     {
         Assert.Equal(-1, AudioDeviceResolver.FindIndex(null, Devices));
@@ -23,12 +17,6 @@ public class AudioDeviceResolverTests
     public void FindIndex_KnownName_ReturnsItsIndex()
     {
         Assert.Equal(1, AudioDeviceResolver.FindIndex("Yeti Stereo Microphone", Devices));
-    }
-
-    [Fact]
-    public void FindIndex_NameNoLongerPresent_FallsBackToSystemDefault()
-    {
-        Assert.Equal(-1, AudioDeviceResolver.FindIndex("Unplugged Headset", Devices));
     }
 
     [Fact]

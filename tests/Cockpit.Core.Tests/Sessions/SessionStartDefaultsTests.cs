@@ -253,12 +253,6 @@ public class SessionStartDefaultsTests
             SessionStartDefaults.Resolve(project: null, profile).SystemPrompt);
     }
 
-    [Fact]
-    public void Resolve_NeitherSpeaks_AppendsNothing()
-    {
-        Assert.Null(SessionStartDefaults.Resolve(Project.Create("Cockpit"), Profile()).SystemPrompt);
-    }
-
     /// <summary>
     /// AC-714 acceptance criterion 1: the project block earns an attribution heading only when it actually says
     /// something. A profile that speaks alone must never gain a heading with an empty project block under it.
@@ -1350,27 +1344,6 @@ public class SessionStartDefaultsTests
         Assert.Contains("could not be found", prompt, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The regression MUST-FIX 1 must not break, pinned byte-for-byte: an ordinary, human-length
-    /// <see cref="ProjectMemorySource.Title"/> produces exactly the sentence it always did. This is the same
-    /// fixture as <see cref="Resolve_AMemoryRefNamingARegisteredSource_ExplainsHowToReachIt"/> — repeated here,
-    /// named for this round, so the confirming fix's own test file shows the pin explicitly rather than relying on
-    /// a reader to find it in an older test.
-    /// </summary>
-    [Fact]
-    public void Resolve_AnOrdinaryTitle_ProducesExactlyTheSameSentenceAsBeforeTheConfirmingFix()
-    {
-        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
-        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it through the Depot MCP's read tool.") };
-
-        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
-
-        Assert.Equal(
-            SessionStartDefaults.ProjectAttributionHeading + "\n\n" +
-            "This project's memory lives in Depot project \"cockpit\". Read it through the Depot MCP's read tool.",
-            prompt);
-    }
-
     // ── AC-484 confirming round: FIX 2 — channel advice requires a genuinely registered source, not just a shape ──
 
     /// <summary>
@@ -1397,31 +1370,6 @@ public class SessionStartDefaultsTests
         Assert.NotNull(prompt);
         Assert.Contains("lives in", prompt!, StringComparison.Ordinal);
         Assert.DoesNotContain("MCP", prompt, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// FIX 2's counterpart, proving the fix does not simply withhold advice always: a local path alongside a
-    /// reference naming a source that <em>is</em> actually registered still gets the advice. Same fixture as
-    /// <see cref="Resolve_OneLocalPathAndOneDepotMemoryRow_GivesChannelAdvice"/>, kept here so this round's fix and
-    /// its "does not over-correct" counterpart sit side by side.
-    /// </summary>
-    [Fact]
-    public void Resolve_ALocalPathAndARegisteredDepotMemoryRow_StillGivesChannelAdvice()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            Resources =
-            [
-                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
-                new ProjectResource("depot:cockpit", ProjectResourceRole.Memory),
-            ],
-        };
-        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it through the Depot MCP.") };
-
-        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
-
-        Assert.NotNull(prompt);
-        Assert.Contains("MCP", prompt!, StringComparison.Ordinal);
     }
 
     // ── AC-484 confirming round: FIX 3 — two-or-more memory rows still say how to reach the memory ────────────────

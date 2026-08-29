@@ -10,16 +10,6 @@ namespace Cockpit.Core.Tests.ViewModels;
 public class AdoptPaneIdTests
 {
     [Fact]
-    public void AdoptPaneId_OverridesTheFreshlyMintedGuid()
-    {
-        var session = new SessionViewModel();
-
-        session.AdoptPaneId("saved-pane-1");
-
-        Assert.Equal("saved-pane-1", session.PaneId);
-    }
-
-    [Fact]
     public void AdoptPaneId_CalledASecondTime_Throws()
     {
         var session = new SessionViewModel();

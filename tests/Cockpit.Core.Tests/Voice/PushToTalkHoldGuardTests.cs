@@ -6,14 +6,6 @@ namespace Cockpit.Core.Tests.Voice;
 public class PushToTalkHoldGuardTests
 {
     [Fact]
-    public void TryBeginHold_FirstCall_Succeeds()
-    {
-        var guard = new PushToTalkHoldGuard();
-
-        Assert.True(guard.TryBeginHold());
-    }
-
-    [Fact]
     public void TryBeginHold_RepeatedWhileHeld_OnlyTheFirstCallSucceeds()
     {
         var guard = new PushToTalkHoldGuard();
