@@ -2,8 +2,10 @@
 
   <!--
     AC-1147's positive control: a tiny real process that writes log lines through FileLoggerProvider.
-    Not part of Cockpit.slnx on purpose, same as the Diagram plugin build dependency below it in
-    Cockpit.App.ViewTests.csproj — the test locates and runs its build output rather than linking its types.
+    The test locates and runs this build output rather than linking its types, so the reference to it carries
+    ReferenceOutputAssembly="false". It is in Cockpit.slnx all the same (AC-1221): a project referenced from
+    outside the solution is built with the referencing project's configuration unset, so a Release solution
+    build left a Debug probe here for CI's Release test run, which rebuilds nothing, to find.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
