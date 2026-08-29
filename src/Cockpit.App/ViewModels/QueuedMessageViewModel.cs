@@ -47,6 +47,7 @@ public partial class QueuedMessageViewModel : ViewModelBase
             return suffix;
         }
 
-        return imageCount == 0 ? text : $"{text}  {suffix}";
+        var display = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return imageCount == 0 ? display : $"{display} {suffix}";
     }
 }
