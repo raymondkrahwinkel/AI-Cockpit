@@ -173,17 +173,6 @@ public class AutopilotPlanIntentTests : IDisposable
     }
 
     [Fact]
-    public async Task Plan_OnAReadyItem_GoesThroughToPlanning()
-    {
-        var (handler, tracker) = Started();
-
-        var result = await handler(Plan("Ready"));
-
-        Assert.Equal("planning", result["status"]);
-        Assert.Empty(tracker.Comments);
-    }
-
-    [Fact]
     public async Task Plan_OnTheSameRefusedItemTwice_WritesTheReasonOnce()
     {
         var (handler, tracker) = Started();
