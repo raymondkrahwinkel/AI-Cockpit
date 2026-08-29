@@ -34,17 +34,17 @@ Message Content is a *privileged* intent. On an app past [verification](https://
 Discord may ask why you need it before letting you enable it — for a personal or small-server bot like this
 one, the toggle is available straight away.
 
-## 3. Choose bot permissions and generate an invite link {#invite-link}
+## 3. Choose bot permissions and copy the install link {#invite-link}
 
-Open the **OAuth2** page, and under **OAuth2 URL Generator** tick the **bot** scope. A **Bot Permissions**
-panel appears below the scope list; tick at least **Send Messages**, **Read Message History**, and **Use
-Slash Commands** — add more if you plan to use the bot for anything past what this plugin relays. Copy the
-generated URL at the bottom of the page.
+Open **Installation** in the left-hand sidebar. Under **Installation Contexts**, enable **Guild Install**.
+Under **Default Install Settings**, add the **bot** scope, then select at least **Send Messages**, **Read
+Message History**, and **Use Slash Commands** — add more if you plan to use the bot for anything past what
+this plugin relays. Copy the **Install Link**.
 
 ## 4. Invite the bot to your server {#invite-bot}
 
-Open the URL from the previous step in a browser, pick the server to install it into, and confirm. You need
-the **Manage Server** permission on that server to complete this step.
+Open the link from the previous step in a browser, select **Add to server** in the installation prompt, then
+pick the server and confirm. You need the **Manage Server** permission on that server to complete this step.
 
 ## 5. Find the channel id {#channel-id}
 
