@@ -24,6 +24,12 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // wakes, which nothing else in the process can tell us.
     private static readonly TimeSpan RenderClockProbeInterval = TimeSpan.FromSeconds(10);
 
+    // AC-1256: how many times one freeze episode is asked what is still in layout, and how far apart. Three is
+    // what tells a stuck subtree from one walking the tree; more would only lengthen the log.
+    private const int DirtySamplesPerEpisode = 3;
+
+    private static readonly TimeSpan DirtySampleInterval = TimeSpan.FromSeconds(10);
+
     // AC-1114: how often to check that the AppImage mount this process runs from still serves.
     private static readonly TimeSpan AppImageMountProbeInterval = TimeSpan.FromSeconds(10);
 
@@ -184,6 +190,8 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         var dispatchWarned = false;
         var dispatchStarvedAt = TimeSpan.Zero;
         var nextProbeAt = TimeSpan.Zero;
+        var nextDirtySampleAt = TimeSpan.Zero;
+        var dirtySamplesTaken = 0;
         var nextMountProbeAt = TimeSpan.Zero;
         var failedMountProbes = 0;
 #if DEBUG
@@ -256,7 +264,6 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                         + "This is not a renderclock stall: the clock is ticking.",
                         probePendingFor!.Value.TotalSeconds,
                         sinceHighPriorityPong!.Value.TotalSeconds);
-                    _AskTheStarvedThreadWhatIsDirty();
                 }
                 else if (dispatchDecision.Recovered)
                 {
@@ -264,6 +271,23 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 }
 
                 dispatchWarned = dispatchDecision.Warned;
+
+                // AC-1256: whichever alarm stands, not the starvation edge alone — on the reported freeze uifreeze
+                // fired at 5.1s and starvation only at 15.4s, so the later of the two reads a quarter-minute late.
+                // Repeated, because one reading cannot tell a stuck subtree from one walking through the tree.
+                if (warned || dispatchWarned)
+                {
+                    if (now >= nextDirtySampleAt && dirtySamplesTaken < DirtySamplesPerEpisode)
+                    {
+                        nextDirtySampleAt = now + DirtySampleInterval;
+                        _AskWhatIsStillInLayout(++dirtySamplesTaken, now);
+                    }
+                }
+                else
+                {
+                    dirtySamplesTaken = 0;
+                    nextDirtySampleAt = TimeSpan.Zero;
+                }
 
                 var renderDecision = RenderClockHeartbeat.Decide(
                     UiDispatchHeartbeat.RenderClockOutstandingFor(
@@ -387,10 +411,10 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         }
     }
 
-    // AC-1256: the starved line says a pass never finishes, never whose. AC-1236 already reads that off the tree
-    // for a cut-off pass; a starved one leaves the same trace but never throws, so nothing went to look. Send
-    // outranks the Loaded/Render such a loop reposts at (`hipri` is that proof), so the busy thread still runs it.
-    private void _AskTheStarvedThreadWhatIsDirty()
+    // AC-1256: the alarms say a pass never finishes, never whose. AC-1236 already reads that off the tree for a
+    // cut-off pass; a stuck or starved one leaves the same trace but never throws, so nothing went to look. Send
+    // outranks the Loaded/Render such a loop reposts at (`hipri` is that proof), so a busy thread still runs it.
+    private void _AskWhatIsStillInLayout(int sample, TimeSpan requestedAt)
     {
         Dispatcher.UIThread.Post(
             () =>
@@ -398,15 +422,21 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 try
                 {
                     var elements = LayoutLoopReport.Describe(_layoutRoots?.Invoke() ?? _OpenWindows());
+
+                    // `queued` is how long this reading waited for the thread: a sample taken long after it was
+                    // asked for is not a reading of the moment it was asked about, and has to say so itself.
                     _logger.LogWarning(
-                        "uidispatch starved-where {Count} element(s) still in layout: {Elements}",
+                        "uilayout dirty sample={Sample}/{Total} queued={Queued:0.0}s {Count} element(s) still in layout: {Elements}",
+                        sample,
+                        DirtySamplesPerEpisode,
+                        (_clock.Elapsed - requestedAt).TotalSeconds,
                         elements.Count,
                         elements.Count == 0 ? "(none — the loop is not a layout pass)" : string.Join(" | ", elements));
                 }
                 catch (Exception exception)
                 {
                     // A diagnostic that throws on the thread it is diagnosing would be the second freeze.
-                    _logger.LogWarning("Could not read the layout tree while the dispatcher was starved: {Failure}", exception);
+                    _logger.LogWarning("Could not read the layout tree during a freeze: {Failure}", exception);
                 }
             },
             DispatcherPriority.Send);

@@ -25,7 +25,7 @@ public sealed class Ac1256StarvedLayoutReportTests
 
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(25);
 
-    private const string Where = "uidispatch starved-where";
+    private const string Where = "uilayout dirty";
 
     /// <summary>
     /// A tree left mid-layout while the dispatcher is starved above it: the report names the control by its path.
@@ -49,10 +49,9 @@ public sealed class Ac1256StarvedLayoutReportTests
 
             service.SetLayoutRoots(() => [window]);
 
-            // Starved above Render, so the layout pass the invalidation below queues never gets served and the
-            // tree stays mid-pass — the state a self-invalidating loop holds it in, without the self-invalidation.
-            // A control that really re-dirties itself from LayoutUpdated is not usable here: Avalonia detects that
-            // one itself and throws "Infinite layout loop detected", which is AC-1236's case and not this one.
+            // Starved above Render, so the pass the invalidation below queues is never served and the tree stays
+            // mid-pass. A control that re-dirties itself from LayoutUpdated cannot stand in here: Avalonia detects
+            // that one and throws "Infinite layout loop detected", which is AC-1236's case rather than this one.
             using var starver = StarvedDispatcher.Start(DispatcherPriority.Normal);
             service.Start();
 
@@ -106,6 +105,45 @@ public sealed class Ac1256StarvedLayoutReportTests
             var line = logger.Lines.First(entry => entry.Contains(Where, StringComparison.Ordinal));
             Assert.Contains("not a layout pass", line, StringComparison.Ordinal);
             Assert.DoesNotContain("Settled", line, StringComparison.Ordinal);
+        }
+        finally
+        {
+            service.Dispose();
+            await Dispatcher.UIThread.InvokeAsync(() => window?.Close(), DispatcherPriority.Background);
+        }
+    }
+
+    /// <summary>
+    /// One reading cannot tell a subtree that is stuck from one walking through the tree, and which of those it is
+    /// decides where the next investigation goes. So an episode is asked more than once, and the samples say which.
+    /// </summary>
+    [Fact]
+    public async Task AFreezeThatGoesOn_IsAskedMoreThanOnce()
+    {
+        var logger = new _CapturingLogger();
+        var service = new DiagnosticsBackgroundService(logger, alarmAfter: AlarmAfter);
+        Window? window = null;
+
+        try
+        {
+            window = await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                var opened = new Window { Width = 400, Height = 300, Content = new StackPanel() };
+                opened.Show();
+                opened.UpdateLayout();
+                return opened;
+            });
+
+            service.SetLayoutRoots(() => [window]);
+
+            using var starver = StarvedDispatcher.Start(DispatcherPriority.Normal);
+            service.Start();
+
+            Assert.True(await _Appears(logger, "sample=2/"), "a freeze that goes on was read only once");
+
+            // Numbered rather than repeated verbatim: reading two lines side by side is the whole point, and
+            // without the number an investigator cannot tell a second reading from a duplicated first.
+            Assert.Contains(logger.Lines, line => line.Contains("sample=1/", StringComparison.Ordinal));
         }
         finally
         {
