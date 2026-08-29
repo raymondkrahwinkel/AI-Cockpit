@@ -68,7 +68,7 @@ public class StreamedReplySplitTests
 
         // One row: the stray marker sits in the first block, so the very first blank line already reads as inside
         // a fence and nothing after it ever ends a block either.
-        Assert.Equal(1, vm.Transcript.Count);
+        Assert.Single(vm.Transcript);
         Assert.Equal(stray, vm.Transcript[^1].ReplyTextWithImageSuffix);
     }
 }
