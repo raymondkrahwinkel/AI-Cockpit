@@ -801,13 +801,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
 
             var end = at + 2;
-            // ponytail: counts by pairs, so an unbalanced fence — a stray ``` in prose, a reply fenced with ~~~ —
-            // leaves the parity stuck and the rest of that reply on one row. Nothing is lost and nothing errors;
-            // it falls back to how this behaved before AC-1238, flicker included, and says nothing about it
-            // (StreamedReplySplitTests pins the no-loss half). Track the fence state on the row itself if that
-            // ever needs to be right. Also re-counts over the open row's text each time, which is one block
-            // unless that block is a long code fence.
-            if ((_FenceCount(existing) + _FenceCount(pending[..end])) % 2 == 0)
+            if (_OpenFence(pending[..end], _OpenFence(existing)) is null)
             {
                 return end;
             }
@@ -816,16 +810,29 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    private static int _FenceCount(string text)
+    private static char? _OpenFence(string text, char? open = null)
     {
-        var count = 0;
-        for (var at = text.IndexOf("```", StringComparison.Ordinal); at >= 0;
-             at = text.IndexOf("```", at + 3, StringComparison.Ordinal))
+        // ponytail: re-scans an open row per chunk; cache fence state on the row if long replies regress.
+        foreach (var line in text.Split('\n'))
         {
-            count++;
+            var content = line.AsSpan();
+            var indent = 0;
+            while (indent < content.Length && indent < 3 && content[indent] == ' ')
+            {
+                indent++;
+            }
+
+            content = content[indent..];
+            if (content.Length >= 3
+                && content[0] is '`' or '~'
+                && content[1] == content[0]
+                && content[2] == content[0])
+            {
+                open = open == content[0] ? null : open ?? content[0];
+            }
         }
 
-        return count;
+        return open;
     }
 
     // Puts one row in or out of `VisibleTranscript` when — and only when — its visibility actually moved.

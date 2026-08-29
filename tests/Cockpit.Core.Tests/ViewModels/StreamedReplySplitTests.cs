@@ -50,15 +50,9 @@ public class StreamedReplySplitTests
         Assert.Equal(Reply, vm.Transcript[0].ReplyTextWithImageSuffix);
     }
 
-    /// <summary>
-    /// The boundary rule counts code fences so a blank line inside one does not end a block. It counts them by
-    /// pairs, so an unbalanced fence — a stray ``` in prose, or a reply fenced with ~~~ instead — leaves the
-    /// parity stuck and the rest of that reply on one row. That is a silent fall back to how this behaved before
-    /// AC-1238: the flicker returns for that reply, and nothing says so. What must not happen is losing text, so
-    /// that is what this pins; the row count is asserted only to show the fall back is what happened.
-    /// </summary>
+    /// <summary>An inline fence marker is prose, not an unclosed code block.</summary>
     [Fact]
-    public void AReplyWithAnUnbalancedFence_FallsBackToOneRowAndStillKeepsEveryCharacter()
+    public void AReplyWithAnInlineFenceMarker_SplitsAndStillKeepsEveryCharacter()
     {
         var vm = new SessionViewModel();
         vm.Transcript.Clear();
@@ -66,9 +60,38 @@ public class StreamedReplySplitTests
         var stray = "Here is a fence marker ``` on its own in prose.\n\n" + Reply;
         _Stream(vm, stray);
 
-        // One row: the stray marker sits in the first block, so the very first blank line already reads as inside
-        // a fence and nothing after it ever ends a block either.
-        Assert.Single(vm.Transcript);
+        Assert.True(vm.Transcript.Count > 1, "the inline marker must not disable later block boundaries");
         Assert.Equal(stray, vm.Transcript[^1].ReplyTextWithImageSuffix);
+    }
+
+    [Theory]
+    [InlineData("```")]
+    [InlineData("~~~")]
+    public void AReplyWithAFencedCodeBlock_KeepsItsBlankLinesTogether(string fence)
+    {
+        var vm = new SessionViewModel();
+        vm.Transcript.Clear();
+
+        var codeBlock = $"{fence}csharp\nvar first = 1;\n\nvar second = 2;\n{fence}\n\n";
+        var reply = codeBlock + Reply;
+        _Stream(vm, reply);
+
+        Assert.Equal(codeBlock, vm.Transcript[0].Text);
+        Assert.True(vm.Transcript.Count > 1);
+        Assert.Equal(reply, vm.Transcript[^1].ReplyTextWithImageSuffix);
+    }
+
+    [Fact]
+    public void ABacktickFence_IsNotClosedByATildeFence()
+    {
+        var vm = new SessionViewModel();
+        vm.Transcript.Clear();
+
+        var codeBlock = "```csharp\nvar first = 1;\n~~~\n\nvar second = 2;\n```\n\n";
+        var reply = codeBlock + Reply;
+        _Stream(vm, reply);
+
+        Assert.Equal(codeBlock, vm.Transcript[0].Text);
+        Assert.Equal(reply, vm.Transcript[^1].ReplyTextWithImageSuffix);
     }
 }
