@@ -77,18 +77,28 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
 
         try
         {
-            var json = await ReadWhenNotBeingReplacedAsync(path, cancellationToken).ConfigureAwait(false);
-            var document = JsonNode.Parse(json);
+            // AC-1152: with nothing to decrypt there is nothing to walk, so the file goes straight into the DTO
+            // without a JsonNode tree of the whole document in between — the tree exists only to be walked.
+            if (_keyHolder.Protector is not { } protector)
+            {
+                return await ReadFileWhenNotBeingReplacedAsync(
+                    path,
+                    stream => JsonSerializer.DeserializeAsync<CockpitConfigFile>(stream, SerializerOptions, cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            var document = await ReadFileWhenNotBeingReplacedAsync(
+                path,
+                stream => ValueTask.FromResult(JsonNode.Parse(stream)),
+                cancellationToken).ConfigureAwait(false);
+
             if (document is null)
             {
                 return null;
             }
 
-            if (_keyHolder.Protector is { } protector)
-            {
-                SecretJsonWalker.Transform(document, _keyHolder.Fields, (path, value) =>
-                    SecretProtector.IsProtected(value) ? protector.Unprotect(path, value) : null);
-            }
+            SecretJsonWalker.Transform(document, _keyHolder.Fields, (path, value) =>
+                SecretProtector.IsProtected(value) ? protector.Unprotect(path, value) : null);
 
             return document.Deserialize<CockpitConfigFile>(SerializerOptions);
         }
@@ -101,14 +111,34 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     // Reads the file, waiting out a writer mid-swap (`File.Replace` holds the destination and a reader
     // that lands there gets a sharing violation) rather than failing outright — the 2026-07-15 incident.
     // Internal so `SecretProtectionService` (review #9) reads through the same retry.
-    internal static async Task<string> ReadWhenNotBeingReplacedAsync(string path, CancellationToken cancellationToken)
+    internal static Task<string> ReadWhenNotBeingReplacedAsync(string path, CancellationToken cancellationToken) =>
+        WhenNotBeingReplacedAsync(() => File.ReadAllTextAsync(path, cancellationToken), cancellationToken);
+
+    // AC-1152: hands `read` the file itself rather than a string of the whole document. Above 85 kB that string
+    // is a large object of its own, on every read — and `AllocLarge` was the measured reason for most gen2 collections.
+    private static Task<T> ReadFileWhenNotBeingReplacedAsync<T>(
+        string path,
+        Func<Stream, ValueTask<T>> read,
+        CancellationToken cancellationToken)
+    {
+        return WhenNotBeingReplacedAsync(OpenAndReadAsync, cancellationToken);
+
+        async Task<T> OpenAndReadAsync()
+        {
+            await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+            return await read(stream).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<T> WhenNotBeingReplacedAsync<T>(Func<Task<T>> read, CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + ReadContentionWindow;
         while (true)
         {
             try
             {
-                return await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+                return await read().ConfigureAwait(false);
             }
             // FileNotFoundException included on purpose (AC-1047): the swap frees the name for an instant between
             // moving the old file to `.bak` and renaming the new one in, so a reader that lands there finds
@@ -160,15 +190,18 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             SecretJsonWalker.Transform(document, _keyHolder.Fields, (path, value) => protector.Protect(path, value));
         }
 
-        // Written whole and renamed into place, never streamed over the live file — a rename is atomic, so
-        // a crash mid-write never leaves a half file (2026-07-14 incident). Previous version kept as .bak,
-        // which is what ReadAsync falls back to; owner-only, since this file holds provider credentials.
-        CockpitConfigPath.ReplaceAtomicallyPrivate(configFilePath, document.ToJsonString(SerializerOptions));
+        // Written to a sidecar and renamed into place, never over the live file — a rename is atomic, so a crash
+        // mid-write never leaves a half file (2026-07-14 incident); .bak is what ReadAsync falls back to, owner-only.
+        // AC-1152: serialised into that sidecar's stream, not first into a string of the whole document.
+        CockpitConfigPath.ReplaceAtomicallyPrivate(configFilePath, stream =>
+        {
+            using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
+            document.WriteTo(writer, SerializerOptions);
+        });
 
         // AC-41: this universal seam is where a credential written in the clear becomes visible to the
         // awareness banner — only while encryption is off and only when this save carries a credential.
-        if (protector is null
-            && SecretJsonWalker.Transform(document.DeepClone(), _keyHolder.Fields, (_, value) => value).Count > 0)
+        if (protector is null && SecretJsonWalker.ContainsSecret(document, _keyHolder.Fields))
         {
             _keyHolder.NoteUnprotectedSecretsWritten();
         }
