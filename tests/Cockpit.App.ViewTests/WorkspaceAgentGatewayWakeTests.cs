@@ -4,7 +4,6 @@ using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
-using Cockpit.Infrastructure.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -73,7 +72,7 @@ public class WorkspaceAgentGatewayWakeTests
     }
 
     private static WorkspaceAgentGateway _Gateway(CockpitViewModel cockpit) =>
-        new(cockpit, new WorkspaceAgentCoordinator(), NullLogger<WorkspaceAgentGateway>.Instance);
+        new(cockpit, NullLogger<WorkspaceAgentGateway>.Instance);
 
     [Fact]
     public async Task Wake_OnAPaneStandingStill_StartsATurnCarryingTheLabelledNotice()
@@ -367,7 +366,7 @@ public class WorkspaceAgentGatewayWakeTests
 
         // The send is deliberately not awaited by the gateway, so a throw on that path has no caller to surface it:
         // discarded, it becomes an unobserved exception at some later garbage collection, attributed to nothing.
-        var outcome = await new WorkspaceAgentGateway(cockpit, new WorkspaceAgentCoordinator(), logger).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var outcome = await new WorkspaceAgentGateway(cockpit, logger).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
 
         Assert.Equal(AgentWakeOutcome.Woken, outcome);
         var entry = Assert.Single(logger.Entries);
