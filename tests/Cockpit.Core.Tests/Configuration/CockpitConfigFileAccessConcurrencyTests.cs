@@ -104,16 +104,21 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
             }
         })).ToArray();
 
-        for (var index = 0; index < 40; index++)
+        try
         {
-            var label = $"written-{index}";
-            await access.UpdateAsync(
-                config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile(label, new ClaudeConfig("/home/someone/.claude")))],
-                CancellationToken.None);
+            for (var index = 0; index < 40; index++)
+            {
+                var label = $"written-{index}";
+                await access.UpdateAsync(
+                    config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile(label, new ClaudeConfig("/home/someone/.claude")))],
+                    CancellationToken.None);
+            }
         }
-
-        await readers.CancelAsync();
-        await Task.WhenAll(reading);
+        finally
+        {
+            await readers.CancelAsync();
+            await Task.WhenAll(reading);
+        }
 
         var written = await access.ReadAsync(CancellationToken.None);
 

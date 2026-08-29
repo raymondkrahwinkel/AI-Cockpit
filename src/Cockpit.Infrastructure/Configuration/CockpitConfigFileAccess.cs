@@ -36,8 +36,13 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             : await ReadNowAsync(cancellationToken).ConfigureAwait(false);
 
     // The real disk read — what ReadAsync does outside a batch, and what seeds a batch's first mutation.
-    internal async Task<CockpitConfigFile?> ReadNowAsync(CancellationToken cancellationToken)
+    internal async Task<CockpitConfigFile?> ReadNowAsync(CancellationToken cancellationToken, bool waitForWriter = true)
     {
+        if (waitForWriter)
+        {
+            await CockpitConfigWriteGate.WaitForWriterAsync(configFilePath, cancellationToken).ConfigureAwait(false);
+        }
+
         if (await TryReadAsync(configFilePath, cancellationToken).ConfigureAwait(false) is { } configFile)
         {
             return configFile;
@@ -171,7 +176,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     {
         using var gate = await CockpitConfigWriteGate.AcquireAsync(configFilePath, cancellationToken).ConfigureAwait(false);
 
-        var configFile = await ReadNowAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();
+        var configFile = await ReadNowAsync(cancellationToken, waitForWriter: false).ConfigureAwait(false) ?? new CockpitConfigFile();
         mutate(configFile);
 
         await WriteNowAsync(configFile).ConfigureAwait(false);
@@ -215,5 +220,5 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         JsonSerializer.Deserialize<CockpitConfigFile>(JsonSerializer.Serialize(configFile, SerializerOptions), SerializerOptions)!;
 
     // AC-41: the write gate lives in CockpitConfigWriteGate so the encryption migration and the banner
-    // dismissal share this lock. Reads don't take it, but a reader mid-swap waits the writer out instead.
+    // dismissal share this lock. Reads wait for it before opening the config, so a writer cannot starve.
 }
