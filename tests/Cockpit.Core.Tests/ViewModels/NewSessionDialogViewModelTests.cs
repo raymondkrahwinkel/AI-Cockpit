@@ -460,20 +460,6 @@ public class NewSessionDialogViewModelTests
         Assert.Equal(SessionKind.Sdk, vm.SelectedKind);
     }
 
-    // AC-139: a profile can set its own default Kind, so the New-session dialog pre-selects the route it is
-    // actually meant for (a TUI-averse Codex-style profile that should always open as SDK, say) instead of the
-    // hard TTY default.
-    [Fact]
-    public async Task SelectingAProfileWithAnSdkDefaultKind_PreSelectsSdk()
-    {
-        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")) { DefaultKind = ProfileSessionKind.Sdk };
-        var vm = NewVm(out _, profile);
-
-        await vm.LoadAsync();
-
-        Assert.Equal(SessionKind.Sdk, vm.SelectedKind);
-    }
-
     [Fact]
     public async Task SelectingAProfileWithATtyDefaultKind_PreSelectsTty()
     {

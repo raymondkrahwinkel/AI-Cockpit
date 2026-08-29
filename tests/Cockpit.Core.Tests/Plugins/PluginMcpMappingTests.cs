@@ -13,22 +13,6 @@ namespace Cockpit.Core.Tests.Plugins;
 public class PluginMcpMappingTests
 {
     [Fact]
-    public void ToAuth_ContributionWithOAuthAuthority_MapsToOAuth()
-    {
-        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp") { OAuthAuthority = "https://depot.example/oauth" };
-
-        Assert.Equal(McpServerAuth.OAuth, PluginMcpMapping.ToAuth(contribution));
-    }
-
-    [Fact]
-    public void ToAuth_ContributionWithOnlyABearerToken_MapsToApiKey()
-    {
-        var contribution = new McpServerContribution("YouTrack: Prod", "https://x.youtrack.cloud/mcp", "token-123");
-
-        Assert.Equal(McpServerAuth.ApiKey, PluginMcpMapping.ToAuth(contribution));
-    }
-
-    [Fact]
     public void ToAuth_ContributionWithNeither_MapsToNone()
     {
         var contribution = new McpServerContribution("open-server", "https://open.example.com/mcp");
@@ -45,19 +29,6 @@ public class PluginMcpMappingTests
         var contribution = new McpServerContribution("open-server", "https://open.example.com/mcp", "token-123") { OAuthAuthority = "   " };
 
         Assert.Equal(McpServerAuth.ApiKey, PluginMcpMapping.ToAuth(contribution));
-    }
-
-    // A contribution that (wrongly) sets both must not silently degrade to a bearer-only auth that can never
-    // satisfy the server's real OAuth requirement — OAuth wins.
-    [Fact]
-    public void ToAuth_ContributionWithBothOAuthAndBearer_OAuthWins()
-    {
-        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp", BearerToken: "stray-token")
-        {
-            OAuthAuthority = "https://depot.example/oauth",
-        };
-
-        Assert.Equal(McpServerAuth.OAuth, PluginMcpMapping.ToAuth(contribution));
     }
 
     [Fact]

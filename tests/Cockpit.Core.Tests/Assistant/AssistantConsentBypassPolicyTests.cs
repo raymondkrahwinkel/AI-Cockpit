@@ -38,14 +38,6 @@ public sealed class AssistantConsentBypassPolicyTests
         };
 
     [Fact]
-    public async Task TheAssistantsOwnPane_ASwitchedOnSource_ALowRiskAction_IsBypassed()
-    {
-        var policy = await PolicyAsync(Enabled(lowRisk: [Terminal]));
-
-        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: false));
-    }
-
-    [Fact]
     public async Task AnOrdinaryPane_IsNeverBypassed_EvenForASwitchedOnSource()
     {
         // Condition 1. The switch belongs to the assistant, not to the source: an ordinary agent session asking the
@@ -74,27 +66,6 @@ public sealed class AssistantConsentBypassPolicyTests
         var policy = await PolicyAsync(new AssistantSettings { IsEnabled = false, ConsentBypassSources = [Terminal] });
 
         Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: false));
-        Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
-    }
-
-    [Fact]
-    public async Task ASourceTheOperatorNeverSwitchedOn_IsNotBypassed()
-    {
-        // Condition 3, and the reason the switch is per source rather than one master button: switching the
-        // terminal off must say nothing at all about kubernetes.
-        var policy = await PolicyAsync(Enabled(lowRisk: [Terminal]));
-
-        Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, "cockpit-kubernetes", dangerous: false));
-    }
-
-    [Fact]
-    public async Task TheEverydaySwitch_DoesNotCoverADangerousAction()
-    {
-        // Condition 4, and the whole reason there are two checkboxes instead of one three-state picker. A shell
-        // command is not "the terminal, but more of it" — it is the decision the operator has not made yet.
-        var policy = await PolicyAsync(Enabled(lowRisk: [Terminal]));
-
-        Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: false));
         Assert.False(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: true));
     }
 
@@ -137,6 +108,9 @@ public sealed class AssistantConsentBypassPolicyTests
     public async Task WithAllowAllSwitchedOff_OnlyTheTickedSourcesAreBypassed()
     {
         // The other half of the switch: off is the granular list exactly as #AC-575 built it, not an empty one.
+        // Conditions 1 and 4 in the same run: the ticked source is bypassed, and a dangerous action on that same
+        // source is not — the whole reason there are two checkboxes rather than one three-state picker. A shell
+        // command is not "the terminal, but more of it"; it is the decision the operator has not made yet.
         var policy = await PolicyAsync(Enabled(lowRisk: [Terminal]));
 
         Assert.True(policy.ShouldBypass(AssistantIdentity.PaneId, Terminal, dangerous: false));

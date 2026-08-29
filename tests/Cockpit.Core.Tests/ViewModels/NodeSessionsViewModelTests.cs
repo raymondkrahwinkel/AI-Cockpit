@@ -37,23 +37,6 @@ public class NodeSessionsViewModelTests
     }
 
     [Fact]
-    public async Task Refresh_OnANodeThatDoesNotAnswer_SaysSo_RatherThanShowingAnEmptyNode()
-    {
-        // The difference that matters: "nothing is running there" and "nobody answered" look identical as an empty
-        // list, and only one of them is a reason to go and look at the other machine.
-        var client = new FakeNodeSessions
-        {
-            Snapshot = new NodeSessionsSnapshot("laptop", [], [], [], "Could not reach laptop: no route to host"),
-        };
-        var card = new NodeSessionsViewModel(client, "laptop");
-
-        await card.RefreshAsync();
-
-        Assert.Empty(card.Sessions);
-        Assert.Contains("Could not reach laptop", card.Status, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task Stop_SendsThePaneIdOfTheRowThatWasPressed_NotAName()
     {
         // Criterion 3, at the operator's end. Two sessions carry the same name — the name is what they would be
@@ -123,6 +106,8 @@ public class NodeSessionsViewModelTests
         // AC-796, criterion 3: a node that drops out and comes back is recognised as the same session — or shown
         // as a new one — never a silent duplicate. Nothing here is asked to remember the pane id across the two
         // refreshes; a fresh, fully-rebuilt list is what makes "the same row" true rather than something tracked.
+        // The first refresh also carries the unreachable case: "nothing is running there" and "nobody answered"
+        // look identical as an empty list, and only one of them is a reason to go and look at the other machine.
         var client = new FakeNodeSessions
         {
             Snapshot = new NodeSessionsSnapshot("laptop", [], [], [], "Could not reach laptop: no route to host"),
