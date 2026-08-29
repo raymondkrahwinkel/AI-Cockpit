@@ -31,7 +31,7 @@ for files that are now clean and shrinking counts for files that improved but st
 carry some baselined debt. Review the diff (it should only shrink/remove rows for the
 files you touched) and commit it alongside the cleanup.
 
-    scripts/check-comment-length.py [root ...]   # defaults to src and plugins-dev
+    scripts/check-comment-length.py [root ...]   # defaults to src, plugins-dev and tests
 """
 import re
 import sys
@@ -69,6 +69,9 @@ def violations_in(path: Path, text: str | None = None):
 
 def iter_source_files(roots):
     for root in roots:
+        # AC-1257: rglob on a file path yields nothing, which read as a green "no violations".
+        if not root.is_dir():
+            sys.exit(f"{root}: not a directory -- pass directories to scan, not files")
         for p in sorted(root.rglob("*.cs")):
             if set(p.parts) & {"bin", "obj"}:
                 continue
@@ -109,7 +112,7 @@ def write_baseline(roots):
 
 def main():
     args = sys.argv[1:]
-    roots = [Path("src"), Path("plugins-dev")]
+    roots = [Path("src"), Path("plugins-dev"), Path("tests")]
 
     if "--update-baseline" in args:
         write_baseline(roots)

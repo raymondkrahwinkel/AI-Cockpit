@@ -89,6 +89,9 @@ def main():
     roots = [Path(a) for a in sys.argv[1:]] or [Path("src"), Path("plugins-dev")]
     bad = 0
     for root in roots:
+        # AC-1257: rglob on a file path yields nothing, which read as a green "no violations".
+        if not root.is_dir():
+            sys.exit(f"{root}: not a directory -- pass directories to scan, not files")
         for p in sorted(root.rglob("*.cs")):
             if set(p.parts) & {"bin", "obj"}:
                 continue
