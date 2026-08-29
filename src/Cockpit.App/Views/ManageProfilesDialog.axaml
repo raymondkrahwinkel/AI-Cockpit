@@ -438,9 +438,9 @@
                                                   SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
                                                   DisplayMemberBinding="{Binding Label}"
                                                   IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
-                                                  PlaceholderText="(default)"/>
+                                                  PlaceholderText="Not set — provider default"/>
                                         <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
-                                                 PlaceholderText="(default)"/>
+                                                 PlaceholderText="Not set — provider default"/>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

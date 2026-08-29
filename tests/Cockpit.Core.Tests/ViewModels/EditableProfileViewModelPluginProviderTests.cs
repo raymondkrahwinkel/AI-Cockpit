@@ -186,17 +186,51 @@ public class EditableProfileViewModelPluginProviderTests
 
         // Fase 4: a plugin profile's per-profile defaults are rendered generically from the plugin's declared options.
         // The saved default (plan) pre-fills the permission-mode editor and reads its friendly label; the un-stored
-        // effort falls back to the option's own declared default (medium).
+        // effort shows as unset (AC-1102), since the profile never chose one.
         Assert.True(editable.HasPluginOptionDefaults);
         var permission = editable.PluginOptionDefaults.Single(option => option.Key == "permission-mode");
         Assert.Equal("plan", permission.Value);
         Assert.Equal("Plan mode", permission.ChoiceItems.Single(choice => choice.Value == "plan").Label);
-        Assert.Equal("medium", editable.PluginOptionDefaults.Single(option => option.Key == "effort").Value);
+        Assert.Null(editable.PluginOptionDefaults.Single(option => option.Key == "effort").Value);
 
-        // The selection is written back into the profile's option defaults on save.
+        // The selection is written back into the profile's option defaults on save; the unset option is not.
         var saved = editable.ToProfile();
         Assert.Equal("plan", saved.Defaults!.OptionDefaults!["permission-mode"]);
-        Assert.Equal("medium", saved.Defaults!.OptionDefaults!["effort"]);
+        Assert.False(saved.Defaults!.OptionDefaults!.ContainsKey("effort"));
+    }
+
+    /// <summary>
+    /// AC-1102: the counter-proof against a silent narrowing. A Codex profile predating the declared
+    /// <c>sandbox</c> option runs on the value in its own plugin config; the editor used to pre-fill the SESSION
+    /// DEFAULTS combo with the option's declared default instead, so one Apply on an unrelated field persisted a
+    /// sandbox nobody chose and it won from then on. Editing the label must leave <c>OptionDefaults</c> without a
+    /// <c>sandbox</c> key at all.
+    /// </summary>
+    [Fact]
+    public void ToProfile_AfterEditingAnUnrelatedField_WritesNoOptionDefaultForAnOptionTheProfileNeverSet()
+    {
+        var registry = new PluginProviderRegistry();
+        registry.Register(new SessionProviderRegistration(
+            ProviderId: "cli-agent-provider.codex",
+            DisplayName: "Codex (CLI)",
+            CreateDriverFactory: _ => throw new NotSupportedException("Not exercised by these view-model tests."),
+            Capabilities: new PluginSessionCapabilities(true, true),
+            CreateConfigView: _ => new FakePluginProviderConfigView("""{"sandboxMode":"workspace-write"}"""))
+        {
+            Options = [new PluginSessionLaunchOption("sandbox", "Sandbox", ["read-only", "workspace-write", "danger-full-access"], "read-only")],
+        });
+        var profile = new SessionProfile(
+            "codex",
+            new PluginProviderConfig("cli-agent-provider.codex", """{"sandboxMode":"workspace-write"}"""),
+            Defaults: new ProfileDefaults(string.Empty, string.Empty, string.Empty));
+
+        var editable = new EditableProfileViewModel(profile, isLoggedIn: true, providers: SessionProviderCatalog.AllProviders(registry), pluginProviderRegistry: registry);
+
+        editable.Label = "codex (renamed)";
+        var saved = editable.ToProfile();
+
+        Assert.DoesNotContain("sandbox", saved.Defaults!.OptionDefaults?.Keys ?? []);
+        Assert.Null(editable.PluginOptionDefaults.Single(option => option.Key == "sandbox").Value);
     }
 
     private static SessionProviderRegistration _Registration(string providerId, string displayName, IPluginProviderConfigView configView) => new(

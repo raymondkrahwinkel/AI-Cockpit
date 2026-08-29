@@ -99,6 +99,44 @@ public class CodexAppServerSessionDriverTests
         Assert.Equal("never", turn.GetProperty("params").GetProperty("approvalPolicy").GetString());
     }
 
+    // AC-1102: an absent `sandbox` is what reaches `CodexSandbox.ForCeiling` and lets a delegated task write
+    // (AC-100/AC-112) — unreachable while the profile editor wrote "read-only" over it, so this is the guard that
+    // catches that mapping falling silent again. An explicitly stored choice still wins over the ceiling.
+    [Theory]
+    [InlineData("default", "read-only")]
+    [InlineData("plan", "read-only")]
+    [InlineData("acceptEdits", "workspace-write")]
+    [InlineData("bypassPermissions", "workspace-write")]
+    public async Task Start_DerivesTheSandboxFromThePermissionCeiling_OnlyWhenTheProfileStoredNone(string permissionMode, string expectedWhenAbsent)
+    {
+        var absent = await _SandboxOnThreadStartAsync(new Dictionary<string, string>
+        {
+            [WellKnownPluginSessionOptions.PermissionMode] = permissionMode,
+        });
+        var stored = await _SandboxOnThreadStartAsync(new Dictionary<string, string>
+        {
+            ["sandbox"] = "read-only",
+            [WellKnownPluginSessionOptions.PermissionMode] = permissionMode,
+        });
+
+        Assert.Equal(expectedWhenAbsent, absent);
+        Assert.Equal("read-only", stored);
+    }
+
+    private static async Task<string?> _SandboxOnThreadStartAsync(IReadOnlyDictionary<string, string> options)
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
+        var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        return threadStart.GetProperty("params").GetProperty("sandbox").GetString();
+    }
+
     [Fact]
     public async Task Start_PassesTheSessionsMcpServers_AsConfigArgs_WithTheTokenInTheEnvironmentNotTheCommandLine()
     {
