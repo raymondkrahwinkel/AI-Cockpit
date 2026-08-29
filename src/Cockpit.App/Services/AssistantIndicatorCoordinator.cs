@@ -270,6 +270,11 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // the window's view detaches (handing over scroll position) before the returned view reads it.
     private Control _CreateDockedChatView()
     {
+        // AC-1256/AC-1259: that freeze started seconds after a host swap and the log held no record of one. Here
+        // rather than at the header button, because the two routes above reach this without passing it — and
+        // before the work, so a swap that hangs still leaves the line saying it began.
+        _logger.LogInformation("Assistant chat moving to the dock rail.");
+
         var chat = _EnsureChatViewModel();
         chat.IsDocked = true;
         _chatWindow?.Close();
@@ -281,6 +286,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         if (_chatWindow is null)
         {
+            // The undock half of the line above. Inside this branch on purpose: bringing a window that already
+            // stands to the front reparents nothing, and a line for it would read as a swap that never happened.
+            _logger.LogInformation("Assistant chat moving to its own window.");
+
             _chatWindow = new AssistantChatWindow { DataContext = _EnsureChatViewModel() };
 
             // Dropped on close so the next click builds a fresh window — but nothing about the session is touched
@@ -318,11 +327,6 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // writes its scroll position before the arriving view reads it — build-then-tear-down would read it stale.
     private async Task _ShowInAsync(bool docked)
     {
-        // AC-1256: the freeze that ticket is about started seconds after an undock, and the log held no record
-        // that one had happened — the whole correlation rested on the operator remembering. One line, so the next
-        // reconstruction does not have to.
-        _logger.LogInformation("Assistant chat moving to {Host}.", docked ? "the dock rail" : "its own window");
-
         if (_chatViewModel is { } chat)
         {
             chat.IsDocked = docked;

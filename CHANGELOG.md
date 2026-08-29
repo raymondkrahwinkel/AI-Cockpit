@@ -330,6 +330,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: **the log now records when the assistant chat changes host and when a terminal settles on a new size**,
+  so a freeze can be placed on a timeline afterwards instead of resting on what you remember doing just before it.
+  Each of the two leaves one line, not one per layout pass — a line per pass would both bury the log and allocate
+  inside the very path you would be trying to read. Docking is recorded whichever way you do it, including the rail
+  tab and a restart into a docked assistant, which left no trace at all before; bringing an already-floating window
+  to the front records nothing, because nothing moved. A terminal resize is one line carrying the size it landed on,
+  the sizes it passed through on the way, the display scale, and what the terminal process was told about it.
+
 - changed: **the test suite is 25 tests smaller — 11,848 down to 11,823 — without losing any coverage.** Every one
   of them was removed only after the behaviour it asserted had been deliberately broken and a *different* test went
   red in its place; none was dropped for merely looking duplicated, and none was dropped for being red or flaky.
