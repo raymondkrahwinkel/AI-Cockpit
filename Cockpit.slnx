@@ -11,6 +11,7 @@
     <Project Path="tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj" />
     <Project Path="tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj" />
     <Project Path="tests/Cockpit.MeasurementHarness/Cockpit.MeasurementHarness.csproj" />
+    <Project Path="tests/Cockpit.SingleInstanceProbe/Cockpit.SingleInstanceProbe.csproj" />
   </Folder>
   <Folder Name="/third_party/">
     <Project Path="third_party/Exclr8.Terminal/Exclr8.Terminal.csproj" />
