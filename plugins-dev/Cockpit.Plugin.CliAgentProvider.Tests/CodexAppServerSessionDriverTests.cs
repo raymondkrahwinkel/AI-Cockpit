@@ -99,27 +99,28 @@ public class CodexAppServerSessionDriverTests
         Assert.Equal("never", turn.GetProperty("params").GetProperty("approvalPolicy").GetString());
     }
 
-    // AC-1102: the profile editor no longer persists a declared option the operator never chose, so `sandbox` can
-    // now be absent where it was always "read-only" before. Measures both arms of that change against the real
-    // thread/start, for each permission mode a session can carry.
+    // AC-1102: an absent `sandbox` is what reaches `CodexSandbox.ForCeiling` and lets a delegated task write
+    // (AC-100/AC-112) — unreachable while the profile editor wrote "read-only" over it, so this is the guard that
+    // catches that mapping falling silent again. An explicitly stored choice still wins over the ceiling.
     [Theory]
-    [InlineData("default")]
-    [InlineData("plan")]
-    [InlineData("acceptEdits")]
-    [InlineData("bypassPermissions")]
-    public async Task Start_ResolvesTheSameSandbox_WhetherTheDeclaredDefaultIsStoredOrAbsent(string permissionMode)
+    [InlineData("default", "read-only")]
+    [InlineData("plan", "read-only")]
+    [InlineData("acceptEdits", "workspace-write")]
+    [InlineData("bypassPermissions", "workspace-write")]
+    public async Task Start_DerivesTheSandboxFromThePermissionCeiling_OnlyWhenTheProfileStoredNone(string permissionMode, string expectedWhenAbsent)
     {
+        var absent = await _SandboxOnThreadStartAsync(new Dictionary<string, string>
+        {
+            [WellKnownPluginSessionOptions.PermissionMode] = permissionMode,
+        });
         var stored = await _SandboxOnThreadStartAsync(new Dictionary<string, string>
         {
             ["sandbox"] = "read-only",
             [WellKnownPluginSessionOptions.PermissionMode] = permissionMode,
         });
-        var absent = await _SandboxOnThreadStartAsync(new Dictionary<string, string>
-        {
-            [WellKnownPluginSessionOptions.PermissionMode] = permissionMode,
-        });
 
-        Assert.Equal(stored, absent);
+        Assert.Equal(expectedWhenAbsent, absent);
+        Assert.Equal("read-only", stored);
     }
 
     private static async Task<string?> _SandboxOnThreadStartAsync(IReadOnlyDictionary<string, string> options)
