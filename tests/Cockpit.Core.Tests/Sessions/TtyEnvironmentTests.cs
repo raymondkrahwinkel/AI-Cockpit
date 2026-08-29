@@ -138,6 +138,27 @@ public class TtyEnvironmentTests
         Assert.Equal(@"C:\Windows", environment["PATH"]);
     }
 
+    [Fact]
+    public void BuildBase_WithoutHostTerminalIdentityMarkers_LeavesUnrelatedVariablesUntouched()
+    {
+        // The variables IsHostTerminalIdentityMarker deliberately does not match, in an environment carrying
+        // no marker at all: nothing here may be swept up by a matcher that grew too broad.
+        var withoutMarkers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["COLORTERM"] = "truecolor",
+            ["TERMINFO"] = "/usr/share/terminfo",
+            ["TERMINFO_DIRS"] = "/usr/share/terminfo:/lib/terminfo",
+            ["PATH"] = @"C:\Windows",
+        };
+
+        var environment = TtyEnvironment.BuildBase(withoutMarkers);
+
+        Assert.Equal("truecolor", environment["COLORTERM"]);
+        Assert.Equal("/usr/share/terminfo", environment["TERMINFO"]);
+        Assert.Equal("/usr/share/terminfo:/lib/terminfo", environment["TERMINFO_DIRS"]);
+        Assert.Equal(@"C:\Windows", environment["PATH"]);
+    }
+
     [Theory]
     [InlineData("ANTHROPIC_API_KEY")]
     [InlineData("ANTHROPIC_AUTH_TOKEN")]
