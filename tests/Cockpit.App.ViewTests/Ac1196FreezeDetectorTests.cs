@@ -39,32 +39,13 @@ public sealed class Ac1196FreezeDetectorTests
 
     /// <summary>T1 — one non-yielding job on Default: nothing runs, and that is the render clock's to answer for.</summary>
     [Fact]
-    public async Task ABlockedUiThread_IsFinallyReportedAsARenderClockStall()
-    {
-        using var release = new ManualResetEventSlim();
-        var logger = new _CapturingLogger();
-        var service = new DiagnosticsBackgroundService(logger, alarmAfter: AlarmAfter);
+    public Task ABlockedUiThread_IsFinallyReportedAsARenderClockStall() =>
+        _ABlockIsTheRenderClocksToAnswerFor(dispatcherBusyFirst: false);
 
-        try
-        {
-            // Queued before the service starts, so its very first probe is the one that never gets picked up. A
-            // Wait, not a Sleep: the block ends when this test says so and cannot run on into the next one.
-            Dispatcher.UIThread.Post(() => release.Wait(Deadline), DispatcherPriority.Default);
-            service.Start();
-
-            Assert.True(await _Appears(logger, Stalled), $"blocked for over {AlarmAfter.TotalSeconds:0}s and nothing was reported");
-            Assert.DoesNotContain(logger.Lines, line => line.Contains(Starved, StringComparison.Ordinal));
-
-            // AC-883's gate stays where it was: a thread that cannot render is not helped by being told to stop.
-            Assert.False(service.RenderersShouldPause);
-        }
-        finally
-        {
-            release.Set();
-            service.Dispose();
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
-        }
-    }
+    /// <summary>AC-1255 — the same block, reached late enough that the thread got one high-priority answer in first.</summary>
+    [Fact]
+    public Task ABlockedUiThreadThatAnsweredOnce_IsStillNotCalledStarvation() =>
+        _ABlockIsTheRenderClocksToAnswerFor(dispatcherBusyFirst: true);
 
     /// <summary>T2 — starved at Render (4), the priority a runaway render pass reposts at.</summary>
     [Fact]
@@ -99,6 +80,51 @@ public sealed class Ac1196FreezeDetectorTests
         finally
         {
             service.Dispose();
+        }
+    }
+
+    private static async Task _ABlockIsTheRenderClocksToAnswerFor(bool dispatcherBusyFirst)
+    {
+        using var blocked = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var logger = new _CapturingLogger();
+        var service = new DiagnosticsBackgroundService(logger, alarmAfter: AlarmAfter);
+
+        try
+        {
+            if (dispatcherBusyFirst)
+            {
+                // Holds the thread long enough that the block below is still queued when the service starts, so the
+                // service's Send pong outranks it and lands — the ordering AC-1255 was reported from.
+                Dispatcher.UIThread.Post(() => Thread.Sleep(300), DispatcherPriority.Send);
+            }
+
+            // Queued before the service starts, so its very first probe is the one that never gets picked up. A
+            // Wait, not a Sleep: the block ends when this test says so and cannot run on into the next one.
+            Dispatcher.UIThread.Post(
+                () =>
+                {
+                    blocked.Set();
+                    release.Wait(Deadline);
+                },
+                DispatcherPriority.Default);
+
+            // AC-1255: only once the thread is truly gone. Started while the block is still queued, that Send pong
+            // lands, and one stale answer inside the alarm budget reads as a thread that is merely starved.
+            Assert.True(blocked.Wait(Deadline), "the blocking job never reached the UI thread");
+            service.Start();
+
+            Assert.True(await _Appears(logger, Stalled), $"blocked for over {AlarmAfter.TotalSeconds:0}s and nothing was reported");
+            Assert.DoesNotContain(logger.Lines, line => line.Contains(Starved, StringComparison.Ordinal));
+
+            // AC-883's gate stays where it was: a thread that cannot render is not helped by being told to stop.
+            Assert.False(service.RenderersShouldPause);
+        }
+        finally
+        {
+            release.Set();
+            service.Dispose();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
         }
     }
 
