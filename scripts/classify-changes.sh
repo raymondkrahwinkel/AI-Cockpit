@@ -14,7 +14,8 @@ set -euo pipefail
 base="${1:?usage: classify-changes.sh <base-ref> [head-ref]}"
 head="${2:-HEAD}"
 
-repo_root="$(git rev-parse --show-toplevel)"
+# Resolved via cd/pwd, not raw: git reports C:/... on Git Bash where realpath below speaks /c/...
+repo_root="$(cd "$(git rev-parse --show-toplevel)" && pwd -P)"
 
 TEST_SUITES=(
   "run_core_tests:tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj"
