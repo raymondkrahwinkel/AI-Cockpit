@@ -5,10 +5,12 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -1164,6 +1166,50 @@ public class AssistantSessionHostTests
 
         Assert.Equal(SessionResumeMode.BySessionId, resume.Mode);
         Assert.Equal("conv-assistant", resume.SessionId);
+    }
+
+    /// <summary>
+    /// AC-1089 criterion 4: startup compaction drops state for every pane its roster does not name (AC-410), and the
+    /// assistant owns no workspace pane — so each start erased its saved conversation id before the resume above
+    /// could read it, and no <c>--resume</c> was ever sent. Drives the real roster and the real store the way
+    /// <c>Program.ReconcileWorktreesAndCompactStateAsync</c> does: a substituted store is exactly what hid this,
+    /// because the gap was between compaction and the read rather than inside either half.
+    /// </summary>
+    [Fact]
+    public async Task TheAssistantsResume_SurvivesTheStartupCompaction_ThatDropsPanesTheRosterDoesNotName()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"session-state-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var store = new SessionStateStore(path, NullLogger<SessionStateStore>.Instance);
+            await store.RecordAsync(_StateFor("ai-1", "conv-elsewhere"));
+            await store.RecordAsync(_StateFor(AssistantSessionHost.AssistantPaneId, "conv-assistant"));
+
+            await store.CompactAsync(await SessionRestoreRoster.PaneIdsAsync(_WorkspacesNaming("ai-1")));
+
+            var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), sessionState: store));
+
+            // Awaited rather than the `Invoke(... GetResult())` the sibling tests use: those hand the host a
+            // substitute whose read completes synchronously, while this one really touches the disk and would
+            // post its `ConfigureAwait(true)` continuation to the very thread `Invoke` is blocking.
+            var resume = await host._ResolveResumeAsync(default);
+
+            Assert.Equal(SessionResumeMode.BySessionId, resume.Mode);
+            Assert.Equal("conv-assistant", resume.SessionId);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private static IWorkspaceSettingsStore _WorkspacesNaming(string paneId)
+    {
+        var workspace = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(new WorkspacePane(paneId, PaneKind.AiSession));
+        var store = Substitute.For<IWorkspaceSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(new WorkspaceSettings { Workspaces = [workspace], ActiveWorkspaceId = workspace.Id });
+        return store;
     }
 
     /// <summary>
