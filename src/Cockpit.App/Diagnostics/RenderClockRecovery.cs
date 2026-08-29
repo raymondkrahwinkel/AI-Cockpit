@@ -17,7 +17,9 @@ internal static class RenderClockRecovery
     // has run at all overflows and throws, inside the very handler this exists to serve.
     public static readonly TimeSpan NeverRecovered = -MinimumInterval;
 
+    public static bool IsCutOff(Exception exception)
+        => exception is InvalidOperationException { Message: CutOffLayoutLoopMessage };
+
     public static bool ShouldRecover(Exception exception, TimeSpan sinceLastRecovery)
-        => exception is InvalidOperationException { Message: CutOffLayoutLoopMessage }
-           && sinceLastRecovery >= MinimumInterval;
+        => IsCutOff(exception) && sinceLastRecovery >= MinimumInterval;
 }
