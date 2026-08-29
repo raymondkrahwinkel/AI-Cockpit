@@ -84,6 +84,13 @@ re-run it any time). The `commit-msg` hook strips AI-attribution `Co-Authored-By
 trailers from every commit: assistants are tools here, not co-authors, and the trailer would
 otherwise list them as repository contributors.
 
+The `pre-push` hook runs the three CI guards that need no build — the plugin version guard, the
+comment-length guard and the xmldoc-scope guard — against what you are about to push. They are the
+guards that actually fail in CI, and a guard caught there costs a full CI round, a fix commit and
+another round. Each one is gated on the paths it can fail over, so a push that touches neither
+`plugins-dev/` nor C# barely notices it. It is a net in front of CI, not a replacement: everything
+still runs there, so `git push --no-verify` is always available when you need the push to go through.
+
 ## Commit style
 
 Bullet-list commit messages, one bullet per changed concern, written in English:
