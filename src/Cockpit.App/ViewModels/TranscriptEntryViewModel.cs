@@ -25,10 +25,7 @@ public enum TranscriptEntryKind
     // at Focus/Simple, which stay calm (AC-138), restoring thinking that AC-144 had dropped app-wide.
     Thinking,
 
-    // A rule across the transcript marking a break in the conversation the transcript itself keeps recording —
-    // today only "context cleared" (AC-564). The transcript stays whole because it is the pane's audit surface;
-    // this row is what says where the agent's memory stops. Visible at every reading level: it explains
-    // everything below it.
+    // AC-564 marks where agent memory stopped while keeping the full transcript as the pane's audit surface.
     Divider,
 }
 
@@ -79,15 +76,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // (AC-144), so the generic top-row timestamp is suppressed for them to avoid a doubled label.
     public bool IsTopTimestampRow => !IsUserRow && !IsToolUse && !IsThinking;
 
-    // --- Deferred-subtree gates (memory) --------------------------------------------------------------------
-    // Each returns `this` for the matching row kind, else null. A ContentControl bound to one of these builds
-    // its scoped implicit DataTemplate only when the value is non-null, so a row instantiates only the one
-    // branch its kind needs instead of every IsVisible="false" sibling (Avalonia builds those in full). Kind is
-    // immutable, so these six never change after construction; QuestionBranch/ToolBlockBranch track mutable
-    // flags and are re-raised alongside them (OnQuestionPromptsChanged / _RaiseReadingLevelPresentation).
-    // AC-955: a broker question (Kind = Question, not ToolUse) rides this same branch for its QuestionBranch
-    // card — the two routes into HasQuestionPrompts (AC-715's permission callback, AC-955's broker) share one
-    // gate rather than each needing its own copy of "is this a card".
+    // Deferred branches return only the matching immutable kind, avoiding Avalonia construction of hidden siblings.
+    // AC-715/AC-955 share QuestionBranch for permission and broker questions; mutable branches raise their own flags.
     public object? ToolBranch => IsToolUse || HasQuestionPrompts ? this : null;
     public object? UserBranch => IsUserRow ? this : null;
     public object? AssistantBranch => IsAssistantMarkdown ? this : null;
@@ -234,11 +224,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     private static readonly char[] ReplyExcerptSplitChars = [' ', '\t', '\r', '\n'];
 
-    // --- Pasted images (AC-778) --------------------------------------------------------------------------------
-    // Images attached to this row's own message, held in memory for the life of the running session so the
-    // "[+N image]" fragment can reopen them. Null on rows without images, and on a row built without wiring
-    // them at all (no code path leaves it null after being set — there is no transcript persistence to replay
-    // from, see AC-778's research — so that case is the row's built-in "not available" fallback: no chip shown).
+    // AC-778 keeps this row's images for the running session so its [+N image] fragment can reopen them.
+    // Null means no image or unavailable wiring; transcript persistence cannot replay those bytes.
 
     public IReadOnlyList<ImageAttachment>? Images { get; init; }
 
@@ -265,14 +252,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // The generic allow/deny row: every pending consent except a question, which has its own Send.
     public bool IsPendingToolPermission => IsPendingPermission && !HasQuestionPrompts;
 
-    // Built lazily like the row-kind branches above (AC-722/#614): the allow/deny/always buttons bind to the
-    // session's long-lived AsyncRelayCommands, so each one subscribes to that command's CanExecuteChanged — which
-    // means the command holds the button, and the button's `$parent[TranscriptRowView]` binding holds the whole
-    // recycled row (measured in the real app: every realised tool row leaked its consent buttons through this
-    // chain, ~60 rows pinned per scroll pass, released only on close). Handing the buttons to the template only
-    // while the row is actually pending means a resolved tool has none to pin it, and resolving one flips this to
-    // null so the ContentControl tears the buttons out — detaching them and dropping the CanExecuteChanged
-    // subscription. Non-pending tool rows (the overwhelming majority) never build them at all.
+    // AC-722/#614 creates consent buttons only while pending: command subscriptions otherwise pin recycled rows.
+    // Clearing this removes the bindings/subscriptions; resolved and non-pending rows never create the buttons.
     public object? PermissionBranch => IsPendingToolPermission ? this : null;
 
     // Set only on a card the assistant's own broker raised (AC-955's `ask_structured_question`), which has no
@@ -399,11 +380,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         _RaiseReadingLevelPresentation();
     }
 
-    // --- Sub-agent nesting (AC-146) ---------------------------------------------------------------------------
-    // A Task/Agent tool call's own row anchors whatever activity the sub-agent it spawned produced — its own
-    // tool calls, text and thinking, matched to this row by SessionEvent.ParentToolUseId == this row's own
-    // ToolUseId. Nested here rather than flattened into the top-level Transcript, and collapsed by default
-    // (Raymond, 2026-07-29): an operator sees that a sub-agent ran, and expands to see what it did.
+    // AC-146 nests sub-agent events under their Task/Agent row by ParentToolUseId and keeps them collapsed by default.
 
     private ObservableCollection<TranscriptEntryViewModel>? _subAgentRows;
 
@@ -535,12 +512,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     partial void OnBackgroundNotificationStatusChanged(BackgroundTaskStatus? value) => OnPropertyChanged(nameof(BackgroundStatusText));
 
-    // --- Reading levels (AC-138) ------------------------------------------------------------------------------
-    // The current reading level of the session this row belongs to, pushed onto every row by the session view model
-    // when the level changes. It drives what the row shows without touching what the agent did: Developer shows
-    // everything, Focus folds runs of auto tool calls and hides the "$" cost, Simple drops tool noise and speaks
-    // consent decisions in plain words. The grouping fields below (anchor/count/expanded) are set by the view model,
-    // which is the only thing that can see a row's neighbours to form a run.
+    // AC-138 changes presentation, not history: Developer shows all, Focus groups tools, Simple omits tool noise.
+    // The session view model alone forms neighbouring-row groups and pushes this level to rows.
 
     // The reading level this row renders at (AC-138); set by the owning `SessionViewModel`.
     [ObservableProperty]

@@ -4,10 +4,7 @@ using Cockpit.Core.Toasts;
 
 namespace Cockpit.App.ViewModels;
 
-// One shown toast (#61): the message/severity plus an optional action button. Values never change after
-// construction — the only mutable behaviour is dismissal, raised via `Dismissed` so the owning
-// `ToastHostViewModel` can remove it from its collection, whether triggered by the close
-// button, the action button, or the host's auto-dismiss timer.
+// Shown toast (#61): immutable message/severity/action; Dismissed lets the host remove any dismissal route.
 public sealed partial class ToastViewModel(string message, ToastSeverity severity, string? actionLabel, Action? onAction)
 {
     private readonly Action? _onAction = onAction;

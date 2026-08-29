@@ -22,13 +22,8 @@ public sealed class FileLoggerProvider : ILoggerProvider
         _path = path;
         _rolloverPath = RolloverPathFor(path);
 
-        // Owner-only, dir and file (AC-46): the log lives under the state root beside the credential files, and a
-        // stock umask would otherwise leave it world-readable. This truncates for a clean run; Write only appends
-        // afterwards, so the restricted mode set here carries for the life of the file.
-        //
-        // AC-1216: that truncate also wipes a running instance's live log if a second instance shares its state
-        // root. AC-1214's COCKPIT_STATE_ROOT override removes this for an instance that opts in (AC-1217 tracks
-        // the rest); not addressed here — a lock of our own would just be a second, competing isolation mechanism.
+        // AC-46: owner-only log permissions protect credentials beside the state root; writes keep the created mode.
+        // AC-1216: shared roots can truncate a live log; AC-1214 override isolates opted-in instances, not a lock.
         CredentialFileHousekeeping.PrepareLogFile(path);
     }
 

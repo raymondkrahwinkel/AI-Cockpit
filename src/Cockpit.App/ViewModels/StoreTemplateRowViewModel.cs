@@ -3,12 +3,8 @@ using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewModels;
 
-// One workflow template as the store shows it (#69): what it does, who published it, which plugins its steps come
-// from, and whether it is already installed.
-//
-// A template is not code, but it is not inert either — a flow can carry a shell command — so the row says what the
-// flow needs before you install it, and an installed flow arrives switched off. Reading it before arming it is the
-// operator's own check, and the app does not pretend to have made it for them.
+// Store workflow template row (#69): flows can run shell commands, so dependencies are shown before installation.
+// Installed flows start disabled; reviewing and arming them remains the operator's decision.
 public partial class StoreTemplateRowViewModel(WorkflowTemplateStoreEntry entry, PluginStoreConfig store, bool isInstalled) : ObservableObject
 {
     public WorkflowTemplateStoreEntry Entry { get; } = entry;

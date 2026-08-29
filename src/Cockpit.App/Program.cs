@@ -353,12 +353,8 @@ sealed class Program
     // full 3s against the 4s watchdog, so this gets what is safely left rather than a share of the whole budget.
     private static readonly TimeSpan ContainerDisposeBudget = TimeSpan.FromMilliseconds(800);
 
-    // AC-1202: nothing disposed this container before, so every singleton IDisposable/IAsyncDisposable
-    // (GlobalHotkeyCoordinator's claims, CockpitViewModel a second time, and — newly exposed — the Kestrel
-    // hosts Program.cs already knows can ignore cancellation while draining SSE) only ever died with the
-    // process. DisposeAsync, not the sync Dispose: ServiceProvider's sync path throws on a captured instance
-    // that is only IAsyncDisposable, which CockpitViewModel is. Separate method so a test can call it without
-    // also starting TearDownCockpitAsync's exit watchdog.
+    // AC-1202: asynchronously disposes singleton resources; sync disposal rejects CockpitViewModel's async-only path.
+    // Kept separate so tests can exercise it without starting TearDownCockpitAsync's exit watchdog.
     internal static async Task DisposeServiceContainerAsync()
     {
         if (Services is not IAsyncDisposable disposable)

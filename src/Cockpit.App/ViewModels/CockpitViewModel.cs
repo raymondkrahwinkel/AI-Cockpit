@@ -8009,10 +8009,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Cockpit.App.Logging.LifecycleLog.Write("Cockpit teardown complete.");
     }
 
-    // AC-1134: how many of this teardown's sessions had not yet finished disposing — read by Program's shutdown
-    // budget once it gives up waiting, so the exit can say what it did not achieve instead of just going quiet.
-    // Volatile.Read, not a plain field read: it is written with Interlocked.Decrement from the parallel per-session
-    // teardown tasks above, possibly off the thread that reads this.
+    // AC-1134: counts sessions still disposing when Program's shutdown budget expires.
+    // Volatile.Read pairs with concurrent Interlocked.Decrement calls from teardown tasks.
     public int PendingTeardownCount => Volatile.Read(ref _pendingTeardownCount);
 
     private int _pendingTeardownCount;

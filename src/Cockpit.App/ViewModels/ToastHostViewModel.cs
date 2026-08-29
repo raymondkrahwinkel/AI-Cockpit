@@ -4,14 +4,8 @@ using Cockpit.Core.Toasts;
 
 namespace Cockpit.App.ViewModels;
 
-// Owns the live toast collection `CockpitViewModel` exposes to `CockpitView.axaml`'s
-// overlay (#61). `Add` is the single mutation point: it builds the `ToastViewModel`,
-// wires its dismissal (close button, action button, or auto-dismiss) back to removal, and schedules the
-// auto-dismiss itself. Callers must already be on the UI thread — `Services.ToastService` does
-// that marshaling before calling in.
-// The auto-dismiss scheduler is an injectable delegate (defaulting to a real `DispatcherTimer`)
-// so tests can simulate "the timeout elapsed" deterministically instead of waiting on real wall-clock time
-// or pumping an Avalonia dispatcher loop — same seam style as `Services.AppRestartService`.
+// Toast overlay owner (#61): Add is its UI-thread mutation point and removes close/action/timeout dismissals.
+// An injected scheduler makes auto-dismiss deterministic in tests without a dispatcher loop.
 public sealed class ToastHostViewModel
 {
     private static readonly TimeSpan DefaultAutoDismissDelay = TimeSpan.FromSeconds(5);

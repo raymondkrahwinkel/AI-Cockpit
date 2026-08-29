@@ -15,13 +15,7 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.ViewModels;
 
-// The workspace tab strip above the grid: which workspaces exist, which one is active, and the commands
-// that add, rename, close and switch between them. Holds `WorkspaceSettings` as the one source
-// of truth and persists after every change, the way the layout and shortcut settings already do — there is
-// no separate in-memory model to drift from what is on disk.
-// Deliberately thin on rendering: the strip binds to `Tabs`, and the grid binds to
-// `Active`'s panes. Nothing here knows what a pane looks like — that split is what lets the
-// same manager drive a Sessions workspace and a Dashboard.
+// AC-1013: The workspace tab strip above the grid: which workspaces exist, which one is active, and...
 public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonService
 {
     private readonly IWorkspaceSettingsStore? _store;
@@ -44,10 +38,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     {
     }
 
-    // `toasts`:
-    // Where a failed save is said out loud. The host `CockpitViewModel` already owns rather than
-    // `IToastService`, which is built from that view model and would be a circle — the same reasoning its
-    // own toasts carry. Null in the design-time and unit-test graphs, where there is no overlay to speak to.
+    // AC-1013: `toasts`:
     public WorkspacesViewModel(IWorkspaceSettingsStore? store, IWidgetRegistry? widgets = null, ToastHostViewModel? toasts = null, IWorkspaceTypeRegistry? workspaceTypes = null)
     {
         _store = store;
@@ -57,10 +48,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         _settings = WorkspaceSettings.Default;
         _RefreshTabs();
 
-        // Plugins initialize after this view model is built, so the widget list is empty right now and fills a
-        // moment later. Without this the "Add widget" button reads that empty list once and stays disabled for
-        // the rest of the run, however many widgets are installed — and a saved dashboard's panes, whose types
-        // had not been registered yet, would render as nothing.
+        // AC-1013: Plugins initialize after this view model is built, so the widget list is empty right now...
         if (_widgets is not null)
         {
             _widgets.Changed += (_, _) =>
@@ -167,11 +155,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // The active workspace — what the grid renders. Never null once loaded (`WorkspaceSettings.Normalized` guarantees one).
     public Workspace? Active => Settings.Active;
 
-    // The strip is always shown. It used to hide itself at a single workspace — "a lone tab is chrome that
-    // earns nothing" — which was wrong twice over, and Raymond found both: deleting one of two made the strip
-    // vanish, so a correct single deletion looked like it took both; and a workspace that existed but was
-    // hidden reappeared out of nowhere the moment a second one was added. A tab is where you see which desk
-    // you are on, and it has to keep saying so when there is one.
+    // AC-1013: The strip is always shown. It used to hide itself at a single workspace — "a lone tab is...
     public bool ShowTabStrip => true;
 
     // True when the active workspace hosts widgets — gates the ⚙ dashboard settings and the "Add widget" affordance.
@@ -215,13 +199,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     public bool ShowUnknownPluginWorkspace =>
         IsPluginWorkspaceActive && ActivePluginBody is null;
 
-    // Loads the saved workspaces. Called once at startup; a no-op without a store (design time).
-    // Never throws — its caller discards the task, so a throw would land on a task nobody observes. What makes
-    // that worth more than a log line: the constructor's default is a whole, valid `WorkspaceSettings`,
-    // every change here persists all of it, and so a failed load does not merely hide the operator's workspaces
-    // for the session — the first thing they touched would write that default over the ones they actually have.
-    // A failed load therefore turns persistence off for the rest of the run: what is on disk is theirs, unread,
-    // and this view model has nothing worth putting in its place.
+    // AC-1013: Loads the saved workspaces. Called once at startup; a no-op without a store (design time).
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         if (_store is null)
@@ -244,13 +222,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         }
     }
 
-    // The Sessions workspace a new session belongs on, creating one when there is none (Raymond, 2026-07-15:
-    // "een sessie moet vanaf nu altijd in een session workspace zitten"). Starting a session while only a
-    // dashboard exists would otherwise put it on a desk that cannot show it — the session would run, invisibly,
-    // which is worse than refusing.
-    // Returns the id synchronously — the caller is stamping a session it is building right now, and cannot
-    // wait on a disk write to know where it belongs. Persisting is fire-and-forget, the same way every other
-    // change here settles.
+    // AC-1013: The Sessions workspace a new session belongs on, creating one when there is none (Raymond,...
     public string EnsureSessionWorkspace()
     {
         if (Active is { } active && active.Type == WorkspaceType.Sessions)
@@ -275,16 +247,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     private Task AddWorkspaceAsync(WorkspaceType type) =>
         _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(type), type)));
 
-    // Creates a Sessions desk called `name` and returns it — the "+" menu's own act, but with the
-    // name given rather than composed, for a caller that was told what to call it (AC-545: the assistant, asked out
-    // loud for "a desk for the release work").
-    // It does become the active desk, because `WorkspaceSettings.WithWorkspace` makes what it adds
-    // active. Deliberate and kept: asking for a desk to be made is asking to be shown it, and an empty new desk has
-    // nothing on it to interrupt. That is the opposite of a *spawn* onto an existing desk, which must leave
-    // the operator where they are — see `CockpitViewModel.StartSessionOnWorkspaceAsync`.
-    //
-    // The name is taken as given and not made unique. Two desks may share a label the way two sessions may; what a
-    // caller spawns onto afterwards is the id this returns, not the name.
+    // AC-1013: Creates a Sessions desk called `name` and returns it — the "+" menu's own act, but with the
     public async Task<Workspace> CreateSessionsWorkspaceAsync(string name)
     {
         var created = Workspace.Create(name, WorkspaceType.Sessions);
@@ -292,11 +255,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         return created;
     }
 
-    // Brings the workspace of type `workspaceTypeId` to the front, creating one when none is open
-    // — the programmatic entry behind a plugin surfacing its own workspace on an intent ("Start in Autopilot",
-    // AC-150) and behind the sidebar's way to the projects overview (AC-162). Mirrors
-    // `EnsureSessionWorkspace`: an existing one is activated in place rather than duplicated, so asking
-    // twice lands on the one desk instead of stacking empty copies.
+    // AC-1013: Brings the workspace of type `workspaceTypeId` to the front, creating one when none is open
     public Task OpenWorkspaceAsync(string workspaceTypeId)
     {
         var type = WorkspaceType.FromId(workspaceTypeId);
@@ -316,10 +275,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         return _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(title), type)));
     }
 
-    // Whether closing this workspace would do anything. False for the last one — the cockpit always needs a
-    // desk to render — and for an id nothing holds. The caller asks before it starts tearing down what is on
-    // the workspace, since stopping its sessions and then finding the workspace stays is the one outcome worse
-    // than either.
+    // AC-1013: Whether closing this workspace would do anything. False for the last one — the cockpit...
     public bool CanClose(string workspaceId) =>
         Settings.Workspaces.Count > 1
         && Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is { } workspace
@@ -373,10 +329,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         return _ApplyAsync(Settings.WithUpdated(dashboard with { Layout = layout.Clamped() }));
     }
 
-    // Overrides how this Sessions workspace arranges its panes, or hands it back to Options — null follows the
-    // global setting (Raymond, 2026-07-15). All three are written together because they are one decision made
-    // on one ⚙: a desk either arranges itself or it follows, and a half-override is a state nothing in the UI
-    // can express. Ignored for a Dashboard, which has its own grid.
+    // AC-1013: Overrides how this Sessions workspace arranges its panes, or hands it back to Options —...
     public Task SetSessionLayoutAsync(string workspaceId, bool? singleSession, bool? stackVertically, double? focusRailWeight, bool? focusRailLayout)
     {
         if (Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } sessions || sessions.Type != WorkspaceType.Sessions)
@@ -422,17 +375,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             ? Task.CompletedTask
             : _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(option.Title), option.Type)));
 
-    // Moves a widget from the dashboard showing to another one (F5): dragged onto its tab, it leaves this
-    // desk and lands on the first free cell over there — its own size, not squeezed into whatever it was
-    // dropped over, because the target's arrangement is not the operator's to disturb from another workspace.
-    //
-    // The pane keeps its id, which is what carries the widget's settings: instance storage is keyed by it, so
-    // a moved system monitor arrives still showing the metrics it was set to. Rebuilding it as a new pane would
-    // quietly reset it — the same rule the session grid learned the hard way on 2026-07-13.
-    //
-    // Both ends are applied in one write. Two (remove here, add there) can half-land, and a half-landed move is
-    // a widget that exists nowhere.
-    // False when the move does not apply: same desk, no dashboard either end, or no such pane.
+    // AC-1013: Moves a widget from the dashboard showing to another one (F5): dragged onto its tab, it...
     public async Task<bool> MovePaneToWorkspaceAsync(string paneId, string targetWorkspaceId)
     {
         if (Active is not { } source || source.Type != WorkspaceType.Dashboard
@@ -489,21 +432,13 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             ? Task.CompletedTask
             : _ApplyAsync(Settings.WithUpdated(workspace.WithoutPane(paneId)));
 
-    // Adds a pane to a specific workspace by id (AC-410) — the counterpart to
-    // `RemovePaneAsync(string, string)`, used to persist an AI session's pane record at the moment
-    // it starts, on whichever Sessions workspace it belongs to, active or not. A no-op when
-    // `workspaceId` names no workspace.
+    // AC-1013: Adds a pane to a specific workspace by id (AC-410) — the counterpart to
     public Task AddPaneAsync(string workspaceId, WorkspacePane pane) =>
         Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } workspace
             ? Task.CompletedTask
             : _ApplyAsync(Settings.WithUpdated(workspace.WithPane(pane)));
 
-    // Updates a persisted AI-session pane's title and whether it was chosen (AC-514) — the counterpart to
-    // `AddPaneAsync` for a name that changes after the pane already exists: an operator's inline
-    // rename, or a name a plugin/agent suggested. A no-op — no write at all — only when
-    // `workspaceId` names no workspace; a workspace with no pane matching
-    // `paneId` still writes (`Workspace.WithPaneRenamed` leaves its panes
-    // untouched in that case, but the write goes through regardless, the same as `MovePaneAsync`).
+    // AC-1013: Updates a persisted AI-session pane's title and whether it was chosen (AC-514) — the...
     public Task RenamePaneAsync(string workspaceId, string paneId, string title, bool nameIsChosen) =>
         Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } workspace
             ? Task.CompletedTask
@@ -513,10 +448,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     public Task MovePaneAsync(string paneId, GridCell cell) =>
         Active is not { } workspace ? Task.CompletedTask : _ApplyAsync(Settings.WithUpdated(workspace.WithPaneMoved(paneId, cell)));
 
-    // Drops a dragged widget on a cell: the cell takes it, or its occupant swaps places with it
-    // (`DashboardGridMath.Drop`). Applies the whole arrangement at once, so a swap cannot
-    // half-land and leave two widgets stacked on one cell. A drop the math refuses — off the grid, or over more
-    // than one widget — leaves the dashboard alone, the same way a refused resize does.
+    // AC-1013: Drops a dragged widget on a cell: the cell takes it, or its occupant swaps places with it
     public Task DropPaneAsync(string paneId, int column, int row)
     {
         if (Active is not { } dashboard || dashboard.Type != WorkspaceType.Dashboard
@@ -547,11 +479,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         return _ApplyAsync(Settings.WithUpdated(dashboard.WithPaneMoved(paneId, resized)));
     }
 
-    // The active dashboard as a file. Credentials are dropped on the way out (`DashboardExporter`),
-    // so a dashboard you hand to someone carries its arrangement and its settings but never a key.
-    // Scrubs by the shared name rule *and* the keys the widget-providing plugins declared themselves —
-    // the rule cannot guess a key called "pat", and a declaration that only protected the backup and the
-    // at-rest encryption but not the file you hand to someone would protect the wrong two of the three.
+    // AC-1013: The active dashboard as a file. Credentials are dropped on the way out (`DashboardExporter`),
     public string? ExportActiveDashboard()
     {
         if (Active is not { } dashboard || dashboard.Type != WorkspaceType.Dashboard || _widgets is null)
@@ -585,11 +513,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
         var import = DashboardExporter.FromExport(export, _widgets.IsInstalled, _UniqueName(export.Name));
 
-        // Read before anything lands. A widget's settings travel as the raw JSON it wrote, so a file whose
-        // envelope parses can still carry settings that do not — and finding that out after the workspace was
-        // applied left a dashboard on the strip with its widgets unconfigured and an exception on the way out.
-        // That is the half-landed import the one-write rule exists to prevent, and it made a liar of the promise
-        // above it: a file this build cannot read has to be said, not thrown.
+        // AC-1013: Read before anything lands. A widget's settings travel as the raw JSON it wrote, so a file...
         Dictionary<string, IReadOnlyDictionary<string, JsonElement>> settings = [];
         try
         {
@@ -647,13 +571,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         PropertyNameCaseInsensitive = true,
     };
 
-    // Puts `settings` on screen and on disk — every change here settles through this one path.
-    // Never throws. Nearly every caller discards the task it returns (`_ = _ApplyAsync(…)`), because
-    // arranging a desk is not something the operator waits on — so an exception out of here would land on a task
-    // nobody observes and simply be gone. The write can genuinely fail: it goes through
-    // `CockpitConfigFileAccess.UpdateAsync`, which refuses rather than writes when the config's write gate
-    // times out or the file is unreadable. Saying nothing would leave the change on screen and absent from disk,
-    // and the operator would find out at the next start, with their arrangement gone and no reason given.
+    // AC-1013: Puts `settings` on screen and on disk — every change here settles through this one path.
     private async Task _ApplyAsync(WorkspaceSettings settings)
     {
         if (ReferenceEquals(settings, Settings))
@@ -717,10 +635,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             return;
         }
 
-        // Reconcile rather than rebuild. Clearing and re-creating every pane on any change threw away each
-        // plugin's control — so moving one widget silently reset the others, and a clock that had been placed
-        // before its plugin finished registering came back as a second copy stacked on the first. Same rule as
-        // the session grid (2026-07-13): a pane is updated in place, never rebuilt, or it loses what it holds.
+        // AC-1013: Reconcile rather than rebuild. Clearing and re-creating every pane on any change threw away...
         var wanted = dashboard.Panes
             .Where(pane => pane.WidgetId is not null)
             .ToList();
@@ -750,11 +665,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         }
     }
 
-    // Builds the active plugin workspace's body once and keeps it, and drops the bodies of workspaces that are
-    // gone. Built on first show, not rebuilt on every switch: rebuilding would call the plugin's body factory
-    // again — starting a second embedded session — so a body is created once per workspace and reused when the
-    // operator switches away and back. A body whose plugin type is not registered stays unbuilt; the view shows
-    // the unknown-type placeholder, and this rebuilds it when the registry raises Changed.
+    // AC-1013: Builds the active plugin workspace's body once and keeps it, and drops the bodies of...
     private void _RefreshPluginBody()
     {
         // The embedded sessions of a closed plugin workspace are torn down by the shell's CloseForWorkspace; here
@@ -797,9 +708,6 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             ? null
             : _workspaceTypes?.WorkspaceTypes.FirstOrDefault(type => type.Id == workspace.Type.Id)?.IconKind;
 
-    // "Dashboard", then "Dashboard 2", … — a name the operator can rename, but never a strip of identical tabs.
-    // The type's own id is the name: the built-in ids read as titles ("Sessions", "Dashboard", "Launcher"), and a
-    // plugin type at least says what it is. It used to hard-code the two host names, so every other type — the
-    // launcher included — came out of this called "Sessions".
+    // AC-1013: "Dashboard", then "Dashboard 2", … — a name the operator can rename, but never a strip of...
     private string _UniqueName(WorkspaceType type) => _UniqueName(type.Id);
 }

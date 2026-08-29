@@ -6,18 +6,8 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels;
 
-// One row in a store's plugin catalogue (#14): the advertised display fields plus the install/update
-// state derived by comparing the store's latest version against what is installed. Carries the store it came
-// from (AC-7) and the latest version entry so the manager can download and install it — through the same
-// store, with its auth or local path.
-//
-// Also carries this host's own compatibility numbers (AC-181), so the same "not compatible" verdict the
-// install-time gate and the load-time gate would reach is visible here — *before* a click that would
-// only fail. `hostAbstractionsMajor`/`hostVersion` default to the running
-// cockpit's own values; a caller only ever overrides them in a test.
-//
-// ObservableObject/partial (AC-553) only for `RemoteLogo` — a vendor CDN logo arrives asynchronously, after
-// the row is already on screen, so it is the one property here that needs change notification.
+// Store catalogue row (#14/AC-7), including the latest entry for that store's install path.
+// AC-181 shows the install/load compatibility verdict before a doomed click; AC-553 notifies only async RemoteLogo.
 public sealed partial class StorePluginRowViewModel(
     PluginStoreEntry entry,
     PluginStoreConfig store,
@@ -210,14 +200,8 @@ public sealed partial class StorePluginRowViewModel(
     // Hover text for the state chip — the reason this host cannot install it fresh, or null (an already-installed plugin's own status line, not this tooltip, explains an update it merely cannot take — see `StatusText`).
     public string? StateBadgeTooltip => IsIncompatible ? IncompatibilityReason : null;
 
-    // True when nothing is installed yet and this host cannot install `LatestVersionEntry` either
-    // (AC-181) — a contract-major mismatch, or a `minHostVersion` this host does not meet (see
-    // `PluginLoadPolicy.MeetsMinHostVersion`, the same gate the install- and load-time checks apply,
-    // so this can never disagree with what an actual install attempt would do). Deliberately never true once the
-    // plugin is already installed and running: only the newer version on offer may be out of reach, which is not
-    // the same claim as "this plugin does not work here" — `CanUpdate`/`StatusText`
-    // carry that distinction instead of mislabelling a working plugin. A version the catalogue declares nothing
-    // about is never flagged incompatible over it — an absent field means "nothing declared", not "unsupported".
+    // AC-181: only an uninstalled plugin is incompatible when the shared install/load gate rejects its latest entry.
+    // A running plugin, or one with no declared constraint, is not mislabeled; CanUpdate/StatusText explain updates.
     public bool IsIncompatible =>
         !IsInstalled && LatestVersionEntry is { } version && !PluginCompatibility.IsCompatible(version, hostAbstractionsMajor, EffectiveHostVersion);
 
