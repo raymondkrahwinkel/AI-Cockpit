@@ -105,16 +105,11 @@ public class PullRequestBadgeUpdaterTests
             var noRequests = new PullRequestFeedResult([Mine], [], RepositoryMissing: false);
             var withRequest = new PullRequestFeedResult([Mine], [Mine], RepositoryMissing: false);
             var next = noRequests;
-            using var firstRefresh = new ManualResetEventSlim();
-            var firstLoad = new TaskCompletionSource<PullRequestFeedResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var source = new PullRequestRefreshSource(new InMemoryPluginStorage(), (forceRefresh, _) =>
-                forceRefresh ? Task.FromResult(next) : firstLoad.Task, TimeSpan.FromMinutes(10));
+            var source = new PullRequestRefreshSource(new InMemoryPluginStorage(), (_, _) => Task.FromResult(next), TimeSpan.FromMinutes(10));
             var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
 
             using var updater = new PullRequestBadgeUpdater(host, settings, source);
-            source.Updated += (_, _) => firstRefresh.Set();
-            firstLoad.SetResult(noRequests);
-            Assert.True(firstRefresh.Wait(TimeSpan.FromSeconds(30)));
+            await source.RefreshAsync(forceRefresh: true);
             Dispatcher.UIThread.RunJobs();
             Assert.Empty(host.Toasts);
 
