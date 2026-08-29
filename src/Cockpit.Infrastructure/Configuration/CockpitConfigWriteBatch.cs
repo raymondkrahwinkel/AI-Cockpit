@@ -120,7 +120,7 @@ public sealed class CockpitConfigWriteBatch : IAsyncDisposable
     private async Task<CockpitConfigFile> _LoadAsync(CockpitConfigFileAccess access, CancellationToken cancellationToken)
     {
         _writeGate = await CockpitConfigWriteGate.AcquireAsync(access.ConfigFilePath, cancellationToken).ConfigureAwait(false);
-        var loaded = await access.ReadNowAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();
+        var loaded = await access.ReadNowAsync(cancellationToken, waitForWriter: false).ConfigureAwait(false) ?? new CockpitConfigFile();
         lock (_syncRoot)
         {
             _file = loaded;
