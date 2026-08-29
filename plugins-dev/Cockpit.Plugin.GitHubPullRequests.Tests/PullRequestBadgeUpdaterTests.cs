@@ -28,36 +28,32 @@ public class PullRequestBadgeUpdaterTests
 
     [Fact]
     public void RepositoryMissing_TheBadgeStaysNotYetKnown_EvenAfterAFetchCompletes() => HeadlessAvalonia.Run(() =>
-        _RunAsync(async () =>
-        {
-            var host = new TestBadgeHost();
-            var source = new PullRequestRefreshSource(new InMemoryPluginStorage(), (_, _) => Task.FromResult(PullRequestFeedResult.Missing), TimeSpan.FromMinutes(10));
-            var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage());
+    {
+        var host = new TestBadgeHost();
+        using var source = _SourceAfterItsFirstPoll((_, _) => Task.FromResult(PullRequestFeedResult.Missing));
+        var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage());
 
-            using var updater = new PullRequestBadgeUpdater(host, settings, source);
-            await source.RefreshAsync(forceRefresh: true);
+        using var updater = new PullRequestBadgeUpdater(host, settings, source);
 
-            var badge = _RegisteredBadge(host);
-            Assert.Null(badge.Primary);
-            Assert.Null(badge.Secondary);
-        }));
+        var badge = _RegisteredBadge(host);
+        Assert.Null(badge.Primary);
+        Assert.Null(badge.Secondary);
+    });
 
     [Fact]
     public void AfterAFetch_TheBadgeShowsRealCounts_IncludingAGenuineZeroSecondary() => HeadlessAvalonia.Run(() =>
-        _RunAsync(async () =>
-        {
-            var host = new TestBadgeHost();
-            var result = new PullRequestFeedResult([Mine], [], RepositoryMissing: false);
-            var source = new PullRequestRefreshSource(new InMemoryPluginStorage(), (_, _) => Task.FromResult(result), TimeSpan.FromMinutes(10));
-            var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage());
+    {
+        var host = new TestBadgeHost();
+        var result = new PullRequestFeedResult([Mine], [], RepositoryMissing: false);
+        using var source = _SourceAfterItsFirstPoll((_, _) => Task.FromResult(result));
+        var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage());
 
-            using var updater = new PullRequestBadgeUpdater(host, settings, source);
-            await source.RefreshAsync(forceRefresh: true);
+        using var updater = new PullRequestBadgeUpdater(host, settings, source);
 
-            var badge = _RegisteredBadge(host);
-            Assert.Equal(1, badge.Primary);
-            Assert.Equal(0, badge.Secondary);
-        }));
+        var badge = _RegisteredBadge(host);
+        Assert.Equal(1, badge.Primary);
+        Assert.Equal(0, badge.Secondary);
+    });
 
     [Theory]
     [InlineData(typeof(MissingMethodException))]
@@ -67,13 +63,12 @@ public class PullRequestBadgeUpdaterTests
         {
             var host = new TestBadgeHost { BadgeUnsupportedException = () => (Exception)Activator.CreateInstance(exceptionType)! };
             var result = new PullRequestFeedResult([Mine], [Mine], RepositoryMissing: false);
-            var source = new PullRequestRefreshSource(new InMemoryPluginStorage(), (_, _) => Task.FromResult(result), TimeSpan.FromMinutes(10));
+            using var source = _SourceAfterItsFirstPoll((_, _) => Task.FromResult(result));
             var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
 
             // Neither construction nor a snapshot update may throw just because the host's Abstractions predates
             // AC-516 — that is exactly what the updater's own try/catch exists for, whether resolution fails on the
-            // missing method (MissingMethodException) or on the missing SideMenuButtonBadge type itself
-            // (TypeLoadException) — the latter is the realistic failure, since an old host lacks both.
+            // missing method (MissingMethodException) or on the missing SideMenuButtonBadge type itself.
             using var updater = new PullRequestBadgeUpdater(host, settings, source);
             await source.RefreshAsync(forceRefresh: true);
             Dispatcher.UIThread.RunJobs();
@@ -83,19 +78,17 @@ public class PullRequestBadgeUpdaterTests
 
     [Fact]
     public void AReviewRequestAlreadyWaitingOnFirstLoad_IsNotAnnounced() => HeadlessAvalonia.Run(() =>
-        _RunAsync(async () =>
-        {
-            var host = new TestBadgeHost();
-            var result = new PullRequestFeedResult([Mine], [Mine], RepositoryMissing: false);
-            var source = new PullRequestRefreshSource(new InMemoryPluginStorage(), (_, _) => Task.FromResult(result), TimeSpan.FromMinutes(10));
-            var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
+    {
+        var host = new TestBadgeHost();
+        var result = new PullRequestFeedResult([Mine], [Mine], RepositoryMissing: false);
+        using var source = _SourceAfterItsFirstPoll((_, _) => Task.FromResult(result));
+        var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
 
-            using var updater = new PullRequestBadgeUpdater(host, settings, source);
-            await source.RefreshAsync(forceRefresh: true);
-            Dispatcher.UIThread.RunJobs();
+        using var updater = new PullRequestBadgeUpdater(host, settings, source);
+        Dispatcher.UIThread.RunJobs();
 
-            Assert.Empty(host.Toasts);
-        }));
+        Assert.Empty(host.Toasts);
+    });
 
     [Fact]
     public void AReviewRequestThatArrivesAfterTheFirstLoad_RaisesOneToast() => HeadlessAvalonia.Run(() =>
@@ -105,16 +98,12 @@ public class PullRequestBadgeUpdaterTests
             var noRequests = new PullRequestFeedResult([Mine], [], RepositoryMissing: false);
             var withRequest = new PullRequestFeedResult([Mine], [Mine], RepositoryMissing: false);
             var next = noRequests;
-            using var firstRefresh = new ManualResetEventSlim();
-            var firstLoad = new TaskCompletionSource<PullRequestFeedResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var source = new PullRequestRefreshSource(new InMemoryPluginStorage(), (forceRefresh, _) =>
-                forceRefresh ? Task.FromResult(next) : firstLoad.Task, TimeSpan.FromMinutes(10));
+            using var source = _SourceAfterItsFirstPoll((_, _) => Task.FromResult(next));
             var settings = new GitHubPullRequestsSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
 
+            // The first load is the one the source polled for itself above, so the updater primes its seen-set off
+            // that snapshot the moment it is built — no request has "arrived" yet.
             using var updater = new PullRequestBadgeUpdater(host, settings, source);
-            source.Updated += (_, _) => firstRefresh.Set();
-            firstLoad.SetResult(noRequests);
-            Assert.True(firstRefresh.Wait(TimeSpan.FromSeconds(30)));
             Dispatcher.UIThread.RunJobs();
             Assert.Empty(host.Toasts);
 
@@ -180,6 +169,28 @@ public class PullRequestBadgeUpdaterTests
         // must not re-announce a request the operator already knew about.
         Assert.Empty(host.Toasts);
     });
+
+    // A source whose own startup poll has already landed (AC-1250, AC-1122). `PullRequestRefreshSource` fetches the
+    // moment it exists — due time zero — so a test that then forces its own refresh is racing that poll through a
+    // gate that silently drops whichever call loses, leaving the order its assertions depend on up to scheduling.
+    private static PullRequestRefreshSource _SourceAfterItsFirstPoll(Func<bool, CancellationToken, Task<PullRequestFeedResult>> load)
+    {
+        using var polled = new ManualResetEventSlim();
+        var source = new PullRequestRefreshSource(new InMemoryPluginStorage(), load, TimeSpan.FromMinutes(10));
+        source.Updated += OnUpdated;
+
+        // Subscribing first is what makes the `Current` check below safe rather than a second race: a poll landing
+        // between the two is seen twice, never missed.
+        if (source.Current.FetchedAt is null)
+        {
+            Assert.True(polled.Wait(TimeSpan.FromSeconds(30)), "The refresh source's startup poll never landed.");
+        }
+
+        source.Updated -= OnUpdated;
+        return source;
+
+        void OnUpdated(object? sender, PullRequestFeedSnapshot snapshot) => polled.Set();
+    }
 
     private static SideMenuButtonBadge _RegisteredBadge(TestBadgeHost host)
     {

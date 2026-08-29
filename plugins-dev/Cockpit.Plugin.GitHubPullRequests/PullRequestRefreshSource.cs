@@ -214,6 +214,9 @@ internal sealed class PullRequestRefreshSource : IDisposable
             }
         }
 
+        // Deliberately re-reads the field instead of publishing the snapshot this call's own load produced: a
+        // publisher overtaken between the release above and this line must raise the newest snapshot, never its
+        // own older one — the badge updater turns an older one arriving late into a repeated toast (AC-1250).
         Updated?.Invoke(this, _current);
         return true;
     }
