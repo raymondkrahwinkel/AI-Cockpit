@@ -1372,6 +1372,25 @@ public class SessionStartDefaultsTests
         Assert.DoesNotContain("MCP", prompt, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Resolve_ALocalPathAndAnUnregisteredDepotMemoryRow_GivesNoChannelAdvice()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("depot:cockpit", ProjectResourceRole.Memory),
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        Assert.NotNull(prompt);
+        Assert.Contains("lives in", prompt!, StringComparison.Ordinal);
+        Assert.DoesNotContain("MCP", prompt, StringComparison.Ordinal);
+    }
+
     // ── AC-484 confirming round: FIX 3 — two-or-more memory rows still say how to reach the memory ────────────────
 
     /// <summary>
