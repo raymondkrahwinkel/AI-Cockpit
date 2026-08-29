@@ -94,8 +94,7 @@ public sealed class Ac1196FreezeDetectorTests
         {
             if (dispatcherBusyFirst)
             {
-                // Spent by the time the wait below returns, so it changes nothing here — it is what makes this case
-                // go red if that wait is ever dropped, which is the only way the pong gets in front of the block.
+                // Inert in the passing path: here only to make this case go red if the wait below is ever dropped.
                 Dispatcher.UIThread.Post(() => Thread.Sleep(300), DispatcherPriority.Send);
             }
 
