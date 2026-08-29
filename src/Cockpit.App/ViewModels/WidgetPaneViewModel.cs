@@ -8,10 +8,7 @@ using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.App.ViewModels;
 
-// One placed widget as the dashboard renders it: the pane's chrome (title, ↻, ⚙, ✕) plus the control the
-// plugin built for this instance. The view is created once, here, and kept — rebuilding it on every layout
-// pass would throw away whatever state the widget holds, the same mistake the session grid made on
-// 2026-07-13 when a dragged pane was rebuilt and lost its pty.
+// AC-1013: One placed widget as the dashboard renders it: the pane's chrome (title, ↻, ⚙, ✕) plus the...
 public sealed partial class WidgetPaneViewModel : ObservableObject
 {
     private readonly WidgetContext _context;
@@ -70,13 +67,7 @@ public sealed partial class WidgetPaneViewModel : ObservableObject
     public IReadOnlyDictionary<string, string> ReadConfig() =>
         _context.Storage is WidgetInstanceStorage storage ? storage.Snapshot() : new Dictionary<string, string>();
 
-    // Writes settings from an import, then asks the widget to re-read them — which is how it shows what the file
-    // said without watching its own storage.
-    //
-    // `config`:
-    // Already parsed, so this cannot fail halfway. The caller reads the file's raw JSON before it applies the
-    // workspace: a malformed value has to stop the import, and it cannot stop anything from in here, with the
-    // dashboard already on the strip and half its widgets written.
+    // AC-1013: Writes settings from an import, then asks the widget to re-read them — which is how it...
     public void WriteConfig(IReadOnlyDictionary<string, JsonElement> config)
     {
         foreach (var (key, value) in config)

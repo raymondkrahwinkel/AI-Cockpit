@@ -6,10 +6,7 @@ using Cockpit.Core.Verify;
 
 namespace Cockpit.App.ViewModels;
 
-// The Verify-runners configuration dialog (AC-86): the per-project commands the visual verify loop may run. The
-// operator registers, edits or removes a runner here — a command that renders the UI to a snapshot file the agent
-// is then fed. The agent can only trigger a registered runner, never write one, so this is the only place a verify
-// command is defined.
+// AC-1013: The Verify-runners configuration dialog (AC-86): the per-project commands the visual verify...
 public sealed partial class VerifyRunnersViewModel : ObservableObject
 {
     private readonly IVerifyRunnerRegistry? _registry;

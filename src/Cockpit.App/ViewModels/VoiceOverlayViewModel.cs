@@ -5,11 +5,7 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 
-// Drives the floating voice-input pill (#34): one shared instance for the whole cockpit (single-user,
-// one hold at a time), whose `State` the pill's XAML binds its two rows'
-// (Listening/Transcribing) visibility to. While listening, `PushLevel` feeds captured
-// microphone levels into the scrolling `Bars` waveform so the pill shows that sound is
-// actually coming in (#34b). `VoicePushToTalkCoordinator` owns the transitions and the level feed.
+// AC-1013: Drives the floating voice-input pill (#34): one shared instance for the whole cockpit...
 public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
 {
     private const int BarCount = 13;

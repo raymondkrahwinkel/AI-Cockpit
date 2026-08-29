@@ -3,11 +3,7 @@ using Cockpit.Core.Shortcuts;
 
 namespace Cockpit.App.ViewModels;
 
-// One row in the Options → Shortcuts tab: an action's `Label` and its editable
-// `Gesture` (recorded by clicking and pressing keys). An app-action row carries its
-// `Action`; a plugin-contributed row carries its `PluginShortcutId`. Both are
-// editable — the app-action gesture and the plugin override are persisted separately by
-// `CockpitViewModel`.
+// Options → Shortcuts row: editable action or plugin gesture, persisted separately by `CockpitViewModel`.
 public partial class ShortcutRowViewModel : ViewModelBase
 {
     public string Label { get; }

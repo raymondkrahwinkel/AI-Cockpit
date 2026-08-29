@@ -3,10 +3,7 @@ using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 
-// Pure presentation helpers for the Options → Voice → Transcribe page (AC-68): they turn detected
-// `TranscriptionCapabilities` into the host-aware backend list, the hardware badge, and the
-// one-line advice for a chosen backend. Kept out of the view model so the host-awareness — never offering
-// CUDA where it cannot load — is unit-testable without an Avalonia platform.
+// AC-68 presentation helpers turn capabilities into host-safe choices, badges and advice without Avalonia.
 public static class TranscriptionOptions
 {
     // The backend choices to offer on this host: always Auto and CPU, plus a single jargon-free "GPU" entry

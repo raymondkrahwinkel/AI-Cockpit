@@ -1,7 +1,4 @@
 namespace Cockpit.App.ViewModels;
 
-// One entry in the Options "default shell" picker (#AC-25): a human label ("PowerShell (pwsh)", "OS default
-// (bash)") and the value persisted to `Cockpit.Core.Terminal.TerminalSettings.Shell` — a shell id, or
-// empty for "OS default". A record so equality is by value, which lets the ComboBox reselect the saved choice after
-// a reload by matching on `Value`.
+// Options default-shell choice (AC-25): record equality lets the ComboBox reselect the saved shell id after reload.
 public sealed record TerminalShellChoice(string Label, string Value);

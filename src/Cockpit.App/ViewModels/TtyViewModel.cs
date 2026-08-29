@@ -16,17 +16,7 @@ using Cockpit.Core.Usage;
 
 namespace Cockpit.App.ViewModels;
 
-// TTY-mode (#9) session panel: hosts a provider's real interactive TUI inside a ConPTY, rendered by
-// `TtyView`'s terminal control — provider-neutral, so it runs whichever CLI the profile's TTY provider
-// launches (Claude, Codex, …). The profile and its start defaults are chosen up front in the New-session
-// dialog (#31) and handed in via `LaunchConfigured` as the provider's own opaque option values;
-// the view owns the terminal size, so the VM raises `LaunchRequested` and the view launches the
-// carried `ITtyLauncher` with its current columns/rows once it has a size. Read-aloud and status
-// tail the session's transcript through the generic `ISessionTranscriptReader` façade, which
-// dispatches to the profile's provider.
-// Registered `ITransientService` so `CockpitViewModel`'s factory mints one per TTY session.
-// The underlying pty host is cross-platform (ConPTY on Windows, Porta.Pty on Linux/macOS), selected
-// by `IPtyHostFactory`.
+// AC-1013: TTY-mode (#9) session panel: hosts a provider's real interactive TUI inside a ConPTY,...
 public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 {
     private readonly ITtyLauncher? _launcher;
@@ -43,14 +33,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private SessionResources? _configuredContributed;
     private bool _launched;
 
-    // True from `LaunchConfigured` until `OnLaunchSucceeded` for the first launch of a
-    // restored pane, false otherwise (AC-410). Armed off `SessionPanelViewModel.RestoreOffer` being set
-    // at configure time — `CockpitViewModel._StartRestoredSessionAsync` only clears it after the start call
-    // returns, but that happens as soon as this launch is configured, well before the pty has actually spawned, so
-    // `RestoreOffer` itself cannot be read again once the process later exits; `_restoredOfferSnapshot`
-    // is what survives that gap. While armed, `OnProcessExited` must not close the pane: a resume that
-    // fails fast (an expired conversation id) would otherwise erase the very pane record it was trying to bring
-    // back, in the same run that just restored it.
+    // AC-1013: True from `LaunchConfigured` until `OnLaunchSucceeded` for the first launch of a
     private bool _degradeInsteadOfCloseOnExit;
 
     // The offer this pane was restored with, captured when `_degradeInsteadOfCloseOnExit` armed — the source a failed exit degrades back to, since `SessionPanelViewModel.RestoreOffer` is already null by then.
@@ -61,18 +44,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // a normal agent-CLI session, which still resolves its provider from the profile.
     private ITtySessionProvider? _configuredProviderOverride;
 
-    // The transcript files that already existed when this session launched, snapshotted once in
-    // `LaunchConfigured` so the status tailer can single out the new `.jsonl`
-    // `claude` writes for this session — its id is not forced (undocumented for interactive sessions),
-    // so the transcript is found as the file that appears after launch, not matched by name.
+    // AC-1013: The transcript files that already existed when this session launched, snapshotted once in
     private IReadOnlySet<string>? _transcriptBaseline;
 
-    // Transcript-driven session status: a TTY panel hosts the real TUI, so there is no event stream to read
-    // status from — instead the provider plugin classifies each transcript reading (busy / working-background /
-    // done / metadata) and the tracker maps it, so a long thinking pause (which writes no line but
-    // is very much busy) stays Busy instead of a quiet-timeout wrongly flipping the dot to Done. Separate from
-    // the read-aloud tailer above so status works regardless of the read-aloud toggle. The safety timeout only
-    // rescues a busy turn that went silent far past any real turn (a missed end_turn, a killed CLI).
+    // AC-1013: Transcript-driven session status: a TTY panel hosts the real TUI, so there is no event...
     private static readonly TimeSpan BusySafetyTimeout = TimeSpan.FromSeconds(120);
     // AC-276: long enough to cover the gap between a turn ending and the CLI stating how many sub-agents are still
     // running (measured p99 2634 ms), so the session does not flash Done — and fire "session finished" — in between.
@@ -95,11 +70,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     // Status now lives on the shared SessionPanelViewModel base (AC-37), read by the one SessionHeaderBar.
 
-    // Where this session's provider drops its statusline snapshots, set by the view once the pty is up (see
-    // `TrackLimits`); null for a plain terminal, for a provider that installs no such relay, and before the launch.
-    // It is the session's own name for itself — the CLI states its transcript in there — so it is what both the
-    // status tail and `ReadTranscriptEntries` identify this session's record by, rather than guessing at which file
-    // on disk is the new one (AC-609).
+    // AC-1013: Where this session's provider drops its statusline snapshots, set by the view once the pty...
     public string? StatusFile { get; private set; }
 
     // One-line render diagnostics (OS, terminal grid, display scale, locale) shown in the TTY header — surfaced so a remote/misrendering machine can be inspected without shell access. Set by the view, which owns the terminal/pty.
@@ -128,11 +99,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private string _workingPath = string.Empty;
 
-    // Global TTY terminal font family (#40), mirrored from `CockpitViewModel.TerminalFontFamily` at
-    // session creation and pushed live on every settings change (see
-    // `CockpitViewModel.OnTerminalFontFamilyChanged`). Bound in `TtyView.axaml` straight
-    // onto `TerminalControl.FontFamily`, which re-measures and reflows the grid on assignment — no
-    // session restart needed.
+    // AC-1013: Global TTY terminal font family (#40), mirrored from `CockpitViewModel.TerminalFontFamily` at
     [ObservableProperty]
     private string _terminalFontFamily = "Cascadia Mono, Consolas, monospace";
 
@@ -140,22 +107,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private int _terminalFontSize = 13;
 
-    // Mirrors `CockpitViewModel.StackSessionsVertically` (#24), the multi-session grid's
-    // stacked-vertically layout — seeded at session creation and pushed live on every change (see
-    // `CockpitViewModel.OnStackSessionsVerticallyChanged`). Bound in `TtyView.axaml.cs` to
-    // dock the header beside the terminal instead of above it (#54): stacked panels are wide and short,
-    // so a top-docked header burns proportionally more of the little height each panel gets.
+    // AC-1013: Mirrors `CockpitViewModel.StackSessionsVertically` (#24), the multi-session grid's
     [ObservableProperty]
     private bool _isVerticalLayout;
 
-    // This pane runs a plain shell, not an agent CLI (#AC-25). Bound in `TtyView.axaml` to gate off the
-    // Claude-only header chrome — the limits bars, the working-path-as-Claude line and the plugin header items —
-    // which are meaningless for a shell. The terminal grid itself is provider-neutral and rendered unchanged.
-    //
-    // It also decides whether an agent may be offered this pane through the terminal-access MCP (AC-34): the pane
-    // registers with this value, and only a shell is listed, resolvable and couplable. So a change that lets this
-    // turn true for an agent session opens another session's transcript to an agent — treat it as a gate, not
-    // only as a chrome flag.
+    // AC-1013: This pane runs a plain shell, not an agent CLI (#AC-25). Bound in `TtyView.axaml` to gate...
     [ObservableProperty]
     private bool _isTerminal;
 
@@ -188,10 +144,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         RateLimits.Add(new SessionRateWindow("wk", 91, null));
     }
 
-    // Design-time preview of a plain terminal pane (#AC-25/#AC-29) for the Screenshotter: the shared
-    // `Controls.SessionHeaderBar` should render the terminal treatment — kind chip "TTY", no plugin
-    // header host and no usage pill — with the shell name shown once (the title) and only echoed in the cwd
-    // tooltip. Mirrors what `LaunchTerminal` configures, without spawning a real shell.
+    // AC-1013: Design-time preview of a plain terminal pane (#AC-25/#AC-29) for the Screenshotter: the shared
     public static TtyViewModel DesignTerminal()
     {
         var vm = new TtyViewModel
@@ -243,10 +196,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         return string.IsNullOrWhiteSpace(configured) ? Directory.GetCurrentDirectory() : configured;
     }
 
-    // No cleanup — the terminal has no input box to proofread in, so the text goes straight to the pty like a typed
-    // keystroke. Typed is all it may be: it is reduced to `_AsTypedText` first, so nothing in it can act
-    // as a key. Sending stays its own gesture — the operator's Enter, or `OnVoiceSubmitRequested`'s
-    // carriage return. Text that was nothing but keys writes nothing at all.
+    // AC-1013: No cleanup — the terminal has no input box to proofread in, so the text goes straight to...
     protected override void OnVoiceTextReady(string text)
     {
         var typed = _AsTypedText(text);
@@ -261,19 +211,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // has to cover the paste that `OnVoiceTextReady` just wrote (AC-993).
     private int _lastTypedLength;
 
-    // Auto-submit: writes a carriage return into the pty, the same byte a physical Enter sends after typing —
-    // submits the just-injected transcript to the interactive claude TUI.
-    //
-    // The CR is sent a short beat after the transcript rather than immediately (AC-64). On Windows, ConPTY
-    // coalesces two back-to-back writes — the transcript text, then this CR — into one read, and the TUI folds the
-    // CR into the prompt as a literal newline (a stray □) instead of registering a discrete Enter, so the text is
-    // typed but never sent. A ~60 ms gap (well under the perception threshold) puts the CR in its own pty read so it
-    // lands as a real Enter on every platform. Scheduled on the UI thread, so it is robust whether the request came
-    // from push-to-talk or open-mic.
-    //
-    // AC-993: 60 ms was timed on a spoken transcript. An injected agent brief is kilobytes, the CLI needs longer to
-    // drain and render that paste, and a CR arriving mid-paste is swallowed — leaving the brief sitting in the input
-    // as an unsent `[Pasted Text #N]`. The gap scales with the pasted length instead (`AutoSubmitDelay`).
+    // AC-1013: Auto-submit: writes a carriage return into the pty, the same byte a physical Enter sends...
     protected override void OnVoiceSubmitRequested()
     {
         _scheduleAutoSubmit(AutoSubmitDelay(_lastTypedLength), () => VoiceTranscriptReady?.Invoke("\r"));
@@ -285,22 +223,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     public override Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
 
 
-    // Spills a captured screenshot to a file and pastes its path into the TUI (AC-341) — which is what the TUI
-    // wanted all along, and the clipboard was only ever a way of getting there.
-    // A pty carries bytes, and no byte sequence means "here is an image" to a program reading one. What the
-    // agents running in these sessions do understand is a path: `claude` reads the file and attaches it. The
-    // route used to go the long way round — put the image on the system clipboard, press the terminal's paste
-    // key, and let the terminal write the image to a temp file and paste *that* path. Every step after the
-    // first was already this. So the clipboard bought nothing and cost the operator whatever they had copied —
-    // a trade Raymond declined outright when he saw it (2026-07-27): the capture should reach the session, and
-    // preferably not by way of the clipboard at all.
-    //
-    // It is also the reason this now works the same everywhere. The clipboard route had to negotiate image
-    // formats with three different windowing systems and got it wrong on Windows for a fortnight; a file has no
-    // formats to negotiate.
-    //
-    // Deliberately not submitted afterwards, the same as the chat session: the path lands in the TUI's own
-    // prompt, and the sentence that goes with the screenshot is the operator's to type.
+    // AC-1013: Spills a captured screenshot to a file and pastes its path into the TUI (AC-341) — which is...
     protected override async Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
     {
         if (PasteTextAsync is null)
@@ -320,10 +243,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             return "The screenshot could not be written to a temporary file, so it was not handed over.";
         }
 
-        // Read again rather than reuse what the check above saw. Writing the file is a real await, and the
-        // operator can close the session while it runs — <see cref="DisposeCoreAsync"/> clears this exactly so
-        // that a capture landing afterwards does not report success into a terminal that is gone. Holding the
-        // delegate across the await would defeat that; the check above only saves the file write.
+        // AC-1013: Read again rather than reuse what the check above saw. Writing the file is a real await,...
         if (PasteTextAsync is not { } paste)
         {
             _TryDelete(path);
@@ -414,12 +334,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Asks the view to paste text into the terminal, the way the control does it for any other paste.
-    // A settable delegate rather than an event, for two reasons. It returns a task the injection awaits, which a
-    // multicast event cannot do meaningfully; and a session panel has exactly one view, so "one subscriber" is
-    // the truth rather than a restriction. The view clears it when it lets go, and `DisposeCoreAsync`
-    // clears it when the session closes — a stale delegate would let a capture that lands after the session is
-    // gone report success into nothing, which is the one outcome this whole path exists to prevent.
+    // AC-1013: Asks the view to paste text into the terminal, the way the control does it for any other...
     public Func<string, Task>? PasteTextAsync { get; set; }
 
     private Action<TimeSpan, Action> _scheduleAutoSubmit = _DelayAutoSubmitOnUiThread;
@@ -427,11 +342,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // Test seam (AC-64): run the auto-submit action inline instead of after the UI-thread gap, so the transcript-then-CR ordering — and, since AC-993, the gap chosen for it — is assertable without a real timer.
     internal void SetAutoSubmitScheduler(Action<TimeSpan, Action> scheduler) => _scheduleAutoSubmit = scheduler;
 
-    // The gap between a pasted text and its submitting CR (AC-64, scaled in AC-993). A timer rather than an ack:
-    // whether the CLI has finished reading the paste is state on the far side of the pty, and neither
-    // Exclr8.Terminal nor ConPTY surfaces it — the control's events (Input/Output/Changed) only say bytes moved.
-    // 60 ms base is AC-64's measured floor; the per-character term covers a multi-KB injected brief, capped so a
-    // pathological paste cannot leave the CR hanging for seconds.
+    // AC-1013: The gap between a pasted text and its submitting CR (AC-64, scaled in AC-993). A timer...
     internal static TimeSpan AutoSubmitDelay(int pastedLength) =>
         TimeSpan.FromMilliseconds(Math.Min(1000, 60 + pastedLength / 4));
 
@@ -439,16 +350,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private static void _DelayAutoSubmitOnUiThread(TimeSpan delay, Action submit) =>
         Dispatcher.UIThread.Post(() => DispatcherTimer.RunOnce(submit, delay));
 
-    // Configures the panel with the profile and start defaults chosen in the New-session dialog, then
-    // launches the TUI as soon as the view is ready (#31). Replaces the old in-panel Start button and
-    // inline profile picker. `permissionMode`/`model`/
-    // `effort` are launch-only: the real TUI owns any live switching afterwards.
-    // `pluginOptions` carries the same kind of launch-only start defaults for a plugin
-    // TTY provider's own declared options (Codex's sandbox policy, say) — a Claude session leaves this
-    // null and uses `permissionMode`/`model`/`effort`
-    // instead; the caller never sends both for the same launch.
-    // `contributed` is what the plugins give this session (AC-165), or null for nothing
-    // contributed.
+    // AC-1013: Configures the panel with the profile and start defaults chosen in the New-session dialog,...
     public void LaunchConfigured(
         SessionProfile? profile,
         string? permissionMode,
@@ -475,11 +377,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             WorkingPath = _configuredWorkingDirectory;
             WorkingDirectory = _configuredWorkingDirectory;
         }
-        // Read-aloud and status both tail this session's transcript through the generic reader façade, which
-        // dispatches to the profile's provider plugin; a profile-less session still records one under the
-        // provider's default location, so pass the profile straight through rather than giving up when null.
-        // Snapshot the transcripts that exist now, before the TUI spawns and writes its own — the tailers then
-        // single out the new record as this session's transcript (its id is not forced).
+        // AC-1013: Read-aloud and status both tail this session's transcript through the generic reader...
         _transcriptBaseline = _transcriptReader?.SnapshotTranscripts(profile);
         _configuredPermissionMode = permissionMode;
         _configuredModel = model;
@@ -499,10 +397,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         TryRaiseLaunch();
     }
 
-    // Configures this panel as a plain terminal running `shell` (#AC-25), reusing the whole TTY
-    // launch path — the same pty, renderer and view — with a `ShellTtySessionProvider` handed in
-    // directly instead of resolved from a profile. No permission mode, model, MCP or transcript: a shell has none
-    // of that, so the Claude machinery (and the header chrome that shows it) is simply never configured.
+    // AC-1013: Configures this panel as a plain terminal running `shell` (#AC-25), reusing the whole TTY
     public void LaunchTerminal(ShellDescriptor shell, string? workingDirectory = null)
     {
         _configuredProviderOverride = new ShellTtySessionProvider(shell);
@@ -579,11 +474,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             ProjectId));
     }
 
-    // The start defaults in the provider's vocabulary. A blank knob is left out rather than passed as an empty
-    // string: "no model chosen" and "model set to nothing" are different things, and only the first is true here.
-    // Claude's own three knobs and a plugin provider's declared options are never both populated for the same
-    // launch (see `LaunchConfigured`), so layering the plugin options on top here never overwrites
-    // a Claude value with a plugin one.
+    // AC-1013: The start defaults in the provider's vocabulary. A blank knob is left out rather than...
     private Dictionary<string, string> _LaunchOptions()
     {
         var options = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -610,19 +501,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Called by the view when the hosted TUI process exits after running (the user closed claude in the
-    // TUI, or it ended). A TTY panel is ordinarily a live terminal with nothing left to interact with once the
-    // process is gone, so this asks the cockpit to close the panel — mirrors closing claude itself.
-    //
-    // AC-410's exception: within a restored pane's `_degradeInsteadOfCloseOnExit` window, an exit is
-    // not "the operator is done", it is a resume that failed before it even started (an expired conversation id
-    // makes `claude --resume` print an error and exit immediately). Closing there would delete the very pane
-    // record the operator was trying to bring back, at the exact moment it turns out to be needed. Instead the
-    // restore offer comes back with the failure visible, so "Start fresh" is still one click away.
-    //
-    // `lastOutput`:
-    // The last visible terminal lines, for the degraded offer's explanation — null when there was nothing to
-    // capture, or when this exit is not within the degrade window and the lines go unused.
+    // AC-1013: Called by the view when the hosted TUI process exits after running (the user closed claude...
     public void OnProcessExited(string? lastOutput = null)
     {
         _StopStatusTracking();
@@ -650,12 +529,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             ? "Claude exited immediately instead of resuming, before anything was printed."
             : $"Claude exited immediately instead of resuming:\n{lastOutput.Trim()}";
 
-    // Called by the view once the pty has actually spawned, so the header stops reading "Launching
-    // TUI..." while the real TUI is already interactive below it. Also starts JSONL-driven status
-    // tracking: the session is now idle-waiting-for-you until the transcript shows a turn in flight.
-    //
-    // Closes a restored pane's degrade window (AC-410): a launch that got this far actually put something on
-    // screen, so an exit from here on is the operator closing claude, not a resume failing before it started.
+    // AC-1013: Called by the view once the pty has actually spawned, so the header stops reading "Launching
     public void OnLaunchSucceeded()
     {
         Status = "Running";
@@ -721,19 +595,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                     _hasOutstandingBackgroundShells = reading.OutstandingShells > 0;
                     OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
 
-                    // Surface the raw transcript line to the read/observe surface: it carries any output signal
-                    // (a pull-request url printed by gh, a merged/closed line) as a substring regardless of which
-                    // JSONL field holds it, which is exactly what a substring-scanning watcher needs. A synthetic
-                    // keep-alive reading (background sub-agent activity) has no line, so there is nothing to scan.
+                    // AC-1013: Exposes the raw transcript line for substring-scanning read/observe consumers.
                     if (reading.RawLine is { } line)
                     {
                         RaiseOutputText(line);
                     }
 
-                    // AC-398: held pending rather than folded straight in — a turn that used a tool writes several
-                    // assistant lines before it completes, each with its own usage, and summing them under one
-                    // Turns increment (rather than one per line) is what keeps that counter meaning "turns", not
-                    // "assistant messages".
+                    // AC-398/AC-1013: Holds tool-turn usage pending so one turn is not counted as many messages.
                     if (reading.Usage is { } usage)
                     {
                         _pendingTurnInputTokens += usage.InputTokens;
@@ -742,10 +610,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                         _pendingTurnCacheCreationTokens += usage.CacheCreationInputTokens;
                     }
 
-                    // RawLine is null for the reader's synthetic keep-alive readings (a background sub-agent's
-                    // activity re-emitted each poll, or the state it hands back once that agent stops) — those
-                    // carry no usage and are not a second real turn ending, so flushing on them would write a
-                    // duplicate row with the same totals and an inflated Turns count.
+                    // AC-1013: RawLine is null for the reader's synthetic keep-alive readings (a background sub-agent's
                     if (reading.Activity == SessionActivity.TurnComplete && reading.RawLine is not null)
                     {
                         _AccumulateTurnUsage();
@@ -759,21 +624,12 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         }
         catch (Exception)
         {
-            // A transient IO fault while tailing (the JSONL file momentarily locked, a read error) must
-            // not leave the poll timer quietly decaying the dot to a false Done while the TUI is still
-            // busy — stop tracking so the status freezes at its last real value instead. Runs on the
-            // tailer's thread, so the timer/token teardown is marshaled onto the UI thread.
+            // AC-1013: A transient IO fault while tailing (the JSONL file momentarily locked, a read error) must
             Dispatcher.UIThread.Post(_StopStatusTracking);
         }
     }
 
-    // The last `count` rows this session has written, oldest first, with the total the record holds (AC-609) — what
-    // an SDK session answers from `SessionViewModel.Transcript`, which a TTY session has no equivalent of: the TUI
-    // owns the screen and the CLI owns the file, so the file is the transcript. Read through the provider, which is
-    // the half that knows the format; empty when this session has no statusline snapshot to name its record by,
-    // which is also the honest answer for a plain terminal.
-    //
-    // Touches the disk, so it is not for the UI thread — the read surface that calls it hands the work off first.
+    // AC-1013: The last `count` rows this session has written, oldest first, with the total the record...
     public SessionTranscriptSlice ReadTranscriptEntries(int count) =>
         _transcriptReader?.ReadEntries(_configuredProfile, StatusFile, count) ?? SessionTranscriptSlice.Empty;
 
@@ -787,13 +643,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         SessionStatus = _statusTracker.Poll(DateTimeOffset.UtcNow);
     }
 
-    // Folds the tokens accumulated since the previous turn into the session meter (AC-398) and refreshes the
-    // bound meter text — mirrors `SessionViewModel._AccumulateUsage`, fed by the transcript tail instead of
-    // the SDK event stream. No cost: the CLI's on-disk transcript reports token usage per assistant message but
-    // never a cost figure, unlike the SDK path's stream-json `result` event — and the cockpit does not
-    // compute one itself from tokens (see `PluginModelCostEstimate`'s own doc: "the cockpit never works a
-    // figure out itself"). `SessionUsageMeter.TotalCostUsd` therefore simply stays at its default,
-    // which reads identically to a provider that reports no cost at all.
+    // AC-1013: Folds the tokens accumulated since the previous turn into the session meter (AC-398) and...
     private void _AccumulateTurnUsage()
     {
         var usage = new TokenUsage(
@@ -810,22 +660,14 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         _RecordUsageSnapshot();
     }
 
-    // Writes the running totals to the usage trail after every turn (AC-398), same as the SDK path
-    // (`SessionViewModel._RecordUsageSnapshot`) and for the same reason: recording only at the end would
-    // lose exactly the run that crashed. Not awaited — a turn settling must not wait on a file — but kept so
-    // `DisposeCoreAsync` can drain it before the pane goes away.
-    // TTY sessions cannot be embedded; only the SDK route receives run metadata.
+    // AC-1013: Writes the running totals to the usage trail after every turn (AC-398), same as the SDK path
     private protected override (UsageRunKind RunKind, string? RunId, string? RunLabel, string? Model) GetUsageSnapshotMetadata() =>
         (UsageRunKind.Interactive, null, null, _configuredModel);
 
     // The transcript callback and disposal both run on the UI thread, so a queued callback can replace the write while drain awaits.
     private protected override bool UsageWritesMayBeQueuedDuringDrain => true;
 
-    // The pty produced output — the TUI is still drawing (a thinking spinner ticking, text streaming), so the
-    // session is visibly alive (AC-75). Keeps the status tracker's safety-timeout clock fresh while a turn is busy,
-    // so a long but visibly-working think/plan phase never decays to a false Done. Throttled to ~1 Hz — the timeout
-    // is generous and the terminal can flush at up to 30 fps — and a truly stalled/killed CLI produces no output,
-    // so its turn still times out to Done. Called on the UI thread from the view's output flush.
+    // AC-1013: The pty produced output — the TUI is still drawing (a thinking spinner ticking, text...
     public void NotifyTerminalOutput()
     {
         if (_statusTrackingStopped)
@@ -858,12 +700,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // Where a prompt goes when something other than the operator sends one (a scheduled resume, AC-234): the same
-    // pty stdin the keystrokes go to. Set by the view once the terminal is launched, because the pty is the view's
-    // to own; null before that, and the session then reports it cannot take a prompt yet.
-    // Assigning it is the moment this pane becomes able to take a prompt, so it is also the moment a brief held by
-    // `SessionPanelViewModel.SubmitPromptWhenReady` goes out — a spawned session's opening brief is
-    // handed over before any of this exists, and this is the one place the answer changes.
+    // AC-1013: Where a prompt goes when something other than the operator sends one (a scheduled resume,...
     public Action<string>? PromptSink
     {
         get => _promptSink;
@@ -918,11 +755,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         // the trailing carriage return is the one byte here that is meant to act as a key.
         sink(_AsTypedText(prompt) + "\r");
 
-        // Told rather than waited for. This pane's status is otherwise inferred from what the CLI prints, so between
-        // pressing Enter and the first line that reads as work it would go on reporting itself standing still — long
-        // enough for a second wake (AC-395) to be let through onto a session that is already answering the first.
-        // Submitting a turn is the one moment the host knows about one without having to read it off the screen, and
-        // it is said in the tracker's own terms so the safety timeout still decays it if nothing ever comes back.
+        // AC-1013: Told rather than waited for. This pane's status is otherwise inferred from what the CLI...
         SessionStatus = _statusTracker.OnActivity(SessionActivity.Busy, DateTimeOffset.UtcNow);
 
         return Task.FromResult(true);
@@ -931,17 +764,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private const char Escape = '\u001b';
     private const char Bell = '\u0007';
 
-    // Text on its way into a pty, reduced to what a person could type into the composer: every control byte becomes a
-    // space, and escape sequences are dropped whole. A pty has no notion of "just text" — a carriage return in it is
-    // Enter, a tab is completion, 0x03 is Ctrl+C, and an escape sequence drives the TUI and the emulator instead of
-    // filling the composer. So text that nobody typed (a voice transcript, a scheduled resume, an issue body a plugin
-    // handed over from a tracker anyone can write into) can fill the composer and do nothing else; sending it stays a
-    // deliberate, separate act.
-    //
-    // The line layout of a multi-line prompt is the price, and it is the right one: the alternative is that its first
-    // line submits itself and the rest arrives as input to whatever the session did next. Bracketed paste would keep
-    // the layout, but whether the hosted TUI honours it is the TUI's choice, not ours — a filter that only sometimes
-    // holds is not a filter.
+    // AC-1013: Text on its way into a pty, reduced to what a person could type into the composer: every...
     private static string _AsTypedText(string text)
     {
         var typed = new StringBuilder(text.Length);
@@ -962,11 +785,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         return string.Join(' ', typed.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
-    // The index of the last character of the escape sequence that starts at start, so the caller's own increment
-    // lands just past it. An unterminated or unrecognised sequence swallows the rest of the text:
-    // leaving the introducer behind is the one outcome worth avoiding, and text trailing an escape that never ends is
-    // not text anybody typed. Whatever this misses still cannot reach the pty — the caller turns every remaining
-    // control byte into a space, so a gap here costs legibility, never safety.
+    // AC-1013: The index of the last character of the escape sequence that starts at start, so the...
     private static int _EndOfEscapeSequence(string text, int start)
     {
         if (start + 1 >= text.Length)
@@ -1019,14 +838,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         return text.Length - 1;
     }
 
-    // Starts reading this session's usage from the file the provider plugin's statusline writes, interpreting it
-    // with that provider's own reader (AC-229) — the host polls, the plugin says what the contents mean.
-    // Polled rather than watched: the file is rewritten whole every few seconds by a shell script, and a
-    // filesystem watcher on a write-then-rename fires more often than it tells you anything.
-    //
-    // `statusFile`: Where the provider's statusline drops its snapshots; nothing is tracked without one.
-    // `signals`: What the provider says its sessions can run out of, which names and describes each reading.
-    // `readUsage`: The provider's reader, turning a snapshot's contents into readings.
+    // AC-1013: Starts reading this session's usage from the file the provider plugin's statusline writes,...
     public void TrackLimits(
         string? statusFile,
         IReadOnlyList<PluginUsageSignal> signals,
@@ -1057,12 +869,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                             var readings = readUsage(await File.ReadAllTextAsync(statusFile, cancellation));
                             if (readings.Count > 0)
                             {
-                                // AC-577, no fast path — deliberately. This loop lives inside Task.Run, so
-                                // CheckAccess() is false by construction and the branch would exist only for a
-                                // test to take. The price wears a third face here, worth naming: the loop is
-                                // fire-and-forget, so without a dispatcher loop nothing hangs and nothing throws
-                                // — the await simply never returns and the readings stop arriving, in silence.
-                                // Only TtyView calls TrackLimits, which keeps it where a dispatcher exists.
+                                // AC-1013: AC-577, no fast path — deliberately. This loop lives inside Task.Run, so
                                 await Dispatcher.UIThread.InvokeAsync(() => ApplyUsage(signals, readings));
                             }
                         }
@@ -1082,10 +889,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     protected override async ValueTask DisposeCoreAsync()
     {
-        // The terminal control owns the pty lifetime (it created it via the launcher); it disposes
-        // the ConPtyProcess on unload/close. The status tailer is this VM's own background loop, so it
-        // does need stopping here — otherwise it would keep polling a file for a session that no longer
-        // has a panel to report status to.
+        // AC-1013: The terminal control owns the pty lifetime (it created it via the launcher); it disposes
         _limitsPollCancellation?.Cancel();
         _limitsPollCancellation?.Dispose();
         _limitsPollCancellation = null;
@@ -1100,27 +904,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             _AccumulateTurnUsage();
         }
 
-        // Let the last turn's usage write land (AC-398, mirrors SessionViewModel.DisposeCoreAsync) — after
-        // stopping the status tail above, not before: that tail is what kicks the write off, so a pane closing
-        // right behind its last turn would otherwise race the write and lose it. The trail swallows its own
-        // failures, so this waits on a task that does not fault. Looped rather than a single await: a reading
-        // already dequeued off the tail before cancellation can still be sitting as a queued
-        // Dispatcher.UIThread.Post callback, and awaiting yields the UI thread to run it — which can replace
-        // _pendingUsageWrite with a newer task after the one just captured here. Relies on DisposeCoreAsync
-        // itself running on the UI thread, same as the Post callback it is racing — otherwise the check-and-break
-        // below would be a torn read against that callback's own field writes.
+        // AC-1013: Let the last turn's usage write land (AC-398, mirrors SessionViewModel.DisposeCoreAsync) —...
         await _DrainUsageWritesAsync();
 
-        // Dropped here rather than left to the view, which is not told when a session closes: the panel is simply
-        // removed from the collection and its container leaves the tree, so the view's own DataContext hook never
-        // fires. A screenshot that lands after that would otherwise find a live delegate, paste into a terminal
-        // that no longer exists, and report success with nothing to show for it (AC-226).
+        // AC-1013: Dropped here rather than left to the view, which is not told when a session closes: the...
         PasteTextAsync = null;
 
-        // The prompt route goes with it, and for the identical reason. It points at the view's _WriteToPty, which
-        // returns without a word once the pty is gone — so a pane left with a sink still set answers CanTakeAPrompt
-        // true, takes the prompt, drops it, and lets send_prompt report delivered:true into nothing. The screenshot
-        // path settled this for its own delegate above; a prompt is the same delegate-outlives-its-target shape.
+        // AC-1013: The prompt route goes with it, and for the identical reason. It points at the view's...
         PromptSink = null;
     }
 }

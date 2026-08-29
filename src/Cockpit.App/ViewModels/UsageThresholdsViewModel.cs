@@ -6,11 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Cockpit.App.ViewModels;
 
-// The usage-threshold settings for one provider (AC-233): every signal it declared, with the number the operator
-// put in place of its default, or nothing where they left it following.
-//
-// A provider that declares no signals produces no rows, and its section is not shown at all — better than a frame
-// around controls that would do nothing.
+// AC-233 threshold settings for one provider; undeclared signals create no empty settings section.
 public sealed partial class UsageThresholdsViewModel : ObservableObject
 {
     private readonly IUsageThresholdStore _store;

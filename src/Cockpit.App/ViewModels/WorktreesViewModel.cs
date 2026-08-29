@@ -8,10 +8,7 @@ using Cockpit.Core.Worktrees;
 
 namespace Cockpit.App.ViewModels;
 
-// The cockpit's view on the git worktrees it created (AC-85): which ones still exist, whether each is clean or
-// holds work, and whether the session that owns it is still alive — so a crash-orphaned worktree can be reattached
-// to a fresh session or removed, and no removal ever loses work without asking. Shared as a singleton so the
-// status-bar counter and the dialog read the same list.
+// AC-1013: The cockpit's view on the git worktrees it created (AC-85): which ones still exist, whether...
 public sealed partial class WorktreesViewModel : ObservableObject, ISingletonService
 {
     private readonly IWorktreeManager? _manager;
@@ -60,16 +57,10 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
     // Supplied by the cockpit: the ids of the sessions alive right now, so each worktree's owner shows as live or gone.
     public Func<IReadOnlySet<string>>? LiveSessionIds { get; set; }
 
-    // Supplied by the cockpit (AC-520): the display names of the sessions, by pane id — the live pane's title,
-    // else the persisted `WorkspacePane.Title` for one that no longer has a pane, so a row still names its
-    // owner after the session has closed or crashed. Taken as one snapshot alongside `LiveSessionIds`,
-    // on the same thread and at the same moment: both read the cockpit's live collections.
+    // AC-1013: Supplied by the cockpit (AC-520): the display names of the sessions, by pane id — the live...
     public Func<IReadOnlyDictionary<string, string>>? SessionNames { get; set; }
 
-    // Supplied by the cockpit (AC-520 fix 6): the pane ids that currently show an open restore offer (AC-410) —
-    // live only on the strength of that offer, with nothing actually running behind it. Taken as one snapshot
-    // alongside `LiveSessionIds` and `SessionNames`, on the same thread and at the same
-    // moment, so a row can never disagree with itself about why its owner counts as live.
+    // AC-1013: Supplied by the cockpit (AC-520 fix 6): the pane ids that currently show an open restore...
     public Func<IReadOnlySet<string>>? RestoreOfferPaneIds { get; set; }
 
     // Raised when the operator reattaches to a gone worktree; the cockpit starts a new session in it.
@@ -120,10 +111,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         Count = Worktrees.Count;
     }
 
-    // Removes a worktree, always after a confirmation. A tree with uncommitted changes gets the stronger consent
-    // that names the loss (its committed history stays on the branch; only unsaved edits go); a clean one gets a
-    // plain confirm. Never removes a tree a live session is still on — that would pull the working directory out
-    // from under a running session; close the session first.
+    // AC-1013: Removes a worktree, always after a confirmation. A tree with uncommitted changes gets the...
     [RelayCommand]
     private async Task RemoveAsync(ManagedWorktreeRowViewModel? row)
     {
@@ -176,11 +164,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         ReattachRequested?.Invoke(row.Record);
     }
 
-    // Gives up a worktree's claim on a session that is only "live" because of an open restore offer with nothing
-    // running behind it (AC-520 fix 6, Raymond's explicit choice over a time-based expiry on the offer itself: "ik
-    // ben wel voor die geef vrij actie in het paneel ... legt de keuze bij de gebruiker neer"). Detaches ownership
-    // only — no worktree is removed here — so the row becomes an ordinary orphan afterwards: Remove and Reattach
-    // become available, and the operator picks from there.
+    // AC-1013: Gives up a worktree's claim on a session that is only "live" because of an open restore...
     [RelayCommand]
     private async Task ReleaseAsync(ManagedWorktreeRowViewModel? row)
     {
@@ -213,12 +197,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
             return;
         }
 
-        // Only clean trees whose session is gone: a live session's tree is never pulled from under it, even when clean.
-        // A tree with no working copy left counts as one of them (AC-342) — its folder disappeared, or the folder is
-        // still there with the checkout cleared out of it: there is nothing left to lose, and removing it keeps the
-        // branch, so all that goes is the registry entry. Neither reads as clean — IsClean is a measurement, and
-        // nothing about a tree that is not there can be measured — which is why NothingToKeep is named here rather
-        // than folded into that meaning.
+        // AC-1013: Only clean trees whose session is gone: a live session's tree is never pulled from under...
         List<string> refusals = [];
         List<string> notices = [];
         foreach (var row in Worktrees.Where(worktree => (worktree.IsClean || worktree.Status.NothingToKeep) && !worktree.IsOwnerLive).ToList())
@@ -246,12 +225,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         await RefreshAsync();
     }
 
-    // git says why across several lines; the dialog shows it on one. Beyond reading better in a single status line,
-    // a wrapping TextBlock over text that still holds newlines is the Avalonia 12.0.5 defect that took the prompt
-    // preview out with an OutOfMemoryException (AC-292) — the wrapper never advances and allocates empty lines until
-    // memory runs out. Flattening here keeps that class of text away from the wrap.
-    // The separators go in as an array on purpose: passing them as two arguments binds to Split(char, int,
-    // StringSplitOptions) — the second separator silently becoming a count — and nothing splits on newlines at all.
+    // AC-1013: git says why across several lines; the dialog shows it on one. Beyond reading better in a...
     private static string _OneLine(string text) =>
         string.Join(' ', text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 }
