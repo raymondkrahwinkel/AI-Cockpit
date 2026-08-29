@@ -29,6 +29,11 @@ internal static class Screenshotter
 
     public static void Run(string outputPngPath, int width = DefaultWindowWidth, int height = DefaultWindowHeight, string? scene = null, string? snapshotPath = null, string? snapshotTarget = null)
     {
+        if (!Path.GetExtension(outputPngPath).Equals(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Screenshot output path must have a .png extension.", nameof(outputPngPath));
+        }
+
         BuildHeadlessAvaloniaApp().SetupWithoutStarting();
 
         var window = ShowScene(scene, width, height);
