@@ -78,8 +78,9 @@ below it.** Two caveats belong with that number, not underneath it:
   plateau; a genuinely declining median still makes the sweep a `MALFUNCTION`.
   The former per-pass check refused the whole sweep when rounds fell from 159 to 23 after adding a session;
   that refusal was the machinery working, and a finding for AC-1178 rather than something to tune away.
-  The median check deliberately does not flag one such pass when the other two remain at 159: this is a
-  known limitation, not an erased observation, and each pass remains in the report for that reason.
+   The verdict also has a scale-free per-pass magnitude check: a point below 25% of the other passes'
+   median at the same session count is a malfunction. The recorded Windows runs bottom out at 46% (3
+   passes) and 50% (10 passes); 23 against 159 is 14%, so the collapse blocks without using a machine unit.
 - **`worst frame` reads 159 where Avalonia cuts off at 153.** The counter groups `LayoutUpdated` by frame
   ordinal, so a few rounds either side of the cut-off land in the same bucket. Treat it as "at the cut-off",
   not as an exact figure.

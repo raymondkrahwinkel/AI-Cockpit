@@ -85,6 +85,35 @@ public static class Series
         return new ShapeVerdict(breaks.Count == 0, line, breaks);
     }
 
+    /// <summary>Flags a pass point that is far below the other passes at the same sweep value.</summary>
+    public static ShapeVerdict Magnitude(string variable, IReadOnlyList<IReadOnlyList<SeriesPoint>> passes, double minimumPeerFraction)
+    {
+        var collapses = new List<(int Pass, SeriesPoint Point, double PeerMedian)>();
+        for (var passIndex = 0; passIndex < passes.Count; passIndex++)
+        {
+            foreach (var point in passes[passIndex])
+            {
+                var peers = passes.Where((_, index) => index != passIndex).SelectMany(pass => pass).Where(peer => peer.X == point.X).ToList();
+                if (peers.Count == 0)
+                {
+                    continue;
+                }
+
+                var peerMedian = MedianByX(peers).Single().Y;
+                if (point.Y < peerMedian * minimumPeerFraction)
+                {
+                    collapses.Add((passIndex + 1, point, peerMedian));
+                }
+            }
+        }
+
+        var line = collapses.Count == 0
+            ? $"magnitude ({variable}): every pass is at least {minimumPeerFraction:P0} of its peers' median — holds"
+            : $"magnitude ({variable}): every pass is at least {minimumPeerFraction:P0} of its peers' median — DOES NOT HOLD at [{string.Join(", ", collapses.Select(c => $"pass {c.Pass} x={c.Point.X:G} y={c.Point.Y:G} ({c.Point.Y / c.PeerMedian:P0} of {c.PeerMedian:G})"))}]";
+
+        return new ShapeVerdict(collapses.Count == 0, line, collapses.Select(c => c.Point).ToList());
+    }
+
     private static (double Slope, double Intercept) _Fit(IReadOnlyList<SeriesPoint> points)
     {
         var n = points.Count;
