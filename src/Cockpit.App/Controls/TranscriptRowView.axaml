@@ -182,20 +182,27 @@
             <ContentControl Content="{Binding AssistantBranch}" IsVisible="{Binding IsAssistantMarkdown}">
               <ContentControl.DataTemplates>
                 <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <!-- AC-1238: a reply streams in as one row per finished markdown block, so the badge and the name
+                 belong to the first row of that group and the actions below to the last. The badge keeps its
+                 box on a continuation rather than going IsVisible=False, or the prose beside it would step
+                 left halfway through the answer. -->
             <Grid ColumnDefinitions="Auto,*">
-                <Border Grid.Column="0" Classes="avatarBadge" Margin="0,1,10,0">
+                <Border Grid.Column="0" Classes="avatarBadge" Margin="0,1,10,0"
+                        Opacity="{Binding ReplyBadgeOpacity}">
                     <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
                                                 HorizontalAlignment="Center" VerticalAlignment="Center"
                                                 Foreground="{StaticResource CockpitAccentBrush}"/>
                 </Border>
                 <StackPanel Grid.Column="1" Spacing="3">
                     <TextBlock Classes="senderName" MaxWidth="280" HorizontalAlignment="Left"
+                               IsVisible="{Binding !IsReplyContinuation}"
                                Text="{Binding Session.Title}"/>
                     <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
                                          BasePath="{Binding Session.WorkingDirectory}"/>
                     <!-- Copy hands over the reply's markdown source verbatim. -->
                     <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
-                                HorizontalAlignment="Left">
+                                HorizontalAlignment="Left"
+                                IsVisible="{Binding IsReplyTail}">
                         <!-- AC-935: reply is scoped to the assistant chat only — see ReplyEnabled's own remarks. -->
                         <Button Classes="Subtle Compact"
                                 IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"

@@ -51,7 +51,7 @@ public partial class TranscriptRowView : UserControl
 
     // Copies an assistant reply's markdown source to the clipboard — the per-reply hover action. On a user row
     // this includes the image chip's own label (AC-778), matching what the row used to have baked into `Text`.
-    private void _OnCopyMessageClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.TextWithImageSuffix);
+    private void _OnCopyMessageClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.ReplyTextWithImageSuffix);
 
     // Both copy buttons sit on this row, so the sender's DataContext is the row's own view model.
     private void _CopyRowText(object? sender, Func<TranscriptEntryViewModel, string> select)

@@ -83,7 +83,10 @@ public sealed class TranscriptFocusFoldFollowTests
             }
         }
 
-        Assert.Equal(42, vm.Transcript.Count);
+        // Six turns of three prose rows and six tool rows. Three, not one: AC-1238 gives every finished markdown
+        // block its own row — `Prose` is a heading, a sentence and a list — so the only row that ever grows under
+        // the virtualising panel is the last and smallest one.
+        Assert.Equal(6 * (3 + 6), vm.Transcript.Count);
     }
 
     private static IEnumerable<string> _Chunks(string text)
