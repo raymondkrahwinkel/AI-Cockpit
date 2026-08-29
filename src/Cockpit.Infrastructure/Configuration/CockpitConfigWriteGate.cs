@@ -13,6 +13,7 @@ internal static class CockpitConfigWriteGate
 
     private static readonly TimeSpan GatePollInterval = TimeSpan.FromMilliseconds(20);
 
+    // AC-1251: once a writer holds the gate, new readers wait instead of extending the handles blocking its swap.
     public static async Task WaitForWriterAsync(string configFilePath, CancellationToken cancellationToken)
     {
         var lockFilePath = configFilePath + LockSuffix;
@@ -24,9 +25,13 @@ internal static class CockpitConfigWriteGate
                 using var writerLock = new FileStream(lockFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 return;
             }
-            catch (FileNotFoundException)
+            catch (IOException exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
             {
                 return;
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                throw new IOException($"Could not inspect the cockpit configuration write lock at '{lockFilePath}'.", exception);
             }
             catch (IOException) when (DateTimeOffset.UtcNow < deadline)
             {

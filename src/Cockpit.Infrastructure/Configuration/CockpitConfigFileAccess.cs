@@ -220,5 +220,5 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         JsonSerializer.Deserialize<CockpitConfigFile>(JsonSerializer.Serialize(configFile, SerializerOptions), SerializerOptions)!;
 
     // AC-41: the write gate lives in CockpitConfigWriteGate so the encryption migration and the banner
-    // dismissal share this lock. Reads wait for it before opening the config, so a writer cannot starve.
+    // dismissal share this lock. Reads wait while it is held, so they do not stack up behind a writer.
 }
