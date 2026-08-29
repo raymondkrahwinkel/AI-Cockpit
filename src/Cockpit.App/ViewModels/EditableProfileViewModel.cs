@@ -267,6 +267,16 @@ public partial class EditableProfileViewModel : ViewModelBase
         && SelectedProvider.PluginProviderId is { } providerId
         && _pluginProviderRegistry?.Resolve(providerId)?.Capabilities.SupportsEnvVars == true;
 
+    // AC-1219: auto-approve is a cockpit setting, not a provider option — a session gates tool calls through the
+    // per-call prompt whenever its provider brings no permission modes of its own, plugin (OpenRouter, Gemini, Grok)
+    // as much as local (Ollama/LM Studio). Hidden only where a permission mode already decides, which is where it
+    // would be a dead control (SessionViewModel's `isLocalToolSession`, the same pair, is what reads it at start).
+    public bool ShowAutoApproveTools =>
+        IsLocalProvider
+        || (SelectedProvider.Value == SessionProvider.Plugin
+            && SelectedProvider.PluginProviderId is { } autoApproveProviderId
+            && _pluginProviderRegistry?.Resolve(autoApproveProviderId)?.Capabilities.SupportsPermissions == false);
+
     // The alias suggestions for the editable Claude model field (see `SessionOptionCatalog.ClaudeModelSuggestions`).
     public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
@@ -440,6 +450,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(DisplayLabel));
         OnPropertyChanged(nameof(BaseUrlPlaceholder));
         OnPropertyChanged(nameof(SupportsEnvVars));
+        OnPropertyChanged(nameof(ShowAutoApproveTools));
         OnPropertyChanged(nameof(HasTtyProvider));
         OnPropertyChanged(nameof(IsDefaultKindEffectivelySdk));
         OnPropertyChanged(nameof(CanStartLogin));
