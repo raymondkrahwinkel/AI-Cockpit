@@ -443,16 +443,6 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
-    public void LaunchOptions_ForAProfileThatSaysNothing_KeepsBothGatesAsking_SoTheAppendedPromptIsStillDefault()
-    {
-        // The two new parameters default to "still asks" (AC-759), so every existing call site that has not been
-        // taught about the gates — every test above this one — keeps composing exactly what it always composed.
-        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
-
-        Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
-    }
-
-    [Fact]
     public void LaunchOptions_CarryTheProfilesOwnModelAndEffort()
     {
         // The same map, the same route, the same driver read (ClaudeSdkSessionDriver._ResolveOption) — so a fix
@@ -474,7 +464,9 @@ public class AssistantSessionHostTests
         // site stay on the app defaults and PluginSessionDriverAdapter._MergePermissionMode folds the typed value
         // in only when the options carry none — so an absent key is what makes today's behaviour survive this
         // change. A "helpful" default written here (say, always naming the mode) would silently move every
-        // existing assistant.
+        // existing assistant. The closing assertion carries the other half: the two gate parameters default to
+        // "still asks" (AC-759), so a call site that has never been taught about them composes exactly the
+        // appended prompt it always composed.
         var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
 
         Assert.False(options.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
