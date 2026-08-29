@@ -39,6 +39,8 @@ public static class LayoutLoopScenario
     /// <summary>Fewer frames than this cannot say anything about the worst frame, so the run refuses to try.</summary>
     public const int MinimumFramesPerPoint = 30;
 
+    private const double MinimumPeerFraction = 0.25;
+
     /// <summary>The positive control, as a value the run cannot be constructed without.</summary>
     public static PositiveControl Control(Pump pump, int settleMs) => PositiveControl.Named(
         "self-invalidating-child",
@@ -61,6 +63,7 @@ public static class LayoutLoopScenario
     {
         var thinnest = int.MaxValue;
         var allPoints = new List<SeriesPoint>();
+        var passPoints = new List<IReadOnlyList<SeriesPoint>>();
 
         // AC-1178 repeated its threshold three times per session count, and so should anything claiming to
         // reproduce it. Repeats live inside one run because the report identity is the argv (E4): a second
@@ -124,6 +127,7 @@ public static class LayoutLoopScenario
             + "raise --settle-ms, or run without --headless");
 
         run.Write(Series.Monotonic($"pass {pass}: sessions -> worst frame rounds", points).Line);
+        passPoints.Add(points);
         }
 
         // E5: more sessions may cost more rounds or the same, never fewer. 7452 rounds at 15 tiles against
@@ -132,6 +136,10 @@ public static class LayoutLoopScenario
         run.Shape(Series.Monotonic(
             "sessions -> median worst frame rounds across passes",
             Series.MedianByX(allPoints)));
+        run.Shape(Series.Magnitude(
+            "sessions -> worst frame rounds per pass",
+            passPoints,
+            MinimumPeerFraction));
     }
 
     private static Window _NewWindow(double width, double height) => new()

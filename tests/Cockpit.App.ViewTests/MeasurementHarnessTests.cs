@@ -12,6 +12,9 @@ public sealed class MeasurementHarnessTests
     private static RunIdentity _Identity(string[]? args = null, string sha = "7d331771") =>
         RunIdentity.Capture("test", args ?? ["--a=1"], new Dictionary<string, string> { ["a"] = "1" }, () => sha);
 
+    private static IReadOnlyList<IReadOnlyList<SeriesPoint>> _Passes(params double[][] passes) =>
+        passes.Select(pass => (IReadOnlyList<SeriesPoint>)pass.Select((rounds, index) => new SeriesPoint(index + 2, rounds)).ToList()).ToList();
+
     [Fact]
     public void Render_clock_in_headless_mode_is_refused_before_the_scenario_starts()
     {
@@ -58,6 +61,33 @@ public sealed class MeasurementHarnessTests
         ]);
 
         Assert.True(Series.Monotonic("sessions -> median worst frame rounds", medians).Holds);
+    }
+
+    [Fact]
+    public void Magnitude_check_rejects_the_single_pass_collapse_that_the_median_allows()
+    {
+        var passes = _Passes(
+            [6, 9, 11, 159, 23],
+            [6, 9, 11, 159, 159],
+            [6, 9, 11, 159, 159]);
+
+        Assert.True(Series.Monotonic("sessions -> median worst frame rounds", Series.MedianByX(passes.SelectMany(pass => pass).ToList())).Holds);
+        Assert.False(Series.Magnitude("sessions -> worst frame rounds per pass", passes, 0.25).Holds);
+    }
+
+    [Fact]
+    public void Magnitude_check_allows_the_observed_windows_runs()
+    {
+        var threePasses = _Passes(
+            [4, 3, 6, 6, 9],
+            [5, 6, 8, 7, 7],
+            [6, 7, 8, 8, 10]);
+        var tenPasses = _Passes(
+            [4, 3, 6, 6, 9], [5, 6, 8, 8, 8], [4, 6, 8, 8, 8], [5, 6, 8, 7, 9], [5, 7, 8, 8, 8],
+            [6, 6, 10, 8, 9], [4, 6, 8, 7, 8], [6, 8, 9, 8, 9], [4, 7, 8, 7, 8], [4, 6, 8, 8, 8]);
+
+        Assert.True(Series.Magnitude("sessions -> worst frame rounds per pass", threePasses, 0.25).Holds);
+        Assert.True(Series.Magnitude("sessions -> worst frame rounds per pass", tenPasses, 0.25).Holds);
     }
 
     // E1. The fault this replaces: ac1104's positive control silently stopped firing, and every report it
