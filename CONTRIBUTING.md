@@ -45,8 +45,9 @@ it keeps a one-person project alive.
    whichever thread reaches it first: the test either passes while proving nothing or hangs the run
    with no summary and no failing test. Naming `Avalonia.Threading` in `Cockpit.Core.Tests` is a build
    error (AC-577). Reaching a dispatcher *indirectly* — calling a `Cockpit.App` type that marshals
-   internally — is not, and no analyzer sees it; CI's `--blame-hang` is what catches that one, five
-   minutes in, by naming the test that stopped.
+   internally — is not, and no analyzer sees it; `UiDispatcherSentinel` claims the dispatcher on a
+   parked thread before the first test instead, so an indirect call fails in five seconds with the
+   marshalling path in its stack trace, and fails the same way alone as in the full run (AC-1229).
 4. **Mind the trust boundary.** The cockpit never reads, stores or transmits Claude credentials —
    it only checks that a login exists. Anything that would change that needs an issue first.
 5. **Record it in the changelog.** When the work is finished, add a bullet under `## [Unreleased]`
