@@ -47,6 +47,10 @@ public partial class TtyView : UserControl
     // intermediate value. On Wayland/KDE the compositor emits a transient size before the real one; spawning
     // claude on the transient size and immediately reflowing it is a prime cause of the stacked-at-top render.
     private DispatcherTimer? _resizeSettle;
+    // AC-1259: how many sizes this settle window has seen. #58's signature is several of them inside one
+    // window, so the settled line carries the count instead of a line per size — a line per size is a line
+    // per layout pass, which both floods a freeze log and allocates inside the path the log is measuring.
+    private int _resizeSteps;
 
     // AC-57: caps how often pty output repaints the terminal. TerminalControl re-shapes all visible
     // text on every Render with no cache, so one repaint per chunk is an allocation storm (~16-88MB/s).
@@ -85,9 +89,9 @@ public partial class TtyView : UserControl
     private DateTime? _firstPtyOutputAtUtc;
     private bool _hostedTuiReady;
 
-    // #58 confirmation logging: every Resized/pty.Resize call, so the net-zero round-trip signature
-    // can be confirmed from cockpit.log. Resolved from the DI container, not injected — this
-    // UserControl is built by the XAML view locator, matching Program.Services lookups in App.axaml.cs.
+    // #58/AC-1259 confirmation logging: one line per settled resize, so the net-zero round-trip signature can
+    // be confirmed from cockpit.log without a line per pass. Resolved from the DI container, not injected —
+    // this UserControl is built by the XAML view locator, matching Program.Services lookups in App.axaml.cs.
     private readonly ILogger<TtyView>? _logger =
         Program.Services?.GetService<ILogger<TtyView>>();
 
@@ -562,18 +566,14 @@ public partial class TtyView : UserControl
         }
     }
 
-    private void OnTerminalResized(object? sender, (int Cols, int Rows) e)
+    // Internal as a test seam: a headless terminal coalesces a whole drag into one Resized, so the burst this
+    // has to survive — several sizes inside one settle window — is only reachable by calling it (AC-1259).
+    internal void OnTerminalResized(object? sender, (int Cols, int Rows) e)
     {
         _lastColumns = Math.Max(1, e.Cols);
         _lastRows = Math.Max(1, e.Rows);
+        _resizeSteps++;
         UpdateDiagnostics();
-
-        // #58 confirmation logging: the glitch's signature is >=2 of these with different sizes
-        // within the ~150ms settle window, followed by one pty.Resize equal to the previous pty
-        // size. RenderScaling is logged too, so a fractional-scaling trigger is visible directly.
-        var scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
-        _logger?.LogInformation(
-            "Exclr8 Resized -> {Columns}x{Rows} (scale {Scale})", _lastColumns, _lastRows, scale);
 
         // Debounce: (re)start the settle timer and act only once the size stops changing (see _resizeSettle).
         _resizeSettle ??= CreateResizeSettleTimer();
@@ -587,14 +587,19 @@ public partial class TtyView : UserControl
         timer.Tick += (_, _) =>
         {
             timer.Stop();
+            var steps = _resizeSteps;
+            _resizeSteps = 0;
+
             if (_launchPending)
             {
+                // No settled line here: this settle *is* the launch, and StartPty already logs it with the size.
                 StartPty();
                 return;
             }
 
             if (_pty is not { } pty)
             {
+                _LogResizeSettled(steps, "no pty on this pane");
                 return;
             }
 
@@ -602,25 +607,31 @@ public partial class TtyView : UserControl
             // differing from the pty's is a real resize (claude gets SIGWINCH); one netting back to
             // the current size is the net-zero round trip — force the redraw claude never gets otherwise.
             var decision = TtyResizeSettleDecision.Decide(_ptyColumns, _ptyRows, _lastColumns, _lastRows);
+            _LogResizeSettled(steps, decision == TtyResizeSettleAction.Resize ? "resizing the pty" : "net-zero round trip, forcing a redraw");
+
             if (decision == TtyResizeSettleAction.Resize)
             {
-                _logger?.LogInformation(
-                    "pty.Resize -> {Columns}x{Rows} (was {PreviousColumns}x{PreviousRows})",
-                    _lastColumns, _lastRows, _ptyColumns, _ptyRows);
                 pty.Resize((short)_lastColumns, (short)_lastRows);
                 _ptyColumns = _lastColumns;
                 _ptyRows = _lastRows;
             }
             else
             {
-                _logger?.LogInformation(
-                    "Net-zero resize round trip at {Columns}x{Rows} -> ForceRedraw", _lastColumns, _lastRows);
                 ForceRedraw();
             }
         };
 
         return timer;
     }
+
+    // AC-1259: the one line a terminal resize leaves. Sparse by design — a freeze log has to stay readable,
+    // and the pty size it carries is what tells a real resize from #58's net-zero round trip after the fact.
+    // RenderScaling rides along so a fractional-scaling trigger stays visible without a line of its own.
+    private void _LogResizeSettled(int steps, string outcome) =>
+        _logger?.LogInformation(
+            "TTY resize settled at {Columns}x{Rows} after {Steps} step(s), scale {Scale}, pty {PtyColumns}x{PtyRows}: {Outcome}.",
+            _lastColumns, _lastRows, steps, TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0,
+            _ptyColumns, _ptyRows, outcome);
 
     // Forces a repaint: shrinks the pty, waits for SIGWINCH, restores size — fixes the stacked-at-
     // top reflow glitch. Fired by #58, #55, or the Redraw button. Doesn't clear the emulator, which
