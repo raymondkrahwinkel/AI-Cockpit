@@ -142,16 +142,12 @@ public sealed class LimitBar : TemplatedControl
         new(text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
             new Typeface(FontFamily), FontSize, brush);
 
-    // Amber where this signal's provider said it starts to matter, red halfway from there to full. The threshold
-    // travels with the figure rather than living here, so the bar, the pill and the warning cannot disagree.
-    private IBrush FillFor(double percent)
+    private IBrush FillFor(double percent) => UsageSeverity.BrushKeyFor(percent, Threshold) switch
     {
-        var warnAt = Threshold ?? UsageSeverity.FallbackThreshold;
-
-        return percent >= UsageSeverity.CriticalAt(warnAt) ? CriticalBrush
-            : percent >= warnAt ? WarnBrush
-            : NormalBrush;
-    }
+        "CockpitStatusErrorBrush" => CriticalBrush,
+        "CockpitStatusWaitingBrush" => WarnBrush,
+        _ => NormalBrush,
+    };
 
     // Resolved from the theme so a palette change carries: the same tokens the session status dots use.
     private IBrush TrackBrush => Brush("CockpitHairlineBrush", "#2a2f39");

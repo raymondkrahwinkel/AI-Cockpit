@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Headless;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
+using Cockpit.App.Diagnostics;
 using Cockpit.MeasurementHarness.Core;
 using Cockpit.MeasurementHarness.Meters;
 using Cockpit.MeasurementHarness.Scenarios;
@@ -13,6 +14,7 @@ namespace Cockpit.MeasurementHarness;
 public static class Program
 {
     private static RunOutcome? _outcome;
+    private static string? _unrecognisedCutOff;
     private static readonly CancellationTokenSource _stop = new();
 
     public static int Main(string[] args)
@@ -92,6 +94,16 @@ public static class Program
 
         await run.RunControlAsync().ConfigureAwait(true);
 
+        // AC-1220: RenderClockRecovery tells the cut-off apart by Avalonia's message text, and an upgrade can
+        // change that wording with nothing else noticing. An InvalidOperationException its own decision refuses
+        // is that break happening, so the run says so instead of quietly reporting no loops.
+        run.Gate(
+            "the cut-off is the one the app still recognises",
+            () => _unrecognisedCutOff is null,
+            $"the UI thread raised InvalidOperationException(\"{_unrecognisedCutOff}\"), which "
+            + "RenderClockRecovery.ShouldRecover does not accept: either Avalonia changed the cut-off wording and "
+            + "the app's recovery is dead, or this run broke something else");
+
         run.Verify("cost of the run itself, after the measurement window closed", recorder =>
         {
             recorder.Measure("reachable-bytes", gc.ReachableBytes(run), "bytes");
@@ -110,16 +122,27 @@ public static class Program
     /// Avalonia reports a frame it had to cut off as an unhandled dispatcher exception. Recording it as a
     /// typed detector event is what stops a phase marker that merely mentions the words from being counted.
     /// </summary>
+    // AC-1220: judged by the app's own RenderClockRecovery rather than by a second copy of Avalonia's wording.
+    // The copy that stood here is the epic's own fault shape: one piece of knowledge in two places, of which one
+    // goes quietly wrong. Change the wording and the ViewTests guard turns red, RenderClockRecovery gets fixed —
+    // and this harness keeps reporting zero loops on a real cut-off, because nothing was watching its copy.
     private static void _HookLayoutLoopDetector(Recorder recorder) =>
         Dispatcher.UIThread.UnhandledException += (_, e) =>
         {
-            if (e.Exception is not InvalidOperationException { Message: "Infinite layout loop detected" })
+            if (RenderClockRecovery.ShouldRecover(e.Exception, RenderClockRecovery.MinimumInterval))
             {
+                recorder.Detected("layout-loop", e.Exception.Message);
+                e.Handled = true;
                 return;
             }
 
-            recorder.Detected("layout-loop", e.Exception.Message);
-            e.Handled = true;
+            // Handled, so the sweep finishes and its gate reports this rather than the run dying mid-measurement.
+            if (e.Exception is InvalidOperationException)
+            {
+                _unrecognisedCutOff ??= e.Exception.Message;
+                recorder.Detected("cutoff-unrecognised", e.Exception.Message);
+                e.Handled = true;
+            }
         };
 
     private static void _StartAvalonia(Options options)

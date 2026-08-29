@@ -407,12 +407,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 consentCardAsks: !settings.ConsentBypassAll),
             readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
-        // A start that did not take leaves its only trace in Status: SessionViewModel.StartConfiguredAsync
-        // catches every launch exception and writes it there without logging it, so the host's restart loop is
-        // otherwise the whole of the evidence and the cause is gone by the time anyone reads the log.
+        // AC-1239: named against the assistant, since SessionViewModel's own warning says only which profile it was.
         if (!_IsAlive(session))
         {
-            _logger.LogWarning("The assistant session was not running right after its start: {Status}", session.Status);
+            _logger.LogWarning("The assistant session was not running right after its start: {Reason}", session.StartFailure ?? session.Status);
         }
 
         // AC-1089: the assistant never came through here, so its record carried no ProfileId/WorkingDirectory and a

@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Workspaces;
 
 namespace Cockpit.App.Services;
@@ -21,6 +22,8 @@ public static class SessionRestoreRoster
     public static async Task<IReadOnlySet<string>> PaneIdsAsync(IWorkspaceSettingsStore store, CancellationToken cancellationToken = default)
     {
         var settings = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
-        return Panes(settings).Select(entry => entry.Pane.Id).ToHashSet(StringComparer.Ordinal);
+
+        // AC-1089: live on every start but no workspace pane, so both sweeps read the assistant as gone — releasing its clean worktrees (AC-654 says so for the periodic sweep) and compacting away the id resume needs.
+        return Panes(settings).Select(entry => entry.Pane.Id).Append(AssistantIdentity.PaneId).ToHashSet(StringComparer.Ordinal);
     }
 }

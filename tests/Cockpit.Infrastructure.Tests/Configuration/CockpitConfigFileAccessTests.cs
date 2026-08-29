@@ -23,6 +23,14 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task ReadAsync_WhenParentDirectoryDoesNotExist_ReturnsNull()
+    {
+        var read = await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
+
+        Assert.Null(read);
+    }
+
     /// <summary>
     /// The bug, in the smallest shape that shows it: many writers, each touching only its own plugin, all at
     /// once. Every one of them must survive — losing any is the pin that vanished.
@@ -73,19 +81,22 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         Assert.Equivalent(new[] { "kept", "added" }, written!.Plugins!.Keys);
     }
 
-    /// <summary>A reader does not queue behind the write gate: it is not a writer, and it has no reason to wait for one to think.</summary>
+    /// <summary>A reader waits for a pending writer instead of extending the stream of handles that blocks its swap.</summary>
     [Fact]
-    public async Task ReadAsync_WhileTheGateIsHeld_IsNotBlocked()
+    public async Task ReadAsync_WhileTheGateIsHeld_WaitsForTheWriterToFinish()
     {
         Directory.CreateDirectory(_directory);
         var access = new CockpitConfigFileAccess(ConfigPath);
         await access.UpdateAsync(file => (file.Plugins ??= [])["there"] = new PluginRegistrationEntry(), CancellationToken.None);
 
-        using var foreignHold = new FileStream(ConfigPath + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        var foreignHold = new FileStream(ConfigPath + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
 
-        var read = await access.ReadAsync(CancellationToken.None);
+        var read = access.ReadAsync(CancellationToken.None);
+        await Task.Delay(150);
+        Assert.False(read.IsCompleted, "the reader waits for the writer's lock");
 
-        Assert.Contains("there", read!.Plugins!.Keys);
+        foreignHold.Dispose();
+        Assert.Contains("there", (await read)!.Plugins!.Keys);
     }
 
     /// <summary>

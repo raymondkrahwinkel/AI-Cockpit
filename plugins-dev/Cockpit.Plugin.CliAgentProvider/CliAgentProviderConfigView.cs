@@ -8,20 +8,19 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Plugin.CliAgentProvider;
 
 // The "add/edit profile" config panel for the Codex CLI provider (#45 fase B1): the CLI command/path, the
-// working directory (also the sandbox root), the sandbox mode, an optional model override, and an optional
-// API key — mirroring `OpenAiCompatProviderConfigView`'s shape from the Gemini/OpenAI provider plugin.
+// working directory (also the sandbox root), and an optional API key. AC-1102: sandbox and model are asked
+// once, under SESSION DEFAULTS, so this panel carries their stored pair as a fallback but never edits it.
 internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
 {
     private readonly TextBox _command;
     private readonly TextBox _workingDirectory;
-    private readonly ComboBox _sandboxMode;
-    private readonly AutoCompleteBox _model;
     private readonly TextBox _apiKey;
     private readonly TextBlock _commandStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _workingDirectoryStatus = ProviderConfigStatus.CreateLine();
 
     private readonly ICockpitHost _host;
     private readonly ManagedCliConfigSection _managedCli;
+    private readonly CliAgentConfig? _existing;
 
     public Control View { get; }
 
@@ -31,26 +30,12 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null
             : JsonSerializer.Deserialize<CliAgentConfig>(existingConfigJson, CliAgentConfig.JsonOptions);
+        _existing = existing;
         // The panel refreshes the command-status line after install/remove, so the two never disagree.
         _managedCli = new ManagedCliConfigSection(host, CodexManagedCli.CliName, "Codex CLI", _UpdateCommandStatus);
 
         _command = new TextBox { Text = existing?.Command ?? "codex" };
         _workingDirectory = new TextBox { Text = existing?.WorkingDirectory ?? string.Empty, PlaceholderText = "Directory codex may read (and, in workspace-write, edit)" };
-
-        _sandboxMode = new ComboBox { ItemsSource = CodexSandbox.Choices, SelectedItem = existing?.SandboxMode ?? "read-only" };
-
-        // Free text with live suggestions, not a hard dropdown: a profile default may still pin any model
-        // (or one this machine cannot list right now, e.g. logged out) — an AutoCompleteBox is both, a
-        // plain ComboBox would be only the list.
-        _model = new AutoCompleteBox
-        {
-            Text = existing?.Model ?? string.Empty,
-            PlaceholderText = "e.g. gpt-5-codex (blank = codex's own default)",
-            FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
-            MinimumPrefixLength = 0,
-            IsTextCompletionEnabled = false,
-        };
-        _ = _PopulateModelSuggestionsAsync(existing?.Command ?? "codex", existing?.ConfigDir);
 
         _apiKey = new TextBox { Text = existing?.ApiKey ?? string.Empty, PasswordChar = '•' };
 
@@ -66,10 +51,6 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
                 _LabelRow("Working directory (optional — SDK sessions only)", host.CreateHelpHint("setup", "working-directory")),
                 _workingDirectory,
                 _workingDirectoryStatus,
-                _LabelRow("Sandbox mode", host.CreateHelpHint("setup", "sandbox-mode")),
-                _sandboxMode,
-                _Label("Model (optional)"),
-                _model,
                 _LabelRow("API key (optional)", host.CreateHelpHint("setup", "api-key")),
                 _apiKey,
             },
@@ -152,40 +133,18 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
             return false;
         }
 
+        // Carried over untouched rather than re-defaulted: a profile still running on this pair as its fallback
+        // would otherwise be reset to "read-only" by a save that touched an entirely different field.
         var config = new CliAgentConfig(
             Command: command,
             WorkingDirectory: workingDirectory,
-            SandboxMode: _sandboxMode.SelectedItem as string ?? "read-only",
-            Model: string.IsNullOrWhiteSpace(_model.Text) ? null : _model.Text.Trim(),
+            SandboxMode: _existing?.SandboxMode ?? "read-only",
+            Model: _existing?.Model,
             ApiKey: string.IsNullOrWhiteSpace(_apiKey.Text) ? null : _apiKey.Text.Trim());
 
         configJson = JsonSerializer.Serialize(config, CliAgentConfig.JsonOptions);
         return true;
     }
-
-    // Fills the Model field's suggestions from the models this codex offers (`model/list`), best-effort:
-    // no codex, logged out, or a slow spawn just leaves it free text. Uses the profile's own command and
-    // CODEX_HOME so a per-profile install/login lists its own models.
-    private async Task _PopulateModelSuggestionsAsync(string command, string? configDir)
-    {
-        try
-        {
-            var config = new CliAgentConfig(Command: command, ConfigDir: configDir);
-            var executablePath = CliExecutableLocator.Resolve(command, _host.ResolveManagedCliPath);
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-            var listing = await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cts.Token).ConfigureAwait(true);
-            if (listing.Ids.Count > 0)
-            {
-                _model.ItemsSource = listing.Ids;
-            }
-        }
-        catch (Exception)
-        {
-            // No suggestions — the field stays free text, which is a perfectly good way to set a model.
-        }
-    }
-
-    private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
 
     // AC-1043: a label with the SDK-drawn "?" beside it, pointing at the section of this plugin's own setup
     // page that explains the field below — replaces the old `SettingsHelpRow` hover tooltip.

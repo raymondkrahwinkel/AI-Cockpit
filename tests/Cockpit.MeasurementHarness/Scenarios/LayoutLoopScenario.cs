@@ -62,6 +62,7 @@ public static class LayoutLoopScenario
     public static async Task SweepAsync(MeasurementRun run, Pump pump, SweepOptions options)
     {
         var thinnest = int.MaxValue;
+        var blind = new List<string>();
         var allPoints = new List<SeriesPoint>();
         var passPoints = new List<IReadOnlyList<SeriesPoint>>();
 
@@ -103,6 +104,14 @@ public static class LayoutLoopScenario
                     allPoints.Add(new SeriesPoint(count, rounds));
                 }
 
+                // AC-1220's independent witness: the round counter reaches Avalonia's limit without reading a
+                // single character of its message, so it can say a frame was cut off even when the text match no
+                // longer can. The two disagreeing is the break, and the sweep refuses rather than reports zero.
+                if (worst >= AvaloniaRoundLimit && loops == 0)
+                {
+                    blind.Add($"pass {pass} at {count} sessions ({worst} rounds)");
+                }
+
                 run.Write($"pass {pass} | {count,3} sessions | worst frame {(worst is { } w ? $"{w,4}" : " n/a")} rounds "
                           + $"| {frames.TotalRounds,6} rounds total | {frames.FrameCount,5} frames | layout loops {loops}"
                           + (worst >= AvaloniaRoundLimit ? "   <-- at Avalonia's cut-off" : string.Empty));
@@ -129,6 +138,12 @@ public static class LayoutLoopScenario
         run.Write(Series.Monotonic($"pass {pass}: sessions -> worst frame rounds", points).Line);
         passPoints.Add(points);
         }
+
+        run.Gate(
+            "cut-off frames were recognised as cut-offs",
+            () => blind.Count == 0,
+            $"{string.Join("; ", blind)} ran into Avalonia's {AvaloniaRoundLimit}-round cut-off and produced no "
+            + "cut-off the app recognised, so this sweep cannot tell a working detector from a broken one");
 
         // E5: more sessions may cost more rounds or the same, never fewer. 7452 rounds at 15 tiles against
         // 3146 at 20 stood in two reports for half a day because nothing put the numbers side by side.

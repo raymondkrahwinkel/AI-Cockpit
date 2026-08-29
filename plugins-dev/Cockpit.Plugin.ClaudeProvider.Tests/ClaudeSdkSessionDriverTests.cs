@@ -863,6 +863,40 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         throw new TimeoutException("The driver never produced what the test was waiting for.");
     }
 
+    // AC-1102: the profile editor no longer persists a declared option the operator never chose, so these keys can
+    // now be absent where they always carried the plugin's declared default before. Measures both arms against the
+    // real spawn — the permission mode on the command line, the effort on the live control it opens.
+    [Fact]
+    public async Task Start_ResolvesTheSamePermissionModeAndEffort_WhetherTheDeclaredDefaultsAreStoredOrAbsent()
+    {
+        var storedFake = new FakeClaudeSdkSubprocess();
+        await using var storedDriver = _CreateDriver(storedFake);
+        await storedDriver.StartAsync(
+            model: null,
+            workingDirectory: _tempDir,
+            resumeSessionId: null,
+            options: new Dictionary<string, string> { ["permission-mode"] = "default", ["effort"] = "medium" },
+            mcpServers: null,
+            CancellationToken.None);
+
+        var absentFake = new FakeClaudeSdkSubprocess();
+        await using var absentDriver = _CreateDriver(absentFake);
+        await absentDriver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        Assert.Equal(_PermissionModeArgument(storedFake), _PermissionModeArgument(absentFake));
+        Assert.Equal(_LaunchEffort(storedDriver), _LaunchEffort(absentDriver));
+    }
+
+    private static string? _PermissionModeArgument(FakeClaudeSdkSubprocess fake)
+    {
+        var arguments = fake.Arguments!.ToList();
+        var index = arguments.IndexOf("--permission-mode");
+        return index < 0 ? null : arguments[index + 1];
+    }
+
+    private static string? _LaunchEffort(ClaudeSdkSessionDriver driver) =>
+        driver.LiveOptions.SingleOrDefault(option => option.Key == ClaudeSdkSessionDriver.EffortOptionKey)?.DefaultValue;
+
     private ClaudeSdkSessionDriver _CreateDriver(FakeClaudeSdkSubprocess fake) =>
         // A temp config dir keeps StartAsync's workspace-trust write off the real ~/.claude.json.
         new(() => fake, new ClaudeProviderConfig(ConfigDir: _tempDir), executablePath: "claude");

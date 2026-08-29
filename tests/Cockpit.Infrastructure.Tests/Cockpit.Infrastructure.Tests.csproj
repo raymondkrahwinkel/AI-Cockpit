@@ -33,6 +33,13 @@
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
     <ProjectReference Include="..\..\src\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
     <ProjectReference Include="..\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
+    <!-- AC-1221: a build dependency only — SingleInstanceClaimAcrossProcessesTests runs this build output as a
+         second cockpit rather than linking its types, because deriving the claim name inside this process is the
+         very thing it cannot do. It sits in Cockpit.slnx even so: a reference out of the solution is built with
+         the referencing project's configuration unset, so a Release solution build would leave a Debug probe
+         behind for CI's Release test run, which rebuilds nothing, to find. -->
+    <ProjectReference Include="..\Cockpit.SingleInstanceProbe\Cockpit.SingleInstanceProbe.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>

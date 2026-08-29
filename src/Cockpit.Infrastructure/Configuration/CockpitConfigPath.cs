@@ -109,13 +109,19 @@ internal static class CockpitConfigPath
     }
 
     // Writes `contents` to an owner-only file. See `CreatePrivateFile`.
-    public static void WriteAllTextPrivate(string path, string contents, bool flushToDisk = false)
+    public static void WriteAllTextPrivate(string path, string contents, bool flushToDisk = false) =>
+        WritePrivate(path, stream =>
+        {
+            using var writer = new StreamWriter(stream, leaveOpen: true);
+            writer.Write(contents);
+        }, flushToDisk);
+
+    // Writes an owner-only file from `write`, which fills the stream itself — how a large document is serialised
+    // without a string of the whole of it first (AC-1152).
+    private static void WritePrivate(string path, Action<Stream> write, bool flushToDisk)
     {
         using var stream = CreatePrivateFile(path);
-        using (var writer = new StreamWriter(stream, leaveOpen: true))
-        {
-            writer.Write(contents);
-        }
+        write(stream);
 
         if (flushToDisk)
         {
@@ -129,14 +135,22 @@ internal static class CockpitConfigPath
     // Replaces `path` with `contents` in one step, keeping a `.bak`. Used by the encryption migration,
     // which rewrites every credential at once: a crash halfway through a plain write would leave a
     // truncated config. Writing a sibling file and renaming it (atomic) avoids that; `.bak` is the way back.
-    public static void ReplaceAtomicallyPrivate(string path, string contents)
+    public static void ReplaceAtomicallyPrivate(string path, string contents) =>
+        ReplaceAtomicallyPrivate(path, stream =>
+        {
+            using var writer = new StreamWriter(stream, leaveOpen: true);
+            writer.Write(contents);
+        });
+
+    // The same replacement, with `write` filling the sidecar's stream instead of handing over a finished string.
+    public static void ReplaceAtomicallyPrivate(string path, Action<Stream> write)
     {
         // A sidecar of its own, never a shared name — two writers sharing a fixed "<path>.new" is how the
         // operator's config was destroyed on 2026-07-14: the rename was atomic, the file it renamed wasn't.
         var temporaryPath = $"{path}.{Guid.NewGuid():N}.new";
         try
         {
-            WriteAllTextPrivate(temporaryPath, contents, flushToDisk: true);
+            WritePrivate(temporaryPath, write, flushToDisk: true);
 
             SwapWhenNotBeingRead(temporaryPath, path);
 

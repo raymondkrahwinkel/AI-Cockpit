@@ -91,6 +91,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Cockpit.Core.Tests" />
     <InternalsVisibleTo Include="Cockpit.App.ViewTests" />
+    <!-- AC-1220: so the harness judges Avalonia's cut-off with RenderClockRecovery instead of a copy of its message. -->
+    <InternalsVisibleTo Include="Cockpit.MeasurementHarness" />
   </ItemGroup>
 
   <!-- Plugins that ship with the app (#: bundled plugins): features that used to be core and moved out to a

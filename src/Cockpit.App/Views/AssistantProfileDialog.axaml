@@ -172,12 +172,11 @@
                                  PlaceholderText="Sent as the first system message of every conversation"/>
                     </StackPanel>
 
-                    <!-- A local provider gates tool calls per call rather than through a permission mode, so this is
-                         its half of the block below — the assistant on Ollama/LM Studio reads it at start
-                         (SessionViewModel.StartWithProfileAsync). Hidden for a provider that has permission modes,
-                         which would make it a dead control. -->
+                    <!-- A provider without permission modes gates tool calls per call, so this is its half of the
+                         block below — the assistant reads it at start (SessionViewModel.StartWithProfileAsync).
+                         Hidden for a provider that has permission modes, which would make it a dead control. -->
                     <CheckBox Content="Auto-approve tool calls" IsChecked="{Binding AutoApproveTools}"
-                              IsVisible="{Binding IsLocalProvider}"
+                              IsVisible="{Binding ShowAutoApproveTools}"
                               ToolTip.Tip="The assistant starts with 'Allow all tools' already on"/>
 
                     <!-- Session defaults: the provider's own declared start options, rendered generically from its
@@ -201,9 +200,9 @@
                                                   SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
                                                   DisplayMemberBinding="{Binding Label}"
                                                   IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
-                                                  PlaceholderText="(default)"/>
+                                                  PlaceholderText="Not set — provider default"/>
                                         <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
-                                                 PlaceholderText="(default)"/>
+                                                 PlaceholderText="Not set — provider default"/>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

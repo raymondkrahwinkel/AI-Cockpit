@@ -581,9 +581,13 @@
                                                      PlaceholderText="Sent as the first system message of every conversation"/>
                                         </StackPanel>
 
-                                        <CheckBox Content="Auto-approve tool calls" IsChecked="{Binding AutoApproveTools}"
-                                                  ToolTip.Tip="New sessions under this profile start with 'Allow all tools' already on"/>
                                     </StackPanel>
+
+                                    <!-- Outside the local-provider block (AC-1219): every provider that gates tool
+                                         calls per call rather than through a permission mode can set this. -->
+                                    <CheckBox Content="Auto-approve tool calls" IsChecked="{Binding AutoApproveTools}"
+                                              IsVisible="{Binding ShowAutoApproveTools}"
+                                              ToolTip.Tip="New sessions under this profile start with 'Allow all tools' already on"/>
 
                                     <!-- Plugin-registered provider fields (#45): embedded unchanged, same contract
                                          (TryGetConfigJson) — a false blocks Apply, see IsValid below. -->
@@ -651,9 +655,9 @@
                                                                   SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
                                                                   DisplayMemberBinding="{Binding Label}"
                                                                   IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
-                                                                  PlaceholderText="(default)"/>
+                                                                  PlaceholderText="Not set — provider default"/>
                                                         <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
-                                                                 PlaceholderText="(default)"/>
+                                                                 PlaceholderText="Not set — provider default"/>
                                                     </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>

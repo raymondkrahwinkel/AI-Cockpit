@@ -387,6 +387,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a session that fails to start now says so, and why, instead of looking like one that is still coming up.
+  A launch that died in a fraction of a second — the provider's own program missing, say — left the pane sitting
+  there indistinguishable from a slow start, so the only thing to do was wait a minute and be told it timed out;
+  the reason had been thrown away at the moment it was known. It is now written on the session, shown in its
+  status and recorded in the log, along with the quieter case where a provider returned without ever bringing a
+  session up and the pane still read "Session started." An automated run that hits this ends on the real reason
+  rather than on a guess about its worktree.
+
 - fixed: a session's transcript, status and progress no longer stall for as long as a runaway drawing pass keeps
   the window busy. Incoming updates used to pile up one at a time until drawing let up, however long that took;
   they now merge into the same row as they arrive, so the same stall costs a short delay in what you see instead

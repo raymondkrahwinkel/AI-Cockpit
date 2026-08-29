@@ -267,6 +267,16 @@ public partial class EditableProfileViewModel : ViewModelBase
         && SelectedProvider.PluginProviderId is { } providerId
         && _pluginProviderRegistry?.Resolve(providerId)?.Capabilities.SupportsEnvVars == true;
 
+    // AC-1219: auto-approve is a cockpit setting, not a provider option — a session gates tool calls through the
+    // per-call prompt whenever its provider brings no permission modes of its own, plugin (OpenRouter, Gemini, Grok)
+    // as much as local (Ollama/LM Studio). Hidden only where a permission mode already decides, which is where it
+    // would be a dead control (SessionViewModel's `isLocalToolSession`, the same pair, is what reads it at start).
+    public bool ShowAutoApproveTools =>
+        IsLocalProvider
+        || (SelectedProvider.Value == SessionProvider.Plugin
+            && SelectedProvider.PluginProviderId is { } autoApproveProviderId
+            && _pluginProviderRegistry?.Resolve(autoApproveProviderId)?.Capabilities.SupportsPermissions == false);
+
     // The alias suggestions for the editable Claude model field (see `SessionOptionCatalog.ClaudeModelSuggestions`).
     public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
@@ -428,7 +438,7 @@ public partial class EditableProfileViewModel : ViewModelBase
                 ? _pluginProviderRegistry?.Resolve(providerId)?.CreateConfigView(null)
                 : null;
 
-            // A freshly added profile has no stored defaults yet — start each option on its own declared default.
+            // A freshly added profile has no stored defaults yet — every option starts unset.
             _RefreshPluginOptionDefaults(storedDefaults: null);
         }
 
@@ -440,6 +450,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(DisplayLabel));
         OnPropertyChanged(nameof(BaseUrlPlaceholder));
         OnPropertyChanged(nameof(SupportsEnvVars));
+        OnPropertyChanged(nameof(ShowAutoApproveTools));
         OnPropertyChanged(nameof(HasTtyProvider));
         OnPropertyChanged(nameof(IsDefaultKindEffectivelySdk));
         OnPropertyChanged(nameof(CanStartLogin));
@@ -447,7 +458,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     }
 
     // Rebuilds `PluginOptionDefaults` from the selected plugin provider's declared launch options, each pre-filled from
-    // `storedDefaults` (the profile's saved value) or the option's own declared default.
+    // `storedDefaults` (the profile's saved value) and otherwise left unset.
     private void _RefreshPluginOptionDefaults(IReadOnlyDictionary<string, string>? storedDefaults)
     {
         PluginOptionDefaults.Clear();
@@ -459,7 +470,9 @@ public partial class EditableProfileViewModel : ViewModelBase
         {
             foreach (var option in registration.Options)
             {
-                var value = storedDefaults?.GetValueOrDefault(option.Key) ?? option.DefaultValue;
+                // AC-1102: a key the profile does not store stays blank, never borrowing the option's declared
+                // default — Apply would persist that as the operator's own choice and pin a value nobody picked.
+                var value = storedDefaults?.GetValueOrDefault(option.Key);
                 PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
             }
         }

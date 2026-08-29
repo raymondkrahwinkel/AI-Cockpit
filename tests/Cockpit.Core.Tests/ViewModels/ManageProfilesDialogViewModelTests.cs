@@ -323,11 +323,39 @@ public class ManageProfilesDialogViewModelTests
         Assert.False(row.SupportsEnvVars);
     }
 
-    private static SessionProviderRegistration _Registration(string providerId, bool supportsEnvVars) => new(
+    // AC-1219: auto-approve is a cockpit setting living in `Defaults`, not a provider-declared option — a profile on
+    // a plugin provider that has no permission modes (OpenRouter) had no way to set it, so it could never run
+    // unattended. The negative half is the one that must not move: Claude/Codex keep deciding by permission mode.
+    [Fact]
+    public void ShowAutoApproveTools_FollowsWhetherTheProviderHasPermissionModesOfItsOwn()
+    {
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("openrouter").Returns(_Registration("openrouter", supportsEnvVars: false, supportsPermissions: false));
+        registry.Resolve("claude").Returns(_Registration("claude", supportsEnvVars: true, supportsPermissions: true));
+
+        var gatesPerCall = new EditableProfileViewModel(
+            new SessionProfile("a", new PluginProviderConfig("openrouter", "{}")), isLoggedIn: true, pluginProviderRegistry: registry);
+        var gatesByPermissionMode = new EditableProfileViewModel(
+            new SessionProfile("b", new PluginProviderConfig("claude", "{}")), isLoggedIn: true, pluginProviderRegistry: registry);
+
+        Assert.True(gatesPerCall.ShowAutoApproveTools);
+        Assert.False(gatesByPermissionMode.ShowAutoApproveTools);
+    }
+
+    [Fact]
+    public void ShowAutoApproveTools_StaysOnForALocalProvider()
+    {
+        var row = new EditableProfileViewModel(
+            new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1", null)), isLoggedIn: true);
+
+        Assert.True(row.ShowAutoApproveTools);
+    }
+
+    private static SessionProviderRegistration _Registration(string providerId, bool supportsEnvVars, bool supportsPermissions = true) => new(
         ProviderId: providerId,
         DisplayName: providerId,
         CreateDriverFactory: _ => null!,
-        Capabilities: new PluginSessionCapabilities(true, true) { SupportsEnvVars = supportsEnvVars },
+        Capabilities: new PluginSessionCapabilities(true, supportsPermissions) { SupportsEnvVars = supportsEnvVars },
         CreateConfigView: _ => null!);
 
     [Fact]

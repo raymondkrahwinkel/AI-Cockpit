@@ -1,5 +1,6 @@
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Workspaces;
 using NSubstitute;
 
@@ -29,8 +30,14 @@ public class SessionRestoreRosterTests
         Assert.Equal(sessionsWorkspace.Id, entry.Workspace.Id);
     }
 
+    /// <summary>
+    /// AC-1089: the assistant belongs in this set even though <see cref="SessionRestoreRoster.Panes"/> cannot see it
+    /// — it is live on every start but owns no workspace pane, so both callers read it as gone: the worktree
+    /// reconcile swept the worktrees it made with <c>worktree_create</c> (AC-654 already knew, for the periodic
+    /// sweep only) and the state compaction dropped its saved conversation id, which is why resume found nothing.
+    /// </summary>
     [Fact]
-    public async Task PaneIdsAsync_ReadsTheStore_AndGivesTheSameIdsAsPanes()
+    public async Task PaneIdsAsync_ReadsTheStore_AndGivesThePanesIdsPlusTheAssistant()
     {
         var aiSessionPane = new WorkspacePane("ai-1", PaneKind.AiSession);
         var sessionsWorkspace = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(aiSessionPane);
@@ -41,6 +48,6 @@ public class SessionRestoreRosterTests
 
         var ids = await SessionRestoreRoster.PaneIdsAsync(store);
 
-        Assert.Equal(new HashSet<string> { "ai-1" }, ids);
+        Assert.Equal(new HashSet<string> { "ai-1", AssistantIdentity.PaneId }, ids);
     }
 }
