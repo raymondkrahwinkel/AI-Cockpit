@@ -21,6 +21,8 @@ evidence. Flags: `--scenario`, `--headless`, `--min-sessions`, `--max-sessions`,
 Exit codes: `0` measurement, `1` a report with this identity already exists, `2` no SHA, `3` the scenario
 produced nothing, `4` the run is a malfunction (see the verdict in its header).
 
+For an app-driven repro (real Cockpit and real session pipelines), run `powershell -NoProfile -ExecutionPolicy Bypass -File tests/Cockpit.MeasurementHarness/run-app-repro.ps1 -Shape growing-tail` from the repository root; it builds and starts only a Debug app whose PID it records, gives it unique `COCKPIT_STATE_ROOT` and `TEMP`/`TMP` folders, validates the host-ready PID/state-root marker before writing the trigger file, then stops only that process. `-Shape new-rows` is the comparison mode. This is deliberately separate from the window-building harness above. The temporary AC-1143 finite-session and full-GC probes are not included: this runner neither uses the former nor permits a blocking collection in its measurement path.
+
 ## What the harness refuses to do
 
 - **Produce a report without having run its positive control** (E1). Not a convention — `Finish()` throws.

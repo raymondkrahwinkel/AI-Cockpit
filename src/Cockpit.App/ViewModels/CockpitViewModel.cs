@@ -6896,6 +6896,85 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    // App-driven measurement: a real Cockpit with real session pipelines, controlled through the DEBUG trigger file.
+    internal async Task RunAppReproAsync(int sessionCount, int seconds, bool growingTail)
+    {
+        var root = Path.GetTempPath();
+        var readyPath = Path.Combine(root, "app-repro.ready.json");
+        var donePath = Path.Combine(root, "app-repro.done.json");
+        try { File.Delete(readyPath); } catch (Exception) { }
+        try { File.Delete(donePath); } catch (Exception) { }
+        if (_sessionFactory is null)
+        {
+            return;
+        }
+
+        sessionCount = Math.Clamp(sessionCount, 1, 12);
+        seconds = Math.Clamp(seconds, 1, 600);
+        var registry = (Cockpit.Infrastructure.Sessions.IPluginProviderRegistry)
+            Program.Services.GetService(typeof(Cockpit.Infrastructure.Sessions.IPluginProviderRegistry))!;
+        Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered(registry);
+        var drivers = new List<Cockpit.App.Diagnostics.LeakSimDriver>();
+        for (var i = 0; i < sessionCount; i++)
+        {
+            var vm = _sessionFactory();
+            Sessions.Add(vm);
+            var profile = new SessionProfile($"App repro {i + 1}", new PluginProviderConfig(Cockpit.App.Diagnostics.LeakSimProvider.ProviderId, "{}"));
+            await vm.StartConfiguredAsync(profile, new PermissionModeOption("Default", "default"), new ModelOption("Sonnet", "sonnet"), new EffortOption("Medium", "medium", 8000), null, root, null, null, ReadingLevel.Focus);
+            var driver = Cockpit.App.Diagnostics.LeakSimProvider.Current;
+            if (driver is null)
+            {
+                await CloseSessionAsync(vm);
+                continue;
+            }
+
+            driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginSessionInitialized { SessionId = "app-repro", Tools = ["Read"], Cwd = root });
+            drivers.Add(driver);
+        }
+
+        File.WriteAllText(readyPath, System.Text.Json.JsonSerializer.Serialize(new
+        {
+            pid = Environment.ProcessId,
+            requested = sessionCount,
+            started = drivers.Count,
+            shape = growingTail ? "growing-tail" : "new-rows",
+            stateRoot = CockpitBuild.StateRoot
+        }));
+
+        var block = 0;
+        var until = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < until)
+        {
+            block++;
+            foreach (var driver in drivers)
+            {
+                driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginAssistantTextDelta
+                {
+                    SessionId = "app-repro",
+                    BlockIndex = growingTail ? 0 : block,
+                    Text = growingTail
+                        ? $"{new string('x', 20 + (block % 17) * 60)} "
+                        : $"Repro line {block} {new string('x', 20 + (block % 17) * 60)}\n"
+                });
+            }
+
+            await Task.Delay(50);
+        }
+
+        foreach (var driver in drivers)
+        {
+            driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginTurnCompleted { SessionId = "app-repro", Subtype = "success", Result = null, IsError = false });
+            driver.Complete();
+        }
+
+        File.WriteAllText(donePath, System.Text.Json.JsonSerializer.Serialize(new
+        {
+            pid = Environment.ProcessId,
+            blocks = block,
+            shape = growingTail ? "growing-tail" : "new-rows"
+        }));
+    }
+
     // Leak simulation for the ASSISTANT CHAT window (dev-only).
     internal async Task RunAssistantChatLeakSimAsync(int rows = 300)
     {
