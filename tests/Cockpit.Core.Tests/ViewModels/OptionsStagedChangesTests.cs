@@ -77,18 +77,23 @@ public class OptionsStagedChangesTests
         var stores = new Stores();
         stores.Notifications.LoadAsync().Returns(new NotificationSettings { LocalEnabled = true, WebhookUrl = "https://hooks.example/x" });
         stores.Terminal.LoadAsync().Returns(new TerminalSettings { FontSize = 15, FontFamily = "Cascadia Mono", Shell = "" });
+        // AC-1086: the shared memory budget decides when the cockpit speaks up, so a Cancel that leaves a changed
+        // one standing is a warning threshold the operator did not agree to.
+        stores.SessionBehavior.LoadAsync().Returns(new SessionBehaviorSettings { MemoryBudgetPercent = 60 });
         var vm = await stores.NewViewModelAsync();
         vm.BeginOptionsEdit();
 
         vm.LocalNotificationsEnabled = false;
         vm.WebhookUrl = "https://hooks.example/somewhere-else";
         vm.TerminalFontSize = 20;
+        vm.MemoryBudgetPercent = 95;
 
         await vm.CancelOptionsCommand.ExecuteAsync(null);
 
         Assert.True(vm.LocalNotificationsEnabled);
         Assert.Equal("https://hooks.example/x", vm.WebhookUrl);
         Assert.Equal(15, vm.TerminalFontSize);
+        Assert.Equal(60, vm.MemoryBudgetPercent);
         stores.AssertNothingWasSaved();
     }
 
