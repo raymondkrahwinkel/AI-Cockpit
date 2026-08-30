@@ -115,6 +115,16 @@ public static class LayoutLoopScenario
                 run.Write($"pass {pass} | {count,3} sessions | worst frame {(worst is { } w ? $"{w,4}" : " n/a")} rounds "
                           + $"| {frames.TotalRounds,6} rounds total | {frames.FrameCount,5} frames | layout loops {loops}"
                           + (worst >= AvaloniaRoundLimit ? "   <-- at Avalonia's cut-off" : string.Empty));
+
+                // AC-1104 asks what a non-converging pass costs, not only that it happens. Only the points that
+                // reach the cut-off have that price to report; below it there is nothing to price.
+                if (frames.CostOfFramesAtOrAbove(AvaloniaRoundLimit) is { } cost)
+                {
+                    recorder.Measure($"cut-off-frames@{count}", cost.Frames, "frames");
+                    recorder.Measure($"cut-off-longest-ms@{count}", (long)cost.LongestMs, "ms");
+                    recorder.Measure($"cut-off-bytes-per-round@{count}", cost.AllocatedBytesPerRound, "bytes");
+                    run.Write($"         cost | {cost.Line($"{count} sessions at the cut-off")}");
+                }
             }).ConfigureAwait(true);
         }
 

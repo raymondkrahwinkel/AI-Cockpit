@@ -61,7 +61,23 @@ Two things had to be real before the threshold appeared, and each was worth a ru
    miniature host alone changed nothing. Only with a streaming, virtualised transcript whose stick-to-bottom
    follow writes the offset from `ScrollChanged` did the threshold appear.
 
-### What it measures now — 2026-08-27, real window, `--repeats=3`
+### What it measures now — 2026-08-30, after AC-1121
+
+**On `main` the threshold no longer reproduces, and AC-1121 is the commit that ends it.** Same harness binary,
+same machine, same flags (`--min-sessions=5 --max-sessions=6 --settle-ms=6000 --repeats=3`), positive control
+fired in all three; only the production code underneath differs (AC-1104):
+
+| commit | worst frame | layout loops | verdict |
+|---|---|---|---|
+| `8773496a` — the parent of AC-1121 | 153–161 | 3–9, **6 points of 6** | at the cut-off |
+| `e13ef489` — **AC-1121 itself** | 10–14 | **0, 6 of 6** | `MEASUREMENT` |
+| `f2ee077f` — `main`, 2026-08-30 | 9–14 | **0, 6 of 6** | `MEASUREMENT` |
+
+The first two are adjacent commits, which is what makes this an attribution rather than a coincidence: AC-1121
+took the follow out of `ScrollChanged` and gated it on a tile being visible.
+
+Keep the table below for what the sweep looks like **when the fault is present**; it is the shape a regression
+would have to reproduce, and the run against `8773496a` still produces it.
 
 | sessions | worst frame (rounds) | layout loops | passes at the cut-off |
 |---|---|---|---|
@@ -71,8 +87,8 @@ Two things had to be real before the threshold appeared, and each was worth a ru
 | **5** | **159** | **2** | **3 / 3** |
 | 6 | 23 or 159 | 0 or 2 | **1 / 3** |
 
-**The threshold at five sessions reproduces deterministically, with the negative control holding 9 out of 9
-below it.** Two caveats belong with that number, not underneath it:
+**With the fault present, the threshold at five sessions reproduces deterministically, with the negative
+control holding 9 out of 9 below it.** Two caveats belong with that number, not underneath it:
 
 - **Six sessions is flaky here: one pass in three.** AC-1178 reports 153 rounds and 2 loops at six sessions
   on every repetition. This harness keeps each pass's shape in the report as an observation, but judges the
@@ -86,6 +102,31 @@ below it.** Two caveats belong with that number, not underneath it:
 - **`worst frame` reads 159 where Avalonia cuts off at 153.** The counter groups `LayoutUpdated` by frame
   ordinal, so a few rounds either side of the cut-off land in the same bucket. Treat it as "at the cut-off",
   not as an exact figure.
+
+### What a cut-off frame costs
+
+Reaching the cut-off and what reaching it costs are two different measurements, and only the first one was ever
+taken. Every sweep point that reaches the cut-off now also reports the price of the frames that got there, from
+`FrameMeter.CostOfFramesAtOrAbove`: wall time, share of frames, and bytes allocated on the UI thread per round.
+Measured against `8773496a`, six points, positive control fired:
+
+| | |
+|---|---|
+| one cut-off frame | **800–2842 ms**, against 22–44 ms for the other frames in the same run |
+| per sweep point | 2–9 such frames, consecutive, filling 2,2–11,7 s of a 12 s window |
+| allocation | **1,89–2,01 MB per round**, against 1,09–1,78 MB per round in the same run's healthy frames |
+
+So a single non-converging frame allocates roughly **300 MB** on the UI thread — 153 rounds at about 2 MB each.
+The per-round figure barely moves, which is the point: the amplification is in the **number** of rounds, not in
+what a round costs.
+
+**The baseline counts only frames that ran layout.** A frame with no rounds in it is cheap because nothing
+happened, and averaging those in flattered the contrast to 13–22 ms — the figures above are the narrower,
+honest ones.
+
+**What this does not measure:** the allocation *rate* seen in the field. This harness streams transcript rows
+from its own timer, which allocates heavily in healthy frames too, so MB/s here is not comparable to a
+production log.
 
 ## The second scenario: `--scenario=render-clock`
 
