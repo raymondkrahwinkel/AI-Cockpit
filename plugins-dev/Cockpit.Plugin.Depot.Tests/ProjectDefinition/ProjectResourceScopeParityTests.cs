@@ -45,7 +45,6 @@ public class ProjectResourceScopeParityTests
         yield return ["weirdname:"]; // no value after the colon — not a scheme either side recognises.
 
         // Absolute (machine) shapes — POSIX-rooted; a Windows-rooted case is added conditionally below.
-        yield return ["/home/raymond/Notes/CONVENTIONS.md"];
         yield return ["/etc/passwd"];
     }
 
@@ -78,6 +77,19 @@ public class ProjectResourceScopeParityTests
     }
 
     // Every `ProjectResourceScope` a real reference can produce must also be portable-or-not identically on both sides — the other half of criterion 4, since Classify's `IsPortable`/wire vocabulary has no direct host equivalent to compare Scope against otherwise.
+    [Fact]
+    public void ClassifyScope_AndClassify_AgreeOnAPosixRootedPath()
+    {
+        const string reference = "/home/raymond/Notes/CONVENTIONS.md";
+        var hostScope = ProjectResourcePathPortability.ClassifyScope(reference);
+        var pluginPortability = ProjectResourcePortabilityClassifier.Classify(reference);
+        var expectedScope = OperatingSystem.IsWindows() ? ProjectResourceScope.Repo : ProjectResourceScope.Machine;
+
+        // A path shaped for the other OS is deliberately repo-relative.
+        Assert.Equal(expectedScope, hostScope);
+        Assert.Equal(_ScopeToPortability[expectedScope], pluginPortability);
+    }
+
     [Theory]
     [InlineData(ProjectResourceScope.Repo, true)]
     [InlineData(ProjectResourceScope.Home, true)]

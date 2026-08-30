@@ -222,7 +222,8 @@ public class DepotSharedProjectSourceWriteBackTests
         // must instead carry the pre-write read's own Resources list through unchanged.
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
-        var placeholder = CockpitProjectResourceEntry.Create("Reference", "/home/erik/work/notes.md", "Notes")!;
+        var reference = OperatingSystem.IsWindows() ? @"C:\Users\erik\work\notes.md" : "/home/erik/work/notes.md";
+        var placeholder = CockpitProjectResourceEntry.Create("Reference", reference, "Notes")!;
         Assert.True(placeholder.Placeholder);
         var written = CockpitProjectDefinitionJson.Serialize(new CockpitProjectDefinition { Name = "Cockpit", Resources = [placeholder] });
         _StubRead(host, "cockpit", _ReadEnvelope(written));

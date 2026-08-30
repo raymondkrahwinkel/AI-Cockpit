@@ -8,6 +8,13 @@ namespace Cockpit.Plugin.Kubernetes.Tests;
 // CliRunner already proves in CliRunnerTests.
 public class KindRuntimeTests
 {
+    private sealed class PosixFactAttribute : FactAttribute
+    {
+        public PosixFactAttribute() => Skip = OperatingSystem.IsWindows()
+            ? "This test emulates a POSIX kind probe; cmd /c is covered by CliRunnerTests."
+            : null;
+    }
+
     [Fact]
     public async Task NotOnPath_ComesBackAsNotInstalled()
     {
@@ -20,7 +27,7 @@ public class KindRuntimeTests
         Assert.Contains("was not found on PATH", status.Message);
     }
 
-    [Fact]
+    [PosixFact]
     public async Task RepeatedDetection_OnlyProbesOnceAfterSuccess()
     {
         // Each invocation appends one line to a temp file — a call count that needs no CliRunner test seam.

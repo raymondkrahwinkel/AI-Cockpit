@@ -124,8 +124,9 @@ public class DepotSharedProjectSourcePrepareBindingTests
         // AC-246 (Raymond, 2026-08-02): the real path, not a hand-edit hypothetical — ten absolute resource rows
         // written through the actual writer and (de)serializer produce ten placeholders with a blank Reference,
         // but Role and Label survive.
+        var absoluteDirectory = OperatingSystem.IsWindows() ? @"C:\Users\erik\work" : "/home/erik/work";
         var entries = Enumerable.Range(1, 10)
-            .Select(i => CockpitProjectResourceEntry.Create("Reference", $"/home/erik/work/note-{i}.md", $"Note {i}"))
+            .Select(i => CockpitProjectResourceEntry.Create("Reference", Path.Combine(absoluteDirectory, $"note-{i}.md"), $"Note {i}"))
             .ToList();
         Assert.All(entries, entry => Assert.NotNull(entry)); // every one is a placeholder, not a drop
         Assert.All(entries, entry => Assert.True(entry!.Placeholder));

@@ -42,10 +42,10 @@ public class ProjectResourcePortabilityClassifierTests
         Assert.Equal(ProjectResourcePortability.PluginSource, ProjectResourcePortabilityClassifier.Classify(reference));
     }
 
-    [Theory]
-    [InlineData("/home/raymond/Notes/CONVENTIONS.md")]
-    public void Classify_PosixAbsolutePath_IsAbsolute(string reference)
+    [Fact]
+    public void Classify_AbsolutePathForThisPlatform_IsAbsolute()
     {
+        var reference = OperatingSystem.IsWindows() ? @"C:\Users\raymond\Notes\CONVENTIONS.md" : "/home/raymond/Notes/CONVENTIONS.md";
         Assert.Equal(ProjectResourcePortability.Absolute, ProjectResourcePortabilityClassifier.Classify(reference));
     }
 
