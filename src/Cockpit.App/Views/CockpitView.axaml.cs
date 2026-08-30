@@ -141,8 +141,9 @@ public partial class CockpitView : UserControl
                             var seconds = 60;
                             _ = int.TryParse(args[0], out sessions);
                             if (args.Length > 1) _ = int.TryParse(args[1], out seconds);
-                            _ = cockpit.RunAppReproAsync(sessions, seconds,
-                                args.Length > 2 && string.Equals(args[2], "growing-tail", StringComparison.OrdinalIgnoreCase));
+                            var shape = args.Length > 2 ? args[2] : "new-rows";
+                            var retainResults = args.Length > 3 && string.Equals(args[3], "retain", StringComparison.OrdinalIgnoreCase);
+                            _ = cockpit.RunAppReproAsync(sessions, seconds, shape, retainResults);
                         }
                         // "chat" / "chat:<rows>" runs the assistant-chat-window sim; a bare int runs the grid sim with
                         // that many rows; anything else is the default grid sim.
