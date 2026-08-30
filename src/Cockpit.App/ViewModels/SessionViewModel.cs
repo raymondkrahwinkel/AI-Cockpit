@@ -1465,9 +1465,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // separately from Status, so keep the status itself clean rather than repeating it —
             // "Session started. · personal" read as a duplicate (L6).
             Status = "Session started.";
-            // The runtime is up: stop signalling "still starting". IsSessionReady is refreshed by the single
-            // caller (StartConfiguredAsync) right after this returns, so it is not raised again here.
-            IsStarting = false;
 
             // Thinking budget has no launch flag — the control request is the only path — so apply
             // the selected effort once the session is live, otherwise it runs at the CLI default
@@ -1481,8 +1478,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             StartFailure = ex.Message;
             Status = $"Failed to start: {ex.Message}";
             _logger?.LogWarning(ex, "Starting a session under profile {Profile} ({Provider}) failed.", profile?.Label ?? "(none)", ProviderBadge is { Length: > 0 } ? ProviderBadge : "SDK");
-            // The launch failed — clear the "still starting" banner so it does not sit there implying the
-            // session is about to come up. IsSessionReady stays false (no running runtime); the caller settles it.
+        }
+        finally
+        {
+            // In a finally because failure reporting can throw too. Only the starting banner is cleared here —
+            // IsSessionReady is settled by the single caller (StartConfiguredAsync) on both paths.
             IsStarting = false;
         }
     }
