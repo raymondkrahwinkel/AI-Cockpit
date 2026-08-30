@@ -22,6 +22,7 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     private readonly ISessionDriverFactory _driverFactory;
     private readonly ISessionMemoryLimiter? _memoryLimiter;
+    private readonly ISessionProcessAnchor? _processAnchorFactory;
     private readonly List<SessionEvent> _events = [];
     private readonly List<string> _currentTurnText = [];
     private readonly Lock _eventsLock = new();
@@ -32,6 +33,7 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     // The OS ceiling around this session's process tree, while it has one (AC-661).
     private IDisposable? _memoryCap;
+    private IDisposable? _processAnchor;
 
     // The conversation id the driver last reported, so an event Cockpit raises itself lands on the same
     // conversation as the driver's own (AC-1060).
@@ -45,11 +47,16 @@ internal sealed class SessionRuntime : ISessionRuntime
     // place in the log rather than silently replaying events the consumer has already seen.
     private int _droppedEvents;
 
-    public SessionRuntime(ISessionDriverFactory driverFactory, SessionProfile? profile, ISessionMemoryLimiter? memoryLimiter = null)
+    public SessionRuntime(
+        ISessionDriverFactory driverFactory,
+        SessionProfile? profile,
+        ISessionMemoryLimiter? memoryLimiter = null,
+        ISessionProcessAnchor? processAnchor = null)
     {
         _driverFactory = driverFactory;
         Profile = profile;
         _memoryLimiter = memoryLimiter;
+        _processAnchorFactory = processAnchor;
     }
 
     public string Id { get; } = Guid.NewGuid().ToString("N");
@@ -108,10 +115,14 @@ internal sealed class SessionRuntime : ISessionRuntime
 
         // AC-661: cap the driver's own child (a spawned CLI) the moment it exists, before it has run a turn and
         // spawned anything itself. A provider that is an HTTP call has no process and nothing to cap.
-        if (_memoryLimiter is not null && _driver.ProcessId is { } processId)
+        if (_driver.ProcessId is { } processId)
         {
-            _memoryCap = _memoryLimiter.Apply(processId, SessionMemoryCap.ResolveBytes(profile, launchOptions));
-            _cgroupName = LinuxSessionCgroup.NameFor(processId);
+            _processAnchor = _processAnchorFactory?.Anchor(processId);
+            if (_memoryLimiter is not null)
+            {
+                _memoryCap = _memoryLimiter.Apply(processId, SessionMemoryCap.ResolveBytes(profile, launchOptions));
+                _cgroupName = LinuxSessionCgroup.NameFor(processId);
+            }
         }
 
         _pump = _PumpEventsAsync(_lifetime.Token);
@@ -206,7 +217,20 @@ internal sealed class SessionRuntime : ISessionRuntime
             }
         }
 
-        // After the driver, so the job object/cgroup is empty by the time it is released.
+        try
+        {
+            _processAnchor?.Dispose();
+        }
+        catch (Exception)
+        {
+            // Best-effort teardown continues with the memory limiter.
+        }
+        finally
+        {
+            _processAnchor = null;
+        }
+
+        // After the driver, so the cgroup is empty by the time it is released.
         try
         {
             _memoryCap?.Dispose();

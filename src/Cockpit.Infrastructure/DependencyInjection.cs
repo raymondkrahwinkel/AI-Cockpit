@@ -233,6 +233,12 @@ public static class DependencyInjection
         {
             services.AddSingleton<ISessionMemoryLimiter, PollingMemoryLimiter>();
         }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            services.AddSingleton<WindowsJobSessionRegistry>();
+            services.AddSingleton<ISessionProcessAnchor, WindowsJobSessionAnchor>();
+        }
     }
 
     // The process table is read a different way on every OS (#78): /proc on Linux, ps on macOS, WMI on
