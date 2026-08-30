@@ -132,7 +132,7 @@ internal sealed class WindowsJobSessionRegistry
     private readonly ILogger _logger;
     private readonly Lock _gate = new();
 
-    public WindowsJobSessionRegistry(ILogger logger)
+    public WindowsJobSessionRegistry(ILogger<WindowsJobSessionRegistry> logger)
         : this(Path.Combine(CockpitConfigPath.Root, "session-jobs.json"), logger)
     {
     }
@@ -236,7 +236,7 @@ internal static class WindowsJobSessionSweep
     [SupportedOSPlatform("windows")]
     private static void _Run(ILogger logger)
     {
-        var registry = new WindowsJobSessionRegistry(logger);
+        var registry = new WindowsJobSessionRegistry(Path.Combine(CockpitConfigPath.Root, "session-jobs.json"), logger);
         var outcome = Sweep(registry.Load(), WindowsJobSessionAnchor.StartedAt, Terminate);
         foreach (var jobName in outcome.CompletedJobs)
         {
