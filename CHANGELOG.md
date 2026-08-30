@@ -32,6 +32,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: each session's sidebar row now says what its processes are doing — the CPU and memory of that session
+  and everything it has spawned, and a count of the ones it has left behind. A session that has gone quiet
+  because its agent finished looks exactly like one whose test run is still holding a gigabyte, and until now
+  nothing on screen told those apart. A process the session started keeps counting even after whatever launched
+  it exited, which is when the old figure used to drop to nothing. The same numbers are available to the voice
+  assistant, so it can tell you about a session you are not looking at. A session with no local process of its
+  own, such as one served over HTTP, shows nothing rather than a zero.
+
 - added: `COCKPIT_STATE_ROOT` points an instance at a state directory of its own, so a second cockpit can run
   without touching the one you use. It moves everything, not just the settings file — configuration, logs,
   plugins, worktrees, clones, audit trails and caches all follow it, since an instance that looks isolated while

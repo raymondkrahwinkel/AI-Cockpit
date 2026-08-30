@@ -3387,18 +3387,41 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // I last said so", and that question needs a memory of its own.
     private bool _warnedAboutMemory;
 
-    // One warned-flag per session title (AC-692), not one flag for the whole cockpit — a session that has already
+    // One warned-flag per session pane (AC-692), not one flag for the whole cockpit — a session that has already
     // been named should not silence the toast for the next one that climbs.
     private readonly Dictionary<string, bool> _warnedAboutSessionMemory = new(StringComparer.Ordinal);
 
     // Tells each session how close it is to its own OS memory cap (AC-661), so one that is about to be cut off says
-    // so on its own bar first, and past the cap offers the Kill there too (AC-700). Matched back by title, the same
-    // key the sample was taken under.
+    // so on its own bar first, and past the cap offers the Kill there too (AC-700). Matched back by pane id, the
+    // same key the sample was taken under — a title is not one, since two sessions may carry the same (AC-1096).
     private void _WarnAboutSessionCaps(ResourceUsage usage)
     {
         foreach (var measured in usage.Sessions)
         {
-            Sessions.FirstOrDefault(session => session.Title == measured.Title)?.ReportMemoryAgainstCap(measured.MemoryBytes);
+            _FindMeasured(measured)?.ReportMemoryAgainstCap(measured.MemoryBytes);
+        }
+    }
+
+    // The one place the measurement is matched back to the pane it was taken on.
+    private SessionPanelViewModel? _FindMeasured(SessionResourceUsage measured) =>
+        Sessions.FirstOrDefault(session => string.Equals(session.PaneId, measured.PaneId, StringComparison.Ordinal));
+
+    // AC-1096: puts each session's own processes on its sidebar row, where the status is. Status comes from the
+    // agent's event stream and knows nothing about what it left running, so an idle session with a test host still
+    // resident is indistinguishable from a finished one until this number sits beside it.
+    private void _ReportSessionProcesses(ResourceUsage usage)
+    {
+        foreach (var measured in usage.Sessions)
+        {
+            if (_FindMeasured(measured) is not { } session)
+            {
+                continue;
+            }
+
+            session.ProcessCpuPercent = measured.CpuPercent;
+            session.ProcessMemoryBytes = measured.MemoryBytes;
+            session.ProcessCount = measured.ProcessCount;
+            session.AbandonedProcessCount = measured.AbandonedProcessCount;
         }
     }
 
@@ -3408,8 +3431,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         foreach (var measured in usage.Sessions)
         {
-            var session = Sessions.FirstOrDefault(candidate => candidate.Title == measured.Title);
-            if (session?.ReportMemoryPressure(measured.PressureAvg10) != true)
+            if (_FindMeasured(measured)?.ReportMemoryPressure(measured.PressureAvg10) != true)
             {
                 continue;
             }
@@ -3429,19 +3451,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the automatic kill that used to happen instead (AC-692). Kept beside AC-700's bar, which outlives it.
     private void _WarnAboutSessionMemory(ResourceUsage usage)
     {
-        var stillHere = new HashSet<string>(usage.Sessions.Select(session => session.Title), StringComparer.Ordinal);
-        foreach (var title in _warnedAboutSessionMemory.Keys.Where(title => !stillHere.Contains(title)).ToList())
+        var stillHere = new HashSet<string>(usage.Sessions.Select(session => session.PaneId), StringComparer.Ordinal);
+        foreach (var paneId in _warnedAboutSessionMemory.Keys.Where(paneId => !stillHere.Contains(paneId)).ToList())
         {
-            _warnedAboutSessionMemory.Remove(title);
+            _warnedAboutSessionMemory.Remove(paneId);
         }
 
         foreach (var measured in usage.Sessions)
         {
-            var session = Sessions.FirstOrDefault(candidate => candidate.Title == measured.Title);
+            var session = _FindMeasured(measured);
             var cap = session?.MemoryCapBytes ?? 0;
-            var warned = _warnedAboutSessionMemory.GetValueOrDefault(measured.Title);
+            var warned = _warnedAboutSessionMemory.GetValueOrDefault(measured.PaneId);
             var decision = SessionMemoryPressure.Decide(measured.MemoryBytes, cap, warned);
-            _warnedAboutSessionMemory[measured.Title] = decision.Warned;
+            _warnedAboutSessionMemory[measured.PaneId] = decision.Warned;
 
             if (!decision.Warn || session is null)
             {
@@ -3535,15 +3557,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // A session with no process (an HTTP-backed provider) has nothing local to weigh; it is left out rather than
     // shown as 0%, which would read as "idle" instead of "not measurable here".
-    private Dictionary<string, int> _SessionProcessIds()
+    private List<SessionProcessRef> _SessionProcessIds()
     {
-        var processes = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var session in Sessions.Where(session => session.ProcessId is not null))
+        var measured = new List<SessionProcessRef>(Sessions.Count);
+        foreach (var session in Sessions)
         {
-            processes[session.Title] = session.ProcessId!.Value;
+            if (session.ProcessId is { } processId)
+            {
+                measured.Add(new SessionProcessRef(session.PaneId, session.Title, processId));
+            }
         }
 
-        return processes;
+        return measured;
     }
 
     private void _ApplyResourceUsage(ResourceUsage usage)
@@ -3552,6 +3577,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _WarnAboutSessionCaps(usage);
         _WarnAboutSessionMemory(usage);
         _WarnAboutSessionPressure(usage);
+        _ReportSessionProcesses(usage);
 
         ResourceCpu = $"CPU {usage.CpuPercent:0}%  ·  RAM ";
         ResourceMemory = _Megabytes(usage.MemoryBytes);

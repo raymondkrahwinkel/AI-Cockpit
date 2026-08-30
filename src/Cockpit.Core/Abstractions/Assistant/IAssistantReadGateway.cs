@@ -77,8 +77,8 @@ public sealed record AssistantTranscript(
 public sealed record AssistantTranscriptEntry(string Kind, string Text, string? ToolResult);
 
 // AC-1013: One running session as the assistant is shown it — "who is working on this, and where", nothing
-// more. Statusline empty is ordinary, not "no work". Status alone can't tell a never-started pane from a
-// finished one; NeedsYou/Ready exist for that (Ready reuses CanTakeAPrompt) — full rationale was on AC-1013.
+// more. Statusline empty is ordinary, not "no work"; NeedsYou/Ready tell a never-started pane from a finished
+// one; AC-1096's process figures say whether anything is still running, which no status here can.
 public sealed record AssistantSessionRow(
     string PaneId,
     string Name,
@@ -88,4 +88,8 @@ public sealed record AssistantSessionRow(
     string? WorkspaceName,
     string Status = "",
     bool NeedsYou = false,
-    bool Ready = false);
+    bool Ready = false,
+    int ProcessCount = 0,
+    double CpuPercent = 0,
+    long MemoryBytes = 0,
+    int AbandonedProcessCount = 0);

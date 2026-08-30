@@ -648,6 +648,11 @@
                                                                Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
                                                     <TextBlock Text="{Binding SessionStatusLabel}"
                                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                                    <!-- AC-1096: what this session's processes still hold. Beside the status because that is
+                                                         the claim it qualifies: Idle says the agent stopped, not that its build did. -->
+                                                    <TextBlock Text="{Binding ProcessActivityLabel}"
+                                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                                               IsVisible="{Binding ProcessActivityLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                                 </StackPanel>
                                                 <!-- AC-13: what this session is working on, set by the agent (via MCP) or a workflow;
                                                      accented so it stands out, hidden when blank. -->

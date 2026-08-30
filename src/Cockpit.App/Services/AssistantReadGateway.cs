@@ -168,7 +168,13 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProj
                             or TtyViewModel { SessionStatus: SessionStatus.NeedsAttention },
                         // The same precondition every other waker in the cockpit already checks before sending —
                         // not a second opinion computed here (AC-545 follow-up).
-                        session.CanTakeAPrompt);
+                        session.CanTakeAPrompt,
+                        // AC-1096: read off the same sample the sidebar row shows, so the spoken answer and the
+                        // screen cannot disagree about what a session is still holding.
+                        session.ProcessCount,
+                        session.ProcessCpuPercent,
+                        session.ProcessMemoryBytes,
+                        session.AbandonedProcessCount);
                 }),
         ];
     }
