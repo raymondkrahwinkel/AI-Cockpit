@@ -27,10 +27,10 @@ public sealed class ResourceMonitor : ISingletonService
         _pressureAvg10 = pressureAvg10;
     }
 
-    // Reads the machine once and reports what the cockpit itself and each of `sessionProcessIds`
+    // Reads the machine once and reports what the cockpit itself and each of `measuredSessions`
     // (with their children) is using. The first call has nothing to compare against, so it reports memory and a
     // CPU of zero — a percentage only exists between two samples.
-    public ResourceUsage Sample(IReadOnlyDictionary<string, int> sessionProcessIds)
+    public ResourceUsage Sample(IReadOnlyList<SessionProcessRef> measuredSessions)
     {
         var rows = _reader.Read();
         var now = DateTimeOffset.UtcNow;
@@ -39,8 +39,8 @@ public sealed class ResourceMonitor : ISingletonService
 
         var self = _Weigh(Environment.ProcessId, ProcessTree.Sum(rows, Environment.ProcessId), elapsed, cores);
 
-        var sessions = new List<SessionResourceUsage>();
-        foreach (var (title, processId) in sessionProcessIds)
+        var sessions = new List<SessionResourceUsage>(measuredSessions.Count);
+        foreach (var (paneId, title, processId) in measuredSessions)
         {
             // AC-1096: membership rather than the ppid walk, so a process the session left behind keeps counting
             // after whatever launched it died and the walk can no longer reach it.
@@ -50,6 +50,7 @@ public sealed class ResourceMonitor : ISingletonService
             // AC-1060: read on the tick that already has the pid, since the meter that matters here is the one
             // `systemd-oomd` decides on and it lives per session cgroup. Null everywhere but Linux.
             sessions.Add(new SessionResourceUsage(
+                paneId,
                 title,
                 measured.CpuPercent,
                 measured.MemoryBytes,
@@ -62,9 +63,9 @@ public sealed class ResourceMonitor : ISingletonService
 
         // Only when a session has actually gone: pruning allocates, and the ordinary tick measures the same
         // sessions as the one before it. The extra entry is the cockpit's own.
-        if (_previous.Count > sessionProcessIds.Count + 1)
+        if (_previous.Count > measuredSessions.Count + 1)
         {
-            _Forget(sessionProcessIds.Values.ToHashSet());
+            _Forget(measuredSessions.Select(session => session.ProcessId).ToHashSet());
         }
 
         // The cockpit's own tree already contains the sessions it spawned, so the total is the cockpit's tree —
@@ -75,7 +76,7 @@ public sealed class ResourceMonitor : ISingletonService
             self.MemoryBytes,
             sessions,
             LocalModelServers.From(rows),
-            CockpitBreakdown.From(rows, Environment.ProcessId, sessionProcessIds.Values.ToHashSet()));
+            CockpitBreakdown.From(rows, Environment.ProcessId, measuredSessions.Select(session => session.ProcessId).ToHashSet()));
     }
 
     private (double CpuPercent, long MemoryBytes) _Weigh(int processId, ResourceSample current, TimeSpan elapsed, int cores)
@@ -119,6 +120,7 @@ public sealed record ResourceUsage(
 // seconds its cgroup stalled on memory (AC-1060) — null off Linux, and null for a session with no cgroup.
 // `AbandonedProcessCount` is how many of its processes no longer hang off it by parent link (AC-1096).
 public sealed record SessionResourceUsage(
+    string PaneId,
     string Title,
     double CpuPercent,
     long MemoryBytes,
