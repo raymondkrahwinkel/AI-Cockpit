@@ -1,7 +1,4 @@
-using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
@@ -34,7 +31,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private readonly SessionStateRecorder _sessionStateRecorder;
     private readonly IMcpServerCatalog _mcpServers;
     private readonly IAssistantMemory _memory;
-    private readonly IAssistantTranscriptStore _transcript;
     private readonly ILogger<AssistantSessionHost> _logger;
 
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
@@ -53,7 +49,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         SessionStateRecorder sessionStateRecorder,
         IMcpServerCatalog mcpServers,
         IAssistantMemory memory,
-        IAssistantTranscriptStore transcript,
         ILogger<AssistantSessionHost> logger)
     {
         _cockpit = cockpit;
@@ -63,7 +58,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         _sessionStateRecorder = sessionStateRecorder;
         _mcpServers = mcpServers;
         _memory = memory;
-        _transcript = transcript;
         _logger = logger;
     }
 
@@ -365,13 +359,13 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // not after — a resume the provider ends up refusing (below) throws this whole session away anyway.
         if (resume.Mode == SessionResumeMode.BySessionId)
         {
-            await _ReplayTranscriptAsync(session, cancellationToken).ConfigureAwait(true);
+            await session.ReplayRecordedTranscriptAsync(cancellationToken).ConfigureAwait(true);
         }
         else
         {
-            // AC-947: nothing will replay this file's rows into the new session, and the first row this launch
-            // saves overwrites it — archive it now, while it still holds the conversation before this restart.
-            await _transcript.ArchiveAsync(cancellationToken).ConfigureAwait(true);
+            // AC-947/AC-1090: nothing will replay this log's rows into the new session, so roll it aside now,
+            // while it still holds the conversation before this restart — a new conversation is a new log.
+            await session.ArchiveRecordedTranscriptAsync(cancellationToken).ConfigureAwait(true);
         }
 
         // AC-1089: fixed rather than inherited from Environment.CurrentDirectory — an AppImage's mount folder is a
@@ -451,9 +445,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // out: every send after the first leaves it stuck on Thinking.
         session.PropertyChanged += _OnSessionPropertyChanged;
 
-        // AC-684: every new row this session ever adds — the replayed history is already in by now, so this only
-        // ever sees rows the operator has not seen persisted yet.
-        session.Transcript.CollectionChanged += _OnTranscriptChanged;
         _SyncActivityWithSession(session);
         return session;
     }
@@ -640,170 +631,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             : SessionResume.New;
     }
 
-    // AC-684: repaints a fresh session's transcript with what the operator saw before this launch. A row this
-    // build cannot make sense of is skipped, same contract `SessionStateStore` uses for a line it cannot parse.
-    private async Task _ReplayTranscriptAsync(SessionViewModel session, CancellationToken cancellationToken)
-    {
-        foreach (var saved in await _transcript.LoadAsync(cancellationToken).ConfigureAwait(true))
-        {
-            if (_FromSnapshotEntry(saved) is { } entry)
-            {
-                session.Transcript.Add(entry);
-            }
-        }
-    }
-
-    // AC-684: every new transcript row is worth a snapshot — fire-and-forget, same contract as
-    // `ISessionStateStore.RecordAsync` (a failed save is logged, not the turn that produced the row).
-    // AC-1151: the store itself debounces this into at most one actual write per window.
-    private void _OnTranscriptChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        if (sender is not ObservableCollection<TranscriptEntryViewModel> transcript)
-        {
-            return;
-        }
-
-        _ = _transcript.SaveAsync([.. transcript.Select(_ToSnapshotEntry)], CancellationToken.None);
-    }
-
-    private static AssistantTranscriptSnapshotEntry _ToSnapshotEntry(TranscriptEntryViewModel entry) => new(
-        entry.Kind.ToString(),
-        entry.Text,
-        entry.ToolName,
-        _QuestionInputJsonWithAnswers(entry),
-        entry.ToolUseId,
-        entry.ResultText,
-        entry.IsResultError,
-        entry.Timestamp);
-
-    // AC-955: ticked options and typed "Other" text do not otherwise survive a restart — `InputJson` alone is
-    // the question asked, not what was picked. Merged in under `answers`, keyed by question text (same key
-    // `ClaudeControlProtocol._BuildUpdatedInput` uses for the CLI, a different shape).
-    private static string? _QuestionInputJsonWithAnswers(TranscriptEntryViewModel entry)
-    {
-        if (entry.Kind != TranscriptEntryKind.Question
-            || entry.QuestionPrompts is not { Count: > 0 } prompts
-            || string.IsNullOrWhiteSpace(entry.InputJson))
-        {
-            return entry.InputJson;
-        }
-
-        var answered = prompts.Where(prompt => prompt.IsAnswered).ToList();
-        if (answered.Count == 0)
-        {
-            return entry.InputJson;
-        }
-
-        try
-        {
-            var root = JsonNode.Parse(entry.InputJson)!.AsObject();
-            var answers = new JsonObject();
-            foreach (var prompt in answered)
-            {
-                var picked = new JsonObject
-                {
-                    ["options"] = new JsonArray([.. prompt.Options.Where(option => option.IsSelected)
-                        .Select(option => (JsonNode)JsonValue.Create(option.Label))]),
-                };
-
-                if (prompt.IsOtherSelected)
-                {
-                    picked["other"] = prompt.OtherText;
-                }
-
-                answers[prompt.Question] = picked;
-            }
-
-            root["answers"] = answers;
-            return root.ToJsonString();
-        }
-        catch (JsonException)
-        {
-            return entry.InputJson;
-        }
-    }
-
-    private static TranscriptEntryViewModel? _FromSnapshotEntry(AssistantTranscriptSnapshotEntry record)
-    {
-        if (!Enum.TryParse<TranscriptEntryKind>(record.Kind, out var kind))
-        {
-            return null;
-        }
-
-        var entry = new TranscriptEntryViewModel(kind, record.Text, record.Timestamp)
-        {
-            ToolName = record.ToolName,
-            InputJson = record.InputJson,
-            ToolUseId = record.ToolUseId,
-        };
-
-        if (record.ResultText is not null)
-        {
-            entry.SetResult(record.ResultText, record.IsResultError);
-        }
-
-        // AC-955: replays with its options and, if answered, its answer, read-only — not a blank row for a
-        // call already responded to. Reparsed here, not a snapshot field of its own: `InputJson` already is
-        // the question payload, the same parse `PermissionRequested` runs live.
-        if (kind == TranscriptEntryKind.Question && AskUserQuestionViewModel.Parse(record.InputJson) is { Count: > 0 } prompts)
-        {
-            entry.QuestionPrompts = prompts;
-            _ApplySavedAnswers(prompts, record.InputJson);
-        }
-
-        return entry;
-    }
-
-    private static void _ApplySavedAnswers(IReadOnlyList<AskUserQuestionViewModel> prompts, string? inputJson)
-    {
-        if (string.IsNullOrWhiteSpace(inputJson))
-        {
-            return;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(inputJson);
-            if (!document.RootElement.TryGetProperty("answers", out var answers) || answers.ValueKind != JsonValueKind.Object)
-            {
-                return;
-            }
-
-            foreach (var prompt in prompts)
-            {
-                if (!answers.TryGetProperty(prompt.Question, out var picked) || picked.ValueKind != JsonValueKind.Object)
-                {
-                    continue;
-                }
-
-                if (picked.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Array)
-                {
-                    var labels = options.EnumerateArray()
-                        .Where(option => option.ValueKind == JsonValueKind.String)
-                        .Select(option => option.GetString())
-                        .ToHashSet(StringComparer.Ordinal);
-
-                    foreach (var option in prompt.Options.Where(option => labels.Contains(option.Label)))
-                    {
-                        option.IsSelected = true;
-                    }
-                }
-
-                if (picked.TryGetProperty("other", out var other) && other.ValueKind == JsonValueKind.String)
-                {
-                    prompt.OtherText = other.GetString() ?? string.Empty;
-                    prompt.IsOtherSelected = true;
-                }
-
-                prompt.IsAnswered = true;
-            }
-        }
-        catch (JsonException)
-        {
-            // Not a payload worth restoring an answer from — the card still renders, just unanswered.
-        }
-    }
-
     // AC-684, criterion 4: a `BySessionId` resume the provider refuses surfaces as an immediate failed turn
     // (AC-539's `error_during_execution`), not an exception. The first row this fresh launch's transcript
     // receives decides it, once, since nothing has sent the provider a prompt yet to correlate against.
@@ -953,7 +780,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // wiring has to come off whether or not the runtime tears down cleanly — a dispose that throws would
         // otherwise leave the dead session subscribed for the life of the process.
         session.PropertyChanged -= _OnSessionPropertyChanged;
-        session.Transcript.CollectionChanged -= _OnTranscriptChanged;
         _cockpit.ReleaseAssistantSession(session);
 
         // AC-1013: An unanswered consent card is answered here, and answered No — the broker has no timeout of

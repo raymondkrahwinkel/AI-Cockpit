@@ -432,7 +432,6 @@ inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayDeliveryTests.cs	1
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayTests.cs	2
 inline	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayWakeTests.cs	2
 inline	tests/Cockpit.Core.Tests/Agents/AgentInboxTurnNoticeTests.cs	1
-inline	tests/Cockpit.Core.Tests/Assistant/Ac1151_TranscriptSaveDebounceTests.cs	1
 inline	tests/Cockpit.Core.Tests/Assistant/AssistantConsentBypassPolicyTests.cs	1
 inline	tests/Cockpit.Core.Tests/Claude/OpenAiCompatSessionDriverTests.cs	1
 inline	tests/Cockpit.Core.Tests/Claude/PermissionRuleTests.cs	1

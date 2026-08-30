@@ -4,6 +4,8 @@ using Cockpit.App;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Sessions;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -32,6 +34,12 @@ public class SessionPaneLifetimeTests
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(CockpitViewModel).Assembly);
         services.AddSessionPanes();
+
+        // AC-1090: a pane records its transcript now, so the real registration would write this test's rows into
+        // the operator's own state folder. Everything else here stays the container Program.cs builds.
+        services.AddSingleton<ISessionTranscriptStore>(new SessionTranscriptLog(
+            Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N")),
+            NullLogger<SessionTranscriptLog>.Instance));
 
         return services.BuildServiceProvider();
     }

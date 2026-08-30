@@ -34,6 +34,11 @@ public enum TranscriptEntryKind
 // as new rows.
 public partial class TranscriptEntryViewModel : ViewModelBase
 {
+    // AC-1090: what the transcript log keys a row's versions on, and restored from it. A GUID rather than the
+    // row's index: the transcript is not append-only in memory — a reset clears it — and a shifted index would
+    // silently rewrite the wrong row.
+    public string Id { get; init; } = Guid.NewGuid().ToString("n");
+
     public TranscriptEntryKind Kind { get; }
 
     public bool IsToolResult => Kind == TranscriptEntryKind.ToolResult;
@@ -137,8 +142,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     public bool IsBackgroundTool => _RequestsBackground(InputJson) || BackgroundTaskId is not null;
 
     // The provider's id for this call's background task, read back out of the result line announcing the
-    // hand-off. Null until that result arrives, and on every ordinary call.
-    public string? BackgroundTaskId { get; private set; }
+    // hand-off. Null until that result arrives, and on every ordinary call. AC-1090 restores it directly rather
+    // than re-deriving it in `SetResult`: the recorded id outlives a result no longer held in full.
+    public string? BackgroundTaskId { get; internal set; }
 
     // Set by the owning session from its latest background-task snapshot: true while this row's task is still in it.
     [ObservableProperty]
@@ -211,8 +217,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     public string? ToolUseId { get; init; }
 
     // --- Reply relation (AC-935) --------------------------------------------------------------------------------
-    // No message id: the transcript is in-memory for the app's own run (no restart-persistence, grooming §1), so
-    // an object reference to the target row is a stable enough key.
+    // An object reference to the target row, which is the stable key while the app runs. AC-1090's log, which
+    // outlives the run, records `Id` on both ends instead and resolves the references back on restore.
 
     // The row this reply answers, set once at construction — null for an ordinary (non-reply) message.
     public TranscriptEntryViewModel? ReplyTo { get; init; }
@@ -455,6 +461,10 @@ public partial class TranscriptEntryViewModel : ViewModelBase
             foreach (TranscriptEntryViewModel nested in e.NewItems)
             {
                 nested.Session = Session;
+
+                // AC-1090: a nested row never joins the transcript, so nothing else watches it — without this its
+                // own later changes (a result arriving) would never reach whoever is recording the anchor.
+                nested.PropertyChanged += (_, _) => OnPropertyChanged(nameof(SubAgentRowsForDisplay));
             }
         }
 

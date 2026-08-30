@@ -50,9 +50,10 @@ internal static class CockpitConfigPath
     // no lock between them.
     public static string AssistantCurrentState => Path.Combine(Root, "assistant-state.md");
 
-    // What the operator saw in the assistant window (AC-684): a JSON snapshot next to `cockpit.json`, overwritten
-    // whole (debounced, AC-1151) as rows come in — the conversation's current shape, not a trail with its own retention.
-    public static string AssistantTranscript => Path.Combine(Root, "assistant-transcript.json");
+    // Cockpit's own copy of every pane's conversation (AC-1090, was AC-684's single assistant file): one
+    // append-only `<pane>.jsonl` per pane, in a `transcripts/` folder next to `cockpit.json`. A log rather than a
+    // snapshot because rewriting a whole transcript per row measured at 618x write amplification.
+    public static string TranscriptsRoot => Path.Combine(Root, "transcripts");
 
     // AC-792: this machine's node TLS certificate, written via `CreatePrivateFile` like every other
     // credential. Persists across restarts on purpose — a controller pins its fingerprint at pairing

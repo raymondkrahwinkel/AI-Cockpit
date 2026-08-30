@@ -802,11 +802,11 @@ public class AssistantSessionHostTests
         sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
 
-        var transcript = Substitute.For<IAssistantTranscriptStore>();
-        transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(_ =>
+        var transcript = Substitute.For<ISessionTranscriptStore>();
+        transcript.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>>(_ =>
         [
-            new("UserText", "fix the layout bug", null, null, null, null, false, DateTimeOffset.Now),
-            new("Divider", "Context was full — a new conversation starts here", null, null, null, null, false, DateTimeOffset.Now),
+            _Recorded("UserText", "fix the layout bug"),
+            _Recorded("Divider", "Context was full — a new conversation starts here"),
         ]);
 
         var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
@@ -829,11 +829,11 @@ public class AssistantSessionHostTests
         sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
 
-        var transcript = Substitute.For<IAssistantTranscriptStore>();
-        transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(_ =>
+        var transcript = Substitute.For<ISessionTranscriptStore>();
+        transcript.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>>(_ =>
         [
-            new("SomeFutureKind", "from a newer build", null, null, null, null, false, DateTimeOffset.Now),
-            new("UserText", "still readable", null, null, null, null, false, DateTimeOffset.Now),
+            _Recorded("SomeFutureKind", "from a newer build"),
+            _Recorded("UserText", "still readable"),
         ]);
 
         var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
@@ -846,15 +846,15 @@ public class AssistantSessionHostTests
     [Fact]
     public void ANewTranscriptRow_IsSaved_SoARestartCanReplayIt()
     {
-        var transcript = Substitute.For<IAssistantTranscriptStore>();
+        var transcript = Substitute.For<ISessionTranscriptStore>();
         var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
 
         Dispatcher.UIThread.Invoke(() => session.Transcript.Add(
             new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "what is the status of AC-223")));
 
-        transcript.Received().SaveAsync(
-            Arg.Is<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(saved =>
-                saved.Count == 1 && saved[0].Text == "what is the status of AC-223"),
+        transcript.Received().AppendAsync(
+            AssistantSessionHost.AssistantPaneId,
+            Arg.Is<TranscriptSnapshotEntry>(saved => saved.Text == "what is the status of AC-223"),
             Arg.Any<CancellationToken>());
     }
 
@@ -866,7 +866,7 @@ public class AssistantSessionHostTests
     [Fact]
     public void AnAnsweredQuestionRow_SavesItsOptionsAndAnswer_NotOnlyTheBareQuestion()
     {
-        var transcript = Substitute.For<IAssistantTranscriptStore>();
+        var transcript = Substitute.For<ISessionTranscriptStore>();
         var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
 
         const string inputJson = """{"questions":[{"question":"Which profile?","options":[{"label":"Core"},{"label":"All"}]}]}""";
@@ -881,11 +881,11 @@ public class AssistantSessionHostTests
 
         Dispatcher.UIThread.Invoke(() => session.Transcript.Add(entry));
 
-        transcript.Received().SaveAsync(
-            Arg.Is<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(saved =>
-                saved.Count == 1 && saved[0].InputJson != null
-                && saved[0].InputJson!.Contains("\"answers\"", StringComparison.Ordinal)
-                && saved[0].InputJson!.Contains("All", StringComparison.Ordinal)),
+        transcript.Received().AppendAsync(
+            AssistantSessionHost.AssistantPaneId,
+            Arg.Is<TranscriptSnapshotEntry>(saved => saved.InputJson != null
+                && saved.InputJson!.Contains("\"answers\"", StringComparison.Ordinal)
+                && saved.InputJson!.Contains("All", StringComparison.Ordinal)),
             Arg.Any<CancellationToken>());
     }
 
@@ -905,9 +905,9 @@ public class AssistantSessionHostTests
         {"questions":[{"question":"Which profile?","options":[{"label":"Core"},{"label":"All"}]}],
          "answers":{"Which profile?":{"options":["All"]}}}
         """;
-        var transcript = Substitute.For<IAssistantTranscriptStore>();
-        transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(_ =>
-            [new("Question", "Which profile?", null, savedInputJson, null, null, false, DateTimeOffset.Now)]);
+        var transcript = Substitute.For<ISessionTranscriptStore>();
+        transcript.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>>(_ =>
+            [_Recorded("Question", "Which profile?", savedInputJson)]);
 
         var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
 
@@ -963,9 +963,9 @@ public class AssistantSessionHostTests
         var sessionState = Substitute.For<ISessionStateStore>();
         sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
-        var transcript = Substitute.For<IAssistantTranscriptStore>();
-        transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>(_ =>
-            [new("UserText", "earlier message", null, null, null, null, false, DateTimeOffset.Now)]);
+        var transcript = Substitute.For<ISessionTranscriptStore>();
+        transcript.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>>(_ =>
+            [_Recorded("UserText", "earlier message")]);
 
         var (host, first, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
 
@@ -996,11 +996,11 @@ public class AssistantSessionHostTests
     [Fact]
     public void StartingWithNoResumableConversation_ArchivesTheSavedTranscript()
     {
-        var transcript = Substitute.For<IAssistantTranscriptStore>();
+        var transcript = Substitute.For<ISessionTranscriptStore>();
 
         _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
 
-        transcript.Received(1).ArchiveAsync(Arg.Any<CancellationToken>());
+        transcript.Received(1).ArchiveAsync(AssistantSessionHost.AssistantPaneId, Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -1013,11 +1013,11 @@ public class AssistantSessionHostTests
         var sessionState = Substitute.For<ISessionStateStore>();
         sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
-        var transcript = Substitute.For<IAssistantTranscriptStore>();
+        var transcript = Substitute.For<ISessionTranscriptStore>();
 
         _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
 
-        transcript.DidNotReceive().ArchiveAsync(Arg.Any<CancellationToken>());
+        transcript.DidNotReceive().ArchiveAsync(AssistantSessionHost.AssistantPaneId, Arg.Any<CancellationToken>());
     }
 
     // A provider that vouches for compacting its own conversation — the one capability AC-664 turns on.
@@ -1043,8 +1043,11 @@ public class AssistantSessionHostTests
     }
 
     private static (AssistantSessionHost Host, SessionViewModel Session, ISessionDriver Driver) _StartedAssistantOn(
-        SessionCapabilities capabilities, ISessionStateStore? sessionState = null, IAssistantTranscriptStore? transcript = null)
+        SessionCapabilities capabilities, ISessionStateStore? sessionState = null, ISessionTranscriptStore? transcript = null)
     {
+        // AC-1090: the transcript layer hangs off the pane now, not off the host — the host only asks the pane it
+        // just made to replay it or roll it aside. Passed in here the way the container passes it in production.
+        transcript ??= _EmptyTranscriptStore();
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_EmptyEvents());
         driver.Capabilities.Returns(capabilities);
@@ -1052,9 +1055,9 @@ public class AssistantSessionHostTests
         factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
 
         var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
-            () => new SessionViewModel(new SessionManager(factory))));
+            () => new SessionViewModel(new SessionManager(factory), transcriptStore: transcript)));
         var host = Dispatcher.UIThread.Invoke(() => _Host(
-            enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState, transcript: transcript));
+            enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState));
 
         var session = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
         Assert.NotNull(session);
@@ -1297,8 +1300,7 @@ public class AssistantSessionHostTests
         ISessionStateStore? sessionState = null,
         bool speakReplies = true,
         CockpitViewModel? cockpit = null,
-        IAssistantMemory? memory = null,
-        IAssistantTranscriptStore? transcript = null)
+        IAssistantMemory? memory = null)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
@@ -1317,20 +1319,25 @@ public class AssistantSessionHostTests
             sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>([]);
         }
 
-        if (transcript is null)
-        {
-            transcript = Substitute.For<IAssistantTranscriptStore>();
-            transcript.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<AssistantTranscriptSnapshotEntry>>([]);
-        }
-
         var sessionStateRecorder = new SessionStateRecorder(
             sessionState, new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance);
 
         return new AssistantSessionHost(
             cockpit ?? new CockpitViewModel(), settings, profiles, sessionState, sessionStateRecorder,
-            catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(), transcript,
+            catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(),
             NullLogger<AssistantSessionHost>.Instance);
     }
+
+    private static ISessionTranscriptStore _EmptyTranscriptStore()
+    {
+        var store = Substitute.For<ISessionTranscriptStore>();
+        store.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>>([]);
+        return store;
+    }
+
+    // A recorded row. The id is what AC-1090's log keys a row's versions on; these tests only need it unique.
+    private static TranscriptSnapshotEntry _Recorded(string kind, string text, string? inputJson = null) =>
+        new(Guid.NewGuid().ToString("n"), kind, text, null, inputJson, null, null, false, DateTimeOffset.Now);
 
     // A cockpit whose sessions actually start (against a fake driver) rather than the no-factory default the rest
     // of this file uses — needed only by the hand-over test, which has to observe a second, real SessionViewModel.
