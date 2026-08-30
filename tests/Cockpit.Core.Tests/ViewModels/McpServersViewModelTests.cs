@@ -135,6 +135,24 @@ public class McpServersViewModelTests
     }
 
     [Fact]
+    public async Task Save_WhenConfirmationReadFails_StaysOpen()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => Task.FromException<IReadOnlyList<McpServerConfig>>(new IOException()));
+        var vm = new McpServersViewModel(store, []);
+        vm.AddServerCommand.Execute(null);
+        vm.SelectedServer!.Name = "fs";
+        vm.SelectedServer.Command = "npx";
+        var closed = false;
+        vm.CloseRequested += () => closed = true;
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(closed);
+        Assert.Contains("Saved, but couldn't read", vm.StatusMessage);
+    }
+
+    [Fact]
     public void ToConfig_ForHttpApiKey_KeepsUrlAndKey_AndDropsStdioFields()
     {
         var editable = new EditableMcpServerViewModel(new McpServerConfig
