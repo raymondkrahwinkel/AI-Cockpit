@@ -403,6 +403,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the memory figure in the status bar now counts the processes a session has left behind. It was reached
+  by following parent links down from the cockpit, so a build server whose launcher had exited fell out of the
+  total at exactly the moment it became worth reporting — on this machine that was gigabytes the sidebar showed
+  beside the session while the status bar above it did not. Both meters now read the same processes, so the one
+  figure the operator glances at is the honest one.
+
 - fixed: a session that fails to start now says so, and why, instead of looking like one that is still coming up.
   A launch that died in a fraction of a second — the provider's own program missing, say — left the pane sitting
   there indistinguishable from a slow start, so the only thing to do was wait a minute and be told it timed out;

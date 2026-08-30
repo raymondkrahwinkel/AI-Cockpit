@@ -33,11 +33,10 @@ public sealed class ResourceMonitor : ISingletonService
     public ResourceUsage Sample(IReadOnlyList<SessionProcessRef> measuredSessions)
     {
         var rows = _reader.Read();
+        var snapshot = ProcessTree.Snapshot(rows);
         var now = DateTimeOffset.UtcNow;
         var elapsed = _sampledAt == DateTimeOffset.MinValue ? TimeSpan.Zero : now - _sampledAt;
         var cores = Environment.ProcessorCount;
-
-        var self = _Weigh(Environment.ProcessId, ProcessTree.Sum(rows, Environment.ProcessId), elapsed, cores);
 
         var sessions = new List<SessionResourceUsage>(measuredSessions.Count);
         foreach (var (paneId, title, processId) in measuredSessions)
@@ -68,9 +67,15 @@ public sealed class ResourceMonitor : ISingletonService
             _Forget(measuredSessions.Select(session => session.ProcessId).ToHashSet());
         }
 
-        // The cockpit's own tree already contains the sessions it spawned, so the total is the cockpit's tree —
-        // adding the sessions on top would count them twice. The parts break that total into things the operator can
-        // name: the app itself, and the MCP tool servers it started.
+        // AC-1086: union of the cockpit's tree and every session's membership, since the walk cannot reach a process
+        // whose parent has gone — 4.4 GB of them here (AC-1260). A union, not a sum: the tree still holds the session
+        // processes attached to it. After the loop, so the memberships are this tick's and a closed one is forgotten.
+        var held = snapshot.LiveReachableFrom([Environment.ProcessId]);
+        _membership.UnionInto(held);
+        var self = _Weigh(Environment.ProcessId, snapshot.SumOf(held), elapsed, cores);
+
+        // The parts break that total into things the operator can name: the app itself, and the MCP tool servers
+        // it started.
         return new ResourceUsage(
             self.CpuPercent,
             self.MemoryBytes,
