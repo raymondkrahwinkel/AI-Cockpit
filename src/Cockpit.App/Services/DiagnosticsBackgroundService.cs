@@ -495,8 +495,10 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         // AC-1125 D: known right where the line is built, so nothing has to be pushed here in advance.
         var (openSessions, layoutStand) = _sessionContext?.Invoke() ?? (0, "n/a");
 
+        var gcInfo = GC.GetGCMemoryInfo();
+
         _logger.LogInformation(
-            "diag rss={Rss} peak={Peak} virt={Virt} priv={Priv} heap={Heap} managed={Managed} alloc={Alloc} " +
+            "diag rss={Rss} peak={Peak} virt={Virt} priv={Priv} heap={Heap} managed={Managed} gen={Gen} alloc={Alloc} " +
             "gc={Gen0}/{Gen1}/{Gen2} gcpause={GcPause:0.0}% handles={Handles} threads={Threads} tp={Pending}/{ThreadPoolCount} " +
             "cpu={Cpu} rclock={RenderClock} uptime={Uptime} sessions={Sessions} layout={Layout}",
             _Compact(memory.ResidentBytes),
@@ -504,12 +506,13 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             _Compact(memory.VirtualBytes),
             PrivText(memory.PrivateBytes),
             _Compact(heap.HeapSizeBytes),
-            _Compact(heap.LiveManagedBytes),
+            _Compact(heap.InUseManagedBytes),
+            GenerationText(gcInfo),
             _Compact(heap.TotalAllocatedBytes),
             heap.Gen0Collections,
             heap.Gen1Collections,
             heap.Gen2Collections,
-            GC.GetGCMemoryInfo().PauseTimePercentage,
+            gcInfo.PauseTimePercentage,
             _HandleCountText(process),
             process.Threads.Count,
             ThreadPool.PendingWorkItemCount,
@@ -615,6 +618,36 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     }
 
     private static string _Compact(long bytes) => ByteSize.Human(bytes).Replace(" ", string.Empty);
+
+    // AC-1237: gen0/gen1/gen2/LOH/POH after the last GC. The whole-heap figures cannot tell an allocation burst
+    // that outruns the collector from large-object growth, and that is exactly what the multi-GB episodes are
+    // still ambiguous about. Internal as a test seam — a test cannot stage a real generation layout.
+    internal static string GenerationText(GCMemoryInfo info)
+    {
+        // GenerationInfo throws rather than returning empty when the struct carries no layout yet, and how many
+        // slots it has is a runtime detail rather than a promise — neither may cost the diagnostics thread.
+        ReadOnlySpan<GCGenerationInfo> generations;
+        try
+        {
+            generations = info.GenerationInfo;
+        }
+        catch (NullReferenceException)
+        {
+            return "n/a";
+        }
+
+        if (generations.Length < 5)
+        {
+            return "n/a";
+        }
+
+        return string.Concat(
+            _Compact(generations[0].SizeAfterBytes), "/",
+            _Compact(generations[1].SizeAfterBytes), "/",
+            _Compact(generations[2].SizeAfterBytes), "/",
+            _Compact(generations[3].SizeAfterBytes), "/",
+            _Compact(generations[4].SizeAfterBytes));
+    }
 
     // AC-718: macOS silently returns 0 from Process.HandleCount (ProcessManager.OSX.cs's EnsureHandleCountPopulated
     // has no body there) rather than throwing — same trap ProcessMemoryInfo.cs already works around for peak

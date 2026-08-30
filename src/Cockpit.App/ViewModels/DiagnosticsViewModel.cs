@@ -60,7 +60,7 @@ public sealed partial class DiagnosticsViewModel(
         builder.AppendLine().AppendLine("Managed heap");
         builder.AppendLine($"  GC mode       : {(heap.IsServerGc ? "Server" : "Workstation")}");
         builder.AppendLine($"  Heap size     : {ByteSize.Human(heap.HeapSizeBytes)}");
-        builder.AppendLine($"  Live          : {ByteSize.Human(heap.LiveManagedBytes)}");
+        builder.AppendLine($"  In use        : {ByteSize.Human(heap.InUseManagedBytes)}   ← occupancy incl. uncollected garbage, not retention");
         builder.AppendLine($"  Allocated     : {ByteSize.Human(heap.TotalAllocatedBytes)} (total since start)");
         builder.AppendLine($"  Collections   : gen0 {heap.Gen0Collections} · gen1 {heap.Gen1Collections} · gen2 {heap.Gen2Collections}");
 

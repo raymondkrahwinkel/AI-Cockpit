@@ -91,6 +91,31 @@ public class DiagnosticsBackgroundServiceTests
         Assert.DoesNotContain("live=", line);
     }
 
+    // AC-1237: gen0/gen1/gen2/LOH/POH, so the next multi-GB episode says which generation it landed in rather
+    // than leaving an allocation burst and large-object growth indistinguishable.
+    [Fact]
+    public void WriteSnapshot_SplitsTheHeapPerGenerationIncludingLohAndPoh()
+    {
+        var logger = new _CapturingLogger();
+        var service = new DiagnosticsBackgroundService(logger);
+
+        service.WriteSnapshot(new DiagnosticsBackgroundService.CpuSampler(), renderClockStalled: false);
+
+        var line = Assert.Single(logger.Messages);
+        var field = Assert.Single(line.Split(' '), part => part.StartsWith("gen=", StringComparison.Ordinal));
+
+        // Five slots or an explicit n/a — never a silently short list that reads as if LOH were missing.
+        Assert.True(field == "gen=n/a" || field["gen=".Length..].Split('/').Length == 5, field);
+    }
+
+    // AC-1237: GenerationInfo throws on a struct carrying no layout — the diag line must report n/a, not take
+    // the diagnostics thread down with it.
+    [Fact]
+    public void GenerationText_ReportsNaWhenTheRuntimeHasNoGenerationLayoutYet()
+    {
+        Assert.Equal("n/a", DiagnosticsBackgroundService.GenerationText(default));
+    }
+
     // E: 0B is a measured value, n/a is the truth — same rule now applied to priv= as already applied to handles=.
     [Fact]
     public void PrivText_ReportsNaInsteadOfAMisleadingZero()
