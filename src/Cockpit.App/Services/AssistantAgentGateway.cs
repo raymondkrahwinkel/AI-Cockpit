@@ -11,6 +11,7 @@ using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Worktrees;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Sessions;
 
@@ -685,7 +686,17 @@ internal sealed class AssistantAgentGateway(
                     .ConfigureAwait(true);
             }
 
-            if (await worktreeManager.ReattachAsync(record.Path, paneId, cancellationToken).ConfigureAwait(true) is not { } reattached)
+            WorktreeRecord? reattached;
+            try
+            {
+                reattached = await worktreeManager.TransferAsync(record.Path, AssistantIdentity.PaneId, paneId, cancellationToken).ConfigureAwait(true);
+            }
+            catch (WorktreeAdmissionException exception)
+            {
+                return await _RefuseHandoverAsync(record.Path, paneId, exception.Message, cancellationToken).ConfigureAwait(true);
+            }
+
+            if (reattached is null)
             {
                 return await _RefuseHandoverAsync(record.Path, paneId, "The worktree could not be re-owned — it may have just been removed.", cancellationToken)
                     .ConfigureAwait(true);

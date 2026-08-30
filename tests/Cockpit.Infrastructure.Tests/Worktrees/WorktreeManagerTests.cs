@@ -18,14 +18,16 @@ public sealed class WorktreeManagerTests : IDisposable
     private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), $"cockpit-worktree-{Guid.NewGuid():n}");
     private readonly string _repo;
     private readonly string _worktreesRoot;
+    private readonly string _configPath;
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
+    private readonly WorktreeRegistryStore _registry;
     private readonly WorktreeManager _manager;
 
     public WorktreeManagerTests()
     {
         _repo = Path.Combine(_tempRoot, "repo");
         _worktreesRoot = Path.Combine(_tempRoot, "worktrees");
-        var configPath = Path.Combine(_tempRoot, "cockpit.json");
+        _configPath = Path.Combine(_tempRoot, "cockpit.json");
 
         Directory.CreateDirectory(_repo);
         _Git(_repo, "init", "-b", "main");
@@ -35,7 +37,8 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(_repo, "add", "-A");
         _Git(_repo, "commit", "-m", "first");
 
-        _manager = new WorktreeManager(new WorktreeRegistryStore(configPath), _worktreesRoot);
+        _registry = new WorktreeRegistryStore(_configPath);
+        _manager = new WorktreeManager(_registry, _worktreesRoot);
     }
 
     [Fact]
@@ -489,7 +492,7 @@ public sealed class WorktreeManagerTests : IDisposable
     public async Task RemoveAsync_LeftoverFolderCouldNotBeProvenSafe_LogsWhyItWasLeftOnDisk()
     {
         var logger = Substitute.For<ILogger<WorktreeManager>>();
-        var manager = new WorktreeManager(new WorktreeRegistryStore(Path.Combine(_tempRoot, "logged.json")), _worktreesRoot, logger);
+        using var manager = new WorktreeManager(new WorktreeRegistryStore(Path.Combine(_tempRoot, "logged.json")), _worktreesRoot, logger);
         var record = await manager.CreateAsync(_sessionId, "wt-logged", _repo);
         _BreakWorktreeGitLink(record.Path);
         File.WriteAllText(Path.Combine(record.Path, "left-behind.txt"), "not on any branch\n");
@@ -541,12 +544,14 @@ public sealed class WorktreeManagerTests : IDisposable
         var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "wt-second", second);
         TestGitDirectory.Remove(second);
         var newSession = Guid.NewGuid().ToString("n");
+        _manager.Dispose();
+        using var restartedCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
 
-        var reattached = await _manager.ReattachAsync(record.Path, newSession);
+        var reattached = await restartedCockpit.ReattachAsync(record.Path, newSession);
 
         Assert.NotNull(reattached);
         Assert.Equal(newSession, reattached!.SessionId);
-        Assert.Equal(newSession, Assert.Single((await _manager.ListAsync())).SessionId);
+        Assert.Equal(newSession, Assert.Single((await restartedCockpit.ListAsync())).SessionId);
     }
 
     [Fact]
@@ -599,12 +604,14 @@ public sealed class WorktreeManagerTests : IDisposable
     {
         var orphan = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/orphan", _repo);
         var live = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/live", _repo);
+        _manager.Dispose();
+        using var restartedCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
 
-        await _manager.ReconcileAsync([live.SessionId]);
+        await restartedCockpit.ReconcileAsync([live.SessionId]);
 
         Assert.False(Directory.Exists(orphan.Path));
         Assert.True(Directory.Exists(live.Path));
-        Assert.Equal(live.SessionId, Assert.Single((await _manager.ListAsync())).SessionId);
+        Assert.Equal(live.SessionId, Assert.Single((await restartedCockpit.ListAsync())).SessionId);
     }
 
     [Fact]
@@ -829,13 +836,99 @@ public sealed class WorktreeManagerTests : IDisposable
     {
         var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/orphan", _repo);
         var newSession = Guid.NewGuid().ToString("n");
+        _manager.Dispose();
+        using var restartedCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
 
-        var reattached = await _manager.ReattachAsync(record.Path, newSession);
+        var reattached = await restartedCockpit.ReattachAsync(record.Path, newSession);
 
         Assert.NotNull(reattached);
         Assert.Equal(newSession, reattached!.SessionId);
         Assert.False(reattached.IsRetained);
-        Assert.Equal(newSession, Assert.Single((await _manager.ListAsync())).SessionId);
+        Assert.Equal(newSession, Assert.Single((await restartedCockpit.ListAsync())).SessionId);
+    }
+
+    [Fact]
+    public async Task ReattachAsync_LiveLease_RefusesASecondWriterWithItsPathAndOwner()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "cockpit/live", _repo);
+        using var secondCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
+
+        var exception = await Assert.ThrowsAsync<WorktreeAdmissionException>(() =>
+            secondCockpit.ReattachAsync(record.Path, Guid.NewGuid().ToString("n")));
+
+        Assert.Equal(record.Path, exception.WorktreePath);
+        Assert.Equal(_sessionId, exception.OwnerSessionId);
+        Assert.Contains(record.Path, exception.Message);
+        Assert.Contains(_sessionId, exception.Message);
+        Assert.DoesNotContain("unknown", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ReleaseOwnershipAsync_CaseVariantRecordPath_ReleasesTheLease()
+    {
+        _Git(_repo, "config", "core.ignorecase", "true");
+        var record = await _manager.CreateAsync(_sessionId, "cockpit/case-release", _repo);
+        var caseVariantPath = record.Path.ToUpperInvariant();
+        Assert.False(string.Equals(record.Path, caseVariantPath, StringComparison.Ordinal));
+        await _registry.AddAsync(record with { Path = caseVariantPath });
+
+        await _manager.ReleaseOwnershipAsync(caseVariantPath);
+
+        using var nextCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
+        var reattached = await nextCockpit.ReattachAsync(record.Path, Guid.NewGuid().ToString("n"));
+
+        Assert.NotNull(reattached);
+    }
+
+    [Fact]
+    public async Task TransferAsync_ExpectedOwner_AtomicallyHandsOverTheHeldLease()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "cockpit/handover", _repo);
+
+        var transferred = await _manager.TransferAsync(record.Path, _sessionId, "pane-target");
+        var staleTransfer = await _manager.TransferAsync(record.Path, _sessionId, "pane-stale");
+
+        Assert.Equal("pane-target", transferred?.SessionId);
+        Assert.Null(staleTransfer);
+        Assert.Equal("pane-target", Assert.Single(await _manager.ListAsync()).SessionId);
+    }
+
+    [Fact]
+    public async Task ReattachAsync_SamePaneAfterProcessExit_ResumesSilently()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "cockpit/restart", _repo);
+        _manager.Dispose();
+        using var restartedCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
+
+        var reattached = await restartedCockpit.ReattachAsync(record.Path, _sessionId);
+
+        Assert.Equal(_sessionId, reattached?.SessionId);
+    }
+
+    [Fact]
+    public async Task ReattachAsync_ConcurrentCockpits_AdmitExactlyOneWriter()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "cockpit/race", _repo);
+        await _manager.ReleaseOwnershipAsync(record.Path);
+        using var firstCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
+        using var secondCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
+
+        var reattachments = await Task.WhenAll(
+            _TryReattachAsync(firstCockpit, record.Path, "pane-first"),
+            _TryReattachAsync(secondCockpit, record.Path, "pane-second"));
+
+        Assert.Single(reattachments, record => record is not null);
+    }
+
+    [Fact]
+    public async Task ReconcileAsync_LiveLease_SkipsTheWorktreeWithoutChangingItsOwner()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "cockpit/reconcile-live", _repo);
+        using var secondCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
+
+        await secondCockpit.ReconcileAsync([]);
+
+        Assert.Equal(_sessionId, Assert.Single(await secondCockpit.ListAsync()).SessionId);
     }
 
     [Fact]
@@ -1476,7 +1569,23 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.Null(refresh.Notice);
     }
 
-    public void Dispose() => TestGitDirectory.Remove(_tempRoot);
+    private static async Task<WorktreeRecord?> _TryReattachAsync(WorktreeManager manager, string path, string paneId)
+    {
+        try
+        {
+            return await manager.ReattachAsync(path, paneId);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _manager.Dispose();
+        TestGitDirectory.Remove(_tempRoot);
+    }
 
     private string _RemotePath => Path.Combine(_tempRoot, "remote.git");
 

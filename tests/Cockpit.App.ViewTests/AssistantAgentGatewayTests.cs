@@ -452,7 +452,7 @@ public class AssistantAgentGatewayTests
             cockpit.Sessions.Add(session);
             return session;
         });
-        worktrees.ReattachAsync("/wt/mine", target.PaneId, Arg.Any<CancellationToken>())
+        worktrees.TransferAsync("/wt/mine", AssistantIdentity.PaneId, target.PaneId, Arg.Any<CancellationToken>())
             .Returns(record with { SessionId = target.PaneId });
 
         var result = await gateway.HandoverWorktreeAsync("/wt/mine", target.PaneId);
@@ -460,7 +460,7 @@ public class AssistantAgentGatewayTests
         Assert.True(result.Ok, result.Error);
         Assert.Equal("/wt/mine", result.Path);
         Assert.Equal("cockpit/x", result.Branch);
-        await worktrees.Received(1).ReattachAsync("/wt/mine", target.PaneId, Arg.Any<CancellationToken>());
+        await worktrees.Received(1).TransferAsync("/wt/mine", AssistantIdentity.PaneId, target.PaneId, Arg.Any<CancellationToken>());
         Assert.Equal("cockpit/x", Dispatcher.UIThread.Invoke(() => target.WorktreeBranch));
 
         var entry = Assert.Single(trail.Entries);

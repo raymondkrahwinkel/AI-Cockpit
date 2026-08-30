@@ -5098,6 +5098,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
                 // Not a decline — a non-interactive refusal with a reason worth keeping. Rethrow so the caller (the
                 // assistant gateway) reports it rather than the caller seeing a session that silently is not there.
+                if (exception is WorktreeAdmissionException && interactive)
+                {
+                    ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
+                    return null;
+                }
+
                 throw;
             }
 
@@ -5122,6 +5128,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 await CloseSessionAsync(ttySession);
                 if (exception is OperationCanceledException)
                 {
+                    return null;
+                }
+
+                if (exception is WorktreeAdmissionException && interactive)
+                {
+                    ToastHost.Add(exception.Message, ToastSeverity.Warning, null, null);
                     return null;
                 }
 
@@ -5193,6 +5205,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private async Task<string?> _ResolveIsolatedWorkingDirectoryAsync(
         SessionPanelViewModel session, NewSessionResult result, bool interactive = true)
     {
+        if (!result.IsolateInWorktree && !string.IsNullOrWhiteSpace(result.WorkingDirectory))
+        {
+            if (await _MatchingWorktreeAsync(result.WorkingDirectory) is not { } managed)
+            {
+                return result.WorkingDirectory;
+            }
+
+            if (_worktreeManager is null || await _worktreeManager.ReattachAsync(managed.Path, session.PaneId) is not { } reattached)
+            {
+                throw new WorktreeAdmissionException(managed.Path, managed.SessionId);
+            }
+
+            session.WorktreeBranch = reattached.Branch;
+            return reattached.Path;
+        }
+
         if (!result.IsolateInWorktree)
         {
             return result.WorkingDirectory;
@@ -5215,23 +5243,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var existing = await _MatchingWorktreeAsync(result.WorkingDirectory);
             if (existing is not null)
             {
-                var live = _liveSessions?.LiveSessionIds ?? Sessions.Select(s => s.PaneId).ToHashSet(StringComparer.Ordinal);
-
-                // AC-719: the assistant is always "live" by construction, so without this exception a spawn into
-                // one of its own pre-made worktrees would be refused exactly like a live ordinary session's — a
-                // live ordinary session's worktree is still never taken over.
-                var ownedByAssistant = string.Equals(
-                    existing.SessionId, Cockpit.Core.Assistant.AssistantIdentity.PaneId, StringComparison.Ordinal);
-                if (!ownedByAssistant && live.Contains(existing.SessionId))
-                {
-                    return result.WorkingDirectory;
-                }
-
                 if (await _worktreeManager.ReattachAsync(existing.Path, session.PaneId) is { } reattached)
                 {
                     session.WorktreeBranch = reattached.Branch;
                     return reattached.Path;
                 }
+
+                throw new WorktreeAdmissionException(existing.Path, existing.SessionId);
+
             }
 
             if (await _worktreeManager.DetectRepositoryAsync(result.WorkingDirectory) is null)
@@ -5242,6 +5261,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var worktree = await _worktreeManager.CreateForSessionAsync(session.PaneId, result.Profile.Label, result.WorkingDirectory);
             session.WorktreeBranch = worktree.Branch;
             return worktree.Path;
+        }
+        catch (WorktreeAdmissionException)
+        {
+            throw;
         }
         catch (Exception exception)
         {

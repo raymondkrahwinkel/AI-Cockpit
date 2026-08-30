@@ -40,6 +40,9 @@ internal sealed class FakeWorktreeManager : IWorktreeManager
     public Task<WorktreeRecord?> ReattachAsync(string worktreePath, string newSessionId, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
+    public Task<WorktreeRecord?> TransferAsync(string worktreePath, string expectedSessionId, string targetSessionId, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
     public Task ReleaseOwnershipAsync(string worktreePath, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 

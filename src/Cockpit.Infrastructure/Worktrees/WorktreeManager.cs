@@ -8,7 +8,7 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
+internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDisposable
 {
     // Cap on the readable branch fragment in a folder name, so a long branch cannot push a Windows worktree path past its limit.
     private const int SlugLength = 32;
@@ -19,6 +19,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     private readonly Func<CancellationToken, Task<string>> _resolveRoot;
     private readonly ILogger<WorktreeManager>? _logger;
     private readonly IDockerCli? _dockerCli;
+    private readonly string _leaseRoot;
+    private readonly Dictionary<string, WorktreeLease> _leases = new(StringComparer.Ordinal);
+    private readonly object _leaseGate = new();
 
     public event Action<WorktreeSourceRefresh>? SourceRefreshed;
 
@@ -26,6 +29,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     {
         _registry = registry;
         _logger = logger;
+        _leaseRoot = Path.Combine(CockpitConfigPath.Root, "worktree-leases");
         // Nullable like `_liveSessions`/`_consent` on WorktreeTools: production DI resolves the real IDockerCli
         // (Scrutor registers it unconditionally — docker plugin installed or not, see DockerCli's own comment),
         // tests construct this directly and simply omit it to skip the cleanup being exercised.
@@ -57,6 +61,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         _resolveRoot = _ => Task.FromResult(worktreesRoot);
         _logger = logger;
         _dockerCli = dockerCli;
+        _leaseRoot = Path.Combine(worktreesRoot, ".leases");
     }
 
     public async Task<GitRepositoryInfo?> DetectRepositoryAsync(string directory, CancellationToken cancellationToken = default)
@@ -134,34 +139,43 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
                 $"Refusing to create a worktree at '{worktreePath}' — it is inside the repository at '{repository.Root}'.");
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(worktreePath)!);
-
-        // -b, never -B: an already-existing branch is a hard failure, not a silent reset of its history onto a new
-        // base. --lock holds the worktree against a prune sweep for as long as the session owns it. Submodules are
-        // not auto-populated: `git worktree add` has no --recurse-submodules option (verified against git 2.55).
-        await GitCli.RunCheckedAsync(
-            repository.Root,
-            ["worktree", "add", "--lock", "--reason", $"cockpit session {sessionId}", "-b", branch, worktreePath, repository.HeadCommit],
-            cancellationToken).ConfigureAwait(false);
-
-        var record = new WorktreeRecord(
-            sessionId,
-            repository.Root,
-            Path.GetFullPath(worktreePath),
-            branch,
-            repository.HeadCommit,
-            DateTimeOffset.UtcNow)
+        var leasePath = await _AcquireLeaseAsync(worktreePath, repository.Root, cancellationToken).ConfigureAwait(false);
+        try
         {
-            // The branch we forked from — measured against its moving tip later so a merged worktree reads clean.
-            // Null when HEAD was detached at creation; the status check falls back to the repository's default branch.
-            BaseBranch = repository.CurrentBranch,
-            IsAgentCreated = isAgentCreated,
-        };
-        await _registry.AddAsync(record, cancellationToken).ConfigureAwait(false);
+            Directory.CreateDirectory(Path.GetDirectoryName(worktreePath)!);
 
-        // Carried on the returned record, not persisted: the caller that started this session is the one that tells
-        // the operator where it forked from, and after that the answer is history.
-        return record with { SourceRefresh = sourceRefresh };
+            // -b, never -B: an already-existing branch is a hard failure, not a silent reset of its history onto a new
+            // base. --lock holds the worktree against a prune sweep for as long as the session owns it. Submodules are
+            // not auto-populated: `git worktree add` has no --recurse-submodules option (verified against git 2.55).
+            await GitCli.RunCheckedAsync(
+                repository.Root,
+                ["worktree", "add", "--lock", "--reason", $"cockpit session {sessionId}", "-b", branch, worktreePath, repository.HeadCommit],
+                cancellationToken).ConfigureAwait(false);
+
+            var record = new WorktreeRecord(
+                sessionId,
+                repository.Root,
+                Path.GetFullPath(worktreePath),
+                branch,
+                repository.HeadCommit,
+                DateTimeOffset.UtcNow)
+            {
+                // The branch we forked from — measured against its moving tip later so a merged worktree reads clean.
+                // Null when HEAD was detached at creation; the status check falls back to the repository's default branch.
+                BaseBranch = repository.CurrentBranch,
+                IsAgentCreated = isAgentCreated,
+            };
+            await _registry.AddAsync(record, cancellationToken).ConfigureAwait(false);
+
+            // Carried on the returned record, not persisted: the caller that started this session is the one that tells
+            // the operator where it forked from, and after that the answer is history.
+            return record with { SourceRefresh = sourceRefresh };
+        }
+        catch
+        {
+            _ReleaseLease(leasePath);
+            throw;
+        }
     }
 
     public Task<WorktreeRecord> CreateForSessionAsync(
@@ -761,36 +775,99 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     public async Task<WorktreeRecord?> ReattachAsync(string worktreePath, string newSessionId, CancellationToken cancellationToken = default)
     {
         var fullPath = Path.GetFullPath(worktreePath);
-        var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
-        var existing = records.FirstOrDefault(record => string.Equals(Path.GetFullPath(record.Path), fullPath, PathComparison));
-        if (existing is null)
-        {
-            return null;
-        }
-
-        // Re-lock so a reconcile sweep leaves the reattached worktree alone, and re-own it so liveness and teardown
-        // follow the new session. Locking is best-effort (may already be locked, or the repository gone — AC-507):
-        // an unhandled failure here previously took the whole reattach down before the re-own below ever ran.
-        var locked = true;
+        var leasePath = await _AcquireLeaseAsync(fullPath, fullPath, cancellationToken).ConfigureAwait(false);
         try
         {
-            await GitCli.RunAsync(
-                existing.RepositoryRoot,
-                ["worktree", "lock", "--reason", $"cockpit session {newSessionId}", existing.Path],
-                cancellationToken).ConfigureAwait(false);
+            var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+            var existing = records.FirstOrDefault(record => string.Equals(Path.GetFullPath(record.Path), fullPath, PathComparison));
+            if (existing is null)
+            {
+                _ReleaseLease(leasePath);
+                return null;
+            }
+
+            // Re-lock so a reconcile sweep leaves the reattached worktree alone, and re-own it so liveness and teardown
+            // follow the new session. Locking is best-effort (may already be locked, or the repository gone — AC-507):
+            // an unhandled failure here previously took the whole reattach down before the re-own below ever ran.
+            var locked = true;
+            try
+            {
+                await GitCli.RunAsync(
+                    existing.RepositoryRoot,
+                    ["worktree", "lock", "--reason", $"cockpit session {newSessionId}", existing.Path],
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException)
+            {
+                // git could not even start against this repository root — nothing to lock, so nothing to re-own is
+                // blocked by it. The record says so honestly (IsLocked = false) rather than claiming a lock that never
+                // landed; a later reconcile sweep may prune it, which is no worse than today.
+                locked = false;
+            }
+
+            var reattached = await _registry.TransferAsync(existing.Path, existing.SessionId, newSessionId, cancellationToken).ConfigureAwait(false);
+            if (reattached is null)
+            {
+                _ReleaseLease(leasePath);
+                throw new WorktreeAdmissionException(existing.Path, existing.SessionId);
+            }
+
+            var result = reattached with { IsLocked = locked };
+            if (result.IsLocked != reattached.IsLocked)
+            {
+                await _registry.AddAsync(result, cancellationToken).ConfigureAwait(false);
+            }
+
+            return result;
         }
-        catch (InvalidOperationException)
+        catch
         {
-            // git could not even start against this repository root — nothing to lock, so nothing to re-own is
-            // blocked by it. The record says so honestly (IsLocked = false) rather than claiming a lock that never
-            // landed; a later reconcile sweep may prune it, which is no worse than today.
-            locked = false;
+            _ReleaseLease(leasePath);
+            throw;
         }
+    }
 
-        var reattached = existing with { SessionId = newSessionId, IsRetained = false, IsLocked = locked };
-        await _registry.AddAsync(reattached, cancellationToken).ConfigureAwait(false);
+    public async Task<WorktreeRecord?> TransferAsync(
+        string worktreePath,
+        string expectedSessionId,
+        string targetSessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var fullPath = Path.GetFullPath(worktreePath);
+        var leasePath = _FindLease(fullPath)?.Identity;
+        var leaseWasHeld = leasePath is not null;
+        leasePath ??= await _AcquireLeaseAsync(fullPath, fullPath, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+            var existing = records.FirstOrDefault(record => string.Equals(Path.GetFullPath(record.Path), fullPath, PathComparison));
+            if (existing is null)
+            {
+                if (!leaseWasHeld)
+                {
+                    _ReleaseLease(leasePath);
+                }
 
-        return reattached;
+                return null;
+            }
+
+            var transferred = await _registry.TransferAsync(existing.Path, expectedSessionId, targetSessionId, cancellationToken).ConfigureAwait(false);
+            if (transferred is null && !leaseWasHeld)
+            {
+                _ReleaseLease(leasePath);
+            }
+
+            return transferred;
+        }
+        catch
+        {
+            if (!leaseWasHeld)
+            {
+                _ReleaseLease(leasePath);
+            }
+
+            throw;
+        }
     }
 
     public async Task ReleaseOwnershipAsync(string worktreePath, CancellationToken cancellationToken = default)
@@ -806,6 +883,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         // ordinary orphan everywhere else that matters (the reconcile sweep, the MCP remove guard's liveness check),
         // without this method having to know or duplicate either of their rules.
         await _registry.AddAsync(existing with { SessionId = string.Empty }, cancellationToken).ConfigureAwait(false);
+        _ReleaseLeaseForPath(fullPath);
     }
 
     public async Task ReleaseAsync(string sessionId, CancellationToken cancellationToken = default)
@@ -813,8 +891,15 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
         foreach (var record in records.Where(record => string.Equals(record.SessionId, sessionId, StringComparison.Ordinal)))
         {
-            await _CleanupNetworksAsync(record, cancellationToken).ConfigureAwait(false);
-            await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _CleanupNetworksAsync(record, cancellationToken).ConfigureAwait(false);
+                await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _ReleaseLeaseForPath(record.Path);
+            }
         }
     }
 
@@ -839,8 +924,20 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         {
             try
             {
-                await _CleanupNetworksAsync(record, cancellationToken).ConfigureAwait(false);
-                await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+                var leasePath = await _AcquireLeaseAsync(record.Path, record.RepositoryRoot, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await _CleanupNetworksAsync(record, cancellationToken).ConfigureAwait(false);
+                    await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _ReleaseLease(leasePath);
+                }
+            }
+            catch (WorktreeAdmissionException)
+            {
+                _logger?.LogInformation("Reconcile skipped {WorktreePath} because another Cockpit still holds its writer lease.", record.Path);
             }
             catch (Exception exception)
             {
@@ -954,6 +1051,108 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             await _registry.AddAsync(record with { IsRetained = true }, cancellationToken).ConfigureAwait(false);
         }
     }
+
+    private async Task<string> _AcquireLeaseAsync(string worktreePath, string repositoryRoot, CancellationToken cancellationToken)
+    {
+        var fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(worktreePath));
+        var comparison = await GitPaths.ComparisonForLeaseAsync(repositoryRoot, cancellationToken).ConfigureAwait(false);
+        var identity = comparison == StringComparison.OrdinalIgnoreCase ? fullPath.ToUpperInvariant() : fullPath;
+        var name = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();
+        var lockPath = Path.Combine(_leaseRoot, $"{name}.lock");
+
+        bool alreadyHeld;
+        lock (_leaseGate)
+        {
+            alreadyHeld = _leases.ContainsKey(identity);
+        }
+
+        if (alreadyHeld)
+        {
+            throw await _AdmissionRefusalAsync(fullPath, comparison, cancellationToken).ConfigureAwait(false);
+        }
+
+        Directory.CreateDirectory(_leaseRoot);
+        FileStream lease;
+        try
+        {
+            lease = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException)
+        {
+            throw await _AdmissionRefusalAsync(fullPath, comparison, cancellationToken).ConfigureAwait(false);
+        }
+
+        lock (_leaseGate)
+        {
+            _leases.Add(identity, new WorktreeLease(identity, fullPath, comparison, lease));
+        }
+
+        return identity;
+    }
+
+    private async Task<WorktreeAdmissionException> _AdmissionRefusalAsync(string worktreePath, StringComparison comparison, CancellationToken cancellationToken)
+    {
+        var fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(worktreePath));
+        try
+        {
+            var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+            var ownerSessionId = records.FirstOrDefault(record =>
+                string.Equals(Path.GetFullPath(record.Path), fullPath, comparison))?.SessionId;
+            return new WorktreeAdmissionException(fullPath, string.IsNullOrEmpty(ownerSessionId) ? "an unknown session" : ownerSessionId);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new WorktreeAdmissionException(fullPath, "an unknown session");
+        }
+    }
+
+    private void _ReleaseLease(string identity)
+    {
+        WorktreeLease? lease;
+        lock (_leaseGate)
+        {
+            if (!_leases.Remove(identity, out lease))
+            {
+                return;
+            }
+        }
+
+        lease.Stream.Dispose();
+    }
+
+    private void _ReleaseLeaseForPath(string worktreePath)
+    {
+        if (_FindLease(worktreePath) is { } lease)
+        {
+            _ReleaseLease(lease.Identity);
+        }
+    }
+
+    private WorktreeLease? _FindLease(string worktreePath)
+    {
+        var fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(worktreePath));
+        lock (_leaseGate)
+        {
+            return _leases.Values.FirstOrDefault(lease => string.Equals(lease.Path, fullPath, lease.Comparison));
+        }
+    }
+
+    public void Dispose()
+    {
+        FileStream[] leases;
+        lock (_leaseGate)
+        {
+            leases = [.. _leases.Values.Select(lease => lease.Stream)];
+            _leases.Clear();
+        }
+
+        foreach (var lease in leases)
+        {
+            lease.Dispose();
+        }
+    }
+
+    private sealed record WorktreeLease(string Identity, string Path, StringComparison Comparison, FileStream Stream);
 
     private static string _ResolveWorktreePath(string worktreesRoot, string repositoryRoot, string sessionId, string branch)
     {

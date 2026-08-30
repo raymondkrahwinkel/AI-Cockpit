@@ -114,8 +114,14 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
         var record = await _manager.CreateAsync("session-crashed", "crashed", _repo);
         File.WriteAllText(Path.Combine(record.Path, "unfinished.txt"), "keep\n");
         _docker.AddNetwork(Path.GetFileName(record.Path), "network-crashed", containerCount: 0);
+        _manager.Dispose();
+        using var restartedCockpit = new WorktreeManager(
+            _registry,
+            Path.Combine(_tempRoot, "worktrees"),
+            logger: null,
+            dockerCli: _docker);
 
-        await _manager.ReconcileAsync([]);
+        await restartedCockpit.ReconcileAsync([]);
 
         Assert.True(_docker.IsNetworkRemoved("network-crashed"));
     }

@@ -21,13 +21,14 @@ public sealed class SessionRestoreWorktreeReconcileTests : IDisposable
     private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), $"cockpit-restore-reconcile-{Guid.NewGuid():n}");
     private readonly string _repo;
     private readonly string _worktreesRoot;
+    private readonly string _configPath;
     private readonly WorktreeManager _manager;
 
     public SessionRestoreWorktreeReconcileTests()
     {
         _repo = Path.Combine(_tempRoot, "repo");
         _worktreesRoot = Path.Combine(_tempRoot, "worktrees");
-        var configPath = Path.Combine(_tempRoot, "cockpit.json");
+        _configPath = Path.Combine(_tempRoot, "cockpit.json");
 
         Directory.CreateDirectory(_repo);
         _Git(_repo, "init", "-b", "main");
@@ -37,10 +38,14 @@ public sealed class SessionRestoreWorktreeReconcileTests : IDisposable
         _Git(_repo, "add", "-A");
         _Git(_repo, "commit", "-m", "first");
 
-        _manager = new WorktreeManager(new WorktreeRegistryStore(configPath), _worktreesRoot);
+        _manager = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
     }
 
-    public void Dispose() => TestGitDirectory.Remove(_tempRoot);
+    public void Dispose()
+    {
+        _manager.Dispose();
+        TestGitDirectory.Remove(_tempRoot);
+    }
 
     [Fact]
     public async Task ReconcileAgainstTheRestoreRoster_KeepsARestorablePanesWorktree_ButRemovesAnUnknownOnes()
@@ -58,12 +63,14 @@ public sealed class SessionRestoreWorktreeReconcileTests : IDisposable
         var unknownWorktree = await _manager.CreateAsync("unknown-pane", "cockpit/unknown", _repo);
 
         var roster = await SessionRestoreRoster.PaneIdsAsync(store);
-        await _manager.ReconcileAsync(roster);
+        _manager.Dispose();
+        using var restartedCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
+        await restartedCockpit.ReconcileAsync(roster);
 
         Assert.True(Directory.Exists(restorableWorktree.Path), "a restorable pane's worktree must survive the reconcile");
         Assert.False(Directory.Exists(unknownWorktree.Path), "a worktree for a pane the roster does not know must still be swept");
 
-        var remaining = await _manager.ListAsync();
+        var remaining = await restartedCockpit.ListAsync();
         var remainingRecord = Assert.Single(remaining);
         Assert.Equal("restorable-pane", remainingRecord.SessionId);
     }
