@@ -71,68 +71,62 @@
                             <TextBlock Classes="subnavGroup" Text="WORKING"/>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="sessions"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='close a session exit terminate||delegate work orchestrator mcp||running out of room warn context window||worktree location||clone location'}">
+                        <ListBoxItem Tag="sessions">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Monitor" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Sessions" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='close a session exit terminate||delegate work orchestrator mcp||running out of room warn context window||worktree location||clone location'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="profiles"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='label provider purpose default working directory system prompt memory cap||claude config directory executable||local provider ollama lm studio base url model api key||session defaults mode model effort default kind view||login status||delegation good for kinds of work directories tool permission ceiling auto-runnable tasks||mcp servers pre-select||environment variables secret'}">
+                        <ListBoxItem Tag="profiles">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="AccountMultiple" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Profiles" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='label provider purpose default working directory system prompt memory cap||claude config directory executable||local provider ollama lm studio base url model api key||session defaults mode model effort default kind view||login status||delegation good for kinds of work directories tool permission ceiling auto-runnable tasks||mcp servers pre-select||environment variables secret'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="appearance"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='layout single session stack vertically focus rail grid||minimize to tray||timestamp transcript||usage pill metrics'}">
+                        <ListBoxItem Tag="appearance">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Palette" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Appearance" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='layout single session stack vertically focus rail grid||minimize to tray||timestamp transcript||usage pill metrics'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="terminal"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='default shell||custom shell||font family||font size'}">
+                        <ListBoxItem Tag="terminal">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Console" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Terminal" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='default shell||custom shell||font family||font size'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="notifications"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='local notification||discord webhook away||idle minutes||session finished idle ci failure'}">
+                        <ListBoxItem Tag="notifications">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Bell" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Notifications" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='local notification||discord webhook away||idle minutes||session finished idle ci failure'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="shortcuts"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='screenshot hotkey key preview||push-to-talk hotkey key dictation||assistant push-to-talk hotkey key||keyboard shortcuts list'}">
+                        <ListBoxItem Tag="shortcuts">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Keyboard" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Shortcuts" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='screenshot hotkey key preview||push-to-talk hotkey key dictation||assistant push-to-talk hotkey key||keyboard shortcuts list'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
@@ -141,24 +135,22 @@
                             <TextBlock Classes="subnavGroup" Text="VOICE &amp; ASSISTANT"/>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="voice"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='dictation microphone push-to-talk hotkey language||transcription model backend||calibration||while you are talking open mic'}">
+                        <ListBoxItem Tag="voice">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Microphone" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Voice" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='dictation microphone push-to-talk hotkey language||transcription model backend||calibration||while you are talking open mic'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="assistant"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='enable assistant||assistant profile edit||speak replies read aloud||always on top||reading level||speech voice speed language output device'}">
+                        <ListBoxItem Tag="assistant">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Creation" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Assistant" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='enable assistant||assistant profile edit||speak replies read aloud||always on top||reading level||speech voice speed language output device'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
@@ -167,70 +159,64 @@
                             <TextBlock Classes="subnavGroup" Text="SYSTEM"/>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="security"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='encrypt credentials password||screen lock||terminals read agent||consent bypass allow all everyday dangerous'}">
+                        <ListBoxItem Tag="security">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="ShieldLock" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Security" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='encrypt credentials password||screen lock||terminals read agent||consent bypass allow all everyday dangerous'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
                         <!-- AC-1002: replaces the standalone McpServersDialog window, the same deep-link move
                              AC-1001 made for Profiles. Next to Nodes — the other MCP-related SYSTEM topic. -->
-                        <ListBoxItem Tag="mcp-servers"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='server list scope enabled auth add server||name transport enabled available to||stdio command arguments||http url authentication api key oauth authority client id scopes||sign in sign out||custom headers'}">
+                        <ListBoxItem Tag="mcp-servers">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Server" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="MCP Servers" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='server list scope enabled auth add server||name transport enabled available to||stdio command arguments||http url authentication api key oauth authority client id scopes||sign in sign out||custom headers'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="nodes"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='accept connections second cockpit pairing||pair with another cockpit discover||sessions on your nodes'}">
+                        <ListBoxItem Tag="nodes">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Lan" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Nodes" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='accept connections second cockpit pairing||pair with another cockpit discover||sessions on your nodes'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="backup"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='back up cockpit credentials profiles plugins||assistant memory export import'}">
+                        <ListBoxItem Tag="backup">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Archive" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Backup" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='back up cockpit credentials profiles plugins||assistant memory export import'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="updates"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='check for updates startup nightly builds||current build version'}">
+                        <ListBoxItem Tag="updates">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Download" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Updates" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='check for updates startup nightly builds||current build version'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
 
-                        <ListBoxItem Tag="debug"
-                                     IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryVisibleConverter.Instance}, ConverterParameter='debug controls redraw||diagnostic snapshots log||render backend macos||system diagnostics report'}">
+                        <ListBoxItem Tag="debug">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Bug" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Grid.Column="1" Text="Debug" VerticalAlignment="Center"/>
-                                <Border Grid.Column="2" Classes="searchMatchBadge" IsVisible="{Binding OptionsSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock Text="{Binding OptionsSearchText, Converter={x:Static conv:OptionsCategoryMatchCountConverter.Instance}, ConverterParameter='debug controls redraw||diagnostic snapshots log||render backend macos||system diagnostics report'}"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
                                 </Border>
                             </Grid>
                         </ListBoxItem>
@@ -252,37 +238,32 @@
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. SESSION BEHAVIOUR"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='close a session exit terminate'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Close a session when you type &quot;exit&quot;"
                                       IsChecked="{Binding AutoCloseOnExit}"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="The message is still sent; the session closes once that turn finishes."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='combine queued messages one turn'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Combine messages queued during a turn into one"
                                       IsChecked="{Binding CombineQueuedMessages}"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="When you type several messages while the agent is working, send them together as one follow-up when the turn finishes, instead of one at a time. Off: each queued message gets its own turn."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='let agents wake each other urgent messages'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Let agents wake each other for urgent messages"
                                       IsChecked="{Binding WakeAgentsByDefault}"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="When an agent marks a message to a neighbour on the same desk as urgent, the cockpit starts a turn for that neighbour there and then — so a warning about a branch or a worktree arrives before the damage. A woken agent is handed a labelled block saying who caused it; it grants nothing. Never interrupts: only a session standing still is woken, never one mid-turn and never one with a question in front of you. Off: urgent messages simply wait like any other. A session can override this for itself."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='let sessions delegate work other profiles orchestrator mcp'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Let sessions delegate work to other profiles (orchestrator MCP)"
                                       IsChecked="{Binding OrchestratorMcpEnabled}"
                                       ToolTip.Tip="Offers the cockpit-orchestrator tools (delegate_task, add_profile, …) to sessions. Turn it off to keep delegation out of every session; a session still won't get them unless it was started with delegation enabled."/>
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. RUNNING OUT OF ROOM"/>
-                        <StackPanel x:Name="MemoryBudgetRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='shared memory budget all sessions together ram'}">
+                        <StackPanel x:Name="MemoryBudgetRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="Warn when all sessions together pass" Width="230" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <NumericUpDown Value="{Binding MemoryBudgetPercent}" Minimum="10" Maximum="100"
@@ -358,24 +339,20 @@
                             <TextBlock Classes="optionsSectionHeader" Text="3. WHERE WORK LANDS"/>
                         </StackPanel>
                         <!-- Worktree isolation location (AC-85): where new isolated-session worktrees are created. -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='worktree location'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Worktree location" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Where the cockpit creates the git worktrees that isolate sessions (AC-85). Blank uses the default under the app's config directory; existing worktrees keep their location."/>
                         </StackPanel>
-                        <TextBox Text="{Binding WorktreeRoot}" PlaceholderText="{Binding WorktreeRootPlaceholder}"
-                                 IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='worktree location'}"/>
+                        <TextBox Text="{Binding WorktreeRoot}" PlaceholderText="{Binding WorktreeRootPlaceholder}"/>
 
                         <!-- Clone location (AC-90): where repositories cloned from a URL are checked out. -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='clone location'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Clone location" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Where the cockpit clones repositories from a URL (AC-90), each under a host/org/repo folder. Blank uses the default under the app's config directory; existing clones keep their location."/>
                         </StackPanel>
-                        <TextBox Text="{Binding CloneRoot}" PlaceholderText="{Binding CloneRootPlaceholder}"
-                                 IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='clone location'}"/>
+                        <TextBox Text="{Binding CloneRoot}" PlaceholderText="{Binding CloneRootPlaceholder}"/>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -894,23 +871,20 @@
                              three checkboxes rather than one choice list (AC-1000 scope cut — the ComboBox
                              conversion isn't in the acceptance criteria and would need new derived state
                              interacting with the AC-999 staging buffer for no behaviour change). -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='single session layout no grid'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Show one session at a time (no grid)"
                                       IsChecked="{Binding GlobalSingleSessionLayout}"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Switch between sessions from the sidebar or with the session-switch shortcut."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='stack sessions vertically one column'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Stack sessions vertically (one column)"
                                       IsChecked="{Binding GlobalStackSessionsVertically}"
                                       IsEnabled="{Binding !GlobalSingleSessionLayout}"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="In the grid, place sessions one above the other instead of side by side. Off = the adaptive grid (two sessions sit side by side; three or four form a 2×2). Either way, drag the gutters between panes to resize and the header grip to reorder. No effect when showing one session at a time."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='focus rail one session large mini-rail'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Focus + rail (one session large, the rest as a mini-rail)"
                                       IsChecked="{Binding GlobalFocusRailLayout}">
                                 <CheckBox.IsEnabled>
@@ -923,8 +897,7 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Shows one session large (the focus) with the rest as a live miniature rail beside it — drag the divider between them to resize. No effect when showing one session at a time or stacking vertically."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='minimize to tray closing window'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Minimize to tray when closing the window"
                                       IsChecked="{Binding MinimizeToTrayOnClose}"/>
                             <materialIcons:MaterialIcon Classes="hint"
@@ -932,16 +905,14 @@
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. TRANSCRIPT"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='timestamp each message transcript'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Show a timestamp on each message"
                                       IsChecked="{Binding ShowTimestamps}"/>
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="3. USAGE PILL"/>
                         <TextBlock Classes="hint" Text="Which metrics show on the session header, each as its own mini-pill."/>
-                        <StackPanel Spacing="6"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='usage pill context window session tokens cost five hour weekly'}">
+                        <StackPanel Spacing="6">
                             <CheckBox Content="Context window (ctx %)" IsChecked="{Binding ShowUsagePillContext}"/>
                             <CheckBox Content="Session usage (tokens · cost)" IsChecked="{Binding ShowUsagePillSessionUsage}"/>
                             <CheckBox Content="Rate windows (e.g. 5-hour, weekly — whatever the provider reports)" IsChecked="{Binding ShowUsagePillRateWindows}"/>
@@ -963,8 +934,7 @@
                         <!-- Which shell a New terminal opens (#AC-25). "OS default" (blank) uses the machine's
                              preferred shell; the list is what was detected on this machine. Applies to terminal
                              panes only — an AI session runs its provider's CLI, not a shell. -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='default shell'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Default shell"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -990,8 +960,7 @@
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. FONT"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='font family'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Font family"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1009,8 +978,7 @@
                                      PlaceholderText="e.g. JetBrains Mono, monospace"
                                      ToolTip.Tip="Type a font family name; a comma-separated fallback list also works"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='font size'}">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="Font size"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1033,15 +1001,13 @@
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. LOCAL NOTIFICATIONS"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='local notification session needs you'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Show a local notification when a session needs you (while you're at the PC)"
                                       IsChecked="{Binding LocalNotificationsEnabled}"/>
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. DISCORD (WHEN AWAY)"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='discord notification webhook away'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Send a Discord notification when a session needs you while you're away"
                                       IsChecked="{Binding DiscordNotificationsEnabled}"/>
                         </StackPanel>
@@ -1050,8 +1016,7 @@
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
                             <TextBox Text="{Binding WebhookUrl}" PlaceholderText="https://discord.com/api/webhooks/..."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='away after idle minutes'}">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="Away after (idle minutes)"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1062,8 +1027,7 @@
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="3. SESSIONS FINISHING AND FALLING QUIET"/>
-                        <StackPanel Spacing="8"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='session finished idle ci failure notify'}">
+                        <StackPanel Spacing="8">
                             <CheckBox Content="Tell me when a session is done (only when I'm not looking at it)"
                                       IsChecked="{Binding NotifyOnSessionFinished}"/>
                             <CheckBox Content="Tell me when a session goes idle"
@@ -1074,8 +1038,7 @@
                                       IsChecked="{Binding NotifyOnCiFailure}"
                                       ToolTip.Tip="Asks gh every five minutes whether the pull request of each session's branch has a failing check. Nothing is started about it — you decide."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='session goes idle after minutes'}">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="Session goes idle after (minutes)"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1104,15 +1067,13 @@
                         <!-- Screenshots (AC-220): a capture goes to the session in view, the same way push-to-talk
                              does. The button in the composer needs nothing configured; only the desktop-wide key
                              is a choice, because it takes a key from every other application on the machine. -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='screenshot hotkey'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Screenshot hotkey (works without focus)"
                                       IsChecked="{Binding ScreenshotGlobalHotkeyEnabled}"/>
                             <materialIcons:MaterialIcon Classes="hint" IsVisible="{Binding IsLinuxPlatform}"
                                 ToolTip.Tip="On Linux, the physical key is assigned via System Settings → Shortcuts — the field below is only a hint."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='screenshot key hotkey'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Screenshot key"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1132,8 +1093,7 @@
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <!-- AC-566: a preview between confirming a selection and it landing in the session.
                              Off by default — Raymond's own argument, not everyone wants the extra window. -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='preview before sending screenshot'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Preview before sending"
                                       IsChecked="{Binding ScreenshotPreviewEnabled}"/>
                             <materialIcons:MaterialIcon Classes="hint"
@@ -1141,8 +1101,7 @@
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. DICTATION PUSH-TO-TALK"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='push-to-talk key hotkey dictation'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Push-to-talk key"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1151,8 +1110,7 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Held to dictate. In the cockpit's own windows this is the key; the global hotkey below may not get it — see there."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='global push-to-talk hotkey works without focus'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Global push-to-talk (works without focus)"
                                       IsChecked="{Binding VoiceGlobalPushToTalk}"/>
                             <materialIcons:MaterialIcon Classes="hint" IsVisible="{Binding IsLinuxPlatform}"
@@ -1194,8 +1152,7 @@
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="3. ASSISTANT PUSH-TO-TALK"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='push to talk hotkey key assistant hold to speak'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Push to talk"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1211,8 +1168,7 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Click a shortcut and press the keys you want (Esc cancels, ✕ clears; clearing it unbinds the shortcut). Shortcuts don't fire while you're typing in a text box or the terminal, so they never hijack a keystroke — except the session switch, which stays live over the terminal. Plugin-contributed shortcuts (marked 'plugin') can be changed here too."/>
                         </StackPanel>
-                        <ItemsControl ItemsSource="{Binding ShortcutRows}"
-                                      IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='keyboard shortcuts list'}">
+                        <ItemsControl ItemsSource="{Binding ShortcutRows}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ShortcutRowViewModel">
                                     <Grid ColumnDefinitions="*,200" Margin="0,3">
@@ -1241,15 +1197,13 @@
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. DICTATION"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='enable push-to-talk dictation'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Enable push-to-talk dictation"
                                       IsChecked="{Binding VoiceEnabled}"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Off by default: the Whisper model only downloads once you turn this on."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='microphone input device'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Microphone"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1259,8 +1213,7 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Which microphone the dictation captures from. 'System default' follows your OS setting."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='dictation language'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Dictation language"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1270,8 +1223,7 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Set a fixed language for more reliable transcription than auto-detect."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='send automatically after dictation auto submit'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Send automatically after dictation (press Enter)"
                                       IsChecked="{Binding VoiceAutoSubmit}"/>
                             <materialIcons:MaterialIcon Classes="hint"
@@ -1295,8 +1247,7 @@
                         </Border>
                         <!-- Curated model dropdown (AC-68): presets with an accuracy-vs-load hint, plus a
                              "Custom…" item that reveals the old free-text box for any other ggml name. -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='transcription model whisper'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Transcription model"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1327,8 +1278,7 @@
                         </StackPanel>
                         <!-- Host-aware backend (AC-68): only Auto/CPU plus a GPU entry when a GPU runtime
                              actually loads here — never CUDA on a non-NVIDIA machine. -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='transcription backend cpu gpu'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Transcription backend"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -1460,8 +1410,7 @@
                             </StackPanel.IsVisible>
 
                             <TextBlock Classes="optionsSectionHeader" Text="4. WHILE YOU'RE TALKING"/>
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                        IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='stop assistant when i start talking open mic'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <CheckBox Content="Stop the assistant when I start talking"
                                           IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"/>
                                 <materialIcons:MaterialIcon Classes="hint"
@@ -1484,8 +1433,7 @@
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="Talk and watch the bar — it turns orange once you cross the marker (the threshold above). The assistant only stops speaking when it hears real speech above this level, not on a stray noise. Set the threshold so normal speech crosses it but the room does not."/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                        IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='open mic end utterance silence'}">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock Text="Open-mic: end utterance after (silence ms)"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
@@ -1517,8 +1465,7 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Talk to the assistant and let it answer. Off until you turn it on — nothing listens, and no model is loaded."/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='enable the assistant'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Enable the assistant"
                                       IsChecked="{Binding AssistantOptions.IsEnabled}"/>
                         </StackPanel>
@@ -1537,8 +1484,7 @@
                                  confused: the slot has always held a whole record of its own, copied once.
                                  Naming it as the assistant's own removes the belief instead of annotating
                                  it (which is what a staleness note and a refresh button were doing here). -->
-                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                        IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='assistant profile edit'}">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding AssistantOptions.ProfileLabel}"
                                            IsVisible="{Binding AssistantOptions.ProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                            VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
@@ -1557,8 +1503,7 @@
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="The assistant speaks its answers. Turn off to keep it text only — its own switch, independent of the assistant being on."/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                        IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='speak replies read aloud'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <CheckBox Content="Speak replies"
                                           IsChecked="{Binding AssistantOptions.SpeakReplies}"/>
                             </StackPanel>
@@ -1568,8 +1513,7 @@
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="Keeps the chat pop-out above every other window. Turn off to let it sit behind other windows like any other."/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                        IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='always on top chat window'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <CheckBox Content="Always on top"
                                           IsChecked="{Binding AssistantOptions.AlwaysOnTop}"/>
                             </StackPanel>
@@ -1582,8 +1526,7 @@
                             <ComboBox ItemsSource="{Binding AssistantOptions.ReadingLevels}"
                                       SelectedItem="{Binding AssistantOptions.SelectedReadingLevel}"
                                       DisplayMemberBinding="{Binding Label}" MinWidth="150"
-                                      HorizontalAlignment="Left"
-                                      IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='reading level chat window developer focus simple'}"/>
+                                      HorizontalAlignment="Left"/>
 
                             <!-- Moved here from the old Voice → Read-aloud page (AC-546 follow-up, then AC-1000
                                  relocated Read-aloud's remainder here too): these settings exist because the
@@ -1595,8 +1538,7 @@
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="The voice the assistant speaks in, and the language it defaults to. The voice model downloads on first use."/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                        IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='voice speech tts'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Voice"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
@@ -1608,8 +1550,7 @@
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="One multilingual voice speaks both Dutch and English — mixed replies are spoken by the same voice, with each part pronounced in its own language."/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                        IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='speed speech rate'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Speed"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
@@ -1618,8 +1559,7 @@
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="How fast the assistant speaks. 1.00 is the voice's natural pace; higher is faster."/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                        IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='language speech read aloud'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Language"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
@@ -1629,8 +1569,7 @@
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="The assistant speaks its replies in this language."/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                        IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='output device speaker headset'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Output device"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
@@ -1676,8 +1615,7 @@
                             </StackPanel>
                         </Border>
 
-                        <StackPanel Orientation="Horizontal" Spacing="8"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='encrypt credentials password'}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Content="Encrypt with a password…" Classes="Accent"
                                     IsVisible="{Binding !Security.IsEncrypted}" Click="OnEnableEncryption"/>
                             <Button Content="Change password…"
@@ -1704,29 +1642,25 @@
                                   ToolTip.Tip="When your screen locks, the cockpit locks too: it clears the password from memory and asks for it again, exactly as it does at startup. On by default; the sessions you left running keep running behind the lock screen."/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. TERMINAL ACCESS"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='let agent read terminal'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Let an agent read a terminal" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="When on, an agent can ask to read a terminal pane you have open — you approve each pane, watch every line live, and it reads only from the moment you approve (never the earlier scrollback). It cannot type into a terminal yet. Off by default: while off the feature is not offered to any agent at all."/>
                         </StackPanel>
                         <CheckBox Content="Allow agents to read my open terminals (with per-pane approval)"
-                                  IsChecked="{Binding Security.TerminalAccessEnabled}"
-                                  IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='let agent read terminal'}"/>
+                                  IsChecked="{Binding Security.TerminalAccessEnabled}"/>
 
                         <!-- AC-1066: a session on a provider with no built-in shell (every non-Claude, non-ACP
                              provider) otherwise cannot run rg/git/dotnet/python3 at all. Off by default, like
                              terminal access above; the permission ceiling (not a command list) decides what runs. -->
                         <TextBlock Classes="optionsSectionHeader" Text="3. SHELL ACCESS"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='let agent run shell commands'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Let an agent run shell commands" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="When on, any session — including a delegated one on a provider with no built-in shell (Bash is a Claude Code CLI feature, not something the cockpit supplies) — can run a command such as rg, git, dotnet or python3 and read its exit code, stdout and stderr. There is no command allow-list: what runs is decided by the session's permission mode, exactly as for any other write/destructive tool. Off by default: while off the feature is not offered to any agent at all."/>
                         </StackPanel>
                         <CheckBox Content="Allow agents to run shell commands"
-                                  IsChecked="{Binding Security.ShellAccessEnabled}"
-                                  IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='let agent run shell commands'}"/>
+                                  IsChecked="{Binding Security.ShellAccessEnabled}"/>
 
                         <!-- AC-575: the assistant may skip the Cockpit consent card, per source. Two
                              checkboxes per row rather than one three-state picker, and the rows come from
@@ -1741,8 +1675,7 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Normally every host-side action the assistant takes raises Cockpit's own consent card and waits for you. Allow all skips it for everything the assistant does; turn it off to decide per source instead, and you are giving that approval now, once, instead of each time. This is Cockpit's card only: Claude's own Allow/Deny inside the chat is a separate gate and keeps asking regardless of this setting. Only the assistant is ever exempt; an ordinary session is asked about exactly as before, and every skipped card is still written to the consent trail."/>
                         </StackPanel>
-                        <StackPanel Spacing="6"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='consent bypass allow all everyday dangerous'}">
+                        <StackPanel Spacing="6">
                             <CheckBox Content="Allow all — every source, everyday and dangerous"
                                       IsChecked="{Binding AssistantOptions.ConsentBypassAll}"
                                       ToolTip.Tip="Skip Cockpit's consent card for everything the assistant asks, including dangerous actions: shell commands, handing over a session with your rights, arbitrary network access. Turn it off to fall back to the per-source list, which keeps whatever you ticked there."/>
@@ -2012,15 +1945,13 @@
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. ACCEPT CONNECTIONS FROM A SECOND COCKPIT"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='accept mcp connections second cockpit node'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Accept connections from a second Cockpit" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Off by default: every MCP endpoint this cockpit hosts stays reachable only from this machine. Turning it on adds a second, TLS-protected listener on your network for each one, guarded by a shared key (generated for you below) instead of this run's own key — a second Cockpit types the address and key into its 'Add MCP server' dialog to reach this one as a node. Takes effect the next time you start Cockpit, not immediately."/>
                         </StackPanel>
                         <CheckBox Content="Accept MCP connections from another Cockpit on this network"
-                                  IsChecked="{Binding Security.NodeEndpointEnabled}"
-                                  IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='accept mcp connections second cockpit node'}"/>
+                                  IsChecked="{Binding Security.NodeEndpointEnabled}"/>
                         <StackPanel Spacing="4" Margin="24,4,0,0" IsVisible="{Binding Security.NodeEndpointEnabled}">
                             <TextBlock Text="Pairing address — type this into the other Cockpit" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                             <TextBox Text="{Binding Security.NodePairingAddress}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
@@ -2093,8 +2024,7 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Type the pairing address the other Cockpit shows on its own Security tab. Both screens then show the same six digits: check they match before continuing, because a different number means something other than that machine is answering. The pairing goes live only after both of you have confirmed, and this cockpit remembers that machine's certificate so nothing else can take its place later."/>
                         </StackPanel>
-                        <StackPanel Spacing="6" Margin="24,4,0,0"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='pair discover nodes network'}">
+                        <StackPanel Spacing="6" Margin="24,4,0,0">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button Content="Discover nodes on this network" Command="{Binding Security.DiscoverNodesCommand}"
                                         IsEnabled="{Binding !Security.IsDiscoveringNodes}"/>
@@ -2254,8 +2184,7 @@
                         <CheckBox Content="Include the profiles' own config directories" IsChecked="{Binding BackupIncludesProfiles}"
                                   ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside the cockpit's directory. Needed to move a machine; not needed to undo a mistake."/>
 
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='plugins to include backup'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
                             <TextBlock Text="Plugins to include" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="A plugin's binaries and everything it stored travel together, or not at all. All of them unless you say otherwise."/>
@@ -2327,8 +2256,7 @@
                             <TextBlock Text="{Binding CurrentBuild}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11" VerticalAlignment="Center"/>
                         </StackPanel>
 
-                        <StackPanel Spacing="8"
-                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='check for updates startup nightly builds'}">
+                        <StackPanel Spacing="8">
                             <CheckBox Content="Look for a newer build when the cockpit starts" IsChecked="{Binding CheckForUpdatesOnStartup}"/>
                             <CheckBox Content="Also tell me about nightly builds" IsChecked="{Binding IncludeNightlyBuilds}"
                                       ToolTip.Tip="The rolling build of main, built last night — useful for trying something that landed today, but things there are expected to break; not what you run a working day on."/>
