@@ -219,41 +219,57 @@ public partial class McpServersViewModel : ViewModelBase
             return true;
         }
 
-        return await _SaveAllForSignInAsync() is not null;
+        return (await _SaveAllAsync()).Saved;
+    }
+
+    public bool Validate()
+    {
+        if (_store is null)
+        {
+            return true;
+        }
+
+        if (Servers.Any(server => !server.IsValid))
+        {
+            StatusMessage = "Every server needs a name, plus a command (stdio) or a URL (http).";
+            return false;
+        }
+
+        if (Servers.GroupBy(server => server.Name.Trim(), StringComparer.OrdinalIgnoreCase).FirstOrDefault(group => group.Count() > 1) is { } duplicate)
+        {
+            StatusMessage = $"Two servers are called \"{duplicate.Key}\". Names identify a server to the agents, so each one needs its own.";
+            return false;
+        }
+
+        var reserved = _internalProviders.SelectMany(_NamesOf).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (Servers.FirstOrDefault(server => reserved.Contains(server.Name.Trim())) is { } clash)
+        {
+            StatusMessage = $"\"{clash.Name.Trim()}\" is a name the cockpit already uses for one of its own servers. Pick another, or it will quietly lose to that one.";
+            return false;
+        }
+
+        return true;
     }
 
     // Validates and persists the whole edited list without closing the dialog (AC-499) — the one save route, shared by
     // the Save button and a row's own sign-in (`EditableMcpServerViewModel.SignInAsync` saves through this before it
     // authorizes, so a token is never filed under a name the operator has not actually saved).
     private async Task<IReadOnlyList<McpServerConfig>?> _SaveAllForSignInAsync()
+        => (await _SaveAllAsync()).Reloaded;
+
+    private async Task<(bool Saved, IReadOnlyList<McpServerConfig>? Reloaded)> _SaveAllAsync()
     {
         if (_store is null)
         {
-            return null;
+            return (false, null);
         }
 
-        if (Servers.Any(server => !server.IsValid))
-        {
-            StatusMessage = "Every server needs a name, plus a command (stdio) or a URL (http).";
-            return null;
-        }
-
-        // Names have to be unique because everything downstream treats one as an identity: the credential store files
-        // a token under it, and each agent's config is keyed by it so a repeat silently drops a server the operator
-        // ticked. Refusing the save is the only place that can still be said plainly.
-        if (Servers.GroupBy(server => server.Name.Trim(), StringComparer.OrdinalIgnoreCase).FirstOrDefault(group => group.Count() > 1) is { } duplicate)
-        {
-            StatusMessage = $"Two servers are called \"{duplicate.Key}\". Names identify a server to the agents, so each one needs its own.";
-            return null;
-        }
-
+        // A duplicate name drops a selected server downstream, where names are identities.
         // The cockpit's own loopback servers and a plugin's endpoints are not in this list — they are filtered out of
         // it — but they share the same namespace, and the catalog's merge lets them win.
-        var reserved = _internalProviders.SelectMany(_NamesOf).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (Servers.FirstOrDefault(server => reserved.Contains(server.Name.Trim())) is { } clash)
+        if (!Validate())
         {
-            StatusMessage = $"\"{clash.Name.Trim()}\" is a name the cockpit already uses for one of its own servers. Pick another, or it will quietly lose to that one.";
-            return null;
+            return (false, null);
         }
 
         try
@@ -265,7 +281,7 @@ public partial class McpServersViewModel : ViewModelBase
             // A sign-in relies on this to tell it a save did not happen (AC-499) — without a caught failure here it
             // would go on to authorize a token under a name the store never received.
             StatusMessage = "Couldn't save. Try again.";
-            return null;
+            return (false, null);
         }
 
         try
@@ -273,14 +289,14 @@ public partial class McpServersViewModel : ViewModelBase
             var reloaded = await _store.LoadAsync();
             await _ResyncRowsAfterDialogSaveAsync(reloaded);
             StatusMessage = string.Empty;
-            return reloaded;
+            return (true, reloaded);
         }
         catch (Exception)
         {
             // The write above already happened — this only failed to confirm it back, which used to escape this method
             // uncaught (AC-499 review fix, finding 2): a sign-in's own outer catch turned that into "Sign-in failed.
             StatusMessage = "Saved, but couldn't read the servers back to confirm. Try again to check.";
-            return null;
+            return (true, null);
         }
     }
 

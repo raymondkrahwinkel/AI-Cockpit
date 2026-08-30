@@ -5875,6 +5875,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public void BeginOptionsEdit()
     {
+        if (_optionsStaged)
+        {
+            return;
+        }
+
         _optionsStaged = true;
         Security.SuspendPersistence = true;
         AssistantOptions.SuspendPersistence = true;
@@ -5975,7 +5980,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Validated first, before anything else writes: a profile a plugin's TryGetConfigJson rejects must block
         // the whole Apply (AC-1001 criterion 5), not just leave that one category unsaved while everything else
         // goes through.
-        if (Profiles is not null && !await Profiles.PersistAsync())
+        if (Profiles is not null && !Profiles.Validate())
         {
             OptionsApplyBlocked = true;
             return;
@@ -5984,6 +5989,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Same validation the standalone McpServersDialog enforced (a name plus a command or URL, unique names, no
         // clash with a reserved server name) — now blocking Apply through the shared PluginSettingsError footer
         // instead of its own Save button (AC-1002, following AC-1005's exact pattern for a plugin settings row).
+        if (McpServers is not null && !McpServers.Validate())
+        {
+            PluginSettingsError = $"MCP Servers: {McpServers.StatusMessage}";
+            OptionsApplyBlocked = true;
+            return;
+        }
+
+        if (Profiles is not null && !await Profiles.PersistAsync())
+        {
+            OptionsApplyBlocked = true;
+            return;
+        }
+
         if (McpServers is not null && !await McpServers.PersistAsync())
         {
             PluginSettingsError = $"MCP Servers: {McpServers.StatusMessage}";

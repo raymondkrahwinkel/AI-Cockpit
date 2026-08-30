@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Secrets;
@@ -13,6 +14,7 @@ using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Secrets;
@@ -21,8 +23,10 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
+using System.Reflection;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -372,6 +376,109 @@ public class OptionsStagedChangesTests
         Assert.True(vm.OptionsApplyBlocked);
         await profileStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
         await stores.Notifications.DidNotReceive().SaveAsync(Arg.Any<NotificationSettings>());
+    }
+
+    [Fact]
+    public async Task McpRejection_LeavesTheProfileFileByteIdentical_AndCancelRestoresTheProfile()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        var directory = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var profileFile = Path.Combine(directory, "cockpit.json");
+
+        try
+        {
+            var profileStore = new SessionProfileStore(profileFile);
+            await profileStore.SaveAsync([new SessionProfile("work", new OllamaConfig("http://localhost:11434", "llama3.1"), Purpose: "original")]);
+            var profiles = new ManageProfilesDialogViewModel(profileStore, Substitute.For<IProfileLoginChecker>());
+            await profiles.LoadAsync();
+            vm.Profiles = profiles;
+
+            var mcpServers = new McpServersViewModel(Substitute.For<IMcpServerStore>(), []);
+            mcpServers.AddServerCommand.Execute(null);
+            mcpServers.SelectedServer!.Name = "incomplete";
+            mcpServers.SelectedServer.Command = string.Empty;
+            mcpServers.SelectedServer.Url = string.Empty;
+            vm.McpServers = mcpServers;
+
+            vm.BeginOptionsEdit();
+            profiles.SelectedProfile!.Purpose = "edited";
+            var before = await File.ReadAllBytesAsync(profileFile);
+
+            await vm.ApplyOptionsCommand.ExecuteAsync(null);
+
+            Assert.True(vm.OptionsApplyBlocked);
+            Assert.Equal(before, await File.ReadAllBytesAsync(profileFile));
+
+            await vm.CancelOptionsCommand.ExecuteAsync(null);
+            Assert.Equal("original", profiles.SelectedProfile!.Purpose);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task McpConfirmationReadFailure_DoesNotBlockAnApplyThatAlreadySaved()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        var mcpStore = Substitute.For<IMcpServerStore>();
+        mcpStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => Task.FromException<IReadOnlyList<McpServerConfig>>(new IOException()));
+        var mcpServers = new McpServersViewModel(mcpStore, []);
+        mcpServers.AddServerCommand.Execute(null);
+        mcpServers.SelectedServer!.Name = "filesystem";
+        mcpServers.SelectedServer.Command = "npx";
+        vm.McpServers = mcpServers;
+
+        vm.BeginOptionsEdit();
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
+
+        Assert.False(vm.OptionsApplyBlocked);
+        await mcpStore.Received(1).SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReopeningOptions_PreservesPendingChanges()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        vm.BeginOptionsEdit();
+        vm.MinimizeToTrayOnClose = !vm.MinimizeToTrayOnClose;
+
+        vm.BeginOptionsEdit();
+
+        Assert.True(vm.HasPendingOptionChanges);
+    }
+
+    [Fact]
+    public async Task ClosingOptionsAfterTwoOpens_RemovesTheStagedSubscription()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        vm.BeginOptionsEdit();
+        Assert.Contains(_PropertyChangedHandlers(vm), handler => handler.Method.Name == "_OnStagedPropertyChanged");
+
+        vm.BeginOptionsEdit();
+
+        await vm.CancelOptionsCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain(_PropertyChangedHandlers(vm), handler => handler.Method.Name == "_OnStagedPropertyChanged");
+    }
+
+    private static IEnumerable<Delegate> _PropertyChangedHandlers(CockpitViewModel viewModel)
+    {
+        for (Type? type = viewModel.GetType(); type is not null; type = type.BaseType)
+        {
+            if (type.GetField("PropertyChanged", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(viewModel) is MulticastDelegate handlers)
+            {
+                return handlers.GetInvocationList();
+            }
+        }
+
+        return [];
     }
 
     // Every store the dialog can write to, stubbed to return defaults and watched for writes.

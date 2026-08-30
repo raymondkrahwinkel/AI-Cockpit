@@ -235,10 +235,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         }
     }
 
-    // Validates and writes the whole edited list — shared by the standalone dialog's Save button and by the
-    // Options dialog's Apply and Close (AC-1001), which calls this instead of Save so a validation failure here
-    // blocks Apply without closing anything. False means nothing was written; StatusMessage says why.
-    public async Task<bool> PersistAsync()
+    // Checked before the Options transaction writes either list.
+    public bool Validate()
     {
         if (_profileStore is null)
         {
@@ -253,6 +251,16 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
             var named = incomplete.Select(label => string.IsNullOrWhiteSpace(label) ? "(unnamed)" : label);
             StatusMessage = $"Fill in what these profiles' providers need: {string.Join(", ", named)}.";
             return false;
+        }
+
+        return true;
+    }
+
+    public async Task<bool> PersistAsync()
+    {
+        if (_profileStore is null || !Validate())
+        {
+            return _profileStore is null;
         }
 
         var profiles = Profiles.Select(profile => profile.ToProfile()).ToList();
