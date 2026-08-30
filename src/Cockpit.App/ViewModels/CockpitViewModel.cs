@@ -6987,7 +6987,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // App-driven measurement: a real Cockpit with real session pipelines, controlled through the DEBUG trigger file.
-    internal async Task RunAppReproAsync(int sessionCount, int seconds, bool growingTail)
+    internal async Task RunAppReproAsync(int sessionCount, int seconds, string shape, bool retainResults)
     {
         var root = Path.GetTempPath();
         var readyPath = Path.Combine(root, "app-repro.ready.json");
@@ -6999,16 +6999,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        var requestedSessionCount = sessionCount;
+        var normalizedShape = string.Equals(shape, "sdk-read-fallback", StringComparison.OrdinalIgnoreCase)
+            ? "sdk-read-fallback"
+            : string.Equals(shape, "growing-tail", StringComparison.OrdinalIgnoreCase) ? "growing-tail" : "new-rows";
+        var sdkReadFallback = normalizedShape == "sdk-read-fallback";
+        if (sdkReadFallback)
+        {
+            sessionCount = 4;
+        }
+
         sessionCount = Math.Clamp(sessionCount, 1, 12);
         seconds = Math.Clamp(seconds, 1, 600);
         var registry = (Cockpit.Infrastructure.Sessions.IPluginProviderRegistry)
             Program.Services.GetService(typeof(Cockpit.Infrastructure.Sessions.IPluginProviderRegistry))!;
         Cockpit.App.Diagnostics.LeakSimProvider.EnsureRegistered(registry);
         var drivers = new List<Cockpit.App.Diagnostics.LeakSimDriver>();
+        var sessionVms = new List<SessionViewModel>();
         for (var i = 0; i < sessionCount; i++)
         {
             var vm = _sessionFactory();
             Sessions.Add(vm);
+            sessionVms.Add(vm);
             var profile = new SessionProfile($"App repro {i + 1}", new PluginProviderConfig(Cockpit.App.Diagnostics.LeakSimProvider.ProviderId, "{}"));
             await vm.StartConfiguredAsync(profile, new PermissionModeOption("Default", "default"), new ModelOption("Sonnet", "sonnet"), new EffortOption("Medium", "medium", 8000), null, root, null, null, ReadingLevel.Focus);
             var driver = Cockpit.App.Diagnostics.LeakSimProvider.Current;
@@ -7025,31 +7037,73 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         File.WriteAllText(readyPath, System.Text.Json.JsonSerializer.Serialize(new
         {
             pid = Environment.ProcessId,
-            requested = sessionCount,
+            requested = requestedSessionCount,
             started = drivers.Count,
-            shape = growingTail ? "growing-tail" : "new-rows",
+            shape = normalizedShape,
             stateRoot = CockpitBuild.StateRoot
         }));
 
         var block = 0;
-        var until = DateTime.UtcNow.AddSeconds(seconds);
-        while (DateTime.UtcNow < until)
+        var reachableBytes = new List<long>();
+        var retainedControl = retainResults ? new List<string>() : null;
+        if (sdkReadFallback)
         {
-            block++;
-            foreach (var driver in drivers)
+            for (var call = 1; call <= 20; call++)
             {
-                driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginAssistantTextDelta
+                foreach (var (driver, session) in drivers.Select((driver, index) => (driver, index + 1)))
                 {
-                    SessionId = "app-repro",
-                    BlockIndex = growingTail ? 0 : block,
-                    Text = growingTail
-                        ? $"{new string('x', 20 + (block % 17) * 60)} "
-                        : $"Repro line {block} {new string('x', 20 + (block % 17) * 60)}\n"
-                });
-            }
+                    driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginToolUseRequested
+                    {
+                        SessionId = "app-repro",
+                        ToolUseId = $"read-{session}-{call}-request",
+                        ToolName = "Read",
+                        InputJson = "{\"file_path\":\"ac1088-5mb.bin\"}"
+                    });
+                    // The result deliberately has no matching request: this is the AC-1088 fallback path.
+                    driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginToolResult
+                    {
+                        SessionId = "app-repro",
+                        ToolUseId = $"read-{session}-{call}-orphan",
+                        Content = new string('r', 5 * 1024 * 1024),
+                        IsError = false
+                    });
+                }
 
-            await Task.Delay(50);
+                if (retainedControl is not null)
+                {
+                    retainedControl.Add(new string('c', 5 * 1024 * 1024));
+                }
+
+                await Task.Delay(50);
+                reachableBytes.Add(GC.GetTotalMemory(forceFullCollection: true));
+            }
         }
+        else
+        {
+            var growingTail = normalizedShape == "growing-tail";
+            var until = DateTime.UtcNow.AddSeconds(seconds);
+            while (DateTime.UtcNow < until)
+            {
+                block++;
+                foreach (var driver in drivers)
+                {
+                    driver.Emit(new Cockpit.Plugins.Abstractions.Sessions.PluginAssistantTextDelta
+                    {
+                        SessionId = "app-repro",
+                        BlockIndex = growingTail ? 0 : block,
+                        Text = growingTail
+                            ? $"{new string('x', 20 + (block % 17) * 60)} "
+                            : $"Repro line {block} {new string('x', 20 + (block % 17) * 60)}\n"
+                    });
+                }
+
+                await Task.Delay(50);
+            }
+        }
+
+        var orphanedResultRows = sdkReadFallback
+            ? sessionVms.Sum(vm => vm.Transcript.Count(entry => entry.Kind == TranscriptEntryKind.ToolResult))
+            : 0;
 
         foreach (var driver in drivers)
         {
@@ -7060,8 +7114,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         File.WriteAllText(donePath, System.Text.Json.JsonSerializer.Serialize(new
         {
             pid = Environment.ProcessId,
-            blocks = block,
-            shape = growingTail ? "growing-tail" : "new-rows"
+            blocks = sdkReadFallback ? 20 : block,
+            shape = normalizedShape,
+            callsPerSession = sdkReadFallback ? 20 : 0,
+            resultBytes = sdkReadFallback ? 5 * 1024 * 1024 : 0,
+            orphanedResultRows,
+            reachableBytes,
+            positiveControl = retainResults
         }));
     }
 
