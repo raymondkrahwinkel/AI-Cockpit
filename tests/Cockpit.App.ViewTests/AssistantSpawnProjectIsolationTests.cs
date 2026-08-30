@@ -164,11 +164,15 @@ public class AssistantSpawnProjectIsolationTests
         worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns([
             new WorktreeRecord(owner, Repository, Repository, "someone-elses-branch", "abc123", DateTimeOffset.UnixEpoch),
         ]);
+        worktrees.ReattachAsync(Repository, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new WorktreeAdmissionException(Repository, owner));
 
         var result = await gateway.SpawnAsync(_Request(workspaceId) with { WorkingDirectory = Repository });
 
         Assert.False(result.Ok);
-        Assert.Contains("another live Cockpit session", result.Error);
+        Assert.Contains($"Cannot start in '{Repository}'", result.Error);
+        Assert.Contains($"live Cockpit session '{owner}'", result.Error);
+        Assert.Contains("already owns that worktree", result.Error);
         await worktrees.Received(1).ReattachAsync(Repository, Arg.Any<string>(), Arg.Any<CancellationToken>());
         await worktrees.DidNotReceiveWithAnyArgs().CreateForSessionAsync(default!, default, default!);
     }
@@ -190,11 +194,15 @@ public class AssistantSpawnProjectIsolationTests
         worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns([
             new WorktreeRecord(owner, Repository, Repository, "someone-elses-branch", "abc123", DateTimeOffset.UnixEpoch),
         ]);
+        worktrees.ReattachAsync(Repository, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new WorktreeAdmissionException(Repository, owner));
 
         var result = await gateway.SpawnAsync(_Request(workspaceId) with { WorkingDirectory = Repository });
 
         Assert.False(result.Ok);
-        Assert.Contains("another live Cockpit session", result.Error);
+        Assert.Contains($"Cannot start in '{Repository}'", result.Error);
+        Assert.Contains($"live Cockpit session '{owner}'", result.Error);
+        Assert.Contains("already owns that worktree", result.Error);
         await worktrees.Received(1).ReattachAsync(Repository, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 

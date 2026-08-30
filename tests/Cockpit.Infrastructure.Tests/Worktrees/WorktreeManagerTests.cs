@@ -848,7 +848,7 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task ReattachAsync_LiveLease_RefusesASecondWriter()
+    public async Task ReattachAsync_LiveLease_RefusesASecondWriterWithItsPathAndOwner()
     {
         var record = await _manager.CreateAsync(_sessionId, "cockpit/live", _repo);
         using var secondCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
@@ -860,6 +860,7 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.Equal(_sessionId, exception.OwnerSessionId);
         Assert.Contains(record.Path, exception.Message);
         Assert.Contains(_sessionId, exception.Message);
+        Assert.DoesNotContain("unknown", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
