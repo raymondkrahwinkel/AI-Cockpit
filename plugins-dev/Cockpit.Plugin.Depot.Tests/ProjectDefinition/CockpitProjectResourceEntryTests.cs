@@ -33,7 +33,8 @@ public class CockpitProjectResourceEntryTests
     {
         // AC-246 (Raymond, 2026-08-02): a machine-scope row is no longer an all-or-nothing drop — role and label
         // travel as a placeholder, the reference itself does not.
-        var entry = CockpitProjectResourceEntry.Create("Reference", "/home/raymond/Notes/private.md", "Private notes");
+        var reference = OperatingSystem.IsWindows() ? @"C:\Users\raymond\Notes\private.md" : "/home/raymond/Notes/private.md";
+        var entry = CockpitProjectResourceEntry.Create("Reference", reference, "Private notes");
 
         Assert.NotNull(entry);
         Assert.True(entry.Placeholder);
@@ -46,7 +47,8 @@ public class CockpitProjectResourceEntryTests
     [Fact]
     public void Create_AbsoluteReferenceWithNoLabel_ReturnsAPlaceholderWithNoLabelEither()
     {
-        var entry = CockpitProjectResourceEntry.Create("Reference", "/home/raymond/Notes/private.md");
+        var reference = OperatingSystem.IsWindows() ? @"C:\Users\raymond\Notes\private.md" : "/home/raymond/Notes/private.md";
+        var entry = CockpitProjectResourceEntry.Create("Reference", reference);
 
         Assert.NotNull(entry);
         Assert.True(entry.Placeholder);

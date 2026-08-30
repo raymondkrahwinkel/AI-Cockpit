@@ -54,10 +54,11 @@ public class CockpitProjectDefinitionForwardCompatTests
     [Fact]
     public void SerializeThenDeserialize_APlaceholderRow_RoundTripsWithoutLoss()
     {
+        var reference = OperatingSystem.IsWindows() ? @"C:\Users\erik\notes.md" : "/home/erik/notes.md";
         var written = CockpitProjectDefinitionJson.Serialize(new CockpitProjectDefinition
         {
             Name = "probe",
-            Resources = [CockpitProjectResourceEntry.Create("Reference", "/home/erik/notes.md", "Erik's notes")!],
+            Resources = [CockpitProjectResourceEntry.Create("Reference", reference, "Erik's notes")!],
         });
 
         Assert.True(CockpitProjectDefinitionJson.TryDeserialize(written, out var readBack, out var error));

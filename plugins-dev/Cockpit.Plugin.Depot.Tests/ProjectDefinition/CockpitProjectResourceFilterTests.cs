@@ -7,12 +7,13 @@ public class CockpitProjectResourceFilterTests
     [Fact]
     public void Apply_MixOfAllFourShapes_AllFourLandInPortableNowNoneAreDropped()
     {
+        var absoluteReference = OperatingSystem.IsWindows() ? @"C:\Users\raymond\private-notes.md" : "/home/raymond/private-notes.md";
         var result = CockpitProjectResourceFilter.Apply(
         [
             ("Memory", "depot:cockpit", null),
             ("Instructions", "docs/CONVENTIONS.md", "Conventies"),
             ("Reference", "~/Notes/private.md", null),
-            ("Reference", "/home/raymond/private-notes.md", null),
+            ("Reference", absoluteReference, null),
         ]);
 
         // AC-605: AnchorRelative is portable now — resolved against whoever opens the project, so it joins
@@ -28,7 +29,8 @@ public class CockpitProjectResourceFilterTests
     [Fact]
     public void Apply_APlainAbsoluteRow_CarriesTheOriginalRoleAndLabelAsAPlaceholderInPortable()
     {
-        var result = CockpitProjectResourceFilter.Apply([("Reference", "/home/raymond/private-notes.md", "My private notes")]);
+        var absoluteReference = OperatingSystem.IsWindows() ? @"C:\Users\raymond\private-notes.md" : "/home/raymond/private-notes.md";
+        var result = CockpitProjectResourceFilter.Apply([("Reference", absoluteReference, "My private notes")]);
 
         var placeholder = Assert.Single(result.Portable);
         Assert.True(placeholder.Placeholder);
@@ -72,7 +74,8 @@ public class CockpitProjectResourceFilterTests
     {
         // AC-246 (Raymond, 2026-08-02): reverses the AC-244-era "absolute means dropped" rule this test used to
         // pin — role and label now travel as a placeholder instead.
-        var result = CockpitProjectResourceFilter.Apply([("Reference", "/home/raymond/private-notes.md", null)]);
+        var absoluteReference = OperatingSystem.IsWindows() ? @"C:\Users\raymond\private-notes.md" : "/home/raymond/private-notes.md";
+        var result = CockpitProjectResourceFilter.Apply([("Reference", absoluteReference, null)]);
 
         var placeholder = Assert.Single(result.Portable);
         Assert.Equal("absolute", placeholder.Portability);
