@@ -38,7 +38,7 @@ internal static class Screenshotter
     // The whole command line this route answers, parsed here rather than in `Program` so that nothing between the
     // switch and the render touches the operator's state — see the call site for why that matters (AC-1235).
     // Returns the process exit code: every failure says why on stderr, and success names the file it wrote.
-    public static int Run(string[] args)
+    public static int RunFromCommandLine(string[] args)
     {
         var index = Array.IndexOf(args, Argument);
         if (index + 1 >= args.Length)

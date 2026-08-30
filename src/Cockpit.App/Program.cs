@@ -44,28 +44,12 @@ sealed class Program
         // (AC-385). Auto-apply only on the operator's request, never for the headless children below (AC-738).
         VelopackApp.Build().SetAutoApplyOnStartup(_AppliesAStagedUpdate(args)).Run();
 
-        // Run Whisper calibration before the single-instance guard and app stack so its one-runtime-per-process
-        // native load can measure, print, and exit in an isolated child (AC-68).
-        if (Cockpit.Infrastructure.Voice.HeadlessCalibration.IsRequested(args))
+        // Calibration, dictation and a screenshot each finish without the cockpit ever starting, and all of them
+        // have to be answered here — above the single-instance guard, which would otherwise stand them down
+        // against the operator's running cockpit. `HeadlessRoutes` holds the list and the reasoning.
+        if (HeadlessRoutes.TryRun(args, out var headlessExitCode))
         {
-            Environment.Exit(Cockpit.Infrastructure.Voice.HeadlessCalibration.RunAsync(args, CancellationToken.None).GetAwaiter().GetResult());
-            return;
-        }
-
-        // Run dictation before the guard and app stack so Whisper's abort-prone native runtime is isolated in a
-        // cheap child whose crash cannot take down the desktop (AC-174).
-        if (Cockpit.Infrastructure.Voice.HeadlessDictation.IsRequested(args))
-        {
-            Environment.Exit(Cockpit.Infrastructure.Voice.HeadlessDictation.RunAsync(args, CancellationToken.None).GetAwaiter().GetResult());
-            return;
-        }
-
-        // Render before the guard and the app stack, like the two headless routes above: behind the guard it stood
-        // down against the operator's running cockpit and exited 0 without a file (AC-1235). It needs neither — its
-        // scenes carry their own view models — and ahead of them it writes nothing into the operator's state.
-        if (Screenshotter.IsRequested(args))
-        {
-            Environment.Exit(Screenshotter.Run(args));
+            Environment.Exit(headlessExitCode);
 
             return;
         }
