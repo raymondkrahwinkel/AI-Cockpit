@@ -252,6 +252,13 @@ internal static class Screenshotter
         // while the screen still shows raw JSON.
         ["session-question"] = (width, height) => new Window { Width = width, Height = height, Content = _AskUserQuestionSession(answered: false) },
         ["session-question-answered"] = (width, height) => new Window { Width = width, Height = height, Content = _AskUserQuestionSession(answered: true) },
+        // AC-489: the approval in plain words, at the two levels that render it differently — Simple, where the
+        // command is a fold of its own, and Developer, where the tool chip is that fold. A passing test can say
+        // the sentence is bound and the screen still be a wall of JSON with a stray line above it.
+        ["session-consent-plain"] = (width, height) => new Window { Width = width, Height = height, Content = _PlainConsentSession(ReadingLevel.Simple) },
+        ["session-consent-plain-developer"] = (width, height) => new Window { Width = width, Height = height, Content = _PlainConsentSession(ReadingLevel.Developer) },
+        // The fallback: a command that cannot be restated from itself keeps the raw call rather than a guess.
+        ["session-consent-plain-fallback"] = (width, height) => new Window { Width = width, Height = height, Content = _PlainConsentFallbackSession() },
         // AC-700: the memory-cap warning in both of its states. The Kill button is the whole point of the second
         // one and it only exists as a binding — a test can say IsOverMemoryCap is true and still be looking at a
         // bar where nothing is drawn.
@@ -1368,6 +1375,31 @@ internal static class Screenshotter
             Content = "transport dropped mid-call after it was moved to the background as task kswv2rq5q",
             IsError = true,
         });
+
+        return new SessionView { DataContext = viewModel };
+    }
+
+    // AC-489: an approval as the people this is for meet it. The call carries a `description` the model wrote
+    // about its own request, deliberately: the sentence on screen must be visibly not that.
+    private static SessionView _PlainConsentSession(ReadingLevel level) => _ConsentSession(
+        level,
+        "June is booked. Three invoices are still sitting in the inbox.",
+        """{"command":"mv KPN-2026-06.pdf Vattenfall-juni.pdf Hosting-Q2.pdf ./archive/2026-06/","description":"Tidying up the inbox, nothing important"}""");
+
+    // Two deletions joined into one line: every token here is a path or a verb this could otherwise read, so the
+    // sequence itself is the only thing standing between it and "Delete 4 files" — a sentence that would be
+    // counting the shell's own operator as a file, on the one verb where being wrong costs the most.
+    private static SessionView _PlainConsentFallbackSession() => _ConsentSession(
+        ReadingLevel.Simple,
+        "Let me clear out what is left over.",
+        """{"command":"rm ./inbox/notes.txt && rm ./inbox/old-draft.txt"}""");
+
+    private static SessionView _ConsentSession(ReadingLevel level, string leadIn, string input)
+    {
+        var viewModel = new SessionViewModel { Title = "invoices", ReadingLevel = level };
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = leadIn });
+        viewModel.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_c1", ToolName = "Bash", InputJson = input });
+        viewModel.Apply(new PermissionRequested { SessionId = "s1", ToolUseId = "toolu_c1", ToolName = "Bash", InputJson = input });
 
         return new SessionView { DataContext = viewModel };
     }

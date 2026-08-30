@@ -531,6 +531,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(ToggleIconKind));
         OnPropertyChanged(nameof(ToggleLabel));
         OnPropertyChanged(nameof(ToolHeader));
+        // AC-489: the consent fold rides this same toggle, so opening it has to reveal the command it names.
+        OnPropertyChanged(nameof(ShowConsentCommand));
+        OnPropertyChanged(nameof(ConsentCommandToggleLabel));
     }
 
     partial void OnResultTextChanged(string? value)
@@ -618,8 +621,50 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // Chevron for the fold line, matching the expanded/collapsed state.
     public MaterialIconKind GroupToggleIconKind => IsGroupExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
 
-    // Whether this row shows the plain-language consent line instead of the tool chip — a consent tool call, at the Simple level. A question card carries its own words at every level, so it needs no stand-in.
-    public bool ShowHumanToolLine => ReadingLevel == ReadingLevel.Simple && RequiredApproval && !HasQuestionPrompts;
+    // Whether this row shows the plain-language consent line instead of the tool chip — a consent tool call, at the Simple level. A question card carries its own words at every level, so it needs no stand-in. AC-489: a call the plain-language card below could restate speaks for itself, so the coarse line stands down for it and stays as the fallback for everything else.
+    public bool ShowHumanToolLine => _ShowsConsentAtSimple && !ShowPlainConsentCard;
+
+    // --- Plain-language consent (AC-489) ---------------------------------------------------------------------
+
+    // The call restated from itself, computed once: `ToolName` and `InputJson` are both set at construction, so
+    // a row's sentence cannot change under it. Null for a call that cannot be read plainly.
+    private PlainToolRequest? PlainRequest => _plainRequestResolved
+        ? _plainRequest
+        : _Resolve();
+
+    private PlainToolRequest? _plainRequest;
+    private bool _plainRequestResolved;
+
+    private PlainToolRequest? _Resolve()
+    {
+        _plainRequest = PlainToolRequest.Describe(ToolName, InputJson);
+        _plainRequestResolved = true;
+        return _plainRequest;
+    }
+
+    // A consent tool call at the Simple level: where a non-developer meets this decision at all.
+    private bool _ShowsConsentAtSimple => ReadingLevel == ReadingLevel.Simple && RequiredApproval && !HasQuestionPrompts;
+
+    // Every reading level, not only Simple: one approval screen for both audiences. Pending only — once answered
+    // the row goes back to the line saying which way it went, which a sentence on its own would drop.
+    public bool ShowPlainConsentCard => IsPendingToolPermission && PlainRequest is not null;
+
+    public string PlainConsentSentence => PlainRequest?.Sentence ?? string.Empty;
+
+    public IReadOnlyList<string> PlainConsentPaths => PlainRequest?.Paths ?? [];
+
+    public bool HasPlainConsentPaths => PlainConsentPaths.Count > 0;
+
+    // One block rather than an items panel: these are lines to read and copy, not rows to interact with.
+    public string PlainConsentPathsText => string.Join(Environment.NewLine, PlainConsentPaths);
+
+    // The raw call, folded but never hidden — derived sentence or not, answered or not. Simple only: the tool
+    // chip is already that fold at the other two levels.
+    public bool ShowConsentCommandFold => _ShowsConsentAtSimple;
+
+    public bool ShowConsentCommand => _ShowsConsentAtSimple && IsExpanded;
+
+    public string ConsentCommandToggleLabel => IsExpanded ? "Hide the command" : "Show the command";
 
     // The consent decision in plain words for the Simple level (AC-138): what the tool did, and that the operator
     // approved, declined, or is being asked — e.g. "✓ Changed a file — you approved this". Jargon tool names map
@@ -673,6 +718,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGroupSummary));
         OnPropertyChanged(nameof(ShowHumanToolLine));
         OnPropertyChanged(nameof(HumanToolText));
+        OnPropertyChanged(nameof(ShowPlainConsentCard));
+        OnPropertyChanged(nameof(ShowConsentCommandFold));
+        OnPropertyChanged(nameof(ShowConsentCommand));
         OnPropertyChanged(nameof(IsPendingToolPermission));
         OnPropertyChanged(nameof(PermissionBranch));
         OnPropertyChanged(nameof(IsAwaitingAnswer));

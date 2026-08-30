@@ -32,6 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an approval now asks in plain words — "Move 3 files into ./archive/2026-06" with the files listed under
+  it — instead of only the command it stands for. The sentence is built from the call itself: its verb, its paths
+  and its count, never from anything the agent wrote about its own request, so it cannot flatter or misdescribe
+  what you are about to allow. The command is still there and always will be: folded behind "Show the command"
+  where the transcript is set to Simple, and in the tool row it already had everywhere else. A call that cannot
+  be restated exactly — a pipeline, a sequence, a flag, anything needing a shell to work out — gets no sentence
+  at all and keeps the raw command, because an approval that names the wrong thing is worse than one you have to
+  read carefully. Covers moving, copying, deleting and creating folders, and reading or changing a single file.
+
 - added: one shared memory budget over everything the cockpit runs, instead of a separate cap per session that
   nothing ever added up — several sessions each staying politely under their own cap could still promise more
   memory than the machine has, and then the system picked which one to end. Set it in Options under Sessions as a
