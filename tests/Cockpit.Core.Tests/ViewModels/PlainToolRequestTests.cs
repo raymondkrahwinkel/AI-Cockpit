@@ -20,6 +20,10 @@ public class PlainToolRequestTests
     [InlineData("Bash", """{"command":"mv KPN.pdf Vattenfall.pdf Hosting.pdf ./archive/2026-06/"}""", "Move 3 files into ./archive/2026-06")]
     [InlineData("Bash", """{"command":"cp report.xlsx ./backup/"}""", "Copy report.xlsx into ./backup")]
     [InlineData("Bash", """{"command":"rm draft.txt notes.txt"}""", "Delete 2 files")]
+    // Whole path on a single deletion, unlike every other verb: which `passwd` this is decides the answer, and it
+    // may not live only in the file block beside the sentence.
+    [InlineData("Bash", """{"command":"rm /etc/passwd"}""", "Delete /etc/passwd")]
+    [InlineData("Bash", """{"command":"rm ./inbox/old-draft.txt"}""", "Delete ./inbox/old-draft.txt")]
     [InlineData("Bash", """{"command":"mkdir ./archive/2026-07/"}""", "Create the folder ./archive/2026-07")]
     [InlineData("Read", """{"file_path":"/work/invoices/june.csv"}""", "Read the file june.csv")]
     [InlineData("Write", """{"file_path":"/work/export.csv","content":"a,b,c"}""", "Create or replace the file export.csv")]
@@ -47,6 +51,15 @@ public class PlainToolRequestTests
 
         Assert.DoesNotContain(Poison, request.Sentence, StringComparison.Ordinal);
         Assert.DoesNotContain(Poison, string.Join(" ", request.Paths), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OnlyDeletion_SpellsTheWholePathIntoTheSentence()
+    {
+        // The contrast is the point: reading a file names it, deleting one says where it is. Nothing undoes a
+        // deletion, so the part that decides the answer may not sit only in the block beside the sentence.
+        Assert.Equal("Read the file passwd", PlainToolRequest.Describe("Read", """{"file_path":"/etc/passwd"}""")?.Sentence);
+        Assert.Equal("Delete /etc/passwd", PlainToolRequest.Describe("Bash", """{"command":"rm /etc/passwd"}""")?.Sentence);
     }
 
     [Fact]

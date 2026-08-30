@@ -75,7 +75,9 @@ public sealed record PlainToolRequest(string Sentence, IReadOnlyList<string> Pat
         {
             "mv" => _Transfer(arguments, "Move"),
             "cp" => _Transfer(arguments, "Copy"),
-            "rm" => new PlainToolRequest($"Delete {_Subjects(arguments)}", arguments),
+            // Whole path, not the leaf: on the one verb nothing undoes, which `passwd` this is may not live only
+            // in the file block beside the sentence. One file only — from two up, the count sends you there anyway.
+            "rm" => new PlainToolRequest($"Delete {_Subjects(arguments, wholePath: true)}", arguments),
             "mkdir" when arguments.Length == 1 => new PlainToolRequest($"Create the folder {_Trim(arguments[0])}", []),
             _ => null,
         };
@@ -95,11 +97,11 @@ public sealed record PlainToolRequest(string Sentence, IReadOnlyList<string> Pat
         return new PlainToolRequest($"{verb} {_Subjects(sources)} into {_Trim(arguments[^1])}", sources);
     }
 
-    private static string _Subjects(IReadOnlyList<string> paths) =>
+    private static string _Subjects(IReadOnlyList<string> paths, bool wholePath = false) =>
         paths.Any(_HasWildcard)
             ? $"the files matching {string.Join(" and ", paths)}"
             : paths.Count == 1
-                ? _Leaf(paths[0])
+                ? wholePath ? paths[0] : _Leaf(paths[0])
                 : $"{paths.Count} files";
 
     private static bool _HasWildcard(string path) => path.AsSpan().IndexOfAny(Wildcards) >= 0;
