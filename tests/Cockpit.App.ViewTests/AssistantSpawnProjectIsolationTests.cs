@@ -147,10 +147,8 @@ public class AssistantSpawnProjectIsolationTests
     }
 
     [Fact]
-    public async Task ALiveOrdinarySessionsWorktree_IsNeverTakenOverByASpawn()
+    public async Task ALiveOrdinarySessionsWorktree_RefusesTheHeadlessSecondWriter()
     {
-        // The reattach guard in _ResolveIsolatedWorkingDirectoryAsync predates this ticket, but ronde A is what
-        // first makes it reachable from a non-interactive assistant spawn — this pins that it still holds there.
         var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"));
         var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], IsolateInWorktreeByDefault = true };
 
@@ -169,12 +167,35 @@ public class AssistantSpawnProjectIsolationTests
 
         var result = await gateway.SpawnAsync(_Request(workspaceId) with { WorkingDirectory = Repository });
 
-        // Runs unisolated in that same folder rather than either stealing the live owner's worktree or minting a
-        // second one on top of it — ownership never moves. (The header badge is display-only, AC-633, and adopts
-        // the folder's branch name regardless of who owns it; that is a separate concern from ownership itself.)
-        Assert.True(result.Ok, result.Error);
-        await worktrees.DidNotReceiveWithAnyArgs().ReattachAsync(default!, default!);
+        Assert.False(result.Ok);
+        Assert.Contains("another live Cockpit session", result.Error);
+        await worktrees.Received(1).ReattachAsync(Repository, Arg.Any<string>(), Arg.Any<CancellationToken>());
         await worktrees.DidNotReceiveWithAnyArgs().CreateForSessionAsync(default!, default, default!);
+    }
+
+    [Fact]
+    public async Task ALiveOrdinarySessionsWorktree_RefusesTheHeadlessSdkSecondWriter()
+    {
+        var profile = new SessionProfile("work", new LmStudioConfig("http://localhost:1234", "model"));
+        var project = Project.Create("Cockpit") with { SourceDirectories = [new(Repository)], IsolateInWorktreeByDefault = true };
+        var worktrees = Substitute.For<IWorktreeManager>();
+        var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
+
+        var owner = Dispatcher.UIThread.Invoke(() =>
+        {
+            var existing = new SessionViewModel { Title = "Still running" };
+            cockpit.Sessions.Add(existing);
+            return existing.PaneId;
+        });
+        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns([
+            new WorktreeRecord(owner, Repository, Repository, "someone-elses-branch", "abc123", DateTimeOffset.UnixEpoch),
+        ]);
+
+        var result = await gateway.SpawnAsync(_Request(workspaceId) with { WorkingDirectory = Repository });
+
+        Assert.False(result.Ok);
+        Assert.Contains("another live Cockpit session", result.Error);
+        await worktrees.Received(1).ReattachAsync(Repository, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

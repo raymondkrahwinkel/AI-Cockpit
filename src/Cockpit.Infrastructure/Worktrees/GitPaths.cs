@@ -30,6 +30,26 @@ internal static class GitPaths
             : StringComparison.Ordinal;
     }
 
+    // Lease fallback folds case: an extra refusal is recoverable, a missed alias loses work.
+    public static async Task<StringComparison> ComparisonForLeaseAsync(string repositoryRoot, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var configured = await GitCli.RunAsync(
+                repositoryRoot,
+                ["config", "--get", "--type=bool", "core.ignorecase"],
+                cancellationToken).ConfigureAwait(false);
+
+            return configured.ExitCode == 0 && configured.StandardOutput.Trim().Equals("false", StringComparison.Ordinal)
+                ? StringComparison.Ordinal
+                : StringComparison.OrdinalIgnoreCase;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return StringComparison.OrdinalIgnoreCase;
+        }
+    }
+
     // The set comparer matching `comparison`, for indexing paths rather than comparing them one by one.
     public static StringComparer ComparerFor(StringComparison comparison) =>
         comparison == StringComparison.OrdinalIgnoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;

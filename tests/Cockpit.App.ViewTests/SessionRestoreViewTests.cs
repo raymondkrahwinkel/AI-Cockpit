@@ -412,6 +412,20 @@ public class SessionRestoreViewTests
         Assert.False(restored.HasRestoreOffer, "the banner disappears once the start actually lands");
     }
 
+    [Fact]
+    public async Task StartFresh_OnARestoredManagedWorktree_ReattachesBeforeStarting()
+    {
+        var record = new WorktreeRecord("known-pane", "/repo", "/repo-worktrees/known-pane", "cockpit/known", "abc123", DateTimeOffset.UtcNow);
+        var worktrees = Substitute.For<IWorktreeManager>();
+        worktrees.ListAsync(Arg.Any<CancellationToken>()).Returns([record]);
+        worktrees.ReattachAsync(record.Path, "known-pane", Arg.Any<CancellationToken>()).Returns(record);
+        var (_, restored, _) = await _RestoreOneKnownPaneAsync(worktrees);
+
+        restored.StartFreshCommand.Execute(null);
+
+        await worktrees.Received(1).ReattachAsync(record.Path, "known-pane", Arg.Any<CancellationToken>());
+    }
+
     /// <summary>"Resume conversation" starts the restored pane with the conversation id the saved state recorded.</summary>
     [Fact]
     public async Task ResumeConversation_OnARestoredPane_StartsWithTheSavedConversationId()
@@ -609,7 +623,7 @@ public class SessionRestoreViewTests
     /// <see cref="SessionRestoreAvailability.Known"/> with conversation id "conv-1", wired to a fake
     /// <see cref="ISessionDriver"/> so the actual <c>StartAsync</c> call (and the resume it carries) can be observed.
     /// </summary>
-    private static async Task<(CockpitViewModel Vm, SessionPanelViewModel Restored, ISessionDriver Driver)> _RestoreOneKnownPaneAsync()
+    private static async Task<(CockpitViewModel Vm, SessionPanelViewModel Restored, ISessionDriver Driver)> _RestoreOneKnownPaneAsync(IWorktreeManager? worktreeManager = null)
     {
         var pane = new WorkspacePane("known-pane", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Sdk };
         var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
@@ -635,6 +649,7 @@ public class SessionRestoreViewTests
             workspaceStore,
             stateStore,
             new SessionRestorePlanner(profileStore),
+            worktreeManager: worktreeManager,
             sessionFactory: () => new SessionViewModel(new SessionManager(factory)));
 
         await vm.Workspaces.InitializeAsync();

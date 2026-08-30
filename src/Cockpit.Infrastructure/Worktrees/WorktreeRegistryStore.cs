@@ -43,6 +43,31 @@ internal sealed class WorktreeRegistryStore : IWorktreeRegistry, ISingletonServi
             },
             cancellationToken);
 
+    public async Task<WorktreeRecord?> TransferAsync(
+        string worktreePath,
+        string expectedSessionId,
+        string targetSessionId,
+        CancellationToken cancellationToken = default)
+    {
+        WorktreeRecord? transferred = null;
+        await _configFile.UpdateAsync(
+            file =>
+            {
+                var existing = file.Worktrees.FirstOrDefault(entry => _SamePath(entry.Path, worktreePath));
+                if (existing is null || !string.Equals(existing.SessionId, expectedSessionId, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                transferred = existing.ToDomain() with { SessionId = targetSessionId, IsRetained = false };
+                file.Worktrees.Remove(existing);
+                file.Worktrees.Add(WorktreeRegistryEntry.FromDomain(transferred));
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        return transferred;
+    }
+
     public Task RemoveAsync(string worktreePath, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(
             file => file.Worktrees.RemoveAll(entry => _SamePath(entry.Path, worktreePath)),

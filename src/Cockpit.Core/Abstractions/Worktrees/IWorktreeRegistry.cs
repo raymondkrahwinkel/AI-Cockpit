@@ -17,6 +17,16 @@ public interface IWorktreeRegistry
     Task AddAsync(WorktreeRecord record, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Changes a record's owner only when it still belongs to <paramref name="expectedSessionId"/>. The comparison
+    /// and replacement happen in one registry write, so a handover cannot overwrite a concurrent reattach.
+    /// </summary>
+    Task<WorktreeRecord?> TransferAsync(
+        string worktreePath,
+        string expectedSessionId,
+        string targetSessionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Removes the entry for <paramref name="worktreePath"/>; a no-op when none matches.
     /// </summary>
     Task RemoveAsync(string worktreePath, CancellationToken cancellationToken = default);

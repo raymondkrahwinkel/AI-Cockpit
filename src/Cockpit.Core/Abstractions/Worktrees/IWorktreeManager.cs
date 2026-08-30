@@ -87,6 +87,16 @@ public interface IWorktreeManager
     Task<WorktreeRecord?> ReattachAsync(string worktreePath, string newSessionId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Atomically hands a worktree from <paramref name="expectedSessionId"/> to <paramref name="targetSessionId"/>
+    /// while retaining its runtime writer lease. Returns <c>null</c> when the record disappeared or changed owner.
+    /// </summary>
+    Task<WorktreeRecord?> TransferAsync(
+        string worktreePath,
+        string expectedSessionId,
+        string targetSessionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Strips a worktree's registry record of its owning session (AC-520 fix 6) — the operator's explicit "release" on
     /// a row only live because of an open restore offer (AC-410), nothing actually running. Becomes an ordinary orphan
     /// for the next <see cref="ReconcileAsync"/> sweep; agent remove admits it once owner leaves <c>LiveSessionIds</c>.
