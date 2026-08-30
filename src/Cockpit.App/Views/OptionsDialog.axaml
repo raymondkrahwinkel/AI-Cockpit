@@ -281,6 +281,16 @@
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. RUNNING OUT OF ROOM"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                    IsVisible="{Binding OptionsSearchText, Converter={x:Static conv:OptionsRowVisibleConverter.Instance}, ConverterParameter='shared memory budget all sessions together ram'}">
+                            <TextBlock Text="Warn when all sessions together pass" Width="230" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding MemoryBudgetPercent}" Minimum="10" Maximum="100"
+                                           Increment="5" FormatString="0" Width="104"/>
+                            <TextBlock Text="% of this machine's memory" FontSize="11" VerticalAlignment="Center"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="One budget over everything the cockpit runs, rather than a separate cap per session — several sessions each staying under their own cap could still promise more memory than the machine has, and then the system picks which one to end. The figure it is measured against is this app plus every process its sessions have spawned, including the ones they left behind. Crossing it warns you and names the heaviest session; nothing is closed and no session is refused."/>
+                        </StackPanel>
                         <!-- AC-233/AC-805 merged: both used to hang off separate tabs (Sessions, Voice → Assistant);
                              they are the same "running out" concept for two different runners, so one subsection. -->
                         <StackPanel Spacing="8" IsVisible="{Binding UsageThresholdSettings.HasProviders}">

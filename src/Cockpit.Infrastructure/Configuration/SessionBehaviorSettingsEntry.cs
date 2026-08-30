@@ -1,3 +1,4 @@
+using Cockpit.Core.Diagnostics;
 using Cockpit.Core.SessionBehavior;
 
 namespace Cockpit.Infrastructure.Configuration;
@@ -15,11 +16,16 @@ internal sealed class SessionBehaviorSettingsEntry
     // turned "this setting did not exist yet" into "wake is off", silently, for every existing install.
     public bool WakeAgentsByDefault { get; set; } = true;
 
+    // AC-1086: same reason as the line above, and sharper for a number — absent would read as a budget of zero,
+    // which warns on an idle cockpit for every install that predates this setting.
+    public int MemoryBudgetPercent { get; set; } = MemoryPressure.DefaultBudgetPercent;
+
     public static SessionBehaviorSettingsEntry FromDomain(SessionBehaviorSettings settings) => new()
     {
         AutoCloseOnExit = settings.AutoCloseOnExit,
         CombineQueuedMessages = settings.CombineQueuedMessages,
         WakeAgentsByDefault = settings.WakeAgentsByDefault,
+        MemoryBudgetPercent = settings.MemoryBudgetPercent,
     };
 
     public SessionBehaviorSettings ToDomain() => new()
@@ -27,5 +33,6 @@ internal sealed class SessionBehaviorSettingsEntry
         AutoCloseOnExit = AutoCloseOnExit,
         CombineQueuedMessages = CombineQueuedMessages,
         WakeAgentsByDefault = WakeAgentsByDefault,
+        MemoryBudgetPercent = MemoryBudgetPercent,
     };
 }
