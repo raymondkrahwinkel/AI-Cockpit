@@ -25,7 +25,7 @@ public class TrackedCommandRunnerTests : IDisposable
         Assert.NotEmpty(result.StandardOutput);
     }
 
-    [Fact]
+    [PosixFact("Not yet covered on Windows rather than inapplicable: there the metacharacter would be `&`, not `;`, and nothing echoes argv verbatim without a shell to prove it against; the ArgumentList path itself is covered there by RunAsync_RunsTheCommand_AndReportsExitCodeAndStdout.")]
     public async Task RunAsync_NeverLetsAShellReparseAnArgument()
     {
         var result = await _RunAsync("echo", ["a; rm -rf poisoned"], TimeSpan.FromSeconds(30));
@@ -38,7 +38,9 @@ public class TrackedCommandRunnerTests : IDisposable
     [Fact]
     public async Task RunAsync_PastTheTimeout_EndsTheProcess_AndReportsTimedOut()
     {
-        var result = await _RunAsync("sleep", ["30"], TimeSpan.FromMilliseconds(300));
+        var (command, arguments) = PlatformCommands.RunsForThirtySeconds();
+
+        var result = await _RunAsync(command, arguments, TimeSpan.FromMilliseconds(300));
 
         Assert.True(result.TimedOut);
         Assert.Equal(-1, result.ExitCode);
@@ -47,7 +49,9 @@ public class TrackedCommandRunnerTests : IDisposable
     [Fact]
     public async Task RunAsync_ALargeOutput_DoesNotDeadlock()
     {
-        var result = await _RunAsync("sh", ["-c", "yes x | head -c 200000"], TimeSpan.FromSeconds(30));
+        var (command, arguments) = PlatformCommands.WritesToStandardOutput(200000);
+
+        var result = await _RunAsync(command, arguments, TimeSpan.FromSeconds(30));
 
         Assert.False(result.TimedOut);
         Assert.Equal(200000, result.StandardOutput.Length);

@@ -4,7 +4,7 @@ namespace Cockpit.Infrastructure.Tests;
 
 public sealed class CommandRunnerProcessTests
 {
-    [Fact]
+    [PosixFact("Covers _KillTree's Linux-only procfs descendant walk (CommandRunnerProcess.cs); on Windows Kill(entireProcessTree: true) reaches the tree itself and _KillTree is covered by the runners' timeout tests.")]
     public async Task KillTree_KillsAStartedChildProcess()
     {
         var directory = Path.Combine(Path.GetTempPath(), "cockpit-command-runner-tests", Guid.NewGuid().ToString("N"));
@@ -41,16 +41,20 @@ public sealed class CommandRunnerProcessTests
     [Fact]
     public async Task DrainAsync_ReturnsOutputPastThePipeBuffer()
     {
+        var (command, arguments) = PlatformCommands.WritesToStandardOutput(200000);
         using var process = new Process
         {
-            StartInfo = new ProcessStartInfo("sh")
+            StartInfo = new ProcessStartInfo(command)
             {
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
             },
         };
-        process.StartInfo.ArgumentList.Add("-c");
-        process.StartInfo.ArgumentList.Add("yes x | head -c 200000");
+        foreach (var argument in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
+
         process.Start();
 
         var output = await CommandRunnerProcess._DrainAsync(process.StandardOutput.ReadToEndAsync());

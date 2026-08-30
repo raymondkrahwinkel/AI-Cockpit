@@ -25,7 +25,7 @@ public sealed class ShellCommandRunnerTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(result.StandardOutput));
     }
 
-    [Fact]
+    [PosixFact("Not yet covered on Windows rather than inapplicable: there the metacharacter would be `&`, not `;`, and nothing echoes argv verbatim without a shell to prove it against; the ArgumentList path itself is covered there by RunAsync_RunsTheCommand_AndReportsExitCodeAndStdout.")]
     public async Task RunAsync_NeverLetsAShellReparseAnArgument()
     {
         // If this argument were re-parsed by a shell, "; rm -rf poisoned" would run as a second command. It never
@@ -42,7 +42,9 @@ public sealed class ShellCommandRunnerTests : IDisposable
     [Fact]
     public async Task RunAsync_PastTheTimeout_KillsTheProcessTree_AndReportsTimedOut()
     {
-        var result = await _runner.RunAsync(_workingDirectory, "sleep", ["30"], TimeSpan.FromMilliseconds(300));
+        var (command, arguments) = PlatformCommands.RunsForThirtySeconds();
+
+        var result = await _runner.RunAsync(_workingDirectory, command, arguments, TimeSpan.FromMilliseconds(300));
 
         Assert.True(result.TimedOut);
         Assert.Equal(-1, result.ExitCode);
@@ -53,8 +55,9 @@ public sealed class ShellCommandRunnerTests : IDisposable
     {
         // Comfortably past a pipe's ~64 KiB buffer (AC-1066's own pitfall, same class as VerifyCommandRunner's):
         // reading stdout only after the process exits would hang here once the child blocks writing into a full pipe.
-        var result = await _runner.RunAsync(
-            _workingDirectory, "sh", ["-c", "yes x | head -c 200000"], TimeSpan.FromSeconds(30));
+        var (command, arguments) = PlatformCommands.WritesToStandardOutput(200000);
+
+        var result = await _runner.RunAsync(_workingDirectory, command, arguments, TimeSpan.FromSeconds(30));
 
         Assert.False(result.TimedOut);
         Assert.Equal(0, result.ExitCode);
