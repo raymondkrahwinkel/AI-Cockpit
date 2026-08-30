@@ -307,4 +307,49 @@ public sealed class MeasurementHarnessTests
         Assert.NotNull(first.Percent());
         Assert.NotNull(second.Percent());
     }
+
+    // AC-1104: the cut-off frames have to be priced against the healthy frames of the same run, not against
+    // the whole run. Averaging the two together is what hid an 800 ms frame among 200 frames of 12 ms.
+    [Fact]
+    public void The_cut_off_frames_are_priced_apart_from_the_healthy_ones()
+    {
+        // Frame 1 took 900 ms over 150 rounds; frames 2 and 3 took 10 ms over 2 rounds each.
+        var costs = new List<FrameCost> { new(1, 900, 300_000_000), new(2, 10, 2_000_000), new(3, 10, 2_000_000) };
+        var ordinals = Enumerable.Repeat(1, 150).Concat([2, 2, 3, 3]).ToList();
+
+        var cost = FrameCostSummary.Of(costs, ordinals, 100);
+
+        Assert.NotNull(cost);
+        Assert.Equal(1, cost.Frames);
+        Assert.Equal(3, cost.FramesTotal);
+        Assert.Equal(900, cost.LongestMs);
+        Assert.Equal(10, cost.AverageOtherFrameMs);
+        Assert.Equal(2_000_000, cost.AllocatedBytesPerRound);
+        Assert.Equal(1_000_000, cost.OtherAllocatedBytesPerRound);
+    }
+
+    // A frame that ran no layout is cheap because nothing happened in it. Counting it as the healthy baseline
+    // makes the cut-off look worse than it is, and this figure is the whole comparison.
+    [Fact]
+    public void Frames_that_ran_no_layout_at_all_are_not_the_healthy_baseline()
+    {
+        var costs = new List<FrameCost> { new(1, 900, 300_000_000), new(2, 40, 8_000_000), new(3, 1, 0) };
+        var ordinals = Enumerable.Repeat(1, 150).Concat([2, 2]).ToList();
+
+        var cost = FrameCostSummary.Of(costs, ordinals, 100);
+
+        Assert.NotNull(cost);
+        Assert.Equal(40, cost.AverageOtherFrameMs);
+        Assert.Equal(4_000_000, cost.OtherAllocatedBytesPerRound);
+    }
+
+    // A run without a cut-off must price nothing rather than price the healthy frames as if they were the
+    // fault: `0 frames, 0 ms` reads like a measurement, and there was none to make.
+    [Fact]
+    public void A_run_that_never_reached_the_cut_off_has_no_price_to_report()
+    {
+        var costs = new List<FrameCost> { new(1, 10, 2_000_000), new(2, 10, 2_000_000) };
+
+        Assert.Null(FrameCostSummary.Of(costs, [1, 1, 2, 2], 100));
+    }
 }

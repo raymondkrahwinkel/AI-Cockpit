@@ -14,7 +14,9 @@ public sealed class FrameMeter
 {
     private readonly List<double> _intervals = [];
     private readonly List<int> _roundsPerFrame = [];
+    private readonly List<FrameCost> _costs = [];
     private long _lastFrame;
+    private long _lastAllocated;
     private bool _attached;
 
     /// <summary>Frame sequence number, so a measurement can say "in this same frame" instead of approximating it with a time window.</summary>
@@ -44,14 +46,21 @@ public sealed class FrameMeter
 
         void Tick(TimeSpan _)
         {
-            Ordinal++;
             var now = Stopwatch.GetTimestamp();
+
+            // Closes out the frame that was current until this tick, so its wall time and its allocation carry
+            // the same ordinal the rounds below are counted under. Ordinal only moves after that.
+            var allocated = GC.GetAllocatedBytesForCurrentThread();
             if (_lastFrame != 0)
             {
-                _intervals.Add(Stopwatch.GetElapsedTime(_lastFrame, now).TotalMilliseconds);
+                var elapsed = Stopwatch.GetElapsedTime(_lastFrame, now).TotalMilliseconds;
+                _intervals.Add(elapsed);
+                _costs.Add(new FrameCost(Ordinal, elapsed, allocated - _lastAllocated));
             }
 
+            Ordinal++;
             _lastFrame = now;
+            _lastAllocated = allocated;
             top.RequestAnimationFrame(Tick);
         }
 
@@ -72,6 +81,15 @@ public sealed class FrameMeter
         FrameCount == 0 || _roundsPerFrame.Count == 0 ? null : _roundsPerFrame.GroupBy(o => o).Max(g => g.Count());
 
     public int TotalRounds => _roundsPerFrame.Count;
+
+    /// <summary>
+    /// What the frames that needed at least <paramref name="rounds"/> rounds actually cost, against the frames
+    /// that stayed under it. AC-1104 established that the cut-off is reached but never what reaching it costs,
+    /// and a rounds-per-frame count alone cannot say: 153 rounds inside a 12 ms frame is a different app from
+    /// 153 rounds inside a 300 ms one. Null when no frame reached the threshold — there is nothing to price.
+    /// </summary>
+    public FrameCostSummary? CostOfFramesAtOrAbove(int rounds) =>
+        FrameCostSummary.Of(_costs, _roundsPerFrame, rounds);
 
     public double Percentile(double p)
     {
@@ -94,6 +112,65 @@ public sealed class FrameMeter
         yield return $"layout rounds: {TotalRounds} total, worst frame "
                      + $"{(MaxRoundsInAFrame() is { } worst ? worst.ToString() : "n/a (no frame clock)")} (Avalonia cuts off at 153)";
     }
+}
+
+/// <summary>What one frame cost: the wall time it occupied and what the UI thread allocated inside it.</summary>
+public readonly record struct FrameCost(int Ordinal, double Milliseconds, long AllocatedBytes);
+
+/// <summary>
+/// The price of the frames that ran into the cut-off: how many there were, how long they took, and what they
+/// allocated per round — each against the frames of the same run that stayed under it.
+/// </summary>
+public sealed record FrameCostSummary(
+    int Frames,
+    int FramesTotal,
+    double ShortestMs,
+    double LongestMs,
+    double TotalMs,
+    double? AverageOtherFrameMs,
+    long AllocatedBytes,
+    long AllocatedBytesPerRound,
+    long? OtherAllocatedBytesPerRound)
+{
+    /// <summary>
+    /// Prices the frames that needed at least <paramref name="rounds"/> rounds against the ones that did not.
+    /// Takes the samples rather than reading a meter, so the arithmetic is a decision function CI can run —
+    /// the meter itself needs a window and cannot (see the harness README, "the CI boundary").
+    /// </summary>
+    public static FrameCostSummary? Of(IReadOnlyList<FrameCost> costs, IReadOnlyList<int> roundOrdinals, int rounds)
+    {
+        var roundsByOrdinal = roundOrdinals.GroupBy(o => o).ToDictionary(g => g.Key, g => g.Count());
+        var over = costs.Where(c => roundsByOrdinal.GetValueOrDefault(c.Ordinal) >= rounds).ToList();
+        if (over.Count == 0)
+        {
+            return null;
+        }
+
+        // Frames that ran no layout at all are not the comparison. They are cheap because nothing happened in
+        // them, and averaging them in flatters the contrast: the baseline has to be a frame that did the work.
+        var under = costs
+            .Where(c => roundsByOrdinal.GetValueOrDefault(c.Ordinal) > 0 && roundsByOrdinal[c.Ordinal] < rounds)
+            .ToList();
+        var roundsOver = over.Sum(c => (long)roundsByOrdinal[c.Ordinal]);
+        var roundsUnder = under.Sum(c => (long)roundsByOrdinal.GetValueOrDefault(c.Ordinal));
+        return new FrameCostSummary(
+            over.Count,
+            costs.Count,
+            over.Min(c => c.Milliseconds),
+            over.Max(c => c.Milliseconds),
+            over.Sum(c => c.Milliseconds),
+            under.Count == 0 ? null : under.Average(c => c.Milliseconds),
+            over.Sum(c => c.AllocatedBytes),
+            roundsOver == 0 ? 0 : over.Sum(c => c.AllocatedBytes) / roundsOver,
+            roundsUnder == 0 ? null : under.Sum(c => c.AllocatedBytes) / roundsUnder);
+    }
+
+    public string Line(string label) =>
+        $"{label}: {Frames} of {FramesTotal} frames, {ShortestMs:F0}–{LongestMs:F0} ms each ("
+        + $"{(AverageOtherFrameMs is { } other ? $"other frames average {other:F1} ms" : "no other frames to compare with")}"
+        + $"), {TotalMs:F0} ms in total, {AllocatedBytes:N0} bytes allocated on the UI thread, "
+        + $"{AllocatedBytesPerRound:N0} bytes per round against "
+        + $"{(OtherAllocatedBytesPerRound is { } baseline ? $"{baseline:N0}" : "n/a")} in the other frames";
 }
 
 /// <summary>
