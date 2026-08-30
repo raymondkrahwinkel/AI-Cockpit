@@ -216,7 +216,14 @@ internal static class WindowsJobSessionSweep
 {
     private const uint JobObjectTerminate = 0x0008;
 
-    internal sealed record SweepOutcome(int Terminated, int SkippedForLiveOwner, int SkippedForPidReuse, IReadOnlyList<string> CompletedJobs);
+    internal enum JobTermination
+    {
+        Terminated,
+        AlreadyGone,
+        Failed,
+    }
+
+    internal sealed record SweepOutcome(int Terminated, int AlreadyGone, int SkippedForLiveOwner, int SkippedForPidReuse, IReadOnlyList<string> CompletedJobs);
 
     public static void Run(ILogger logger)
     {
@@ -246,26 +253,19 @@ internal static class WindowsJobSessionSweep
     internal static SweepOutcome Sweep(
         IReadOnlyList<WindowsJobSessionRecord> records,
         Func<int, DateTimeOffset?> processStartedAt,
-        Func<string, bool> terminate)
+        Func<string, JobTermination> terminate)
     {
         var terminated = 0;
+        var alreadyGone = 0;
         var liveOwners = 0;
         var reusedPids = 0;
         var completed = new List<string>();
 
         foreach (var record in records)
         {
-            if (processStartedAt(record.OwnerProcessId) is { } owner)
+            if (processStartedAt(record.OwnerProcessId) == record.OwnerStartedAt)
             {
-                if (owner == record.OwnerStartedAt)
-                {
-                    liveOwners++;
-                }
-                else
-                {
-                    reusedPids++;
-                }
-
+                liveOwners++;
                 continue;
             }
 
@@ -275,28 +275,36 @@ internal static class WindowsJobSessionSweep
                 continue;
             }
 
-            if (terminate(record.JobName))
+            switch (terminate(record.JobName))
             {
-                terminated++;
-                completed.Add(record.JobName);
+                case JobTermination.Terminated:
+                    terminated++;
+                    completed.Add(record.JobName);
+                    break;
+                case JobTermination.AlreadyGone:
+                    alreadyGone++;
+                    completed.Add(record.JobName);
+                    break;
             }
         }
 
-        return new SweepOutcome(terminated, liveOwners, reusedPids, completed);
+        return new SweepOutcome(terminated, alreadyGone, liveOwners, reusedPids, completed);
     }
 
     [SupportedOSPlatform("windows")]
-    internal static bool Terminate(string jobName)
+    internal static JobTermination Terminate(string jobName)
     {
         var job = WindowsJobSessionAnchor.NativeMethods.OpenJobObjectW(JobObjectTerminate, inheritHandle: false, jobName);
         if (job == IntPtr.Zero)
         {
-            return true;
+            return Marshal.GetLastWin32Error() == 2 ? JobTermination.AlreadyGone : JobTermination.Failed;
         }
 
         try
         {
-            return WindowsJobSessionAnchor.NativeMethods.TerminateJobObject(job, exitCode: 1);
+            return WindowsJobSessionAnchor.NativeMethods.TerminateJobObject(job, exitCode: 1)
+                ? JobTermination.Terminated
+                : JobTermination.Failed;
         }
         finally
         {

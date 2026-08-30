@@ -12,6 +12,62 @@ namespace Cockpit.Infrastructure.Tests.Sessions;
 public sealed class WindowsJobSessionAnchorTests
 {
     [Fact]
+    public void Sweep_WhenTheRecordedOwnerIsStillRunning_SkipsTheJob()
+    {
+        var startedAt = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
+        var record = new WindowsJobSessionRecord("cockpit-session-test", 100, startedAt, 200, startedAt);
+        var terminated = new List<string>();
+
+        var outcome = WindowsJobSessionSweep.Sweep(
+            [record],
+            processStartedAt: processId => processId == 100 ? startedAt : null,
+            terminate: jobName =>
+            {
+                terminated.Add(jobName);
+                return WindowsJobSessionSweep.JobTermination.Terminated;
+            });
+
+        Assert.Empty(terminated);
+        Assert.Equal(1, outcome.SkippedForLiveOwner);
+    }
+
+    [Fact]
+    public void Sweep_WhenTheRecordedOwnerPidWasReused_TerminatesTheJob()
+    {
+        var startedAt = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
+        var record = new WindowsJobSessionRecord("cockpit-session-test", 100, startedAt, 200, startedAt);
+        var terminated = new List<string>();
+
+        var outcome = WindowsJobSessionSweep.Sweep(
+            [record],
+            processStartedAt: processId => processId == 100 ? startedAt.AddMinutes(1) : null,
+            terminate: jobName =>
+            {
+                terminated.Add(jobName);
+                return WindowsJobSessionSweep.JobTermination.Terminated;
+            });
+
+        Assert.Equal([record.JobName], terminated);
+        Assert.Equal(1, outcome.Terminated);
+    }
+
+    [Fact]
+    public void Sweep_WhenTheNamedJobWasAlreadyGone_ClearsTheRecordWithoutCountingAStop()
+    {
+        var startedAt = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
+        var record = new WindowsJobSessionRecord("cockpit-session-test", 100, startedAt, 200, startedAt);
+
+        var outcome = WindowsJobSessionSweep.Sweep(
+            [record],
+            processStartedAt: _ => null,
+            terminate: _ => WindowsJobSessionSweep.JobTermination.AlreadyGone);
+
+        Assert.Equal(0, outcome.Terminated);
+        Assert.Equal(1, outcome.AlreadyGone);
+        Assert.Equal([record.JobName], outcome.CompletedJobs);
+    }
+
+    [Fact]
     public void Sweep_WhenTheRecordedRootPidWasReused_LeavesTheJobAlone()
     {
         var startedAt = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
@@ -24,7 +80,7 @@ public sealed class WindowsJobSessionAnchorTests
             terminate: jobName =>
             {
                 terminated.Add(jobName);
-                return true;
+                return WindowsJobSessionSweep.JobTermination.Terminated;
             });
 
         Assert.Empty(terminated);
@@ -44,7 +100,7 @@ public sealed class WindowsJobSessionAnchorTests
             terminate: jobName =>
             {
                 terminated.Add(jobName);
-                return true;
+                return WindowsJobSessionSweep.JobTermination.Terminated;
             });
 
         Assert.Equal([record.JobName], terminated);
