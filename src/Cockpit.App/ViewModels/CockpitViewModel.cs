@@ -2457,9 +2457,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
         var tty = new TtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
 
-        Sessions.Add(waiting);
-        Sessions.Add(busy);
-        Sessions.Add(tty);
+        _AttachSession(waiting);
+        _AttachSession(busy);
+        _AttachSession(tty);
         _sessionCounter = Sessions.Count;
         SelectedSession = waiting;
         Plugins = new PluginManagerViewModel();
@@ -6187,6 +6187,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         _lastStatus[session] = session.SessionStatus;
         session.PropertyChanged += OnSessionPropertyChanged;
+        // AC-613: admission records presence; cockpit-agents records tool contact separately.
+        _agentCoordinator?.Enroll(session.PaneId);
 
         Sessions.Add(session);
     }
@@ -6808,7 +6810,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var profile = new SessionProfile("Leak Sim", new PluginProviderConfig(Cockpit.App.Diagnostics.LeakSimProvider.ProviderId, "{}"));
         var vm = _sessionFactory();
-        Sessions.Add(vm);
+        AddSession(vm, null, profile.Label);
         await vm.StartConfiguredAsync(profile, new PermissionModeOption("Default", "default"), new ModelOption("Sonnet", "sonnet"), new EffortOption("Medium", "medium", 8000), null, tempDir, null, null, ReadingLevel.Focus);
 
         var driver = Cockpit.App.Diagnostics.LeakSimProvider.Current;
@@ -7421,6 +7423,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         owned.Add(session);
+        _agentCoordinator?.Enroll(session.PaneId);
 
         // The end-signal for this session's Completion; completed on teardown whatever ends it (carrying the reason
         // when the host ended it itself — the isolation refusal in the start below), so an embedder awaiting the

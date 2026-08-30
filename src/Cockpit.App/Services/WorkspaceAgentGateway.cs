@@ -11,7 +11,6 @@ namespace Cockpit.App.Services;
 // `Workspace.Panes` intention (AC-410). The caller is a Kestrel request thread, so the hop is capped (AC-1138).
 internal sealed class WorkspaceAgentGateway(
     CockpitViewModel cockpit,
-    IWorkspaceAgentCoordinator coordinator,
     ILogger<WorkspaceAgentGateway> logger)
     : IWorkspaceAgentGateway, ISingletonService
 {
@@ -120,9 +119,6 @@ internal sealed class WorkspaceAgentGateway(
 
         if (SessionWorkspacePlacement.Resolve(caller, firstSessionsWorkspaceId) is not { } workspaceId)
         {
-            // The caller sits on no desk: the assistant (which never does, by construction — AC-543), or a session
-            // with no explicit workspace at a moment when no Sessions workspace exists to fall back to. Reporting
-            // a desk here would describe one that is not on screen anywhere, so it is refused instead.
             return null;
         }
 
@@ -152,14 +148,6 @@ internal sealed class WorkspaceAgentGateway(
                 assistant.ActiveProfileLabel,
                 assistant.Statusline,
                 assistant.DeliversInboxAtTurnStart));
-        }
-
-        // AC-613: the host writing down the panes it knows about, so the roster measures presence, not tool use.
-        // Not the same as reaching the cockpit-agents server (that is RecordContact); keeping them apart preserves
-        // the gap AC-156's silent injection failure shows up as. Enroll never clears prior state, so safe to repeat.
-        foreach (var pane in panes)
-        {
-            coordinator.Enroll(pane.PaneId);
         }
 
         return new WorkspaceAgentSnapshot(workspaceId, panes);

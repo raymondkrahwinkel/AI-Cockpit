@@ -8,7 +8,9 @@ namespace Cockpit.App.Services;
 // rather than the first-Sessions-workspace fallback, so it never appears as a neighbour on a roster it must not be on.
 internal static class SessionWorkspacePlacement
 {
-    // The workspace `session` sits on, or `null` for the assistant or an unassigned session with no fallback.
+    internal const string UnplacedWorkspaceId = "unplaced";
+
+    // The workspace `session` sits on, or `null` for the assistant.
     // `firstSessionsWorkspaceId` is the fallback desk, resolved by the caller so a loop over many sessions pays
     // for that scan once — see `FirstSessionsWorkspaceId`.
     public static string? Resolve(SessionPanelViewModel session, string? firstSessionsWorkspaceId)
@@ -20,7 +22,7 @@ internal static class SessionWorkspacePlacement
             return null;
         }
 
-        return session.WorkspaceId.Length > 0 ? session.WorkspaceId : firstSessionsWorkspaceId;
+        return session.WorkspaceId.Length > 0 ? session.WorkspaceId : firstSessionsWorkspaceId ?? UnplacedWorkspaceId;
     }
 
     // The desk an unassigned session falls back to: the first Sessions workspace, or `null` when every Sessions desk is closed.

@@ -35,7 +35,7 @@ public sealed class InboxWakeSchedulerEndToEndTests
             return (vm, to, captured);
         });
 
-        var gateway = new WorkspaceAgentGateway(cockpit, new WorkspaceAgentCoordinator(), NullLogger<WorkspaceAgentGateway>.Instance);
+        var gateway = new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance);
         var scheduler = new InboxWakeScheduler(inbox, gateway) { Panes = () => [target.PaneId] };
 
         // A peer's own delivery — no notify tool, no urgent=true, no set_wake_optin call for the recipient anywhere
@@ -74,7 +74,7 @@ public sealed class InboxWakeSchedulerEndToEndTests
             return (vm, to, captured);
         });
 
-        var gateway = new WorkspaceAgentGateway(cockpit, new WorkspaceAgentCoordinator(), NullLogger<WorkspaceAgentGateway>.Instance);
+        var gateway = new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance);
         var scheduler = new InboxWakeScheduler(inbox, gateway) { Panes = () => [target.PaneId] };
 
         await scheduler.RunOnceAsync();

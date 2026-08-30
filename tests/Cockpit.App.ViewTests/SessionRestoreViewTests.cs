@@ -62,7 +62,8 @@ public class SessionRestoreViewTests
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
         stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
 
-        var vm = NewVm(workspaceStore, stateStore);
+        var coordinator = new Cockpit.Infrastructure.Agents.WorkspaceAgentCoordinator();
+        var vm = NewVm(workspaceStore, stateStore, agentCoordinator: coordinator);
 
         await vm.Workspaces.InitializeAsync();
         await vm.RestoreSessionPanesAsync();
@@ -72,6 +73,8 @@ public class SessionRestoreViewTests
         Assert.Equal("saved-pane-1", restored.PaneId);
         Assert.Equal("webshop", restored.Title);
         Assert.True(restored.IsPaneVisible, "the restored pane belongs to the active Sessions workspace");
+        Assert.True(coordinator.IsEnrolled(restored.PaneId));
+        Assert.Null(coordinator.LastContactUtc(restored.PaneId));
         // Nothing started: the launch path (_LaunchSessionFromResultAsync/_StartSessionAsync) is the only place
         // that ever sets LaunchResult or a process id, and the restore path never calls it.
         Assert.Null(restored.LaunchResult);
@@ -738,7 +741,8 @@ public class SessionRestoreViewTests
         IWorktreeManager? worktreeManager = null,
         Func<SessionViewModel>? sessionFactory = null,
         ISessionDialogService? dialogService = null,
-        SessionStateRecorder? sessionStateRecorder = null)
+        SessionStateRecorder? sessionStateRecorder = null,
+        Cockpit.Core.Abstractions.Agents.IWorkspaceAgentCoordinator? agentCoordinator = null)
     {
         dialogService ??= Substitute.For<ISessionDialogService>();
         var captureService = Substitute.For<IAudioCaptureService>();
@@ -774,6 +778,7 @@ public class SessionRestoreViewTests
             sessionStateStore: sessionStateStore,
             sessionRestorePlanner: sessionRestorePlanner,
             worktreeManager: worktreeManager,
-            sessionStateRecorder: sessionStateRecorder);
+            sessionStateRecorder: sessionStateRecorder,
+            agentCoordinator: agentCoordinator);
     }
 }
