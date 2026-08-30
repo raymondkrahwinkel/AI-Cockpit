@@ -401,6 +401,44 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // (AC-276).
     public virtual bool HasOutstandingBackgroundShells => false;
 
+    // AC-1096: what this session's processes are doing, refreshed by the cockpit's resource sample. All zero
+    // until the first sample, and for a session with no local process to weigh (an HTTP-backed provider).
+    [ObservableProperty]
+    private double _processCpuPercent;
+
+    [ObservableProperty]
+    private long _processMemoryBytes;
+
+    [ObservableProperty]
+    private int _processCount;
+
+    [ObservableProperty]
+    private int _abandonedProcessCount;
+
+    // AC-1096: the processes behind the status, on the row the status is already on — an idle session with a test
+    // host still resident reads exactly like a finished one without this number. Empty when there is none.
+    public string ProcessActivityLabel
+    {
+        get
+        {
+            if (ProcessCount == 0)
+            {
+                return string.Empty;
+            }
+
+            var held = $"{ProcessCpuPercent:0}% · {ProcessMemoryBytes / 1024d / 1024d:0} MB";
+            return AbandonedProcessCount > 0 ? $"{AbandonedProcessCount} left behind · {held}" : held;
+        }
+    }
+
+    partial void OnProcessCpuPercentChanged(double value) => OnPropertyChanged(nameof(ProcessActivityLabel));
+
+    partial void OnProcessMemoryBytesChanged(long value) => OnPropertyChanged(nameof(ProcessActivityLabel));
+
+    partial void OnProcessCountChanged(int value) => OnPropertyChanged(nameof(ProcessActivityLabel));
+
+    partial void OnAbandonedProcessCountChanged(int value) => OnPropertyChanged(nameof(ProcessActivityLabel));
+
     // Short human-readable label for `SessionStatus`, for the sidebar status row.
     public string SessionStatusLabel => SessionStatus switch
     {

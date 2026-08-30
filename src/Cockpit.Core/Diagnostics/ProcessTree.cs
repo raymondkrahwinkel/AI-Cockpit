@@ -6,9 +6,14 @@ namespace Cockpit.Core.Diagnostics;
 public static class ProcessTree
 {
     public static ResourceSample Sum(IReadOnlyList<ProcessRow> rows, int rootProcessId) =>
+        Snapshot(rows).Sum(rootProcessId);
+
+    // The one snapshot a cached read already built, or a fresh one — so a second caller on the same tick pays for
+    // indexing the table once rather than twice (AC-1233).
+    internal static ProcessTableSnapshot Snapshot(IReadOnlyList<ProcessRow> rows) =>
         rows is ProcessTableSnapshotRows snapshotRows
-            ? snapshotRows.Snapshot.Sum(rootProcessId)
-            : new ProcessTableSnapshot(rows).Sum(rootProcessId);
+            ? snapshotRows.Snapshot
+            : new ProcessTableSnapshot(rows);
 }
 
 public sealed class ProcessTableSnapshot
@@ -32,20 +37,15 @@ public sealed class ProcessTableSnapshot
         }
     }
 
-    public ResourceSample Sum(int rootProcessId)
+    // An empty result is an exited session, not an error.
+    public ResourceSample Sum(int rootProcessId) => SumOf(LiveReachableFrom([rootProcessId]));
+
+    // AC-1096: every live process reachable from `seeds` by parent links, the seeds themselves included. Seeds
+    // that are no longer in the table drop out, which is how a remembered membership shrinks as processes exit.
+    public HashSet<int> LiveReachableFrom(IEnumerable<int> seeds)
     {
-        if (!_byId.ContainsKey(rootProcessId))
-        {
-            // The session's process is gone — that is an exited session, not an error.
-            return ResourceSample.None;
-        }
-
-        var cpu = TimeSpan.Zero;
-        var memory = 0L;
-
-        var pending = new Stack<int>();
-        pending.Push(rootProcessId);
-        var seen = new HashSet<int>();
+        var reached = new HashSet<int>();
+        var pending = new Stack<int>(seeds);
 
         while (pending.Count > 0)
         {
@@ -53,15 +53,9 @@ public sealed class ProcessTableSnapshot
 
             // A process table read while processes come and go can contain a cycle (a reused id whose parent
             // now points back into the tree). Visiting each id once makes the walk terminate regardless.
-            if (!seen.Add(current))
+            if (!_byId.ContainsKey(current) || !reached.Add(current))
             {
                 continue;
-            }
-
-            if (_byId.TryGetValue(current, out var row))
-            {
-                cpu += row.CpuTime;
-                memory += row.WorkingSetBytes;
             }
 
             if (_children.TryGetValue(current, out var kids))
@@ -70,6 +64,43 @@ public sealed class ProcessTableSnapshot
                 {
                     pending.Push(kid);
                 }
+            }
+        }
+
+        return reached;
+    }
+
+    // AC-1096: members whose parent is no longer one of them — on Windows a dead pid, on Linux the init process
+    // that adopted them. These are exactly the ones a walk from `rootProcessId` can no longer reach.
+    public int AbandonedCount(IReadOnlySet<int> members, int rootProcessId)
+    {
+        var abandoned = 0;
+
+        foreach (var processId in members)
+        {
+            if (processId != rootProcessId
+                && _byId.TryGetValue(processId, out var row)
+                && !members.Contains(row.ParentProcessId))
+            {
+                abandoned++;
+            }
+        }
+
+        return abandoned;
+    }
+
+    // AC-1096: weighs an explicit set rather than a tree, for a membership the parent chain can no longer describe.
+    public ResourceSample SumOf(IReadOnlyCollection<int> processIds)
+    {
+        var cpu = TimeSpan.Zero;
+        var memory = 0L;
+
+        foreach (var processId in processIds)
+        {
+            if (_byId.TryGetValue(processId, out var row))
+            {
+                cpu += row.CpuTime;
+                memory += row.WorkingSetBytes;
             }
         }
 

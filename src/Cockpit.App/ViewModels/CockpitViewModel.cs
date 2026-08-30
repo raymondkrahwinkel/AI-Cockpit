@@ -3402,6 +3402,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    // AC-1096: puts each session's own processes on its sidebar row, where the status is. Status comes from the
+    // agent's event stream and knows nothing about what it left running, so an idle session with a test host still
+    // resident is indistinguishable from a finished one until this number sits beside it.
+    private void _ReportSessionProcesses(ResourceUsage usage)
+    {
+        foreach (var measured in usage.Sessions)
+        {
+            if (Sessions.FirstOrDefault(session => session.Title == measured.Title) is not { } session)
+            {
+                continue;
+            }
+
+            session.ProcessCpuPercent = measured.CpuPercent;
+            session.ProcessMemoryBytes = measured.MemoryBytes;
+            session.ProcessCount = measured.ProcessCount;
+            session.AbandonedProcessCount = measured.AbandonedProcessCount;
+        }
+    }
+
     // AC-1060: the cap above is about this session's own ceiling; this is about the machine's. A session well
     // inside its cap is killed anyway when the slice it sits in stays under pressure, and that is what oomd reads.
     private void _WarnAboutSessionPressure(ResourceUsage usage)
@@ -3552,6 +3571,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _WarnAboutSessionCaps(usage);
         _WarnAboutSessionMemory(usage);
         _WarnAboutSessionPressure(usage);
+        _ReportSessionProcesses(usage);
 
         ResourceCpu = $"CPU {usage.CpuPercent:0}%  ·  RAM ";
         ResourceMemory = _Megabytes(usage.MemoryBytes);
