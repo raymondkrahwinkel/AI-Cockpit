@@ -40,17 +40,15 @@ public class ClaudeTtyProviderConversationTests : IDisposable
         var projectDir = _CreateProjectDir();
         var reported = new List<PluginConversationId>();
 
-        var watch = ClaudeTtyProvider.WatchConversationIdAsync(
-            _stateDirectory, NoBaseline, conversation => reported.Add(conversation),
-            pollInterval: FastPollInterval, timeout: TimeSpan.FromSeconds(2));
-
         // Two sessions' transcripts appear before the first poll notices either — an unattributable race the
         // watch must not resolve by guessing the newest one.
-        await Task.Delay(60);
+        // Create both before starting the watch so that condition is deterministic.
         File.WriteAllText(Path.Combine(projectDir, "session-a.jsonl"), string.Empty);
         File.WriteAllText(Path.Combine(projectDir, "session-b.jsonl"), string.Empty);
 
-        await watch;
+        await ClaudeTtyProvider.WatchConversationIdAsync(
+            _stateDirectory, NoBaseline, conversation => reported.Add(conversation),
+            pollInterval: FastPollInterval, timeout: TimeSpan.FromSeconds(2));
 
         Assert.Empty(reported);
     }
