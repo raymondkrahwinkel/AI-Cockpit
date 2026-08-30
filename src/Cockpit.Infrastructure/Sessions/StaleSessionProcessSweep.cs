@@ -11,8 +11,12 @@ public static class StaleSessionProcessSweep
     // Sweeps what the previous run left, or says why this platform cannot.
     public static void Run(ILogger logger)
     {
-        // AC-692: Windows and macOS run `PollingMemoryLimiter`, which measures and contains nothing. There is no
-        // group to end and no anchor to find one by, and that is a reported outcome rather than a quiet skip.
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            WindowsJobSessionSweep.Run(logger);
+            return;
+        }
+
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             // AC-1134: this is "I cannot tell", not "something was left running" — the constant that fires on
