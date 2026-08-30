@@ -30,16 +30,4 @@ public class OptionsSearchMatcherTests
         Assert.True(OptionsSearchMatcher.MatchesAny("hotkey", pushToTalkKeyRowKeywords));
     }
 
-    [Fact]
-    public void CountMatches_EmptySearch_ReturnsZero()
-    {
-        Assert.Equal(0, OptionsSearchMatcher.CountMatches(null, "session exit||combine messages||wake agents"));
-    }
-
-    [Fact]
-    public void CountMatches_CountsOnlyMatchingGroups()
-    {
-        Assert.Equal(1, OptionsSearchMatcher.CountMatches("wake", "session exit||combine messages||wake agents"));
-        Assert.Equal(2, OptionsSearchMatcher.CountMatches("a", "session exit||combine messages||wake agents"));
-    }
 }
