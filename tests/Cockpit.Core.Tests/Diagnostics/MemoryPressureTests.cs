@@ -19,7 +19,7 @@ public class MemoryPressureTests
     [Fact]
     public void PastTwoThirdsOfTheMachine_ItWarns()
     {
-        var decision = MemoryPressure.Decide(usedBytes: 11 * Gb, totalBytes: 16 * Gb, warned: false);
+        var decision = MemoryPressure.Decide(usedBytes: 11 * Gb, totalBytes: 16 * Gb, budgetPercent: 66, warned: false);
 
         Assert.True(decision.Warn);
         Assert.True(decision.Warned, "so the next sample does not say it again");
@@ -28,7 +28,7 @@ public class MemoryPressureTests
     [Fact]
     public void HavingSaidItOnce_ItDoesNotRepeatWhileYouDecide()
     {
-        var decision = MemoryPressure.Decide(usedBytes: 12 * Gb, totalBytes: 16 * Gb, warned: true);
+        var decision = MemoryPressure.Decide(usedBytes: 12 * Gb, totalBytes: 16 * Gb, budgetPercent: 66, warned: true);
 
         Assert.False(decision.Warn, "a warning every ten seconds is a warning you turn off");
         Assert.True(decision.Warned);
@@ -37,12 +37,12 @@ public class MemoryPressureTests
     [Fact]
     public void OnceMemoryHasFallenWellBack_TheNextClimbIsWorthSayingAgain()
     {
-        var calm = MemoryPressure.Decide(usedBytes: 8 * Gb, totalBytes: 16 * Gb, warned: true);
+        var calm = MemoryPressure.Decide(usedBytes: 8 * Gb, totalBytes: 16 * Gb, budgetPercent: 66, warned: true);
 
         Assert.False(calm.Warn);
         Assert.False(calm.Warned, "it is let off the hook, so a real climb later is heard");
 
-        Assert.True(MemoryPressure.Decide(usedBytes: 11 * Gb, totalBytes: 16 * Gb, calm.Warned).Warn);
+        Assert.True(MemoryPressure.Decide(usedBytes: 11 * Gb, totalBytes: 16 * Gb, budgetPercent: 66, calm.Warned).Warn);
     }
 
     [Fact]
@@ -51,40 +51,64 @@ public class MemoryPressureTests
         // Otherwise a session that breathes in and out around the threshold warns you twice a minute.
         Assert.Equal(
             new MemoryPressureDecision(false, true),
-            MemoryPressure.Decide(usedBytes: (long)(10.4 * Gb), totalBytes: 16 * Gb, warned: true));
+            MemoryPressure.Decide(usedBytes: (long)(10.4 * Gb), totalBytes: 16 * Gb, budgetPercent: 66, warned: true));
     }
 
     [Fact]
     public void OnASmallMachine_ASmallNumberIsNotAWarning()
     {
         // Two thirds of 4 GB is reached by opening a browser. Below the floor, nothing is said whatever the share.
-        Assert.False(MemoryPressure.Decide(usedBytes: (long)(2.8 * Gb), totalBytes: 4 * Gb, warned: false).Warn);
+        Assert.False(MemoryPressure.Decide(usedBytes: (long)(2.8 * Gb), totalBytes: 4 * Gb, budgetPercent: 66, warned: false).Warn);
     }
 
     [Fact]
     public void WhenTheMachinesMemoryIsUnknown_NothingIsWarnedAbout() =>
         // A share of an unknown total is not a fact.
-        Assert.False(MemoryPressure.Decide(usedBytes: 12 * Gb, totalBytes: 0, warned: false).Warn);
+        Assert.False(MemoryPressure.Decide(usedBytes: 12 * Gb, totalBytes: 0, budgetPercent: 66, warned: false).Warn);
 
     [Fact]
     public void AnIdleCockpit_SaysNothing() =>
-        Assert.False(MemoryPressure.Decide(usedBytes: 300L * 1024 * 1024, totalBytes: 16 * Gb, warned: false).Warn);
+        Assert.False(MemoryPressure.Decide(usedBytes: 300L * 1024 * 1024, totalBytes: 16 * Gb, budgetPercent: 66, warned: false).Warn);
 
     [Fact]
     public void TheFigureTurnsAmberBeforeAnybodyIsInterrupted() =>
         // A colour is something you can act on quietly. A toast is an interruption, and it is only worth one when the
         // machine is actually close to killing something.
-        Assert.Equal(MemoryPressureLevel.Elevated, MemoryPressure.Level(usedBytes: 9 * Gb, totalBytes: 16 * Gb));
+        Assert.Equal(MemoryPressureLevel.Elevated, MemoryPressure.Level(usedBytes: 9 * Gb, totalBytes: 16 * Gb, budgetPercent: 66));
 
     [Fact]
     public void AtThePointTheWarningFires_TheFigureIsRed() =>
-        Assert.Equal(MemoryPressureLevel.High, MemoryPressure.Level(usedBytes: 11 * Gb, totalBytes: 16 * Gb));
+        Assert.Equal(MemoryPressureLevel.High, MemoryPressure.Level(usedBytes: 11 * Gb, totalBytes: 16 * Gb, budgetPercent: 66));
 
     [Fact]
     public void AnIdleCockpit_ReadsAsCalm() =>
-        Assert.Equal(MemoryPressureLevel.Calm, MemoryPressure.Level(usedBytes: 400L * 1024 * 1024, totalBytes: 16 * Gb));
+        Assert.Equal(MemoryPressureLevel.Calm, MemoryPressure.Level(usedBytes: 400L * 1024 * 1024, totalBytes: 16 * Gb, budgetPercent: 66));
 
     [Fact]
     public void WithNoMachineToCompareAgainst_ItReadsAsCalm_RatherThanAsAlarm() =>
-        Assert.Equal(MemoryPressureLevel.Calm, MemoryPressure.Level(usedBytes: 12 * Gb, totalBytes: 0));
+        Assert.Equal(MemoryPressureLevel.Calm, MemoryPressure.Level(usedBytes: 12 * Gb, totalBytes: 0, budgetPercent: 66));
+
+    [Fact]
+    public void TheBudgetIsTheOperatorsAndNotAFixedFraction()
+    {
+        // AC-1086: the same 12 GB on the same machine, either side of the line, decided only by what was set.
+        Assert.True(MemoryPressure.Decide(usedBytes: 12 * Gb, totalBytes: 16 * Gb, budgetPercent: 70, warned: false).Warn);
+        Assert.False(MemoryPressure.Decide(usedBytes: 12 * Gb, totalBytes: 16 * Gb, budgetPercent: 90, warned: false).Warn);
+    }
+
+    [Fact]
+    public void ARaisedBudget_LetsAStandingWarningOffTheHook() =>
+        // Otherwise a warning raised under the old budget would stand until usage fell to the old calm line, which
+        // is not a line the operator can see anymore.
+        Assert.False(MemoryPressure.Decide(usedBytes: 12 * Gb, totalBytes: 16 * Gb, budgetPercent: 95, warned: true).Warned);
+
+    [Fact]
+    public void ABudgetBelowWhatIsUsable_IsClampedRatherThanObeyed() =>
+        // A hand-edited `cockpit.json` may say 0, and a budget of nothing warns on an idle cockpit forever.
+        Assert.Equal(MemoryPressure.MinimumBudgetPercent / 100d, MemoryPressure.BudgetShare(0));
+
+    [Fact]
+    public void TheDefaultBudget_IsSeventyPercentOfTheMachine() =>
+        // Not a fraction of the machine chosen here: Raymond set it, and the setting carries it (AC-1086).
+        Assert.Equal(70, MemoryPressure.DefaultBudgetPercent);
 }

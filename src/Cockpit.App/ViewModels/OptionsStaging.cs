@@ -27,6 +27,7 @@ internal static class OptionsStaging
         "IncludeNightlyBuilds",
         "LocalNotificationsEnabled",
         "LogDiagnosticSnapshots",
+        "MemoryBudgetPercent",
         "MinimizeToTrayOnClose",
         "NotifyOnCiFailure",
         "NotifyOnSessionFinished",

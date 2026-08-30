@@ -1,3 +1,4 @@
+using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.TranscriptDisplay;
@@ -45,6 +46,28 @@ public class SessionBehaviorSettingsStoreTests : IDisposable
 
         Assert.True(loaded.AutoCloseOnExit);
         Assert.True(loaded.CombineQueuedMessages);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ASectionWrittenBeforeTheSharedBudgetExisted_ReadsTheDefaultRatherThanZero()
+    {
+        // AC-1086: absent would deserialise as 0, and a budget of nothing warns on an idle cockpit — for every
+        // install that predates the setting, which is all of them.
+        await File.WriteAllTextAsync(_configFilePath, """{"sessionBehavior":{"autoCloseOnExit":true}}""");
+
+        var settings = await new SessionBehaviorSettingsStore(_configFilePath).LoadAsync();
+
+        Assert.Equal(MemoryPressure.DefaultBudgetPercent, settings.MemoryBudgetPercent);
+    }
+
+    [Fact]
+    public async Task SaveAsync_ThenLoadAsync_RoundTripsTheSharedMemoryBudget()
+    {
+        var store = new SessionBehaviorSettingsStore(_configFilePath);
+
+        await store.SaveAsync(new SessionBehaviorSettings { MemoryBudgetPercent = 55 });
+
+        Assert.Equal(55, (await store.LoadAsync()).MemoryBudgetPercent);
     }
 
     [Fact]

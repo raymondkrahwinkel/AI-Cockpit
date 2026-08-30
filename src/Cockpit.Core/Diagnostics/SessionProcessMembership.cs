@@ -24,6 +24,16 @@ public sealed class SessionProcessMembership
             snapshot.AbandonedCount(members, rootProcessId));
     }
 
+    // AC-1086: adds every measured session's processes to `target`, so a cockpit-wide total can be taken over the
+    // union of its own tree and these — a set, because the tree already holds the members still attached to it.
+    public void UnionInto(HashSet<int> target)
+    {
+        foreach (var members in _membersByRoot.Values)
+        {
+            target.UnionWith(members);
+        }
+    }
+
     // Keeps only the sessions the cockpit still measures, so a closed one does not hold its remembered pids for
     // the life of the app.
     public void Retain(IReadOnlyCollection<int> rootProcessIds)

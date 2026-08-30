@@ -1430,6 +1430,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _wakeAgentsByDefault = true;
 
+    // AC-1086: the shared budget over all sessions together, as a share of the machine. Each session had a cap of
+    // its own and nothing ever added them up, so several well-behaved sessions could still promise more than exists.
+    [ObservableProperty]
+    private int _memoryBudgetPercent = MemoryPressure.DefaultBudgetPercent;
+
     [ObservableProperty]
     private string _sessionBehaviorSettingsStatus = string.Empty;
 
@@ -3307,6 +3312,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AutoCloseOnExit = settings.AutoCloseOnExit;
         CombineQueuedMessages = settings.CombineQueuedMessages;
         WakeAgentsByDefault = settings.WakeAgentsByDefault;
+        MemoryBudgetPercent = settings.MemoryBudgetPercent;
         // Pushed explicitly as well as through the property's own change handler: the saved value can equal the
         // property's initial one, and then nothing changed and the handler never ran — leaving the coordinator on
         // its own default rather than on the operator's, which happen to agree today and need not tomorrow.
@@ -3327,6 +3333,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             AutoCloseOnExit = AutoCloseOnExit,
             CombineQueuedMessages = CombineQueuedMessages,
             WakeAgentsByDefault = WakeAgentsByDefault,
+            MemoryBudgetPercent = MemoryBudgetPercent,
         });
         SessionBehaviorSettingsStatus = "Saved";
     }
@@ -3478,10 +3485,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // Says something when the cockpit and its sessions together approach what the machine has (#78).
+    // Says something when the cockpit and its sessions together pass the operator's shared budget (#78, AC-1086).
+    // Nothing is closed or refused on the strength of it: AC-692 settled that the operator decides, and a budget
+    // that only makes the crossing visible is already the thing the per-session caps could never say.
     private void _WarnAboutMemory(ResourceUsage usage)
     {
-        var decision = MemoryPressure.Decide(usage.MemoryBytes, MachineMemory.TotalBytes(), _warnedAboutMemory);
+        var machine = MachineMemory.TotalBytes();
+        var decision = MemoryPressure.Decide(usage.MemoryBytes, machine, MemoryBudgetPercent, _warnedAboutMemory);
         _warnedAboutMemory = decision.Warned;
 
         if (!decision.Warn)
@@ -3495,10 +3505,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? $" '{heaviest.Title}' is the largest at {_Megabytes(heaviest.MemoryBytes)} — closing or restarting it frees that."
             : string.Empty;
 
+        // AC-1096: the cheapest thing the operator can act on, because nothing is lost by it — these belong to no
+        // living parent, so no work in progress ends with them. Only open sessions are summed, which is all the
+        // figure above counts too.
+        var left = usage.Sessions.Sum(session => session.AbandonedProcessCount);
+        var abandoned = left > 0
+            ? $" {left} process(es) of open sessions have been left behind and nothing will collect them."
+            : string.Empty;
+
         // Raised on the host this view model owns: ToastService is built *from* it, and injecting the service back in
         // is a circle the container walks forever.
         ToastHost.Add(
-            $"The cockpit and its sessions are using {_Megabytes(usage.MemoryBytes)} of {_Megabytes(MachineMemory.TotalBytes())}. On macOS the system kills the whole app when memory gets tight — sessions and all.{advice}",
+            $"The cockpit and its sessions are holding {_Megabytes(usage.MemoryBytes)} of {_Megabytes(machine)} — over the {MemoryBudgetPercent}% shared budget. "
+            + "That figure is this app plus every process the sessions now open have spawned, including ones they have lost the parent of. "
+            + $"Nothing is closed automatically; when memory runs out the system ends a session for you instead.{advice}{abandoned}",
             ToastSeverity.Warning,
             actionLabel: null,
             onAction: null);
@@ -3584,7 +3604,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Amber before the toast, red at the point where macOS starts thinking about killing the app: a number that
         // changes colour while you work is something you can act on without being interrupted.
-        ResourceMemoryBrushKey = MemoryPressure.Level(usage.MemoryBytes, MachineMemory.TotalBytes()) switch
+        ResourceMemoryBrushKey = MemoryPressure.Level(usage.MemoryBytes, MachineMemory.TotalBytes(), MemoryBudgetPercent) switch
         {
             MemoryPressureLevel.High => "CockpitStatusErrorBrush",
             MemoryPressureLevel.Elevated => "CockpitStatusWaitingBrush",
@@ -6087,6 +6107,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AutoCloseOnExit = behavior.AutoCloseOnExit;
         CombineQueuedMessages = behavior.CombineQueuedMessages;
         WakeAgentsByDefault = behavior.WakeAgentsByDefault;
+        MemoryBudgetPercent = behavior.MemoryBudgetPercent;
 
         var screenshot = new ScreenshotSettings();
         ScreenshotGlobalHotkeyEnabled = screenshot.GlobalHotkeyEnabled;

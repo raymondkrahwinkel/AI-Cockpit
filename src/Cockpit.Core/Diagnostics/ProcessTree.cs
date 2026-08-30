@@ -10,7 +10,7 @@ public static class ProcessTree
 
     // The one snapshot a cached read already built, or a fresh one — so a second caller on the same tick pays for
     // indexing the table once rather than twice (AC-1233).
-    internal static ProcessTableSnapshot Snapshot(IReadOnlyList<ProcessRow> rows) =>
+    public static ProcessTableSnapshot Snapshot(IReadOnlyList<ProcessRow> rows) =>
         rows is ProcessTableSnapshotRows snapshotRows
             ? snapshotRows.Snapshot
             : new ProcessTableSnapshot(rows);

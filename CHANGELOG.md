@@ -32,6 +32,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: one shared memory budget over everything the cockpit runs, instead of a separate cap per session that
+  nothing ever added up — several sessions each staying politely under their own cap could still promise more
+  memory than the machine has, and then the system picked which one to end. Set it in Options under Sessions as a
+  percentage of this machine's memory; it defaults to 70%. Crossing it warns you once, names the heaviest session,
+  and says how many processes the open sessions have lost the parent of, since those cost nothing to close. What a
+  session left behind after it was closed is not counted yet. Nothing is closed automatically and no session is
+  refused: the cockpit tells you, you decide.
+
 - added: each session's sidebar row now says what its processes are doing — the CPU and memory of that session
   and everything it has spawned, and a count of the ones it has left behind. A session that has gone quiet
   because its agent finished looks exactly like one whose test run is still holding a gigabyte, and until now
@@ -402,6 +410,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   window to the front, then closes the flyout so it doesn't linger over a window that just moved to the background.
 
 ### Fixed
+
+- fixed: the memory figure in the status bar now counts the processes a session has left behind. It was reached
+  by following parent links down from the cockpit, so a build server whose launcher had exited fell out of the
+  total at exactly the moment it became worth reporting — on this machine that was gigabytes the sidebar showed
+  beside the session while the status bar above it did not. Both meters now read the same processes, so the one
+  figure the operator glances at is the honest one.
 
 - fixed: a session that fails to start now says so, and why, instead of looking like one that is still coming up.
   A launch that died in a fraction of a second — the provider's own program missing, say — left the pane sitting

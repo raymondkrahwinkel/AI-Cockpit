@@ -1,3 +1,5 @@
+using Cockpit.Core.Diagnostics;
+
 namespace Cockpit.Core.SessionBehavior;
 
 // User-configurable session behaviour in `cockpit.json`'s `sessionBehavior` section: exit-after-turn (T10) and combined queued messages (AC-145).
@@ -15,4 +17,8 @@ public sealed record SessionBehaviorSettings
     // Sessions may override it temporarily; AC-396's wake rate limit makes that useful default safe.
     // The old per-session opt-in stayed unused because the operator never saw it and an agent cannot consent for them.
     public bool WakeAgentsByDefault { get; init; } = true;
+
+    // AC-1086: the shared memory budget over all sessions together, as a share of the machine. Sessions each had a
+    // cap and nothing added them up, so six could promise more than the machine has and the system picked a victim.
+    public int MemoryBudgetPercent { get; init; } = MemoryPressure.DefaultBudgetPercent;
 }
