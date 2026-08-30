@@ -311,10 +311,9 @@
                                                 <materialIcons:MaterialIcon Kind="Console" Width="14" Height="14"/>
                                             </MenuItem.Icon>
                                         </MenuItem>
-                                        <!-- AC-967: Windows-only. Opens a separate elevated console window, not a pane. -->
-                                        <MenuItem Header="New terminal (administrator)" Command="{Binding NewElevatedTerminalCommand}"
+                                        <MenuItem Header="New administrator terminal (separate window)" Command="{Binding NewElevatedTerminalCommand}"
                                                   IsVisible="{Binding IsWindowsPlatform}"
-                                                  ToolTip.Tip="The same shell, elevated — opens in its own window after the Windows UAC prompt">
+                                                  ToolTip.Tip="Windows UAC opens an administrator window, not a pane — Cockpit cannot show its transcript or status, list it as a session, or close it.">
                                             <MenuItem.Icon>
                                                 <materialIcons:MaterialIcon Kind="ShieldAccountOutline" Width="14" Height="14"/>
                                             </MenuItem.Icon>

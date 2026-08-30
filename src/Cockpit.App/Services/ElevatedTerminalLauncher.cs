@@ -1,18 +1,14 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using Cockpit.Core.Terminal;
 
-namespace Cockpit.Core.Terminal;
+namespace Cockpit.App.Services;
 
-// Opens a shell as administrator (AC-967). Deliberately *not* a pane: elevation goes through
-// `ShellExecuteEx` (`UseShellExecute` + the `runas` verb), which gives the elevated process its own console window,
-// so this never touches the cockpit's ConPTY and needs no system setting beyond the UAC prompt Windows shows itself.
-public static class ElevatedTerminalLauncher
+internal static class ElevatedTerminalLauncher
 {
-    public static bool IsSupported => OperatingSystem.IsWindows();
+    internal static bool IsSupported => OperatingSystem.IsWindows();
 
-    // Null when the elevated window started, otherwise a short message for the operator — a declined UAC prompt is
-    // the common case and must never fail silently.
-    public static string? Launch(ShellDescriptor shell, string? workingDirectory = null)
+    internal static string? Launch(ShellDescriptor shell, string? workingDirectory = null)
     {
         if (!IsSupported)
         {
@@ -37,7 +33,7 @@ public static class ElevatedTerminalLauncher
                 ? "Could not start an elevated terminal."
                 : null;
         }
-        catch (Win32Exception exception) when (exception.NativeErrorCode == 1223) // ERROR_CANCELLED
+        catch (Win32Exception exception) when (exception.NativeErrorCode == 1223)
         {
             return "Elevation was declined — no administrator terminal was started.";
         }

@@ -4819,9 +4819,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         terminal.LaunchTerminal(shell);
     }
 
-    // "New terminal (administrator)" (AC-967): the same shell as `NewTerminal`, but started elevated through
-    // `ShellExecuteEx`+`runas`, which means its own OS console window instead of a pane — an elevated process
-    // cannot be adopted into our ConPTY. Windows-only; nothing here runs on another platform.
+    // This UI command creates no session or TTY launch request.
     [RelayCommand]
     private void NewElevatedTerminal()
     {

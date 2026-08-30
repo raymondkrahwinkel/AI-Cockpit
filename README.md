@@ -152,6 +152,8 @@ mixed into a grid of sessions:
   plain terminal panes (`pwsh`/`bash`/…) beside them, arranged the way you left them.
 - **📊 Dashboard** — a grid of **widgets**, for what you want to glance at rather than talk to.
 
+On Windows, **New administrator terminal (separate window)** uses the standard UAC prompt for work such as `diskpart`. It is intentionally outside Cockpit's terminal panes; see [Administrator terminal](docs/elevated-terminal.md) for its security and lifecycle limits.
+
 Tabs are reorderable by dragging and renamable in place; Ctrl+Shift+Left / Ctrl+Shift+Right walk between them.
 Closing a workspace with running sessions asks first, and says what it is about to stop. A workspace can override
 the global layout choice or follow it, which is its own setting rather than something Options decides for every
