@@ -126,9 +126,9 @@ inline	plugins-dev/Cockpit.Plugin.GitHubModelsProvider/OpenAiCompatProviderConfi
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/DialogTestApp.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/HeadlessAvalonia.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/MergedPullRequestsTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/PullRequestBadgeUpdaterTests.cs	2
+inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/PullRequestBadgeUpdaterTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/PullRequestFeedTests.cs	1
-inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/PullRequestRefreshSourceTests.cs	7
+inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/PullRequestRefreshSourceTests.cs	6
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/PullRequestsTestApp.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/SettingsControlTemplateFitTests.cs	1
 inline	plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests/TestBadgeHost.cs	1
