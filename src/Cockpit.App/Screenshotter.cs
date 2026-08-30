@@ -27,6 +27,90 @@ internal static class Screenshotter
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
 
+    public const string Argument = "--screenshot";
+
+    // A render that has not finished by now is stuck, not slow — and a stuck render used to hold the process
+    // until somebody killed it, which from the outside is indistinguishable from a scene that takes a while (AC-1235).
+    private static readonly TimeSpan RenderDeadline = TimeSpan.FromSeconds(120);
+
+    public static bool IsRequested(string[] args) => args.Contains(Argument);
+
+    // The whole command line this route answers, parsed here rather than in `Program` so that nothing between the
+    // switch and the render touches the operator's state — see the call site for why that matters (AC-1235).
+    // Returns the process exit code: every failure says why on stderr, and success names the file it wrote.
+    public static int RunFromCommandLine(string[] args)
+    {
+        var index = Array.IndexOf(args, Argument);
+        if (index + 1 >= args.Length)
+        {
+            Console.Error.WriteLine($"{Argument} requires an output PNG path argument.");
+
+            return 1;
+        }
+
+        var outputPngPath = args[index + 1];
+
+        // "--snapshot <path>" also dumps the laid-out visual tree as text (AC-86 verify loop), and
+        // "--snapshot-target <x:Name>" scopes that dump to one control's subtree.
+        var scene = _Value(args, "--scene");
+        var snapshotPath = _Value(args, "--snapshot");
+        var snapshotTarget = _Value(args, "--snapshot-target");
+
+        var width = DefaultWindowWidth;
+        var height = DefaultWindowHeight;
+        if (_Value(args, "--size") is { } size)
+        {
+            if (size.Split('x') is not [var rawWidth, var rawHeight] ||
+                !int.TryParse(rawWidth, out width) || !int.TryParse(rawHeight, out height))
+            {
+                Console.Error.WriteLine($"--size must be WxH in whole pixels; it is \"{size}\".");
+
+                return 1;
+            }
+        }
+
+        using var deadline = new Timer(
+            _ =>
+            {
+                Console.Error.WriteLine(
+                    $"Screenshot of scene \"{scene ?? "main window"}\" did not finish within {RenderDeadline.TotalSeconds:0} seconds; giving up.");
+                Console.Error.Flush();
+                Environment.Exit(1);
+            },
+            state: null,
+            RenderDeadline,
+            Timeout.InfiniteTimeSpan);
+
+        try
+        {
+            Run(outputPngPath, width, height, scene, snapshotPath, snapshotTarget);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Screenshot failed: {exception.Message}");
+
+            return 1;
+        }
+
+        // The whole point of this route is a file an agent can look at, so the run only reports success once it has
+        // one — an encoder that writes nothing used to leave exit 0 and an empty directory behind (AC-1235). Naming
+        // the resolved path is what makes a relative one that landed elsewhere obvious rather than missing.
+        var written = new FileInfo(Path.GetFullPath(outputPngPath));
+        if (!written.Exists || written.Length == 0)
+        {
+            Console.Error.WriteLine($"Screenshot reported success but wrote no image to \"{written.FullName}\".");
+
+            return 1;
+        }
+
+        Console.WriteLine($"Wrote {written.FullName} ({written.Length} bytes).");
+
+        return 0;
+    }
+
+    private static string? _Value(string[] args, string name) =>
+        Array.IndexOf(args, name) is var index && index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+
     public static void Run(string outputPngPath, int width = DefaultWindowWidth, int height = DefaultWindowHeight, string? scene = null, string? snapshotPath = null, string? snapshotTarget = null)
     {
         if (!Path.GetExtension(outputPngPath).Equals(".png", StringComparison.OrdinalIgnoreCase))
@@ -581,7 +665,11 @@ internal static class Screenshotter
     internal static Window BuildScene(string? scene, int width = DefaultWindowWidth, int height = DefaultWindowHeight)
     {
         Window window;
-        if (scene is not null && Scenes.TryGetValue(scene, out var build))
+        if (scene is null)
+        {
+            window = new MainWindow { DataContext = new ViewModels.CockpitViewModel() };
+        }
+        else if (Scenes.TryGetValue(scene, out var build))
         {
             window = build(width, height);
         }
@@ -591,7 +679,11 @@ internal static class Screenshotter
         }
         else
         {
-            window = new MainWindow { DataContext = new ViewModels.CockpitViewModel() };
+            // A misspelled name used to fall through to the main window, so the render succeeded and showed a screen
+            // nobody asked about — the one failure a picture cannot reveal, since it looks like a picture (AC-1235).
+            throw new ArgumentException(
+                $"Unknown scene \"{scene}\". Known scenes: {string.Join(", ", SceneNames.Order(StringComparer.Ordinal))}.",
+                nameof(scene));
         }
 
         // A SizeToContent dialog measures itself; only the main window takes the requested size.

@@ -44,19 +44,13 @@ sealed class Program
         // (AC-385). Auto-apply only on the operator's request, never for the headless children below (AC-738).
         VelopackApp.Build().SetAutoApplyOnStartup(_AppliesAStagedUpdate(args)).Run();
 
-        // Run Whisper calibration before the single-instance guard and app stack so its one-runtime-per-process
-        // native load can measure, print, and exit in an isolated child (AC-68).
-        if (Cockpit.Infrastructure.Voice.HeadlessCalibration.IsRequested(args))
+        // Calibration, dictation and a screenshot each finish without the cockpit ever starting, and all of them
+        // have to be answered here — above the single-instance guard, which would otherwise stand them down
+        // against the operator's running cockpit. `HeadlessRoutes` holds the list and the reasoning.
+        if (HeadlessRoutes.TryRun(args, out var headlessExitCode))
         {
-            Environment.Exit(Cockpit.Infrastructure.Voice.HeadlessCalibration.RunAsync(args, CancellationToken.None).GetAwaiter().GetResult());
-            return;
-        }
+            Environment.Exit(headlessExitCode);
 
-        // Run dictation before the guard and app stack so Whisper's abort-prone native runtime is isolated in a
-        // cheap child whose crash cannot take down the desktop (AC-174).
-        if (Cockpit.Infrastructure.Voice.HeadlessDictation.IsRequested(args))
-        {
-            Environment.Exit(Cockpit.Infrastructure.Voice.HeadlessDictation.RunAsync(args, CancellationToken.None).GetAwaiter().GetResult());
             return;
         }
 
@@ -165,42 +159,6 @@ sealed class Program
         if (args.Contains("--audio-spike"))
         {
             AudioSpike.RunAsync(Services).GetAwaiter().GetResult();
-            return;
-        }
-
-        var screenshotIndex = Array.IndexOf(args, "--screenshot");
-        if (screenshotIndex >= 0)
-        {
-            if (screenshotIndex + 1 >= args.Length)
-            {
-                Console.Error.WriteLine("--screenshot requires an output PNG path argument.");
-                Environment.Exit(1);
-                return;
-            }
-
-            // Optional "--size WxH" so a docs render can use a window big enough to show a session's
-            // transcript, "--scene <name>" to render a dialog instead of the main window, and
-            // "--snapshot <path>" to also dump the laid-out visual tree as text (AC-86 verify loop).
-            var sceneIndex = Array.IndexOf(args, "--scene");
-            var scene = sceneIndex >= 0 && sceneIndex + 1 < args.Length ? args[sceneIndex + 1] : null;
-
-            var snapshotIndex = Array.IndexOf(args, "--snapshot");
-            var snapshotPath = snapshotIndex >= 0 && snapshotIndex + 1 < args.Length ? args[snapshotIndex + 1] : null;
-
-            // "--snapshot-target <x:Name>" scopes the text snapshot to one control's subtree.
-            var targetIndex = Array.IndexOf(args, "--snapshot-target");
-            var snapshotTarget = targetIndex >= 0 && targetIndex + 1 < args.Length ? args[targetIndex + 1] : null;
-
-            var sizeIndex = Array.IndexOf(args, "--size");
-            if (sizeIndex >= 0 && sizeIndex + 1 < args.Length &&
-                args[sizeIndex + 1].Split('x') is [var rawWidth, var rawHeight] &&
-                int.TryParse(rawWidth, out var width) && int.TryParse(rawHeight, out var height))
-            {
-                Screenshotter.Run(args[screenshotIndex + 1], width, height, scene, snapshotPath, snapshotTarget);
-                return;
-            }
-
-            Screenshotter.Run(args[screenshotIndex + 1], scene: scene, snapshotPath: snapshotPath, snapshotTarget: snapshotTarget);
             return;
         }
 
