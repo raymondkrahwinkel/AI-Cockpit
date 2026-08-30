@@ -1,10 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
-using Avalonia.Data.Converters;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Cockpit.App.Controls;
@@ -26,6 +26,9 @@ namespace Cockpit.App.Views;
 public partial class OptionsDialog : Window
 {
     private readonly Dictionary<string, PluginOptionsRowViewModel> _pluginRows = new(StringComparer.Ordinal);
+    private readonly List<IDisposable> _searchVisibilityOverrides = [];
+    private readonly Dictionary<Control, string> _searchableText = [];
+    private CockpitViewModel? _searchCockpit;
     // AC-1040: a `?` beside each page's title, landing on the section of the knowledge base that describes that
     // page — not on the top of a long article. Two of them leave this dialog on purpose: the assistant is a
     // feature with a page of its own, and where isolated sessions put their work is the worktrees page's subject.
@@ -53,7 +56,12 @@ public partial class OptionsDialog : Window
         InitializeComponent();
         CockpitWindowChrome.Apply(this);
         _AddHelpHints();
-        CategoryNav.SelectionChanged += (_, _) => _EnsurePluginContent();
+        CategoryNav.SelectionChanged += (_, _) =>
+        {
+            _EnsurePluginContent();
+            _ApplySearch(_searchCockpit?.OptionsSearchText);
+        };
+        DataContextChanged += (_, _) => _WireSearch();
 
         // The plugin list is built when the dialog opens rather than when the app started: a plugin installed since
         // then should not be missing from its own backup. The diagnostics panel is read the same way — once, on
@@ -65,13 +73,19 @@ public partial class OptionsDialog : Window
                 cockpit.RefreshBackupPlugins();
                 cockpit.Diagnostics.Refresh();
                 _BuildPluginCategories(cockpit);
+                _ApplySearch(cockpit.OptionsSearchText);
                 RequestAnimationFrame(_ => RequestAnimationFrame(_ => cockpit.OptionsOpenPresented()));
             }
         };
 
         // However the dialog closes (Apply, Cancel, the window chrome, Escape), release the microphone if a level
         // test was left running.
-        Closed += (_, _) => (DataContext as CockpitViewModel)?.StopMicTest();
+        Closed += (_, _) =>
+        {
+            _UnwireSearch();
+            _ClearSearchVisibilityOverrides();
+            (DataContext as CockpitViewModel)?.StopMicTest();
+        };
         Closing += OnClosingDialog;
     }
 
@@ -120,30 +134,6 @@ public partial class OptionsDialog : Window
         Close();
     }
 
-    // Criterion 7: search keywords for a plugin's row ("docker" must also find Docker inside Local
-    // CI). No way to derive these from view content, so hand-authored per known plugin; one with
-    // no entry still gets a row and searches on its name alone.
-    private static readonly Dictionary<string, string> _PluginSearchKeywords = new(StringComparer.Ordinal)
-    {
-        ["youtrack"] = "youtrack issue tracker",
-        ["docker"] = "docker containers images engine",
-        ["local-ci"] = "local ci docker run tests workflow jobs",
-        ["autopilot"] = "autopilot",
-        ["depot"] = "depot storage artifacts",
-        ["diagram"] = "diagram",
-        ["github-issues"] = "github issues",
-        ["github-pull-requests"] = "github pull requests",
-        ["git-status"] = "git status",
-        ["kubernetes"] = "kubernetes k8s",
-        ["system-monitor"] = "system monitor cpu memory",
-        ["workflows"] = "workflows",
-    };
-
-    // AC-1030: declared plugin-settings groups, in the fixed order they render below the static WORKING/VOICE &
-    // ASSISTANT/SYSTEM groups from the .axaml. A plugin that declares none of these (Category is null) lands in
-    // the trailing "PLUGINS" catch-all, exactly where every plugin landed before this existed.
-    private static readonly string[] _PluginCategoryOrder = ["Assistant Plugins"];
-
     private const string _DefaultPluginCategory = "PLUGINS";
 
     // Builds one nav group per declared plugin-settings category, appended into the same CategoryNav/
@@ -158,7 +148,15 @@ public partial class OptionsDialog : Window
 
         var byCategory = cockpit.PluginOptionsRows.ToLookup(row => row.Category ?? _DefaultPluginCategory);
 
-        foreach (var category in _PluginCategoryOrder.Append(_DefaultPluginCategory))
+        IEnumerable<string> categories = byCategory.Select(group => group.Key)
+            .Where(category => category != _DefaultPluginCategory)
+            .OrderBy(category => category, StringComparer.OrdinalIgnoreCase);
+        if (byCategory[_DefaultPluginCategory].Any())
+        {
+            categories = categories.Append(_DefaultPluginCategory);
+        }
+
+        foreach (var category in categories)
         {
             if (!byCategory[category].Any())
             {
@@ -198,17 +196,13 @@ public partial class OptionsDialog : Window
         foreach (var row in rows)
         {
             var tag = $"plugin:{row.PluginId}";
-            var keywords = _PluginSearchKeywords.GetValueOrDefault(row.PluginId, row.DisplayName);
 
-            CategoryNav.Items.Add(_BuildPluginNavItem(tag, row.DisplayName, keywords));
+            CategoryNav.Items.Add(_BuildPluginNavItem(tag, row.DisplayName));
             _pluginRows.Add(tag, row);
         }
     }
 
-    private static readonly IValueConverter _HasSearchTextConverter =
-        new FuncValueConverter<string?, bool>(text => !string.IsNullOrEmpty(text));
-
-    private static ListBoxItem _BuildPluginNavItem(string tag, string displayName, string keywords)
+    private static ListBoxItem _BuildPluginNavItem(string tag, string displayName)
     {
         var icon = new MaterialIcon
         {
@@ -223,14 +217,7 @@ public partial class OptionsDialog : Window
         var label = new TextBlock { Text = displayName, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(label, 1);
 
-        var badgeText = new TextBlock();
-        badgeText.Bind(TextBlock.TextProperty, new Binding(nameof(CockpitViewModel.OptionsSearchText))
-        {
-            Converter = OptionsCategoryMatchCountConverter.Instance,
-            ConverterParameter = keywords,
-        });
-        var badge = new Border { Classes = { "searchMatchBadge" }, Child = badgeText };
-        badge.Bind(IsVisibleProperty, new Binding(nameof(CockpitViewModel.OptionsSearchText)) { Converter = _HasSearchTextConverter });
+        var badge = new Border { Classes = { "searchMatchBadge" }, IsVisible = false, Child = new TextBlock() };
         Grid.SetColumn(badge, 2);
 
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
@@ -239,11 +226,6 @@ public partial class OptionsDialog : Window
         grid.Children.Add(badge);
 
         var item = new ListBoxItem { Tag = tag, Content = grid };
-        item.Bind(IsVisibleProperty, new Binding(nameof(CockpitViewModel.OptionsSearchText))
-        {
-            Converter = OptionsCategoryVisibleConverter.Instance,
-            ConverterParameter = keywords,
-        });
         return item;
     }
 
@@ -302,6 +284,173 @@ public partial class OptionsDialog : Window
 
         CategoryContent.Children.Add(_BuildPluginContent(tag, row));
     }
+
+    private void _WireSearch()
+    {
+        _UnwireSearch();
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        _searchCockpit = cockpit;
+        cockpit.PropertyChanged += _OnSearchPropertyChanged;
+        _ApplySearch(cockpit.OptionsSearchText);
+    }
+
+    private void _UnwireSearch()
+    {
+        if (_searchCockpit is not null)
+        {
+            _searchCockpit.PropertyChanged -= _OnSearchPropertyChanged;
+            _searchCockpit = null;
+        }
+    }
+
+    private void _OnSearchPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CockpitViewModel.OptionsSearchText) && sender is CockpitViewModel cockpit)
+        {
+            _ApplySearch(cockpit.OptionsSearchText);
+        }
+    }
+
+    private void _ApplySearch(string? searchText)
+    {
+        _ClearSearchVisibilityOverrides();
+        var searching = !string.IsNullOrWhiteSpace(searchText);
+        var pages = CategoryContent.Children.OfType<Control>()
+            .Where(page => page.Tag is string)
+            .ToDictionary(page => (string)page.Tag!);
+        var matches = pages.ToDictionary(pair => pair.Key, pair => _FilterRows(pair.Value, searchText));
+
+        foreach (var (tag, plugin) in _pluginRows)
+        {
+            if (searching)
+            {
+                plugin.EnsureContent();
+            }
+
+            matches[tag] = plugin.RawView is { } view ? _FilterRows(view, searchText) : 0;
+        }
+        var items = CategoryNav.Items.OfType<ListBoxItem>().ToList();
+        foreach (var item in items.Where(item => item.Tag is string))
+        {
+            var tag = (string)item.Tag!;
+            var matchCount = matches.GetValueOrDefault(tag);
+            _SetSearchVisibility(item, searching ? matchCount > 0 : null);
+            _SetSearchMatchBadge(item, searching ? matchCount : null);
+        }
+
+        for (var index = 0; index < items.Count; index++)
+        {
+            if (items[index].Tag is string)
+            {
+                continue;
+            }
+
+            var hasVisibleCategory = items.Skip(index + 1).TakeWhile(item => item.Tag is not null).Any(item => item.IsVisible);
+            _SetSearchVisibility(items[index], searching ? hasVisibleCategory : null);
+        }
+    }
+
+    private int _FilterRows(Control root, string? searchText)
+    {
+        var searching = !string.IsNullOrWhiteSpace(searchText);
+        var matchCount = 0;
+        foreach (var row in _Descendants(root).Where(_IsSearchableInput).Select(control => _RowFor(root, control)).Distinct())
+        {
+            var match = _Matches(searchText, row);
+            _SetSearchVisibility(row, searching ? match : null);
+            matchCount += match ? 1 : 0;
+        }
+
+        return matchCount;
+    }
+
+    private void _SetSearchVisibility(Control control, bool? visible)
+    {
+        if (visible is { } value)
+        {
+            _searchVisibilityOverrides.Add(control.Bind(IsVisibleProperty, new _ValueObservable<bool>(value), BindingPriority.Animation));
+        }
+    }
+
+    private static Control _RowFor(Control root, Control control)
+    {
+        if (control.GetLogicalParent() is not Control { } parent || parent == root)
+        {
+            return control;
+        }
+
+        return parent.GetLogicalChildren().OfType<Control>().Count(_IsSearchableInput) == 1 ? parent : control;
+    }
+
+    private static bool _IsSearchableInput(Control control) => control is CheckBox or RadioButton or TextBox or NumericUpDown or ComboBox;
+
+    private void _SetSearchMatchBadge(ListBoxItem item, int? matchCount)
+    {
+        var badge = _Descendants(item).OfType<Border>().SingleOrDefault(border => border.Classes.Contains("searchMatchBadge"));
+        if (badge is null)
+        {
+            return;
+        }
+
+        _SetSearchVisibility(badge, matchCount > 0);
+        var text = _Descendants(badge).OfType<TextBlock>().SingleOrDefault();
+        if (text is not null)
+        {
+            text.Text = matchCount?.ToString();
+        }
+    }
+
+    private bool _Matches(string? searchText, Control? root) => root is not null && OptionsSearchMatcher.MatchesAny(searchText, _TextFor(root));
+
+    private string _TextFor(Control root)
+    {
+        if (_searchableText.TryGetValue(root, out var text))
+        {
+            return text;
+        }
+
+        text = string.Join(' ', _Descendants(root)
+            .Select(control => control switch
+            {
+                TextBlock textBlock => textBlock.Text,
+                ContentControl { Content: string text } => text,
+                _ => null,
+            })
+            .Where(value => !string.IsNullOrWhiteSpace(value)));
+        _searchableText.Add(root, text);
+        return text;
+    }
+
+    private void _ClearSearchVisibilityOverrides()
+    {
+        foreach (var binding in _searchVisibilityOverrides)
+        {
+            binding.Dispose();
+        }
+
+        _searchVisibilityOverrides.Clear();
+    }
+
+    private sealed class _ValueObservable<T>(T value) : IObservable<T>
+    {
+        public IDisposable Subscribe(IObserver<T> observer)
+        {
+            observer.OnNext(value);
+            return _NoOpDisposable.Instance;
+        }
+    }
+
+    private sealed class _NoOpDisposable : IDisposable
+    {
+        public static readonly _NoOpDisposable Instance = new();
+        public void Dispose() { }
+    }
+
+    private static IEnumerable<Control> _Descendants(Control root) => root.GetLogicalDescendants().OfType<Control>().Prepend(root);
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
