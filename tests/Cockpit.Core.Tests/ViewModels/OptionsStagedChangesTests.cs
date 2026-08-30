@@ -164,6 +164,30 @@ public class OptionsStagedChangesTests
     }
 
     [Fact]
+    public async Task DiscardConfirmation_IsRequiredForDisplayOnlyChanges()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        vm.BeginOptionsEdit();
+
+        vm.ShowTimestamps = !vm.ShowTimestamps;
+
+        Assert.True(vm.ShouldConfirmOptionDiscard());
+    }
+
+    [Fact]
+    public async Task DiscardConfirmation_IsKeptForIntegrationChanges()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        vm.BeginOptionsEdit();
+
+        vm.WebhookUrl = "https://hooks.example/changed";
+
+        Assert.True(vm.ShouldConfirmOptionDiscard());
+    }
+
+    [Fact]
     public async Task UsageThresholds_AreWrittenByApply_RatherThanAfterTheDialogHasClosed()
     {
         var stores = new Stores();

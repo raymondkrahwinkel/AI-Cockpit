@@ -20,6 +20,25 @@ public class OptionsStagingGuardTests
         File.ReadAllText(Path.Combine(RepositoryPaths.Root, "src", "Cockpit.App", "Views", "OptionsDialog.axaml.cs"));
 
     [Fact]
+    public void RestoreDefaults_ConfirmsItsScope()
+    {
+        Assert.Contains("Click=\"OnRestoreDefaults\"", DialogMarkup, StringComparison.Ordinal);
+        Assert.Contains("Options settings in every category", DialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("Profiles, MCP servers, and plugin settings are not changed", DialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("cancel Options without saving these defaults", DialogCodeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DiscardConfirmation_KeepsAlreadyRunActionsClear()
+    {
+        var start = DialogCodeBehind.IndexOf("Discard unsaved changes?", StringComparison.Ordinal);
+        var end = DialogCodeBehind.IndexOf("private void OnRefreshDiagnostics", start, StringComparison.Ordinal);
+        var discardDialog = DialogCodeBehind[start..end];
+        Assert.Contains("Actions already run stay in effect.", discardDialog, StringComparison.Ordinal);
+        Assert.DoesNotContain("Turning encryption on or off", discardDialog, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryEditableControlInTheDialog_IsEitherStagedOrDeclaredImmediate()
     {
         var known = OptionsStaging.EditedProperties.Concat(OptionsStaging.ImmediateOrTransient).ToHashSet(StringComparer.Ordinal);
