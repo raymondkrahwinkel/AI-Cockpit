@@ -66,9 +66,9 @@ public sealed class ResourceMonitor : ISingletonService
             _Forget(measuredSessions.Select(session => session.ProcessId).ToHashSet());
         }
 
-        // AC-1086: union of the cockpit's tree and every session's membership, since the walk cannot reach a process
-        // whose parent has gone — 4.4 GB of them here (AC-1260). A union, not a sum: the tree still holds the session
-        // processes attached to it. After the loop, so the memberships are this tick's and a closed one is forgotten.
+        // AC-1086: union of the cockpit's tree and every open session's membership, since the walk cannot reach a
+        // process whose parent has gone. A union, not a sum: the tree still holds the session processes attached to
+        // it. What a *closed* session left behind is in neither, and stays uncounted — AC-1260 owns that question.
         var snapshot = ProcessTree.Snapshot(rows);
         var held = snapshot.LiveReachableFrom([Environment.ProcessId]);
         _membership.UnionInto(held);

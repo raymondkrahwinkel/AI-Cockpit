@@ -4,8 +4,8 @@ using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.App.ViewTests;
 
-// AC-1086: the cockpit-wide figure a shared memory budget would lean on. It has to see what the per-session meter
-// sees, and a walk down parent links cannot: on this machine that gap was 4.4 GB of build servers (AC-1260).
+// AC-1086: the cockpit-wide figure a shared memory budget leans on. It has to see what the per-session meter sees,
+// and a walk down parent links cannot — an open session's process outlives the launcher the walk needs to find it.
 public sealed class ResourceMonitorAbandonedProcessTests
 {
     private const int SessionProcessId = 900_001;
@@ -13,6 +13,8 @@ public sealed class ResourceMonitorAbandonedProcessTests
 
     // A parent id that is in no process table here, which is what a session's launcher looks like once it is gone.
     private const int DeadParentProcessId = 900_003;
+
+    private const int SecondSessionProcessId = 900_004;
 
     [Fact]
     public void Sample_AfterASessionsChildIsOrphaned_StillCountsItInTheCockpitWideTotal()
@@ -50,8 +52,9 @@ public sealed class ResourceMonitorAbandonedProcessTests
     [Fact]
     public void Sample_AfterTheSessionIsGone_DropsItsProcessesFromTheTotal()
     {
-        // A closed session must not keep inflating the budget with pids it no longer owns — its processes are
-        // still in the table and still orphaned, so only forgetting the membership takes them back out.
+        // A closed session must not keep inflating the budget with pids it no longer owns; its processes are still
+        // in the table and still orphaned, so only forgetting the membership takes them out. This is equally the
+        // budget's known limit — what a closed session left behind is counted by nobody, and AC-1260 owns that.
         var table = new MutableProcessTable(_Rows(spawnedParentProcessId: SessionProcessId));
         var monitor = new ResourceMonitor(table, _ => null);
 
@@ -65,6 +68,31 @@ public sealed class ResourceMonitorAbandonedProcessTests
         ];
 
         Assert.Equal(100, monitor.Sample([]).MemoryBytes);
+    }
+
+    [Fact]
+    public void Sample_WhenOneSessionClosesAsAnotherOpens_TheClosedOneStillDropsOut()
+    {
+        // The count that decides whether to prune stays level across that swap, so it is worth pinning that it
+        // still prunes: `_previous` only ever grows between prunes, so it exceeds the session count the moment any
+        // measured process is no longer measured — a swap included.
+        var table = new MutableProcessTable(_Rows(spawnedParentProcessId: SessionProcessId));
+        var monitor = new ResourceMonitor(table, _ => null);
+
+        monitor.Sample([new SessionProcessRef("pane-a", "Session", SessionProcessId)]);
+
+        table.Rows =
+        [
+            new ProcessRow(Environment.ProcessId, 0, TimeSpan.Zero, 100),
+            new ProcessRow(SessionProcessId, DeadParentProcessId, TimeSpan.Zero, 200),
+            new ProcessRow(SpawnedProcessId, SessionProcessId, TimeSpan.Zero, 400),
+            new ProcessRow(SecondSessionProcessId, Environment.ProcessId, TimeSpan.Zero, 50),
+        ];
+
+        var usage = monitor.Sample([new SessionProcessRef("pane-b", "Session", SecondSessionProcessId)]);
+
+        // 100 (cockpit) + 50 (the session that just opened). The 600 the closed one left behind is nobody's.
+        Assert.Equal(150, usage.MemoryBytes);
     }
 
     private static ProcessRow[] _Rows(int spawnedParentProcessId) =>

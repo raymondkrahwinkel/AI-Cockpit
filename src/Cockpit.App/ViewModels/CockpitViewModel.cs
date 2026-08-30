@@ -3506,17 +3506,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             : string.Empty;
 
         // AC-1096: the cheapest thing the operator can act on, because nothing is lost by it — these belong to no
-        // living parent, so no work in progress ends with them.
+        // living parent, so no work in progress ends with them. Only open sessions are summed, which is all the
+        // figure above counts too.
         var left = usage.Sessions.Sum(session => session.AbandonedProcessCount);
         var abandoned = left > 0
-            ? $" {left} process(es) have been left behind by sessions and nothing will collect them."
+            ? $" {left} process(es) of open sessions have been left behind and nothing will collect them."
             : string.Empty;
 
         // Raised on the host this view model owns: ToastService is built *from* it, and injecting the service back in
         // is a circle the container walks forever.
         ToastHost.Add(
             $"The cockpit and its sessions are holding {_Megabytes(usage.MemoryBytes)} of {_Megabytes(machine)} — over the {MemoryBudgetPercent}% shared budget. "
-            + "That figure is this app plus every process its sessions have spawned, the ones they left behind included. "
+            + "That figure is this app plus every process the sessions now open have spawned, including ones they have lost the parent of. "
             + $"Nothing is closed automatically; when memory runs out the system ends a session for you instead.{advice}{abandoned}",
             ToastSeverity.Warning,
             actionLabel: null,
