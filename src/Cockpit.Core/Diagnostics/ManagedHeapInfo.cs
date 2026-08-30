@@ -9,7 +9,7 @@ public sealed record ManagedHeapInfo(
     bool IsServerGc,
     long HeapSizeBytes,
     long TotalAllocatedBytes,
-    long LiveManagedBytes,
+    long InUseManagedBytes,
     int Gen0Collections,
     int Gen1Collections,
     int Gen2Collections)
@@ -18,6 +18,8 @@ public sealed record ManagedHeapInfo(
         GCSettings.IsServerGC,
         GC.GetGCMemoryInfo().HeapSizeBytes,
         GC.GetTotalAllocatedBytes(),
+        // AC-1237: GetTotalMemory(forceFullCollection: false) counts garbage the GC has not swept yet, so this is
+        // occupancy and not retention — it was called "live", and that name cost a whole ticket's premise.
         GC.GetTotalMemory(forceFullCollection: false),
         GC.CollectionCount(0),
         GC.CollectionCount(1),
