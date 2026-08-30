@@ -563,9 +563,12 @@
                                                 <TextBlock Text="{Binding ToggleLabel}"/>
                                             </StackPanel>
                                         </Button>
-                                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="toolBody"
-                                                             Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                                             IsVisible="{Binding IsExpanded}"/>
+                                        <StackPanel IsVisible="{Binding IsExpanded}" Spacing="0">
+                                            <TextBlock Text="{Binding ToolResultPrefix}" Classes="toolBody"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="toolBody"
+                                                                 Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
@@ -586,10 +589,13 @@
                         <TextBlock Text="{Binding ToggleLabel}"/>
                     </StackPanel>
                 </Button>
-                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                           Classes="toolBody"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                           IsVisible="{Binding IsExpanded}"/>
+                <StackPanel IsVisible="{Binding IsExpanded}" Spacing="0">
+                    <TextBlock Text="{Binding ToolResultPrefix}" Classes="toolBody"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                               Classes="toolBody"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
             </StackPanel>
 
             <!-- Bind to the parent session view model's commands (not the row's), passing

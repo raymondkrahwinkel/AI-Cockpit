@@ -392,6 +392,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             InputJson = inputJson,
         };
 
+    private static TranscriptEntryViewModel _ToolResultRow(ToolResult toolResult) =>
+        new(TranscriptEntryKind.ToolResult, toolResult.Content) { IsResultError = toolResult.IsError };
+
     // AC-996: the row a permission asks about, when no tool-use event ever brought one. Top-level even for a
     // sub-agent's call: a row nested under a collapsed anchor is exactly the kind the operator cannot reach, and
     // being asked is the whole reason this row exists.
@@ -2523,9 +2526,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     }
                     else
                     {
-                        toolResultLane.Anchor.SubAgentRows.Add(new TranscriptEntryViewModel(
-                            TranscriptEntryKind.ToolResult,
-                            toolResult.IsError ? $"Tool error: {toolResult.Content}" : $"Tool result: {toolResult.Content}"));
+                        toolResultLane.Anchor.SubAgentRows.Add(_ToolResultRow(toolResult));
                     }
 
                     break;
@@ -2544,9 +2545,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 else
                 {
                     // No matching tool-use in view (e.g. a result arriving first): fall back to a row.
-                    Transcript.Add(new TranscriptEntryViewModel(
-                        TranscriptEntryKind.ToolResult,
-                        toolResult.IsError ? $"Tool error: {toolResult.Content}" : $"Tool result: {toolResult.Content}"));
+                    Transcript.Add(_ToolResultRow(toolResult));
                 }
 
                 // AC-532: this call is no longer outstanding, whichever way it resolved — success, error, or a

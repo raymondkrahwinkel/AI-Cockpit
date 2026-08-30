@@ -121,6 +121,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // Label for a standalone (orphan) tool-result row's toggle; the chevron itself renders separately as `ToggleIconKind`.
     public string ToggleLabel => IsExpanded ? "Tool result" : "Tool result (click to show)";
 
+    public string ToolResultPrefix => IsResultError ? "Tool error:" : "Tool result:";
+
     // Compact one-line label for a collapsed tool-use row (T5): tool name + a short hint pulled from the
     // input (command/file/pattern/…), so a call reads as "Bash · dotnet build" instead of the full input
     // JSON. The full input shows once expanded; the row's own chevron renders separately as `ToggleIconKind`.
@@ -539,7 +541,11 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(BackgroundStatusText));
     }
 
-    partial void OnIsResultErrorChanged(bool value) => OnPropertyChanged(nameof(BackgroundStatusText));
+    partial void OnIsResultErrorChanged(bool value)
+    {
+        OnPropertyChanged(nameof(BackgroundStatusText));
+        OnPropertyChanged(nameof(ToolResultPrefix));
+    }
 
     partial void OnIsBackgroundTaskLiveChanged(bool value) => OnPropertyChanged(nameof(BackgroundStatusText));
 

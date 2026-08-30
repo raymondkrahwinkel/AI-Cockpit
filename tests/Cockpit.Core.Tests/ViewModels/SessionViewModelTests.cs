@@ -1151,6 +1151,47 @@ public class SessionViewModelTests
     }
 
     [Fact]
+    public void Apply_OrphanedToolResult_RetainsTheIncomingContentInstance()
+    {
+        var vm = NewVm();
+        var content = new string('x', 5 * 1024 * 1024);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_orphan", Content = content, IsError = false });
+
+        var row = Assert.Single(vm.Transcript);
+        Assert.Same(content, row.Text);
+    }
+
+    [Fact]
+    public void Apply_OrphanedSubAgentToolResult_RetainsTheIncomingContentInstance()
+    {
+        var vm = NewVm();
+        var content = new string('x', 5 * 1024 * 1024);
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "task-1", ToolName = "Task", InputJson = "{}" });
+
+        vm.Apply(new ToolResult
+        {
+            SessionId = "S1", ToolUseId = "sub-tool-orphan", Content = content, IsError = false, ParentToolUseId = "task-1",
+        });
+
+        var anchor = Assert.Single(vm.Transcript);
+        var row = Assert.Single(anchor.SubAgentRows);
+        Assert.Same(content, row.Text);
+    }
+
+    [Fact]
+    public void Apply_OrphanedToolResultError_PreservesItsErrorState()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_orphan", Content = "failed", IsError = true });
+
+        var row = Assert.Single(vm.Transcript);
+        Assert.True(row.IsResultError);
+        Assert.Equal("Tool error:", row.ToolResultPrefix);
+    }
+
+    [Fact]
     public void Apply_ToolResultError_MarksTheCoupledResultAsAnError()
     {
         var vm = NewVm();
