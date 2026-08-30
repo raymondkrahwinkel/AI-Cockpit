@@ -134,9 +134,19 @@ public partial class CockpitView : UserControl
                         var content = string.Empty;
                         try { content = System.IO.File.ReadAllText(trigger).Trim(); } catch (Exception) { }
                         try { System.IO.File.Delete(trigger); } catch (Exception) { }
+                        if (content.StartsWith("apprepro:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var args = content["apprepro:".Length..].Split(',');
+                            var sessions = 6;
+                            var seconds = 60;
+                            _ = int.TryParse(args[0], out sessions);
+                            if (args.Length > 1) _ = int.TryParse(args[1], out seconds);
+                            _ = cockpit.RunAppReproAsync(sessions, seconds,
+                                args.Length > 2 && string.Equals(args[2], "growing-tail", StringComparison.OrdinalIgnoreCase));
+                        }
                         // "chat" / "chat:<rows>" runs the assistant-chat-window sim; a bare int runs the grid sim with
                         // that many rows; anything else is the default grid sim.
-                        if (content.StartsWith("chat", StringComparison.OrdinalIgnoreCase))
+                        else if (content.StartsWith("chat", StringComparison.OrdinalIgnoreCase))
                         {
                             var n = 300;
                             var colon = content.IndexOf(':');

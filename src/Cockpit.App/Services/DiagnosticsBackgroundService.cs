@@ -44,6 +44,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // not pay that stutter. Set COCKPIT_LEAKSIM=1 to arm the leak diagnostics (and the on-demand leak-sim trigger).
     internal static readonly bool LeakDiagnosticsEnabled =
         Environment.GetEnvironmentVariable("COCKPIT_LEAKSIM") is { Length: > 0 };
+
+    private static readonly string? MeasurementRoot =
+        Environment.GetEnvironmentVariable("COCKPIT_MEASUREMENT_ROOT");
 #endif
 
     private readonly ILogger<DiagnosticsBackgroundService> _logger;
@@ -308,6 +311,13 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
                 renderClockWarned = renderDecision.Warned;
 
+#if DEBUG
+                if (MeasurementRoot is { } measurementRoot)
+                {
+                    _TryWriteMeasurementHostReady(measurementRoot);
+                }
+#endif
+
                 if (_appImageProbePath is not null && now >= nextMountProbeAt)
                 {
                     nextMountProbeAt = now + AppImageMountProbeInterval;
@@ -344,6 +354,31 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             Thread.Sleep(TickInterval);
         }
     }
+
+#if DEBUG
+    private void _TryWriteMeasurementHostReady(string root)
+    {
+        var path = Path.Combine(root, "measurement-host.ready.json");
+        if (File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(root);
+            File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(new
+            {
+                pid = Environment.ProcessId,
+                stateRoot = Cockpit.Core.Configuration.CockpitBuild.StateRoot
+            }));
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Measurement host-ready probe failed.");
+        }
+    }
+#endif
 
     // Started, and no render answer yet — null while nothing is outstanding and while a posted probe is still
     // waiting for its turn. That second case used to be all this reported, and it is why AC-1196 saw nothing.

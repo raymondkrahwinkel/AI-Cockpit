@@ -87,11 +87,48 @@ public partial class App : Application
                 return;
             }
 
-            _StartCockpitAndOnboard(desktop);
+#if DEBUG
+            if (_CanBypassOnboardingForMeasurementHarness(
+                Environment.GetEnvironmentVariable("COCKPIT_MEASUREMENT_HARNESS"),
+                Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable)))
+            {
+                _StartCockpit(desktop);
+            }
+            else
+#endif
+            {
+                _StartCockpitAndOnboard(desktop);
+            }
         }
 
         base.OnFrameworkInitializationCompleted();
     }
+
+#if DEBUG
+    // A measurement needs an intentionally empty isolated state root; onboarding would fill it.
+    private static bool _CanBypassOnboardingForMeasurementHarness(string? harness, string? configuredStateRoot)
+    {
+        if (string.IsNullOrWhiteSpace(harness))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(configuredStateRoot) || !Path.IsPathFullyQualified(configuredStateRoot))
+        {
+            throw new InvalidOperationException("COCKPIT_MEASUREMENT_HARNESS requires an absolute COCKPIT_STATE_ROOT.");
+        }
+
+        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        if (comparer.Equals(
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(configuredStateRoot)),
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(CockpitBuild.DefaultStateRoot))))
+        {
+            throw new InvalidOperationException("COCKPIT_MEASUREMENT_HARNESS requires a non-default COCKPIT_STATE_ROOT.");
+        }
+
+        return true;
+    }
+#endif
 
     // AC-509 criterion 4: unlock first, onboarding after. Every route that ends in the main window being shown
     // goes through this — see the Show()-inventory in the App.axaml.cs class doc and the two callers below.
