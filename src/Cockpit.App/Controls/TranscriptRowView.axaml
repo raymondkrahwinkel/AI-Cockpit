@@ -289,6 +289,35 @@
                 <SelectableTextBlock IsVisible="{Binding ShowHumanToolLine}" Text="{Binding HumanToolText}"
                                      TextWrapping="Wrap" Classes="transcript"/>
 
+                <!-- AC-489: the same approval in words anyone can answer — a sentence built out of the call
+                     itself (its verb, its paths, its count) and the files it names. It shows only for a call
+                     that could be restated from itself; anything else keeps the coarse line above rather than
+                     a guess, because an approval that names the wrong thing is worse than one nobody reads. -->
+                <StackPanel IsVisible="{Binding ShowPlainConsentCard}" Spacing="6">
+                    <SelectableTextBlock Text="{Binding PlainConsentSentence}" TextWrapping="Wrap"
+                                         Classes="transcript" FontWeight="SemiBold"/>
+                    <Border IsVisible="{Binding HasPlainConsentPaths}" Classes="paneChrome" Padding="8,6">
+                        <SelectableTextBlock Text="{Binding PlainConsentPathsText}" TextWrapping="Wrap"
+                                             Classes="toolBody"
+                                             Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- Folded, never hidden: the raw call stays one click away on every consent prompt here,
+                     derived sentence or not. It keeps the screen honest — what is approved is still shown —
+                     and it is one screen for both audiences: a developer opens the fold, a bookkeeper does not. -->
+                <StackPanel IsVisible="{Binding ShowConsentCommandFold}" Spacing="4">
+                    <Button Command="{Binding ToggleExpandedCommand}" Classes="toolChip" HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                            <TextBlock Text="{Binding ConsentCommandToggleLabel}"/>
+                        </StackPanel>
+                    </Button>
+                    <SelectableTextBlock IsVisible="{Binding ShowConsentCommand}" Text="{Binding Text}"
+                                         TextWrapping="Wrap" Classes="toolBody"
+                                         Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+
                 <!-- AC-715: an AskUserQuestion rides the permission callback like any other tool,
                      but Allow/Deny is not an answer to it — so it renders as the agent's own
                      options instead of the consent buttons over raw JSON. Non-modal, and it
