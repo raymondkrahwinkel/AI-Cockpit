@@ -33,7 +33,6 @@ public sealed class ResourceMonitor : ISingletonService
     public ResourceUsage Sample(IReadOnlyList<SessionProcessRef> measuredSessions)
     {
         var rows = _reader.Read();
-        var snapshot = ProcessTree.Snapshot(rows);
         var now = DateTimeOffset.UtcNow;
         var elapsed = _sampledAt == DateTimeOffset.MinValue ? TimeSpan.Zero : now - _sampledAt;
         var cores = Environment.ProcessorCount;
@@ -70,6 +69,7 @@ public sealed class ResourceMonitor : ISingletonService
         // AC-1086: union of the cockpit's tree and every session's membership, since the walk cannot reach a process
         // whose parent has gone — 4.4 GB of them here (AC-1260). A union, not a sum: the tree still holds the session
         // processes attached to it. After the loop, so the memberships are this tick's and a closed one is forgotten.
+        var snapshot = ProcessTree.Snapshot(rows);
         var held = snapshot.LiveReachableFrom([Environment.ProcessId]);
         _membership.UnionInto(held);
         var self = _Weigh(Environment.ProcessId, snapshot.SumOf(held), elapsed, cores);
