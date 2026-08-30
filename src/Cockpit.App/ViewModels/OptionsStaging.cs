@@ -116,15 +116,19 @@ internal static class OptionsStaging
         "OnBrowseProfileConfigDir",
         "OnBrowseProfileWorkingDirectory",
         "OnBrowseProfileExecutable",
+        "OnRestoreDefaults",
     ];
 
     // A cheap value-identity of everything staged, compared against the same string taken when the dialog
     // opened. Cheaper and less brittle than mirroring 60-odd properties into a buffer object, and it is only
     // ever used for equality — the string itself is never shown or stored.
     public static string Fingerprint(CockpitViewModel cockpit)
+        => _Fingerprint(cockpit, EditedProperties);
+
+    private static string _Fingerprint(CockpitViewModel cockpit, IEnumerable<string> properties)
     {
         var parts = new List<string>(EditedProperties.Length + 2);
-        foreach (var path in EditedProperties)
+        foreach (var path in properties)
         {
             parts.Add(_Format(_Read(cockpit, path)));
         }

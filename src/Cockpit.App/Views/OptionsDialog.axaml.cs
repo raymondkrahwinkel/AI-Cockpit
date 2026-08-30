@@ -457,6 +457,27 @@ public partial class OptionsDialog : Window
 
     private void OnCancel(object? sender, RoutedEventArgs e) => Close();
 
+    private async void OnRestoreDefaults(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var confirmation = new ConfirmationDialog
+        {
+            DataContext = new ConfirmationDialogViewModel(
+                "Restore Options defaults?",
+                "Options settings in every category will be reset. Profiles, MCP servers, and plugin settings are not changed. You can still cancel Options without saving these defaults.",
+                "Restore defaults"),
+        };
+
+        if (await confirmation.ShowDialog<bool>(this))
+        {
+            cockpit.RestoreOptionDefaultsCommand.Execute(null);
+        }
+    }
+
     // Every way out that is not Apply is a Cancel (AC-999) — the ✕ and Escape included, which is why this hangs
     // off Closing rather than off the Cancel button. Cancelling the close first is what lets the confirmation be
     // awaited: Avalonia will not hold a window open across an await on its own.
@@ -469,16 +490,13 @@ public partial class OptionsDialog : Window
 
         e.Cancel = true;
 
-        if (cockpit.RefreshPendingOptionChanges())
+        if (cockpit.ShouldConfirmOptionDiscard())
         {
             var confirmation = new ConfirmationDialog
             {
                 DataContext = new ConfirmationDialogViewModel(
-                    "Discard your changes",
-                    "Nothing you changed here has been saved yet. Closing puts every setting back the way it was "
-                    + "when you opened this window.\n\n"
-                    + "Turning encryption on or off, changing your password, checking for updates, running a backup "
-                    + "and testing the microphone are not settings and already took effect — those stay.",
+                    "Discard unsaved changes?",
+                    "Your settings changes have not been applied. Actions already run stay in effect.",
                     "Discard"),
             };
 

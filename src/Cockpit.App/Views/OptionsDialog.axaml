@@ -28,8 +28,8 @@
         <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                <Button Grid.Column="0" Content="Restore Defaults" Command="{Binding RestoreOptionDefaultsCommand}"
-                        ToolTip.Tip="Puts every setting on these tabs back to its default. Nothing is written until you apply, so Cancel still undoes this."/>
+                <Button Grid.Column="0" Content="Restore Options Defaults…" Click="OnRestoreDefaults"
+                        ToolTip.Tip="Restores Options settings in every category. Profiles, MCP servers, and plugin settings are unchanged."/>
                 <TextBlock Grid.Column="1" x:Name="PluginSettingsErrorText" HorizontalAlignment="Right"
                            VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" MaxWidth="360"
                            IsVisible="False"

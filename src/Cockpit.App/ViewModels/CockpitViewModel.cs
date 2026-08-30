@@ -5971,6 +5971,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return HasPendingOptionChanges;
     }
 
+    public bool ShouldConfirmOptionDiscard() => RefreshPendingOptionChanges();
+
     // Writes everything the dialog holds. The five writers that `_optionsStaged` held off are flushed by hand
     // here, in the same order they would have run in had they never been staged.
     [RelayCommand]
