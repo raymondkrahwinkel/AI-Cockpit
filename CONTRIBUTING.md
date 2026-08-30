@@ -39,8 +39,7 @@ it keeps a one-person project alive.
    commercially licensed at v8; a `BannedApiAnalyzers` rule makes reintroducing it a build error, not
    a review catch).
 3. **Build clean and test.** `dotnet build` with zero warnings, `dotnet test` green. New behaviour
-   comes with tests; UI changes should be checked visually (`--screenshot` renders the main window
-   headless). A test that needs the UI thread goes in `Cockpit.App.ViewTests`, which starts a headless
+   comes with tests; UI changes should be checked visually — see *Looking at a screen* below. A test that needs the UI thread goes in `Cockpit.App.ViewTests`, which starts a headless
    Avalonia application. `Cockpit.Core.Tests` starts none, so `Dispatcher.UIThread` there binds to
    whichever thread reaches it first: the test either passes while proving nothing or hangs the run
    with no summary and no failing test. Naming `Avalonia.Threading` in `Cockpit.Core.Tests` is a build
@@ -53,6 +52,28 @@ it keeps a one-person project alive.
 5. **Record it in the changelog.** When the work is finished, add a bullet under `## [Unreleased]`
    in [`CHANGELOG.md`](CHANGELOG.md) — see *Changelog* below. A finished item that leaves no trace
    there is not finished.
+
+## Looking at a screen
+
+```
+dotnet run --project src/Cockpit.App -- --screenshot <path>.png --scene <name> [--size 1100x760]
+```
+
+Renders one screen headless and writes it as a PNG. Without `--scene` you get the main window; with one
+you get that scene — the named, staged states in `Screenshotter`, which is also what the view tests and the
+theme baseline build from, so a scene worth rendering is a scene something already asserts on. An unknown
+name fails and lists the ones it knows. `--snapshot <path>` additionally dumps the laid-out visual tree as
+text, and `--snapshot-target <x:Name>` scopes that dump to one control's subtree.
+
+The run either writes the image and prints the full path it wrote, or exits non-zero saying why. It cannot
+succeed silently, and a render that has not finished in two minutes gives up rather than hanging.
+
+Nothing else in the app starts: no plugins, no services, no single-instance claim, and nothing is written to
+the state directory — so this is safe to run while a cockpit is open, and it is the *only* supported way for
+an automated caller to look at a screen. Never drive the UI with global input injection (`SetCursorPos`,
+`mouse_event`, `SendKeys`, `SetForegroundWindow`, `SetWindowPos`, or anything else through user32 or
+`System.Windows.Forms`): those APIs have no process boundary, they land in whatever window happens to have
+focus, and they take over the machine of whoever is sitting at it — targeting your own PID changes nothing.
 
 ## Running a second instance
 

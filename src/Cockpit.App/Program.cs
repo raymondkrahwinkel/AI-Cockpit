@@ -60,6 +60,16 @@ sealed class Program
             return;
         }
 
+        // Render before the guard and the app stack, like the two headless routes above: behind the guard it stood
+        // down against the operator's running cockpit and exited 0 without a file (AC-1235). It needs neither — its
+        // scenes carry their own view models — and ahead of them it writes nothing into the operator's state.
+        if (Screenshotter.IsRequested(args))
+        {
+            Environment.Exit(Screenshotter.Run(args));
+
+            return;
+        }
+
         // Scrub inherited session identity (AC-42), terminal identity (#58), and credentials before any spawn.
         // Doing it once gives every route the same clean environment.
         ScrubInheritedHostEnvironment();
@@ -165,42 +175,6 @@ sealed class Program
         if (args.Contains("--audio-spike"))
         {
             AudioSpike.RunAsync(Services).GetAwaiter().GetResult();
-            return;
-        }
-
-        var screenshotIndex = Array.IndexOf(args, "--screenshot");
-        if (screenshotIndex >= 0)
-        {
-            if (screenshotIndex + 1 >= args.Length)
-            {
-                Console.Error.WriteLine("--screenshot requires an output PNG path argument.");
-                Environment.Exit(1);
-                return;
-            }
-
-            // Optional "--size WxH" so a docs render can use a window big enough to show a session's
-            // transcript, "--scene <name>" to render a dialog instead of the main window, and
-            // "--snapshot <path>" to also dump the laid-out visual tree as text (AC-86 verify loop).
-            var sceneIndex = Array.IndexOf(args, "--scene");
-            var scene = sceneIndex >= 0 && sceneIndex + 1 < args.Length ? args[sceneIndex + 1] : null;
-
-            var snapshotIndex = Array.IndexOf(args, "--snapshot");
-            var snapshotPath = snapshotIndex >= 0 && snapshotIndex + 1 < args.Length ? args[snapshotIndex + 1] : null;
-
-            // "--snapshot-target <x:Name>" scopes the text snapshot to one control's subtree.
-            var targetIndex = Array.IndexOf(args, "--snapshot-target");
-            var snapshotTarget = targetIndex >= 0 && targetIndex + 1 < args.Length ? args[targetIndex + 1] : null;
-
-            var sizeIndex = Array.IndexOf(args, "--size");
-            if (sizeIndex >= 0 && sizeIndex + 1 < args.Length &&
-                args[sizeIndex + 1].Split('x') is [var rawWidth, var rawHeight] &&
-                int.TryParse(rawWidth, out var width) && int.TryParse(rawHeight, out var height))
-            {
-                Screenshotter.Run(args[screenshotIndex + 1], width, height, scene, snapshotPath, snapshotTarget);
-                return;
-            }
-
-            Screenshotter.Run(args[screenshotIndex + 1], scene: scene, snapshotPath: snapshotPath, snapshotTarget: snapshotTarget);
             return;
         }
 

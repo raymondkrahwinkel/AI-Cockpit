@@ -420,6 +420,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: `--screenshot`, the switch that renders a screen headless, now always either writes the image and names
+  the file it wrote, or fails with a reason. It used to run behind the "only one cockpit at a time" check, so a
+  render started while a cockpit was already running stood down without a word: exit code 0, nothing on screen,
+  no image — and the notice it opened instead could hold the process until it was killed. It never needed to be
+  behind that check at all, and now it is not: a render starts nothing, and touches neither your configuration
+  nor your logs. A misspelled `--scene` name used to quietly render the main window instead, so a picture came
+  back of a screen nobody asked about; it now fails and lists the names it knows.
+
 - fixed: the memory figure in the status bar now counts the processes a session has left behind. It was reached
   by following parent links down from the cockpit, so a build server whose launcher had exited fell out of the
   total at exactly the moment it became worth reporting — on this machine that was gigabytes the sidebar showed
