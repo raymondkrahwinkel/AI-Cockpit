@@ -34,9 +34,10 @@ public class PortaPtyLineDisciplineTests
             columns: 80,
             rows: 24);
 
-        var output = await _ReadUntilBothLinesArriveAsync(pty);
+        const string translated = "AA\r\nBB\r\n";
+        var output = await _ReadUntilAsync(pty, translated);
 
-        Assert.Contains("AA\r\nBB\r\n", output, StringComparison.Ordinal);
+        Assert.Contains(translated, output, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -72,9 +73,9 @@ public class PortaPtyLineDisciplineTests
         Assert.Contains("marker\r\n", output, StringComparison.Ordinal);
     }
 
-    private static Task<string> _ReadUntilBothLinesArriveAsync(PortaPtyProcess pty) =>
-        _ReadUntilAsync(pty, "BB");
-
+    // The sentinel must be the whole string the caller asserts on, never a prefix of it: a pty hands its output
+    // over in whatever chunks the kernel happens to have flushed, so stopping on "BB" returns before the "\r\n"
+    // that follows it has arrived — the read is what was racy here, not the translation being read.
     private static async Task<string> _ReadUntilAsync(PortaPtyProcess pty, string sentinel)
     {
         var collected = new StringBuilder();
