@@ -40,8 +40,17 @@ public static class Program
             return 2;
         }
 
-        HarnessApp.Body = () => _RunScenarioAsync(identity, options);
-        _StartAvalonia(options);
+        // AC-1090: `transcript-write` counts bytes going to disk; it has no window, and starting a compositor
+        // for it would only add a way for the run to fail that has nothing to do with what it measures.
+        if (options.Scenario == TranscriptWriteScenario.Name)
+        {
+            _RunTranscriptWrite(identity, options);
+        }
+        else
+        {
+            HarnessApp.Body = () => _RunScenarioAsync(identity, options);
+            _StartAvalonia(options);
+        }
 
         if (_outcome is not { } outcome)
         {
@@ -61,6 +70,14 @@ public static class Program
         }
 
         return outcome.Trustworthy ? 0 : 4;
+    }
+
+    private static void _RunTranscriptWrite(RunIdentity identity, Options options)
+    {
+        var run = new MeasurementRun(identity, TranscriptWriteScenario.Control());
+        TranscriptWriteScenario.RunAsync(run, options.Workload).GetAwaiter().GetResult();
+        run.RunControlAsync().GetAwaiter().GetResult();
+        _outcome = run.Finish();
     }
 
     private static async Task _RunScenarioAsync(RunIdentity identity, Options options)
@@ -209,10 +226,15 @@ public sealed class Options(IReadOnlyDictionary<string, string> flags)
 
     public bool Headless { get; } = flags["headless"] == "true";
 
+    /// <summary>AC-1090: the saved transcript `transcript-write` replays. Empty for every other scenario.</summary>
+    public string Workload { get; } = flags["workload"];
+
     public string? UnsupportedReason =>
         Scenario == RenderClockScenario.Name && Headless
             ? "render-clock has no compositor in --headless=true, so it cannot measure it"
-            : null;
+            : Scenario == TranscriptWriteScenario.Name && Workload.Length == 0
+                ? "transcript-write needs a real conversation: pass --workload=<saved transcript>"
+                : null;
 
     public int MinSessions { get; } = int.Parse(flags["min-sessions"]);
 
@@ -241,6 +263,7 @@ public sealed class Options(IReadOnlyDictionary<string, string> flags)
             ["height"] = "900",
             ["settle-ms"] = "700",
             ["repeats"] = "1",
+            ["workload"] = string.Empty,
             ["out"] = ".",
         };
 

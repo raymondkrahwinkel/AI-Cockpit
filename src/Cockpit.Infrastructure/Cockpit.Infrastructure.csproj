@@ -97,6 +97,7 @@
     <!-- The one place a store and a view converter can be put end to end: the converter needs a real Avalonia
          platform to decode with, which only the view tests have. -->
     <InternalsVisibleTo Include="Cockpit.App.ViewTests" />
+    <InternalsVisibleTo Include="Cockpit.MeasurementHarness" />
     <!-- AC-889: DiagramAccessRegistry stays in this assembly (the plugin only sees it through
          IDiagramAccessRegistry), but its own test project drives the concrete class directly, the same way
          Cockpit.Plugin.Autopilot.Tests reaches into Cockpit.App for its render tests — test-only, the shipped

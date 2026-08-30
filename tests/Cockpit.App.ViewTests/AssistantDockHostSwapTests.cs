@@ -52,7 +52,6 @@ public sealed class AssistantDockHostSwapTests
             sessionStateRecorder,
             Substitute.For<IMcpServerCatalog>(),
             Substitute.For<IAssistantMemory>(),
-            Substitute.For<IAssistantTranscriptStore>(),
             Substitute.For<Microsoft.Extensions.Logging.ILogger<AssistantSessionHost>>());
 
         var overlay = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), Substitute.For<IVoiceOverlayPresenter>());

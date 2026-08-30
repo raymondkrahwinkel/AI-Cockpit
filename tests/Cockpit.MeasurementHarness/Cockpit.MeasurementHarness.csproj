@@ -22,6 +22,9 @@
          Referencing Cockpit.App also brings Avalonia.Desktop, which is what makes a real window possible. -->
     <ProjectReference Include="../../src/Cockpit.App/Cockpit.App.csproj" />
     <ProjectReference Include="../../src/Cockpit.Core/Cockpit.Core.csproj" />
+
+    <!-- AC-1090: `transcript-write` measures the real `SessionTranscriptLog`, which lives here. -->
+    <ProjectReference Include="../../src/Cockpit.Infrastructure/Cockpit.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

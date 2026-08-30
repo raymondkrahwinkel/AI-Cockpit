@@ -34,6 +34,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-409: written on a live permission-mode switch (see `OnSelectedPermissionModeChanged`). Null in the design-time/unit-test graph, where the switch simply is not persisted.
     private readonly SessionStateRecorder? _sessionStateRecorder;
 
+    // AC-1090: Cockpit's own copy of this pane's conversation. Null in the design-time/unit-test graph; every
+    // other pane gets it from the container, which `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this
+    // to — an optional dependency nobody fills is a layer that exists and never runs.
+    private readonly ISessionTranscriptStore? _transcriptStore;
+
+    // True only while `ReplayRecordedTranscriptAsync` is repainting rows that came out of the log — recording them
+    // straight back would append a second version of every row on every restart.
+    private bool _replayingRecordedTranscript;
+
     // Resolves a Plugin-provider profile's own display name for the header's kind chip (AC-537) — the same registry
     // `Converters.ProfileDisplayConverter` uses for the profile picker, injected here rather than reaching into that
     // converter's static seam.
@@ -698,6 +707,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 entry.Session = this;
                 entry.ReadingLevel = ReadingLevel;
                 entry.PropertyChanged += _OnEntryPropertyChanged;
+                _RecordRow(entry);
             }
 
             // An append only ever changes the run it lands in, so re-fold that run instead of the whole
@@ -896,6 +906,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private void _OnEntryPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is { } name && RecordedRowProperties.Contains(name) && sender is TranscriptEntryViewModel changed)
+        {
+            _RecordRow(changed);
+        }
+
         // Every path that can change what a row shows — a level switch, a fold toggle, a consent landing — ends in
         // `_RaiseReadingLevelPresentation`, so this one announcement is the whole signal `VisibleTranscript` needs.
         if (e.PropertyName is nameof(TranscriptEntryViewModel.IsRowVisible) && sender is TranscriptEntryViewModel row)
@@ -915,6 +930,64 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             OnPropertyChanged(nameof(HasPendingPermission));
         }
     }
+
+    // AC-1090: the row properties the transcript log carries. Named rather than "any change", because a
+    // reading-level switch touches every row on screen and would write the whole transcript out again. The two
+    // pending flags are here for what they imply: they flip when a question card's answers (AC-955) change.
+    private static readonly HashSet<string> RecordedRowProperties =
+    [
+        nameof(TranscriptEntryViewModel.Text),
+        nameof(TranscriptEntryViewModel.ResultText),
+        nameof(TranscriptEntryViewModel.IsResultError),
+        nameof(TranscriptEntryViewModel.PermissionDecision),
+        nameof(TranscriptEntryViewModel.IsPendingPermission),
+        nameof(TranscriptEntryViewModel.IsPendingBrokerAnswer),
+        nameof(TranscriptEntryViewModel.QuestionPrompts),
+        nameof(TranscriptEntryViewModel.LatestReply),
+        nameof(TranscriptEntryViewModel.ErrorKind),
+        nameof(TranscriptEntryViewModel.RetryAfter),
+        nameof(TranscriptEntryViewModel.SubAgentRowsForDisplay),
+    ];
+
+    // AC-1090: fire-and-forget, same contract as `ISessionStateStore.RecordAsync` — a row that could not be
+    // recorded is logged by the store, never charged to the turn that produced it.
+    private void _RecordRow(TranscriptEntryViewModel entry)
+    {
+        if (_transcriptStore is { } store && !_replayingRecordedTranscript)
+        {
+            _ = store.AppendAsync(PaneId, TranscriptSnapshot.Capture(entry), CancellationToken.None);
+        }
+    }
+
+    // AC-1090: repaints this pane with the conversation Cockpit itself recorded, before anything new is added.
+    // Only what the log holds — whether the provider is also resuming, and what the operator is told about the
+    // difference, is the restore path's call, not this one's.
+    public async Task ReplayRecordedTranscriptAsync(CancellationToken cancellationToken = default)
+    {
+        if (_transcriptStore is not { } store)
+        {
+            return;
+        }
+
+        var recorded = await store.LoadAsync(PaneId, cancellationToken).ConfigureAwait(true);
+        _replayingRecordedTranscript = true;
+        try
+        {
+            foreach (var entry in TranscriptSnapshot.Restore(recorded))
+            {
+                Transcript.Add(entry);
+            }
+        }
+        finally
+        {
+            _replayingRecordedTranscript = false;
+        }
+    }
+
+    // AC-1090: rolls this pane's recorded conversation aside, for a launch that starts a new one rather than
+    // continuing this one — a new conversation is a new log.
+    public Task ArchiveRecordedTranscriptAsync(CancellationToken cancellationToken = default) =>
+        _transcriptStore?.ArchiveAsync(PaneId, cancellationToken) ?? Task.CompletedTask;
 
     // Searched from the end: the row a permission lands on is the turn's newest, so this stops within a few rows
     // rather than walking a transcript that grows all session. -1 for a row already dropped from the transcript.
@@ -1127,6 +1200,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IUsageHistory? usageHistory = null,
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
         SessionStateRecorder? sessionStateRecorder = null,
+        ISessionTranscriptStore? transcriptStore = null,
         IPluginProviderRegistry? pluginProviderRegistry = null,
         VoiceOverlayCoordinator? voiceOverlay = null,
         IProfileLoginChecker? loginChecker = null,
@@ -1140,6 +1214,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _sessionManager = sessionManager;
         _turnInboxDelivery = turnInboxDelivery;
         _sessionStateRecorder = sessionStateRecorder;
+        _transcriptStore = transcriptStore;
         _pluginProviderRegistry = pluginProviderRegistry;
         _loginChecker = loginChecker;
         _loginStarter = loginStarter;
