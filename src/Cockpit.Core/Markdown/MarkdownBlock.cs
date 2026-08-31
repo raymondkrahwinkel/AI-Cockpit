@@ -22,6 +22,11 @@ public sealed record MarkdownBlock
     // True for an ordered list (`MarkdownBlockKind.List`).
     public bool Ordered { get; init; }
 
+    // The number the first item of an ordered list carries (`MarkdownBlockKind.List`), 1 for every other kind.
+    // AC-1271: a long list is split across transcript rows, and the second row starts at whatever number it
+    // starts at — reading it from the source is also what markdown itself says an ordered list does.
+    public int OrderedStart { get; init; } = 1;
+
     // List items, each a run of inlines (`MarkdownBlockKind.List`); or table header cells (`MarkdownBlockKind.Table`).
     public IReadOnlyList<IReadOnlyList<MarkdownInline>> Items { get; init; } = [];
 
@@ -54,6 +59,7 @@ public sealed record MarkdownBlock
             && Kind == other.Kind
             && HeadingLevel == other.HeadingLevel
             && Ordered == other.Ordered
+            && OrderedStart == other.OrderedStart
             && Language == other.Language
             && Code == other.Code
             && HeadingId == other.HeadingId
@@ -73,6 +79,7 @@ public sealed record MarkdownBlock
         hash.Add(Kind);
         hash.Add(HeadingLevel);
         hash.Add(Ordered);
+        hash.Add(OrderedStart);
         hash.Add(Language);
         hash.Add(Code);
         hash.Add(HeadingId);

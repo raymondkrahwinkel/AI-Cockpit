@@ -13,6 +13,7 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Markdown;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -762,15 +763,27 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // AC-1265: a fence carries no blank line for the split above to find, so a code block used to
                 // grow as one row well past the viewport — the one shape AC-1238's guarantee never covered.
                 var fenceEnd = _OpenFenceLineEnd(row, pending);
-                if (fenceEnd < 0)
+                if (fenceEnd >= 0)
+                {
+                    row.AppendText(pending[..fenceEnd]);
+                    _SealCodeSpanRow(row);
+                    pending = pending[fenceEnd..];
+                    continue;
+                }
+
+                // AC-1271: and neither does a table, a tight list or one unbroken paragraph. Measured at
+                // 815-1415px in a 382px viewport, against 0 backward thumb jumps for prose.
+                var bound = _UnbrokenBlockEnd(row, pending);
+                if (bound < 0)
                 {
                     row.AppendText(pending);
                     return;
                 }
 
-                row.AppendText(pending[..fenceEnd]);
-                _SealCodeSpanRow(row);
-                pending = pending[fenceEnd..];
+                row.AppendText(pending[..bound]);
+                _assistantBlockSealed = true;
+                _codeSpanRows = null;
+                pending = pending[bound..];
                 continue;
             }
 
@@ -894,6 +907,56 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         return -1;
     }
+
+    // How much markdown a row carries before the next one takes over, for a block with no blank line in it.
+    // Set from the measurement rather than guessed: the shapes that broke ran 0,24-0,42px of row height per
+    // character, so this stays under 260px in the 382px chat viewport and under 150px in the 461px pane.
+    private const int UnbrokenBlockCharacters = 600;
+
+    // Where in `pending` a block that will not end by itself gives the row up, or -1 while it may keep growing.
+    // A line boundary by preference, so a list item is never cut in half; a word boundary only when the block
+    // holds no line at all, which is the one paragraph shape that has no other seam to use.
+    private static int _UnbrokenBlockEnd(TranscriptEntryViewModel row, string pending)
+    {
+        // An open fence is `_OpenFenceLineEnd`'s to bound. Cutting one here would end the row without sealing
+        // it, and the fragment after it would carry no fence — AC-1265's split, minus the half that works.
+        if (_OpenFence(row.Text, row.StartsInsideCodeBlock ? '`' : null) is not null)
+        {
+            return -1;
+        }
+
+        var open = _OpenBlockText(row.Text);
+        var over = UnbrokenBlockCharacters - open.Length;
+        if (over >= pending.Length)
+        {
+            return -1;
+        }
+
+        var from = Math.Max(0, over);
+        if (open.Contains('\n', StringComparison.Ordinal) || pending.IndexOf('\n', 0) >= 0)
+        {
+            var line = pending.IndexOf('\n', from);
+            // A table is the one multi-line block this must leave alone: its continuation carries neither the
+            // header nor the separator row, so the fragment falls back to prose and the columns are gone.
+            return line < 0 || _OpenBlockIsTable(open + pending[..(line + 1)]) ? -1 : line + 1;
+        }
+
+        var word = pending.IndexOf(' ', from);
+        return word < 0 ? -1 : word + 1;
+    }
+
+    // The block this row is currently inside: everything after the last blank line, which is where
+    // `_FinishedBlockEnd` would have ended the row had there been one.
+    private static string _OpenBlockText(string text)
+    {
+        var last = text.LastIndexOf("\n\n", StringComparison.Ordinal);
+        return last < 0 ? text : text[(last + 2)..];
+    }
+
+    // Asked only at the moment a split would happen, not per streamed chunk: the parser walks the whole open
+    // block and this is the one place where paying for that is cheaper than a second rule about pipes.
+    private static bool _OpenBlockIsTable(string open) =>
+        MarkdownParser.Parse(open) is [.., { Kind: MarkdownBlockKind.Table }];
 
     // ponytail: rescans the whole open row with Split per chunk — O(n²) and one allocation each; track fence state on the row if it shows up.
     private static char? _OpenFence(string text, char? open = null)

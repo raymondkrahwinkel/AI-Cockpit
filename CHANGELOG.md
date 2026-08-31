@@ -431,6 +431,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the view no longer jumps up and back down while a reply is arriving. A bullet list, a numbered list or
+  one very long paragraph carries no blank line, so the whole thing used to arrive as a single transcript row —
+  measured at up to four times the height of the window it had to fit in. While such a row grew, the panel kept
+  re-guessing how tall the whole conversation was and repeatedly drew a completely different part of it: on one
+  frame in eight the end of the answer was nowhere on screen, and the next frame put it back. Long blocks like
+  these now arrive in parts, so the row that is still growing stays small. A numbered list that arrives in parts
+  keeps counting where the part before it stopped instead of starting again at 1. A table is not yet covered and
+  can still do this.
+
 - fixed: the scrollbar no longer breaks up while a long code block is streaming in. A fenced code block has no
   blank line in it, so the whole block used to arrive as one enormous transcript row — and while that row grew,
   the scrollbar's handle jumped between lengths on almost every frame, at times collapsing to its smallest and
