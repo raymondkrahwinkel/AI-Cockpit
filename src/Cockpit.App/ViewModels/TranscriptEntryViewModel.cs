@@ -32,7 +32,7 @@ public enum TranscriptEntryKind
 // A single row in the transcript view. Assistant text entries are mutated in place
 // (`AppendText`) so streaming deltas render as growing text rather than
 // as new rows.
-public partial class TranscriptEntryViewModel : ViewModelBase
+public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCodeSource
 {
     // AC-1090: what the transcript log keys a row's versions on, and restored from it. A GUID rather than the
     // row's index: the transcript is not append-only in memory — a reset clears it — and a shifted index would
@@ -100,8 +100,47 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     partial void OnIsReplyContinuationChanged(bool value) => OnPropertyChanged(nameof(ReplyBadgeOpacity));
 
+    // AC-1265: a fenced code block has no blank line to split on, so it grew as one row past the viewport --
+    // the shape the panel re-anchors its average on. It is split on a line boundary now, and these two say so
+    // outright: the row that opened the fence is not the row that closes it, and both have to know.
+    [ObservableProperty]
+    private bool _startsInsideCodeBlock;
+
+    [ObservableProperty]
+    private bool _endsInsideCodeBlock;
+
+    // The gap the row's own stack leaves under its content. Zero while a code block carries on into the next
+    // row: a trailing branch that renders empty is still a visible child, so Spacing pays for it and leaves a
+    // band of row background between two fragments that are meant to meet (AC-1265, measured at 4px).
+    public double RowContentSpacing => EndsInsideCodeBlock ? 0 : 4;
+
+    partial void OnEndsInsideCodeBlockChanged(bool value) => OnPropertyChanged(nameof(RowContentSpacing));
+
     // Every row of the reply this row belongs to, in order. Null for a row that was never part of a split.
     internal IReadOnlyList<TranscriptEntryViewModel>? ReplyRows { get; set; }
+
+    // Every row of the code block this row is part of, in order. Null unless this row is part of a split fence.
+    internal IReadOnlyList<TranscriptEntryViewModel>? CodeSpanRows { get; set; }
+
+    // What Copy on a split code block hands over: the whole block's code, not the fragment under the button.
+    // The rows' text concatenated is the block's own markdown — the split injects no fences — so the parser
+    // turns it back into code rather than a second rule about where fences sit. Empty when there is no split.
+    public string SpannedCodeText
+    {
+        get
+        {
+            if (CodeSpanRows is null)
+            {
+                return string.Empty;
+            }
+
+            var whole = string.Concat(CodeSpanRows.Select(row => row.Text));
+
+            return Core.Markdown.MarkdownParser.Parse(whole)
+                .LastOrDefault(block => block.Kind == Core.Markdown.MarkdownBlockKind.CodeBlock)
+                ?.Code ?? string.Empty;
+        }
+    }
 
     // What "copy this reply" hands over: the whole reply, not the block the button happens to sit under.
     public string ReplyTextWithImageSuffix => ReplyRows is null

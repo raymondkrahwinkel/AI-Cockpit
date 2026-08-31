@@ -9,11 +9,19 @@ public static partial class MarkdownParser
 {
     // AC-936: opt-in — off keeps CommonMark's default (a single newline joins its paragraph's lines with a
     // space); only the chat bubble turns it on, so a Shift+Enter there stays a visible line break instead.
-    public static IReadOnlyList<MarkdownBlock> Parse(string markdown, bool preserveLineBreaks = false)
+    public static IReadOnlyList<MarkdownBlock> Parse(string markdown, bool preserveLineBreaks = false, bool startsInsideFence = false)
     {
         var lines = (markdown ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var blocks = new List<MarkdownBlock>();
         var i = 0;
+
+        // AC-1265: the continuation of a fence an earlier row opened — without this the second half has no
+        // opener, falls back to prose and folds its line breaks into one line. No language: the label belongs
+        // to the row that opened the fence, and drawing it again on every fragment reads as several blocks.
+        if (startsInsideFence)
+        {
+            i = _ParseFencedCodeBody(lines, 0, language: null, blocks);
+        }
 
         while (i < lines.Length)
         {
@@ -78,15 +86,26 @@ public static partial class MarkdownParser
         return blocks;
     }
 
-    private static int _ParseFencedCode(string[] lines, int start, List<MarkdownBlock> blocks)
+    private static int _ParseFencedCode(string[] lines, int start, List<MarkdownBlock> blocks) =>
+        _ParseFencedCodeBody(lines, start + 1, lines[start].TrimStart()[3..].Trim(), blocks);
+
+    // The body of a fence, from the line after its opener — or from line 0 when an earlier row opened it.
+    private static int _ParseFencedCodeBody(string[] lines, int start, string? language, List<MarkdownBlock> blocks)
     {
-        var language = lines[start].TrimStart()[3..].Trim();
         var body = new List<string>();
-        var i = start + 1;
+        var i = start;
         while (i < lines.Length && !lines[i].TrimStart().StartsWith("```", StringComparison.Ordinal))
         {
             body.Add(lines[i]);
             i++;
+        }
+
+        // AC-1265: an unclosed fence ends on its last code line's newline, and splitting on newlines turns
+        // that into an empty final entry — a blank line drawn at the seam between two fragments. A closed
+        // fence keeps its trailing blank line: there the line before the closer is deliberate.
+        if (i >= lines.Length && body.Count > 0 && body[^1].Length == 0)
+        {
+            body.RemoveAt(body.Count - 1);
         }
 
         blocks.Add(new MarkdownBlock

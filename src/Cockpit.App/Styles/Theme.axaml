@@ -306,9 +306,36 @@
          narrower, avatar-less assistant window; these are the only numbers the merged row still varies by. -->
     <Style Selector="Border.rowRoot">
         <Setter Property="Margin" Value="0,2"/>
+        <Setter Property="Padding" Value="8,5"/>
     </Style>
     <Style Selector="Border.rowRoot.compact">
         <Setter Property="Margin" Value="8,2"/>
+    </Style>
+
+    <!-- AC-1265: a fenced code block is split across rows now, and a row that carries one on gives up its own
+         chrome on the side it is carried on — otherwise the fragments meet with a band of row background
+         between them and one block reads as several boxes. Padding moved off the Border above to here: an
+         inline value is a local one and would beat these. -->
+    <Style Selector="Border.rowRoot.codeJoinedAbove">
+        <Setter Property="Margin" Value="0,0,0,2"/>
+        <Setter Property="Padding" Value="8,0,8,5"/>
+    </Style>
+    <Style Selector="Border.rowRoot.codeJoinedBelow">
+        <Setter Property="Margin" Value="0,2,0,0"/>
+        <Setter Property="Padding" Value="8,5,8,0"/>
+    </Style>
+    <Style Selector="Border.rowRoot.codeJoinedAbove.codeJoinedBelow">
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="Padding" Value="8,0"/>
+    </Style>
+    <Style Selector="Border.rowRoot.compact.codeJoinedAbove">
+        <Setter Property="Margin" Value="8,0,8,2"/>
+    </Style>
+    <Style Selector="Border.rowRoot.compact.codeJoinedBelow">
+        <Setter Property="Margin" Value="8,2,8,0"/>
+    </Style>
+    <Style Selector="Border.rowRoot.compact.codeJoinedAbove.codeJoinedBelow">
+        <Setter Property="Margin" Value="8,0"/>
     </Style>
     <Style Selector=":is(Control).rowIndent">
         <Setter Property="Margin" Value="36,0,0,0"/>
