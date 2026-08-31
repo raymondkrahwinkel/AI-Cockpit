@@ -157,7 +157,7 @@ jobs:
               rows.append((project, passed, failed, skipped, coverage))
 
           reported = {row[0].casefold() for row in rows}
-          for missing in sorted(expected - reported):
+          for missing in sorted(expected.keys() - reported):
               errors.append(f"{expected[missing]}: no test result")
           if not rows:
               errors.append("No test results found")
