@@ -1354,10 +1354,15 @@ public class AssistantSessionHostTests
             var host = Dispatcher.UIThread.Invoke(() => _Host(
                 enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, memory: memory));
 
-            var first = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
+            // InvokeAsync, not the `Invoke(... GetResult())` the sibling tests use: this is the only test whose
+            // memory is a real `AssistantMemoryFile`, so the start path does real file I/O — and blocking the UI
+            // thread on a chain that posts its continuations back to it deadlocks when that read runs async.
+            var first = await Dispatcher.UIThread.InvokeAsync(() => host.EnsureStartedAsync());
             Assert.NotNull(first);
 
-            Dispatcher.UIThread.Invoke(() => host.ClearConversationAsync().GetAwaiter().GetResult());
+            // Awaiting the clear itself is also what makes the assertions below safe: the fresh launch is complete
+            // when this returns, so nothing is left running past the end of the test.
+            await Dispatcher.UIThread.InvokeAsync(() => host.ClearConversationAsync());
 
             Assert.Equal(memoryBefore, await File.ReadAllBytesAsync(memoryPath));
             Assert.Equal(stateBefore, await File.ReadAllBytesAsync(statePath));
