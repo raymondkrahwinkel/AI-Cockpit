@@ -3,11 +3,15 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Layout;
 using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
 using Cockpit.App.Diagnostics;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Toasts;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Diagnostics;
+using Cockpit.Core.Toasts;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Services;
@@ -101,6 +105,13 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // `_OpenWindows`, kept here rather than plumbed in so production needs no wiring for a diagnostic.
     private Func<IReadOnlyList<Visual>>? _layoutRoots;
 
+    // AC-1263: the bound the dirty samples below are judged against. Reads its N once, at construction, so a
+    // freeze cannot be made worse by an environment lookup per sample.
+    private readonly LayoutLoopGuard _layoutGuard = new();
+
+    // Null until the shell exists, and in tests. A cut that cannot be shown is still logged and recorded.
+    private IToastService? _toasts;
+
     // AC-1196: the budget both alarms below are judged against. Injectable for the same reason heapBytesProbe is —
     // a test would otherwise have to hold a thread hostage for a real quarter-minute per case, three times over.
     private readonly TimeSpan _alarmAfter;
@@ -118,6 +129,10 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     // AC-1256: test seam only. The default below is what production uses, so nothing has to wire this.
     internal void SetLayoutRoots(Func<IReadOnlyList<Visual>> provider) => _layoutRoots = provider;
+
+    // AC-1263: wired from App.axaml.cs beside SetSessionContext. Not constructor-injected: ToastService takes
+    // CockpitViewModel, which takes this service, so the container cannot build that ring.
+    public void SetToasts(IToastService toasts) => _toasts = toasts;
 
     // AC-883: raised on the UI thread when the render clock starts or stops being able to process commits. Panes
     // subscribe to suspend their transcripts; nothing else in the process can tell them the clock is gone.
@@ -280,7 +295,10 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 // Repeated, because one reading cannot tell a stuck subtree from one walking through the tree.
                 if (warned || dispatchWarned)
                 {
-                    if (now >= nextDirtySampleAt && dirtySamplesTaken < DirtySamplesPerEpisode)
+                    // AC-1263: past the three that get logged, sampling carries on unlogged while the guard is
+                    // armed — it is the guard's only input, and a freeze outlasting three samples is the one
+                    // it exists for.
+                    if (now >= nextDirtySampleAt && (dirtySamplesTaken < DirtySamplesPerEpisode || _layoutGuard.Enabled))
                     {
                         nextDirtySampleAt = now + DirtySampleInterval;
                         _AskWhatIsStillInLayout(++dirtySamplesTaken, now);
@@ -290,6 +308,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 {
                     dirtySamplesTaken = 0;
                     nextDirtySampleAt = TimeSpan.Zero;
+                    _layoutGuard.Reset();
                 }
 
                 var renderDecision = RenderClockHeartbeat.Decide(
@@ -456,17 +475,27 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             {
                 try
                 {
-                    var elements = LayoutLoopReport.Describe(_layoutRoots?.Invoke() ?? _OpenWindows());
+                    var dirty = LayoutLoopReport.Collect(_layoutRoots?.Invoke() ?? _OpenWindows());
 
-                    // `queued` is how long this reading waited for the thread: a sample taken long after it was
-                    // asked for is not a reading of the moment it was asked about, and has to say so itself.
-                    _logger.LogWarning(
-                        "uilayout dirty sample={Sample}/{Total} queued={Queued:0.0}s {Count} element(s) still in layout: {Elements}",
-                        sample,
-                        DirtySamplesPerEpisode,
-                        (_clock.Elapsed - requestedAt).TotalSeconds,
-                        elements.Count,
-                        elements.Count == 0 ? "(none — the loop is not a layout pass)" : string.Join(" | ", elements));
+                    if (sample <= DirtySamplesPerEpisode)
+                    {
+                        var elements = LayoutLoopReport.Group(dirty);
+
+                        // `queued` is how long this reading waited for the thread: a sample taken long after it
+                        // was asked for is not a reading of the moment it was asked about, and has to say so.
+                        _logger.LogWarning(
+                            "uilayout dirty sample={Sample}/{Total} queued={Queued:0.0}s {Count} element(s) still in layout: {Elements}",
+                            sample,
+                            DirtySamplesPerEpisode,
+                            (_clock.Elapsed - requestedAt).TotalSeconds,
+                            elements.Count,
+                            elements.Count == 0 ? "(none — the loop is not a layout pass)" : string.Join(" | ", elements));
+                    }
+
+                    if (_layoutGuard.Observe(dirty) is { } subtree)
+                    {
+                        _CutRunawaySubtree(subtree, dirty, sample);
+                    }
                 }
                 catch (Exception exception)
                 {
@@ -475,6 +504,25 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 }
             },
             DispatcherPriority.Send);
+    }
+
+    // AC-1263: the second half of AC-1236's report — the same line, the same record file, plus the one action
+    // that ends the loop. Runs inside the sample, on the UI thread, so the tree cannot move between the two.
+    private void _CutRunawaySubtree(Layoutable subtree, IReadOnlyList<Layoutable> dirty, int sample)
+    {
+        var where = LayoutLoopReport.Group([subtree]).FirstOrDefault() ?? subtree.GetType().Name;
+        LayoutLoopGuard.Cut(subtree);
+
+        LayoutLoopReport.Record(
+            dirty,
+            $"layout loop cut off after {sample} dirty sample(s), subtree hidden: {where}",
+            LayoutLoopReport.RecordPathFor(CockpitBuild.LogPath),
+            _logger);
+
+        _toasts?.Show(
+            "A part of the cockpit would not settle its layout and was hidden to keep the window responsive. "
+            + "It is named in layout-loops.log; a restart brings it back.",
+            ToastSeverity.Error);
     }
 
     private static IReadOnlyList<Visual> _OpenWindows() =>
