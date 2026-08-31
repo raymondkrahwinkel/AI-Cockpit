@@ -34,8 +34,32 @@ public sealed class Ac1265ThumbLengthProbe
             .Select(thumb => thumb.Bounds.Height)
             .FirstOrDefault();
 
+    // How many of the panel's items have a container this frame, and how tall the tallest of them is. The
+    // estimate for everything unrealised is built from the realised ones, so this is what would poison it.
+    private static (int Realised, int Total, double Tallest) _Realised(ItemsControl items)
+    {
+        var realised = 0;
+        var tallest = 0.0;
+        for (var i = 0; i < items.ItemCount; i++)
+        {
+            if (items.ContainerFromIndex(i) is { } container)
+            {
+                realised++;
+                tallest = Math.Max(tallest, container.Bounds.Height);
+            }
+        }
+
+        return (realised, items.ItemCount, tallest);
+    }
+
     private sealed record Sample(double Extent, double Viewport, double Offset, double ThumbHeight)
     {
+        public int Realised { get; init; }
+
+        public int Total { get; init; }
+
+        public double Tallest { get; init; }
+
         public double ThumbLength => Viewport / Math.Max(1.0, Extent);
 
         public double ThumbPosition => Offset / Math.Max(1.0, Extent - Viewport);
@@ -88,6 +112,8 @@ public sealed class Ac1265ThumbLengthProbe
             $"{label} DRAWN THUMB: {thumbHeights.Min():F0}..{thumbHeights.Max():F0}px, "
             + $"worst single-frame change {worstThumbStep:F0}px");
         _Report($"{label} thumbs: {string.Join(' ', thumbHeights.Select(t => t.ToString("F0")))}");
+        _Report($"{label} realised: {string.Join(' ', samples.Select(s => $"{s.Realised}/{s.Total}"))}");
+        _Report($"{label} tallest: {string.Join(' ', samples.Select(s => s.Tallest.ToString("F0")))}");
         _Report(
             $"{label}: frames={samples.Count} viewport={viewport:F0}px "
             + $"extent {extents.Min():F0}..{extents.Max():F0}px "
@@ -198,8 +224,15 @@ public sealed class Ac1265ThumbLengthProbe
             await _PumpAsync(null, TimeSpan.FromMilliseconds(300));
 
             var scroll = view.TranscriptScroll!;
-            void Sample() => samples.Add(
-                new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, _ThumbHeight(scroll)));
+            var items = view.TranscriptItems;
+            void Sample()
+            {
+                var realised = _Realised(items);
+                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, _ThumbHeight(scroll))
+                {
+                    Realised = realised.Realised, Total = realised.Total, Tallest = realised.Tallest,
+                });
+            }
 
             for (var i = 0; i < 40; i++)
             {
@@ -269,8 +302,15 @@ public sealed class Ac1265ThumbLengthProbe
             await _PumpAsync(null, TimeSpan.FromMilliseconds(300));
 
             var scroll = window.ChatView.TranscriptScroll!;
-            void Sample() => samples.Add(
-                new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, _ThumbHeight(scroll)));
+            var items = window.ChatView.TranscriptItems;
+            void Sample()
+            {
+                var realised = _Realised(items);
+                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, _ThumbHeight(scroll))
+                {
+                    Realised = realised.Realised, Total = realised.Total, Tallest = realised.Tallest,
+                });
+            }
 
             for (var i = 0; i < 40; i++)
             {
