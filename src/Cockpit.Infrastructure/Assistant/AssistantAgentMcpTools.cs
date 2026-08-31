@@ -699,6 +699,34 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    [McpServerTool(Name = "clear_conversation")]
+    [Description("Clears this visible assistant conversation after the current turn finishes and starts a fresh one. ANYTHING SAID AFTER THIS CALL IN THE SAME TURN WILL DISAPPEAR FROM THE WINDOW TOO: the transcript is rolled aside first and remains in transcripts/, while the new conversation starts with a divider saying it was cleared. THE ASSISTANT MEMORY AND CURRENT-STATE NOTE ARE NOT CLEARED: remember and note_state survive unchanged and are loaded again. If something from this conversation must carry across, call note_state first; if the operator asked for a genuinely new beginning, do not invent a state note just to preserve the old thread. Repeated calls are idempotent and still succeed, reporting that a clear is already queued. This does not ask for permission and does not end the current turn itself.")]
+    public async Task<string> ClearConversationAsync()
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.RequestConversationClearAsync().ConfigureAwait(false);
+            if (!result.Ok)
+            {
+                return _Serialize(new { ok = false, error = result.Error });
+            }
+
+            var note = result.AlreadyPending
+                ? "A conversation clear is already queued for when this turn finishes."
+                : "The conversation will be cleared as soon as this turn finishes.";
+            return _Serialize(new { ok = true, note });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "remember")]
     [Description("Writes one thing down where you will still have it in your next conversation. Everything else you know about this operator arrives with your instructions and is gone when this conversation ends — this is the only way something they said today reaches you tomorrow. USE IT WHEN THEY TELL YOU SOMETHING THAT IS MEANT TO LAST: what to call them or yourself, how they want you to answer, what a word of theirs means (\"prod is the release desk\"), a standing rule about what to do without asking. Say that you have noted it, in passing — one clause, not an announcement. WHAT DOES NOT BELONG HERE: what is happening right now (that is note_state), anything you worked out yourself rather than were told, and anything you are merely guessing they would want kept. WRITE IT AS A FACT THAT STILL READS IN A MONTH: \"the operator is called Raymond\", not \"he said his name\". One thing per call — two facts in one line cannot be pruned apart later. This does not ask for permission and nothing shows on their screen, so it is on you not to fill it with things nobody asked you to keep: there is no tool to take a line back, and the only way to clear one is the operator opening the file themselves.")]
     public async Task<string> RememberAsync(

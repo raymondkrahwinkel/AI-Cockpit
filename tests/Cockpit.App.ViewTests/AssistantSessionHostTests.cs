@@ -1021,6 +1021,41 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
+    public void RequestedClear_WaitsForTheTurnAndIsIdempotent()
+    {
+        var (host, first, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli);
+        Dispatcher.UIThread.Invoke(() => first.IsBusy = true);
+
+        var firstRequest = Dispatcher.UIThread.Invoke(host.RequestConversationClear);
+        var secondRequest = Dispatcher.UIThread.Invoke(host.RequestConversationClear);
+
+        Assert.True(firstRequest.Ok);
+        Assert.False(firstRequest.AlreadyPending);
+        Assert.True(secondRequest.Ok);
+        Assert.True(secondRequest.AlreadyPending);
+        Assert.Same(first, host.Session);
+
+        Dispatcher.UIThread.Invoke(() => first.IsBusy = false);
+
+        Assert.NotSame(first, _ReplacementOf(host, first));
+    }
+
+    [Fact]
+    public async Task RequestedClear_ExpiresWhenItsSessionIsReplaced()
+    {
+        var (host, first, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli);
+        Dispatcher.UIThread.Invoke(() => first.IsBusy = true);
+        Dispatcher.UIThread.Invoke(host.RequestConversationClear);
+
+        var second = await Dispatcher.UIThread.InvokeAsync(() => host.RestartAsync());
+        Assert.NotNull(second);
+        Assert.NotSame(first, second);
+
+        var requestOnReplacement = Dispatcher.UIThread.Invoke(host.RequestConversationClear);
+        Assert.False(requestOnReplacement.AlreadyPending);
+    }
+
+    [Fact]
     public async Task ClearConversation_PreservesMemoryAndStateAndReloadsBothIntoTheNewInstruction()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"assistant-clear-{Guid.NewGuid():N}");

@@ -148,6 +148,12 @@ public interface IAssistantAgentGateway
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Queues a fresh assistant conversation for after its current turn finishes.
+    /// </summary>
+    Task<ClearConversationResult> RequestConversationClearAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(ClearConversationResult.Refused("This gateway cannot queue a conversation clear."));
+
+    /// <summary>
     /// Opens <paramref name="url"/> in the operator's default browser (AC-587) — exists only because
     /// <c>Cockpit.Infrastructure</c>, where <c>open_url</c> lives, cannot reference <c>Cockpit.App</c> to reach
     /// <c>ExternalLink</c>. Refuses a non-absolute <c>http</c>/<c>https</c> address, same rule as <c>ExternalLink.TryParseWebAddress</c>.
@@ -182,6 +188,14 @@ public sealed record AskStructuredQuestionResult(bool Ok, string? Error)
     public static AskStructuredQuestionResult Shown() => new(true, null);
 
     public static AskStructuredQuestionResult Refused(string error) => new(false, error);
+}
+
+// A repeated request is still successful: the requested end state is already pending.
+public sealed record ClearConversationResult(bool Ok, bool AlreadyPending, string? Error)
+{
+    public static ClearConversationResult Queued(bool alreadyPending) => new(true, alreadyPending, null);
+
+    public static ClearConversationResult Refused(string error) => new(false, false, error);
 }
 
 // What came of a handover. Same shape and same reason as `AgentStopResult` — a refusal is a sentence the

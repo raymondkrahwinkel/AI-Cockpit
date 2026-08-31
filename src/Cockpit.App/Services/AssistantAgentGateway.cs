@@ -1119,6 +1119,9 @@ internal sealed class AssistantAgentGateway(
             return Task.FromResult(AskStructuredQuestionResult.Shown());
         });
 
+    public Task<ClearConversationResult> RequestConversationClearAsync(CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(() => Task.FromResult(assistantSessionHost.RequestConversationClear()));
+
     // A mirror of the native AskUserQuestion tool's own `questions` array (AC-715), one entry, so
     // `AskUserQuestionViewModel.Parse` reads it unchanged rather than needing a second parser.
     private static string _BuildAskStructuredQuestionInputJson(

@@ -22,6 +22,14 @@ public sealed class AssistantSystemPromptTests
         Assert.Contains("never get read aloud", AssistantSystemPrompt.Default, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Default_ExplainsWhatClearConversationKeepsAndArchives()
+    {
+        Assert.Contains("clear_conversation", AssistantSystemPrompt.Default, StringComparison.Ordinal);
+        Assert.Contains("transcript is rolled aside", AssistantSystemPrompt.Default, StringComparison.Ordinal);
+        Assert.Contains("memory and `note_state` stay", AssistantSystemPrompt.Default, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// AC-932: a project can pin its issue-tracker repo via `github.repository`/`GH_REPO`. The system prompt
     /// must tell the assistant to defer to that pin rather than pick a repo by its own content-based reading.

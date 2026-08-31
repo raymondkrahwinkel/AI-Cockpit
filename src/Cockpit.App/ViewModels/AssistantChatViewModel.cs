@@ -56,6 +56,12 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     Task<SessionViewModel?> ClearConversationAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Queues a clear for after the current turn and reports whether one was already queued.
+    /// </summary>
+    ClearConversationResult RequestConversationClear() =>
+        ClearConversationResult.Refused("This host cannot queue a conversation clear.");
+
+    /// <summary>
     /// Sends typed or spoken text to the assistant, starting it lazily first if it has not run yet.
     /// </summary>
     Task SendAsync(string text, CancellationToken cancellationToken = default);

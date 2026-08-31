@@ -65,6 +65,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     [ObservableProperty]
     private SessionViewModel? _session;
 
+    private bool _conversationClearPending;
+
+    partial void OnSessionChanged(SessionViewModel? value) => _conversationClearPending = false;
+
     // What the indicator reports. Fed from here rather than read off the session, because "off" and "never started" are states no session exists to report.
     [ObservableProperty]
     private AssistantActivity _activity = AssistantActivity.Unavailable;
@@ -198,6 +202,18 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             startFresh: true,
             cancellationToken,
             startFreshBecause: "Conversation cleared — a new one starts here");
+
+    public ClearConversationResult RequestConversationClear()
+    {
+        if (Session is null)
+        {
+            return ClearConversationResult.Refused("My own session is not running, so there is no conversation to clear.");
+        }
+
+        var alreadyPending = _conversationClearPending;
+        _conversationClearPending = true;
+        return ClearConversationResult.Queued(alreadyPending);
+    }
 
     // AC-1013: How full the context may get before the assistant hands itself over and restarts (AC-596) — a
     // percentage, not a token count, since the provider reports fill and knows the window.
@@ -500,6 +516,11 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         {
             _SyncActivityWithSession(session);
 
+            if (_ClearConversationIfRequested(session))
+            {
+                return;
+            }
+
             // Whether this change carries a *new* fill figure or merely happens to be able to read the last one: the
             // session refreshes the provider's limits after it has published IsBusy false, so the busy transition
             // arrives with the previous turn's figure still standing. Why that matters: _HandOverIfTheContextIsFull.
@@ -507,6 +528,20 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
                 session,
                 fillWasJustRead: e.PropertyName is null or nameof(SessionPanelViewModel.ContextUsedPercent));
         }
+    }
+
+    private bool _ClearConversationIfRequested(SessionViewModel session)
+    {
+        if (!_conversationClearPending
+            || !ReferenceEquals(session, Session)
+            || !CanReplaceConversation(session.IsBusy, session.HasPendingPermission || session.PendingConsent is not null))
+        {
+            return false;
+        }
+
+        _conversationClearPending = false;
+        _ = ClearConversationAsync();
+        return true;
     }
 
     // Relieves a context that is nearly full (AC-596) — but only while nothing is running and nothing is waiting on
@@ -595,7 +630,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     // A null fill is a provider that reported nothing this turn, which says nothing about how full the context is:
     // reading it as zero would postpone the hand-over indefinitely on a provider that only reports sometimes.
     internal static bool ShouldHandOver(double? contextUsedPercent, bool isBusy, bool isWaitingOnOperator) =>
-        contextUsedPercent >= RestartAboveContextPercent && !isBusy && !isWaitingOnOperator;
+        contextUsedPercent >= RestartAboveContextPercent && CanReplaceConversation(isBusy, isWaitingOnOperator);
+
+    private static bool CanReplaceConversation(bool isBusy, bool isWaitingOnOperator) =>
+        !isBusy && !isWaitingOnOperator;
 
     // AC-1013: Maps the session's own status onto the chip. Only moves between Thinking and Ready — it never
     // overwrites Unavailable (a feature fact) or Listening (a key held right now). Written as the "working" set
