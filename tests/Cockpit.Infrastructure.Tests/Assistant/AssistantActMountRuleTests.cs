@@ -426,6 +426,12 @@ public sealed class AssistantActMountRuleTests : IDisposable
             return Task.FromResult(OpenUrlResult.Opened(url));
         }
 
+        public Task<ClearConversationResult> RequestConversationClearAsync(CancellationToken cancellationToken = default)
+        {
+            Calls.Add("RequestConversationClearAsync()");
+            return Task.FromResult(ClearConversationResult.Requested(alreadyQueued: false));
+        }
+
         public Task<AssistantProjectBindResult> BindSharedProjectAsync(
             string sharedProjectId,
             string sourceDirectory,

@@ -61,12 +61,31 @@ public class AssistantHandoverDividerViewTests
         Assert.Equal(1, showingTheLabel);
     });
 
-    private static SessionViewModel _TranscriptEndingInADivider()
+    // AC-1261: a clear runs through the same startFresh path as the hand-over above (`_StartAsync:421-428`), so
+    // its divider is the same row template rendering different text — one fact proving that text shows is enough,
+    // the rendering mechanism itself is already covered above.
+    [Fact]
+    public void TheClearDivider_RendersTheSameWay_AsTheHandoverDivider() => HeadlessAvalonia.Run(() =>
+    {
+        const string clearLabel = "Conversation cleared — a new one starts here";
+        var window = _ChatWindowShowing(_TranscriptEndingInADivider(clearLabel), width: 420);
+
+        var labels = window.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Where(text => text.Text == clearLabel && text.IsEffectivelyVisible)
+            .ToList();
+
+        window.Close();
+
+        Assert.Single(labels);
+    });
+
+    private static SessionViewModel _TranscriptEndingInADivider(string label = Label)
     {
         var session = new SessionViewModel();
         session.Transcript.Clear();
         session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "before the hand-over"));
-        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider, Label));
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider, label));
         return session;
     }
 

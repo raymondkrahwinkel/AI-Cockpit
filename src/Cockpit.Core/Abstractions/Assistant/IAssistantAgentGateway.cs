@@ -153,6 +153,28 @@ public interface IAssistantAgentGateway
     /// <c>ExternalLink</c>. Refuses a non-absolute <c>http</c>/<c>https</c> address, same rule as <c>ExternalLink.TryParseWebAddress</c>.
     /// </summary>
     Task<OpenUrlResult> OpenUrlAsync(string url, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks a request from the <c>clear_conversation</c> tool (AC-1261) to clear the assistant's own conversation
+    /// once its current turn ends — exists for the same reason <see cref="OpenUrlAsync"/> does: the host that owns
+    /// the assistant's session lives in <c>Cockpit.App</c>, which <c>Cockpit.Infrastructure</c> cannot reference.
+    /// Never clears immediately; see <c>AssistantSessionHost.RequestConversationClear</c> for the gate.
+    /// </summary>
+    /// <remarks>
+    /// Default-implemented so the test doubles of this interface that never clear a conversation stay as they are.
+    /// </remarks>
+    Task<ClearConversationResult> RequestConversationClearAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(ClearConversationResult.Refused("Clearing the conversation is not available here."));
+}
+
+// AC-1261: what came of a clear_conversation request. AlreadyQueued distinguishes a fresh request from a second
+// call finding one already queued (idempotent), so the tool can report the difference rather than always saying
+// the same thing.
+public sealed record ClearConversationResult(bool Ok, bool AlreadyQueued, string? Error)
+{
+    public static ClearConversationResult Requested(bool alreadyQueued) => new(true, alreadyQueued, null);
+
+    public static ClearConversationResult Refused(string error) => new(false, false, error);
 }
 
 // AC-1013: What came of binding a shared project (AC-798) — a refusal is a sentence the assistant says, not an

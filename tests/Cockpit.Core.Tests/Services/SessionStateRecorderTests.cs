@@ -128,6 +128,26 @@ public sealed class SessionStateRecorderTests : IDisposable
     }
 
     /// <summary>
+    /// AC-1261 criterion 3: a clear (<c>AssistantSessionHost.ClearConversationAsync</c>) changes neither profile nor
+    /// working directory — the two things this guard otherwise keys on — so without <c>forgetConversation</c> the
+    /// saved id would ride along unchanged, and a cockpit closed before any new id arrives would resume the very
+    /// conversation the operator just cleared (V1).
+    /// </summary>
+    [Fact]
+    public async Task RecordSessionStartedAsync_WithForgetConversation_ClearsTheSavedConversationId_EvenWithNoOtherContextChange()
+    {
+        var store = CreateStore();
+        await store.RecordAsync(CreateRecord()); // same profile ("work") and directory ("/repo") as below
+
+        var recorder = CreateRecorder(store);
+        await recorder.RecordSessionStartedAsync("pane-1", WorkProfile, "/repo", null, null, "default", forgetConversation: true);
+
+        var record = Assert.Single(await store.LoadAsync());
+        Assert.Null(record.ConversationId);
+        Assert.Equal(SessionConversationIdState.Unknown, record.ConversationState);
+    }
+
+    /// <summary>
     /// The naive comparison this guard deliberately avoids: a bare string check would treat "/repo" and "/repo/"
     /// as different places and wipe an id that never actually moved. <see cref="Cockpit.Core.WorkingPaths.DirectoryPath"/>
     /// is the same folder-equality rule the worktree engine itself uses, and this proves the guard actually goes

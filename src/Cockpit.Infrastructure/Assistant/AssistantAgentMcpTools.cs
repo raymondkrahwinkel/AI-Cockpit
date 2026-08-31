@@ -741,6 +741,34 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    [McpServerTool(Name = "clear_conversation")]
+    [Description("Wipes your own conversation and starts a fresh one — the operator's own \"Clear conversation…\" row, callable by you. EVERYTHING YOU SAY AFTER THIS CALL, IN THIS SAME TURN, STILL HAPPENS BUT WILL NOT BE ON SCREEN AFTERWARDS: the clear runs once this turn ends, not the instant you call it, and only a divider marking where it happened is what the operator is left with — so if you have anything left to say to them about what you are doing right now, say it before calling this, not after. `assistant-memory.md` (`remember`) and `assistant-state.md` (`note_state`) ARE NOT TOUCHED — this is a wipe of what is on screen, never of what you know. WANT TO KEEP THE THREAD? CALL note_state FIRST: after the clear you start with nothing but that note and your instructions, exactly like any other restart — and do not leave one if the operator is asking to start over, because a note here would hand the fresh conversation the very thing they wanted gone. THIS NEEDS NO APPROVAL AND NOTHING SHOWS ON THE OPERATOR'S SCREEN BEFORE IT RUNS: it costs nothing, starts no process and touches nothing outside your own conversation — the same reasoning `remember` and `note_state` carry. CALLING IT TWICE IN ONE TURN DOES NOTHING TWICE: the second call finds the first one still queued and says so.")]
+    public async Task<string> ClearConversationAsync()
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.RequestConversationClearAsync().ConfigureAwait(false);
+            return result.Ok
+                ? _Serialize(new
+                {
+                    ok = true,
+                    note = result.AlreadyQueued
+                        ? "Already queued from an earlier call in this turn — it will still run once this turn ends."
+                        : "Queued. It will run once this turn ends, so say anything else you meant to say first.",
+                })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "export_assistant_memory")]
     [Description("Writes the assistant's own memory (what the operator asked it to remember) and its current-state note to a single .zip archive at a path the operator chooses — separate from, and much lighter than, a full cockpit backup: no settings, no plugins, no secrets scrubbing, just these two files, whichever of them exist. Use it when the operator wants to carry the assistant's memory to another machine or keep a copy before clearing it out. THE PATH IS THE OPERATOR'S OWN CHOICE, never guessed — ask where they want it written, a full path, and say that it overwrites whatever file is already there." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: nothing to export yet (the assistant has never remembered anything), or a path it cannot write to — read the reason out and carry on.")]
     public async Task<string> ExportAssistantMemoryAsync(

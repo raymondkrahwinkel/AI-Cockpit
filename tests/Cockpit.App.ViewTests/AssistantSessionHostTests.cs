@@ -11,6 +11,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -1270,6 +1271,116 @@ public class AssistantSessionHostTests
         Dispatcher.UIThread.Invoke(() => host.RestartAsync().GetAwaiter().GetResult());
 
         broker.Received(1).Respond(prompt.Id, ConsentOutcome.Denied, false);
+    }
+
+    // ── Clearing the conversation (AC-1261) ───────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Criterion 7 (V2): a clear queued by the tool must not run while the assistant is mid-turn — that would tear
+    /// down the very session the tool call is running in and drop the result it is waiting to return. It runs the
+    /// moment the turn ends, through the same gate (<see cref="AssistantSessionHost.ShouldHandOver"/>) AC-596's
+    /// hand-over uses.
+    /// </summary>
+    [Fact]
+    public void RequestingAClear_WhileBusy_WaitsForTheTurnToEnd_ThenRunsExactlyOnce()
+    {
+        var transcript = Substitute.For<ISessionTranscriptStore>();
+        var (host, first, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
+
+        // The start above archives too (no saved conversation to resume) — cleared so the count below is the
+        // clear's own, not that unrelated archive from getting the assistant running in the first place.
+        transcript.ClearReceivedCalls();
+
+        Dispatcher.UIThread.Invoke(() => first.IsBusy = true);
+
+        Assert.True(Dispatcher.UIThread.Invoke(host.RequestConversationClear));
+
+        // Not run while busy: give the (fire-and-forget, if wrongly triggered) clear a moment, then assert nothing
+        // moved.
+        Thread.Sleep(200);
+        Assert.Same(first, host.Session);
+
+        // The turn ends: the same property change AC-596's hand-over watches is what runs the queued clear.
+        Dispatcher.UIThread.Invoke(() => first.IsBusy = false);
+
+        var second = _ReplacementOf(host, first);
+        var divider = Assert.Single(second.Transcript, entry => entry.IsDivider);
+        Assert.Equal("Conversation cleared — a new one starts here", divider.Text);
+
+        // Exactly once: `_StartAsync` is the only place that archives, and a clear must not add a second archive path.
+        transcript.Received(1).ArchiveAsync(AssistantSessionHost.AssistantPaneId, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A second call within the same turn must not queue a second clear — it finds one already queued and says so,
+    /// which is what lets the tool report the difference to the assistant.
+    /// </summary>
+    [Fact]
+    public void RequestingAClear_ASecondTimeInTheSameTurn_ReportsItIsAlreadyQueued()
+    {
+        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
+        Dispatcher.UIThread.Invoke(() => host.Session = new _RunningSession { IsBusy = true });
+
+        Assert.True(Dispatcher.UIThread.Invoke(host.RequestConversationClear));
+        Assert.False(Dispatcher.UIThread.Invoke(host.RequestConversationClear));
+    }
+
+    /// <summary>
+    /// Criterion 8: what the operator asked to be remembered and the assistant's own current-state note are read
+    /// fresh off disk by every start, <see cref="AssistantSessionHost.ClearConversationAsync"/> included — this
+    /// proves a clear neither writes to nor loses either file, and that the fresh launch it produces still carries
+    /// both, each under its own heading.
+    /// </summary>
+    [Fact]
+    public async Task ClearingTheConversation_LeavesMemoryAndTheCurrentStateNoteUntouched_AndCarriesBothIntoTheFreshLaunch()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            var memoryPath = Path.Combine(directory.FullName, "assistant-memory.md");
+            var statePath = Path.Combine(directory.FullName, "assistant-state.md");
+            var memory = new AssistantMemoryFile(memoryPath, statePath);
+            await memory.RememberAsync("The operator is called Raymond.");
+            await memory.NoteCurrentStateAsync("We are on AC-1261; the clear tool is being built.");
+            var memoryBefore = await File.ReadAllBytesAsync(memoryPath);
+            var stateBefore = await File.ReadAllBytesAsync(statePath);
+
+            var driver = Substitute.For<ISessionDriver>();
+            driver.Events.Returns(_EmptyEvents());
+            var factory = Substitute.For<ISessionDriverFactory>();
+            factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+            var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
+                () => new SessionViewModel(new SessionManager(factory))));
+            var host = Dispatcher.UIThread.Invoke(() => _Host(
+                enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, memory: memory));
+
+            var first = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
+            Assert.NotNull(first);
+
+            Dispatcher.UIThread.Invoke(() => host.ClearConversationAsync().GetAwaiter().GetResult());
+
+            Assert.Equal(memoryBefore, await File.ReadAllBytesAsync(memoryPath));
+            Assert.Equal(stateBefore, await File.ReadAllBytesAsync(statePath));
+
+            // Twice: the launch before the clear and the one it produced both carried the memory and the note —
+            // proving the clear did not lose either on the way through.
+            _ = driver.Received(2).StartAsync(
+                Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(),
+                Arg.Any<string?>(), Arg.Any<SessionResume?>(),
+                Arg.Is<IReadOnlyDictionary<string, string>?>(options =>
+                    options != null
+                    && options[WellKnownPluginSessionOptions.AppendSystemPrompt].Contains(
+                        AssistantStandingInstruction.MemoryHeading, StringComparison.Ordinal)
+                    && options[WellKnownPluginSessionOptions.AppendSystemPrompt].Contains(
+                        AssistantStandingInstruction.CurrentStateHeading, StringComparison.Ordinal)
+                    && options[WellKnownPluginSessionOptions.AppendSystemPrompt].Contains("Raymond", StringComparison.Ordinal)
+                    && options[WellKnownPluginSessionOptions.AppendSystemPrompt].Contains("AC-1261", StringComparison.Ordinal)),
+                Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            Directory.Delete(directory.FullName, recursive: true);
+        }
     }
 
     /// <summary>A session whose runtime is up, which is the state that cannot be produced without a real child process.</summary>

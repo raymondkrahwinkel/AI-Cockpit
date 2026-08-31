@@ -51,6 +51,29 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Starts a brand-new conversation right now (AC-1261) — the transcript on screen empties, the old log is
+    /// archived (unchanged AC-947 retention), and a divider says why. Never call this while the session is busy;
+    /// stop it first.
+    /// </summary>
+    /// <remarks>
+    /// Default-implemented for the same reason as the images overload above: the fakes of this interface that
+    /// never clear a conversation stay as they are.
+    /// </remarks>
+    Task<SessionViewModel?> ClearConversationAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<SessionViewModel?>(null);
+
+    /// <summary>
+    /// Marks a request from the <c>clear_conversation</c> tool to clear once the current turn is no longer busy
+    /// and nothing awaits the operator — never immediately, since that would tear down the very session answering
+    /// this call. Returns false when a request is already queued (idempotent second call), true otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Default-implemented for the same reason as the images overload above: the fakes of this interface that
+    /// never receive this call stay as they are.
+    /// </remarks>
+    bool RequestConversationClear() => false;
+
+    /// <summary>
     /// Sends typed or spoken text to the assistant, starting it lazily first if it has not run yet.
     /// </summary>
     Task SendAsync(string text, CancellationToken cancellationToken = default);
@@ -413,6 +436,35 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
         _playbackQueue.StopAll();
         await session.StopCommand.ExecuteAsync(null);
+    }
+
+    // AC-1261: confirms, stops a running turn first (criterion 6 — the operator asked for clear, not for a wait),
+    // then clears through the host's one entry point (criterion 1). `_cockpit` is only null in tests/screenshots,
+    // where nothing is wiped rather than risking a clear with nobody to confirm it (criterion 5).
+    [RelayCommand]
+    private async Task ClearConversationAsync()
+    {
+        if (_cockpit is null)
+        {
+            return;
+        }
+
+        if (!await _cockpit.ConfirmAsync(
+            "Clear conversation",
+            "This clears everything on screen and starts a new conversation. Unlike Clear context, the rows "
+            + "actually disappear — but nothing is destroyed: the conversation so far stays readable in "
+            + "transcripts/, and my memory and current-state note are unaffected. This cannot be undone.",
+            confirmLabel: "Clear conversation"))
+        {
+            return;
+        }
+
+        if (Session is { IsBusy: true })
+        {
+            await StopAsync();
+        }
+
+        await _host.ClearConversationAsync();
     }
 
     // Arrow-Up recall (AC-630), bridged: `SessionViewModel.RecallLastQueuedMessage` puts the text back in the

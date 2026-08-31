@@ -192,6 +192,16 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     public Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) =>
         _StartOrReplaceAsync(replaceALiveInstance: true, startFresh: false, cancellationToken);
 
+    // AC-1261 criterion 1: the one entry point a clear runs through — the flyout row (which stops a running turn
+    // first, criterion 6) and the `clear_conversation` tool's deferred execution (criterion 7) both call this and
+    // nothing else. Same shape as AC-596's hand-over: `_StartAsync` remains the only place that archives.
+    public Task<SessionViewModel?> ClearConversationAsync(CancellationToken cancellationToken = default) =>
+        _StartOrReplaceAsync(
+            replaceALiveInstance: true,
+            startFresh: true,
+            cancellationToken,
+            startFreshBecause: "Conversation cleared — a new one starts here");
+
     // AC-1013: How full the context may get before the assistant hands itself over and restarts (AC-596) — a
     // percentage, not a token count, since the provider reports fill and knows the window.
     // ponytail: one number for every provider, add per-provider tuning if that measurably matters.
@@ -416,7 +426,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             workingDirectory,
             worktreePath: null,
             worktreeBranch: null,
-            permissionMode: SessionOptionCatalog.DefaultPermissionMode.Value);
+            permissionMode: SessionOptionCatalog.DefaultPermissionMode.Value,
+            // AC-1261 criterion 3: `startFresh` covers both AC-596's hand-over and a clear, and neither changes
+            // profile or working directory — the guard this forces needs telling, not inferring.
+            forgetConversation: startFresh);
 
         // AC-638/AC-596: say why in the transcript, since the hand-over note only reaches the system prompt.
         // `startFreshBecause` lets AC-684's failed-resume recovery use its own reason instead of this default.
@@ -498,8 +511,55 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             _HandOverIfTheContextIsFull(
                 session,
                 fillWasJustRead: e.PropertyName is null or nameof(SessionPanelViewModel.ContextUsedPercent));
+
+            // AC-1261 criterion 7: a queued clear_conversation request runs the moment this same gate opens.
+            _TryExecutePendingConversationClear(session);
         }
     }
+
+    // AC-1261 criterion 7 (V2): marks a request rather than clearing now — clearing mid-turn would tear down the
+    // very session that is running this tool call, and drop the tool result the turn is waiting on. Returns false
+    // when a request is already queued (idempotent second call within the same turn), true otherwise.
+    public bool RequestConversationClear()
+    {
+        if (_pendingConversationClear)
+        {
+            return false;
+        }
+
+        _pendingConversationClear = true;
+
+        if (Session is { } session)
+        {
+            _TryExecutePendingConversationClear(session);
+        }
+
+        return true;
+    }
+
+    // Cleared once it runs, or the moment `Session` changes instance (see `OnSessionChanged` below) — a session
+    // that dies before its turn ends must not leave a clear queued for whatever replaces it.
+    private bool _pendingConversationClear;
+
+    // The same gate `_HandOverIfTheContextIsFull` uses (`ShouldHandOver`), reused rather than copied: contextUsedPercent
+    // is given as always-over-the-line, so the busy/waiting-on-operator halves alone decide when a clear may run.
+    private void _TryExecutePendingConversationClear(SessionViewModel session)
+    {
+        if (!_pendingConversationClear || !ReferenceEquals(session, Session))
+        {
+            return;
+        }
+
+        if (!ShouldHandOver(double.PositiveInfinity, session.IsBusy, session.HasPendingPermission || session.PendingConsent is not null))
+        {
+            return;
+        }
+
+        _pendingConversationClear = false;
+        _ = ClearConversationAsync();
+    }
+
+    partial void OnSessionChanged(SessionViewModel? value) => _pendingConversationClear = false;
 
     // Relieves a context that is nearly full (AC-596) — but only while nothing is running and nothing is waiting on
     // the operator: that permission row belongs to a session that would no longer exist to receive the answer.
