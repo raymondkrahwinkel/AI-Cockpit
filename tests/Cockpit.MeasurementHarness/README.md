@@ -16,7 +16,10 @@ COCKPIT_GIT_SHA=$(git rev-parse HEAD) \
 
 `COCKPIT_GIT_SHA` is required, not defaulted: a report that cannot name the code it measured is not
 evidence. Flags: `--scenario`, `--headless`, `--min-sessions`, `--max-sessions`, `--width`, `--height`,
-`--settle-ms`, `--out`. An unknown flag is refused rather than ignored.
+`--settle-ms`, `--repeats`, `--dirty-streak`, `--out`. An unknown flag is refused rather than ignored.
+`--dirty-streak=true` (AC-1263) adds the longest stretch a subtree stands still — dirty, set never
+shrinking — and what one such sample costs; it is off by default because the tree walk it needs would
+move the frame times every other figure in the sweep is about.
 
 Exit codes: `0` measurement, `1` a report with this identity already exists, `2` no SHA, `3` the scenario
 produced nothing, `4` the run is a malfunction (see the verdict in its header).
@@ -129,6 +132,65 @@ honest ones.
 **What this does not measure:** the allocation *rate* seen in the field. This harness streams transcript rows
 from its own timer, which allocates heavily in healthy frames too, so MB/s here is not comparable to a
 production log.
+
+### What a healthy pass's standstill measures — the floor under AC-1263's N
+
+`LayoutLoopGuard` cuts a subtree that stands still for N consecutive dirty samples. The number that decides
+whether it ever cuts healthy work is not N itself but **how long a heavy but healthy pass keeps one subtree
+dirty with a set that never shrinks**. That is what `--dirty-streak=true` reads, through the production guard
+with a bound it can never reach. Measured 2026-08-31 on `1841cb69`, `--min-sessions=2 --max-sessions=6
+--settle-ms=6000 --repeats=3`, positive control fired, `VERDICT: MEASUREMENT`:
+
+| sessions | worst streak (samples) | over | dirty samples |
+|---|---|---|---|
+| 2 | 1 | 0 ms | 217–232 of ~1000 |
+| 3 | 1 | 0 ms | 95–152 of ~1000 |
+| 4 | 1 | 0 ms | 36–82 of ~830 |
+| **5** | **4** | **45 / 91 / 92 ms** | 29–31 of ~700 |
+| **6** | **4** | **53 / 83 / 116 ms** | 26–72 of ~720 |
+
+**The comparison has to be made in time, not in samples.** This meter samples at the top of every render tick —
+about one per 5–10 ms — while `DiagnosticsBackgroundService` samples once per ten seconds and only while the UI
+thread is already flagged unresponsive. So "4 samples" here is 116 ms, not four ten-second intervals.
+
+Against that floor, `DefaultSamplesBeforeCut = 3` requires twenty seconds of standstill between the first
+sample and the third: a margin of roughly **170×** over the worst healthy streak measured. It is also the
+shape the field already produced — the 31-08 freeze logged three identical dirty sets at 09:08:42, 09:08:52
+and 09:09:02, so N=3 would have cut at 09:09:02 rather than letting eleven minutes run.
+
+What this does not establish: that no legitimate pass can stand still for twenty seconds while the UI thread is
+already unresponsive. The 170× is a margin, not a proof of impossibility, and `COCKPIT_LAYOUT_CUTOFF_SAMPLES`
+is the way out if the field ever produces one.
+
+### What the app-level runner could not do — and what closed the chain instead
+
+Acceptance criterion 1 names `run-app-repro.sh` and the AC-1262 freeze as the candidates for the counter-proof.
+Both were tried on `3af97278`, whose base predates the AC-1262 fix — so the fault was genuinely present, not
+simulated. **Neither raised a freeze**, and that is a measurement rather than an absence of one:
+
+| run | shape | result |
+|---|---|---|
+| `--sessions 8 --seconds 60 --shape new-rows` | eight session transcripts | stream completed, `uifreeze hang` 0, app CPU 3,5% |
+| `--trigger chat:3000 --seconds 90` | the assistant-chat window, AC-1262's own surface | no freeze, `uifreeze hang` 0, `renderclock stalled` 0 |
+
+A freeze that took eleven minutes in the field could not be summoned in two runs of a minute and a half. So the
+counter-proof was taken one level down, where every link of the production chain is still real and the timing is
+not left to chance: `LayoutLoopGuardTests` starves the dispatcher over a tree left mid-pass and runs the real
+`DiagnosticsBackgroundService` — its alarm, its dirty sampling, the guard, the cut and the line it writes — once
+with `COCKPIT_LAYOUT_CUTOFF_SAMPLES=0` and once with the default. Off, the same standstill is sampled three
+times and left alone; on, the subtree is cut and named. The sample interval is a constructor seam there for the
+same reason the alarm is: the real one is ten seconds.
+
+**What this does not prove:** that the 31-08 freeze in particular would have been cut. That rests on its three
+logged dirty samples having been identical under one subtree, which is what the guard keys on — read from the
+log, not reproduced here.
+
+### What the check costs
+
+Nothing on the healthy path: the guard runs inside the dirty sampling, which does not run at all until the
+freeze alarm stands. When it does run, this meter prices one sample — the tree walk plus the guard's
+judgement — at **0,5–1,5 ms mean and 26–103 ms worst**, once per ten seconds, on a thread that is already
+frozen.
 
 ## The second scenario: `--scenario=render-clock`
 

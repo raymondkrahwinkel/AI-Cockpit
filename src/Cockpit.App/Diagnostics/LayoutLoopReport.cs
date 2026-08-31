@@ -26,12 +26,7 @@ internal static class LayoutLoopReport
     {
         try
         {
-            var elements = Describe(roots);
-            var line = $"{DateTimeOffset.Now:O} layout loop cut off, {elements.Count} element(s) still in layout: "
-                + (elements.Count == 0 ? "(none)" : string.Join(" | ", elements));
-
-            logger?.LogWarning("{Report}", line);
-            _Append(recordPath, line);
+            Record(Collect(roots), "layout loop cut off", recordPath, logger);
         }
         catch (Exception failure)
         {
@@ -39,19 +34,31 @@ internal static class LayoutLoopReport
         }
     }
 
-    // Elements the cut pass never finished, grouped by a key that carries no run-specific detail and no data
-    // value, so two reports from different episodes can be laid side by side and the repeat offender read off.
-    public static IReadOnlyList<string> Describe(IEnumerable<Visual> roots)
+    // AC-1263: the same line for a set already read off the tree, so the guard's cut lands in the record file
+    // in the shape every earlier episode is written in, and two of them can be laid side by side.
+    public static void Record(IReadOnlyList<Layoutable> dirty, string headline, string recordPath, ILogger? logger)
     {
-        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var elements = Group(dirty);
+        var line = $"{DateTimeOffset.Now:O} {headline}, {elements.Count} element(s) still in layout: "
+            + (elements.Count == 0 ? "(none)" : string.Join(" | ", elements));
+
+        logger?.LogWarning("{Report}", line);
+        _Append(recordPath, line);
+    }
+
+    // AC-1263: the elements themselves, not their descriptions -- the guard has to act on the subtree they
+    // sit under, and a second walk to find it would read a tree that has moved on since the first.
+    public static IReadOnlyList<Layoutable> Collect(IEnumerable<Visual> roots)
+    {
+        var dirty = new List<Layoutable>();
         var unvisited = new Stack<Visual>(roots);
         var visited = 0;
-        var collected = 0;
 
-        while (collected < MaxPending && visited++ < MaxNodes && unvisited.TryPop(out var visual))
+        while (dirty.Count < MaxPending && visited++ < MaxNodes && unvisited.TryPop(out var visual))
         {
-            // AC-1262: an invisible subtree is never measured, so everything under it stays invalid for good and
-            // named every report as a suspect -- a LoginFlowView behind IsVisible did, with no login flow running.
+            // AC-1262: a hidden subtree is never measured, so its elements stay invalid for as long as it stays
+            // hidden. Reading that as stuck named nine bystanders on 31-08, and once AC-1263's guard hides a
+            // runaway subtree it would keep re-reporting the very subtree it just took out of layout.
             if (!visual.IsVisible)
             {
                 continue;
@@ -59,15 +66,30 @@ internal static class LayoutLoopReport
 
             if (visual is Layoutable element && (!element.IsMeasureValid || !element.IsArrangeValid))
             {
-                var key = _Describe(element);
-                counts[key] = counts.TryGetValue(key, out var seen) ? seen + 1 : 1;
-                collected++;
+                dirty.Add(element);
             }
 
             foreach (var child in visual.GetVisualChildren())
             {
                 unvisited.Push(child);
             }
+        }
+
+        return dirty;
+    }
+
+    // Elements the cut pass never finished, grouped by a key that carries no run-specific detail and no data
+    // value, so two reports from different episodes can be laid side by side and the repeat offender read off.
+    public static IReadOnlyList<string> Describe(IEnumerable<Visual> roots) => Group(Collect(roots));
+
+    // The grouping half on its own, for a caller that already holds the set.
+    public static IReadOnlyList<string> Group(IReadOnlyList<Layoutable> dirty)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var element in dirty)
+        {
+            var key = _Describe(element);
+            counts[key] = counts.TryGetValue(key, out var seen) ? seen + 1 : 1;
         }
 
         // Deepest first: a leaf entry names the control itself, a shallow one only the region it sits in.

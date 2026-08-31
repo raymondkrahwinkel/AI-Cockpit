@@ -80,11 +80,16 @@ public static class LayoutLoopScenario
             {
                 var before = recorder.DetectorCount("layout-loop");
                 var frames = new FrameMeter();
+                var streaks = new DirtyStreakMeter();
                 var window = _NewWindow(options.Width, options.Height);
                 var panel = _NewPanel(count);
                 window.Content = panel;
                 window.Show();
                 frames.Attach(window);
+                if (options.DirtyStreak)
+                {
+                    streaks.Attach(window);
+                }
 
                 var settle = TimeSpan.FromMilliseconds(options.SettleMs);
                 await pump.ForAsync(settle).ConfigureAwait(true);
@@ -115,6 +120,15 @@ public static class LayoutLoopScenario
                 run.Write($"pass {pass} | {count,3} sessions | worst frame {(worst is { } w ? $"{w,4}" : " n/a")} rounds "
                           + $"| {frames.TotalRounds,6} rounds total | {frames.FrameCount,5} frames | layout loops {loops}"
                           + (worst >= AvaloniaRoundLimit ? "   <-- at Avalonia's cut-off" : string.Empty));
+
+                // AC-1263: the floor under the guard's N. A bound at or below the worst streak a healthy
+                // sweep point produces would cut layout that was going to finish, which is the silent defect.
+                if (options.DirtyStreak)
+                {
+                    recorder.Measure($"dirty-streak-worst@{count}", streaks.LongestStreak, "samples");
+                    recorder.Measure($"dirty-streak-worst-ms@{count}", (long)streaks.LongestStreakMs, "ms");
+                    run.Write($"       streak | {streaks.Line($"{count} sessions")}");
+                }
 
                 // AC-1104 asks what a non-converging pass costs, not only that it happens. Only the points that
                 // reach the cut-off have that price to report; below it there is nothing to price.
@@ -251,4 +265,5 @@ public static class LayoutLoopScenario
 }
 
 /// <summary>What the sweep varies and what it holds fixed.</summary>
-public sealed record SweepOptions(int MinSessions, int MaxSessions, double Width, double Height, int SettleMs, int Repeats);
+public sealed record SweepOptions(
+    int MinSessions, int MaxSessions, double Width, double Height, int SettleMs, int Repeats, bool DirtyStreak);

@@ -19,6 +19,7 @@ using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Terminal;
+using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
@@ -372,6 +373,10 @@ public partial class App : Application
                 { StackSessionsVertically: true } => "stacked",
                 _ => "grid",
             }));
+
+        // AC-1263: cutting a runaway subtree leaves the app alive and a hole on screen. The toast is what keeps
+        // that from reading as a rendering bug nobody reports.
+        diagnosticsBackgroundService.SetToasts(Program.Services.GetRequiredService<IToastService>());
         diagnosticsBackgroundService.Start();
 
         // AC-733: a plain background thread, not UI-bound — started here too, just to sit beside its sibling.
