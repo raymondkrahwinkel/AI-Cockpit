@@ -420,6 +420,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the miniature rail no longer costs an extra measure of every tile each time it is resized. The panel
+  handed each tile the exact size of the pane shown large, and it did so from inside the pass that was still
+  laying the screen out — which asked that same pass to start over. It settled every time in practice, but a pane
+  whose edge moved between two passes would have had the two chase each other with nothing to converge on: the
+  same shape as the freeze during transcript scrolling, one screen over. The size is now handed over at the start
+  of the next layout instead. The rail looks the same.
+
 - fixed: the cockpit no longer freezes while a long assistant transcript is scrolled. Scrolling recycles the rows
   that have left the screen, and a row's formatted text was being rebuilt from scratch on its way out — for a row
   about to be thrown away, in the middle of the pass that was still laying the screen out. Enough of those and the
