@@ -79,7 +79,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // Rows whose arrival timestamp renders at the top of the row (assistant prose, questions/errors/turn
     // results). User and tool-use rows carry their timestamp inline in their own header line instead
     // (AC-144), so the generic top-row timestamp is suppressed for them to avoid a doubled label.
-    public bool IsTopTimestampRow => !IsUserRow && !IsToolUse && !IsThinking;
+    public bool IsTopTimestampRow => !IsReplyContinuation && !IsUserRow && !IsToolUse && !IsThinking;
 
     // Deferred branches return only the matching immutable kind, avoiding Avalonia construction of hidden siblings.
     // AC-715/AC-955 share QuestionBranch for permission and broker questions; mutable branches raise their own flags.

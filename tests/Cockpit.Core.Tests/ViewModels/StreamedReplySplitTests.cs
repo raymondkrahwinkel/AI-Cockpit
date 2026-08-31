@@ -50,6 +50,19 @@ public class StreamedReplySplitTests
         Assert.Equal(Reply, vm.Transcript[0].ReplyTextWithImageSuffix);
     }
 
+    [Fact]
+    public void AReplySplitAcrossRows_HasOneTopTimestampRow()
+    {
+        var vm = new SessionViewModel();
+        vm.Transcript.Clear();
+
+        _Stream(vm, Reply);
+
+        Assert.True(vm.Transcript.Count > 1, "the reply must split for this test to exercise continuation rows");
+        Assert.Single(vm.Transcript, entry => entry.IsTopTimestampRow);
+        Assert.True(vm.Transcript[0].IsTopTimestampRow);
+    }
+
     /// <summary>An inline fence marker is prose, not an unclosed code block.</summary>
     [Fact]
     public void AReplyWithAnInlineFenceMarker_SplitsAndStillKeepsEveryCharacter()
