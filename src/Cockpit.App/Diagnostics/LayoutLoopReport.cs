@@ -56,9 +56,9 @@ internal static class LayoutLoopReport
 
         while (dirty.Count < MaxPending && visited++ < MaxNodes && unvisited.TryPop(out var visual))
         {
-            // A hidden subtree is never measured, so its elements stay invalid for as long as it stays hidden.
-            // Reading that as stuck names bystanders (nine of them on 31-08) and, once the guard hides a runaway
-            // subtree, would keep re-reporting the very subtree it just took out of layout.
+            // AC-1262: a hidden subtree is never measured, so its elements stay invalid for as long as it stays
+            // hidden. Reading that as stuck named nine bystanders on 31-08, and once AC-1263's guard hides a
+            // runaway subtree it would keep re-reporting the very subtree it just took out of layout.
             if (!visual.IsVisible)
             {
                 continue;

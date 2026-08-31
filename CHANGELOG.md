@@ -431,6 +431,20 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the miniature rail no longer costs an extra measure of every tile each time it is resized. The panel
+  handed each tile the exact size of the pane shown large, and it did so from inside the pass that was still
+  laying the screen out — which asked that same pass to start over. It settled every time in practice, but a pane
+  whose edge moved between two passes would have had the two chase each other with nothing to converge on: the
+  same shape as the freeze during transcript scrolling, one screen over. The size is now handed over at the start
+  of the next layout instead. The rail looks the same.
+
+- fixed: the cockpit no longer freezes while a long assistant transcript is scrolled. Scrolling recycles the rows
+  that have left the screen, and a row's formatted text was being rebuilt from scratch on its way out — for a row
+  about to be thrown away, in the middle of the pass that was still laying the screen out. Enough of those and the
+  pass never finished: the window stopped repainting and stopped answering, and only killing the cockpit outright
+  ended it, which lost whatever the open sessions had not written down. The rebuild is now deferred and paid when
+  the row is used again, so nothing on screen is stale and no work is done for a row nobody will see.
+
 - fixed: `--screenshot`, the switch that renders a screen headless, now always either writes the image and names
   the file it wrote, or fails with a reason. It used to run behind the "only one cockpit at a time" check, so a
   render started while a cockpit was already running stood down without a word: exit code 0, nothing on screen,
