@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Shortcuts;
@@ -330,6 +331,11 @@ public sealed class SessionTilePanel : Panel
 
     private FocusRailLayoutResult? _focusRailLayout;
 
+    // AC-1264: the focus pane's own box, as the last arrange read it back. Handed to the tiles from measure,
+    // never from inside an arrange: `MiniatureHost.FocusChildBox` carries `AffectsMeasure`, so writing it there
+    // asks the running pass for a measure off a value that same pass produced — no fixed point once it moves.
+    private Size _focusChildBox;
+
     private Size _MeasureFocusRail(Size availableSize)
     {
         foreach (var child in Children)
@@ -376,6 +382,7 @@ public sealed class SessionTilePanel : Panel
         foreach (var tile in rail)
         {
             SetMiniatureBox(tile, tileSize, focusSize);
+            SetMiniatureFocusChildBox(tile, _focusChildBox);
             tile.Measure(tileSize);
         }
 
@@ -408,9 +415,15 @@ public sealed class SessionTilePanel : Panel
         }
 
         // AC-923: the focus pane's own host just arranged for real, one line up — every rail tile gets its
-        // exact box below instead of reconstructing an approximation of it (see PR description).
+        // exact box instead of reconstructing an approximation of it (see PR description). AC-1264: kept for the
+        // next measure rather than written here, and a box that moved asks for that pass from outside this one.
         var focusChildBox = layout.Focus.GetVisualDescendants().OfType<MiniatureHost>().FirstOrDefault()?.Bounds.Size
             ?? default;
+        if (focusChildBox != _focusChildBox)
+        {
+            _focusChildBox = focusChildBox;
+            Dispatcher.UIThread.Post(InvalidateMeasure);
+        }
 
         // Width decides the columns (measured above), height decides how many rows show before the rest
         // scrolls (AC-441) — clamped here too, not just on the wheel, so a window resize or a session
@@ -422,7 +435,6 @@ public sealed class SessionTilePanel : Panel
         for (var i = 0; i < layout.Rail.Count; i++)
         {
             var (x, y) = RailLayoutMath.TileOrigin(i, layout.Geometry, Gutter);
-            SetMiniatureFocusChildBox(layout.Rail[i], focusChildBox);
             layout.Rail[i].Arrange(new Rect(layout.RailSlot.Top + x, y - _railScrollOffset, tileSize.Width, tileSize.Height));
         }
 
