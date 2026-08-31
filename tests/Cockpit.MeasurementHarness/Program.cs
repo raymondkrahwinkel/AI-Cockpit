@@ -105,7 +105,14 @@ public static class Program
             await LayoutLoopScenario.SweepAsync(
                 run,
                 pump,
-                new SweepOptions(options.MinSessions, options.MaxSessions, options.Width, options.Height, options.SettleMs, options.Repeats))
+                new SweepOptions(
+                    options.MinSessions,
+                    options.MaxSessions,
+                    options.Width,
+                    options.Height,
+                    options.SettleMs,
+                    options.Repeats,
+                    options.DirtyStreak))
                 .ConfigureAwait(true);
         }
 
@@ -248,6 +255,9 @@ public sealed class Options(IReadOnlyDictionary<string, string> flags)
 
     public int Repeats { get; } = int.Parse(flags["repeats"]);
 
+    /// <summary>AC-1263: off by default — the tree walk it costs would change every frame time in the sweep.</summary>
+    public bool DirtyStreak { get; } = bool.Parse(flags["dirty-streak"]);
+
     public string OutputDirectory { get; } = flags["out"];
 
     /// <summary>Defaults first, then whatever the argv overrides, so the report always lists every flag.</summary>
@@ -263,6 +273,7 @@ public sealed class Options(IReadOnlyDictionary<string, string> flags)
             ["height"] = "900",
             ["settle-ms"] = "700",
             ["repeats"] = "1",
+            ["dirty-streak"] = "false",
             ["workload"] = string.Empty,
             ["out"] = ".",
         };

@@ -29,6 +29,10 @@ internal sealed class LayoutLoopGuard
 
     public bool Enabled => _samplesBeforeCut > 0;
 
+    // How many samples in a row the current subtree has stood still. What the measurement harness reads to
+    // find the floor a healthy pass puts under N; nothing in the app reads it.
+    public int Streak => _streak;
+
     // Anything unparseable or negative reads as "not configured": a typo in an environment variable must not
     // silently disarm the net, and must not arm it harder either.
     public static int ConfiguredSamplesBeforeCut() =>

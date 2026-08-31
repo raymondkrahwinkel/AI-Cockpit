@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
+using Cockpit.App.Diagnostics;
 
 namespace Cockpit.MeasurementHarness.Meters;
 
@@ -262,4 +263,76 @@ public sealed class RenderClockWitness
     public string Failure => CompositorPresent
         ? "the compositor never returned a commit, so nothing here distinguishes a stall from a probe that never ran"
         : "there is no compositor (headless), so the render clock was never observed at all";
+}
+
+/// <summary>
+/// AC-1263: how long a subtree stands still — dirty, set never shrinking — sampled where the cockpit's own
+/// freeze probe samples, at the top of a render tick. It runs the app's <see cref="LayoutLoopGuard"/> with a
+/// bound it can never reach, so the reading is the production judgement rather than a copy of it. The longest
+/// stretch a heavy but healthy layout produces is the floor under the guard's N. Off by default: the tree walk
+/// would change the frame times every other measurement in this sweep is about.
+/// </summary>
+public sealed class DirtyStreakMeter
+{
+    private readonly LayoutLoopGuard _guard = new(int.MaxValue);
+    private long _streakStartedAt;
+    private double _sampleUs;
+    private bool _attached;
+
+    public int LongestStreak { get; private set; }
+
+    public double LongestStreakMs { get; private set; }
+
+    public int Samples { get; private set; }
+
+    public int DirtySamples { get; private set; }
+
+    /// <summary>What one sample costs the UI thread: the tree walk plus the guard's judgement, in microseconds.</summary>
+    public double MeanSampleUs => Samples == 0 ? 0 : _sampleUs / Samples;
+
+    public double WorstSampleUs { get; private set; }
+
+    public void Attach(TopLevel top)
+    {
+        if (_attached)
+        {
+            return;
+        }
+
+        _attached = true;
+
+        void Sample(TimeSpan _)
+        {
+            var startedAt = Stopwatch.GetTimestamp();
+            var dirty = LayoutLoopReport.Collect([top]);
+            _guard.Observe(dirty);
+            var cost = Stopwatch.GetElapsedTime(startedAt).TotalMicroseconds;
+            _sampleUs += cost;
+            WorstSampleUs = Math.Max(WorstSampleUs, cost);
+            Samples++;
+            if (dirty.Count > 0)
+            {
+                DirtySamples++;
+            }
+
+            if (_guard.Streak <= 1)
+            {
+                _streakStartedAt = Stopwatch.GetTimestamp();
+            }
+
+            if (_guard.Streak > LongestStreak)
+            {
+                LongestStreak = _guard.Streak;
+                LongestStreakMs = Stopwatch.GetElapsedTime(_streakStartedAt).TotalMilliseconds;
+            }
+
+            top.RequestAnimationFrame(Sample);
+        }
+
+        top.RequestAnimationFrame(Sample);
+    }
+
+    public string Line(string what) =>
+        $"{what}: worst streak {LongestStreak} sample(s) over {LongestStreakMs:0} ms, "
+        + $"{DirtySamples} of {Samples} samples found anything dirty, {MeanSampleUs:0} us mean / {WorstSampleUs:0} us worst per sample";
 }

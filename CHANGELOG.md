@@ -32,6 +32,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a layout that will not settle is now stopped instead of taking the whole window down with it. When the
+  cockpit's freeze watch finds the same region still unmeasured three checks in a row — twenty seconds of no
+  progress, on a window that is already not answering — that region is taken out of layout and everything else
+  keeps working. You get a message saying it happened, and the region and the controls inside it are written to
+  `layout-loops.log` next to the app log, so the fault can be reported without collecting a stack dump; a restart
+  brings the region back. Before this, the same situation cost eleven minutes of a dead window and every session
+  that had not been saved, because even the orderly shutdown needed the frozen part of the app. The bound is
+  deliberately far above anything real work needs: the heaviest healthy layout measured stands still for a third
+  of a second, against the twenty seconds it takes to trip this. Set `COCKPIT_LAYOUT_CUTOFF_SAMPLES` to change how
+  many checks it waits, or to `0` to switch it off and keep the old behaviour.
+
 - added: an approval now asks in plain words — "Move 3 files into ./archive/2026-06" with the files listed under
   it — instead of only the command it stands for. The sentence is built from the call itself: its verb, its paths
   and its count, never from anything the agent wrote about its own request, so it cannot flatter or misdescribe

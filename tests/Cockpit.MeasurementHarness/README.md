@@ -16,7 +16,10 @@ COCKPIT_GIT_SHA=$(git rev-parse HEAD) \
 
 `COCKPIT_GIT_SHA` is required, not defaulted: a report that cannot name the code it measured is not
 evidence. Flags: `--scenario`, `--headless`, `--min-sessions`, `--max-sessions`, `--width`, `--height`,
-`--settle-ms`, `--out`. An unknown flag is refused rather than ignored.
+`--settle-ms`, `--repeats`, `--dirty-streak`, `--out`. An unknown flag is refused rather than ignored.
+`--dirty-streak=true` (AC-1263) adds the longest stretch a subtree stands still — dirty, set never
+shrinking — and what one such sample costs; it is off by default because the tree walk it needs would
+move the frame times every other figure in the sweep is about.
 
 Exit codes: `0` measurement, `1` a report with this identity already exists, `2` no SHA, `3` the scenario
 produced nothing, `4` the run is a malfunction (see the verdict in its header).
