@@ -29,7 +29,7 @@ internal sealed class LocalCiMcpTools(
         "Runs one of this project's GitHub workflow jobs in a container on this machine, using this session's own "
         + "checkout, and returns the verdict. The project is the calling session's — this tool takes no arbitrary "
         + "path and will not run anywhere else, but see `checkout` below for the one exception. A job that cannot "
-        + "run locally (a matrix, a non-Linux runner, artifacts exchanged with another job) is refused with the "
+        + "run locally (a complex matrix, a non-Linux runner, artifacts exchanged with another job) is refused with the "
         + "reason rather than partly run. The operator is asked to approve the exact command before anything "
         + "starts. The verdict is about this machine: act's images are not GitHub's, so it predicts the "
         + "pull-request check and does not replace it. `AlreadyRunning` is a verdict, not something to retry: "
