@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Tests.Voice;
 using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
@@ -33,18 +34,10 @@ public class AssistantChatViewModelTests
         return host;
     }
 
-    /// <summary>
-    /// This window never restarts the assistant — not on any path it has. The restart lives beside the setting
-    /// that needs it (Options → Voice → Assistant Profile), because "this applies at the next start" is only
-    /// useful next to the thing that provides one.
-    /// </summary>
-    /// <remarks>
-    /// Written against the host rather than against the absence of a command, so it keeps holding if a future
-    /// header control grows one: whatever this window offers, it must not be the thing that ends the conversation
-    /// it is showing.
-    /// </remarks>
+    // Opening, sending, settings updates and disposal keep the current conversation. Clear is the explicit
+    // exception and uses ClearConversationAsync, never RestartAsync.
     [Fact]
-    public async Task TheChatWindow_NeverRestartsTheAssistant_OnAnyPathItHas()
+    public async Task OrdinaryChatActions_DoNotRestartTheAssistant()
     {
         var session = new SessionViewModel();
         var host = FakeHost(session);
@@ -59,6 +52,33 @@ public class AssistantChatViewModelTests
 
         await host.DidNotReceive().RestartAsync(Arg.Any<CancellationToken>());
         Assert.Same(session, host.Session);
+    }
+
+    [Fact]
+    public async Task ClearConversation_AfterConfirmation_StopsTheCurrentReplyBeforeStartingFresh()
+    {
+        var session = new SessionViewModel();
+        var host = FakeHost(session);
+        var playback = Substitute.For<IVoicePlaybackQueue>();
+        var cockpit = TestCockpit.NewViewModel(out var dialogs);
+        dialogs.ShowConfirmationDialogAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(true);
+        host.ClearConversationAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            playback.Received(1).StopAll();
+            return Task.FromResult<SessionViewModel?>(session);
+        });
+        var vm = new AssistantChatViewModel(host, FakeSettingsStore(), playback, cockpit: cockpit);
+
+        await vm.ClearConversationCommand.ExecuteAsync(null);
+
+        await dialogs.Received(1).ShowConfirmationDialogAsync(
+            "Clear conversation?",
+            Arg.Is<string>(message => message.Contains("transcripts/", StringComparison.Ordinal)
+                && message.Contains("memory", StringComparison.OrdinalIgnoreCase)
+                && message.Contains("note", StringComparison.OrdinalIgnoreCase)),
+            "Clear conversation");
+        await host.Received(1).ClearConversationAsync(Arg.Any<CancellationToken>());
     }
 
     private static IMentionFileSource _FakeFileSource(out Func<string?> requestedDirectory)

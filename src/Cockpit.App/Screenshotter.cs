@@ -2241,6 +2241,8 @@ internal static class Screenshotter
         // the empty state instead of the one its name promises.
         public Task<ViewModels.SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
 
+        public Task<ViewModels.SessionViewModel?> ClearConversationAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
+
         public Task SendAsync(string text, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         // Same reason as ApplySettingsAsync below: a scene is staged and rendered, and speaking is not something a

@@ -51,6 +51,11 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Archives the visible conversation and starts the assistant on a fresh one.
+    /// </summary>
+    Task<SessionViewModel?> ClearConversationAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Sends typed or spoken text to the assistant, starting it lazily first if it has not run yet.
     /// </summary>
     Task SendAsync(string text, CancellationToken cancellationToken = default);
@@ -413,6 +418,21 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
         _playbackQueue.StopAll();
         await session.StopCommand.ExecuteAsync(null);
+    }
+
+    [RelayCommand]
+    private async Task ClearConversationAsync()
+    {
+        if (_cockpit is null || !await _cockpit.ConfirmAsync(
+                "Clear conversation?",
+                "The visible conversation will disappear from this window, but remains available in transcripts/. The assistant's memory and current-state note stay intact.",
+                "Clear conversation"))
+        {
+            return;
+        }
+
+        await StopAsync();
+        await _host.ClearConversationAsync();
     }
 
     // Arrow-Up recall (AC-630), bridged: `SessionViewModel.RecallLastQueuedMessage` puts the text back in the

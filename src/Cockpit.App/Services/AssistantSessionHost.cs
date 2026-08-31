@@ -192,6 +192,13 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     public Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) =>
         _StartOrReplaceAsync(replaceALiveInstance: true, startFresh: false, cancellationToken);
 
+    public Task<SessionViewModel?> ClearConversationAsync(CancellationToken cancellationToken = default) =>
+        _StartOrReplaceAsync(
+            replaceALiveInstance: true,
+            startFresh: true,
+            cancellationToken,
+            startFreshBecause: "Conversation cleared — a new one starts here");
+
     // AC-1013: How full the context may get before the assistant hands itself over and restarts (AC-596) — a
     // percentage, not a token count, since the provider reports fill and knows the window.
     // ponytail: one number for every provider, add per-provider tuning if that measurably matters.

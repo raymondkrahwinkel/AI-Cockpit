@@ -11,6 +11,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -1001,6 +1002,77 @@ public class AssistantSessionHostTests
         _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
 
         transcript.Received(1).ArchiveAsync(AssistantSessionHost.AssistantPaneId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ClearConversation_ArchivesOnceAndLeavesTheClearDivider()
+    {
+        var transcript = Substitute.For<ISessionTranscriptStore>();
+        var (host, first, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
+        transcript.ClearReceivedCalls();
+
+        var second = await Dispatcher.UIThread.InvokeAsync(() => host.ClearConversationAsync());
+
+        Assert.NotNull(second);
+        Assert.NotSame(first, second);
+        var divider = Assert.Single(second!.Transcript, entry => entry.IsDivider);
+        Assert.Equal("Conversation cleared — a new one starts here", divider.Text);
+        await transcript.Received(1).ArchiveAsync(AssistantSessionHost.AssistantPaneId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ClearConversation_PreservesMemoryAndStateAndReloadsBothIntoTheNewInstruction()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"assistant-clear-{Guid.NewGuid():N}");
+        var memoryPath = Path.Combine(directory, "assistant-memory.md");
+        var statePath = Path.Combine(directory, "assistant-state.md");
+
+        try
+        {
+            var memory = new AssistantMemoryFile(memoryPath, statePath);
+            await memory.RememberAsync("The operator is called Raymond.");
+            await memory.NoteCurrentStateAsync("We are implementing AC-1261.");
+            var memoryBefore = await File.ReadAllBytesAsync(memoryPath);
+            var stateBefore = await File.ReadAllBytesAsync(statePath);
+            var launches = new List<IReadOnlyDictionary<string, string>?>();
+            var driver = Substitute.For<ISessionDriver>();
+            driver.Events.Returns(_EmptyEvents());
+            driver.Capabilities.Returns(SessionCapabilities.ClaudeCli);
+            driver.StartAsync(
+                    Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(),
+                    Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<SessionResume?>(),
+                    Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                .Returns(call =>
+                {
+                    launches.Add(call.ArgAt<IReadOnlyDictionary<string, string>?>(6));
+                    return Task.CompletedTask;
+                });
+            var factory = Substitute.For<ISessionDriverFactory>();
+            factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+            var cockpit = await Dispatcher.UIThread.InvokeAsync(() => _CockpitWithSessionFactory(
+                () => new SessionViewModel(new SessionManager(factory))));
+            var host = await Dispatcher.UIThread.InvokeAsync(() => _Host(
+                enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, memory: memory));
+
+            await Dispatcher.UIThread.InvokeAsync(() => host.EnsureStartedAsync());
+            launches.Clear();
+            await Dispatcher.UIThread.InvokeAsync(() => host.ClearConversationAsync());
+
+            Assert.Equal(memoryBefore, await File.ReadAllBytesAsync(memoryPath));
+            Assert.Equal(stateBefore, await File.ReadAllBytesAsync(statePath));
+            var instruction = Assert.Single(launches)![WellKnownPluginSessionOptions.AppendSystemPrompt];
+            Assert.Contains(AssistantStandingInstruction.MemoryHeading, instruction, StringComparison.Ordinal);
+            Assert.Contains("The operator is called Raymond.", instruction, StringComparison.Ordinal);
+            Assert.Contains(AssistantStandingInstruction.CurrentStateHeading, instruction, StringComparison.Ordinal);
+            Assert.Contains("We are implementing AC-1261.", instruction, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
     }
 
     /// <summary>

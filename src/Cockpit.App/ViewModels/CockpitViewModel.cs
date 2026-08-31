@@ -7236,6 +7236,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
         public Task<SessionViewModel?> EnsureStartedAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Session);
         public Task<SessionViewModel?> RestartAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Session);
+        public Task<SessionViewModel?> ClearConversationAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(Session);
         public Task SendAsync(string text, System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void SetSpeakReplies(bool speak) { }
         public Task ApplySettingsAsync(System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
