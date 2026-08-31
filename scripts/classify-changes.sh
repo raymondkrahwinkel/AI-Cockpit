@@ -4,11 +4,11 @@
 # job in ci.yml for why skipping happens that way and not via the `on:` trigger). `other` is the safe
 # default: anything unrecognized forces every downstream job to run, same as a src/ change would.
 #
-# Also resolves which of the build job's three test suites a diff needs, derived mechanically from the
-# real <ProjectReference> graph in the csproj files rather than a hand-maintained table -- an unresolvable
-# path (unrecognized directory, missing csproj) falls back to running every suite, same safe default.
+# Also resolves which host suites and plugins a diff needs, derived mechanically from the real
+# <ProjectReference> graph rather than a hand-maintained table. An unresolvable path falls back to all.
 
 #   scripts/classify-changes.sh <base-ref> [head-ref]
+#   scripts/classify-changes.sh --all
 set -euo pipefail
 
 base="${1:?usage: classify-changes.sh <base-ref> [head-ref]}"
@@ -75,6 +75,33 @@ owning_project() {
   printf '%s/%s/%s.csproj\n' "$root" "$name" "$name"
 }
 
+plugin_names() {
+  local dir name
+  for dir in "$repo_root"/plugins-dev/Cockpit.Plugin.*/; do
+    name="$(basename "$dir")"
+    case "$name" in *.Tests) continue;; esac
+    printf '%s\n' "$name"
+  done | sort
+}
+
+json_array() {
+  local value separator=""
+  printf '['
+  while IFS= read -r value; do
+    [ -n "$value" ] || continue
+    printf '%s"%s"' "$separator" "$value"
+    separator=,
+  done
+  printf ']'
+}
+
+if [ "$base" = "--all" ]; then
+  printf 'src=true\nplugins_dev=true\nother=true\n'
+  printf 'run_core_tests=true\nrun_infrastructure_tests=true\nrun_view_tests=true\n'
+  printf 'plugins=%s\n' "$(plugin_names | json_array)"
+  exit 0
+fi
+
 src=false; plugins_dev=false; other=false; unresolved=false
 declare -A touched_projects=()
 
@@ -121,3 +148,23 @@ for entry in "${TEST_SUITES[@]}"; do
   fi
   printf '%s=%s\n' "$flag" "$run"
 done
+
+if [ "$src" = true ] || [ "$unresolved" = true ] || [ -n "${touched_projects[tests/Cockpit.TestSupport/Cockpit.TestSupport.csproj]:-}" ]; then
+  plugins="$(plugin_names | json_array)"
+else
+  plugins="$({
+    while IFS= read -r plugin; do
+      project="plugins-dev/$plugin/$plugin.csproj"
+      test_project="plugins-dev/$plugin.Tests/$plugin.Tests.csproj"
+      [ -f "$repo_root/$test_project" ] && project="$test_project"
+
+      while IFS= read -r member; do
+        if [ -n "${touched_projects[$member]:-}" ]; then
+          printf '%s\n' "$plugin"
+          break
+        fi
+      done < <(project_closure "$project")
+    done < <(plugin_names)
+  } | json_array)"
+fi
+printf 'plugins=%s\n' "$plugins"
