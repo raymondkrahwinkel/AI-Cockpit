@@ -109,4 +109,28 @@ public sealed class LayoutLoopReportTests
             window.Close();
         }
     });
+
+    [Fact]
+    public void AnInvisibleSubtree_IsNotNamedAsASuspect() => HeadlessAvalonia.Run(() =>
+    {
+        // Never measured, so permanently invalid: TranscriptRowView's LoginFlowView sat behind IsVisible like this
+        // and turned up in every report of AC-1262's freeze, on a day no login flow ran at all.
+        var hidden = new QuietProbe { Name = "hidden" };
+        var window = new Window
+        {
+            Width = 400,
+            Height = 300,
+            Content = new Border { IsVisible = false, Child = hidden },
+        };
+
+        window.Show();
+        window.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+
+        var described = LayoutLoopReport.Describe([window]);
+        window.Close();
+
+        Assert.False(hidden.IsMeasureValid, "the probe must be invalid, or the test proves nothing");
+        Assert.DoesNotContain(described, entry => entry.Contains("#hidden", StringComparison.Ordinal));
+    });
 }

@@ -50,6 +50,13 @@ internal static class LayoutLoopReport
 
         while (collected < MaxPending && visited++ < MaxNodes && unvisited.TryPop(out var visual))
         {
+            // AC-1262: an invisible subtree is never measured, so everything under it stays invalid for good and
+            // named every report as a suspect -- a LoginFlowView behind IsVisible did, with no login flow running.
+            if (!visual.IsVisible)
+            {
+                continue;
+            }
+
             if (visual is Layoutable element && (!element.IsMeasureValid || !element.IsArrangeValid))
             {
                 var key = _Describe(element);

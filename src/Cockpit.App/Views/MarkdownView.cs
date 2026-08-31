@@ -87,6 +87,10 @@ public sealed class MarkdownView : ContentControl
 
     private DispatcherTimer? _rebuildTimer;
     private bool _pendingRebuild;
+
+    // AC-1262: tells a view being recycled away apart from one that was never attached. Both are "not attached"
+    // and only the first must defer its render — a plugin's never-attached view still gets a drawn control.
+    private bool _everAttached;
     private TaskCompletionSource? _pendingRebuildSignal;
 
     // Exposed for tests only (AC-1014): a change coalesced into the rebuild timer renders on its next tick rather
@@ -121,6 +125,15 @@ public sealed class MarkdownView : ContentControl
             && change.Property != BasePathProperty
             && change.Property != PreserveLineBreaksProperty)
         {
+            return;
+        }
+
+        // AC-1262: a recycled row tears its bindings down inside the layout pass, and the source falling away
+        // arrives here as a change. Rebuilding the whole tree of a control being discarded is what stopped the
+        // pass converging; the render is deferred, not dropped — OnAttachedToVisualTree pays it on reuse.
+        if (_everAttached && !this.IsAttachedToVisualTree())
+        {
+            _pendingRebuild = true;
             return;
         }
 
@@ -220,6 +233,7 @@ public sealed class MarkdownView : ContentControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _everAttached = true;
 
         // Recycled back onto a row whose text moved on while it was scrolled away: render the current text once,
         // rather than showing the stale tree until the next delta happens to arrive.
