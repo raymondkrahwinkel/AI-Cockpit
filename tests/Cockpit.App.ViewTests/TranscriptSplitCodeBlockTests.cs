@@ -158,9 +158,7 @@ public sealed class TranscriptSplitCodeBlockTests
                     copied.Length > row.Text.Length,
                     $"a fragment copied {copied.Length} characters against its own {row.Text.Length}: "
                     + "it handed over its own text rather than the block's");
-                Assert.False(
-                    copied.Contains("```", StringComparison.Ordinal),
-                    "the copied text carries a fence: it is the markdown source rather than the code");
+                Assert.DoesNotContain("```", copied, StringComparison.Ordinal);
             }
 
             return Task.CompletedTask;
