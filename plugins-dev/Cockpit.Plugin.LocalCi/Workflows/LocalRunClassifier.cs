@@ -38,9 +38,7 @@ internal static class LocalRunClassifier
         "timeout-minutes", "strategy",
     };
 
-    // What may sit under `strategy`. `matrix` is caught first and on its own; the other two only govern
-    // how GitHub schedules a set of runs, which is nothing to a single local one — so a strategy without a matrix
-    // must not be refused merely for existing.
+    // What may sit under `strategy`. Matrix shape is checked separately; the other two only schedule runs.
     private static readonly HashSet<string> UnderstoodStrategyKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "matrix", "fail-fast", "max-parallel",
@@ -101,9 +99,9 @@ internal static class LocalRunClassifier
 
     private static JobVerdict _ClassifyJob(WorkflowDocument document, WorkflowJob job)
     {
-        if (job.HasMatrix)
+        if (job.Matrix == MatrixKind.Unsupported)
         {
-            return JobVerdict.Cannot(document, job, "it uses a matrix, so it is several runs rather than one");
+            return JobVerdict.Cannot(document, job, "it uses a matrix more complex than one list of values");
         }
 
         if (job.StrategyKeys.FirstOrDefault(key => !UnderstoodStrategyKeys.Contains(key)) is { } unknownStrategyKey)

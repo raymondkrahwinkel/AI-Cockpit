@@ -9,18 +9,24 @@ namespace Cockpit.Plugin.LocalCi.Workflows;
 internal sealed record WorkflowDocument(string Path, string Name, IReadOnlyList<string> Keys, IReadOnlyList<WorkflowJob> Jobs);
 
 // `Keys`: Every key written under this job, in file order — including ones this plugin has no meaning for.
-// `StrategyKeys`: The keys under `strategy`, empty when there is none. Kept rather than reduced to a
-// matrix flag, because a strategy without a matrix is still one run and should not be refused for existing.
+// `StrategyKeys`: The keys under `strategy`, empty when there is none.
 internal sealed record WorkflowJob(
     string Id,
     string? Name,
     RunsOnSpec RunsOn,
+    MatrixKind Matrix,
     IReadOnlyList<string> StrategyKeys,
     IReadOnlyList<string> Keys,
     IReadOnlyList<WorkflowStep> Steps)
 {
-    // One job in the file, many runs on GitHub.
-    public bool HasMatrix => StrategyKeys.Contains("matrix", StringComparer.OrdinalIgnoreCase);
+    public bool HasMatrix => Matrix != MatrixKind.None;
+}
+
+internal enum MatrixKind
+{
+    None,
+    Simple,
+    Unsupported,
 }
 
 // `Keys`: Every key written on this step, in file order.

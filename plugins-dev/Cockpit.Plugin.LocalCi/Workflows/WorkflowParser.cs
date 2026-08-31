@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 
@@ -94,18 +95,50 @@ internal static class WorkflowParser
         {
             // A job that is not a mapping carries no keys we can read; the classifier refuses it on the missing
             // runs-on rather than this parser inventing a verdict.
-            return new WorkflowJob(id, null, RunsOnSpec.Missing, [], [], []);
+            return new WorkflowJob(id, null, RunsOnSpec.Missing, MatrixKind.None, [], [], []);
         }
 
         var keys = job.Children.Keys.OfType<YamlScalarNode>().Select(key => key.Value ?? string.Empty).ToList();
         var steps = _Child(job, "steps") is YamlSequenceNode sequence
             ? sequence.Children.OfType<YamlMappingNode>().Select(_ReadStep).ToList()
             : [];
-        var strategyKeys = _Child(job, "strategy") is YamlMappingNode strategy
-            ? strategy.Children.Keys.OfType<YamlScalarNode>().Select(key => key.Value ?? string.Empty).ToList()
-            : [];
+        var strategy = _Child(job, "strategy") as YamlMappingNode;
+        var strategyKeys = strategy is null
+            ? []
+            : strategy.Children.Keys.OfType<YamlScalarNode>().Select(key => key.Value ?? string.Empty).ToList();
 
-        return new WorkflowJob(id, _Scalar(job, "name"), _ReadRunsOn(_Child(job, "runs-on")), strategyKeys, keys, steps);
+        var matrix = _ReadMatrix(strategy is null ? null : _Child(strategy, "matrix"));
+        return new WorkflowJob(id, _Scalar(job, "name"), _ReadRunsOn(_Child(job, "runs-on")), matrix, strategyKeys, keys, steps);
+    }
+
+    private static MatrixKind _ReadMatrix(YamlNode? node)
+    {
+        if (node is null)
+        {
+            return MatrixKind.None;
+        }
+
+        if (node is not YamlMappingNode { Children.Count: 1 } matrix)
+        {
+            return MatrixKind.Unsupported;
+        }
+
+        var axis = matrix.Children.Single();
+        if (axis.Key is not YamlScalarNode { Value: { } axisName }
+            || axisName.Equals("include", StringComparison.OrdinalIgnoreCase)
+            || axisName.Equals("exclude", StringComparison.OrdinalIgnoreCase))
+        {
+            return MatrixKind.Unsupported;
+        }
+
+        var simpleValues = axis.Value is YamlSequenceNode { Children.Count: > 0 } values
+            && values.Children.All(value => value is YamlScalarNode { Value: not null });
+        var dynamicValues = axis.Value is YamlScalarNode { Value: { } expression }
+            && Regex.IsMatch(
+                expression,
+                @"^\$\{\{\s*fromJSON\(needs\.[A-Za-z0-9_-]+\.outputs\.[A-Za-z0-9_-]+\)\s*\}\}$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return simpleValues || dynamicValues ? MatrixKind.Simple : MatrixKind.Unsupported;
     }
 
     private static WorkflowStep _ReadStep(YamlMappingNode step) =>
