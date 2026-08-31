@@ -502,7 +502,12 @@ sealed class Program
 
     // A bare native-process AI_COCKPIT presence signal reaches every nested agent regardless of spawn path; callers
     // depend only on existence, not version or session detail (#45 D4 follow-up).
-    private static void MarkCockpitEnvironment() => ProcessEnvironment.Assign("AI_COCKPIT", "1");
+    private static void MarkCockpitEnvironment()
+    {
+        ProcessEnvironment.Assign("AI_COCKPIT", "1");
+        // MSBuild workers otherwise outlive their build and retain gigabytes; every session inherits the opt-out.
+        ProcessEnvironment.Assign("MSBUILDDISABLENODEREUSE", "1");
+    }
 
     // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
