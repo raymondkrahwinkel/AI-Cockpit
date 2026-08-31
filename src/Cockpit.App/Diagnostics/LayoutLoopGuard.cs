@@ -10,8 +10,9 @@ namespace Cockpit.App.Diagnostics;
 // This is the grade above it: a bound across render ticks, judged on samples the freeze alarm already takes.
 internal sealed class LayoutLoopGuard
 {
-    // 3 samples x the 10s sampling interval = a subtree that has made no progress for twenty-plus seconds while
-    // the UI thread is already flagged unresponsive. Measured headroom over a heavy healthy pass: see AC-1263.
+    // 3 samples x the 10s sampling interval = no progress for twenty seconds while the UI thread is already
+    // flagged unresponsive. A heavy healthy pass stands still for at most 116 ms (harness --dirty-streak,
+    // 6 sessions, 2026-08-31), so that is a margin of about 170x -- the measurement is in the harness README.
     public const int DefaultSamplesBeforeCut = 3;
 
     // 0 turns the net off. The counter-proof runs on it, and an operator who would rather keep the freeze than
