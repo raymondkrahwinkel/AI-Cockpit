@@ -28,4 +28,5 @@
     <ProjectReference Include="..\..\tests\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
   </ItemGroup>
 
+  <!-- AC-1268 disposable single-plugin selection proof. -->
 </Project>
