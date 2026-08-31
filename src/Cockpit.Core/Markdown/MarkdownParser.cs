@@ -169,6 +169,9 @@ public static partial class MarkdownParser
     {
         var items = new List<IReadOnlyList<MarkdownInline>>();
         var ordered = OrderedItemRegex().IsMatch(lines[start]);
+        var orderedStart = ordered && int.TryParse(OrderedNumberRegex().Match(lines[start]).Groups[1].ValueSpan, out var first)
+            ? Math.Max(1, first)
+            : 1;
         var i = start;
         while (i < lines.Length)
         {
@@ -186,6 +189,7 @@ public static partial class MarkdownParser
         {
             Kind = MarkdownBlockKind.List,
             Ordered = ordered,
+            OrderedStart = orderedStart,
             Items = items,
         });
 
@@ -412,6 +416,9 @@ public static partial class MarkdownParser
 
     [GeneratedRegex(@"^\s*\d+\.\s+")]
     private static partial Regex OrderedItemRegex();
+
+    [GeneratedRegex(@"^\s*(\d+)\.\s+")]
+    private static partial Regex OrderedNumberRegex();
 
     // This runs after every pipe line, including arbitrary tracker content; adjacent `\s*` made whitespace quadratic on the UI thread (AC-303).
     // `NonBacktracking` is linear and valid because this pattern needs neither lookaround nor backreferences.

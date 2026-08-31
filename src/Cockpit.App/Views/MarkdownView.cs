@@ -352,8 +352,9 @@ public sealed class MarkdownView : ContentControl
 
             case MarkdownBlockKind.List:
                 return was.Ordered == now.Ordered
+                       && was.OrderedStart == now.OrderedStart
                        && control is StackPanel list
-                       && _UpdateListItems(list, was.Items, now.Items, now.Ordered);
+                       && _UpdateListItems(list, was.Items, now.Items, now.Ordered, now.OrderedStart);
 
             case MarkdownBlockKind.Table:
                 return control is Border { Child: Grid grid } && _UpdateTableRows(grid, was, now);
@@ -378,7 +379,8 @@ public sealed class MarkdownView : ContentControl
         StackPanel panel,
         IReadOnlyList<IReadOnlyList<MarkdownInline>> was,
         IReadOnlyList<IReadOnlyList<MarkdownInline>> now,
-        bool ordered)
+        bool ordered,
+        int orderedStart)
     {
         if (panel.Children.Count != was.Count)
         {
@@ -395,7 +397,7 @@ public sealed class MarkdownView : ContentControl
         {
             if (i >= panel.Children.Count)
             {
-                panel.Children.Add(_ListRow(now[i], i, ordered));
+                panel.Children.Add(_ListRow(now[i], orderedStart + i, ordered));
                 continue;
             }
 
@@ -631,17 +633,17 @@ public sealed class MarkdownView : ContentControl
         var panel = new StackPanel { Spacing = 2, Margin = new Thickness(0, 4, 0, 4) };
         for (var index = 0; index < block.Items.Count; index++)
         {
-            panel.Children.Add(_ListRow(block.Items[index], index, block.Ordered));
+            panel.Children.Add(_ListRow(block.Items[index], block.OrderedStart + index, block.Ordered));
         }
 
         return panel;
     }
 
-    private Control _ListRow(IReadOnlyList<MarkdownInline> item, int index, bool ordered)
+    private Control _ListRow(IReadOnlyList<MarkdownInline> item, int number, bool ordered)
     {
         var marker = new TextBlock
         {
-            Text = ordered ? $"{index + 1}." : "•",
+            Text = ordered ? $"{number}." : "•",
             Foreground = TextSecondary,
             Margin = new Thickness(6, 0, 8, 0),
             MinWidth = 16,
