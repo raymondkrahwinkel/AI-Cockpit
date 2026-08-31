@@ -76,9 +76,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     // A broker question (AC-955) renders through ToolBranch's card instead, so it doesn't count as plain text.
     public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow && !ShowsFailureCard && !HasQuestionPrompts;
 
-    // Rows whose arrival timestamp renders at the top of the row (assistant prose, questions/errors/turn
-    // results). User and tool-use rows carry their timestamp inline in their own header line instead
-    // (AC-144), so the generic top-row timestamp is suppressed for them to avoid a doubled label.
+    // Assistant prose, questions/errors and turn results carry a top timestamp, except a reply continuation:
+    // it belongs to the same answer, so repeating its time would make one answer read as separate messages. User
+    // and tool rows carry their timestamp inline instead (AC-144); thinking rows have none.
     public bool IsTopTimestampRow => !IsReplyContinuation && !IsUserRow && !IsToolUse && !IsThinking;
 
     // Deferred branches return only the matching immutable kind, avoiding Avalonia construction of hidden siblings.
