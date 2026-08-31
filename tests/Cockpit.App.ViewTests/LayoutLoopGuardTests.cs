@@ -4,6 +4,9 @@ using Avalonia.Headless;
 using Avalonia.Layout;
 using Avalonia.Threading;
 using Cockpit.App.Diagnostics;
+using Cockpit.App.Services;
+using Cockpit.TestSupport;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -201,4 +204,54 @@ public sealed class LayoutLoopGuardTests
             window.Close();
         }
     });
+
+    // AC-1263 criterion 4: what the guard costs a healthy cockpit. Its only input is the dirty sample, and that
+    // is taken exclusively while an alarm stands -- so on a responsive thread the tree is never walked at all.
+    // The starvation at the end is this test's positive control: without it a service that never ran would pass.
+    [Fact]
+    public async Task WhileTheUiThreadAnswers_TheGuardNeverWalksTheTree()
+    {
+        var walks = 0;
+        var service = new DiagnosticsBackgroundService(
+            NullLogger<DiagnosticsBackgroundService>.Instance, alarmAfter: TimeSpan.FromSeconds(2));
+        Window? window = null;
+
+        try
+        {
+            window = await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                var opened = new Window { Width = 400, Height = 300, Content = new StackPanel() };
+                opened.Show();
+                opened.UpdateLayout();
+                return opened;
+            });
+
+            service.SetLayoutRoots(() =>
+            {
+                Interlocked.Increment(ref walks);
+                return [window!];
+            });
+
+            service.Start();
+
+            // Three times the injected alarm, on a thread nothing is holding: the samples the guard feeds on
+            // are not merely rare here, they never happen.
+            await Task.Delay(TimeSpan.FromSeconds(6));
+            Assert.Equal(0, Volatile.Read(ref walks));
+
+            using var starver = StarvedDispatcher.Start(DispatcherPriority.Normal);
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(25);
+            while (Volatile.Read(ref walks) == 0 && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(100);
+            }
+
+            Assert.True(Volatile.Read(ref walks) > 0, "the same service never sampled even once under starvation");
+        }
+        finally
+        {
+            service.Dispose();
+            await Dispatcher.UIThread.InvokeAsync(() => window?.Close(), DispatcherPriority.Background);
+        }
+    }
 }
