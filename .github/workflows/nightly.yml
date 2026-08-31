@@ -139,7 +139,7 @@ jobs:
                   errors.append(f"{project}: no passing tests")
 
               coverage = "N/A"
-              reports = list(trx.parent.rglob("coverage.cobertura.xml"))
+              reports = list(trx.parent.glob("*/coverage.cobertura.xml"))
               if trx.parent.name == "Plugins":
                   production = project.removesuffix(".Tests").casefold()
                   reports = [
