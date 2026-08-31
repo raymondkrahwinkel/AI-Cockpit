@@ -451,4 +451,5 @@
     <PackageReference Include="Material.Icons" Version="3.0.2" />
   </ItemGroup>
 
+  <!-- AC-1268 disposable all-plugin selection proof. -->
 </Project>
