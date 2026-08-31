@@ -333,4 +333,72 @@ public sealed class Ac1265ThumbLengthProbe
 
         _Summarise($"stream/assistant-chat/{(singleRow ? "one-tall-row" : "row-per-block")}@420x560", samples);
     }
+
+    // AC-1238 splits a streamed reply on the blank line that finishes a markdown block, so "the row that grows is
+    // always the last and always small". _FinishedBlockEnd counts open fences, so a blank line inside a fenced
+    // block finishes nothing -- these are the shapes that never split and grow as one row through the real path.
+    [Theory]
+    [InlineData("prose")]
+    [InlineData("fenced-code")]
+    [InlineData("table")]
+    public async Task StreamingAContentShapeThatNeverSplits(string shape)
+    {
+        var samples = new List<Sample>();
+
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var vm = new SessionViewModel();
+            vm.Transcript.Clear();
+            for (var i = 0; i < 12; i++)
+            {
+                vm.Transcript.Add(_Row(i, mixed: true));
+            }
+
+            var view = new SessionView { DataContext = vm };
+            var window = new Window { Content = view, Width = 900, Height = 600 };
+            window.Show();
+            window.UpdateLayout();
+            await _PumpAsync(null, TimeSpan.FromMilliseconds(300));
+
+            var scroll = view.TranscriptScroll!;
+            var items = view.TranscriptItems;
+            void Sample()
+            {
+                var realised = _Realised(items);
+                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, _ThumbHeight(scroll))
+                {
+                    Realised = realised.Realised, Total = realised.Total, Tallest = realised.Tallest,
+                });
+            }
+
+            if (shape == "fenced-code")
+            {
+                vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here it is:\n\n```csharp\n" });
+            }
+            else if (shape == "table")
+            {
+                vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here it is:\n\n| name | value |\n| --- | --- |\n" });
+            }
+
+            for (var i = 0; i < 40; i++)
+            {
+                var text = shape switch
+                {
+                    // A blank line between paragraphs, which is what does split.
+                    "prose" => $"paragraph {i} of a long markdown answer that keeps growing and wrapping over several lines.\n\n",
+                    // A blank line inside the fence, so the split that would save it never fires.
+                    "fenced-code" => $"    var line{i} = ComputeSomethingWithARatherLongName(argument{i}, other{i});\n\n",
+                    _ => $"| row {i} with a reasonably long label | value number {i} |\n",
+                };
+
+                vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = text });
+                await _PumpAsync(Sample, TimeSpan.FromMilliseconds(25));
+            }
+
+            await _PumpAsync(Sample, TimeSpan.FromMilliseconds(400));
+            window.Close();
+        });
+
+        _Summarise($"shape/{shape}@900x600", samples);
+    }
 }
