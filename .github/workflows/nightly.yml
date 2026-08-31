@@ -110,17 +110,24 @@ jobs:
           python3 - <<'PY'
           import pathlib
           import os
-          import urllib.parse
           import xml.etree.ElementTree as ET
 
           root = pathlib.Path("TestResults")
           rows = []
           errors = []
+          expected_names = {
+              "Cockpit.Core.Tests",
+              "Cockpit.Infrastructure.Tests",
+              "Cockpit.App.ViewTests",
+          }
+          expected_names.update(path.stem for path in pathlib.Path("plugins-dev").glob("Cockpit.Plugin.*.Tests/*.csproj"))
+          expected = {name.casefold(): name for name in expected_names}
           for trx in sorted(root.rglob("*.trx")):
               tree = ET.parse(trx)
               units = tree.findall(".//{*}UnitTest")
               storage = units[0].get("storage", "") if units else ""
-              project = pathlib.Path(storage).stem or trx.stem
+              raw_project = pathlib.Path(storage).stem or trx.stem
+              project = expected.get(raw_project.casefold(), raw_project)
               counters = tree.find(".//{*}Counters")
               if counters is None:
                   errors.append(f"{trx}: missing test counters")
@@ -132,32 +139,26 @@ jobs:
                   errors.append(f"{project}: no passing tests")
 
               coverage = "N/A"
-              attachments = tree.findall(".//{*}UriAttachment/{*}A")
-              reports = []
-              for attachment in attachments:
-                  href = urllib.parse.urlparse(attachment.get("href", ""))
-                  path = pathlib.Path(urllib.parse.unquote(href.path if href.scheme == "file" else href.geturl()))
-                  if path.name == "coverage.cobertura.xml":
-                      reports.append(path)
-              if reports:
+              reports = list(trx.parent.rglob("coverage.cobertura.xml"))
+              if trx.parent.name == "Plugins":
+                  production = project.removesuffix(".Tests").casefold()
+                  reports = [
+                      report for report in reports
+                      if production in {
+                          package.get("name", "").casefold()
+                          for package in ET.parse(report).findall(".//{*}package")
+                      }
+                  ]
+              if len(reports) == 1:
                   report = reports[0]
-                  if not report.is_absolute():
-                      report = trx.parent / report
-                  if report.exists():
-                      coverage = f'{float(ET.parse(report).getroot().get("line-rate", 0)):.1%}'
+                  coverage = f'{float(ET.parse(report).getroot().get("line-rate", 0)):.1%}'
               if coverage == "N/A":
                   errors.append(f"{project}: missing coverage report")
               rows.append((project, passed, failed, skipped, coverage))
 
-          expected = {
-              "Cockpit.Core.Tests",
-              "Cockpit.Infrastructure.Tests",
-              "Cockpit.App.ViewTests",
-          }
-          expected.update(path.stem for path in pathlib.Path("plugins-dev").glob("Cockpit.Plugin.*.Tests/*.csproj"))
-          reported = {row[0] for row in rows}
+          reported = {row[0].casefold() for row in rows}
           for missing in sorted(expected - reported):
-              errors.append(f"{missing}: no test result")
+              errors.append(f"{expected[missing]}: no test result")
           if not rows:
               errors.append("No test results found")
 

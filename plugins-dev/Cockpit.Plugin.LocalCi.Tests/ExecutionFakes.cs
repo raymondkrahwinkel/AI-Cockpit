@@ -167,7 +167,9 @@ internal sealed class TemporaryProject : IDisposable
             runs-on: ubuntu-latest
             strategy:
               matrix:
-                os: [ubuntu-latest, windows-latest]
+                include:
+                  - os: ubuntu-latest
+                  - os: windows-latest
             steps:
               - run: echo building
         """;
