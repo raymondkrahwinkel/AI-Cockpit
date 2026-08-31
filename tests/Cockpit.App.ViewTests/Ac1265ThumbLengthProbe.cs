@@ -134,7 +134,7 @@ public sealed class Ac1265ThumbLengthProbe
             vm.Transcript.Clear();
             for (var i = 0; i < 200; i++)
             {
-                vm.Transcript.Add(_Row(i, mixed));
+                vm.Transcript.Add(_Row(i, mixed: true));
             }
 
             var view = new SessionView { DataContext = vm };
@@ -164,11 +164,11 @@ public sealed class Ac1265ThumbLengthProbe
     }
 
     [Theory]
-    [InlineData(true, 900, 600)]
     [InlineData(false, 900, 600)]
-    [InlineData(true, 420, 560)]
     [InlineData(false, 420, 560)]
-    public async Task StreamingIntoTheSessionPane(bool mixed, double width, double height)
+    [InlineData(true, 900, 600)]
+    [InlineData(true, 420, 560)]
+    public async Task StreamingIntoTheSessionPane(bool singleRow, double width, double height)
     {
         var samples = new List<Sample>();
 
@@ -178,10 +178,18 @@ public sealed class Ac1265ThumbLengthProbe
             vm.Transcript.Clear();
             for (var i = 0; i < 12; i++)
             {
-                vm.Transcript.Add(_Row(i, mixed));
+                vm.Transcript.Add(_Row(i, mixed: true));
             }
 
-            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "start of the reply.\n\n" });
+            var single = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "start of the reply.\n\n");
+            if (singleRow)
+            {
+                vm.Transcript.Add(single);
+            }
+            else
+            {
+                vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "start of the reply.\n\n" });
+            }
 
             var view = new SessionView { DataContext = vm };
             var window = new Window { Content = view, Width = width, Height = height };
@@ -195,12 +203,16 @@ public sealed class Ac1265ThumbLengthProbe
 
             for (var i = 0; i < 40; i++)
             {
-                vm.Apply(new AssistantTextDelta
+                var text = $"paragraph {i} of a long markdown answer that keeps growing and wrapping over several lines.\n\n";
+                if (singleRow)
                 {
-                    SessionId = "S1",
-                    BlockIndex = 0,
-                    Text = $"paragraph {i} of a long markdown answer that keeps growing and wrapping over several lines.\n\n",
-                });
+                    single.AppendText(text);
+                }
+                else
+                {
+                    vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = text });
+                }
+
                 await _PumpAsync(Sample, TimeSpan.FromMilliseconds(25));
             }
 
@@ -209,13 +221,13 @@ public sealed class Ac1265ThumbLengthProbe
         });
 
         _Summarise(
-            $"stream/session-pane/{(mixed ? "mixed" : "uniform")}-backlog@{width:F0}x{height:F0}", samples);
+            $"stream/session-pane/{(singleRow ? "one-tall-row" : "row-per-block")}@{width:F0}x{height:F0}", samples);
     }
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task StreamingIntoTheAssistantChat(bool mixed)
+    public async Task StreamingIntoTheAssistantChat(bool singleRow)
     {
         var samples = new List<Sample>();
 
@@ -225,11 +237,20 @@ public sealed class Ac1265ThumbLengthProbe
             session.Transcript.Clear();
             for (var i = 0; i < 12; i++)
             {
-                session.Transcript.Add(_Row(i, mixed));
+                session.Transcript.Add(_Row(i, mixed: true));
             }
 
-            var row = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "start of the reply.\n\n");
-            session.Transcript.Add(row);
+            // Through the session's own event path, not by appending to a row this probe made itself: AC-1238
+            // puts the row-per-block split there, so appending direct grows one monster row the app never has.
+            var single = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "start of the reply.\n\n");
+            if (singleRow)
+            {
+                session.Transcript.Add(single);
+            }
+            else
+            {
+                session.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "start of the reply.\n\n" });
+            }
 
             var host = Substitute.For<IAssistantSessionHost>();
             host.Session.Returns(session);
@@ -253,7 +274,16 @@ public sealed class Ac1265ThumbLengthProbe
 
             for (var i = 0; i < 40; i++)
             {
-                row.AppendText($"paragraph {i} of a long markdown answer that keeps growing and wrapping.\n\n");
+                var text = $"paragraph {i} of a long markdown answer that keeps growing and wrapping over several lines.\n\n";
+                if (singleRow)
+                {
+                    single.AppendText(text);
+                }
+                else
+                {
+                    session.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = text });
+                }
+
                 await _PumpAsync(Sample, TimeSpan.FromMilliseconds(25));
             }
 
@@ -261,6 +291,6 @@ public sealed class Ac1265ThumbLengthProbe
             window.Close();
         });
 
-        _Summarise(mixed ? "stream/assistant-chat/mixed-backlog" : "stream/assistant-chat/uniform-backlog (control)", samples);
+        _Summarise($"stream/assistant-chat/{(singleRow ? "one-tall-row" : "row-per-block")}@420x560", samples);
     }
 }
