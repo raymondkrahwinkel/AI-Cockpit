@@ -58,6 +58,29 @@ public sealed class MarkdownView : ContentControl
         set => SetValue(BasePathProperty, value);
     }
 
+    public static readonly StyledProperty<bool> StartsInsideCodeBlockProperty =
+        AvaloniaProperty.Register<MarkdownView, bool>(nameof(StartsInsideCodeBlock));
+
+    // AC-1265: this text carries on a fence an earlier row opened. Set, the parser starts inside that fence
+    // and the box drawn for it loses its top edge, so the two halves read as one block rather than two.
+    public bool StartsInsideCodeBlock
+    {
+        get => GetValue(StartsInsideCodeBlockProperty);
+        set => SetValue(StartsInsideCodeBlockProperty, value);
+    }
+
+    public static readonly StyledProperty<bool> EndsInsideCodeBlockProperty =
+        AvaloniaProperty.Register<MarkdownView, bool>(nameof(EndsInsideCodeBlock));
+
+    // The other half of the pair: this text's last fence is still open and the next row carries it on, so its
+    // box loses its bottom edge. Told outright rather than read back off the text, because the row that opened
+    // a fence and the row that closes it are different rows and each only knows its own side.
+    public bool EndsInsideCodeBlock
+    {
+        get => GetValue(EndsInsideCodeBlockProperty);
+        set => SetValue(EndsInsideCodeBlockProperty, value);
+    }
+
     public static readonly StyledProperty<bool> PreserveLineBreaksProperty =
         AvaloniaProperty.Register<MarkdownView, bool>(nameof(PreserveLineBreaks));
 
@@ -123,7 +146,9 @@ public sealed class MarkdownView : ContentControl
         base.OnPropertyChanged(change);
         if (change.Property != MarkdownProperty
             && change.Property != BasePathProperty
-            && change.Property != PreserveLineBreaksProperty)
+            && change.Property != PreserveLineBreaksProperty
+            && change.Property != StartsInsideCodeBlockProperty
+            && change.Property != EndsInsideCodeBlockProperty)
         {
             return;
         }
@@ -158,7 +183,7 @@ public sealed class MarkdownView : ContentControl
     private void _Render(string markdown)
     {
         DebugRenderCount++;
-        var parsed = MarkdownParser.Parse(markdown, PreserveLineBreaks);
+        var parsed = MarkdownParser.Parse(markdown, PreserveLineBreaks, StartsInsideCodeBlock);
 
         // Compares the colour, not brush identity: a recycled row's resource lookup returns a
         // different brush instance for an unchanged palette, so identity comparison discarded the
@@ -175,12 +200,22 @@ public sealed class MarkdownView : ContentControl
         {
             if (i >= _rendered.Count)
             {
-                _blocks.Children.Add(_RenderBlock(parsed[i]));
+                _blocks.Children.Add(_RenderBlock(parsed[i], i, parsed.Count));
+                continue;
             }
-            else if (!_rendered[i].Equals(parsed[i]) &&
-                     !_TryUpdateInPlace((Control)_blocks.Children[i], _rendered[i], parsed[i]))
+
+            // AC-1265: the edges a neighbouring row carries on are not part of the block, so a fragment whose
+            // neighbour has arrived since needs rebuilding even when its own markdown is unchanged -- the
+            // in-place update below keeps the border, and with it the rounding this is trying to take off.
+            var edgesMoved = _blocks.Children[i] is CodeBlockBorder edged
+                && (edged.JoinedAbove != (StartsInsideCodeBlock && i == 0)
+                    || edged.JoinedBelow != (EndsInsideCodeBlock && i == parsed.Count - 1));
+
+            if (edgesMoved
+                || (!_rendered[i].Equals(parsed[i])
+                    && !_TryUpdateInPlace((Control)_blocks.Children[i], _rendered[i], parsed[i])))
             {
-                _blocks.Children[i] = _RenderBlock(parsed[i]);
+                _blocks.Children[i] = _RenderBlock(parsed[i], i, parsed.Count);
             }
         }
 
@@ -259,10 +294,16 @@ public sealed class MarkdownView : ContentControl
         block.Cursor = _handCursor ??= new Cursor(StandardCursorType.Hand);
     }
 
-    private Control _RenderBlock(MarkdownBlock block) => block.Kind switch
+    // AC-1265: only the first block can be the one an earlier row opened, and only the last can be the one the
+    // next row carries on -- so the two flags reach `_CodeBlock` as the edges it must leave off.
+    private Control _RenderBlock(MarkdownBlock block, int index, int count) => block.Kind switch
     {
         MarkdownBlockKind.Heading => _Heading(block),
-        MarkdownBlockKind.CodeBlock => _CodeBlock(block),
+        MarkdownBlockKind.CodeBlock => _CodeBlock(
+            block,
+            joinedAbove: StartsInsideCodeBlock && index == 0,
+            joinedBelow: EndsInsideCodeBlock && index == count - 1,
+            owner: this),
         MarkdownBlockKind.List => _List(block),
         MarkdownBlockKind.Table => _Table(block),
         MarkdownBlockKind.Image => _Image(block),
@@ -475,9 +516,21 @@ public sealed class MarkdownView : ContentControl
         public required Grid Body { get; init; }
 
         public bool HasCopyButton;
+
+        // AC-1265: the view this box belongs to, so Copy can ask it for the whole block at click time — a
+        // string captured here would be short by whatever arrived since.
+        public required MarkdownView Owner { get; init; }
+
+        // Which edges a neighbouring row carries on, so a render that finds them changed rebuilds the box:
+        // the in-place update keeps the border, and with it the rounding this is meant to take off.
+        public bool JoinedAbove;
+
+        public bool JoinedBelow;
     }
 
-    private static Control _CodeBlock(MarkdownBlock block)
+    // `joinedAbove`/`joinedBelow`: this box carries on, or is carried on by, a box in a neighbouring row. The
+    // touching edge loses its rounding and its margin, so a fence split across rows reads as one block.
+    private static Control _CodeBlock(MarkdownBlock block, bool joinedAbove, bool joinedBelow, MarkdownView owner)
     {
         var code = new SelectableTextBlock
         {
@@ -517,12 +570,15 @@ public sealed class MarkdownView : ContentControl
         {
             Code = code,
             Body = grid,
+            Owner = owner,
+            JoinedAbove = joinedAbove,
+            JoinedBelow = joinedBelow,
             Background = CodeBlockBackground,
             BorderBrush = Hairline,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(10, 8),
-            Margin = new Thickness(0, 6, 0, 6),
+            BorderThickness = new Thickness(1, joinedAbove ? 0 : 1, 1, joinedBelow ? 0 : 1),
+            CornerRadius = new CornerRadius(joinedAbove ? 0 : 6, joinedAbove ? 0 : 6, joinedBelow ? 0 : 6, joinedBelow ? 0 : 6),
+            Padding = new Thickness(10, joinedAbove ? 0 : 8, 10, joinedBelow ? 0 : 8),
+            Margin = new Thickness(0, joinedAbove ? 0 : 6, 0, joinedBelow ? 0 : 6),
             Child = grid,
         };
 
@@ -541,12 +597,13 @@ public sealed class MarkdownView : ContentControl
 
         border.HasCopyButton = true;
         border.PointerEntered -= _AddCopyButton;
-        border.Body.Children.Add(_CopyButton(border.Code));
+        border.Body.Children.Add(_CopyButton(border));
     }
 
     // Reads the block it belongs to at click time rather than closing over the text it was built with: a fence
     // that is still streaming replaces that text, and a captured copy would put a truncated body on the clipboard.
-    private static Button _CopyButton(SelectableTextBlock source)
+    // A fragment of a split fence hands over the whole block instead -- half a code block is worse than no button.
+    private static Button _CopyButton(CodeBlockBorder source)
     {
         var copy = new Button
         {
@@ -561,7 +618,9 @@ public sealed class MarkdownView : ContentControl
             var clipboard = TopLevel.GetTopLevel(copy)?.Clipboard;
             if (clipboard is not null)
             {
-                await clipboard.SetTextAsync(source.Text ?? string.Empty);
+                var whole = (source.Owner.DataContext as ISpannedCodeSource)?.SpannedCodeText;
+                await clipboard.SetTextAsync(
+                    string.IsNullOrEmpty(whole) ? source.Code.Text ?? string.Empty : whole);
             }
         };
         return copy;

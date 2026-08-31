@@ -21,9 +21,11 @@
          so rowActions can sit outside its bounds while still being this root's descendant for hover. -->
     <Border Classes="transcriptRow rowRoot"
             Classes.compact="{Binding $parent[controls:TranscriptRowView].Compact}"
-            Padding="8,5" CornerRadius="{StaticResource CockpitControlRadius}"
+            Classes.codeJoinedAbove="{Binding StartsInsideCodeBlock}"
+            Classes.codeJoinedBelow="{Binding EndsInsideCodeBlock}"
+            CornerRadius="{StaticResource CockpitControlRadius}"
             IsVisible="{Binding IsRowVisible}">
-        <StackPanel Spacing="4">
+        <StackPanel Spacing="{Binding RowContentSpacing}">
 
             <!-- Arrival timestamp (T7): a small faint label at the top of the row, shown
                  only when the operator enables timestamps in Options. The toggle lives on
@@ -197,8 +199,13 @@
                     <TextBlock Classes="senderName" MaxWidth="280" HorizontalAlignment="Left"
                                IsVisible="{Binding !IsReplyContinuation}"
                                Text="{Binding Session.Title}"/>
+                    <!-- AC-1265: a fenced code block is split across rows like any other block now, so the
+                         view is told which of its edges a neighbouring row carries on. Copy reaches the whole
+                         block through ISpannedCodeSource on the row, not a binding: the block is still growing. -->
                     <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
-                                         BasePath="{Binding Session.WorkingDirectory}"/>
+                                         BasePath="{Binding Session.WorkingDirectory}"
+                                         StartsInsideCodeBlock="{Binding StartsInsideCodeBlock}"
+                                         EndsInsideCodeBlock="{Binding EndsInsideCodeBlock}"/>
                     <!-- Copy hands over the reply's markdown source verbatim. -->
                     <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                                 HorizontalAlignment="Left"

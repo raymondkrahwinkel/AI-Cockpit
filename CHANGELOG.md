@@ -431,6 +431,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the scrollbar no longer breaks up while a long code block is streaming in. A fenced code block has no
+  blank line in it, so the whole block used to arrive as one enormous transcript row — and while that row grew,
+  the scrollbar's handle jumped between lengths on almost every frame, at times collapsing to its smallest and
+  springing back to three times that. Long code blocks now arrive in parts, drawn as one continuous block with
+  one language label; copying any part of it still hands over the whole block. A table that arrives in one piece
+  can still do this — it has no blank lines either, and is not covered by this change.
+
 - fixed: the miniature rail no longer costs an extra measure of every tile each time it is resized. The panel
   handed each tile the exact size of the pane shown large, and it did so from inside the pass that was still
   laying the screen out — which asked that same pass to start over. It settled every time in practice, but a pane

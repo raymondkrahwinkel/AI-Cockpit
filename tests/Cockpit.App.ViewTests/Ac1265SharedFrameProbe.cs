@@ -48,10 +48,11 @@ public sealed class Ac1265SharedFrameProbe
 
             var vm = new SessionViewModel();
             vm.Transcript.Clear();
-            var first = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, head);
-            var second = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, tail) { IsReplyContinuation = true };
-            vm.Transcript.Add(first);
-            vm.Transcript.Add(second);
+
+            // Through the real path. Building the rows by hand leaves IsReplyTail at its default of true on
+            // both, so both draw the row action strip -- which is not what a split reply does.
+            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = head + "\n\n" });
+            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = tail + "\n\n" });
 
             var view = new SessionView { DataContext = vm };
             var window = new Window { Content = view, Width = 760, Height = 460 };
@@ -188,6 +189,74 @@ public sealed class Ac1265SharedFrameProbe
             {
                 Directory.CreateDirectory("/tmp/ac1265");
                 frame.Save($"/tmp/ac1265/label-{shape}.png", PngBitmapEncoderOptions.Default);
+            }
+
+            window.Close();
+        });
+    }
+
+    // AC-1265: what the remaining daylight between two fragments of one code block is made of.
+    [Fact]
+    public async Task WhatIsLeftBetweenTwoFragments()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var vm = new SessionViewModel();
+            vm.Transcript.Clear();
+            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here:\n\n```csharp\n" });
+            for (var i = 0; i < 90; i++)
+            {
+                vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = $"    var line{i} = Compute({i});\n" });
+            }
+
+            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "```\n\n" });
+
+            var view = new SessionView { DataContext = vm };
+            var window = new Window { Content = view, Width = 900, Height = 1400 };
+            window.Show();
+            window.UpdateLayout();
+            await _PumpAsync(TimeSpan.FromMilliseconds(900));
+
+            var frames = view.TranscriptItems.GetVisualDescendants()
+                .OfType<Border>().Where(b => b.GetType().Name == "CodeBlockBorder").ToList();
+            _Report($"fragments drawn: {frames.Count}");
+            if (frames.Count < 2)
+            {
+                window.Close();
+
+                return;
+            }
+
+            var scroll = view.TranscriptScroll!;
+            var bottom = frames[0].TranslatePoint(default, scroll)!.Value.Y + frames[0].Bounds.Height;
+            _Report($"daylight: {frames[1].TranslatePoint(default, scroll)!.Value.Y - bottom:F0}px");
+
+            // The row-root StackPanel of the second fragment: whatever else is visible in it is what the
+            // 4px of Spacing is being spent on.
+            for (Visual? v = frames[1]; v is not null; v = v.GetVisualParent())
+            {
+                if (v is StackPanel { Spacing: 4 } rowStack)
+                {
+                    foreach (var child in rowStack.Children)
+                    {
+                        _Report($"  rowRoot child: {child.GetType().Name,-18} visible={child.IsVisible} h={child.Bounds.Height:F0}");
+                    }
+
+                    break;
+                }
+            }
+
+            for (Visual? v = frames[0]; v is not null; v = v.GetVisualParent())
+            {
+                if (v is Control c)
+                {
+                    _Report($"  ancestor {c.GetType().Name,-24} margin={c.Margin} h={c.Bounds.Height:F0} name={c.Name ?? "-"}");
+                }
+
+                if (v.GetVisualParent() is VirtualizingStackPanel)
+                {
+                    break;
+                }
             }
 
             window.Close();

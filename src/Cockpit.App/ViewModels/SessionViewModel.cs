@@ -98,6 +98,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // by a blank line. A fresh list per reply — the rows of an older one keep pointing at their own.
     private List<TranscriptEntryViewModel> _replyRows = [];
     private bool _assistantBlockSealed;
+    private List<TranscriptEntryViewModel>? _codeSpanRows;
+    private bool _nextRowContinuesCodeBlock;
 
     // The reasoning/thinking row currently being streamed into (AC-213), or null when no thinking block is open. Mirrors `_currentAssistantEntry`: contiguous thinking deltas append onto one row rather than spawning a row per delta.
     private TranscriptEntryViewModel? _currentThinkingEntry;
@@ -757,13 +759,41 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             var end = _FinishedBlockEnd(row.Text, pending);
             if (end < 0)
             {
-                row.AppendText(pending);
-                return;
+                // AC-1265: a fence carries no blank line for the split above to find, so a code block used to
+                // grow as one row well past the viewport — the one shape AC-1238's guarantee never covered.
+                var fenceEnd = _OpenFenceLineEnd(row, pending);
+                if (fenceEnd < 0)
+                {
+                    row.AppendText(pending);
+                    return;
+                }
+
+                row.AppendText(pending[..fenceEnd]);
+                _SealCodeSpanRow(row);
+                pending = pending[fenceEnd..];
+                continue;
             }
 
             row.AppendText(pending[..end]);
             _assistantBlockSealed = true;
+            _codeSpanRows = null;
             pending = pending[end..];
+        }
+    }
+
+    // Ends this row inside the fence it is in and lines the next one up to carry on inside it. Both sides are
+    // recorded outright: the row that opened the fence is not the row that closes it, and the frame each draws
+    // depends on which of the two it is.
+    private void _SealCodeSpanRow(TranscriptEntryViewModel row)
+    {
+        row.EndsInsideCodeBlock = true;
+        _assistantBlockSealed = true;
+        _nextRowContinuesCodeBlock = true;
+
+        if (_codeSpanRows is null)
+        {
+            _codeSpanRows = [row];
+            row.CodeSpanRows = _codeSpanRows;
         }
     }
 
@@ -784,13 +814,25 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         else
         {
             _replyRows = [];
+
+            // A reply that ended mid-fence must not hand its open fence to the next one (AC-1265).
+            _codeSpanRows = null;
+            _nextRowContinuesCodeBlock = false;
         }
 
         var row = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty)
         {
             IsReplyContinuation = continuing,
+            StartsInsideCodeBlock = continuing && _nextRowContinuesCodeBlock,
         };
 
+        if (row.StartsInsideCodeBlock)
+        {
+            _codeSpanRows!.Add(row);
+            row.CodeSpanRows = _codeSpanRows;
+        }
+
+        _nextRowContinuesCodeBlock = false;
         _replyRows.Add(row);
         row.ReplyRows = _replyRows;
         _currentAssistantEntry = row;
@@ -821,6 +863,36 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             from = end;
         }
+    }
+
+    // How many lines a row of one code block carries before the next starts a new row. Set against the spread
+    // the transcript already has: the tallest prose row measured 419px in a 461px viewport (AC-1265), and this
+    // many monospaced lines sits under that, so a code row is no longer the outlier the panel re-anchors on.
+    private const int CodeBlockRowLines = 20;
+
+    // The end of the line in `pending` that takes the open row to its line bound while a fence is still open,
+    // or -1 while it may keep growing. A fence opened inside `pending` is left to the next chunk: the row is
+    // still short then, and the case that matters is the one that keeps arriving.
+    private static int _OpenFenceLineEnd(TranscriptEntryViewModel row, string pending)
+    {
+        // The row's own text is not enough: a row continuing a split fence carries no opener, so reading only
+        // its text says the fence is closed and that second fragment then grows without a bound of its own.
+        var existing = row.Text;
+        if (_OpenFence(existing, row.StartsInsideCodeBlock ? '`' : null) is null)
+        {
+            return -1;
+        }
+
+        var lines = existing.AsSpan().Count('\n');
+        for (var i = 0; i < pending.Length; i++)
+        {
+            if (pending[i] == '\n' && ++lines >= CodeBlockRowLines)
+            {
+                return i + 1;
+            }
+        }
+
+        return -1;
     }
 
     // ponytail: rescans the whole open row with Split per chunk — O(n²) and one allocation each; track fence state on the row if it shows up.
