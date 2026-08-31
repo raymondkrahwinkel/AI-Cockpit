@@ -416,7 +416,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             workingDirectory,
             worktreePath: null,
             worktreeBranch: null,
-            permissionMode: SessionOptionCatalog.DefaultPermissionMode.Value);
+            permissionMode: SessionOptionCatalog.DefaultPermissionMode.Value,
+            forgetConversation: startFresh);
 
         // AC-638/AC-596: say why in the transcript, since the hand-over note only reaches the system prompt.
         // `startFreshBecause` lets AC-684's failed-resume recovery use its own reason instead of this default.

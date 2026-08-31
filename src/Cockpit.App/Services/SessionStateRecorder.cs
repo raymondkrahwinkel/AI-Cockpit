@@ -63,6 +63,7 @@ public sealed class SessionStateRecorder : ISingletonService
         string? worktreePath,
         string? worktreeBranch,
         string? permissionMode,
+        bool forgetConversation = false,
         CancellationToken cancellationToken = default) =>
         _WriteAsync(paneId, existing =>
         {
@@ -71,7 +72,8 @@ public sealed class SessionStateRecorder : ISingletonService
             // WorkingDirectory is already the effective, post-isolation path, so comparing it directly also catches a
             // worktree-isolation change. DirectoryPath.Normalize + .Comparison is the same folder-equality rule the worktree
             // engine itself uses; a bare ordinal compare would treat two spellings of the same folder as different and wipe a saved id.
-            var contextChanged = !string.Equals(existing.ProfileId, newProfileId, StringComparison.Ordinal)
+            var contextChanged = forgetConversation
+                || !string.Equals(existing.ProfileId, newProfileId, StringComparison.Ordinal)
                 || !string.Equals(DirectoryPath.Normalize(existing.WorkingDirectory), DirectoryPath.Normalize(workingDirectory), DirectoryPath.Comparison);
 
             return existing with

@@ -127,6 +127,21 @@ public sealed class SessionStateRecorderTests : IDisposable
         Assert.Equal(SessionConversationIdState.Known, record.ConversationState);
     }
 
+    [Fact]
+    public async Task RecordSessionStartedAsync_ForgetConversation_ClearsTheSavedConversationIdInTheSameContext()
+    {
+        var store = CreateStore();
+        await store.RecordAsync(CreateRecord());
+
+        var recorder = CreateRecorder(store);
+        await recorder.RecordSessionStartedAsync(
+            "pane-1", WorkProfile, "/repo", null, null, "default", forgetConversation: true);
+
+        var record = Assert.Single(await store.LoadAsync());
+        Assert.Null(record.ConversationId);
+        Assert.Equal(SessionConversationIdState.Unknown, record.ConversationState);
+    }
+
     /// <summary>
     /// The naive comparison this guard deliberately avoids: a bare string check would treat "/repo" and "/repo/"
     /// as different places and wipe an id that never actually moved. <see cref="Cockpit.Core.WorkingPaths.DirectoryPath"/>
