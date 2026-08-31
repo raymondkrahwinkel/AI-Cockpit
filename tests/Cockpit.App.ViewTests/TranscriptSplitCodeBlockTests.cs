@@ -195,8 +195,8 @@ public sealed class TranscriptSplitCodeBlockTests
 
             Assert.Equal(new Thickness(8, 5), root.Padding);
             Assert.Equal(new Thickness(0, 2), root.Margin);
-            Assert.False(root.Classes.Contains("codeJoinedAbove"));
-            Assert.False(root.Classes.Contains("codeJoinedBelow"));
+            Assert.DoesNotContain("codeJoinedAbove", root.Classes);
+            Assert.DoesNotContain("codeJoinedBelow", root.Classes);
 
             var row = vm.Transcript[0];
             Assert.False(row.StartsInsideCodeBlock);
