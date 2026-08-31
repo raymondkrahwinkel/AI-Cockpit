@@ -164,6 +164,20 @@
                                             <TextBlock Text="Save conversation as text file…" FontSize="11.5" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
+
+                                    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
+
+                                    <!-- AC-1261: empties the transcript on screen and starts a new conversation.
+                                         The old one stays readable in transcripts/ (AC-947 retention, unchanged),
+                                         and memory/current-state survive it untouched — the confirmation dialog
+                                         says so. -->
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="10,8" Margin="4" Command="{Binding ClearConversationCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <materialIcons:MaterialIcon Kind="Broom" Width="14" Height="14" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Clear conversation…" FontSize="11.5" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>

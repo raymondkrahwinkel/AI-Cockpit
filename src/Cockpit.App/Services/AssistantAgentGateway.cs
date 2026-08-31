@@ -736,6 +736,12 @@ internal sealed class AssistantAgentGateway(
             : OpenUrlResult.Refused($"The browser would not open '{address.AbsoluteUri}'."));
     }
 
+    // AC-1261 criterion 7 (V4): the assistant's own door onto `AssistantSessionHost.RequestConversationClear` —
+    // exists for the same reason `OpenUrlAsync` does. No UI-thread hop: the host's own gate reads properties
+    // already published off the UI thread by its property-changed subscription.
+    public Task<ClearConversationResult> RequestConversationClearAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(ClearConversationResult.Requested(alreadyQueued: !assistantSessionHost.RequestConversationClear()));
+
     private async Task<WorktreeHandoverResult> _RefuseHandoverAsync(
         string path, string paneId, string reason, CancellationToken cancellationToken)
     {
