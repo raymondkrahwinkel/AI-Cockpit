@@ -417,6 +417,9 @@ public sealed class SessionTilePanel : Panel
         // AC-923: the focus pane's own host just arranged for real, one line up — every rail tile gets its
         // exact box instead of reconstructing an approximation of it (see PR description). AC-1264: kept for the
         // next measure rather than written here, and a box that moved asks for that pass from outside this one.
+
+        // AC-1266: tiles stay one measure behind a moving focus subtree. A 20 px probe changed a real terminal
+        // from 80x34 to 80x35 but rendered 0 of 540,000 pixels differently, so another layout round is not worth it.
         var focusChildBox = layout.Focus.GetVisualDescendants().OfType<MiniatureHost>().FirstOrDefault()?.Bounds.Size
             ?? default;
         if (focusChildBox != _focusChildBox)
