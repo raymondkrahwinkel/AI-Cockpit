@@ -26,7 +26,7 @@ public sealed class Ac1265ThumbLengthProbe
 
     // The height the vertical ScrollBar's own Thumb was laid out at, so the claim rests on the drawn control
     // rather than on the extent it is computed from.
-    private static double _ThumbHeight(ScrollViewer scroll) =>
+    internal static double ThumbHeight(ScrollViewer scroll) =>
         scroll.GetVisualDescendants()
             .OfType<ScrollBar>()
             .Where(bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical)
@@ -179,7 +179,7 @@ public sealed class Ac1265ThumbLengthProbe
                 Dispatcher.UIThread.RunJobs();
                 window.UpdateLayout();
                 AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, _ThumbHeight(scroll)));
+                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, ThumbHeight(scroll)));
                 await Task.Delay(5);
             }
 
@@ -228,7 +228,7 @@ public sealed class Ac1265ThumbLengthProbe
             void Sample()
             {
                 var realised = _Realised(items);
-                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, _ThumbHeight(scroll))
+                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, ThumbHeight(scroll))
                 {
                     Realised = realised.Realised, Total = realised.Total, Tallest = realised.Tallest,
                 });
@@ -306,7 +306,7 @@ public sealed class Ac1265ThumbLengthProbe
             void Sample()
             {
                 var realised = _Realised(items);
-                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, _ThumbHeight(scroll))
+                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, ThumbHeight(scroll))
                 {
                     Realised = realised.Realised, Total = realised.Total, Tallest = realised.Tallest,
                 });
@@ -365,7 +365,7 @@ public sealed class Ac1265ThumbLengthProbe
             void Sample()
             {
                 var realised = _Realised(items);
-                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, _ThumbHeight(scroll))
+                samples.Add(new Sample(scroll.Extent.Height, scroll.Viewport.Height, scroll.Offset.Y, ThumbHeight(scroll))
                 {
                     Realised = realised.Realised, Total = realised.Total, Tallest = realised.Tallest,
                 });
