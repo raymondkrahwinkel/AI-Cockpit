@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using Cockpit.App.Diagnostics;
 using Cockpit.App.Services;
 using Cockpit.TestSupport;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.ViewTests;
@@ -252,6 +253,137 @@ public sealed class LayoutLoopGuardTests
         {
             service.Dispose();
             await Dispatcher.UIThread.InvokeAsync(() => window?.Close(), DispatcherPriority.Background);
+        }
+    }
+
+    // AC-1263 criterion 1, end to end through the production chain rather than the guard alone: the freeze alarm,
+    // the dirty sampling it gates, the guard's judgement, the cut and the line it writes. The app-level runner
+    // could not raise the 31-08 freeze on demand (see the harness README), so this is where the chain is closed.
+    [Fact]
+    public async Task AStarvedThreadWithADirtySetThatStandsStill_HasItsSubtreeCutAndSaidSo()
+    {
+        var logger = new _Lines();
+        var service = new DiagnosticsBackgroundService(
+            logger, alarmAfter: TimeSpan.FromSeconds(2), dirtySampleInterval: TimeSpan.FromSeconds(1));
+        var (window, panel) = await _ASettledWindow();
+
+        try
+        {
+            service.SetLayoutRoots(() => [window]);
+            using var starver = StarvedDispatcher.Start(DispatcherPriority.Normal);
+            service.Start();
+            await _OnUiThread<object?>(() => { panel.InvalidateMeasure(); return null; });
+
+            Assert.True(
+                await logger.Appears("layout loop cut off after"),
+                "three samples found the same subtree standing still and nothing cut it");
+
+            var line = logger.First("layout loop cut off after");
+            Assert.Contains($"after {LayoutLoopGuard.DefaultSamplesBeforeCut} dirty sample(s)", line, StringComparison.Ordinal);
+            Assert.Contains("StackPanel#TheLoop", line, StringComparison.Ordinal);
+            Assert.False(await _OnUiThread(() => panel.IsVisible), "the subtree was reported as cut but is still in layout");
+        }
+        finally
+        {
+            service.Dispose();
+            await Dispatcher.UIThread.InvokeAsync(() => window.Close(), DispatcherPriority.Background);
+        }
+    }
+
+    // The counter-proof, taken with the switch an operator actually has: the same tree, the same starvation, the
+    // same samples, and nothing stops it. Without this the test above proves only that something happened.
+    [Fact]
+    public async Task WithTheSwitchOff_TheSameStandstillIsSampledAndLeftAlone()
+    {
+        var before = Environment.GetEnvironmentVariable(LayoutLoopGuard.SamplesEnvironmentVariable);
+        Environment.SetEnvironmentVariable(LayoutLoopGuard.SamplesEnvironmentVariable, "0");
+
+        var logger = new _Lines();
+        var service = new DiagnosticsBackgroundService(
+            logger, alarmAfter: TimeSpan.FromSeconds(2), dirtySampleInterval: TimeSpan.FromSeconds(1));
+        var (window, panel) = await _ASettledWindow();
+
+        try
+        {
+            service.SetLayoutRoots(() => [window]);
+            using var starver = StarvedDispatcher.Start(DispatcherPriority.Normal);
+            service.Start();
+            await _OnUiThread<object?>(() => { panel.InvalidateMeasure(); return null; });
+
+            // Past the sample the run above cut on, so "not cut" is a reading rather than an impatient assertion.
+            Assert.True(await logger.Appears("sample=3/"), "the episode was never sampled three times");
+            await Task.Delay(TimeSpan.FromSeconds(3));
+
+            Assert.DoesNotContain(logger.Lines, line => line.Contains("cut off after", StringComparison.Ordinal));
+            Assert.True(await _OnUiThread(() => panel.IsVisible), "the switch was off and the subtree was cut anyway");
+            Assert.False(await _OnUiThread(() => panel.IsMeasureValid), "the tree settled on its own, so nothing was there to cut");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(LayoutLoopGuard.SamplesEnvironmentVariable, before);
+            service.Dispose();
+            await Dispatcher.UIThread.InvokeAsync(() => window.Close(), DispatcherPriority.Background);
+        }
+    }
+
+    // A settled tree to start from. It is left mid-pass only once the starvation is in place: invalidating
+    // before that queues a pass which is served straight away, and the tree the guard should judge settles.
+    private static async Task<(Window Window, StackPanel Panel)> _ASettledWindow()
+    {
+        var made = await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var panel = new StackPanel { Name = "TheLoop", Children = { new QuietProbe() } };
+            var opened = new Window { Width = 400, Height = 300, Content = panel };
+            opened.Show();
+            opened.UpdateLayout();
+            return (Window: opened, Panel: panel);
+        });
+
+        return made;
+    }
+
+    // Send priority: above the starvation the tests below install, so reading the tree is not itself starved.
+    private static Task<T> _OnUiThread<T>(Func<T> read) =>
+        Dispatcher.UIThread.InvokeAsync(read, DispatcherPriority.Send).GetTask();
+
+    private sealed class _Lines : ILogger<DiagnosticsBackgroundService>
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> _lines = new();
+
+        public IEnumerable<string> Lines => _lines;
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => _Scope.Instance;
+
+        public bool IsEnabled(LogLevel level) => true;
+
+        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? error, Func<TState, Exception?, string> format) =>
+            _lines.Enqueue(format(state, error));
+
+        public string First(string token) => Lines.First(line => line.Contains(token, StringComparison.Ordinal));
+
+        public async Task<bool> Appears(string token)
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (Lines.Any(line => line.Contains(token, StringComparison.Ordinal)))
+                {
+                    return true;
+                }
+
+                await Task.Delay(100);
+            }
+
+            return false;
+        }
+
+        private sealed class _Scope : IDisposable
+        {
+            public static readonly _Scope Instance = new();
+
+            public void Dispose()
+            {
+            }
         }
     }
 }

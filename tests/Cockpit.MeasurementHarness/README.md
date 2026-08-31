@@ -162,6 +162,29 @@ What this does not establish: that no legitimate pass can stand still for twenty
 already unresponsive. The 170× is a margin, not a proof of impossibility, and `COCKPIT_LAYOUT_CUTOFF_SAMPLES`
 is the way out if the field ever produces one.
 
+### What the app-level runner could not do — and what closed the chain instead
+
+Acceptance criterion 1 names `run-app-repro.sh` and the AC-1262 freeze as the candidates for the counter-proof.
+Both were tried on `3af97278`, whose base predates the AC-1262 fix — so the fault was genuinely present, not
+simulated. **Neither raised a freeze**, and that is a measurement rather than an absence of one:
+
+| run | shape | result |
+|---|---|---|
+| `--sessions 8 --seconds 60 --shape new-rows` | eight session transcripts | stream completed, `uifreeze hang` 0, app CPU 3,5% |
+| `--trigger chat:3000 --seconds 90` | the assistant-chat window, AC-1262's own surface | no freeze, `uifreeze hang` 0, `renderclock stalled` 0 |
+
+A freeze that took eleven minutes in the field could not be summoned in two runs of a minute and a half. So the
+counter-proof was taken one level down, where every link of the production chain is still real and the timing is
+not left to chance: `LayoutLoopGuardTests` starves the dispatcher over a tree left mid-pass and runs the real
+`DiagnosticsBackgroundService` — its alarm, its dirty sampling, the guard, the cut and the line it writes — once
+with `COCKPIT_LAYOUT_CUTOFF_SAMPLES=0` and once with the default. Off, the same standstill is sampled three
+times and left alone; on, the subtree is cut and named. The sample interval is a constructor seam there for the
+same reason the alarm is: the real one is ten seconds.
+
+**What this does not prove:** that the 31-08 freeze in particular would have been cut. That rests on its three
+logged dirty samples having been identical under one subtree, which is what the guard keys on — read from the
+log, not reproduced here.
+
 ### What the check costs
 
 Nothing on the healthy path: the guard runs inside the dirty sampling, which does not run at all until the

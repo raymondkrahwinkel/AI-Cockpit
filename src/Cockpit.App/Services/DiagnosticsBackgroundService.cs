@@ -32,6 +32,9 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // what tells a stuck subtree from one walking the tree; more would only lengthen the log.
     private const int DirtySamplesPerEpisode = 3;
 
+    // AC-1263: this, not N, is what sets how fast the layout guard reacts -- N=3 here means a cut some
+    // twenty-five seconds into a freeze. Shortening it shortens the reaction and shrinks the guard's measured
+    // margin by the same factor, so it is its own decision with its own measurement.
     private static readonly TimeSpan DirtySampleInterval = TimeSpan.FromSeconds(10);
 
     // AC-1114: how often to check that the AppImage mount this process runs from still serves.
@@ -116,12 +119,20 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // a test would otherwise have to hold a thread hostage for a real quarter-minute per case, three times over.
     private readonly TimeSpan _alarmAfter;
 
+    // AC-1263: how long the guard takes to react is N times this, not N alone. Injectable for the same reason
+    // alarmAfter is -- a test of the cut would otherwise have to hold a thread for half a minute.
+    private readonly TimeSpan _dirtySampleInterval;
+
     public DiagnosticsBackgroundService(
-        ILogger<DiagnosticsBackgroundService> logger, Func<long>? heapBytesProbe = null, TimeSpan? alarmAfter = null)
+        ILogger<DiagnosticsBackgroundService> logger,
+        Func<long>? heapBytesProbe = null,
+        TimeSpan? alarmAfter = null,
+        TimeSpan? dirtySampleInterval = null)
     {
         _logger = logger;
         _heapBytesProbe = heapBytesProbe ?? (() => GC.GetGCMemoryInfo().HeapSizeBytes);
         _alarmAfter = alarmAfter ?? RenderClockHeartbeat.StallAfter;
+        _dirtySampleInterval = dirtySampleInterval ?? DirtySampleInterval;
     }
 
     // Wired once from App.axaml.cs: the three fields the diag line cannot compute on its own (AC-1125 D).
@@ -300,7 +311,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                     // it exists for.
                     if (now >= nextDirtySampleAt && (dirtySamplesTaken < DirtySamplesPerEpisode || _layoutGuard.Enabled))
                     {
-                        nextDirtySampleAt = now + DirtySampleInterval;
+                        nextDirtySampleAt = now + _dirtySampleInterval;
                         _AskWhatIsStillInLayout(++dirtySamplesTaken, now);
                     }
                 }

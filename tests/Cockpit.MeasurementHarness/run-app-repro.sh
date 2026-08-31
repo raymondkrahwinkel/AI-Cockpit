@@ -9,7 +9,7 @@
 set -euo pipefail
 
 exe=""; label="run"; sessions=8; seconds=60; shape="new-rows"; width=900; height=520; docked=false
-out="${TMPDIR:-/tmp}/cockpit-app-repro"
+out="${TMPDIR:-/tmp}/cockpit-app-repro"; trigger_content=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -23,6 +23,9 @@ while [ $# -gt 0 ]; do
         --out) out="$2"; shift 2;;
         # The docked assistant chat is a second follower in the same visual tree (AC-1178 §3).
         --assistant-docked) docked=true; shift;;
+        # AC-1263: the trigger file verbatim, for a shape this runner has no flag of its own for -- the
+        # assistant-chat sim ("chat:<rows>"), whose recycled markdown rows are AC-1262's freeze.
+        --trigger) trigger_content="$2"; shift 2;;
         # An unknown flag is refused rather than ignored, like the harness itself (README, E5).
         *) echo "unknown flag: $1" >&2; exit 2;;
     esac
@@ -87,12 +90,17 @@ wait_for_json "$work/measurement-host.ready.json" 120 "host-ready marker"
 [ "$(json_field "$work/measurement-host.ready.json" stateRoot)" = "$state" ] || { echo "host-ready state-root mismatch" >&2; exit 3; }
 
 cpu_before="$(cpu_seconds "$pid")"
-printf 'apprepro:%s,%s,%s' "$sessions" "$seconds" "$shape" > "$work/cockpit-leaksim.trigger"
+if [ -n "$trigger_content" ]; then
+    printf '%s' "$trigger_content" > "$work/cockpit-leaksim.trigger"
+    echo "trigger written: $trigger_content"
+else
+    printf 'apprepro:%s,%s,%s' "$sessions" "$seconds" "$shape" > "$work/cockpit-leaksim.trigger"
 
-wait_for_json "$work/app-repro.ready.json" 180 "sessions to start"
-started="$(json_field "$work/app-repro.ready.json" started)"
-[ "$started" = "$sessions" ] || { echo "started $started of $sessions sessions" >&2; exit 3; }
-echo "sessions started: $started"
+    wait_for_json "$work/app-repro.ready.json" 180 "sessions to start"
+    started="$(json_field "$work/app-repro.ready.json" started)"
+    [ "$started" = "$sessions" ] || { echo "started $started of $sessions sessions" >&2; exit 3; }
+    echo "sessions started: $started"
+fi
 
 # A frozen UI thread never finishes the stream, so the missing completion marker is itself an observation --
 # that is how AC-1178's dev-app rounds were caught after three of them were first read as clean zeros.
