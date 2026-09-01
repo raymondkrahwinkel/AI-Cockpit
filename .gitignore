@@ -40,3 +40,4 @@ TestResults/
 
 # Bytecode cache from running the scripts/ Python tools locally.
 __pycache__/
+graphify-out/
