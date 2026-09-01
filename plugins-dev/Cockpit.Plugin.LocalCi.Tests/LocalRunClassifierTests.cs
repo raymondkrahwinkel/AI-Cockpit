@@ -31,7 +31,7 @@ public class LocalRunClassifierTests
     }
 
     [Fact]
-    public void Matrix_IsRefused()
+    public void OneAxisMatrix_CanRunLocally()
     {
         var verdict = _ClassifyOne("""
             jobs:
@@ -44,8 +44,45 @@ public class LocalRunClassifierTests
                   - run: dotnet publish
             """);
 
+        Assert.True(verdict.CanRunLocally, verdict.Reason);
+    }
+
+    [Fact]
+    public void DynamicOneAxisMatrix_CanRunLocally()
+    {
+        var verdict = _ClassifyOne("""
+            jobs:
+              plugins:
+                runs-on: ubuntu-latest
+                strategy:
+                  matrix:
+                    plugin: ${{ fromJSON(needs.changes.outputs.plugins) }}
+                steps:
+                  - run: dotnet test ${{ matrix.plugin }}
+            """);
+
+        Assert.True(verdict.CanRunLocally, verdict.Reason);
+    }
+
+    [Theory]
+    [InlineData("{ include: [{ os: ubuntu-latest }] }")]
+    [InlineData("{ exclude: [{ os: windows-latest }] }")]
+    [InlineData("{ os: [ubuntu-latest], runtime: [net10.0] }")]
+    [InlineData("{ plugin: [{ name: Clock }] }")]
+    public void ComplexMatrices_AreRefused(string matrix)
+    {
+        var verdict = _ClassifyOne($"""
+            jobs:
+              spread:
+                runs-on: ubuntu-latest
+                strategy:
+                  matrix: {matrix}
+                steps:
+                  - run: echo building
+            """);
+
         Assert.False(verdict.CanRunLocally);
-        Assert.Equal("it uses a matrix, so it is several runs rather than one", verdict.Reason);
+        Assert.Contains("matrix", verdict.Reason);
     }
 
     [Fact]
@@ -492,12 +529,14 @@ public class LocalRunClassifierTests
                 runs-on: ${{ matrix.os }}
                 strategy:
                   matrix:
-                    os: [ubuntu-latest, macos-latest]
+                    include:
+                      - os: ubuntu-latest
+                      - os: macos-latest
                 steps:
                   - uses: softprops/action-gh-release@v2
             """);
 
-        Assert.Equal("it uses a matrix, so it is several runs rather than one", verdict.Reason);
+        Assert.Equal("it uses a matrix more complex than one list of values", verdict.Reason);
     }
 
     private static JobVerdict _ClassifyOne(string yaml) => Assert.Single(_Classify(yaml));

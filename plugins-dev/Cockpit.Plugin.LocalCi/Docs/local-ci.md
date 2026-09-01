@@ -60,7 +60,16 @@ not silent.
 
 A run here executes in a container built from act's own images, driven by act's own interpretation of the
 workflow file — not GitHub's runners, and not GitHub's own Actions engine. A job the plugin cannot make sense
-of at all — one that uses a matrix, a non-Linux runner, artifacts handed between jobs, or an action that only
+of at all — one that uses a complex matrix, a non-Linux runner, artifacts handed between jobs, or an action that only
 means something inside GitHub's own infrastructure — is refused outright with the concrete reason, never
 attempted partially and called done. A green result here is a strong local prediction of what GitHub's check
 will say next; it is not a replacement for that check, and nothing in this plugin claims otherwise.
+
+A matrix is locally runnable only when it has one axis whose values are scalars, or that axis is an exact
+`fromJSON(needs.<job>.outputs.<name>)` expression. `include`, `exclude`, multiple axes and object values stay
+refused deliberately: accepting a shape the classifier cannot prove equivalent would make a local green run
+say something different from GitHub. Nightly and release publishing use complex matrices and remain refused.
+
+`act --dryrun` cannot evaluate a dynamic needs-output matrix because dry-run does not execute the producer job;
+it therefore reports an empty/invalid JSON value. A real run executes that dependency first and then expands the
+matrix. This is [known upstream dry-run behaviour](https://github.com/nektos/act/issues/1347), not a broken job.

@@ -60,9 +60,129 @@ jobs:
             echo "build=true" >> "$GITHUB_OUTPUT"
           fi
 
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+          cache: true
+          cache-dependency-path: '**/*.csproj'
+
+      - name: Build host tests
+        run: dotnet build Cockpit.slnx --configuration Release -warnaserror
+
+      - name: Build plugin tests
+        run: dotnet build PluginTests.slnx --configuration Release -warnaserror
+
+      - name: Build plugins without tests
+        run: |
+          for plugin in plugins-dev/Cockpit.Plugin.*/; do
+            case "$plugin" in *.Tests/) continue;; esac
+            if grep -qF "$(basename "$plugin")/" PluginTests.slnx; then continue; fi
+            dotnet build "$plugin" --configuration Release -warnaserror
+          done
+
+      - name: Core tests
+        run: dotnet test tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Core --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+
+      - name: Infrastructure tests
+        if: ${{ !cancelled() }}
+        run: dotnet test tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Infrastructure --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+
+      - name: View tests
+        if: ${{ !cancelled() }}
+        run: dotnet test tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/View --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+
+      - name: Plugin tests
+        if: ${{ !cancelled() }}
+        run: dotnet test PluginTests.slnx --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Plugins --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
+
+      - name: Test and coverage summary
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import os
+          import xml.etree.ElementTree as ET
+
+          root = pathlib.Path("TestResults")
+          rows = []
+          errors = []
+          expected_names = {
+              "Cockpit.Core.Tests",
+              "Cockpit.Infrastructure.Tests",
+              "Cockpit.App.ViewTests",
+          }
+          expected_names.update(path.stem for path in pathlib.Path("plugins-dev").glob("Cockpit.Plugin.*.Tests/*.csproj"))
+          expected = {name.casefold(): name for name in expected_names}
+          for trx in sorted(root.rglob("*.trx")):
+              tree = ET.parse(trx)
+              units = tree.findall(".//{*}UnitTest")
+              storage = units[0].get("storage", "") if units else ""
+              raw_project = pathlib.Path(storage).stem or trx.stem
+              project = expected.get(raw_project.casefold(), raw_project)
+              counters = tree.find(".//{*}Counters")
+              if counters is None:
+                  errors.append(f"{trx}: missing test counters")
+                  continue
+              passed = int(counters.get("passed", 0))
+              failed = int(counters.get("failed", 0))
+              skipped = int(counters.get("notExecuted", 0))
+              if passed == 0:
+                  errors.append(f"{project}: no passing tests")
+
+              coverage = "N/A"
+              reports = list(trx.parent.glob("*/coverage.cobertura.xml"))
+              if trx.parent.name == "Plugins":
+                  production = project.removesuffix(".Tests").casefold()
+                  reports = [
+                      report for report in reports
+                      if production in {
+                          package.get("name", "").casefold()
+                          for package in ET.parse(report).findall(".//{*}package")
+                      }
+                  ]
+              if len(reports) == 1:
+                  report = reports[0]
+                  coverage = f'{float(ET.parse(report).getroot().get("line-rate", 0)):.1%}'
+              if coverage == "N/A":
+                  errors.append(f"{project}: missing coverage report")
+              rows.append((project, passed, failed, skipped, coverage))
+
+          reported = {row[0].casefold() for row in rows}
+          for missing in sorted(expected.keys() - reported):
+              errors.append(f"{expected[missing]}: no test result")
+          if not rows:
+              errors.append("No test results found")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## Tests and coverage\n\n")
+              summary.write("| Project | Passed | Failed | Skipped | Line coverage |\n")
+              summary.write("|---|---:|---:|---:|---:|\n")
+              for row in sorted(rows):
+                  summary.write(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]} | {row[4]} |\n")
+              if errors:
+                  summary.write("\n" + "\n".join(f"- {error}" for error in errors) + "\n")
+          if errors:
+              raise SystemExit("; ".join(errors))
+          PY
+
+      - name: Upload test results
+        if: ${{ always() && !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-test-results
+          path: TestResults
+          if-no-files-found: error
+
   publish:
-    needs: changes
-    if: needs.changes.outputs.build == 'true'
+    needs: [changes, test]
+    if: needs.changes.outputs.build == 'true' && needs.test.result == 'success'
 
     strategy:
       fail-fast: false
