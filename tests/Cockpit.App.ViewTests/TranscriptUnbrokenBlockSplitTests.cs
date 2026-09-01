@@ -141,6 +141,37 @@ public sealed class TranscriptUnbrokenBlockSplitTests
         Assert.NotEqual("1.", markers[0]);
     }
 
+    // AC-1272: a table-shaped header+separator pasted inside a still-open fence (e.g. an example the reply is
+    // showing) must not be read as a real table -- `_OpenTableLineEnd` needs the same open-fence guard
+    // `_UnbrokenBlockEnd` already has, or it seals the row mid-fence and abandons the fence's own continuation.
+    [Fact]
+    public async Task TableLikeLinesInsideAnOpenFence_DoNotSplitTheFenceAsATable()
+    {
+        var rows = 0;
+        var sawTableSplit = false;
+        var text = string.Empty;
+
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var vm = new SessionViewModel();
+            vm.Transcript.Clear();
+
+            // Three chunks, not one: `_OpenBlockIsTable` only ever looks at what already streamed in, so the
+            // header+separator must land in the row before the chunk that would tip it over TableFragmentLines.
+            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "```text\ncode line\n\n" });
+            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "| a | b |\n|---|---|\n" });
+            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "| c | d |\n| e | f |\n" });
+
+            rows = vm.Transcript.Count;
+            sawTableSplit = vm.Transcript.Any(row => row.StartsInsideTable || row.EndsInsideTable);
+            text = string.Concat(vm.Transcript.Select(row => row.Text));
+        });
+
+        Assert.Equal(1, rows);
+        Assert.False(sawTableSplit, "a table-shaped example inside a still-open fence was split as if it were a real table");
+        Assert.Equal("```text\ncode line\n\n| a | b |\n|---|---|\n| c | d |\n| e | f |\n", text);
+    }
+
     // AC-1272, route A2: column 1 is short in the first half (`r0`..`r24`) and much longer in the second, so a
     // fragment measuring only its own rows comes out narrower. A tall window keeps every fragment realised,
     // exercising TableSpanRevision: fragment 1 seals and first renders before the wide cells even exist.
