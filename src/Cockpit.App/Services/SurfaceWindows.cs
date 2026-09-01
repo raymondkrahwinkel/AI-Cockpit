@@ -37,7 +37,7 @@ public sealed class SurfaceWindows : ISingletonService
         var hidden = _open.Keys.ToList();
         foreach (var key in hidden)
         {
-            _Window(key)?.Hide();
+            _Surface(key)?.Window.Hide();
         }
 
         // Restored by key, not by reference: a surface can be closed while it is hidden — an agent finishing a
@@ -46,12 +46,18 @@ public sealed class SurfaceWindows : ISingletonService
         {
             foreach (var key in hidden)
             {
-                _Window(key)?.Show();
+                // With the owner it went down with: Hide() drops Window.Owner, and a parameterless Show() brings
+                // the surface back detached from the cockpit it is supposed to sit beside.
+                if (_Surface(key) is { } surface)
+                {
+                    surface.Window.Show(surface.Owner);
+                }
             }
         });
     }
 
-    // Shows a surface that answers nothing; the task completes when it closes.
+    // Shows a surface that answers nothing; the task completes when it closes. Only surfaces come through here —
+    // a modal question goes to Window.ShowDialog and never touches this class, which DialogModalitySplitTests pins.
     public Task ShowAsync(object key, Window surface, Window owner)
     {
         if (TryActivateAsync(key) is { } already)
@@ -88,7 +94,7 @@ public sealed class SurfaceWindows : ISingletonService
     // saying so. Asking again brings the open one forward, so a second click focuses rather than duplicates.
     private void _Track(object key, Window window, Window owner, Task pending, Action complete)
     {
-        _open[key] = new Surface(window, pending);
+        _open[key] = new Surface(window, pending, owner);
         window.Closed += OnClosed;
 
         void OnClosed(object? sender, EventArgs e)
@@ -109,20 +115,15 @@ public sealed class SurfaceWindows : ISingletonService
 
     // Surfaces are siblings of the cockpit, never of each other: Avalonia closes an owner's owned windows along
     // with it, so a second diagram opened while the first was in front died with the one the operator closed.
-    // Callers pick "whichever window is active" as owner (PluginDialogHost, the plugin store) — that is that window.
-    private Window _NotASurface(Window owner)
-    {
-        while (_open.Values.Any(open => open.Window == owner) && owner.Owner is Window parent)
-        {
-            owner = parent;
-        }
+    // One step out is the whole walk — an owner recorded here came through this same method, so it is never a surface.
+    private Window _NotASurface(Window owner) =>
+        _open.Values.FirstOrDefault(open => open.Window == owner) is { } surface ? surface.Owner : owner;
 
-        return owner;
-    }
+    private Surface? _Surface(object key) => _open.TryGetValue(key, out var surface) ? surface : null;
 
-    private Window? _Window(object key) => _open.TryGetValue(key, out var surface) ? surface.Window : null;
-
-    private sealed record Surface(Window Window, Task Pending);
+    // The owner is remembered rather than read back off the window: Hide() clears Window.Owner, so after one
+    // screen lock every surface would look parentless and _NotASurface would hand a surface back as an owner.
+    private sealed record Surface(Window Window, Task Pending, Window Owner);
 
     private sealed class Restore(Action restore) : IDisposable
     {
