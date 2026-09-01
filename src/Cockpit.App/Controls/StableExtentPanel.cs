@@ -28,9 +28,11 @@ internal sealed class StableExtentPanel : VirtualizingPanel
     // rather than a walk over every row.
     private readonly List<double> _starts = [];
 
-    // A rolling average of what rows have measured, which is all the estimate for an unseen row needs to
-    // be. Kept as a number rather than derived from the table, which cannot be counted reliably.
-    private double _fallback = InitialRowHeight;
+    // The mean height over every row measured so far, kept as a sum and a count because a weak table cannot
+    // be counted. A rolling average was tried and is wrong: the tail is re-measured on every streamed token,
+    // so its height drags the mean towards itself and the estimate for unseen rows runs away with it.
+    private double _heightSum;
+    private int _heightCount;
     private double _measuredWidth = double.NaN;
     private bool _startsDirty = true;
     private double _measuredFrom;
@@ -98,7 +100,8 @@ internal sealed class StableExtentPanel : VirtualizingPanel
         if (e.Action == NotifyCollectionChangedAction.Reset)
         {
             _heights.Clear();
-            _fallback = InitialRowHeight;
+            _heightSum = 0;
+            _heightCount = 0;
         }
 
         _RecycleOutside(0, -1);
@@ -119,7 +122,8 @@ internal sealed class StableExtentPanel : VirtualizingPanel
         if (!double.IsNaN(_measuredWidth) && Math.Abs(_measuredWidth - availableSize.Width) > 0.5)
         {
             _heights.Clear();
-            _fallback = InitialRowHeight;
+            _heightSum = 0;
+            _heightCount = 0;
             _startsDirty = true;
         }
 
@@ -184,13 +188,11 @@ internal sealed class StableExtentPanel : VirtualizingPanel
     }
 
     private double _HeightOf(int index) =>
-        index >= 0 && index < Items.Count && Items[index] is { } item && _heights.TryGetValue(item, out var h) ? h.Value : _fallback;
+        index >= 0 && index < Items.Count && Items[index] is { } item && _heights.TryGetValue(item, out var h) ? h.Value : _Fallback;
 
     // Records a row's measured height and folds it into the estimate. True when the total moved.
     private bool _Remember(object item, double measured)
     {
-        _fallback += (measured - _fallback) * 0.1;
-
         if (_heights.TryGetValue(item, out var known))
         {
             if (Math.Abs(known.Value - measured) <= 0.5)
@@ -198,13 +200,18 @@ internal sealed class StableExtentPanel : VirtualizingPanel
                 return false;
             }
 
+            _heightSum += measured - known.Value;
             known.Value = measured;
             return true;
         }
 
         _heights.Add(item, new StrongBox<double>(measured));
+        _heightSum += measured;
+        _heightCount++;
         return true;
     }
+
+    private double _Fallback => _heightCount > 0 ? _heightSum / _heightCount : InitialRowHeight;
 
     private void _RebuildStarts()
     {
@@ -221,7 +228,7 @@ internal sealed class StableExtentPanel : VirtualizingPanel
         for (var index = 0; index < items.Count; index++)
         {
             _starts.Add(y);
-            y += items[index] is { } item && _heights.TryGetValue(item, out var h) ? h.Value : _fallback;
+            y += items[index] is { } item && _heights.TryGetValue(item, out var h) ? h.Value : _Fallback;
         }
 
         _starts.Add(y);
