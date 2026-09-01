@@ -61,8 +61,6 @@ jobs:
           fi
 
   test:
-    needs: changes
-    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
 
     steps:

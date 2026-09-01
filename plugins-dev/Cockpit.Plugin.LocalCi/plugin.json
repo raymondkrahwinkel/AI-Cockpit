@@ -1,7 +1,7 @@
 {
   "id": "local-ci",
   "name": "Local CI",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "entryAssembly": "Cockpit.Plugin.LocalCi.dll",
   "entryType": "Cockpit.Plugin.LocalCi.LocalCiPlugin",
   "abstractionsVersion": 2,
