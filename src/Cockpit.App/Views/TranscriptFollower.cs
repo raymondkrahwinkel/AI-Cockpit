@@ -291,10 +291,10 @@ internal sealed class TranscriptFollower
             // Reach the current scrollbar end before using realised geometry to close any estimate residue.
             // Assigning Offset only invalidates; ScrollIntoView ran a whole nested layout pass here instead,
             // once per streamed row — 6.8MB and tens of milliseconds each, which is AC-1111 (measured).
-            var estimatedEnd = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
-            if (!TranscriptScrollAnchor.IsSettled(scroll.Offset.Y, estimatedEnd))
+            var reachableEnd = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
+            if (!TranscriptScrollAnchor.IsSettled(scroll.Offset.Y, reachableEnd))
             {
-                _MoveTo(scroll, estimatedEnd);
+                _MoveTo(scroll, reachableEnd);
                 return;
             }
 
@@ -304,10 +304,13 @@ internal sealed class TranscriptFollower
                 return;
             }
 
+            // Clamped to the end the viewer can actually reach: a row taller than the viewport leaves a shortfall
+            // no offset can close, and a write past the end never settles, so the scroll change it raises asks for
+            // another step forever — the loop that pins the UI thread while the tile visibly bounces.
             var shortfall = bottom.Y - scroll.Viewport.Height;
             if (shortfall > 0)
             {
-                _MoveTo(scroll, scroll.Offset.Y + shortfall);
+                _MoveTo(scroll, Math.Min(scroll.Offset.Y + shortfall, reachableEnd));
             }
         }
         finally

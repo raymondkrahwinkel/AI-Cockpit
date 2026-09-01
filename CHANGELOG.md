@@ -431,6 +431,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the cockpit no longer locks up at full CPU while a session tile visibly bounces. When the newest message
+  in a transcript is taller than the space it has to fit in — which happens in the small tiles on the rail long
+  before it happens in a full window — the view kept asking to scroll to a position past the end of what is
+  actually there. Such a request can never land, so it was made again on the next frame, and every attempt laid
+  out the window afresh: one core pinned, the tile jittering, and nothing else getting a turn. The view now never
+  scrolls past the end it can actually reach. A message taller than its tile still cannot be shown in full, but it
+  is left resting at the bottom instead of chased forever.
+
 - fixed: the view no longer jumps up and back down while a reply is arriving. A bullet list, a numbered list, a
   table or one very long paragraph carries no blank line, so the whole thing used to arrive as a single
   transcript row — measured at up to four times the height of the window it had to fit in. While such a row
