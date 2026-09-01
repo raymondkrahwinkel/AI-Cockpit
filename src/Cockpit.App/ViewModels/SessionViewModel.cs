@@ -947,6 +947,22 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // many monospaced lines sits under that, so a code row is no longer the outlier the panel re-anchors on.
     private const int CodeBlockRowLines = 20;
 
+    // Where in `pending` an already-counted line total reaches `maxLines`, or -1 while it may keep growing.
+    // Shared by `_OpenFenceLineEnd` and `_OpenTableLineEnd` below: same shape, different bound and predicate.
+    private static int _LineBoundEnd(string pending, int existingLines, int maxLines)
+    {
+        var lines = existingLines;
+        for (var i = 0; i < pending.Length; i++)
+        {
+            if (pending[i] == '\n' && ++lines >= maxLines)
+            {
+                return i + 1;
+            }
+        }
+
+        return -1;
+    }
+
     // The end of the line in `pending` that takes the open row to its line bound while a fence is still open,
     // or -1 while it may keep growing. A fence opened inside `pending` is left to the next chunk: the row is
     // still short then, and the case that matters is the one that keeps arriving.
@@ -955,21 +971,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // The row's own text is not enough: a row continuing a split fence carries no opener, so reading only
         // its text says the fence is closed and that second fragment then grows without a bound of its own.
         var existing = row.Text;
-        if (_OpenFence(existing, row.StartsInsideCodeBlock ? '`' : null) is null)
-        {
-            return -1;
-        }
-
-        var lines = existing.AsSpan().Count('\n');
-        for (var i = 0; i < pending.Length; i++)
-        {
-            if (pending[i] == '\n' && ++lines >= CodeBlockRowLines)
-            {
-                return i + 1;
-            }
-        }
-
-        return -1;
+        return _OpenFence(existing, row.StartsInsideCodeBlock ? '`' : null) is null
+            ? -1
+            : _LineBoundEnd(pending, existing.AsSpan().Count('\n'), CodeBlockRowLines);
     }
 
     // AC-1272: a table row is one line, like a fenced code line, but far taller -- AC-1271 measured the
@@ -982,22 +986,18 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // table: `_UnbrokenBlockEnd` below leaves every table alone, on purpose.
     private static int _OpenTableLineEnd(TranscriptEntryViewModel row, string pending)
     {
-        var open = row.StartsInsideTable ? row.Text : _OpenBlockText(row.Text);
-        if (!row.StartsInsideTable && !_OpenBlockIsTable(open))
+        // An open fence is `_OpenFenceLineEnd`'s to bound, same as in `_UnbrokenBlockEnd` below -- without
+        // this, a pasted table example inside a still-streaming fence reads as a real table and the fence's
+        // own continuation is abandoned mid-block.
+        if (_OpenFence(row.Text, row.StartsInsideCodeBlock ? '`' : null) is not null)
         {
             return -1;
         }
 
-        var lines = open.AsSpan().Count('\n');
-        for (var i = 0; i < pending.Length; i++)
-        {
-            if (pending[i] == '\n' && ++lines >= TableFragmentLines)
-            {
-                return i + 1;
-            }
-        }
-
-        return -1;
+        var open = row.StartsInsideTable ? row.Text : _OpenBlockText(row.Text);
+        return !row.StartsInsideTable && !_OpenBlockIsTable(open)
+            ? -1
+            : _LineBoundEnd(pending, open.AsSpan().Count('\n'), TableFragmentLines);
     }
 
     // How much markdown a row carries before the next one takes over, for a block with no blank line in it.
