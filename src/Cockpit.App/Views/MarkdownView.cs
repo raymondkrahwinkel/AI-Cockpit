@@ -81,6 +81,40 @@ public sealed class MarkdownView : ContentControl
         set => SetValue(EndsInsideCodeBlockProperty, value);
     }
 
+    public static readonly StyledProperty<bool> StartsInsideTableProperty =
+        AvaloniaProperty.Register<MarkdownView, bool>(nameof(StartsInsideTable));
+
+    // AC-1272: this text carries on a table an earlier row opened. Its continuation has no header of its own,
+    // so the parser starts inside that table and the box drawn for it shares the whole table's column widths
+    // (route A2) instead of auto-sizing from its own rows alone.
+    public bool StartsInsideTable
+    {
+        get => GetValue(StartsInsideTableProperty);
+        set => SetValue(StartsInsideTableProperty, value);
+    }
+
+    public static readonly StyledProperty<bool> EndsInsideTableProperty =
+        AvaloniaProperty.Register<MarkdownView, bool>(nameof(EndsInsideTable));
+
+    // The other half of the pair: this row's table is not finished and the next row carries it on.
+    public bool EndsInsideTable
+    {
+        get => GetValue(EndsInsideTableProperty);
+        set => SetValue(EndsInsideTableProperty, value);
+    }
+
+    public static readonly StyledProperty<int> TableSpanRevisionProperty =
+        AvaloniaProperty.Register<MarkdownView, int>(nameof(TableSpanRevision));
+
+    // AC-1272: bumped by the view model whenever a sibling fragment of a split table joins or the group
+    // settles, so a fragment whose own markdown has not changed still recomputes the shared column widths —
+    // sealed early, it cannot otherwise know a later sibling widened one.
+    public int TableSpanRevision
+    {
+        get => GetValue(TableSpanRevisionProperty);
+        set => SetValue(TableSpanRevisionProperty, value);
+    }
+
     public static readonly StyledProperty<bool> PreserveLineBreaksProperty =
         AvaloniaProperty.Register<MarkdownView, bool>(nameof(PreserveLineBreaks));
 
@@ -148,7 +182,10 @@ public sealed class MarkdownView : ContentControl
             && change.Property != BasePathProperty
             && change.Property != PreserveLineBreaksProperty
             && change.Property != StartsInsideCodeBlockProperty
-            && change.Property != EndsInsideCodeBlockProperty)
+            && change.Property != EndsInsideCodeBlockProperty
+            && change.Property != StartsInsideTableProperty
+            && change.Property != EndsInsideTableProperty
+            && change.Property != TableSpanRevisionProperty)
         {
             return;
         }
@@ -183,7 +220,7 @@ public sealed class MarkdownView : ContentControl
     private void _Render(string markdown)
     {
         DebugRenderCount++;
-        var parsed = MarkdownParser.Parse(markdown, PreserveLineBreaks, StartsInsideCodeBlock);
+        var parsed = MarkdownParser.Parse(markdown, PreserveLineBreaks, StartsInsideCodeBlock, StartsInsideTable);
 
         // Compares the colour, not brush identity: a recycled row's resource lookup returns a
         // different brush instance for an unchanged palette, so identity comparison discarded the
@@ -211,7 +248,14 @@ public sealed class MarkdownView : ContentControl
                 && (edged.JoinedAbove != (StartsInsideCodeBlock && i == 0)
                     || edged.JoinedBelow != (EndsInsideCodeBlock && i == parsed.Count - 1));
 
+            // AC-1272: a joined table fragment's own block can be byte-for-byte unchanged while a sibling row's
+            // text still grew the whole table's shared column widths — TableSpanRevision is what says so, and
+            // the in-place table update below never touches column widths, so this always rebuilds instead.
+            var tableJoined = parsed[i].Kind == MarkdownBlockKind.Table
+                && ((StartsInsideTable && i == 0) || (EndsInsideTable && i == parsed.Count - 1));
+
             if (edgesMoved
+                || tableJoined
                 || (!_rendered[i].Equals(parsed[i])
                     && !_TryUpdateInPlace((Control)_blocks.Children[i], _rendered[i], parsed[i])))
             {
@@ -305,7 +349,11 @@ public sealed class MarkdownView : ContentControl
             joinedBelow: EndsInsideCodeBlock && index == count - 1,
             owner: this),
         MarkdownBlockKind.List => _List(block),
-        MarkdownBlockKind.Table => _Table(block),
+        MarkdownBlockKind.Table => _Table(
+            block,
+            joinedAbove: StartsInsideTable && index == 0,
+            joinedBelow: EndsInsideTable && index == count - 1,
+            owner: this),
         MarkdownBlockKind.Image => _Image(block),
         _ => _Paragraph(block.Inlines, new Thickness(0, 3, 0, 3)),
     };
@@ -659,17 +707,27 @@ public sealed class MarkdownView : ContentControl
         return row;
     }
 
-    private Control _Table(MarkdownBlock block)
+    // `joinedAbove`/`joinedBelow`: this fragment carries on, or is carried on by, a fragment in a neighbouring
+    // row — route A2 for AC-1272. Column widths come from the whole table's own widest cell rather than this
+    // fragment's rows alone, and a fragment with no header of its own (`block.Items` empty) draws none.
+    private Control _Table(MarkdownBlock block, bool joinedAbove, bool joinedBelow, MarkdownView owner)
     {
-        var columns = block.Items.Count;
+        var shared = joinedAbove || joinedBelow ? _SpannedColumnWidths(owner) : null;
+        var columns = shared?.Length ?? block.Items.Count;
         var grid = new Grid();
         for (var c = 0; c < columns; c++)
         {
-            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+            grid.ColumnDefinitions.Add(shared is null
+                ? new ColumnDefinition(GridLength.Auto)
+                : new ColumnDefinition(new GridLength(shared[c], GridUnitType.Pixel)));
         }
 
         var rowIndex = 0;
-        _AddTableRow(grid, block.Items, rowIndex++, isHeader: true);
+        if (block.Items.Count > 0)
+        {
+            _AddTableRow(grid, block.Items, rowIndex++, isHeader: true);
+        }
+
         foreach (var row in block.Rows)
         {
             _AddTableRow(grid, row, rowIndex++, isHeader: false);
@@ -681,6 +739,49 @@ public sealed class MarkdownView : ContentControl
             HorizontalAlignment = HorizontalAlignment.Left,
             Child = grid,
         };
+    }
+
+    // Padding(11, 6) plus the cell border's own 1px on each side (see `_AddTableRow`) — the chrome a measured
+    // text width needs added back before it becomes a column's own width.
+    private const double TableCellChrome = 24;
+
+    // AC-1272, route A2: a fragment's own Grid auto-sizes independently of its siblings', so two fragments of
+    // one streamed table would otherwise misalign on the seam. Measuring every cell of the whole table once
+    // and handing every fragment the same fixed widths keeps them aligned without realising any of them.
+    private static double[]? _SpannedColumnWidths(MarkdownView owner)
+    {
+        if ((owner.DataContext as ISpannedTableSource)?.SpannedTableText is not { Length: > 0 } whole
+            || MarkdownParser.Parse(whole).LastOrDefault(b => b.Kind == MarkdownBlockKind.Table) is not { } table
+            || table.Items.Count == 0)
+        {
+            return null;
+        }
+
+        var widths = new double[table.Items.Count];
+        _MeasureTableRow(table.Items, bold: true, widths);
+        foreach (var row in table.Rows)
+        {
+            _MeasureTableRow(row, bold: false, widths);
+        }
+
+        for (var c = 0; c < widths.Length; c++)
+        {
+            widths[c] += TableCellChrome;
+        }
+
+        return widths;
+    }
+
+    private static void _MeasureTableRow(IReadOnlyList<IReadOnlyList<MarkdownInline>> row, bool bold, double[] widths)
+    {
+        var typeface = new Typeface(FontFamily.Default, weight: bold ? FontWeight.SemiBold : FontWeight.Normal);
+        for (var c = 0; c < row.Count && c < widths.Length; c++)
+        {
+            var text = string.Concat(row[c].Select(inline => inline.Text));
+            var width = new FormattedText(
+                text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, 13, TextPrimary).Width;
+            widths[c] = Math.Max(widths[c], width);
+        }
     }
 
     private void _AddTableRow(Grid grid, IReadOnlyList<IReadOnlyList<MarkdownInline>> cells, int rowIndex, bool isHeader)

@@ -15,6 +15,7 @@ namespace Cockpit.App.ViewTests;
 /// a fence, which leaves every block with neither. Measured: a tight bullet list grew to 815-1415px and one
 /// paragraph without a blank line to 512-1141px, in viewports of 461 and 382px, and on 8-16% of painted frames
 /// the panel drew another part of the transcript. Prose and fenced code ride along as the negative control.
+/// AC-1272: a markdown table has the same shape, left out of AC-1271 on purpose (route A2, see below).
 /// </summary>
 [Collection("avalonia")]
 public sealed class TranscriptUnbrokenBlockSplitTests
@@ -40,9 +41,12 @@ public sealed class TranscriptUnbrokenBlockSplitTests
         var code = await _StreamAsync(view, width, height, i => i == 0
             ? "```csharp\n"
             : $"    var line{i} = ComputeSomething({i}, \"a fairly long argument so the line wraps\");\n");
+        var table = await _StreamAsync(view, width, height, i => i == 0
+            ? "| col a | col b |\n|---|---|\n"
+            : $"| row {i} | value {i} with a bit of extra text so the row is not trivially short |\n");
 
         // Gates first, each closing a way this could pass while the behaviour is broken.
-        foreach (var (name, run) in new[] { ("list", list), ("paragraph", paragraph), ("prose", prose), ("code", code) })
+        foreach (var (name, run) in new[] { ("list", list), ("paragraph", paragraph), ("prose", prose), ("code", code), ("table", table) })
         {
             Assert.True(
                 run.Frames >= MinimumFrames,
@@ -59,6 +63,7 @@ public sealed class TranscriptUnbrokenBlockSplitTests
         {
             ("tight bullet list", list, "815px at 900x600 and 1415px at 420x560"),
             ("unbroken paragraph", paragraph, "512px at 900x600 and 1141px at 420x560"),
+            ("markdown table", table, "1261px at both, 13 of 93 frames at 900x600 and 20 of 113 at 420x560 (AC-1271)"),
             ("prose", prose, "151px and 261px, already within the viewport"),
             ("fenced code block", code, "386px, already within the viewport since AC-1265"),
         })
@@ -136,6 +141,69 @@ public sealed class TranscriptUnbrokenBlockSplitTests
         Assert.NotEqual("1.", markers[0]);
     }
 
+    // AC-1272, route A2: column 1 is short in the first half (`r0`..`r24`) and much longer in the second, so a
+    // fragment measuring only its own rows comes out narrower. A tall window keeps every fragment realised,
+    // exercising TableSpanRevision: fragment 1 seals and first renders before the wide cells even exist.
+    [Fact]
+    public async Task ATableSplitAcrossFragments_KeepsColumnWidthsEqualAcrossFragments()
+    {
+        var fragmentCount = 0;
+        var fellBackToProse = false;
+        var widths = new List<double>();
+
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var vm = new SessionViewModel();
+            vm.Transcript.Clear();
+            var (window, items, _) = await _OpenAsync("session", vm, 900, 8000);
+
+            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "| col a | col b |\n|---|---|\n" });
+            await _PumpAsync(null, TimeSpan.FromMilliseconds(25));
+
+            for (var i = 0; i < 50; i++)
+            {
+                var cell = i < 25 ? $"r{i}" : $"row {i} with a noticeably longer label than the first half used";
+                vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = $"| {cell} | v{i} |\n" });
+                await _PumpAsync(null, TimeSpan.FromMilliseconds(20));
+            }
+
+            await _PumpAsync(null, TimeSpan.FromMilliseconds(400));
+
+            for (var i = 0; i < vm.Transcript.Count; i++)
+            {
+                var row = vm.Transcript[i];
+                if (row.Kind != TranscriptEntryKind.AssistantText || !(row.StartsInsideTable || row.EndsInsideTable))
+                {
+                    continue;
+                }
+
+                fragmentCount++;
+                if (items.ContainerFromIndex(i) is not { } container)
+                {
+                    continue; // window too short after all -- nothing realised to measure for this one
+                }
+
+                var grid = container.GetVisualDescendants().OfType<Grid>().FirstOrDefault(g => g.ColumnDefinitions.Count > 1);
+                if (grid is null)
+                {
+                    fellBackToProse = true;
+                    continue;
+                }
+
+                widths.Add(grid.ColumnDefinitions[0].Width.Value);
+            }
+
+            window.Close();
+        });
+
+        Assert.True(fragmentCount >= 2, $"the table stayed in {fragmentCount} fragment(s), so nothing was split and this proves nothing");
+        Assert.False(fellBackToProse, "a fragment of the split table fell back to prose instead of a table");
+        Assert.True(widths.Count >= 2, $"only {widths.Count} of {fragmentCount} fragments were realised in an 8000px window -- proves nothing");
+        Assert.True(
+            widths.Distinct().Count() == 1,
+            $"column 1 measured {string.Join(", ", widths)}px across fragments instead of one shared width");
+    }
+
     private static async Task<Reading> _StreamAsync(string view, double width, double height, Func<int, string> chunk)
     {
         var tallest = 0.0;
@@ -159,40 +227,7 @@ public sealed class TranscriptUnbrokenBlockSplitTests
             // being measured lives there, and AppendText is a seam the app never uses (AC-1238).
             vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "start of the reply.\n\n" });
 
-            Window window;
-            ItemsControl items;
-            ScrollViewer scroll;
-
-            if (view == "session")
-            {
-                var sessionView = new SessionView { DataContext = vm };
-                window = new Window { Content = sessionView, Width = width, Height = height };
-                window.Show();
-                window.UpdateLayout();
-                await _PumpAsync(null, TimeSpan.FromMilliseconds(300));
-                items = sessionView.TranscriptItems;
-                scroll = sessionView.TranscriptScroll!;
-            }
-            else
-            {
-                var host = Substitute.For<IAssistantSessionHost>();
-                host.Session.Returns(vm);
-                var chat = new AssistantChatWindow
-                {
-                    Width = width,
-                    Height = height,
-                    DataContext = new AssistantChatViewModel(
-                        host,
-                        Substitute.For<IAssistantSettingsStore>(),
-                        Substitute.For<IVoicePlaybackQueue>()),
-                };
-                chat.Show();
-                chat.UpdateLayout();
-                await _PumpAsync(null, TimeSpan.FromMilliseconds(300));
-                window = chat;
-                items = chat.ChatView.TranscriptItems;
-                scroll = chat.ChatView.TranscriptScroll!;
-            }
+            var (window, items, scroll) = await _OpenAsync(view, vm, width, height);
 
             void Sample()
             {
@@ -227,6 +262,49 @@ public sealed class TranscriptUnbrokenBlockSplitTests
         });
 
         return new Reading(tallest, viewport, maxExtent, nowhere, frames);
+    }
+
+    // The session panel or the assistant chat window, each hosting the same vm through its own transcript
+    // ItemsControl/ScrollViewer — the shared setup `_StreamAsync` and the table tests below both need.
+    private static async Task<(Window Window, ItemsControl Items, ScrollViewer Scroll)> _OpenAsync(
+        string view, SessionViewModel vm, double width, double height)
+    {
+        Window window;
+        ItemsControl items;
+        ScrollViewer scroll;
+
+        if (view == "session")
+        {
+            var sessionView = new SessionView { DataContext = vm };
+            window = new Window { Content = sessionView, Width = width, Height = height };
+            window.Show();
+            window.UpdateLayout();
+            await _PumpAsync(null, TimeSpan.FromMilliseconds(300));
+            items = sessionView.TranscriptItems;
+            scroll = sessionView.TranscriptScroll!;
+        }
+        else
+        {
+            var host = Substitute.For<IAssistantSessionHost>();
+            host.Session.Returns(vm);
+            var chat = new AssistantChatWindow
+            {
+                Width = width,
+                Height = height,
+                DataContext = new AssistantChatViewModel(
+                    host,
+                    Substitute.For<IAssistantSettingsStore>(),
+                    Substitute.For<IVoicePlaybackQueue>()),
+            };
+            chat.Show();
+            chat.UpdateLayout();
+            await _PumpAsync(null, TimeSpan.FromMilliseconds(300));
+            window = chat;
+            items = chat.ChatView.TranscriptItems;
+            scroll = chat.ChatView.TranscriptScroll!;
+        }
+
+        return (window, items, scroll);
     }
 
     /// <summary>One sample per forced render tick: the transcript as it is about to be painted.</summary>
