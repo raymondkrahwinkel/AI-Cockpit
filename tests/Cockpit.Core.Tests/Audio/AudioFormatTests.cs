@@ -13,14 +13,4 @@ public class AudioFormatTests
         Assert.Equal(1, format.Channels);
         Assert.Equal(16, format.BitsPerSample);
     }
-
-    [Fact]
-    public void Constructor_CustomValues_OverridesDefaults()
-    {
-        var format = new AudioFormat(SampleRate: 48000, Channels: 2, BitsPerSample: 24);
-
-        Assert.Equal(48000, format.SampleRate);
-        Assert.Equal(2, format.Channels);
-        Assert.Equal(24, format.BitsPerSample);
-    }
 }

@@ -10,8 +10,8 @@ namespace Cockpit.App.Controls;
 // AC-670: the child's box comes from the two container boxes, not from `available / Scale`, because the pane's
 // own chrome sits between them and dividing after it comes off multiplies it by 1/scale (three columns).
 
-// ponytail: live scaling. Measured at 6 streaming panes (MiniatureFrameCostBenchmark) it costs a third of a
-// 60fps budget against a 2 Hz snapshot route; snapshots if a real rail drops frames.
+// ponytail: live scaling. At 6 streaming panes it measured at a third of a 60fps budget against a 2 Hz
+// snapshot route; use snapshots if a real rail drops frames.
 public sealed class MiniatureHost : Decorator
 {
     // The box the rail gave this host's container. Empty (the default) means "not in a rail" — the child is
