@@ -10,6 +10,7 @@ using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.App.Plugins;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Diagrams;
@@ -71,6 +72,37 @@ public class DiagramCollabWindowTests
         Assert.True(host.Bindings[0].IsLive);
         Assert.Empty(host.Registry.ListSurfaces("pane-a"));
 
+        plugin.Dispose();
+    });
+
+    [Fact]
+    public void ClosingOneDiagramWindow_LeavesTheOtherOpenAndStillEditable() => HeadlessAvalonia.Run(() =>
+    {
+        var (plugin, host) = _StartPlugin();
+        host.InvokeQuickStart();
+        host.InvokeQuickStart();
+
+        // PluginDialogHost owns a new surface to whichever window is active, so the second diagram opens owned by
+        // the first whenever the operator was looking at it — and Avalonia closes an owner's owned windows with it.
+        var surfaces = new SurfaceWindows();
+        var main = _Main();
+        var first = _Surface(surfaces, host.Windows[0].Content, main);
+        var second = _Surface(surfaces, host.Windows[1].Content, first);
+        var kept = host.Windows[1].Key["diagram.document.".Length..];
+
+        first.Close();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(second.IsVisible);
+
+        // The real criterion: still drawn is not enough, it has to still be *there* — edit_diagram answered
+        // "No such diagram surface" on the surviving window because its registration went with the other one.
+        Assert.NotNull(host.Registry.Resolve(kept));
+        host.Registry.Grant("pane-a", kept, DiagramCapability.Edit);
+        Assert.True(host.Registry.WriteCoupled("pane-a", kept, "flowchart LR\n    X[\"Nog te bewerken\"]"));
+
+        second.Close();
+        main.Close();
         plugin.Dispose();
     });
 
@@ -385,6 +417,23 @@ public class DiagramCollabWindowTests
         window.Show();
         Dispatcher.UIThread.RunJobs();
         return window;
+    }
+
+    // The same, through the real surface mechanism, so the owner a caller picks is the owner Avalonia gets.
+    private static Window _Surface(SurfaceWindows surfaces, Control content, Window owner)
+    {
+        var window = new Window { Content = content, Width = 900, Height = 640 };
+        _ = surfaces.ShowAsync(window, window, owner);
+        Dispatcher.UIThread.RunJobs();
+        return window;
+    }
+
+    private static Window _Main()
+    {
+        var main = new Window { Width = 1100, Height = 760 };
+        main.Show();
+        Dispatcher.UIThread.RunJobs();
+        return main;
     }
 
     private static string _CouplingText(Control content) =>

@@ -431,6 +431,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: closing one window beside the cockpit no longer takes the others with it. A window opened while another
+  one was in front was attached to that window rather than to the cockpit, and closing the one in front closed
+  everything hanging off it — two diagrams open, close either, and both disappeared. The second one was not just
+  hidden: the agent that had it open was told there was no such diagram. Every window opened beside the cockpit is
+  now attached to the cockpit itself, so each closes on its own.
+
+- fixed: a window beside the cockpit is attached to it again after the screen has been unlocked. Locking the
+  screen takes those windows out of sight and detached them on the way, so what came back was no longer tied to
+  the cockpit at all: it stayed behind the cockpit instead of above it, and closing the cockpit left it standing.
+
 - fixed: the cockpit no longer locks up at full CPU while a session tile visibly bounces. When the newest message
   in a transcript is taller than the space it has to fit in — which happens in the small tiles on the rail long
   before it happens in a full window — the view kept asking to scroll to a position past the end of what is

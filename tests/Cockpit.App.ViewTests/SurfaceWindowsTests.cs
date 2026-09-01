@@ -280,6 +280,61 @@ public sealed class SurfaceWindowsTests
         });
     }
 
+    [Fact]
+    public async Task ShowAsync_NeverOwnsOneSurfaceToAnother_EvenAfterAScreenLock()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var surfaces = new SurfaceWindows();
+            var main = _ShownOwner();
+            var first = new Window();
+            var pending = surfaces.ShowAsync("first", first, main);
+
+            // Through a screen lock on the way, because Hide() clears Window.Owner and the restore used to bring
+            // the surface back with no owner at all — leaving a parentless surface to be picked as the next owner.
+            surfaces.HideAll().Dispose();
+
+            // Callers own a new surface to whichever window is active (PluginDialogHost, the plugin store), which
+            // is this one. Avalonia closes owned windows with their owner, so that made two surfaces close as one.
+            var second = new Window();
+            var alsoPending = surfaces.ShowAsync("second", second, first);
+
+            Assert.Same(main, second.Owner);
+
+            first.Close();
+            await pending;
+
+            Assert.True(second.IsVisible);
+
+            second.Close();
+            await alsoPending;
+            main.Close();
+        });
+    }
+
+    [Fact]
+    public async Task HideAll_BringsEachSurfaceBackOwnedByTheCockpitItWentDownWith()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var surfaces = new SurfaceWindows();
+            var owner = _ShownOwner();
+            var surface = new Window();
+            var pending = surfaces.ShowAsync("key", surface, owner);
+
+            surfaces.HideAll().Dispose();
+
+            // Not just visible again: a surface restored without its owner no longer closes with the cockpit, and
+            // AC-1017's hand-back of focus would point at a window it is no longer attached to.
+            Assert.True(surface.IsVisible);
+            Assert.Same(owner, surface.Owner);
+
+            surface.Close();
+            await pending;
+            owner.Close();
+        });
+    }
+
     private static Window _ShownOwner()
     {
         var owner = new Window { Width = 400, Height = 300 };
