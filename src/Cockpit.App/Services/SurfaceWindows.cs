@@ -59,6 +59,7 @@ public sealed class SurfaceWindows : ISingletonService
             return already;
         }
 
+        owner = _NotASurface(owner);
         var completion = new TaskCompletionSource();
         _Track(key, surface, owner, completion.Task, () => completion.TrySetResult());
         surface.Show(owner);
@@ -75,6 +76,7 @@ public sealed class SurfaceWindows : ISingletonService
             return already;
         }
 
+        owner = _NotASurface(owner);
         var completion = new TaskCompletionSource<TResult?>();
         _Track(key, surface, owner, completion.Task, () => completion.TrySetResult(readResult()));
         surface.Show(owner);
@@ -103,6 +105,19 @@ public sealed class SurfaceWindows : ISingletonService
             // the owner's next click only reactivates it instead of doing what was clicked.
             ActivateOwner(owner);
         }
+    }
+
+    // Surfaces are siblings of the cockpit, never of each other: Avalonia closes an owner's owned windows along
+    // with it, so a second diagram opened while the first was in front died with the one the operator closed.
+    // Callers pick "whichever window is active" as owner (PluginDialogHost, the plugin store) — that is that window.
+    private Window _NotASurface(Window owner)
+    {
+        while (_open.Values.Any(open => open.Window == owner) && owner.Owner is Window parent)
+        {
+            owner = parent;
+        }
+
+        return owner;
     }
 
     private Window? _Window(object key) => _open.TryGetValue(key, out var surface) ? surface.Window : null;
