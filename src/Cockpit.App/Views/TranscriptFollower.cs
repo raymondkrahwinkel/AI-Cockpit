@@ -37,6 +37,11 @@ internal sealed class TranscriptFollower
     private int _steps;
     private bool _wasOnScreen;
 
+    // Whether the previous chase reached the tail. A fresh budget is for starting a chase, not for extending
+    // one: during a streamed reply every arriving row asked for a reset, so the follow never reached MaxSteps
+    // and never yielded to Background -- measured at 87 posts above Default and none below it (AC-1200).
+    private bool _settled = true;
+
     internal TranscriptFollower(ItemsControl items, Func<ScrollViewer?> scroll)
     {
         _items = items;
@@ -132,7 +137,7 @@ internal sealed class TranscriptFollower
 
     private void _Request(bool fresh)
     {
-        if (fresh)
+        if (fresh && _settled)
         {
             _steps = 0;
         }
@@ -264,6 +269,7 @@ internal sealed class TranscriptFollower
 
         if (!_stickToBottom || _scroll() is not { } scroll || !_IsOnScreen(_items))
         {
+            _settled = true;
             return;
         }
 
@@ -282,8 +288,11 @@ internal sealed class TranscriptFollower
         var newestIndex = _items.ItemCount - 1;
         if (newestIndex < 0 || NewestRowIsFullyVisible())
         {
+            _settled = true;
             return;
         }
+
+        _settled = false;
 
         Following = true;
         try
