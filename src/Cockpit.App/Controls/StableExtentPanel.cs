@@ -7,12 +7,8 @@ using System.Runtime.CompilerServices;
 
 namespace Cockpit.App.Controls;
 
-// AC-1265: a virtualising panel whose extent never shrinks under the reader.
-//
-// Avalonia's VirtualizingStackPanel derives the height of every unrealised row from the rows it happens to
-// have realised, so the estimate swings while scrolling and the ScrollViewer clamps the offset along with
-// it — measured at 113209px of backwards jump in a 1500-row transcript. This panel measures each row once,
-// keeps that measurement against the row itself, and extrapolates only over rows it has never seen.
+// AC-1265: a virtualising panel whose extent never shrinks under the reader, because a shrinking one makes
+// the ScrollViewer clamp the offset with it — 113209px of backwards jump in a 1500-row transcript.
 internal sealed class StableExtentPanel : VirtualizingPanel
 {
     // Only used until the first row has been measured; after that the average of what we know is closer.
