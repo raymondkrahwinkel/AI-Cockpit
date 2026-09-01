@@ -9,7 +9,8 @@ public static partial class MarkdownParser
 {
     // AC-936: opt-in — off keeps CommonMark's default (a single newline joins its paragraph's lines with a
     // space); only the chat bubble turns it on, so a Shift+Enter there stays a visible line break instead.
-    public static IReadOnlyList<MarkdownBlock> Parse(string markdown, bool preserveLineBreaks = false, bool startsInsideFence = false)
+    public static IReadOnlyList<MarkdownBlock> Parse(
+        string markdown, bool preserveLineBreaks = false, bool startsInsideFence = false, bool startsInsideTable = false)
     {
         var lines = (markdown ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var blocks = new List<MarkdownBlock>();
@@ -21,6 +22,12 @@ public static partial class MarkdownParser
         if (startsInsideFence)
         {
             i = _ParseFencedCodeBody(lines, 0, language: null, blocks);
+        }
+        else if (startsInsideTable)
+        {
+            // AC-1272: the continuation of a table an earlier row opened — it carries neither header nor
+            // separator of its own, so without this it falls back to prose and the pipes render as text.
+            i = _ParseTableContinuation(lines, blocks);
         }
 
         while (i < lines.Length)
@@ -131,13 +138,7 @@ public static partial class MarkdownParser
     private static int _ParseTable(string[] lines, int start, List<MarkdownBlock> blocks)
     {
         var header = _SplitTableRow(lines[start]);
-        var rows = new List<IReadOnlyList<IReadOnlyList<MarkdownInline>>>();
-        var i = start + 2; // skip header + separator
-        while (i < lines.Length && lines[i].Contains('|') && !string.IsNullOrWhiteSpace(lines[i]))
-        {
-            rows.Add(_SplitTableRow(lines[i]));
-            i++;
-        }
+        var i = _ParseTableRows(lines, start + 2, out var rows); // skip header + separator
 
         blocks.Add(new MarkdownBlock
         {
@@ -145,6 +146,32 @@ public static partial class MarkdownParser
             Items = header,
             Rows = rows,
         });
+
+        return i;
+    }
+
+    // AC-1272: a fragment that continues a table an earlier row opened. It has neither header nor separator
+    // of its own — `Items` stays empty, which is what tells the renderer not to draw a second header row.
+    private static int _ParseTableContinuation(string[] lines, List<MarkdownBlock> blocks)
+    {
+        var i = _ParseTableRows(lines, 0, out var rows);
+        if (rows.Count > 0)
+        {
+            blocks.Add(new MarkdownBlock { Kind = MarkdownBlockKind.Table, Rows = rows });
+        }
+
+        return i;
+    }
+
+    private static int _ParseTableRows(string[] lines, int start, out List<IReadOnlyList<IReadOnlyList<MarkdownInline>>> rows)
+    {
+        rows = [];
+        var i = start;
+        while (i < lines.Length && lines[i].Contains('|') && !string.IsNullOrWhiteSpace(lines[i]))
+        {
+            rows.Add(_SplitTableRow(lines[i]));
+            i++;
+        }
 
         return i;
     }
