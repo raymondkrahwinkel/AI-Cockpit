@@ -23,7 +23,7 @@ public class AssistantPushToTalkCoordinatorTests
         // the operator. The chip flicked back to Ready, no words appeared, and unlike the dictation path there is
         // no composer here to show an empty result. Held against a live microphone, that is indistinguishable from
         // an assistant that ignored you, and it costs an attempt every single time.
-        var (coordinator, overlay, assistant, pushToTalk, _, _) = _Coordinator();
+        var (coordinator, overlay, assistant, pushToTalk, _, _) = _Coordinator(Timeout.InfiniteTimeSpan);
         pushToTalk.EndHoldAsync().Returns(string.Empty);
 
         coordinator.HandleHoldStarted();
@@ -106,7 +106,7 @@ public class AssistantPushToTalkCoordinatorTests
     {
         var openMic = Substitute.For<IOpenMicState>();
         openMic.IsListening.Returns(true);
-        var (coordinator, overlay, _, pushToTalk, _, _) = _Coordinator(openMic);
+        var (coordinator, overlay, _, pushToTalk, _, _) = _Coordinator(openMicState: openMic);
 
         coordinator.HandleHoldStarted();
 
@@ -136,7 +136,7 @@ public class AssistantPushToTalkCoordinatorTests
 
     private static (AssistantPushToTalkCoordinator Coordinator, VoiceOverlayViewModel Overlay,
         IAssistantSessionHost Assistant, IVoicePushToTalkService PushToTalk, IVoicePlaybackQueue Playback,
-        VoiceOverlayCoordinator OverlayCoordinator) _Coordinator(IOpenMicState? openMicState = null)
+        VoiceOverlayCoordinator OverlayCoordinator) _Coordinator(TimeSpan? messageLinger = null, IOpenMicState? openMicState = null)
     {
         var assistant = Substitute.For<IAssistantSessionHost>();
         assistant.Activity.Returns(AssistantActivity.Ready);
@@ -157,7 +157,7 @@ public class AssistantPushToTalkCoordinatorTests
             NullLogger<AssistantPushToTalkCoordinator>.Instance,
             playback,
             openMicState,
-            messageLinger: TestLinger);
+            messageLinger: messageLinger ?? TestLinger);
 
         return (coordinator, overlay, assistant, pushToTalk, playback, overlayCoordinator);
     }
