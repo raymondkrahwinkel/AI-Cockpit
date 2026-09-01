@@ -201,11 +201,17 @@
                                Text="{Binding Session.Title}"/>
                     <!-- AC-1265: a fenced code block is split across rows like any other block now, so the
                          view is told which of its edges a neighbouring row carries on. Copy reaches the whole
-                         block through ISpannedCodeSource on the row, not a binding: the block is still growing. -->
+                         block through ISpannedCodeSource on the row, not a binding: the block is still growing.
+                         AC-1272: a markdown table splits the same way — TableSpanRevision has no meaning of its
+                         own, it just forces a re-render when a sibling fragment's arrival widens the shared
+                         column widths route A2 measures through ISpannedTableSource. -->
                     <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
                                          BasePath="{Binding Session.WorkingDirectory}"
                                          StartsInsideCodeBlock="{Binding StartsInsideCodeBlock}"
-                                         EndsInsideCodeBlock="{Binding EndsInsideCodeBlock}"/>
+                                         EndsInsideCodeBlock="{Binding EndsInsideCodeBlock}"
+                                         StartsInsideTable="{Binding StartsInsideTable}"
+                                         EndsInsideTable="{Binding EndsInsideTable}"
+                                         TableSpanRevision="{Binding TableSpanRevision}"/>
                     <!-- Copy hands over the reply's markdown source verbatim. -->
                     <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                                 HorizontalAlignment="Left"

@@ -32,7 +32,7 @@ public enum TranscriptEntryKind
 // A single row in the transcript view. Assistant text entries are mutated in place
 // (`AppendText`) so streaming deltas render as growing text rather than
 // as new rows.
-public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCodeSource
+public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCodeSource, Views.ISpannedTableSource
 {
     // AC-1090: what the transcript log keys a row's versions on, and restored from it. A GUID rather than the
     // row's index: the transcript is not append-only in memory — a reset clears it — and a shifted index would
@@ -109,18 +109,38 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     [ObservableProperty]
     private bool _endsInsideCodeBlock;
 
-    // The gap the row's own stack leaves under its content. Zero while a code block carries on into the next
-    // row: a trailing branch that renders empty is still a visible child, so Spacing pays for it and leaves a
-    // band of row background between two fragments that are meant to meet (AC-1265, measured at 4px).
-    public double RowContentSpacing => EndsInsideCodeBlock ? 0 : 4;
+    // AC-1272: the table equivalent of the pair above — a streamed markdown table has no blank line to split
+    // on either, and its continuation carries neither header nor separator, so route A2 needs to know outright
+    // which edges a neighbouring row carries on.
+    [ObservableProperty]
+    private bool _startsInsideTable;
+
+    [ObservableProperty]
+    private bool _endsInsideTable;
+
+    // The gap the row's own stack leaves under its content. Zero while a code block or a table carries on into
+    // the next row: a trailing branch that renders empty is still a visible child, so Spacing pays for it and
+    // leaves a band of row background between two fragments that are meant to meet (AC-1265, measured at 4px).
+    public double RowContentSpacing => EndsInsideCodeBlock || EndsInsideTable ? 0 : 4;
 
     partial void OnEndsInsideCodeBlockChanged(bool value) => OnPropertyChanged(nameof(RowContentSpacing));
+
+    partial void OnEndsInsideTableChanged(bool value) => OnPropertyChanged(nameof(RowContentSpacing));
 
     // Every row of the reply this row belongs to, in order. Null for a row that was never part of a split.
     internal IReadOnlyList<TranscriptEntryViewModel>? ReplyRows { get; set; }
 
     // Every row of the code block this row is part of, in order. Null unless this row is part of a split fence.
     internal IReadOnlyList<TranscriptEntryViewModel>? CodeSpanRows { get; set; }
+
+    // Every row of the table this row is part of, in order. Null unless this row is part of a split table.
+    internal IReadOnlyList<TranscriptEntryViewModel>? TableSpanRows { get; set; }
+
+    // AC-1272: bumped by SessionViewModel whenever a sibling in TableSpanRows joins or the group finishes, so
+    // a fragment whose own markdown is unchanged is still asked to look at SpannedTableText again — one was
+    // sealed before the table's widest cell had even arrived.
+    [ObservableProperty]
+    private int _tableSpanRevision;
 
     // What Copy on a split code block hands over: the whole block's code, not the fragment under the button.
     // The rows' text concatenated is the block's own markdown — the split injects no fences — so the parser
@@ -141,6 +161,13 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
                 ?.Code ?? string.Empty;
         }
     }
+
+    // What a joined table fragment measures its shared column widths from: the whole table's markdown exactly
+    // as it streamed in. A split never injects a header of its own, so the rows' text concatenated
+    // reconstructs it — the same reasoning as `SpannedCodeText` above, one level up (route A2).
+    public string SpannedTableText => TableSpanRows is null
+        ? string.Empty
+        : string.Concat(TableSpanRows.Select(row => row.Text));
 
     // What "copy this reply" hands over: the whole reply, not the block the button happens to sit under.
     public string ReplyTextWithImageSuffix => ReplyRows is null

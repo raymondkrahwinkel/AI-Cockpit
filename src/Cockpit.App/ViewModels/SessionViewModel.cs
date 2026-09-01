@@ -102,6 +102,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private List<TranscriptEntryViewModel>? _codeSpanRows;
     private bool _nextRowContinuesCodeBlock;
 
+    // AC-1272: the same shape as the fence pair above, for a table split by row count instead of by a blank
+    // line -- a continuation carries no header of its own, so route A2 shares column widths across the group.
+    private List<TranscriptEntryViewModel>? _tableSpanRows;
+    private bool _nextRowContinuesTable;
+
     // The reasoning/thinking row currently being streamed into (AC-213), or null when no thinking block is open. Mirrors `_currentAssistantEntry`: contiguous thinking deltas append onto one row rather than spawning a row per delta.
     private TranscriptEntryViewModel? _currentThinkingEntry;
 
@@ -771,8 +776,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     continue;
                 }
 
-                // AC-1271: and neither does a table, a tight list or one unbroken paragraph. Measured at
-                // 815-1415px in a 382px viewport, against 0 backward thumb jumps for prose.
+                // AC-1272: nor does a table have a blank line, and unlike a list or paragraph its continuation
+                // carries neither header nor separator -- bounded by row count like a fence, with TableSpanRows
+                // sharing the group's column widths across the split (route A2).
+                var tableEnd = _OpenTableLineEnd(row, pending);
+                if (tableEnd >= 0)
+                {
+                    row.AppendText(pending[..tableEnd]);
+                    _SealTableSpanRow(row);
+                    pending = pending[tableEnd..];
+                    continue;
+                }
+
+                // AC-1271: and neither does a tight list or one unbroken paragraph. Measured at 815-1415px in
+                // a 382px viewport, against 0 backward thumb jumps for prose. `_UnbrokenBlockEnd` still leaves
+                // a table alone -- the row-bound above is the only thing allowed to cut one.
                 var bound = _UnbrokenBlockEnd(row, pending);
                 if (bound < 0)
                 {
@@ -783,6 +801,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 row.AppendText(pending[..bound]);
                 _assistantBlockSealed = true;
                 _codeSpanRows = null;
+                _FinalizeTableSpan();
                 pending = pending[bound..];
                 continue;
             }
@@ -790,6 +809,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             row.AppendText(pending[..end]);
             _assistantBlockSealed = true;
             _codeSpanRows = null;
+            _FinalizeTableSpan();
             pending = pending[end..];
         }
     }
@@ -810,6 +830,39 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
+    // Ends this row inside the table it is in and lines the next one up to carry it on -- the table equivalent
+    // of `_SealCodeSpanRow` above.
+    private void _SealTableSpanRow(TranscriptEntryViewModel row)
+    {
+        row.EndsInsideTable = true;
+        _assistantBlockSealed = true;
+        _nextRowContinuesTable = true;
+
+        if (_tableSpanRows is null)
+        {
+            _tableSpanRows = [row];
+            row.TableSpanRows = _tableSpanRows;
+        }
+    }
+
+    // A table's shared column widths can only be final once every fragment's own text is fixed, and a
+    // fragment sealed earlier is not touched again otherwise -- this is what asks it to look at
+    // SpannedTableText once more, on the group's last row as much as on any row before it.
+    private void _FinalizeTableSpan()
+    {
+        if (_tableSpanRows is null)
+        {
+            return;
+        }
+
+        foreach (var spanRow in _tableSpanRows)
+        {
+            spanRow.TableSpanRevision++;
+        }
+
+        _tableSpanRows = null;
+    }
+
     // The row this reply is currently streaming into: the open one until a blank line finished it, a new one
     // after that. A continuation carries neither the badge nor the name, so the group still reads as one reply.
     private TranscriptEntryViewModel _OpenAssistantRow()
@@ -828,15 +881,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             _replyRows = [];
 
-            // A reply that ended mid-fence must not hand its open fence to the next one (AC-1265).
+            // A reply that ended mid-fence or mid-table must not hand its open one to the next reply
+            // (AC-1265, AC-1272).
             _codeSpanRows = null;
             _nextRowContinuesCodeBlock = false;
+            _FinalizeTableSpan();
+            _nextRowContinuesTable = false;
         }
 
         var row = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty)
         {
             IsReplyContinuation = continuing,
             StartsInsideCodeBlock = continuing && _nextRowContinuesCodeBlock,
+            StartsInsideTable = continuing && _nextRowContinuesTable,
         };
 
         if (row.StartsInsideCodeBlock)
@@ -845,7 +902,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             row.CodeSpanRows = _codeSpanRows;
         }
 
+        if (row.StartsInsideTable)
+        {
+            _tableSpanRows!.Add(row);
+            row.TableSpanRows = _tableSpanRows;
+        }
+
         _nextRowContinuesCodeBlock = false;
+        _nextRowContinuesTable = false;
         _replyRows.Add(row);
         row.ReplyRows = _replyRows;
         _currentAssistantEntry = row;
@@ -883,6 +947,22 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // many monospaced lines sits under that, so a code row is no longer the outlier the panel re-anchors on.
     private const int CodeBlockRowLines = 20;
 
+    // Where in `pending` an already-counted line total reaches `maxLines`, or -1 while it may keep growing.
+    // Shared by `_OpenFenceLineEnd` and `_OpenTableLineEnd` below: same shape, different bound and predicate.
+    private static int _LineBoundEnd(string pending, int existingLines, int maxLines)
+    {
+        var lines = existingLines;
+        for (var i = 0; i < pending.Length; i++)
+        {
+            if (pending[i] == '\n' && ++lines >= maxLines)
+            {
+                return i + 1;
+            }
+        }
+
+        return -1;
+    }
+
     // The end of the line in `pending` that takes the open row to its line bound while a fence is still open,
     // or -1 while it may keep growing. A fence opened inside `pending` is left to the next chunk: the row is
     // still short then, and the case that matters is the one that keeps arriving.
@@ -891,21 +971,33 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // The row's own text is not enough: a row continuing a split fence carries no opener, so reading only
         // its text says the fence is closed and that second fragment then grows without a bound of its own.
         var existing = row.Text;
-        if (_OpenFence(existing, row.StartsInsideCodeBlock ? '`' : null) is null)
+        return _OpenFence(existing, row.StartsInsideCodeBlock ? '`' : null) is null
+            ? -1
+            : _LineBoundEnd(pending, existing.AsSpan().Count('\n'), CodeBlockRowLines);
+    }
+
+    // AC-1272: a table row is one line, like a fenced code line, but far taller -- AC-1271 measured the
+    // unsplit table at 1261px over 15 rendered rows, ~84px each. This keeps a continuation fragment (the
+    // worst case: every counted line its own rendered row) under the smaller 382px viewport.
+    private const int TableFragmentLines = 4;
+
+    // The end of the line in `pending` that takes the open row to its table-row bound, or -1 while it may
+    // keep growing (including while it is not yet known to be a table at all). The one path allowed to cut a
+    // table: `_UnbrokenBlockEnd` below leaves every table alone, on purpose.
+    private static int _OpenTableLineEnd(TranscriptEntryViewModel row, string pending)
+    {
+        // An open fence is `_OpenFenceLineEnd`'s to bound, same as in `_UnbrokenBlockEnd` below -- without
+        // this, a pasted table example inside a still-streaming fence reads as a real table and the fence's
+        // own continuation is abandoned mid-block.
+        if (_OpenFence(row.Text, row.StartsInsideCodeBlock ? '`' : null) is not null)
         {
             return -1;
         }
 
-        var lines = existing.AsSpan().Count('\n');
-        for (var i = 0; i < pending.Length; i++)
-        {
-            if (pending[i] == '\n' && ++lines >= CodeBlockRowLines)
-            {
-                return i + 1;
-            }
-        }
-
-        return -1;
+        var open = row.StartsInsideTable ? row.Text : _OpenBlockText(row.Text);
+        return !row.StartsInsideTable && !_OpenBlockIsTable(open)
+            ? -1
+            : _LineBoundEnd(pending, open.AsSpan().Count('\n'), TableFragmentLines);
     }
 
     // How much markdown a row carries before the next one takes over, for a block with no blank line in it.
