@@ -96,15 +96,37 @@ internal sealed class StableExtentPanel : VirtualizingPanel
     {
         base.OnItemsChanged(items, e);
 
-        // A reset says nothing about which items survived, so the only safe reading is that none did.
-        if (e.Action == NotifyCollectionChangedAction.Reset)
+        // Never drop every container here. Doing so leaves the panel empty for one pass, the ScrollViewer
+        // clamps the offset to zero, and the reader is thrown to the top of the transcript and back on every
+        // arriving row — measured as 40 of 88 painted frames with the reply nowhere on screen.
+        switch (e.Action)
         {
-            _heights.Clear();
-            _heightSum = 0;
-            _heightCount = 0;
+            case NotifyCollectionChangedAction.Reset:
+                // A reset says nothing about which items survived, so the only safe reading is that none did.
+                _heights.Clear();
+                _heightSum = 0;
+                _heightCount = 0;
+                _RecycleOutside(0, -1);
+                break;
+
+            case NotifyCollectionChangedAction.Add:
+                _ShiftRealised(e.NewStartingIndex, e.NewItems?.Count ?? 0);
+                break;
+
+            case NotifyCollectionChangedAction.Remove:
+                _RecycleRange(e.OldStartingIndex, e.OldItems?.Count ?? 0);
+                _ShiftRealised(e.OldStartingIndex, -(e.OldItems?.Count ?? 0));
+                break;
+
+            case NotifyCollectionChangedAction.Replace:
+                _RecycleRange(e.NewStartingIndex, e.NewItems?.Count ?? 0);
+                break;
+
+            case NotifyCollectionChangedAction.Move:
+                _RecycleOutside(0, -1);
+                break;
         }
 
-        _RecycleOutside(0, -1);
         _startsDirty = true;
         InvalidateMeasure();
     }
@@ -282,6 +304,38 @@ internal sealed class StableExtentPanel : VirtualizingPanel
         generator.ItemContainerPrepared(container, item, index);
         _realised[index] = container;
         return container;
+    }
+
+    // Rows arriving before a realised one move it along; the generator is told so its own bookkeeping follows.
+    private void _ShiftRealised(int from, int delta)
+    {
+        if (delta == 0)
+        {
+            return;
+        }
+
+        var moved = _realised.Where(pair => pair.Key >= from).OrderBy(pair => delta > 0 ? -pair.Key : pair.Key).ToList();
+        foreach (var (index, container) in moved)
+        {
+            _realised.Remove(index);
+            _realised[index + delta] = container;
+            ItemContainerGenerator?.ItemContainerIndexChanged(container, index, index + delta);
+        }
+    }
+
+    private void _RecycleRange(int from, int count)
+    {
+        for (var index = from; index < from + count; index++)
+        {
+            if (!_realised.TryGetValue(index, out var container))
+            {
+                continue;
+            }
+
+            _realised.Remove(index);
+            ItemContainerGenerator?.ClearItemContainer(container);
+            RemoveInternalChild(container);
+        }
     }
 
     private void _RecycleOutside(int keepFrom, int keepTo)
