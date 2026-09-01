@@ -612,7 +612,6 @@ summary	tests/Cockpit.App.ViewTests/SessionRestoreWorktreeReconcileTests.cs	1
 summary	tests/Cockpit.App.ViewTests/ShortcutFocusTests.cs	1
 summary	tests/Cockpit.App.ViewTests/SurfaceWindowsTests.cs	1
 summary	tests/Cockpit.App.ViewTests/TerminalGridFitsBoundsTests.cs	1
-summary	tests/Cockpit.App.ViewTests/TerminalRenderAllocationBenchmark.cs	1
 summary	tests/Cockpit.App.ViewTests/ThemeTemplatePartTests.cs	2
 summary	tests/Cockpit.App.ViewTests/TranscriptFocusFoldFollowTests.cs	1
 summary	tests/Cockpit.App.ViewTests/TranscriptStickToBottomTests.cs	4
