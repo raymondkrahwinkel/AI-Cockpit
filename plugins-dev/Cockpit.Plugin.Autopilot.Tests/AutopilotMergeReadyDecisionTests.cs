@@ -13,29 +13,24 @@ public class AutopilotMergeReadyDecisionTests
         Assert.Equal(AutopilotPrDelivery.NotExpected, AutopilotMergeReadyDecision.Decide(deliversPullRequest: false, isGitRun: false, hasRemote: false, ghAvailable: false));
     }
 
-    [Fact]
-    public void CodeRun_NotAGitRun_CannotDeliver()
-    {
-        Assert.Equal(AutopilotPrDelivery.NoGitRun, AutopilotMergeReadyDecision.Decide(deliversPullRequest: true, isGitRun: false, hasRemote: false, ghAvailable: false));
-    }
+    // How far a code run gets, by what the environment offers. The expected delivery travels as object so this
+    // source's own signature stays public while the members are still named rather than numbered; the test casts it
+    // back once. `[InlineData]` cannot carry it — a public test method may not name an internal type in its
+    // signature (CS0051), and xUnit1000 forbids making the class internal instead.
+    public static IEnumerable<object[]> CodeRunEnvironments() =>
+    [
+        [false, false, false, AutopilotPrDelivery.NoGitRun],
+        [true, false, true, AutopilotPrDelivery.NoRemote],
+        [true, true, false, AutopilotPrDelivery.PushOnly],
+        [true, true, true, AutopilotPrDelivery.CanCreatePr],
+    ];
 
-    [Fact]
-    public void CodeRun_GitRun_NoRemote_CannotDeliver()
-    {
-        Assert.Equal(AutopilotPrDelivery.NoRemote, AutopilotMergeReadyDecision.Decide(deliversPullRequest: true, isGitRun: true, hasRemote: false, ghAvailable: true));
-    }
-
-    [Fact]
-    public void CodeRun_RemoteButNoGh_PushesOnly()
-    {
-        Assert.Equal(AutopilotPrDelivery.PushOnly, AutopilotMergeReadyDecision.Decide(deliversPullRequest: true, isGitRun: true, hasRemote: true, ghAvailable: false));
-    }
-
-    [Fact]
-    public void CodeRun_RemoteAndGh_CanCreatePr()
-    {
-        Assert.Equal(AutopilotPrDelivery.CanCreatePr, AutopilotMergeReadyDecision.Decide(deliversPullRequest: true, isGitRun: true, hasRemote: true, ghAvailable: true));
-    }
+    [Theory]
+    [MemberData(nameof(CodeRunEnvironments))]
+    public void CodeRun_DeliversAsFarAsTheEnvironmentAllows(bool isGitRun, bool hasRemote, bool ghAvailable, object expected) =>
+        Assert.Equal(
+            (AutopilotPrDelivery)expected,
+            AutopilotMergeReadyDecision.Decide(deliversPullRequest: true, isGitRun, hasRemote, ghAvailable));
 
     [Fact]
     public void PreflightWarning_FlagsEveryCannotFullyDeliverCase()
