@@ -678,6 +678,11 @@
                                 <TextBlock Text="{Binding McpOverlayOrigin.BadgeText}"/>
                             </Border>
                         </StackPanel>
+                        <CheckBox Content="Pre-select MCP servers for this project"
+                                  IsVisible="{Binding HasMcpServers}"
+                                  IsEnabled="{Binding !McpOverlayOrigin.IsLockedHere}"
+                                  IsChecked="{Binding RestrictMcpServers}"
+                                  ToolTip.Tip="Off: this project's sessions get every enabled server (and future ones). On: only the servers ticked below."/>
                         <controls:McpServerChecklist IsVisible="{Binding HasMcpServers}"
                                                      IsEnabled="{Binding !McpOverlayOrigin.IsLockedHere}"
                                                      Servers="{Binding McpServers}"
