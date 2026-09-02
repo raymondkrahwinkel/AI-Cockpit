@@ -13,80 +13,39 @@ public class AutopilotRunReliabilityTests
 
     private static AutopilotRunRecord Clean(string name) => Record(name, AutopilotPlanPhase.MergeReady, Step());
 
-    private static AutopilotRunRecord CorrectedButMergeReady(string name) =>
-        Record(name, AutopilotPlanPhase.MergeReady, Step(AutopilotCorrectionKind.ReviewFinding));
-
     private static AutopilotRunRecord Blocked(string name) => Record(name, AutopilotPlanPhase.Blocked, Step());
 
-    private static AutopilotRunRecord Stopped(string name) => Record(name, AutopilotPlanPhase.Stopped, Step());
+    // The three ways a settled run fails to be clean, and the one way it succeeds. The phases and correction kinds are
+    // internal enums, so the rows box them and the test casts back — each case still discovers under its own enum name.
+    public static IEnumerable<object[]> SettledRuns() =>
+    [
+        [AutopilotPlanPhase.MergeReady, AutopilotCorrectionKind.None, false, true],
+        [AutopilotPlanPhase.MergeReady, AutopilotCorrectionKind.ReviewFinding, false, false],
+        [AutopilotPlanPhase.Blocked, AutopilotCorrectionKind.None, false, false],
+        [AutopilotPlanPhase.Stopped, AutopilotCorrectionKind.None, false, false],
+        // AC-347: every step ran clean, but the run could not open its PR — it still needs a human, so not clean.
+        [AutopilotPlanPhase.MergeReady, AutopilotCorrectionKind.None, true, false],
+    ];
 
-    private static AutopilotRunRecord MergeReadyWithoutPullRequest(string name) =>
-        Record(name, AutopilotPlanPhase.MergeReady, Step()) with { PullRequestMissing = true };
-
-    [Fact]
-    public void RanClean_MergeReady_WithNoCorrection_IsTrue()
+    [Theory]
+    [MemberData(nameof(SettledRuns))]
+    public void RanClean_JudgesASettledRun(object outcome, object correction, bool pullRequestMissing, bool expected)
     {
-        Assert.True(AutopilotRunReliability.RanClean(Clean("a")));
-    }
+        var record = Record("a", (AutopilotPlanPhase)outcome, Step((AutopilotCorrectionKind)correction))
+            with { PullRequestMissing = pullRequestMissing };
 
-    [Fact]
-    public void RanClean_MergeReady_WithACorrection_IsFalse()
-    {
-        Assert.False(AutopilotRunReliability.RanClean(CorrectedButMergeReady("a")));
-    }
-
-    [Fact]
-    public void RanClean_Blocked_IsFalse()
-    {
-        Assert.False(AutopilotRunReliability.RanClean(Blocked("a")));
-    }
-
-    [Fact]
-    public void RanClean_Stopped_IsFalse()
-    {
-        Assert.False(AutopilotRunReliability.RanClean(Stopped("a")));
-    }
-
-    [Fact]
-    public void RanClean_MergeReady_ButPullRequestMissing_IsFalse()
-    {
-        // AC-347: every step ran clean, but the run could not open its PR — it still needs a human, so it is not clean.
-        Assert.False(AutopilotRunReliability.RanClean(MergeReadyWithoutPullRequest("a")));
+        Assert.Equal(expected, AutopilotRunReliability.RanClean(record));
     }
 
     [Fact]
     public void RanClean_MergeReady_WithOneCorrectedStepAmongSeveralClean_IsFalse()
     {
-        // Every existing fixture before this test had exactly one step, so All(...) and Any(...) agreed by accident.
-        // Two steps — one clean, one not — is the only way to tell them apart: All requires every step clean (correct,
-        // false here); Any would already be satisfied by the one clean step and wrongly report true.
+        // Every fixture above has exactly one step, so All(...) and Any(...) agree by accident. Two steps — one clean,
+        // one not — is the only way to tell them apart: All requires every step clean (correct, false here); Any would
+        // already be satisfied by the one clean step and wrongly report true.
         var record = Record("a", AutopilotPlanPhase.MergeReady, Step(AutopilotCorrectionKind.ReviewFinding), Step());
 
         Assert.False(AutopilotRunReliability.RanClean(record));
-    }
-
-    [Fact]
-    public void Summarize_PullRequestMissing_BreaksTheStreak()
-    {
-        var records = new[] { Clean("newest"), MergeReadyWithoutPullRequest("second"), Clean("oldest") };
-
-        var summary = AutopilotRunReliability.Summarize(records);
-
-        Assert.Equal(1, summary.Streak);
-        Assert.Equal(2, summary.CleanRuns);
-        Assert.Equal(3, summary.ConsideredRuns);
-    }
-
-    [Fact]
-    public void Summarize_AllClean_StreakEqualsConsideredRuns()
-    {
-        var records = new[] { Clean("newest"), Clean("middle"), Clean("oldest") };
-
-        var summary = AutopilotRunReliability.Summarize(records);
-
-        Assert.Equal(3, summary.Streak);
-        Assert.Equal(3, summary.CleanRuns);
-        Assert.Equal(3, summary.ConsideredRuns);
     }
 
     [Fact]
@@ -101,30 +60,22 @@ public class AutopilotRunReliabilityTests
         Assert.Equal(4, summary.ConsideredRuns);
     }
 
-    [Fact]
-    public void Summarize_MoreRunsThanTheWindow_ConsidersOnlyTheNewestWindow()
+    [Theory]
+    // A run outside the window from the front cannot affect it: the whole window is clean, so streak, clean count and
+    // considered count all equal the window.
+    [InlineData(10, 5, 5, 5, 5)]
+    // A run inside the window bounds all three: the streak stops at it, and it is the one non-clean run counted.
+    [InlineData(3, 10, 3, 9, 10)]
+    public void Summarize_ConsidersOnlyTheNewestWindow(int blockedIndex, int window, int streak, int cleanRuns, int consideredRuns)
     {
         var records = Enumerable.Range(0, 25).Select(i => Clean($"run-{i}")).ToList();
-        records[10] = Blocked("run-10"); // outside a 5-run window from the front, so it must not affect that window
+        records[blockedIndex] = Blocked($"run-{blockedIndex}");
 
-        var summary = AutopilotRunReliability.Summarize(records, window: 5);
+        var summary = AutopilotRunReliability.Summarize(records, window);
 
-        Assert.Equal(5, summary.Streak);
-        Assert.Equal(5, summary.CleanRuns);
-        Assert.Equal(5, summary.ConsideredRuns);
-    }
-
-    [Fact]
-    public void Summarize_TheNonCleanRunWithinTheWindow_BoundsTheStreakAndTheCount()
-    {
-        var records = Enumerable.Range(0, 25).Select(i => Clean($"run-{i}")).ToList();
-        records[3] = Blocked("run-3"); // inside a 10-run window from the front
-
-        var summary = AutopilotRunReliability.Summarize(records, window: 10);
-
-        Assert.Equal(3, summary.Streak);
-        Assert.Equal(9, summary.CleanRuns);
-        Assert.Equal(10, summary.ConsideredRuns);
+        Assert.Equal(streak, summary.Streak);
+        Assert.Equal(cleanRuns, summary.CleanRuns);
+        Assert.Equal(consideredRuns, summary.ConsideredRuns);
     }
 
     [Fact]

@@ -86,77 +86,31 @@ public class DepotSettingsControlTests
         _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
     }
 
-    // Two rows saved under the same name would leave the registry unable to tell them apart, so Save()
-    // refuses the whole batch rather than keep one and drop the other (mirrors McpServersViewModel.Save).
-    [Fact]
-    public void Save_TwoRowsWithTheSameName_RefusesTheWholeSave_AndWritesNothing()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage());
-        var view = new DepotSettingsControl(host, settings);
-        _AddRow(view);
-        _SetRowFields(view, index: 0, name: "Work", url: "https://first.example.com");
-        _SetRowFields(view, index: 1, name: "Work", url: "https://second.example.com");
-
-        var saved = _Save(view);
-
-        Assert.False(saved);
-        Assert.Empty(settings.Connections);
-    }
-
+    [Theory]
+    // Two rows saved under the same name would leave the registry unable to tell them apart, so Save() refuses the
+    // whole batch rather than keep one and drop the other (mirrors McpServersViewModel.Save).
+    [InlineData("Work", "https://first.example.com", "Work", "https://second.example.com")]
     // Case-insensitive on purpose: ProjectMemorySourceRegistration.Register refuses a colliding scheme
-    // case-insensitively, so "Work"/"work" would collide there even though McpServerName used to let
-    // them through as two distinct entries.
-    [Fact]
-    public void Save_TwoRowsWithNamesDifferingOnlyByCase_RefusesTheWholeSave_AndWritesNothing()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage());
-        var view = new DepotSettingsControl(host, settings);
-        _AddRow(view);
-        _SetRowFields(view, index: 0, name: "Work", url: "https://first.example.com");
-        _SetRowFields(view, index: 1, name: "work", url: "https://second.example.com");
-
-        var saved = _Save(view);
-
-        Assert.False(saved);
-        Assert.Empty(settings.Connections);
-    }
-
+    // case-insensitively, so "Work"/"work" would collide there even though McpServerName used to let them through
+    // as two distinct entries.
+    [InlineData("Work", "https://first.example.com", "work", "https://second.example.com")]
     // AC-248: two rows named differently but pointed at the same instance would otherwise both register a shared-
     // project source for it, so an operator setting up a second connection to an instance they already added finds
     // a duplicate instead of the one already there — refused the same way a name collision is.
-    [Fact]
-    public void Save_TwoRowsWithTheSameUrl_RefusesTheWholeSave_AndWritesNothing()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
-        var settings = new DepotSettings(new FakePluginStorage());
-        var view = new DepotSettingsControl(host, settings);
-        _AddRow(view);
-        _SetRowFields(view, index: 0, name: "Work", url: "https://depot.example.com");
-        _SetRowFields(view, index: 1, name: "Work (personal)", url: "https://depot.example.com");
-
-        var saved = _Save(view);
-
-        Assert.False(saved);
-        Assert.Empty(settings.Connections);
-    }
-
+    [InlineData("Work", "https://depot.example.com", "Work (personal)", "https://depot.example.com")]
     // Normalize strips a trailing /mcp and slash (AC-499) — two rows pasting the documented endpoint and the bare
     // origin for the same instance must collide too, not just a byte-identical pair of URLs.
-    [Fact]
-    public void Save_TwoRowsWithTheSameUrl_DifferingOnlyByATrailingMcpSegment_RefusesTheWholeSave()
+    [InlineData("Work", "https://depot.example.com/mcp", "Work (personal)", "https://depot.example.com/")]
+    public void Save_TwoRowsThatWouldCollide_RefusesTheWholeSave_AndWritesNothing(
+        string firstName, string firstUrl, string secondName, string secondUrl)
     {
         var host = Substitute.For<ICockpitHost>();
         host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
         var settings = new DepotSettings(new FakePluginStorage());
         var view = new DepotSettingsControl(host, settings);
         _AddRow(view);
-        _SetRowFields(view, index: 0, name: "Work", url: "https://depot.example.com/mcp");
-        _SetRowFields(view, index: 1, name: "Work (personal)", url: "https://depot.example.com/");
+        _SetRowFields(view, index: 0, name: firstName, url: firstUrl);
+        _SetRowFields(view, index: 1, name: secondName, url: secondUrl);
 
         var saved = _Save(view);
 

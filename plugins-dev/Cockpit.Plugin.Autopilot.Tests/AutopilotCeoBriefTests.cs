@@ -6,72 +6,132 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 // The CEO planning brief (AC-174): it states the goal, points the CEO at the plan-emit tool, and adapts to whether the
 // run was triggered from a source item or started CEO-first. Kept a pure builder off the workspace body so its wording
 // is tested without a live session.
+//
+// The brief is one string built from one builder, so "the brief says X" is one behaviour with many values — the
+// instruction blocks are rows, not methods. Each row is a phrase set the brief must carry and one it must not; the
+// pairing is what keeps a row honest, since an instruction that is present but also contradicted elsewhere would pass
+// a presence-only assertion.
 public class AutopilotCeoBriefTests
 {
-    [Fact]
-    public void For_ATriggeredRun_NamesTheSourceItemTheGoalAndThePlanTool()
+    // Every row below is measured against the same plainest possible plan: CEO-first, no roster, no identity, default
+    // cost strategy. That is deliberate — these instructions are unconditional, so the barest brief is where their
+    // absence would show first.
+    public static IEnumerable<object[]> UnconditionalInstructions() =>
+    [
+        // The execution-fit instruction: it steers an EXECUTING step onto a model that can carry it and off the
+        // lightest option chosen merely because it is free — and prescribes no brand while doing it.
+        [
+            new[]
+            {
+                "EXECUTING step",
+                "put an executing coding step on the lightest option merely because it is free",
+                "genuinely do it",
+            },
+            new[] { "Claude", "qwen" },
+        ],
+        // The CEO is told to write each step's brief so a light model executes it without interpreting or asking — the
+        // second half of the fix (a sharper brief lets a cheaper model succeed).
+        [
+            new[]
+            {
+                "glass-clear, imperative, fully self-sufficient instruction",
+                "committed in the worktree",
+                "even a light model builds it rather than \"analysing\" it",
+                "cheapest-adequate model reinforce each other",
+            },
+            Array.Empty<string>(),
+        ],
+        // AC-197: the CEO is steered to scope-first, targeted search tools and the project graph/index, and away from
+        // repeated whole-repo `bash grep -rn` sweeps that burn tokens.
+        [
+            new[] { "scope first", "Grep, Glob, Read", "graph/index", "bash grep -rn" },
+            Array.Empty<string>(),
+        ],
+        // AC-433: each round is asserted with the scope it owns, in one span — asserting descriptions and scopes
+        // separately would stay green with the scopes swapped. The "narrow round's regression is caught by the full
+        // one" sentence is pinned too: it is the ticket's fourth criterion, the reason the cheap half is safe at all.
+        [
+            new[]
+            {
+                "only that last round carries the verdict",
+                "A round that ends with findings verifies narrowly: build incrementally and run the tests covering the changed area",
+                "The round that ends clean verifies fully: build the whole project from scratch with warnings treated as errors, and run the complete test suite",
+                "broke something outside its own test selection is caught exactly there",
+            },
+            Array.Empty<string>(),
+        ],
+        // The reporting duty is the half that stops the split from being indistinguishable from quietly weakening the
+        // gate. What is pinned is what the brief asks for, not that a report is enforced — nothing in the plugin
+        // captures a round's real scope; the acceptance is where it lands so the CEO validator has something to judge.
+        [
+            new[]
+            {
+                "have every round report what it actually built and ran",
+                "in the gate's acceptance",
+                "a gate passes only when its final round verified the whole project",
+            },
+            Array.Empty<string>(),
+        ],
+        // With no roster and no identity passed, those two blocks stay out — while the cost guidance, which is
+        // unconditional, still stands.
+        [
+            new[] { "lean cheap" },
+            new[] { "Profiles you can assign steps to", "your identity for this run" },
+        ],
+        // A CEO-first run has no source issue, so neither the tracker read invitation nor the write guardrail belongs —
+        // the whole tracker paragraph stays out.
+        [
+            Array.Empty<string>(),
+            new[] { "READ the tracker", "Do NOT move the issue's stage" },
+        ],
+    ];
+
+    [Theory]
+    [MemberData(nameof(UnconditionalInstructions))]
+    public void For_TheBarestPlan_CarriesItsUnconditionalInstructions(string[] present, string[] absent)
     {
-        var plan = new AutopilotPlan(
-            "Ship reading levels in the chat view",
-            new AutopilotPlanSource("youtrack", "AC-138", "Reading levels"),
-            []);
-
-        var brief = AutopilotCeoBrief.For(plan);
-
-        Assert.Contains("Ship reading levels in the chat view", brief);
-        Assert.Contains("youtrack AC-138", brief);
-        Assert.Contains("Reading levels", brief);
-        Assert.Contains(AutopilotPlanTools.QualifiedToolName, brief);
-    }
-
-    [Fact]
-    public void For_ATriggeredRun_TellsTheCeoToReadTheTracker_ButNotToWriteToItWhilePlanning()
-    {
-        // AC-212 read/write split: planning may READ the tracker but must NOT move stage or post notes — that is
-        // the run's job (CEO validator + coordinator auto-advance, AC-202). The write tools live on the run-only
-        // CEO endpoint and must never be named in the planning brief, or the CEO reports missing tools while planning.
-        var plan = new AutopilotPlan(
-            "Ship reading levels in the chat view",
-            new AutopilotPlanSource("youtrack", "AC-138", "Reading levels"),
-            []);
-
-        var brief = AutopilotCeoBrief.For(plan);
-
-        // Reads are invited.
-        Assert.Contains("READ the tracker", brief);
-        Assert.Contains("child issues", brief);
-        Assert.Contains("parent for", brief);
-        // Writes are forbidden while planning — the guardrail, not the tool names.
-        Assert.Contains("Do NOT move the issue's stage or post notes", brief);
-        Assert.DoesNotContain("autopilot_tracker_stage", brief);
-        Assert.DoesNotContain("autopilot_tracker_note", brief);
-    }
-
-    [Fact]
-    public void For_ACeoFirstRun_HasNoTrackerReadOrWriteGuidance()
-    {
-        // A CEO-first run has no source issue, so neither the read invitation nor the write guardrail belongs — the whole
-        // tracker paragraph stays out.
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
 
-        var brief = AutopilotCeoBrief.For(plan);
+        var brief = _Unwrapped(AutopilotCeoBrief.For(plan));
 
-        Assert.DoesNotContain("READ the tracker", brief);
-        Assert.DoesNotContain("Do NOT move the issue's stage", brief);
+        Assert.All(present, phrase => Assert.Contains(phrase, brief));
+        Assert.All(absent, phrase => Assert.DoesNotContain(phrase, brief));
     }
 
-    [Fact]
-    public void For_ATriggeredRun_SurfacesTheIssueDescription_SoTheCeoDraftsFromWhatItAsks()
+    // A tracker-triggered plan. AC-212's read/write split lives here: planning may READ the tracker but must NOT move
+    // stage or post notes — that is the run's job (CEO validator + coordinator auto-advance, AC-202). The write tools
+    // live on the run-only CEO endpoint and must never be named in the planning brief, or the CEO reports missing
+    // tools while planning.
+    public static IEnumerable<object[]> TriggeredRunInstructions() =>
+    [
+        [
+            new[] { "Ship reading levels in the chat view", "youtrack AC-138", "Reading levels", AutopilotPlanTools.QualifiedToolName },
+            Array.Empty<string>(),
+        ],
+        [
+            new[] { "READ the tracker", "child issues", "parent for", "Do NOT move the issue's stage or post notes" },
+            new[] { "autopilot_tracker_stage", "autopilot_tracker_note" },
+        ],
+        // The issue's own description rides along, so the CEO drafts from what the issue asks for.
+        [
+            new[] { "What the issue asks for", "Add Developer/Focus/Simple reading levels to the SDK chat view." },
+            Array.Empty<string>(),
+        ],
+    ];
+
+    [Theory]
+    [MemberData(nameof(TriggeredRunInstructions))]
+    public void For_ATriggeredRun_NamesItsSourceAndTheTrackerReadWriteSplit(string[] present, string[] absent)
     {
         var plan = new AutopilotPlan(
             "Ship reading levels in the chat view",
             new AutopilotPlanSource("youtrack", "AC-138", "Reading levels", "Add Developer/Focus/Simple reading levels to the SDK chat view."),
             []);
 
-        var brief = AutopilotCeoBrief.For(plan);
+        var brief = _Unwrapped(AutopilotCeoBrief.For(plan));
 
-        Assert.Contains("What the issue asks for", brief);
-        Assert.Contains("Add Developer/Focus/Simple reading levels to the SDK chat view.", brief);
+        Assert.All(present, phrase => Assert.Contains(phrase, brief));
+        Assert.All(absent, phrase => Assert.DoesNotContain(phrase, brief));
     }
 
     [Fact]
@@ -92,33 +152,36 @@ public class AutopilotCeoBriefTests
         Assert.Equal("mcp__cockpit-autopilot-plan__autopilot_plan", AutopilotPlanTools.QualifiedToolName);
     }
 
-    [Fact]
-    public void For_WithProfiles_ListsEachWithItsCostNature_AndTellsTheCeoToChooseCostAware()
-    {
-        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
-        var profiles = new[]
-        {
-            new PluginProfileInfo("Claude", "Plugin", string.Empty) { ModelSuggestions = ["opus", "sonnet"] },
-            new PluginProfileInfo("Qwen (local)", "Ollama", string.Empty) { RunsLocally = true },
-        };
+    public static IEnumerable<object[]> RosterInstructions() =>
+    [
+        // Each profile is listed with its cost nature and whatever model options the provider declared, and the
+        // cost-aware selection instruction reads off that: default cheap/local, reserve a paid model for the steps
+        // that need it, and say why.
+        [
+            new[]
+            {
+                "Qwen (local)", "runs locally, free", "Claude", "hosted API, paid", "opus, sonnet",
+                "lean cheap", "local, free", "paid, hosted model", "say in the brief why",
+            },
+            Array.Empty<string>(),
+        ],
+        // The roster teaches the CEO how to read the signals it has — local-vs-paid, and whatever the provider itself
+        // declared about its models. It used to assert an order over the model names on top of that, which was the
+        // reverse of the list it described (AC-256); these profiles declare no ranking, so it must claim none.
+        [
+            new[]
+            {
+                "in no particular order",
+                "a local profile is usually a lighter model that can stall on a demanding step",
+                "the cheapest option that can actually carry the step to a finished, committed result",
+            },
+            new[] { "lighter/cheaper to heavier/more capable" },
+        ],
+    ];
 
-        var brief = AutopilotCeoBrief.For(plan, profiles);
-
-        Assert.Contains("Qwen (local)", brief);
-        Assert.Contains("runs locally, free", brief);
-        Assert.Contains("Claude", brief);
-        Assert.Contains("hosted API, paid", brief);
-        // The suggestions ride along so the CEO knows a profile's model options.
-        Assert.Contains("opus, sonnet", brief);
-        // The cost-aware selection instruction: default cheap/local, reserve a paid model for steps that need it.
-        Assert.Contains("lean cheap", brief);
-        Assert.Contains("local, free", brief);
-        Assert.Contains("paid, hosted model", brief);
-        Assert.Contains("say in the brief why", brief);
-    }
-
-    [Fact]
-    public void For_WithProfiles_ExplainsALocalProfileMayStall_AndToPickCheapestThatCanCarryTheStep()
+    [Theory]
+    [MemberData(nameof(RosterInstructions))]
+    public void For_WithProfiles_ListsThemWithTheirCostNature_AndTeachesHowToChoose(string[] present, string[] absent)
     {
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
         var profiles = new[]
@@ -127,58 +190,35 @@ public class AutopilotCeoBriefTests
             new PluginProfileInfo("Qwen (local)", "Ollama", string.Empty) { RunsLocally = true },
         };
 
-        var brief = AutopilotCeoBrief.For(plan, profiles);
+        var brief = _Unwrapped(AutopilotCeoBrief.For(plan, profiles));
 
-        // The roster teaches the CEO how to read the signals it has — local-vs-paid, and whatever the provider itself
-        // declared about its models. It used to assert an order over the model names on top of that, which was the
-        // reverse of the list it described (AC-256); these profiles declare no ranking, so it must claim none.
-        Assert.DoesNotContain("lighter/cheaper to heavier/more capable", brief);
-        Assert.Contains("in no particular order", brief);
-        Assert.Contains("a local profile is usually a lighter model that can stall on a demanding step", brief);
-        Assert.Contains("the cheapest option that can actually carry the step to a finished, committed result", brief);
+        Assert.All(present, phrase => Assert.Contains(phrase, brief));
+        Assert.All(absent, phrase => Assert.DoesNotContain(phrase, brief));
     }
 
-    [Fact]
-    public void For_InstructsExecutingStepsGetACapableModel_NotTheLightestJustBecauseItIsFree()
+    // The operator's cost steer, per strategy. The enum is internal, so the rows box it and the test casts it back —
+    // the signature stays clean and each case is still discovered and reported under its own enum name.
+    public static IEnumerable<object[]> CostStrategies() =>
+    [
+        [AutopilotCostStrategy.CostFirst, "Cost comes first"],
+        [AutopilotCostStrategy.QualityFirst, "Quality comes first"],
+        [AutopilotCostStrategy.Balanced, "lean cheap"],
+    ];
+
+    [Theory]
+    [MemberData(nameof(CostStrategies))]
+    public void For_CostStrategy_TunesTheModelChoiceInstruction(object costStrategy, string instruction)
     {
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
 
-        var brief = AutopilotCeoBrief.For(plan);
-
-        // The execution-fit instruction is unconditional (present even without a roster) and provider-neutral — it steers
-        // an EXECUTING step onto a model that can carry it, and off the lightest option chosen merely because it is free.
-        Assert.Contains("EXECUTING step", brief);
-        Assert.Contains("put an executing coding step on the lightest option merely because it is free", brief);
-        Assert.Contains("genuinely do it", brief);
-        // Provider-neutral: no brand is prescribed anywhere in the brief.
-        Assert.DoesNotContain("Claude", brief);
-        Assert.DoesNotContain("qwen", brief);
+        Assert.Contains(instruction, AutopilotCeoBrief.For(plan, costStrategy: (AutopilotCostStrategy)costStrategy));
     }
 
     [Fact]
-    public void For_InstructsTheCeoToWriteClearImperativeSelfSufficientBriefs_ThatNameCommitAndTests()
+    public void For_WithNoCostStrategy_DefaultsToBalanced()
     {
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
 
-        var brief = AutopilotCeoBrief.For(plan);
-
-        // The CEO is told to write each step's brief so a light model executes it without interpreting or asking — the
-        // second half of the fix (a sharper brief lets a cheaper model succeed).
-        Assert.Contains("glass-clear, imperative, fully self-sufficient instruction", brief);
-        Assert.Contains("committed in the worktree", brief);
-        Assert.Contains("even a light model builds it rather than \"analysing\" it", brief);
-        Assert.Contains("cheapest-adequate model reinforce each other", brief);
-    }
-
-    [Fact]
-    public void For_CostStrategy_TunesTheModelChoiceInstruction()
-    {
-        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
-
-        Assert.Contains("Cost comes first", AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.CostFirst));
-        Assert.Contains("Quality comes first", AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.QualityFirst));
-        Assert.Contains("lean cheap", AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.Balanced));
-        // The default is Balanced when no strategy is passed.
         Assert.Contains("lean cheap", AutopilotCeoBrief.For(plan));
     }
 
@@ -193,79 +233,25 @@ public class AutopilotCeoBriefTests
         Assert.Contains("your identity for this run", brief);
     }
 
-    [Fact]
-    public void For_TellsTheCeoToSearchDeliberately_ScopeFirst_NotSweepTheWholeRepo()
-    {
-        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+    // The epic gate. The start gate only sees the item the operator clicked; an epic's children are pulled in later,
+    // inside this round. Without the stage sentence the plan quietly executes backlog items on their parent's ticket —
+    // and with the gate off the brief still refuses to fold in a brainstorm child.
+    public static IEnumerable<object[]> EpicGates() =>
+    [
+        ["Ready", new[] { "Take in only the children", "\"Ready\"", "[Brainstorm]" }, Array.Empty<string>()],
+        [null!, new[] { "[Brainstorm]" }, new[] { "Take in only the children" }],
+    ];
 
-        var brief = AutopilotCeoBrief.For(plan);
-
-        // AC-197: the CEO is steered to scope-first, targeted search tools and the project graph/index, and away from
-        // repeated whole-repo `bash grep -rn` sweeps that burn tokens.
-        Assert.Contains("scope first", brief);
-        Assert.Contains("Grep, Glob, Read", brief);
-        Assert.Contains("graph/index", brief);
-        Assert.Contains("bash grep -rn", brief);
-    }
-
-    [Fact]
-    public void For_WithAnExecutableStage_HoldsAnEpicsChildrenToTheSameBarAsItsParent()
-    {
-        // The start gate only sees the item the operator clicked; an epic's children are pulled in later, inside this
-        // round. Without this the plan quietly executes backlog items on their parent's ticket.
-        var plan = AutopilotPlan.Empty(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), goal: "Work the epic");
-
-        var brief = AutopilotCeoBrief.For(plan, executableStage: "Ready");
-
-        Assert.Contains("Take in only the children", brief);
-        Assert.Contains("\"Ready\"", brief);
-        Assert.Contains("[Brainstorm]", brief);
-    }
-
-    [Fact]
-    public void For_WithTheGateOff_StillRefusesToFoldInABrainstormChild()
+    [Theory]
+    [MemberData(nameof(EpicGates))]
+    public void For_AnEpic_HoldsItsChildrenToTheExecutableStage(string? executableStage, string[] present, string[] absent)
     {
         var plan = AutopilotPlan.Empty(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), goal: "Work the epic");
 
-        var brief = AutopilotCeoBrief.For(plan, executableStage: null);
+        var brief = AutopilotCeoBrief.For(plan, executableStage: executableStage);
 
-        Assert.DoesNotContain("Take in only the children", brief);
-        Assert.Contains("[Brainstorm]", brief);
-    }
-
-    [Fact]
-    public void For_SplitsAReviewGatesVerification_NarrowWhileFixing_FullOnTheRoundThatFindsNothing()
-    {
-        // AC-433: each round is asserted with the scope it owns, in one span — asserting descriptions and scopes
-        // separately would stay green with the scopes swapped. The "narrow round's regression is caught by the full
-        // one" sentence is pinned too: it is the ticket's fourth criterion, the reason the cheap half is safe at all.
-        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
-
-        var brief = _Unwrapped(AutopilotCeoBrief.For(plan));
-
-        Assert.Contains("only that last round carries the verdict", brief);
-        Assert.Contains(
-            "A round that ends with findings verifies narrowly: build incrementally and run the tests covering the changed area",
-            brief);
-        Assert.Contains(
-            "The round that ends clean verifies fully: build the whole project from scratch with warnings treated as errors, and run the complete test suite",
-            brief);
-        Assert.Contains("broke something outside its own test selection is caught exactly there", brief);
-    }
-
-    [Fact]
-    public void For_AsksEachRoundToReportItsScope_AndToPutTheSameInTheGatesAcceptance()
-    {
-        // The reporting duty is the half that stops this from being indistinguishable from quietly weakening the gate.
-        // What is pinned here is what the brief asks for, not that a report is enforced — nothing in the plugin captures
-        // a round's real scope; the acceptance is where it lands so the CEO validator has something to judge against.
-        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
-
-        var brief = _Unwrapped(AutopilotCeoBrief.For(plan));
-
-        Assert.Contains("have every round report what it actually built and ran", brief);
-        Assert.Contains("in the gate's acceptance", brief);
-        Assert.Contains("a gate passes only when its final round verified the whole project", brief);
+        Assert.All(present, phrase => Assert.Contains(phrase, brief));
+        Assert.All(absent, phrase => Assert.DoesNotContain(phrase, brief));
     }
 
     [Fact]
@@ -285,19 +271,6 @@ public class AutopilotCeoBriefTests
         Assert.DoesNotContain("msbuild", brief);
         Assert.DoesNotContain("npm", brief);
         Assert.DoesNotContain("gradle", brief);
-    }
-
-    [Fact]
-    public void For_WithNoProfilesOrIdentity_OmitsTheRosterAndIdentityLine()
-    {
-        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
-
-        var brief = AutopilotCeoBrief.For(plan);
-
-        Assert.DoesNotContain("Profiles you can assign steps to", brief);
-        Assert.DoesNotContain("your identity for this run", brief);
-        // The cost guidance is unconditional — it stands even with no roster passed.
-        Assert.Contains("lean cheap", brief);
     }
 
     // The brief is a wrapped raw string literal, so a sentence in it is broken by a newline and indentation wherever it

@@ -48,16 +48,7 @@ public class ArgoApplicationSummaryTests
         Assert.Equal("Healthy", app["health"]!.GetValue<string>());
         Assert.Equal("Helm", app["sourceType"]!.GetValue<string>());
         Assert.Equal(0, app["outOfSyncCount"]!.GetValue<int>());
-    }
-
-    [Fact]
-    public void SummarizeList_AbbreviatesLongRevisions_ButLeavesShortOnesAlone()
-    {
-        var list = KubernetesJson.Deserialize<RawKubernetesList>(
-            """{"apiVersion":"argoproj.io/v1alpha1","kind":"ApplicationList","items":[""" + HealthyApp + "]}");
-
-        var app = (ArgoApplicationSummary.SummarizeList(list) as JsonObject)!["applications"]![0]!;
-
+        // A full commit sha is abbreviated, since the summary exists to stay small (criterion 3 below).
         Assert.Equal("a1b2c3d", app["revision"]!.GetValue<string>());
     }
 

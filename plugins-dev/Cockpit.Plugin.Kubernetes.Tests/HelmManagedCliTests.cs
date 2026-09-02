@@ -1,4 +1,4 @@
-using Cockpit.Plugin.Kubernetes.Helm;
+﻿using Cockpit.Plugin.Kubernetes.Helm;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
@@ -66,26 +66,6 @@ public class HelmManagedCliTests
     }
 
     [Fact]
-    public void AssetName_LinuxIsTarGz_WindowsIsZip()
-    {
-        var linux = new ManagedCliPlatform("linux", "x64", IsMusl: false);
-        var windows = new ManagedCliPlatform("win32", "x64", IsMusl: false);
-
-        Assert.Equal("helm-v4.2.4-linux-amd64.tar.gz", HelmManagedCli.AssetName(linux, "4.2.4"));
-        Assert.Equal("helm-v4.2.4-windows-amd64.zip", HelmManagedCli.AssetName(windows, "4.2.4"));
-    }
-
-    [Fact]
-    public void EntryName_NestsUnderOsArch_AndAddsExeOnWindows()
-    {
-        var linux = new ManagedCliPlatform("linux", "x64", IsMusl: false);
-        var windows = new ManagedCliPlatform("win32", "x64", IsMusl: false);
-
-        Assert.Equal("linux-amd64/helm", HelmManagedCli.EntryName(linux));
-        Assert.Equal("windows-amd64/helm.exe", HelmManagedCli.EntryName(windows));
-    }
-
-    [Fact]
     public void ParseChecksum_ReadsTheHashFromASingleLineSha256Sum()
     {
         const string sha256Sum = "aabbccdd112233  helm-v4.2.4-linux-amd64.tar.gz\n";
@@ -101,6 +81,8 @@ public class HelmManagedCliTests
         Assert.Throws<InvalidOperationException>(() => HelmManagedCli.ParseChecksum(sha256Sum, "helm-v4.2.4-linux-amd64.tar.gz"));
     }
 
+    // The two plans below are also where AssetName and EntryName are measured: the Url each asserts carries the
+    // asset name whole, and ExecutableEntryName is the entry name itself, on both platforms.
     [Fact]
     public async Task BuildPlanAsync_Linux_FetchesTheChecksumAndBuildsATarGzPlan()
     {

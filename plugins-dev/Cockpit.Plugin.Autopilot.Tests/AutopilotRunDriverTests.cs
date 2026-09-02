@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.Autopilot.Tests;
+﻿namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The AC-174 run driver's bounded loop: steps run in order, a failed step reworks up to the cap and then settles,
 // a hard failure blocks the run, and a throwing step is a failed attempt rather than a crashed run. AC-347: also
@@ -80,27 +80,34 @@ public class AutopilotRunDriverTests
         Assert.Equal(0, controller.Plan!.Steps[0].Reworks);
     }
 
-    [Fact]
-    public async Task RunAsync_AFaultedAttempt_ThenPassed_CountsTheAttemptButNotARework_AndClassifiesAsRunRestart()
+    // AC-347, both ways a first attempt can end short of a pass. `Faulted` never reached a verdict, so it costs an
+    // attempt and no rework — the exact shape `Classify` reads as a run restart. `Rejected` DID reach one: the CEO
+    // judged the work and turned it down, which is a review finding. Proven by running the actual driver loop rather
+    // than calling Classify with a hand-picked state.
+    public static IEnumerable<object[]> FirstAttemptOutcomes() =>
+    [
+        [AutopilotStepOutcome.Faulted, 0, AutopilotCorrectionKind.RunRestart],
+        [AutopilotStepOutcome.Rejected, 1, AutopilotCorrectionKind.ReviewFinding],
+    ];
+
+    [Theory]
+    [MemberData(nameof(FirstAttemptOutcomes))]
+    public async Task RunAsync_AFirstAttemptShortOfAPass_ThenPassed_CountsAReworkOnlyOnAVerdict(
+        object firstOutcome, int expectedReworks, object expectedCorrection)
     {
-        // AC-347: the first attempt never reached a verdict (stood in for by Faulted), the retry passes. Attempts
-        // must be 2 but Reworks must stay 0 — the exact shape `Classify` reads as a run restart, proven by running
-        // the actual driver loop rather than calling Classify with a hand-picked state.
         var controller = Approved(Step("1"));
-        var attempt = 0;
+        var outcomes = new Queue<AutopilotStepOutcome>([(AutopilotStepOutcome)firstOutcome, AutopilotStepOutcome.Passed]);
         var driver = new AutopilotRunDriver(controller, maxAttempts: 2);
 
-        await driver.RunAsync(_ =>
-        {
-            attempt++;
-            return Task.FromResult(attempt == 1 ? AutopilotStepOutcome.Faulted : AutopilotStepOutcome.Passed);
-        });
+        await driver.RunAsync(_ => Task.FromResult(outcomes.Dequeue()));
 
         var step = controller.Plan!.Steps[0];
         Assert.Equal(AutopilotStepStatus.Passed, step.Status);
         Assert.Equal(2, step.Attempts);
-        Assert.Equal(0, step.Reworks);
-        Assert.Equal(AutopilotCorrectionKind.RunRestart, AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks));
+        Assert.Equal(expectedReworks, step.Reworks);
+        Assert.Equal(
+            (AutopilotCorrectionKind)expectedCorrection,
+            AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks));
     }
 
     [Fact]
@@ -128,27 +135,5 @@ public class AutopilotRunDriverTests
         Assert.Equal(2, step.Attempts);
         Assert.Equal(0, step.Reworks);
         Assert.Equal(AutopilotCorrectionKind.RunRestart, AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks));
-    }
-
-    [Fact]
-    public async Task RunAsync_ARejectedAttempt_ThenPassed_CountsBothTheAttemptAndARework_AndClassifiesAsReviewFinding()
-    {
-        // The mirror image: the first attempt DID reach a verdict — the CEO judged it and turned it down — and the
-        // retry passes. Attempts is 2 and Reworks is 1, the shape Classify reads as a review finding.
-        var controller = Approved(Step("1"));
-        var attempt = 0;
-        var driver = new AutopilotRunDriver(controller, maxAttempts: 2);
-
-        await driver.RunAsync(_ =>
-        {
-            attempt++;
-            return Task.FromResult(attempt == 1 ? AutopilotStepOutcome.Rejected : AutopilotStepOutcome.Passed);
-        });
-
-        var step = controller.Plan!.Steps[0];
-        Assert.Equal(AutopilotStepStatus.Passed, step.Status);
-        Assert.Equal(2, step.Attempts);
-        Assert.Equal(1, step.Reworks);
-        Assert.Equal(AutopilotCorrectionKind.ReviewFinding, AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks));
     }
 }

@@ -1,4 +1,3 @@
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The run-picker origin suffix (AC-189, slice 3): two trackers both register "Bug fix" and "Feature", so the picker
@@ -14,40 +13,28 @@ public class AutopilotTemplateOptionLabelTests
         _ => null,
     };
 
-    [Fact]
-    public void PluginTemplate_UsesThePluginName_NotTheBareId()
+    [Theory]
+    [InlineData("youtrack", "Feature", "Feature · YouTrack")]
+    [InlineData("github-issues", "Feature", "Feature · GitHub Issues")]
+    // An owner the host does not know a readable name for keeps its bare id, so the suffix is never empty.
+    [InlineData("some.unknown.plugin", "Bug fix", "Bug fix · some.unknown.plugin")]
+    public void PluginTemplate_IsSuffixedWithThePluginName_FallingBackToTheOwnerId(string ownerId, string name, string expected)
     {
-        var youtrack = AutopilotTemplate.ForPlugin("youtrack", new("t1", "Feature", "body"));
-        var github = AutopilotTemplate.ForPlugin("github-issues", new("t2", "Feature", "body"));
+        var template = AutopilotTemplate.ForPlugin(ownerId, new("t1", name, "body"));
 
-        Assert.Equal("Feature · YouTrack", AutopilotTemplateOptionLabel.For(youtrack, PluginName));
-        Assert.Equal("Feature · GitHub Issues", AutopilotTemplateOptionLabel.For(github, PluginName));
+        Assert.Equal(expected, AutopilotTemplateOptionLabel.For(template, PluginName));
     }
 
     [Fact]
-    public void PluginTemplate_FallsBackToTheOwnerId_WhenTheNameIsUnknown()
+    public void ATemplateThatCameFromNoPlugin_CarriesItsOwnOriginWord()
     {
-        var template = AutopilotTemplate.ForPlugin("some.unknown.plugin", new("t", "Bug fix", "body"));
-
-        Assert.Equal("Bug fix · some.unknown.plugin", AutopilotTemplateOptionLabel.For(template, PluginName));
-    }
-
-    [Fact]
-    public void UserTemplate_IsLabelledYours()
-    {
-        var template = AutopilotTemplate.ForUser("u", "Bug fix", "body");
-
-        Assert.Equal("Yours", AutopilotTemplateOptionLabel.OriginLabel(template, PluginName));
-        Assert.Equal("Bug fix · Yours", AutopilotTemplateOptionLabel.For(template, PluginName));
-    }
-
-    [Fact]
-    public void BuiltinTemplate_IsLabelledBuiltIn()
-    {
-        var template = new AutopilotTemplate(
+        var mine = AutopilotTemplate.ForUser("u", "Bug fix", "body");
+        var builtin = new AutopilotTemplate(
             "b", "Bug fix", "body", AutopilotTemplateOrigin.Builtin, OwnerPluginId: null, Editable: true, Deletable: false);
 
-        Assert.Equal("Built-in", AutopilotTemplateOptionLabel.OriginLabel(template, PluginName));
-        Assert.Equal("Bug fix · Built-in", AutopilotTemplateOptionLabel.For(template, PluginName));
+        Assert.Equal("Yours", AutopilotTemplateOptionLabel.OriginLabel(mine, PluginName));
+        Assert.Equal("Bug fix · Yours", AutopilotTemplateOptionLabel.For(mine, PluginName));
+        Assert.Equal("Built-in", AutopilotTemplateOptionLabel.OriginLabel(builtin, PluginName));
+        Assert.Equal("Bug fix · Built-in", AutopilotTemplateOptionLabel.For(builtin, PluginName));
     }
 }

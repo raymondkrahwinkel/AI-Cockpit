@@ -9,8 +9,10 @@ namespace Cockpit.Plugin.Depot.Tests;
 public class DepotSettingsTests
 {
     [Fact]
-    public void Connections_LegacyUrlWithTrailingMcp_IsNormalizedOnRead()
+    public void Connections_LegacyUrlWithTrailingMcp_IsNormalizedOnRead_AndTheMigratedValueIsPersisted()
     {
+        // Read and write in one exercise on purpose: a migration that only fixed the value on the way out would
+        // keep re-running, and re-running is exactly what the third test below shows to be unsafe.
         var storage = new FakePluginStorage();
         storage.Set("connections", new List<DepotConnectionRegistration> { new("id-1", "Work", "https://depot.example.com/mcp") });
         var settings = new DepotSettings(storage);
@@ -18,19 +20,7 @@ public class DepotSettingsTests
         var url = settings.Connections.Single().Url;
 
         Assert.Equal("https://depot.example.com", url);
-    }
-
-    [Fact]
-    public void Connections_LegacyUrlWithTrailingMcp_PersistsTheMigratedValue()
-    {
-        var storage = new FakePluginStorage();
-        storage.Set("connections", new List<DepotConnectionRegistration> { new("id-1", "Work", "https://depot.example.com/mcp") });
-        var settings = new DepotSettings(storage);
-        _ = settings.Connections;
-
-        var storedDirectly = storage.Get<List<DepotConnectionRegistration>>("connections")!.Single();
-
-        Assert.Equal("https://depot.example.com", storedDirectly.Url);
+        Assert.Equal("https://depot.example.com", storage.Get<List<DepotConnectionRegistration>>("connections")!.Single().Url);
     }
 
     // The case that would break if migration ran on every read instead of exactly once: a base whose own

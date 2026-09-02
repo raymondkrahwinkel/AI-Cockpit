@@ -5,63 +5,37 @@ namespace Cockpit.Plugin.Kubernetes.Tests;
 
 // AC-576 phase 2: exercised against the exact tracking-id shape measured on a real cluster (2026-08-25),
 // `<app>:<group>/<kind>:<namespace>/<name>`, plus the instance-label fallback for pre-v3.3.2 tracking methods.
+// One resource shape per row: the detector reads one blob of metadata and answers which application owns it and
+// which signal said so, so the shapes are values of one behaviour rather than behaviours of their own. A null
+// expectation means the detector must claim nothing at all.
 public class ArgoManagedDetectorTests
 {
-    [Fact]
-    public void Detect_TrackingIdAnnotation_ReturnsTheOwningApplication()
-    {
-        var resource = JsonNode.Parse("""
-            {
-              "metadata": {
-                "annotations": { "argocd.argoproj.io/tracking-id": "cert-manager:apps/Deployment:system-secrets/cert-manager" }
-              }
-            }
-            """);
-
-        var argoManaged = ArgoManagedDetector.Detect(resource);
-
-        Assert.NotNull(argoManaged);
-        Assert.Equal("cert-manager", argoManaged!["application"]!.GetValue<string>());
-        Assert.Equal("tracking-id", argoManaged["source"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public void Detect_NoTrackingId_FallsBackToInstanceLabel()
-    {
-        var resource = JsonNode.Parse("""
-            { "metadata": { "labels": { "app.kubernetes.io/instance": "cert-manager" } } }
-            """);
-
-        var argoManaged = ArgoManagedDetector.Detect(resource);
-
-        Assert.NotNull(argoManaged);
-        Assert.Equal("cert-manager", argoManaged!["application"]!.GetValue<string>());
-        Assert.Equal("instance-label", argoManaged["source"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public void Detect_TrackingIdPresent_PrefersItOverTheInstanceLabel()
-    {
-        var resource = JsonNode.Parse("""
+    public static IEnumerable<object[]> Resources() =>
+    [
+        [
+            """{ "metadata": { "annotations": { "argocd.argoproj.io/tracking-id": "cert-manager:apps/Deployment:system-secrets/cert-manager" } } }""",
+            "cert-manager", "tracking-id",
+        ],
+        [
+            """{ "metadata": { "labels": { "app.kubernetes.io/instance": "cert-manager" } } }""",
+            "cert-manager", "instance-label",
+        ],
+        // The tracking-id wins over the instance label whenever both are there.
+        [
+            """
             {
               "metadata": {
                 "labels": { "app.kubernetes.io/instance": "instance-label-app" },
                 "annotations": { "argocd.argoproj.io/tracking-id": "tracking-id-app:apps/Deployment:ns/name" }
               }
             }
-            """);
-
-        var argoManaged = ArgoManagedDetector.Detect(resource);
-
-        Assert.Equal("tracking-id-app", argoManaged!["application"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public void Detect_GenuineHelmReleaseWithInstanceLabelButNoTrackingId_ReturnsNull()
-    {
+            """,
+            "tracking-id-app", "tracking-id",
+        ],
         // AC-1068's mistake in reverse: app.kubernetes.io/instance is a generic recommended label most Helm
         // charts also set to the release name — a real Helm release must not be misread as Argo-owned.
-        var resource = JsonNode.Parse("""
+        [
+            """
             {
               "metadata": {
                 "labels": { "app.kubernetes.io/instance": "cert-manager" },
@@ -71,35 +45,32 @@ public class ArgoManagedDetectorTests
                 }
               }
             }
-            """);
-
-        Assert.Null(ArgoManagedDetector.Detect(resource));
-    }
-
-    [Fact]
-    public void Detect_InstanceLabelWithOnlyOneHelmAnnotation_StillFallsBackToInstanceLabel()
-    {
-        var resource = JsonNode.Parse("""
+            """,
+            null!, null!,
+        ],
+        // Half a Helm release is not one, so the instance-label fallback still applies.
+        [
+            """
             {
               "metadata": {
                 "labels": { "app.kubernetes.io/instance": "cert-manager" },
                 "annotations": { "meta.helm.sh/release-name": "cert-manager" }
               }
             }
-            """);
+            """,
+            "cert-manager", "instance-label",
+        ],
+        ["""{ "metadata": { "labels": { "app": "web" } } }""", null!, null!],
+        ["{}", null!, null!],
+    ];
 
-        Assert.NotNull(ArgoManagedDetector.Detect(resource));
-    }
-
-    [Fact]
-    public void Detect_NeitherPresent_ReturnsNull()
+    [Theory]
+    [MemberData(nameof(Resources))]
+    public void Detect_NamesTheOwningApplication_AndTheSignalThatSaidSo(string resource, string? application, string? source)
     {
-        var resource = JsonNode.Parse("""{ "metadata": { "labels": { "app": "web" } } }""");
+        var argoManaged = ArgoManagedDetector.Detect(JsonNode.Parse(resource));
 
-        Assert.Null(ArgoManagedDetector.Detect(resource));
+        Assert.Equal(application, argoManaged?["application"]?.GetValue<string>());
+        Assert.Equal(source, argoManaged?["source"]?.GetValue<string>());
     }
-
-    [Fact]
-    public void Detect_NoMetadata_ReturnsNull() =>
-        Assert.Null(ArgoManagedDetector.Detect(JsonNode.Parse("{}")));
 }

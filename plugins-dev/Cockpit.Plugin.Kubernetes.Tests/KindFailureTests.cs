@@ -5,53 +5,34 @@ namespace Cockpit.Plugin.Kubernetes.Tests;
 
 // Turning a failed kind run into an agent-facing message (AC-179), mirroring HelmFailureTests' shape: best-effort
 // stderr string-matching, with the raw stderr always attached so a wrong guess never hides the real reason.
+// `CliResult` is internal, so the rows box each result and the test casts it back once.
 public class KindFailureTests
 {
-    [Fact]
-    public void NotStarted_ReportsInstallInstructions()
+    public static IEnumerable<object[]> Failures() =>
+    [
+        [CliResult.NotStarted, new[] { "could not be started" }],
+        [CliResult.Timeout, new[] { "did not finish in time" }],
+        [
+            CliResult.Exited(1, string.Empty, "ERROR: failed to create cluster: node(s) already exist for a cluster with the name \"cockpit-ac179\""),
+            new[] { "already exists", "already exist for a cluster" },
+        ],
+        [
+            CliResult.Exited(1, string.Empty, "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"),
+            new[] { "container runtime" },
+        ],
+        // No guess fits, so the message says what kind did and hands over the stderr it was given.
+        [
+            CliResult.Exited(1, string.Empty, "some unexpected kind failure text"),
+            new[] { "exited 1", "some unexpected kind failure text" },
+        ],
+    ];
+
+    [Theory]
+    [MemberData(nameof(Failures))]
+    public void Describe_GuessesTheReason_AndNeverHidesWhatKindActuallySaid(object result, string[] expected)
     {
-        var message = KindFailure.Describe(CliResult.NotStarted, "kind");
+        var message = KindFailure.Describe((CliResult)result, "kind");
 
-        Assert.Contains("could not be started", message);
-    }
-
-    [Fact]
-    public void TimedOut_ReportsNothingWasApplied()
-    {
-        var message = KindFailure.Describe(CliResult.Timeout, "kind");
-
-        Assert.Contains("did not finish in time", message);
-    }
-
-    [Fact]
-    public void NameCollision_IsGuessedFromStderr()
-    {
-        var result = CliResult.Exited(1, string.Empty, "ERROR: failed to create cluster: node(s) already exist for a cluster with the name \"cockpit-ac179\"");
-
-        var message = KindFailure.Describe(result, "kind");
-
-        Assert.Contains("already exists", message);
-        Assert.Contains("already exist for a cluster", message);
-    }
-
-    [Fact]
-    public void NoContainerRuntime_IsGuessedFromStderr()
-    {
-        var result = CliResult.Exited(1, string.Empty, "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?");
-
-        var message = KindFailure.Describe(result, "kind");
-
-        Assert.Contains("container runtime", message);
-    }
-
-    [Fact]
-    public void UnrecognisedFailure_FallsBackToGenericGuessWithStderrTail()
-    {
-        var result = CliResult.Exited(1, string.Empty, "some unexpected kind failure text");
-
-        var message = KindFailure.Describe(result, "kind");
-
-        Assert.Contains("exited 1", message);
-        Assert.Contains("some unexpected kind failure text", message);
+        Assert.All(expected, fragment => Assert.Contains(fragment, message));
     }
 }

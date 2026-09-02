@@ -78,34 +78,29 @@ public class HelmReleaseSecretCodecTests
         Assert.Contains("release", error);
     }
 
-    [Fact]
-    public void TryDecode_CorruptBase64_FailsCleanly_NotAnException()
+    // Each layer of the encoding, broken in turn: the base64 Helm wrote, then the gzip inside it. Neither may
+    // throw, and neither may read garbage back as a release — the secret's own name has to reach the error so an
+    // operator knows which release could not be read.
+    public static IEnumerable<object[]> MalformedReleasePayloads() =>
+    [
+        ["not valid base64!!"u8.ToArray()],
+        [Encoding.ASCII.GetBytes(Convert.ToBase64String("hello"u8.ToArray()))],
+    ];
+
+    [Theory]
+    [MemberData(nameof(MalformedReleasePayloads))]
+    public void TryDecode_AMalformedReleasePayload_FailsCleanly_NotAnException(byte[] payload)
     {
         var secret = new V1Secret
         {
             Metadata = new V1ObjectMeta { Name = "sh.helm.release.v1.broken.v1" },
-            Data = new Dictionary<string, byte[]> { ["release"] = "not valid base64!!"u8.ToArray() },
+            Data = new Dictionary<string, byte[]> { ["release"] = payload },
         };
 
         var release = HelmReleaseSecretCodec.TryDecode(secret, out var error);
 
         Assert.Null(release);
         Assert.Contains("broken", error);
-    }
-
-    [Fact]
-    public void TryDecode_ValidBase64ButNotGzip_FailsCleanly_NotAnException()
-    {
-        var secret = new V1Secret
-        {
-            Metadata = new V1ObjectMeta { Name = "sh.helm.release.v1.broken.v1" },
-            Data = new Dictionary<string, byte[]> { ["release"] = Encoding.ASCII.GetBytes(Convert.ToBase64String("hello"u8.ToArray())) },
-        };
-
-        var release = HelmReleaseSecretCodec.TryDecode(secret, out var error);
-
-        Assert.Null(release);
-        Assert.NotNull(error);
     }
 
     // AC-1061 phase 5, §2c: `helm upgrade --output json` prints the same `release.Release` struct as JSON directly

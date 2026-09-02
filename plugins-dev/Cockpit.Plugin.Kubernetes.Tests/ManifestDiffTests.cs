@@ -50,7 +50,7 @@ public class ManifestDiffTests
         """;
 
     [Fact]
-    public void Compute_TheTraefikRollback_ShowsExactlyTheThreeArgumentLines()
+    public void Compute_TheTraefikRollback_ShowsExactlyTheThreeArgumentLines_AndNothingElse()
     {
         var diff = ManifestDiff.Compute(TraefikRevision7, TraefikRevision6);
 
@@ -59,23 +59,17 @@ public class ManifestDiffTests
         Assert.Equal("apps/v1 Deployment system-ingress/traefik", change.Document.Display);
         Assert.Equal(3, change.AddedLines);
         Assert.Equal(0, change.RemovedLines);
-        var added = change.Diff!.Split('\n').Where(line => line.StartsWith('+')).Select(line => line[1..].Trim()).ToList();
+
+        var lines = change.Diff!.Split('\n');
         Assert.Equal(
         [
             "- \"--certificatesresolvers.letsencrypt.acme.email=ops@example.com\"",
             "- \"--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json\"",
             "- \"--certificatesresolvers.letsencrypt.acme.tlschallenge=true\"",
-        ], added);
-    }
+        ], lines.Where(line => line.StartsWith('+')).Select(line => line[1..].Trim()));
 
-    [Fact]
-    public void Compute_OnlyTheChangedLinesAndTheirContextAreShown()
-    {
-        var diff = ManifestDiff.Compute(TraefikRevision7, TraefikRevision6);
-
-        // The document is 17 lines; a three-line change must read as three lines plus context, never as a rewrite.
-        var lines = Assert.Single(diff.Changes).Diff!.Split('\n');
-        Assert.Equal(3, lines.Count(line => line.StartsWith('+')));
+        // The document is 17 lines; a three-line change must read as three lines plus context, never as a rewrite —
+        // an operator approving a rollback has to see the change, not the whole file over again.
         Assert.DoesNotContain(lines, line => line.StartsWith('-'));
         Assert.True(lines.Length <= 9, $"expected a bounded hunk, got {lines.Length} lines");
     }

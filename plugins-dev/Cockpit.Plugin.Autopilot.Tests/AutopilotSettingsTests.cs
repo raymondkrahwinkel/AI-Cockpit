@@ -211,24 +211,18 @@ public class AutopilotSettingsTests
         Assert.Equal(string.Empty, settings.ExecutableStage("jira"));
     }
 
-    [Fact]
-    public void ExecutableStage_SetBlank_TurnsTheGateOffRatherThanRestoringTheDefault()
+    [Theory]
+    [InlineData("Refined")]
+    // Blank turns the gate off rather than restoring the tracker's default — the operator saying "no stage gate here"
+    // has to survive a read, or the setting can never be cleared.
+    [InlineData("")]
+    public void ExecutableStage_SetOnOneTracker_IsKeptThereVerbatim_AndNowhereElse(string stage)
     {
         var settings = new AutopilotSettings(new FakeStorage());
 
-        settings.SetExecutableStage("youtrack", string.Empty);
+        settings.SetExecutableStage("youtrack", stage);
 
-        Assert.Equal(string.Empty, settings.ExecutableStage("youtrack"));
-    }
-
-    [Fact]
-    public void ExecutableStage_IsKeptPerTracker()
-    {
-        var settings = new AutopilotSettings(new FakeStorage());
-
-        settings.SetExecutableStage("youtrack", "Refined");
-
-        Assert.Equal("Refined", settings.ExecutableStage("youtrack"));
+        Assert.Equal(stage, settings.ExecutableStage("youtrack"));
         Assert.Equal("ready", settings.ExecutableStage("github-issues"));
     }
 }

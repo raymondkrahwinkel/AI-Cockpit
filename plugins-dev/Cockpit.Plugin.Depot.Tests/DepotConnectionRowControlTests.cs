@@ -90,31 +90,19 @@ public class DepotConnectionRowControlTests
         Assert.False(row.IsBlank);
     }
 
-    [Fact]
-    public void ToRegistration_TrimsTheUrlsTrailingSlash()
-    {
-        var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
-        _Show(row);
-        var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
-        boxes[0].Text = "Work";
-        boxes[1].Text = "https://depot.example.com/";
-
-        var registration = row.ToRegistration();
-
-        Assert.Equal("https://depot.example.com", registration.Url);
-    }
-
+    [Theory]
+    [InlineData("https://depot.example.com/")]
     // AC-499 regression: Depot's own docs tell the operator to paste the full endpoint (…/mcp), and DepotPlugin
     // appends /mcp itself when it builds the contribution — pasting the documented URL unchanged used to double
     // into "…/mcp/mcp" (404, no WWW-Authenticate, OAuth discovery never started). Stored URL must be the bare base.
-    [Fact]
-    public void ToRegistration_UrlWithTrailingMcp_StoresTheBaseUrlWithoutIt()
+    [InlineData("https://depot.example.com/mcp")]
+    public void ToRegistration_StoresTheBaseUrl_WhateverTheOperatorPasted(string typed)
     {
         var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
         _Show(row);
         var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
         boxes[0].Text = "Work";
-        boxes[1].Text = "https://depot.example.com/mcp";
+        boxes[1].Text = typed;
 
         var registration = row.ToRegistration();
 
@@ -148,8 +136,11 @@ public class DepotConnectionRowControlTests
         _ = host.Received(1).SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task SignInAsync_EmptyName_BlocksWithReason_AndNeverSavesOrSignsIn()
+    [Theory]
+    [InlineData("", "https://depot.example.com", "Enter a name")]
+    [InlineData("Work", "not-a-url", "usable address")]
+    public async Task SignInAsync_ARowItCannotUse_BlocksWithTheReason_AndNeverSavesOrSignsIn(
+        string name, string url, string reason)
     {
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage());
@@ -157,33 +148,14 @@ public class DepotConnectionRowControlTests
         var row = _NewRow(host, existing: null, settings, saveAll: () => { saveCount++; return (true, null); });
         _Show(row);
         var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
-        boxes[0].Text = string.Empty;
-        boxes[1].Text = "https://depot.example.com";
+        boxes[0].Text = name;
+        boxes[1].Text = url;
 
         await row.SignInAsync();
 
         Assert.Equal(0, saveCount);
         _ = host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        Assert.Contains("Enter a name", _AuthStatusText(row), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task SignInAsync_UnusableUrl_BlocksWithReason_AndNeverSavesOrSignsIn()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var settings = new DepotSettings(new FakePluginStorage());
-        var saveCount = 0;
-        var row = _NewRow(host, existing: null, settings, saveAll: () => { saveCount++; return (true, null); });
-        _Show(row);
-        var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
-        boxes[0].Text = "Work";
-        boxes[1].Text = "not-a-url";
-
-        await row.SignInAsync();
-
-        Assert.Equal(0, saveCount);
-        _ = host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        Assert.Contains("usable address", _AuthStatusText(row), StringComparison.Ordinal);
+        Assert.Contains(reason, _AuthStatusText(row), StringComparison.Ordinal);
     }
 
     // AC-499: PluginMcpSignInOutcome carries no detail of its own (its doc comment only says "a network/store

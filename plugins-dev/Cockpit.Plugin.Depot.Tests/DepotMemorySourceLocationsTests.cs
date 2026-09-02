@@ -47,74 +47,50 @@ public class DepotMemorySourceLocationsTests
 
     // --- AC-499: kind (Project/Brain) shown in the picker's own detail line ---------------------------------------
 
-    [Fact]
-    public async Task ListLocationsAsync_AProjectWithASummary_ShowsKindBeforeTheDocumentCount()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(
-                """{"projects":[{"slug":"cockpit","name":"Cockpit","kind":"Project","summary":{"documentCount":2}}]}""")));
-
-        var result = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
-
-        Assert.Equal("Project · 2 documents", Assert.Single(result.Locations).Detail);
-    }
-
-    [Fact]
-    public async Task ListLocationsAsync_ABrainWithNoSummaryOrRole_ShowsJustTheKind()
-    {
+    public static IEnumerable<object[]> ProjectListings() =>
+    [
+        ["""{"projects":[{"slug":"cockpit","name":"Cockpit","kind":"Project","summary":{"documentCount":2}}]}""", "Project · 2 documents"],
         // Raymond's own account mixes Depot projects and Depot brains under one connection (olaf, testy, vex) —
         // list_projects returns both with no summary requested (includeSummary: true is still sent, but a Brain's
         // own summary may legitimately be absent), so kind alone must still be visible rather than an empty line.
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(
-                """{"projects":[{"slug":"olaf","name":"Olaf","kind":"Brain"}]}""")));
-
-        var result = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
-
-        Assert.Equal("Brain", Assert.Single(result.Locations).Detail);
-    }
-
-    [Fact]
-    public async Task ListLocationsAsync_NoKindField_FallsBackToTheDocumentSummaryAlone()
-    {
+        ["""{"projects":[{"slug":"olaf","name":"Olaf","kind":"Brain"}]}""", "Brain"],
         // An older Depot server that predates the kind field — the picker must not regress to showing nothing.
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(
-                """{"projects":[{"slug":"cockpit","name":"Cockpit","summary":{"documentCount":2}}]}""")));
+        ["""{"projects":[{"slug":"cockpit","name":"Cockpit","summary":{"documentCount":2}}]}""", "2 documents"],
+    ];
 
-        var result = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
-
-        Assert.Equal("2 documents", Assert.Single(result.Locations).Detail);
-    }
-
-    [Fact]
-    public async Task ListLocationsAsync_EmptyProjectList_IsSuccessWithNoLocations()
-    {
-        // Distinct from AuthorizationRequired/Failed (AC-502 criteria 4/5): a source with genuinely nothing in it
-        // must not be indistinguishable from one that could not be asked.
-        var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("""{"projects":[]}""")));
-
-        var result = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
-
-        Assert.Equal(ProjectMemorySourceLocationsOutcome.Success, result.Outcome);
-        Assert.Empty(result.Locations);
-    }
-
-    [Fact]
-    public async Task ListLocationsAsync_NotSignedIn_ReportsAuthorizationRequired()
+    [Theory]
+    [MemberData(nameof(ProjectListings))]
+    public async Task ListLocationsAsync_TheDetailLine_SaysWhateverTheServerActuallyReported(string projects, string expectedDetail)
     {
         var host = Substitute.For<ICockpitHost>();
         host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(projects)));
 
         var result = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
 
-        Assert.Equal(ProjectMemorySourceLocationsOutcome.AuthorizationRequired, result.Outcome);
+        Assert.Equal(expectedDetail, Assert.Single(result.Locations).Detail);
+    }
+
+    // A source with genuinely nothing in it must not be indistinguishable from one that could not be asked
+    // (AC-502 criteria 4/5) — same empty list, different outcome.
+    public static IEnumerable<object[]> EmptyAnswers() =>
+    [
+        [PluginMcpToolCallResult.Success("""{"projects":[]}"""), ProjectMemorySourceLocationsOutcome.Success],
+        [PluginMcpToolCallResult.AuthorizationRequired, ProjectMemorySourceLocationsOutcome.AuthorizationRequired],
+    ];
+
+    [Theory]
+    [MemberData(nameof(EmptyAnswers))]
+    public async Task ListLocationsAsync_NoLocations_StillSaysWhyThereAreNone(
+        PluginMcpToolCallResult toolResult, ProjectMemorySourceLocationsOutcome expected)
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(toolResult));
+
+        var result = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
+
+        Assert.Equal(expected, result.Outcome);
         Assert.Empty(result.Locations);
     }
 

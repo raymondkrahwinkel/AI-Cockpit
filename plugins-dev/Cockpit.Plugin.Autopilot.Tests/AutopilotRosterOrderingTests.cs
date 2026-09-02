@@ -39,9 +39,42 @@ public class AutopilotRosterOrderingTests
         Assert.Equal(positions.OrderBy(position => position), positions);
     }
 
-    [Fact]
-    public void Roster_SaysWhichEndOfTheListIsCheap() =>
-        Assert.Contains("models cheapest first", Brief(Ranked), StringComparison.Ordinal);
+    public static IEnumerable<object[]> RankedRosterClaims() =>
+    [
+        // Which end of the list is the cheap end — the sentence the original defect got backwards.
+        [new[] { "models cheapest first" }],
+        // Every price is quoted as an estimate, never as a fact, and says whose estimate it is.
+        [new[] { "est. $1/$5", "provider's own estimate", "may be out of date" }],
+        // The brief is English prose; a machine set to a comma decimal separator must not render "$2,5" into it.
+        [new[] { "est. $2.5/$15" }],
+    ];
+
+    [Theory]
+    [MemberData(nameof(RankedRosterClaims))]
+    public void Roster_DescribesItsRankingAndItsPrices(string[] present)
+    {
+        var brief = Brief(Ranked);
+
+        Assert.All(present, phrase => Assert.Contains(phrase, brief, StringComparison.Ordinal));
+    }
+
+    // Without this the CEO only discovers the ceiling by being rejected, which costs a whole redraft — so the roster
+    // states, per strategy, exactly what the ceiling it is about to be held to is.
+    public static IEnumerable<object[]> CeilingClaims() =>
+    [
+        [AutopilotCostStrategy.Balanced, new[] { "cheaper half", "rejected" }],
+        [AutopilotCostStrategy.CostFirst, new[] { "cheapest model its profile lists", "rejected" }],
+        [AutopilotCostStrategy.QualityFirst, new[] { "No cost ceiling applies" }],
+    ];
+
+    [Theory]
+    [MemberData(nameof(CeilingClaims))]
+    public void Roster_TellsTheCeoWhichCeilingItIsHeldTo(object strategy, string[] present)
+    {
+        var brief = Brief(Ranked, (AutopilotCostStrategy)strategy);
+
+        Assert.All(present, phrase => Assert.Contains(phrase, brief, StringComparison.Ordinal));
+    }
 
     [Fact]
     public void Roster_WhenTheProviderRankedNothing_ClaimsNoOrderAtAll()
@@ -55,21 +88,6 @@ public class AutopilotRosterOrderingTests
         Assert.Contains("in no particular order", brief, StringComparison.Ordinal);
         Assert.DoesNotContain("models cheapest first", brief, StringComparison.Ordinal);
     }
-
-    [Fact]
-    public void Roster_CallsEveryPriceAnEstimate()
-    {
-        var brief = Brief(Ranked);
-
-        Assert.Contains("est. $1/$5", brief, StringComparison.Ordinal);
-        Assert.Contains("provider's own estimate", brief, StringComparison.Ordinal);
-        Assert.Contains("may be out of date", brief, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Roster_FormatsPricesTheSameOnEveryMachine() =>
-        // The brief is English prose; a machine set to a comma decimal separator must not render "$2,5" into it.
-        Assert.Contains("est. $2.5/$15", Brief(Ranked), StringComparison.Ordinal);
 
     [Fact]
     public void Roster_WithoutPrices_StillRanksButQuotesNothing()
@@ -88,21 +106,4 @@ public class AutopilotRosterOrderingTests
         Assert.Contains("models cheapest first: a, b", brief, StringComparison.Ordinal);
         Assert.DoesNotContain("est. $", brief, StringComparison.Ordinal);
     }
-
-    [Fact]
-    public void Roster_TellsTheCeoTheCeilingIsEnforced()
-    {
-        // Without this the CEO only discovers the ceiling by being rejected, which costs a whole redraft.
-        var balanced = Brief(Ranked, AutopilotCostStrategy.Balanced);
-        Assert.Contains("cheaper half", balanced, StringComparison.Ordinal);
-        Assert.Contains("rejected", balanced, StringComparison.Ordinal);
-
-        var costFirst = Brief(Ranked, AutopilotCostStrategy.CostFirst);
-        Assert.Contains("cheapest model its profile lists", costFirst, StringComparison.Ordinal);
-        Assert.Contains("rejected", costFirst, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Roster_UnderQualityFirst_SaysThereIsNoCeiling() =>
-        Assert.Contains("No cost ceiling applies", Brief(Ranked, AutopilotCostStrategy.QualityFirst), StringComparison.Ordinal);
 }

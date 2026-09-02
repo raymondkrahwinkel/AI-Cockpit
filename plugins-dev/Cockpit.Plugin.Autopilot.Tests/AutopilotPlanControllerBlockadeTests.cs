@@ -13,7 +13,7 @@ public class AutopilotPlanControllerBlockadeTests
     private static AutopilotPlan PlanWith(params AutopilotStep[] steps) => new("Goal", null, steps);
 
     [Fact]
-    public void RecordBlockadeAnswer_IncrementsTheCount()
+    public void RecordBlockadeAnswer_CountsEachAnswer_AndTheNextPlanningRoundStartsAtZero()
     {
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1")));
@@ -23,18 +23,9 @@ public class AutopilotPlanControllerBlockadeTests
         controller.RecordBlockadeAnswer();
 
         Assert.Equal(2, controller.BlockadeAnswers);
-    }
 
-    [Fact]
-    public void BeginPlanning_ResetsTheCountToZero()
-    {
-        var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1")));
-        controller.Approve();
-        controller.RecordBlockadeAnswer();
         controller.SettleStep("1", AutopilotStepStatus.Passed);
         controller.Settle();
-
         controller.BeginPlanning(PlanWith(Step("2")));
 
         Assert.Equal(0, controller.BlockadeAnswers);

@@ -6,12 +6,16 @@ namespace Cockpit.Plugin.Kubernetes.Tests;
 // AC-1061 phase 1 / AC-1068: get_resource must flag a Helm-managed resource without the caller having to know
 // the raw label/annotation names — and must not claim a resource is an installed Helm release on the label
 // alone, since Argo CD's `helm template` sets that same label without ever installing anything (AC-1068 AC1).
+//
+// One resource shape per row. A null `installed` means the detector must not report on this resource at all;
+// null name/namespace mean it reports the resource without claiming a release, which is the distinction AC-1068
+// exists for — before it, those two came back as empty strings and read as a real release with no name.
 public class HelmManagedDetectorTests
 {
-    [Fact]
-    public void Detect_LabelAndAnnotations_ReportsInstalledWithReleaseNameAndNamespace()
-    {
-        var resource = JsonNode.Parse("""
+    public static IEnumerable<object[]> Resources() =>
+    [
+        [
+            """
             {
               "metadata": {
                 "labels": { "app.kubernetes.io/managed-by": "Helm" },
@@ -21,23 +25,14 @@ public class HelmManagedDetectorTests
                 }
               }
             }
-            """);
-
-        var helmManaged = HelmManagedDetector.Detect(resource);
-
-        Assert.NotNull(helmManaged);
-        Assert.True(helmManaged!["installed"]!.GetValue<bool>());
-        Assert.Equal("cert-manager", helmManaged["releaseName"]!.GetValue<string>());
-        Assert.Equal("system-ingress", helmManaged["releaseNamespace"]!.GetValue<string>());
-    }
-
-    // AC-1068 AC1 + AC4: the exact scenario measured on a real cluster (2026-08-25) — Argo CD rolled this out
-    // with `helm template`, so it has the managed-by label and an Argo tracking-id but no `meta.helm.sh/release-*`
-    // annotations. Before this fix, get_resource reported it as an installed Helm release with two empty strings.
-    [Fact]
-    public void Detect_LabelWithoutReleaseAnnotations_ReportsNotInstalled_NotEmptyStrings()
-    {
-        var resource = JsonNode.Parse("""
+            """,
+            true, "cert-manager", "system-ingress",
+        ],
+        // AC-1068 AC1 + AC4: the exact scenario measured on a real cluster (2026-08-25) — Argo CD rolled this out
+        // with `helm template`, so it has the managed-by label and an Argo tracking-id but no `meta.helm.sh/release-*`
+        // annotations. Before this fix, get_resource reported it as an installed Helm release with two empty strings.
+        [
+            """
             {
               "metadata": {
                 "labels": {
@@ -49,50 +44,37 @@ public class HelmManagedDetectorTests
                 }
               }
             }
-            """);
-
-        var helmManaged = HelmManagedDetector.Detect(resource);
-
-        Assert.NotNull(helmManaged);
-        Assert.False(helmManaged!["installed"]!.GetValue<bool>());
-        Assert.Null(helmManaged["releaseName"]);
-        Assert.Null(helmManaged["releaseNamespace"]);
-    }
-
-    [Fact]
-    public void Detect_LabelWithOnlyOneReleaseAnnotation_ReportsNotInstalled()
-    {
-        var resource = JsonNode.Parse("""
+            """,
+            false, null!, null!,
+        ],
+        // Half the pair is not a release either: the name it did find is still reported, but `installed` stays
+        // false — the caller is told what is there without being told it is a release.
+        [
+            """
             {
               "metadata": {
                 "labels": { "app.kubernetes.io/managed-by": "Helm" },
                 "annotations": { "meta.helm.sh/release-name": "cert-manager" }
               }
             }
-            """);
+            """,
+            false, "cert-manager", null!,
+        ],
+        // Nothing to report on at all.
+        ["""{ "metadata": { "labels": { "app": "web" } } }""", null!, null!, null!],
+        ["""{ "metadata": { "labels": { "app.kubernetes.io/managed-by": "kubectl" } } }""", null!, null!, null!],
+        ["{}", null!, null!, null!],
+    ];
 
-        var helmManaged = HelmManagedDetector.Detect(resource);
-
-        Assert.False(helmManaged!["installed"]!.GetValue<bool>());
-    }
-
-    [Fact]
-    public void Detect_NoManagedByLabel_ReturnsNull()
+    [Theory]
+    [MemberData(nameof(Resources))]
+    public void Detect_ReportsAnInstalledReleaseOnlyWhenBothAnnotationsAreThere(
+        string resource, bool? installed, string? releaseName, string? releaseNamespace)
     {
-        var resource = JsonNode.Parse("""{ "metadata": { "labels": { "app": "web" } } }""");
+        var helmManaged = HelmManagedDetector.Detect(JsonNode.Parse(resource));
 
-        Assert.Null(HelmManagedDetector.Detect(resource));
+        Assert.Equal(installed, helmManaged?["installed"]?.GetValue<bool>());
+        Assert.Equal(releaseName, helmManaged?["releaseName"]?.GetValue<string>());
+        Assert.Equal(releaseNamespace, helmManaged?["releaseNamespace"]?.GetValue<string>());
     }
-
-    [Fact]
-    public void Detect_ManagedByLabelWithADifferentValue_ReturnsNull()
-    {
-        var resource = JsonNode.Parse("""{ "metadata": { "labels": { "app.kubernetes.io/managed-by": "kubectl" } } }""");
-
-        Assert.Null(HelmManagedDetector.Detect(resource));
-    }
-
-    [Fact]
-    public void Detect_NoMetadata_ReturnsNull() =>
-        Assert.Null(HelmManagedDetector.Detect(JsonNode.Parse("{}")));
 }

@@ -69,20 +69,16 @@ public class AutopilotCeoCheckpointTests
         Assert.True(line.Length < 220, $"the ledger line should stay short, was {line.Length}");
     }
 
-    [Fact]
-    public void IsDue_NeverFires_OnAnIntervalOfZero()
-    {
-        Assert.False(AutopilotCeoCheckpoint.IsDue(0, 0));
-        Assert.False(AutopilotCeoCheckpoint.IsDue(9, 0));
-    }
-
-    [Fact]
-    public void IsDue_FiresOnceTheValidatorHasTakenOnItsInterval()
-    {
-        Assert.False(AutopilotCeoCheckpoint.IsDue(2, 3));
-        Assert.True(AutopilotCeoCheckpoint.IsDue(3, 3));
-        Assert.True(AutopilotCeoCheckpoint.IsDue(4, 3));
-    }
+    [Theory]
+    // An interval of zero is the operator turning checkpoints off — nothing ever fires, however far the run has got.
+    [InlineData(0, 0, false)]
+    [InlineData(9, 0, false)]
+    // Otherwise it fires once the validator has taken on at least its interval, and stays due after that.
+    [InlineData(2, 3, false)]
+    [InlineData(3, 3, true)]
+    [InlineData(4, 3, true)]
+    public void IsDue_FiresOnceTheValidatorHasTakenOnItsInterval(int settled, int interval, bool due) =>
+        Assert.Equal(due, AutopilotCeoCheckpoint.IsDue(settled, interval));
 
     [Fact]
     public void CeoCheckpointEverySteps_DefaultsToThree_ThenRoundTripsPerProject()

@@ -1,4 +1,3 @@
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The turns the autonomous run hands its sessions (AC-174): a step agent's visible opening instruction (its work plus
@@ -6,16 +5,57 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 // to call, what to include — is tested without a live session.
 public class AutopilotStepBriefTests
 {
-    [Fact]
-    public void For_IncludesTheWork_AcceptanceAndTheStepDoneTool()
+    // The plain coding step every unconditional instruction below is measured against.
+    private static AutopilotStep _CodeStep() =>
+        new("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
+
+    public static IEnumerable<object[]> OpeningInstructions() =>
+    [
+        // The work itself, its acceptance, and the tool that reports it finished.
+        [
+            new[] { "do the work", "compiles", "mcp__cockpit-autopilot-run__autopilot_step_done" },
+            Array.Empty<string>(),
+        ],
+        // The autonomy preamble tells the agent to step past a persona/brain/config prompt instead of waiting for a
+        // human — and it names no specific persona, so it stays generic across profiles.
+        [
+            new[] { "autonomous agent", "persona, brain, or", "do not stop to ask" },
+            new[] { "Zyra", "Aura" },
+        ],
+        // AC-193: a task ambiguity the brief did not spell out is not a mid-run question — the agent makes the most
+        // reasonable assumption, follows the codebase's existing conventions, and records it in its done-summary.
+        [
+            new[]
+            {
+                "Task ambiguity",
+                "most reasonable assumption",
+                "FOLLOW THE EXISTING CONVENTIONS",
+                "note the assumption in your autopilot_step_done summary",
+            },
+            Array.Empty<string>(),
+        ],
+        // AC-201: when a reasonable assumption is not enough, the agent consults its MANAGER (the CEO) via
+        // autopilot_blocked — which answers or escalates to the operator — rather than reaching the operator itself.
+        [
+            new[]
+            {
+                "Your manager (the CEO) is reachable",
+                "autopilot_blocked to consult your manager",
+                "escalates to the operator",
+                "Never stop for an ordinary judgement call",
+            },
+            Array.Empty<string>(),
+        ],
+    ];
+
+    [Theory]
+    [MemberData(nameof(OpeningInstructions))]
+    public void For_ACodingStep_CarriesItsWorkAndTheAutonomyInstructions(string[] present, string[] absent)
     {
-        var step = new AutopilotStep("1", "Code", "desc", "Claude", "opus", "do the code", "compiles and tests green");
+        var brief = AutopilotStepBrief.For(_CodeStep(), agentCount: 1, agentNumber: 1);
 
-        var brief = AutopilotStepBrief.For(step, agentCount: 1, agentNumber: 1);
-
-        Assert.Contains("do the code", brief);
-        Assert.Contains("compiles and tests green", brief);
-        Assert.Contains("mcp__cockpit-autopilot-run__autopilot_step_done", brief);
+        Assert.All(present, phrase => Assert.Contains(phrase, brief));
+        Assert.All(absent, phrase => Assert.DoesNotContain(phrase, brief));
     }
 
     [Fact]
@@ -35,56 +75,10 @@ public class AutopilotStepBriefTests
     }
 
     [Fact]
-    public void For_CarriesAGenericBrainSkip_SoAnEmbeddedAgentDoesNotStallOnASetupQuestion()
-    {
-        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "a");
-
-        var brief = AutopilotStepBrief.For(step, 1, 1);
-
-        // The autonomy preamble tells the agent to step past a persona/brain/config prompt instead of waiting for a
-        // human — and it names no specific persona, so it stays generic across profiles.
-        Assert.Contains("autonomous agent", brief);
-        Assert.Contains("persona, brain, or", brief);
-        Assert.Contains("do not stop to ask", brief);
-        Assert.DoesNotContain("Zyra", brief);
-        Assert.DoesNotContain("Aura", brief);
-        // The task itself still comes through.
-        Assert.Contains("do the work", brief);
-    }
-
-    [Fact]
-    public void For_TellsTheAgentToAssumeAndFollowConventions_ForATaskAmbiguity_NotStopToAsk()
-    {
-        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
-
-        var brief = AutopilotStepBrief.For(step, 1, 1);
-
-        // AC-193: a task ambiguity the brief did not spell out is not a mid-run question — the agent makes the most
-        // reasonable assumption, follows the codebase's existing conventions, and records it in its done-summary.
-        Assert.Contains("Task ambiguity", brief);
-        Assert.Contains("most reasonable assumption", brief);
-        Assert.Contains("FOLLOW THE EXISTING CONVENTIONS", brief);
-        Assert.Contains("note the assumption in your autopilot_step_done summary", brief);
-    }
-
-    [Fact]
-    public void For_FramesAutopilotBlockedAsConsultingTheManager_NotReachingTheOperatorDirectly()
-    {
-        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
-
-        var brief = AutopilotStepBrief.For(step, 1, 1);
-
-        // AC-201: when a reasonable assumption is not enough, the agent consults its MANAGER (the CEO) via
-        // autopilot_blocked — which answers or escalates to the operator — rather than reaching the operator itself.
-        Assert.Contains("Your manager (the CEO) is reachable", brief);
-        Assert.Contains("autopilot_blocked to consult your manager", brief);
-        Assert.Contains("escalates to the operator", brief);
-        Assert.Contains("Never stop for an ordinary judgement call", brief);
-    }
-
-    [Fact]
     public void For_DirectsTheAgentToExecuteAndCommit_NotAnalyseOrPlan()
     {
+        // On a local, unbranded profile on purpose: the mandate must read the same there, and the two DoesNotContain
+        // assertions below only mean anything when the step itself names neither brand.
         var step = new AutopilotStep("1", "Code", "d", "Qwen (local)", null, "do the work", "compiles");
 
         var brief = AutopilotStepBrief.For(step, 1, 1);
@@ -104,7 +98,7 @@ public class AutopilotStepBriefTests
     [Fact]
     public void For_ForAReviewGate_TellsItToReadAndReport_NeverToCommit()
     {
-        var step = new AutopilotStep("1", "Review", "d", "Claude", "opus", "review the diff", "reviewed") with { IsReviewGate = true };
+        var step = _CodeStep() with { Title = "Review", IsReviewGate = true };
 
         var brief = AutopilotStepBrief.For(step, 1, 1);
 
@@ -117,63 +111,35 @@ public class AutopilotStepBriefTests
     }
 
     [Fact]
-    public void For_KeepsTheAssumptionAndConsultFlow_AlongsideTheExecutionMandate()
-    {
-        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
-
-        var brief = AutopilotStepBrief.For(step, 1, 1);
-
-        // The new execution mandate must not have displaced AC-193 (assume + follow conventions) or AC-201 (consult the
-        // manager, do not stop for an ordinary judgement call).
-        Assert.Contains("most reasonable assumption", brief);
-        Assert.Contains("autopilot_blocked to consult your manager", brief);
-        Assert.Contains("Never stop for an ordinary judgement call", brief);
-    }
-
-    [Fact]
     public void For_StatesDoNotMergeOnlyOnce_NotDuplicatedAcrossTheMandateAndTheFooter()
     {
-        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
-
-        var brief = AutopilotStepBrief.For(step, 1, 1);
+        var brief = AutopilotStepBrief.For(_CodeStep(), 1, 1);
 
         // AC-257: the mandate and the footer each used to say "do not merge" — trimmed to the single footer mention.
         var occurrences = brief.ToLowerInvariant().Split("do not merge").Length - 1;
         Assert.Equal(1, occurrences);
     }
 
-    [Fact]
-    public void ValidationTurn_AsksTheCeoToJudgeAgainstAcceptance_ViaTheTool()
+    public static IEnumerable<object[]> ValidationTurns() =>
+    [
+        // The acceptance to judge against, what the agent reported, and the tool that carries the verdict.
+        [
+            new[] { "opened PR #1" },
+            new[] { "compiles", "opened PR #1", "mcp__cockpit-autopilot-ceo__autopilot_validate" },
+        ],
+        // AC-206: a single whitespace-only summary is treated as no summary — the CEO gets the clear fallback rather
+        // than a blank "What the agent(s) reported:" block, like the zero-summary case already does.
+        [new[] { "   " }, new[] { "(the agent reported no summary)" }],
+        // A parallel step reports once per agent, and every report reaches the CEO.
+        [new[] { "did part A", "did part B" }, new[] { "did part A", "did part B" }],
+    ];
+
+    [Theory]
+    [MemberData(nameof(ValidationTurns))]
+    public void ValidationTurn_AsksTheCeoToJudgeAgainstAcceptance_ViaTheTool(string[] summaries, string[] present)
     {
-        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "compiles");
+        var turn = AutopilotStepBrief.ValidationTurn(_CodeStep(), summaries);
 
-        var turn = AutopilotStepBrief.ValidationTurn(step, ["opened PR #1"]);
-
-        Assert.Contains("compiles", turn);
-        Assert.Contains("opened PR #1", turn);
-        Assert.Contains("mcp__cockpit-autopilot-ceo__autopilot_validate", turn);
-    }
-
-    [Fact]
-    public void ValidationTurn_WithAWhitespaceOnlySingleSummary_UsesTheNoSummaryFallback()
-    {
-        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "compiles");
-
-        var turn = AutopilotStepBrief.ValidationTurn(step, ["   "]);
-
-        // AC-206: a single whitespace-only summary is treated as no summary — the CEO gets the clear fallback rather than
-        // a blank "What the agent(s) reported:" block, like the zero-summary case already does.
-        Assert.Contains("(the agent reported no summary)", turn);
-    }
-
-    [Fact]
-    public void ValidationTurn_ListsEveryAgentsReport_ForAParallelStep()
-    {
-        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "a");
-
-        var turn = AutopilotStepBrief.ValidationTurn(step, ["did part A", "did part B"]);
-
-        Assert.Contains("did part A", turn);
-        Assert.Contains("did part B", turn);
+        Assert.All(present, phrase => Assert.Contains(phrase, turn));
     }
 }

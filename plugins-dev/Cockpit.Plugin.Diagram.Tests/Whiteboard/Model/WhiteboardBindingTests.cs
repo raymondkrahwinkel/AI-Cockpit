@@ -1,4 +1,4 @@
-using Cockpit.Plugin.Diagram.Whiteboard.Model;
+﻿using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
 namespace Cockpit.Plugin.Diagram.Tests.Whiteboard.Model;
 
@@ -7,33 +7,17 @@ namespace Cockpit.Plugin.Diagram.Tests.Whiteboard.Model;
 public class WhiteboardBindingTests
 {
     [Fact]
-    public void FindParentImage_ReturnsTheImageThatContainsThePoint()
+    public void FindParentImage_AnswersNothing_OffTheImages_AndOverAShapeThatIsNotOne()
     {
-        var document = new WhiteboardDocument();
-        var image = new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 0, Y = 0, Width = 100, Height = 80 };
-        document.Add(image);
-
-        var found = WhiteboardBinding.FindParentImage(document, 50, 40);
-
-        Assert.Same(image, found);
-    }
-
-    [Fact]
-    public void FindParentImage_ReturnsNull_WhenNoImageContainsThePoint()
-    {
+        // The positive case is FindParentImage_PicksTheTopmostImage_WhenTwoOverlap, which asserts the image it
+        // returns; this is the other half — a point past every image, and a point over a shape that is not an image
+        // at all, both answer nothing rather than the nearest thing lying there.
         var document = new WhiteboardDocument();
         document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Image, X = 0, Y = 0, Width = 100, Height = 80 });
+        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 200, Y = 200, Width = 100, Height = 80 });
 
         Assert.Null(WhiteboardBinding.FindParentImage(document, 500, 500));
-    }
-
-    [Fact]
-    public void FindParentImage_IgnoresNonImageShapes()
-    {
-        var document = new WhiteboardDocument();
-        document.Add(new PlacedObject { ShapeKind = PlacedShapeKind.Rectangle, X = 0, Y = 0, Width = 100, Height = 80 });
-
-        Assert.Null(WhiteboardBinding.FindParentImage(document, 50, 40));
+        Assert.Null(WhiteboardBinding.FindParentImage(document, 250, 240));
     }
 
     [Fact]

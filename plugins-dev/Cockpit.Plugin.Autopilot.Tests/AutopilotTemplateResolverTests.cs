@@ -1,5 +1,3 @@
-using Cockpit.TestSupport;
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The template placeholder resolver (AC-189): it fills the `{{issue.*}}` tokens from a tracker intent's data and
@@ -16,80 +14,66 @@ public class AutopilotTemplateResolverTests
         ["url"] = "https://youtrack/AC-189",
     };
 
-    [Fact]
-    public void Resolve_FillsEveryIssuePlaceholder_FromTheIntentData()
-    {
-        const string body = "{{issue.tracker}} {{issue.id}}: {{issue.title}}\n{{issue.description}}\n{{issue.url}}";
-
-        var result = AutopilotTemplateResolver.Resolve(body, _IntentData());
-
-        Assert.Equal("youtrack AC-189: Autopilot templates\nBuild the template foundation.\nhttps://youtrack/AC-189", result.Text);
-        Assert.Empty(result.MissingPlaceholders);
-    }
-
-    [Fact]
-    public void Resolve_FillsInputPlaceholders_FromOperatorInput()
-    {
-        var input = new Dictionary<string, string> { ["branch"] = "feat/AC-189", ["reviewer"] = "Zyra" };
-
-        var result = AutopilotTemplateResolver.Resolve("Work on {{input.branch}}, ask {{input.reviewer}}.", intentData: null, input: input);
-
-        Assert.Equal("Work on feat/AC-189, ask Zyra.", result.Text);
-        Assert.Empty(result.MissingPlaceholders);
-    }
-
-    [Fact]
-    public void Resolve_ToleratesWhitespaceInsideTheBraces()
-    {
-        var result = AutopilotTemplateResolver.Resolve("{{ issue.id }} / {{  input.branch  }}", _IntentData(), new Dictionary<string, string> { ["branch"] = "b" });
-
-        Assert.Equal("AC-189 / b", result.Text);
-        Assert.Empty(result.MissingPlaceholders);
-    }
-
-    [Fact]
-    public void Resolve_MissingAndUnknownTokens_BecomeEmptyAndAreReported_WithoutThrowing()
-    {
-        // issue.url is absent from the data, input.branch has no input, and foo.bar is not a token the resolver knows.
-        var data = new Dictionary<string, string> { ["issue"] = "AC-189" };
-        var body = "{{issue.id}}|{{issue.url}}|{{input.branch}}|{{foo.bar}}";
-
-        var act = () => AutopilotTemplateResolver.Resolve(body, data, input: null);
-
-        var result = act();
-        Assert.Equal("AC-189|||", result.Text);
-        Assert.True(SequenceAssert.ContainsInOrder(result.MissingPlaceholders, "issue.url", "input.branch", "foo.bar"));
-    }
-
-    [Fact]
-    public void Resolve_ReportsEachMissingNameOnce_InFirstSeenOrder()
-    {
-        var result = AutopilotTemplateResolver.Resolve("{{input.x}} {{input.y}} {{input.x}}", intentData: null, input: null);
-
-        Assert.True(SequenceAssert.ContainsInOrder(result.MissingPlaceholders, "input.x", "input.y"));
-        Assert.Equal(2, System.Linq.Enumerable.Count(result.MissingPlaceholders));
-    }
-
-    [Fact]
-    public void Resolve_PresentButEmptyIssueField_CountsAsResolved_NotMissing()
-    {
-        // A blank description is a value the intent carried, not an absent one — the key was there.
-        var data = new Dictionary<string, string> { ["description"] = string.Empty };
-
-        var result = AutopilotTemplateResolver.Resolve("[{{issue.description}}]", data);
-
-        Assert.Equal("[]", result.Text);
-        Assert.Empty(result.MissingPlaceholders);
-    }
-
-    [Fact]
-    public void Resolve_OnlyRewritesTheBody_LeavingNonTokenTextIntact()
-    {
+    public static IEnumerable<object[]> BodiesThatResolveWhole() =>
+    [
+        // Every {{issue.*}} token, filled from the intent data.
+        [
+            "{{issue.tracker}} {{issue.id}}: {{issue.title}}\n{{issue.description}}\n{{issue.url}}",
+            _IntentData(), null!,
+            "youtrack AC-189: Autopilot templates\nBuild the template foundation.\nhttps://youtrack/AC-189",
+        ],
+        // The {{input.*}} tokens, filled from operator input.
+        [
+            "Work on {{input.branch}}, ask {{input.reviewer}}.", null!,
+            new Dictionary<string, string> { ["branch"] = "feat/AC-189", ["reviewer"] = "Zyra" },
+            "Work on feat/AC-189, ask Zyra.",
+        ],
+        // Whitespace inside the braces is tolerated on both kinds of token.
+        [
+            "{{ issue.id }} / {{  input.branch  }}", _IntentData(),
+            new Dictionary<string, string> { ["branch"] = "b" }, "AC-189 / b",
+        ],
+        // A blank description is a value the intent carried, not an absent one — the key was there, so it resolves.
+        ["[{{issue.description}}]", new Dictionary<string, string> { ["description"] = string.Empty }, null!, "[]"],
         // Text that is not a {{token}} — including a lone brace or a C#-style interpolation — passes through untouched.
-        const string body = "Ship it. Cost {price} and {{issue.id}} only.";
+        [
+            "Ship it. Cost {price} and {{issue.id}} only.", new Dictionary<string, string> { ["issue"] = "AC-189" }, null!,
+            "Ship it. Cost {price} and AC-189 only.",
+        ],
+    ];
 
-        var result = AutopilotTemplateResolver.Resolve(body, new Dictionary<string, string> { ["issue"] = "AC-189" });
+    [Theory]
+    [MemberData(nameof(BodiesThatResolveWhole))]
+    public void Resolve_FillsEveryTokenItKnows_AndReportsNothingMissing(
+        string body, Dictionary<string, string>? intentData, Dictionary<string, string>? input, string expected)
+    {
+        var result = AutopilotTemplateResolver.Resolve(body, intentData, input);
 
-        Assert.Equal("Ship it. Cost {price} and AC-189 only.", result.Text);
+        Assert.Equal(expected, result.Text);
+        Assert.Empty(result.MissingPlaceholders);
+    }
+
+    public static IEnumerable<object[]> BodiesWithGaps() =>
+    [
+        // issue.url is absent from the data, input.branch has no input, and foo.bar is not a token the resolver knows —
+        // all three become empty and are reported, and none of them throws.
+        [
+            "{{issue.id}}|{{issue.url}}|{{input.branch}}|{{foo.bar}}",
+            new Dictionary<string, string> { ["issue"] = "AC-189" }, null!,
+            "AC-189|||", new[] { "issue.url", "input.branch", "foo.bar" },
+        ],
+        // Each missing name is reported once, in first-seen order — the exact list, so a repeat would show up here.
+        ["{{input.x}} {{input.y}} {{input.x}}", null!, null!, "  ", new[] { "input.x", "input.y" }],
+    ];
+
+    [Theory]
+    [MemberData(nameof(BodiesWithGaps))]
+    public void Resolve_AGapBecomesEmptyAndIsReportedOnce_WithoutThrowing(
+        string body, Dictionary<string, string>? intentData, Dictionary<string, string>? input, string expected, string[] missing)
+    {
+        var result = AutopilotTemplateResolver.Resolve(body, intentData, input);
+
+        Assert.Equal(expected, result.Text);
+        Assert.Equal(missing, result.MissingPlaceholders);
     }
 }

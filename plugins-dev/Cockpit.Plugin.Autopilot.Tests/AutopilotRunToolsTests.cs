@@ -8,33 +8,25 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 // documented assumption, else consult your MANAGER (the CEO), not the operator — is pinned without a running run.
 public class AutopilotRunToolsTests
 {
-    private static string BlockedDescription()
+    public static IEnumerable<object[]> BlockedDescriptionClaims() =>
+    [
+        // AC-193: the old "Use this instead of guessing" steered the agent to block on any uncertainty. It is gone,
+        // and what replaced it is a documented assumption plus carrying on before escalating.
+        [new[] { "documented, reasonable assumption" }, new[] { "instead of guessing" }],
+        // AC-201: autopilot_blocked routes to the worker's manager (the CEO), which answers or escalates — the tool
+        // must say so, and say it does NOT go straight to the operator.
+        [new[] { "manager", "does NOT go straight to the operator", "escalates" }, Array.Empty<string>()],
+    ];
+
+    [Theory]
+    [MemberData(nameof(BlockedDescriptionClaims))]
+    public void BlockedDescription_SendsTheAgentToItsManager_NotToTheOperator_AndNotStraightToABlock(string[] present, string[] absent)
     {
         var method = typeof(AutopilotRunTools).GetMethod(nameof(AutopilotRunTools.Blocked), BindingFlags.Instance | BindingFlags.Public);
         Assert.NotNull(method);
-        return method!.GetCustomAttribute<DescriptionAttribute>()!.Description;
-    }
+        var description = method!.GetCustomAttribute<DescriptionAttribute>()!.Description;
 
-    [Fact]
-    public void BlockedDescription_PrefersAnAssumption_AndNoLongerTellsTheAgentToUseItInsteadOfGuessing()
-    {
-        var description = BlockedDescription();
-
-        // AC-193: the old "Use this instead of guessing" steered the agent to block on any uncertainty. It is gone.
-        Assert.DoesNotContain("instead of guessing", description);
-        // It still prefers a documented assumption + carrying on before escalating.
-        Assert.Contains("documented, reasonable assumption", description);
-    }
-
-    [Fact]
-    public void BlockedDescription_FramesItAsConsultingTheManager_NotReachingTheOperatorDirectly()
-    {
-        var description = BlockedDescription();
-
-        // AC-201: autopilot_blocked now routes to the worker's manager (the CEO), which answers or escalates — the tool
-        // must say so, and say it does NOT go straight to the operator.
-        Assert.Contains("manager", description);
-        Assert.Contains("does NOT go straight to the operator", description);
-        Assert.Contains("escalates", description);
+        Assert.All(present, fragment => Assert.Contains(fragment, description));
+        Assert.All(absent, fragment => Assert.DoesNotContain(fragment, description));
     }
 }
