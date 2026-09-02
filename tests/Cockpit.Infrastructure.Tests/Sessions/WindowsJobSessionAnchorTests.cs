@@ -6,6 +6,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Runtime.Versioning;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
 
@@ -107,14 +108,10 @@ public sealed class WindowsJobSessionAnchorTests
         Assert.Equal(1, outcome.Terminated);
     }
 
-    [Fact]
+    [SupportedOSPlatform("windows")]
+    [WindowsFact("Job objects are a Windows kernel feature.")]
     public void OnWindows_DisposeTerminatesOnlyTheProcessTreeAddedToItsJob()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var registryPath = Path.Combine(Path.GetTempPath(), $"session-jobs-{Guid.NewGuid():N}.json");
         using var child = Process.Start(new ProcessStartInfo
         {
@@ -149,14 +146,10 @@ public sealed class WindowsJobSessionAnchorTests
         }
     }
 
-    [Fact]
+    [SupportedOSPlatform("windows")]
+    [WindowsFact("Job objects are a Windows kernel feature.")]
     public void OnWindows_SweepTerminatesAJobThisTestFilled()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var registryPath = Path.Combine(Path.GetTempPath(), $"session-jobs-{Guid.NewGuid():N}.json");
         using var child = Process.Start(new ProcessStartInfo
         {

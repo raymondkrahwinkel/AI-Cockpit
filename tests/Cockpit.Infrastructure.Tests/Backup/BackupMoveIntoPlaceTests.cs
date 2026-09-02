@@ -31,14 +31,9 @@ public class BackupMoveIntoPlaceTests : IDisposable
         }
     }
 
-    [Fact]
+    [WindowsFact("Only Windows fails a move on a file another process holds open, so elsewhere there is nothing to reproduce.")]
     public async Task AMoveBlockedByAnotherProcess_GoesThroughOnceThatProcessLetsGo()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var (staging, destination) = await _StagedAndChosenAsync();
 
         var holder = new FileStream(destination, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
@@ -59,14 +54,9 @@ public class BackupMoveIntoPlaceTests : IDisposable
     /// The reported failure: it was the staging file that was held, not the chosen one. A scanner opens a newly
     /// written .zip, and the move is the very next thing that happens to it.
     /// </summary>
-    [Fact]
+    [WindowsFact("Only Windows fails a move on a file another process holds open, so elsewhere there is nothing to reproduce.")]
     public async Task AScannerHoldingTheFreshArchive_IsWaitedOutRatherThanFailingTheBackup()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var (staging, destination) = await _StagedAndChosenAsync();
 
         var scanner = new FileStream(staging, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -82,14 +72,9 @@ public class BackupMoveIntoPlaceTests : IDisposable
         Assert.Equal("the finished archive", await File.ReadAllTextAsync(destination));
     }
 
-    [Fact]
+    [WindowsFact("Only Windows fails a move on a file another process holds open, so elsewhere there is nothing to reproduce.")]
     public async Task AHeldArchivePastTheWindow_RefusesWithoutPointingAtTheStagingPath()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var (staging, destination) = await _StagedAndChosenAsync();
 
         using var scanner = new FileStream(staging, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -105,14 +90,9 @@ public class BackupMoveIntoPlaceTests : IDisposable
         Assert.DoesNotContain(staging, refusal.Message);
     }
 
-    [Fact]
+    [WindowsFact("Only Windows fails a move on a file another process holds open, so elsewhere there is nothing to reproduce.")]
     public async Task AChosenFileHeldPastTheWindow_RefusesNamingThatFile()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var (staging, destination) = await _StagedAndChosenAsync();
 
         using var holder = new FileStream(destination, FileMode.Open, FileAccess.ReadWrite, FileShare.None);

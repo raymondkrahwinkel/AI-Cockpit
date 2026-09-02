@@ -15,14 +15,9 @@ namespace Cockpit.Core.Tests.Sessions;
 
 public sealed class WindowsJobSessionAnchorWiringTests
 {
-    [Fact]
+    [WindowsFact("Job objects are a Windows kernel feature; the anchor is a no-op elsewhere.")]
     public async Task OnWindows_AContainerCreatedSessionPlacesItsProcessInAJob()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var registryPath = Path.Combine(Path.GetTempPath(), $"session-jobs-{Guid.NewGuid():N}.json");
         var registry = new WindowsJobSessionRegistry(registryPath, NullLogger<WindowsJobSessionRegistry>.Instance);
         try

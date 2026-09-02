@@ -68,14 +68,9 @@ public sealed class ShellCatalogTests : IDisposable
         Assert.Empty(shells);
     }
 
-    [Fact]
+    [WindowsFact("ComSpec, and the cmd shell it names, exist only on Windows.")]
     public void Build_Windows_IncludesCmdFromComSpec()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var cmd = Touch("cmd.exe");
 
         var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: null, comSpec: cmd);

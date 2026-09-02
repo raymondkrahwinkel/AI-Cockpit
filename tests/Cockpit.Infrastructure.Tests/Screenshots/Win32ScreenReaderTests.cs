@@ -1,8 +1,8 @@
-using System.Runtime.InteropServices;
 using SkiaSharp;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
+using System.Runtime.Versioning;
 
 namespace Cockpit.Infrastructure.Tests.Screenshots;
 
@@ -20,16 +20,12 @@ namespace Cockpit.Infrastructure.Tests.Screenshots;
 /// spot instantly needs eight pixels of its own.
 /// </para>
 /// </remarks>
+[SupportedOSPlatform("windows")]
 public class Win32ScreenReaderTests
 {
-    [Fact]
+    [WindowsFact("Captures the real Windows desktop through GDI.")]
     public void TheCaptureIsAPngTheSizeOfTheVirtualScreen()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return;
-        }
-
         var reader = new Win32ScreenReader();
         var layout = reader.ReadLayout();
 
@@ -48,14 +44,9 @@ public class Win32ScreenReaderTests
     /// a capture that came back as a uniform block is what every one of the silent interop failures produces:
     /// black from an unread bitmap, or a single row smeared down the image.
     /// </summary>
-    [Fact]
+    [WindowsFact("Captures the real Windows desktop through GDI.")]
     public void TheCaptureIsNotAFlatColour()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return;
-        }
-
         var reader = new Win32ScreenReader();
         var png = reader.CapturePng(reader.ReadLayout().VirtualBounds);
 
@@ -69,14 +60,9 @@ public class Win32ScreenReaderTests
     /// nothing about it looks wrong until a human sees the picture. The desktop cannot prove this because
     /// nothing about its content is known; eight pixels drawn here can.
     /// </summary>
-    [Fact]
+    [WindowsFact("Captures the real Windows desktop through GDI.")]
     public void TheTopOfTheSourceIsTheTopOfTheImage()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return;
-        }
-
         using var source = new DrawnSurface(width: 8, height: 8);
         source.FillRows(0, 4, white: true);
         source.FillRows(4, 4, white: false);
@@ -89,14 +75,9 @@ public class Win32ScreenReaderTests
     }
 
     /// <summary>Every monitor Windows reports has to sit inside the rectangle that is blitted, or its pixels are not in the image the layout describes.</summary>
-    [Fact]
+    [WindowsFact("Captures the real Windows desktop through GDI.")]
     public void EveryMonitorSitsInsideTheVirtualScreen()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return;
-        }
-
         var layout = new Win32ScreenReader().ReadLayout();
 
         foreach (var display in layout.Displays)

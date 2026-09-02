@@ -4,6 +4,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.Sessions;
+using System.Runtime.Versioning;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
 
@@ -57,16 +58,10 @@ public class SessionMemoryCapTests
             SessionMemoryCap.Megabytes(profile: null, new Dictionary<string, string> { [SessionMemoryCap.OptionKey] = "lots" }));
     }
 
-    [Fact]
+    [SupportedOSPlatform("windows")]
+    [WindowsFact("Windows is where the original bug, and the no-kill contract that replaced its job-object fix, are proven live.")]
     public void OnWindows_ARunawayGrandchildIsNeverStopped_OnlyWatched()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            // Windows is where the original bug (and the job-object fix this replaced) was reproduced, so it is
-            // where the new no-kill contract is proven live too.
-            return;
-        }
-
         // AC-692: WindowsJobMemoryLimiter's hard job-object kill (AC-661) is gone; Windows now shares
         // `PollingMemoryLimiter` with macOS. Scaled down from the old test's 10 GB ceiling — this machine runs
         // other agents' work at the same time.
