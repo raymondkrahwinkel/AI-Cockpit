@@ -47,7 +47,7 @@ internal sealed record AutopilotStepEvidence(string Commit, string Observation, 
             description.AppendLine("This diff was longer than this turn carries and was cut off — read the files themselves for the rest.");
         }
 
-        return description.ToString().TrimEnd();
+        return description.ToString().TrimEnd().ReplaceLineEndings("\n");
     }
 
     private static string _Bullets(IReadOnlyList<string> paths)
