@@ -139,28 +139,15 @@ public class AutopilotPlanToolsTests
         Assert.Contains("opus, sonnet, haiku", error);
     }
 
-    [Fact]
-    public void ValidateStepProfiles_RejectsAChoiceProfileWithNoModel()
+    [Theory]
+    [InlineData("Claude", null, "Claude", "no model")]
+    [InlineData("Qwen (local)", "qwen2.5-coder", "Qwen (local)", "leave 'model' empty")]
+    [InlineData("Codex", null, "Codex", "not one of the configured profiles")]
+    public void ValidateStepProfiles_RejectsAndNamesTheOffendingProfile(string profile, string? model, string expectedProfile, string expectedReason)
     {
-        var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", null)], Roster);
-        Assert.Contains("Claude", error);
-        Assert.Contains("no model", error);
-    }
-
-    [Fact]
-    public void ValidateStepProfiles_RejectsAModelOnALocalProfileThatPinsItsOwn()
-    {
-        var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Qwen (local)", "qwen2.5-coder")], Roster);
-        Assert.Contains("Qwen (local)", error);
-        Assert.Contains("leave 'model' empty", error);
-    }
-
-    [Fact]
-    public void ValidateStepProfiles_RejectsAProfileThatIsNotConfigured()
-    {
-        var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Codex", null)], Roster);
-        Assert.Contains("Codex", error);
-        Assert.Contains("not one of the configured profiles", error);
+        var error = AutopilotPlanTools.ValidateStepProfiles([_Step(profile, model)], Roster);
+        Assert.Contains(expectedProfile, error);
+        Assert.Contains(expectedReason, error);
     }
 
     [Fact]

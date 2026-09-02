@@ -82,24 +82,17 @@ public class AutopilotStepEvidenceTests
         Assert.Contains(concerns, concern => concern.Contains("nothing it changed looks like a test file"));
     }
 
-    [Fact]
-    public void Signals_WhenTestsAreClaimedPassing_AndATestFileWasTouched_RaiseNoConcern()
+    [Theory]
+    [InlineData(new[] { "src/Thing.cs", "tests/ThingTests.cs" }, new string[0], "built it and the tests pass")]
+    // A step that wrote its first test file has not added it to git yet — reading only the diff would flag it for
+    // the very thing it did.
+    [InlineData(new[] { "src/Thing.cs" }, new[] { "tests/ThingTests.cs" }, "the tests pass")]
+    public void Signals_WhenTestsAreClaimedPassing_AndATestFileWasTouched_RaiseNoConcern(
+        string[] files, string[] untracked, string reported)
     {
-        var change = _Change(files: ["src/Thing.cs", "tests/ThingTests.cs"]);
+        var change = _Change(files: files, untracked: untracked);
 
-        var concerns = AutopilotEvidenceSignals.For(change, _Step(), ["built it and the tests pass"]);
-
-        Assert.DoesNotContain(concerns, concern => concern.Contains("nothing it changed looks like a test file"));
-    }
-
-    [Fact]
-    public void Signals_CountANewUntrackedTestFileAsATestFile()
-    {
-        // A step that wrote its first test file has not added it to git yet — reading only the diff would flag it for
-        // the very thing it did.
-        var change = _Change(files: ["src/Thing.cs"], untracked: ["tests/ThingTests.cs"]);
-
-        var concerns = AutopilotEvidenceSignals.For(change, _Step(), ["the tests pass"]);
+        var concerns = AutopilotEvidenceSignals.For(change, _Step(), [reported]);
 
         Assert.DoesNotContain(concerns, concern => concern.Contains("nothing it changed looks like a test file"));
     }

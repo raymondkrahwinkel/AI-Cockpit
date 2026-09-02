@@ -7,36 +7,27 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 // rather than silently dropping it — including an operator-stopped run (AC-196). Both are pure statics.
 public class AutopilotRunContextTests
 {
-    [Fact]
-    public void ShouldToastAwaiting_FiresOnTheEdgeIntoAwaitingOperator()
-    {
-        Assert.True(AutopilotRunContext.ShouldToastAwaiting(AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator));
-    }
-
-    [Fact]
-    public void ShouldToastAwaiting_DoesNotFire_WhenTheTargetIsNotAwaitingOperator()
-    {
+    // The phases travel as object so this source's own signature stays public while the members are still named
+    // rather than numbered; the test casts them back once. `[InlineData]` cannot carry them — a public test method
+    // may not name an internal type in its signature (CS0051), and xUnit1000 forbids making the class internal.
+    public static IEnumerable<object[]> ToastEdges() =>
+    [
+        [AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator, true],
         // Any phase other than AwaitingOperator is not a "needs you" edge, regardless of where it came from.
-        foreach (var current in new[]
-        {
-            AutopilotPlanPhase.Planning,
-            AutopilotPlanPhase.Running,
-            AutopilotPlanPhase.Blocked,
-            AutopilotPlanPhase.MergeReady,
-            AutopilotPlanPhase.Stopped,
-        })
-        {
-            Assert.False(AutopilotRunContext.ShouldToastAwaiting(AutopilotPlanPhase.Running, current));
-        }
-    }
-
-    [Fact]
-    public void ShouldToastAwaiting_DoesNotRepeat_WhileAlreadyAwaiting()
-    {
+        [AutopilotPlanPhase.Running, AutopilotPlanPhase.Planning, false],
+        [AutopilotPlanPhase.Running, AutopilotPlanPhase.Running, false],
+        [AutopilotPlanPhase.Running, AutopilotPlanPhase.Blocked, false],
+        [AutopilotPlanPhase.Running, AutopilotPlanPhase.MergeReady, false],
+        [AutopilotPlanPhase.Running, AutopilotPlanPhase.Stopped, false],
         // The guard's whole point: OnControllerChanged re-renders many times while the run waits, but only the first
         // transition into the wait should toast — a same-phase render must not fire another.
-        Assert.False(AutopilotRunContext.ShouldToastAwaiting(AutopilotPlanPhase.AwaitingOperator, AutopilotPlanPhase.AwaitingOperator));
-    }
+        [AutopilotPlanPhase.AwaitingOperator, AutopilotPlanPhase.AwaitingOperator, false],
+    ];
+
+    [Theory]
+    [MemberData(nameof(ToastEdges))]
+    public void ShouldToastAwaiting_FiresOnlyOnTheEdgeIntoAwaitingOperator(object previous, object current, bool toasts) =>
+        Assert.Equal(toasts, AutopilotRunContext.ShouldToastAwaiting((AutopilotPlanPhase)previous, (AutopilotPlanPhase)current));
 
     [Fact]
     public void IsSettledOutcome_RecordsMergeReadyBlockedAndStopped()

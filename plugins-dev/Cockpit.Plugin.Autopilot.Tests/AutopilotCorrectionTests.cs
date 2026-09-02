@@ -5,95 +5,32 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 // refused isolation, profile/model mismatch) is a run restart, not a review finding; everything else is no correction.
 public class AutopilotCorrectionTests
 {
-    [Fact]
-    public void Classify_Passed_WithOneAttempt_NoReworks_IsNone()
-    {
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Passed, attempts: 1, reworks: 0);
-
-        Assert.Equal(AutopilotCorrectionKind.None, kind);
-    }
-
-    [Fact]
-    public void Classify_Passed_WithThreeAttempts_NoReworks_IsRunRestart()
-    {
+    // The rows travel as object so this source's own signature stays public while the members are still named rather
+    // than numbered; the test casts them back once. `[InlineData]` cannot carry them — a public test method may not
+    // name an internal type in its signature (CS0051), and xUnit1000 forbids making the class internal instead.
+    public static IEnumerable<object[]> Classifications() =>
+    [
+        [AutopilotStepStatus.Passed, 1, 0, AutopilotCorrectionKind.None],
         // Restarted (attempts > 1) but never reworked (no validation ever sent it back): a crashed session, a stall
         // timeout, a refused isolation, or a profile/model mismatch — a restart without a judgment behind it.
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Passed, attempts: 3, reworks: 0);
-
-        Assert.Equal(AutopilotCorrectionKind.RunRestart, kind);
-    }
-
-    [Fact]
-    public void Classify_Passed_WithThreeAttempts_TwoReworks_IsReviewFinding()
-    {
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Passed, attempts: 3, reworks: 2);
-
-        Assert.Equal(AutopilotCorrectionKind.ReviewFinding, kind);
-    }
-
-    [Fact]
-    public void Classify_Passed_WithOneRework_IsReviewFinding()
-    {
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Passed, attempts: 2, reworks: 1);
-
-        Assert.Equal(AutopilotCorrectionKind.ReviewFinding, kind);
-    }
-
-    [Fact]
-    public void Classify_Failed_WithOneAttempt_NoReworks_IsRunRestart()
-    {
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Failed, attempts: 1, reworks: 0);
-
-        Assert.Equal(AutopilotCorrectionKind.RunRestart, kind);
-    }
-
-    [Fact]
-    public void Classify_Failed_WithSeveralAttempts_IsStillRunRestart()
-    {
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Failed, attempts: 3, reworks: 0);
-
-        Assert.Equal(AutopilotCorrectionKind.RunRestart, kind);
-    }
-
-    [Fact]
-    public void Classify_Failed_WithReworksBehindIt_IsStillRunRestart()
-    {
+        [AutopilotStepStatus.Passed, 3, 0, AutopilotCorrectionKind.RunRestart],
+        [AutopilotStepStatus.Passed, 3, 2, AutopilotCorrectionKind.ReviewFinding],
+        [AutopilotStepStatus.Passed, 2, 1, AutopilotCorrectionKind.ReviewFinding],
+        [AutopilotStepStatus.Failed, 1, 0, AutopilotCorrectionKind.RunRestart],
+        [AutopilotStepStatus.Failed, 3, 0, AutopilotCorrectionKind.RunRestart],
         // The Failed branch wins even when the step was reworked along the way — it never settled on a judgment, it
         // gave up after its last attempt.
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Failed, attempts: 6, reworks: 5);
+        [AutopilotStepStatus.Failed, 6, 5, AutopilotCorrectionKind.RunRestart],
+        [AutopilotStepStatus.Skipped, 1, 0, AutopilotCorrectionKind.None],
+        [AutopilotStepStatus.Blocked, 1, 0, AutopilotCorrectionKind.None],
+        [AutopilotStepStatus.Pending, 0, 0, AutopilotCorrectionKind.None],
+        [AutopilotStepStatus.Running, 1, 0, AutopilotCorrectionKind.None],
+    ];
 
-        Assert.Equal(AutopilotCorrectionKind.RunRestart, kind);
-    }
-
-    [Fact]
-    public void Classify_Skipped_IsNone()
-    {
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Skipped, attempts: 1, reworks: 0);
-
-        Assert.Equal(AutopilotCorrectionKind.None, kind);
-    }
-
-    [Fact]
-    public void Classify_Blocked_IsNone()
-    {
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Blocked, attempts: 1, reworks: 0);
-
-        Assert.Equal(AutopilotCorrectionKind.None, kind);
-    }
-
-    [Fact]
-    public void Classify_Pending_IsNone()
-    {
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Pending, attempts: 0, reworks: 0);
-
-        Assert.Equal(AutopilotCorrectionKind.None, kind);
-    }
-
-    [Fact]
-    public void Classify_Running_IsNone()
-    {
-        var kind = AutopilotCorrection.Classify(AutopilotStepStatus.Running, attempts: 1, reworks: 0);
-
-        Assert.Equal(AutopilotCorrectionKind.None, kind);
-    }
+    [Theory]
+    [MemberData(nameof(Classifications))]
+    public void Classify_ReadsTheStatusAttemptsAndReworks(object status, int attempts, int reworks, object expected) =>
+        Assert.Equal(
+            (AutopilotCorrectionKind)expected,
+            AutopilotCorrection.Classify((AutopilotStepStatus)status, attempts, reworks));
 }
