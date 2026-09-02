@@ -8,64 +8,31 @@ namespace Cockpit.Core.Tests.Mentions;
 /// </summary>
 public class MentionQueryTests
 {
-    [Fact]
-    public void From_AtTheStartOfTheText_TriggersWithEmptyQuery() =>
-        Assert.Equal((0, ""), MentionQuery.From("@", 1));
-
-    [Fact]
-    public void From_AtTheStartWithQueryText_TriggersWithThatQuery() =>
-        Assert.Equal((0, "foo"), MentionQuery.From("@foo", 4));
-
-    [Fact]
-    public void From_AfterWhitespace_Triggers() =>
-        Assert.Equal((6, "wor"), MentionQuery.From("hello @wor", 10));
-
-    [Fact]
-    public void From_AfterANewline_Triggers() =>
-        Assert.Equal((6, "wor"), MentionQuery.From("hello\n@wor", 10));
-
-    [Fact]
-    public void From_MidWord_DoesNotTrigger() =>
-        Assert.Null(MentionQuery.From("foo@bar", 7));
-
-    [Fact]
-    public void From_AnEmailAddress_DoesNotTrigger() =>
-        Assert.Null(MentionQuery.From("mail user@example.com", 22));
-
-    [Fact]
-    public void From_MultipleAts_UsesTheNearestOneToTheCaret() =>
-        Assert.Equal((5, "bar"), MentionQuery.From("@foo @bar", 9));
-
-    [Fact]
-    public void From_AnAtNestedInAWord_DoesNotTrigger() =>
-        // The nearest '@' to the caret is preceded by 'b', not whitespace or start-of-text.
-        Assert.Null(MentionQuery.From("a@b@c", 5));
-
-    [Fact]
-    public void From_CaretBeforeTheAt_DoesNotTrigger() =>
-        // The '@' is ahead of the caret, so it is not the caret's mention — only what lies behind it counts.
-        Assert.Null(MentionQuery.From("hi @foo", 2));
-
-    [Fact]
-    public void From_WhitespaceBetweenAtAndCaret_DoesNotTrigger() =>
-        // A space right after '@' closes the token — typing on past it never re-opens for what follows.
-        Assert.Null(MentionQuery.From("@ 5", 3));
-
-    [Fact]
-    public void From_EmptyText_ReturnsNull() =>
-        Assert.Null(MentionQuery.From("", 0));
-
-    [Fact]
-    public void From_CaretAtTheVeryStart_ReturnsNull() =>
-        Assert.Null(MentionQuery.From("@foo", 0));
+    [Theory]
+    [InlineData("@", 1, 0, "")] // the '@' has just been typed
+    [InlineData("@foo", 4, 0, "foo")]
+    [InlineData("hello @wor", 10, 6, "wor")] // after whitespace
+    [InlineData("hello\n@wor", 10, 6, "wor")] // after a newline
+    [InlineData("@foo @bar", 9, 5, "bar")] // the nearest '@' to the caret wins
+    [InlineData("@foo", 3, 0, "fo")] // only the text before the caret is the query
+    public void From_ACaretInsideAMention_ReturnsThatTokenAndItsQuery(
+        string text, int caretIndex, int expectedStart, string expectedQuery)
+    {
+        Assert.Equal((expectedStart, expectedQuery), MentionQuery.From(text, caretIndex));
+    }
 
     [Theory]
-    [InlineData(-1)]
-    [InlineData(100)]
-    public void From_CaretOutOfRange_ReturnsNull(int caretIndex) =>
-        Assert.Null(MentionQuery.From("@foo", caretIndex));
-
-    [Fact]
-    public void From_CaretMidwayThroughTheQuery_UsesOnlyTheTextBeforeTheCaret() =>
-        Assert.Equal((0, "fo"), MentionQuery.From("@foo", 3));
+    [InlineData("foo@bar", 7)] // mid-word
+    [InlineData("mail user@example.com", 22)] // an email address
+    [InlineData("a@b@c", 5)] // the nearest '@' is preceded by 'b', not whitespace or start-of-text
+    [InlineData("hi @foo", 2)] // the '@' is ahead of the caret, so it is not the caret's mention
+    [InlineData("@ 5", 3)] // a space right after '@' closes the token and never re-opens
+    [InlineData("", 0)]
+    [InlineData("@foo", 0)] // caret at the very start
+    [InlineData("@foo", -1)] // caret out of range
+    [InlineData("@foo", 100)]
+    public void From_WhatOnlyLooksLikeAMention_DoesNotTrigger(string text, int caretIndex)
+    {
+        Assert.Null(MentionQuery.From(text, caretIndex));
+    }
 }
