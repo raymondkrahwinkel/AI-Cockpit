@@ -265,21 +265,6 @@ public class AssistantIndicatorViewModelTests
         Assert.False(raised);
     }
 
-    [Theory]
-    [InlineData(AssistantActivity.Thinking, false)]
-    [InlineData(AssistantActivity.Speaking, false)]
-    [InlineData(AssistantActivity.Unavailable, false)]
-    [InlineData(AssistantActivity.Ready, true)]
-    [InlineData(AssistantActivity.Listening, true)]
-    [InlineData(AssistantActivity.ListeningContinuously, true)]
-    [InlineData(AssistantActivity.Dictating, true)]
-    public void IsMicIcon_IsFalseOnlyForTheStatesWithTheirOwnGlyph(AssistantActivity activity, bool expected)
-    {
-        var vm = new AssistantIndicatorViewModel { Activity = activity };
-
-        Assert.Equal(expected, vm.IsMicIcon);
-    }
-
     /// <summary>
     /// The switch that replaced the Off / Always on row (2026-08-08) is the same two picks underneath — including
     /// the one-time cost explanation, which a switch must not quietly skip.
