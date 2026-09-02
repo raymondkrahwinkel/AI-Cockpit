@@ -717,28 +717,6 @@ public class CockpitViewModelTests
     }
 
     [Fact]
-    public async Task SelectNextSession_MovesToTheFollowingSession()
-    {
-        var vm = await NewVmWithSessionsAsync(3);
-        vm.SelectSessionCommand.Execute(vm.Sessions[0]);
-
-        vm.SelectNextSession();
-
-        Assert.Equal(vm.Sessions[1], vm.SelectedSession);
-    }
-
-    [Fact]
-    public async Task SelectNextSession_FromTheLastSession_WrapsToTheFirst()
-    {
-        var vm = await NewVmWithSessionsAsync(3);
-        vm.SelectSessionCommand.Execute(vm.Sessions[2]);
-
-        vm.SelectNextSession();
-
-        Assert.Equal(vm.Sessions[0], vm.SelectedSession);
-    }
-
-    [Fact]
     public async Task SelectPreviousSession_MovesToThePrecedingSession()
     {
         var vm = await NewVmWithSessionsAsync(3);
@@ -749,6 +727,9 @@ public class CockpitViewModelTests
         Assert.Equal(vm.Sessions[1], vm.SelectedSession);
     }
 
+    // Three sessions, not two: `SelectNextSessionCommand_MovesTheSelectionAndWraps` drives the same backwards
+    // wrap over two, where "the last session" and "index 1" are the same answer — so it cannot tell a wrap to
+    // the end apart from a step to the second.
     [Fact]
     public async Task SelectPreviousSession_FromTheFirstSession_WrapsToTheLast()
     {
@@ -758,18 +739,6 @@ public class CockpitViewModelTests
         vm.SelectPreviousSession();
 
         Assert.Equal(vm.Sessions[2], vm.SelectedSession);
-    }
-
-    [Fact]
-    public async Task SelectNextSession_KeepsIsSelectedFlagsConsistent()
-    {
-        var vm = await NewVmWithSessionsAsync(2);
-        vm.SelectSessionCommand.Execute(vm.Sessions[0]);
-
-        vm.SelectNextSession();
-
-        Assert.False(vm.Sessions[0].IsSelected);
-        Assert.True(vm.Sessions[1].IsSelected);
     }
 
     [Fact]

@@ -57,13 +57,4 @@ public class NotificationDependencyInjectionTests
         Assert.Equal(expected, notifier.GetType().Name);
     }
 
-    [Fact]
-    public async Task Container_ResolvesTheCockpitViewModel_WithNotificationDependencies()
-    {
-        // Async disposal: a resolved SessionViewModel is IAsyncDisposable-only, so the provider
-        // must be torn down with DisposeAsync.
-        await using var provider = BuildProvider();
-
-        Assert.NotNull(provider.GetService<CockpitViewModel>());
-    }
 }

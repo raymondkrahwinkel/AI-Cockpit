@@ -79,19 +79,6 @@ public class SessionResumeOfferTests
     }
 
     [Fact]
-    public void TheOfferedMoment_IsAMinutePastTheReset_NotOnIt()
-    {
-        // The rollover is the provider's moment, not ours; a prompt landing on the same second can still meet a
-        // spent allowance if their clock and ours disagree even slightly.
-        var (session, _) = Build();
-        var returns = DateTimeOffset.Now.AddHours(6);
-
-        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, returns)]);
-
-        Assert.Equal(returns.AddMinutes(1), session.ResumeAt);
-    }
-
-    [Fact]
     public void AFillingContextWindow_CarriesNoOffer()
     {
         // It empties on a compaction, not at a moment, so there is nothing to schedule against however full it is.

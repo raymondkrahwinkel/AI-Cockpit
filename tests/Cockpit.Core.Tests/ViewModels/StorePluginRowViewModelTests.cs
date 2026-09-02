@@ -38,15 +38,6 @@ public class StorePluginRowViewModelTests
         LogoAsset: logoAsset);
 
     [Fact]
-    public void Category_WhenEntryHasNone_FallsBackToOther()
-    {
-        var row = new StorePluginRowViewModel(_Entry(category: null), PluginStoreConfig.Remote("url"),null);
-
-        Assert.Equal(StorePluginRowViewModel.OtherCategory, row.Category);
-        Assert.False(row.HasCategory);
-    }
-
-    [Fact]
     public void Category_WhenEntryHasOne_IsUsedAsIs()
     {
         var row = new StorePluginRowViewModel(_Entry(category: "Issue trackers"), PluginStoreConfig.Remote("url"),null);

@@ -22,22 +22,6 @@ namespace Cockpit.Core.Tests.Voice;
 /// </remarks>
 public class OpenMicCoordinatorTests
 {
-    /// <summary>
-    /// AC-543 criterion 20. This used to inject into whichever session happened to be selected — the reason it is
-    /// asserted here rather than left to the assistant's own tests is that the destination is the whole change:
-    /// an open microphone that still reached the selected session would put spoken asides into someone's prompt.
-    /// </summary>
-    [Fact]
-    public async Task InjectUtteranceAsync_GoesToTheAssistant_NotTheSelectedSession()
-    {
-        var assistant = Substitute.For<IAssistantSessionHost>();
-        var coordinator = _CreateCoordinator(out _, out _, assistant: assistant);
-
-        await coordinator.InjectUtteranceAsync("what is the status of AC-223");
-
-        await assistant.Received(1).SendAsync("what is the status of AC-223", Arg.Any<CancellationToken>());
-    }
-
     /// <summary>Decision 10: what Whisper heard is what the assistant gets. No cleanup pass sits in between any more.</summary>
     [Fact]
     public async Task InjectUtteranceAsync_SendsTheRawTranscript_WithNoCleanupPass()

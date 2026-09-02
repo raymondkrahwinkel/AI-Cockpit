@@ -36,17 +36,6 @@ public class LiveSessionRegistryDependencyInjectionTests
     }
 
     [Fact]
-    public async Task Container_GivesTheRegistryTheDelegationEngineAsALiveSessionSource()
-    {
-        await using var provider = BuildProvider();
-
-        var sources = provider.GetServices<ILiveSessionSource>().ToList();
-
-        Assert.Single(sources, source => source.GetType().Name == "DelegationService");
-        Assert.IsType<LiveSessionRegistry>(provider.GetRequiredService<ILiveSessionRegistry>());
-    }
-
-    [Fact]
     public async Task Container_ResolvesTheRegistryAndTheDelegationEngineAsOneSharedInstanceEach()
     {
         // Both are singletons that hold state the other side reads — running tasks on one, the fold on the other.

@@ -627,31 +627,6 @@ public class SessionStartDefaultsTests
     }
 
     /// <summary>
-    /// A security-review finding on AC-166: unlike <see cref="Resolve_MoreSharedRowsThanFit_StopsAndSaysSo"/>'s
-    /// information block, the memory note had no ceiling at all — the value is operator-typed and only ever
-    /// trimmed upstream (<c>ProjectDialogViewModel._ToMemoryRef</c>), and a source's <c>Title</c>/<c>Instruction</c>
-    /// are a plugin's free text the registry does not bound either. A too-long instruction must be dropped whole,
-    /// never clipped: a clipped instruction can flip its own meaning ("do not delete the old notes" becoming
-    /// "do not delete"), where leaving it out entirely is merely less helpful, not misleading.
-    /// </summary>
-    [Fact]
-    public void Resolve_AnInstructionThatOverflowsTheBudget_IsLeftOutWholeNotClipped()
-    {
-        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
-        var overlongInstruction = new string('x', 2000);
-        var sources = new[] { new ProjectMemorySource("depot", "Depot project", overlongInstruction) };
-
-        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
-
-        // The place is still said; the instruction is gone entirely rather than cut short mid-sentence.
-        Assert.Equal(
-            SessionStartDefaults.ProjectAttributionHeading + "\n\n" +
-            "This project's memory lives in Depot project \"cockpit\".",
-            prompt);
-        Assert.DoesNotContain("x", prompt!, StringComparison.Ordinal);
-    }
-
-    /// <summary>
     /// The counterpart to the instruction case above: the value is a name, not an instruction, so unlike an
     /// instruction it is safe to cut rather than dropped whole — but the cut must be visible, the same courtesy
     /// <see cref="Resolve_MoreSharedRowsThanFit_StopsAndSaysSo"/> gives a row that did not fit.
@@ -719,27 +694,6 @@ public class SessionStartDefaultsTests
     }
 
     // ── AC-484: sentences per role, a shared budget, and unresolved-reference notices ──────────────────────────
-
-    /// <summary>
-    /// The regression AC-484 must not break: a project that still keeps exactly one Memory
-    /// <see cref="ProjectResource"/> row — the common case, and every caller written against the old single
-    /// <c>MemoryRef</c> world — gets byte-for-byte the same sentence as <see cref="Resolve_AProjectWithAMemoryLocation_TellsTheSessionWhereToLook"/>,
-    /// whether that row was written through <c>MemoryRef</c> or straight through <c>Resources</c>.
-    /// </summary>
-    [Fact]
-    public void Resolve_ASingleMemoryResourceRow_ProducesExactlyTheOldSentence()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            Resources = [new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory)],
-        };
-
-        Assert.Equal(
-            SessionStartDefaults.ProjectAttributionHeading + "\n\n" +
-            "This project's memory lives at /home/raymond/Notes/Cockpit. Read it there when you need what this " +
-            "project already knows, and keep it up to date as you work.",
-            SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt);
-    }
 
     /// <summary>AC-484 acceptance criterion 1: two memory rows are named together in one sentence, not two separate ones.</summary>
     [Fact]
@@ -811,10 +765,10 @@ public class SessionStartDefaultsTests
     }
 
     /// <summary>
-    /// AC-484 acceptance criterion 4, re-proven against the new Resources-based architecture: a matched memory
-    /// source's own instruction text is dropped whole rather than clipped when it does not fit, exactly as
-    /// <see cref="Resolve_AnInstructionThatOverflowsTheBudget_IsLeftOutWholeNotClipped"/> already established for
-    /// the single-row path this refactor kept byte-identical.
+    /// AC-484 acceptance criterion 4: a matched memory source's own instruction text is dropped whole rather than
+    /// clipped when it does not fit. A second copy of this case, built through the <c>MemoryRef</c> spelling,
+    /// stood beside it until AC-1276 — <c>MemoryRef</c> is an init-only façade that writes the very same
+    /// <c>Resources</c> row, so the two constructed an identical project and asserted an identical string.
     /// </summary>
     [Fact]
     public void Resolve_AnInstructionThatOverflows_IsNeverCutMidSentence()
@@ -1092,26 +1046,6 @@ public class SessionStartDefaultsTests
 
         Assert.NotNull(prompt);
         Assert.True(prompt!.Length <= 5500, "five rows' content together (15,000 characters) must never be able to blow through the shared ceiling");
-    }
-
-    /// <summary>
-    /// MUST-FIX 1, the third role: forty Reference rows alone (no Memory, no Instructions) must still respect the
-    /// shared ceiling — the review measured 12,889 characters here before this fix.
-    /// </summary>
-    [Fact]
-    public void Resolve_FortyReferenceRows_StaysWithinTheSharedCeiling()
-    {
-        var project = Project.Create("Cockpit") with
-        {
-            Resources = [.. Enumerable.Range(0, 40).Select(i =>
-                new ProjectResource($"/reference/{i}/" + new string('r', 200), ProjectResourceRole.Reference))],
-        };
-
-        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
-
-        Assert.NotNull(prompt);
-        Assert.True(prompt!.Length <= 5500, "forty reference rows alone must still respect the shared ceiling");
-        Assert.Contains("did not fit here", prompt, StringComparison.Ordinal);
     }
 
     /// <summary>

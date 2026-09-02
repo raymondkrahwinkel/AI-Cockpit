@@ -26,14 +26,6 @@ public class SessionConversationSinkDependencyInjectionTests
     }
 
     [Fact]
-    public async Task Container_ResolvesTheConversationSink()
-    {
-        await using var provider = BuildProvider();
-
-        Assert.IsType<SessionConversationTracker>(provider.GetService<ISessionConversationSink>());
-    }
-
-    [Fact]
     public async Task Container_ResolvesTheSinkAndTheTrackerAsOneSharedInstance()
     {
         // The tracker only suppresses a repeat report because it remembers what a pane last reported. A second

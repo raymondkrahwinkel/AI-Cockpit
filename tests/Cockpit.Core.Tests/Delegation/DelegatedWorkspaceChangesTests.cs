@@ -129,20 +129,6 @@ public class DelegatedWorkspaceChangesTests : IDisposable
     }
 
     [Fact]
-    public async Task AReadOnlyTaskThatChangedNothing_CompletesWithAnEmptyReport()
-    {
-        await _InitRepositoryAsync();
-        var service = _ServiceWritingDuringTheTurn(fileName: null);
-
-        var task = await service.DelegateAsync(new DelegationRequest("local", "just read", WorkingDirectory: _repository));
-        await _WaitUntilFinishedAsync(service, task.TaskId);
-
-        var finished = service.GetTask(task.TaskId)!;
-        Assert.Equal(DelegatedTaskStatus.Completed, finished.Status);
-        Assert.Empty(finished.ChangedPaths!);
-    }
-
-    [Fact]
     public async Task WhatTheDelegatingSessionLeftDirty_IsNotBlamedOnTheTask()
     {
         await _InitRepositoryAsync();

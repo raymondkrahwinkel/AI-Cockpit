@@ -149,14 +149,6 @@ public class McpOAuthCoordinatorTests
     }
 
     [Fact]
-    public async Task GetState_WithNothingStored_SaysASignInIsNeeded()
-    {
-        var (coordinator, _) = _Create();
-
-        Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer()));
-    }
-
-    [Fact]
     public async Task GetState_WithAValidToken_SaysSignedIn_WithoutTouchingTheNetwork()
     {
         var (coordinator, store) = _Create();

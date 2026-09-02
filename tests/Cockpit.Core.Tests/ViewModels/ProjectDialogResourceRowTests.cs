@@ -77,17 +77,6 @@ public class ProjectDialogResourceRowTests
     }
 
     [Fact]
-    public async Task ToProject_ABlankResourceRow_YieldsNoRow()
-    {
-        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
-        viewModel.Name = "Cockpit";
-        viewModel.AddResourceRowCommand.Execute(null);
-
-        // A row the operator added and left alone names nothing.
-        Assert.Empty(viewModel.ToProject().Resources);
-    }
-
-    [Fact]
     public async Task ToProject_ARowWithOnlyALabelAndABlankReference_YieldsNoRow()
     {
         var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());

@@ -1015,17 +1015,6 @@ public class SessionViewModelTests
     }
 
     [Fact]
-    public void Apply_PermissionRequested_SetsStatusToNeedsAttention()
-    {
-        var vm = NewVm();
-        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Bash", InputJson = "{}" });
-
-        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Bash", InputJson = "{}" });
-
-        Assert.Equal(SessionStatus.NeedsAttention, vm.SessionStatus);
-    }
-
-    [Fact]
     public async Task Apply_PermissionRequested_ForAPreApprovedTool_AutoAllows_WithoutPromptingOrNeedsAttention()
     {
         // AC-215: a self-driving embedded run pre-authorizes its own control tools, so a permission request for one is

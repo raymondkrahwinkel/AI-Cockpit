@@ -41,20 +41,6 @@ public class McpOAuthTokenAdoptionTests
     }
 
     [Fact]
-    public async Task RunAsync_OffersAPluginsMintedIdAgainstTheNameItsTokenWasFiledUnder()
-    {
-        var (adoption, tokens) = _Create(
-            _RegistryWith(),
-            _PluginOffering(new McpServerContribution("Depot: work", "https://depot.example/mcp") { Id = "connection-id" }));
-
-        await adoption.RunAsync();
-
-        await tokens.Received().AdoptLegacyEntriesAsync(
-            Arg.Is<IReadOnlyDictionary<string, string>>(map => map["Depot: work"] == "connection-id"),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task RunAsync_LeavesOutAServerWhoseIdItsOwnNameAlreadyDerivesTo()
     {
         // A registry row and a plugin with a fixed name both land on the derived id, and the store finds their

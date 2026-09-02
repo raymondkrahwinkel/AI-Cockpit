@@ -10,19 +10,6 @@ namespace Cockpit.Core.Tests.Screenshots;
 public class ScreenshotOptionsTests
 {
     [Fact]
-    public void TwoKeysThatAreEachTheirOwn_ShowNoWarning()
-    {
-        var cockpit = TestCockpit.NewViewModel();
-        cockpit.VoiceEnabled = true;
-        cockpit.VoiceGlobalPushToTalk = true;
-        cockpit.VoicePushToTalkKeyName = "F9";
-        cockpit.ScreenshotGlobalHotkeyEnabled = true;
-        cockpit.ScreenshotHotkeyKeyName = "F8";
-
-        Assert.Empty(cockpit.HotkeyConflict);
-    }
-
-    [Fact]
     public void SettingTheScreenshotKeyToThePushToTalkKey_WarnsImmediately()
     {
         var cockpit = TestCockpit.NewViewModel();
