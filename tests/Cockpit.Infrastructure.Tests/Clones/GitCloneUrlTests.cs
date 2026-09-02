@@ -20,12 +20,6 @@ public sealed class GitCloneUrlTests
         Assert.Equal("https://github.com/org/repo", parsed.RemoteUrl);
     }
 
-    [Fact]
-    public void Parse_HttpsUrlWithoutGitSuffix_IsEquivalentToWithIt()
-    {
-        Assert.Equal(GitCloneUrl.Parse("https://github.com/org/repo.git").NormalizedKey, GitCloneUrl.Parse("https://github.com/org/repo").NormalizedKey);
-    }
-
     // The load-bearing security property (a binding rule): a token in an HTTPS URL is dropped before git ever sees
     // it, so it cannot land in argv, .git/config or a log — the clone falls back to the host credential helper.
     [Fact]

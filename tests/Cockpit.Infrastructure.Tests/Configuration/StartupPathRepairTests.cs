@@ -101,41 +101,23 @@ public sealed class StartupPathRepairTests
         }
     }
 
-    [Fact]
-    public void ContainsEntry_WhenTheDirectoryIsOnThePath_IsTrue()
-    {
-        var path = Join("/usr/local/bin", "/home/user/.local/bin", "/usr/bin");
+    // One predicate, one test: an entry counts only when a whole PATH entry normalises to the wanted directory.
+    // The rows are the input classes that used to be a Fact each — present, absent, a trailing slash on either
+    // side, a prefix that must not count, and an empty PATH. Built through Join so the separator stays the host's.
+    public static IEnumerable<object[]> ContainsEntryCases() =>
+    [
+        [Join("/usr/local/bin", "/home/user/.local/bin", "/usr/bin"), "/home/user/.local/bin", true],
+        [Join("/usr/local/bin", "/usr/bin"), "/home/user/.local/bin", false],
+        ["/home/user/.local/bin/", "/home/user/.local/bin", true],
+        ["/home/user/.local/bin", "/home/user/.local/bin/", true],
+        ["/usr/local", "/usr/local/bin", false],
+        ["", "/usr/local/bin", false],
+    ];
 
-        Assert.True(StartupPathRepair.ContainsEntry(path, "/home/user/.local/bin"));
-    }
-
-    [Fact]
-    public void ContainsEntry_WhenTheDirectoryIsMissing_IsFalse()
-    {
-        var path = Join("/usr/local/bin", "/usr/bin");
-
-        Assert.False(StartupPathRepair.ContainsEntry(path, "/home/user/.local/bin"));
-    }
-
-    [Fact]
-    public void ContainsEntry_ToleratesATrailingSlashOnEitherSide()
-    {
-        Assert.True(StartupPathRepair.ContainsEntry("/home/user/.local/bin/", "/home/user/.local/bin"));
-        Assert.True(StartupPathRepair.ContainsEntry("/home/user/.local/bin", "/home/user/.local/bin/"));
-    }
-
-    [Fact]
-    public void ContainsEntry_DoesNotMatchAPrefixEntry()
-    {
-        // "/usr/local" on PATH must not count as "/usr/local/bin" being on it — entries match whole, not by prefix.
-        Assert.False(StartupPathRepair.ContainsEntry("/usr/local", "/usr/local/bin"));
-    }
-
-    [Fact]
-    public void ContainsEntry_OnAnEmptyPath_IsFalse()
-    {
-        Assert.False(StartupPathRepair.ContainsEntry(string.Empty, "/home/user/.local/bin"));
-    }
+    [Theory]
+    [MemberData(nameof(ContainsEntryCases))]
+    public void ContainsEntry_MatchesAWholeEntryOnly(string path, string directory, bool expected) =>
+        Assert.Equal(expected, StartupPathRepair.ContainsEntry(path, directory));
 
     [Fact]
     public void MergePaths_PutsTheLoginShellEntriesFirst_AndKeepsTheCurrentOnlyOnes()
@@ -213,14 +195,9 @@ public sealed class StartupPathRepairTests
         Assert.Null(StartupPathRepair.ExtractMarkedPath($"{StartupPathRepair.Marker}\n"));
     }
 
-    [Fact]
+    [PosixFact("Reading the PATH from a login shell is the POSIX repair; Windows edits the registry instead.")]
     public void ReadLoginShellPath_FromAnAnsweringShell_ReturnsItsMarkedPath()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return; // The probe never runs on Windows (Run is Unix-gated), and a .sh fake shell cannot either.
-        }
-
         var shell = WriteFakeShell("echo \"__COCKPIT_LOGIN_PATH__=/fake/login/bin:/usr/bin\"");
         try
         {
@@ -239,14 +216,9 @@ public sealed class StartupPathRepairTests
         }
     }
 
-    [Fact]
+    [PosixFact("Reading the PATH from a login shell is the POSIX repair; Windows edits the registry instead.")]
     public void ReadLoginShellPath_WhenTheShellWedges_GivesUpWithinTheDeadline()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         // A shell wedged on its init (never prints, never exits) — the probe must give up and take the fallback.
         var shell = WriteFakeShell("sleep 30");
         try
@@ -266,14 +238,9 @@ public sealed class StartupPathRepairTests
         }
     }
 
-    [Fact]
+    [PosixFact("Reading the PATH from a login shell is the POSIX repair; Windows edits the registry instead.")]
     public void ReadLoginShellPath_WhenABackgroundChildHoldsTheStdoutPipe_IsBoundedByOneDeadlineNotTwo()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         // The shell burns most of the deadline on its init, then exits leaving a background child that inherited
         // stdout — EOF never arrives, so the stdout read must be bounded by the REMAINDER of the same deadline.
         // Two full waits in a row (exit + read) would land at ~1.8s here; one shared deadline stays at ~1s.
@@ -299,14 +266,9 @@ public sealed class StartupPathRepairTests
         }
     }
 
-    [Fact]
+    [PosixFact("Reading the PATH from a login shell is the POSIX repair; Windows edits the registry instead.")]
     public void ReadLoginShellPath_WhenTheShellExitsWithoutAMarkerLine_RecordsTheExitCodeAndStderr()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         // A shell that answers and exits cleanly but whose init errored before the PATH echo. The sleep isn't
         // about the production timeout — the stderr read is strictly non-blocking, so this just gives it real
         // wall-clock time to finish before the assertion checks it.
@@ -327,14 +289,9 @@ public sealed class StartupPathRepairTests
         }
     }
 
-    [Fact]
+    [PosixFact("Reading the PATH from a login shell is the POSIX repair; Windows edits the registry instead.")]
     public void ReadLoginShellPath_WhenTheScriptIsBusyForWriting_RecordsTheExceptionTypeAndMessage()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return; // ETXTBSY is a Linux execve rule; Windows has no equivalent restriction.
-        }
-
         // Linux refuses execve on a file still open for writing (AC-610's ETXTBSY hypothesis). WriteFakeShell
         // already probes past that race, so this test induces it directly instead — holding the write handle
         // open — to confirm the catch branch records what happened.

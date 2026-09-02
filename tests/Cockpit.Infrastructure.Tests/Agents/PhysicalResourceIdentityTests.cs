@@ -83,14 +83,9 @@ public sealed class PhysicalResourceIdentityTests
     /// <see cref="File.ResolveLinkTarget"/>) would not satisfy — removing the resolve call collapses this test back
     /// to two different strings.
     /// </summary>
-    [Fact]
+    [PosixFact("Creating a directory symlink needs elevation on Windows, and PhysicalResourceIdentity documents that gap rather than closing it.")]
     public void Canonicalize_ASymlinkToADirectory_ResolvesToTheSameIdentityAsTheRealPath()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var root = Directory.CreateTempSubdirectory("ac439-canon-");
         try
         {

@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Cockpit.Infrastructure.Diagnostics;
 
 namespace Cockpit.Infrastructure.Tests.Diagnostics;
@@ -10,16 +11,10 @@ namespace Cockpit.Infrastructure.Tests.Diagnostics;
 /// </summary>
 public class LinuxCrashLogReaderTests
 {
-    [Fact]
+    [LinuxFact("coredumpctl and journalctl are Linux-only; elsewhere there is no reader to exercise.")]
+    [SupportedOSPlatform("linux")]
     public void RecentEntries_OnLinux_ReturnsWithoutThrowing()
     {
-        // OperatingSystem.IsLinux() (not RuntimeInformation) is the guard the platform-compatibility analyzer
-        // recognises, so the call to the linux-only reader below is seen as safe rather than flagged (CA1416).
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
-
         var reader = new LinuxCrashLogReader();
 
         // Calling it directly is the no-throw assertion — an exception from the real coredumpctl/journalctl shell-out

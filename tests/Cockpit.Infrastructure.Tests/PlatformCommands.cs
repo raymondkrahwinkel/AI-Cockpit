@@ -29,3 +29,10 @@ internal sealed class WindowsFactAttribute : FactAttribute
 {
     public WindowsFactAttribute(string windowsOnly) => Skip = OperatingSystem.IsWindows() ? null : windowsOnly;
 }
+
+// A test whose subject is Linux-only behaviour (procfs, termios, coredumpctl). Separate from PosixFact because
+// macOS is a POSIX host that has none of these, so it must skip there too.
+internal sealed class LinuxFactAttribute : FactAttribute
+{
+    public LinuxFactAttribute(string linuxOnly) => Skip = OperatingSystem.IsLinux() ? null : linuxOnly;
+}

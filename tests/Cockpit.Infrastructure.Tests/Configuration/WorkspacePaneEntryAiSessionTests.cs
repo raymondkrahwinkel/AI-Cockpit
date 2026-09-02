@@ -42,33 +42,18 @@ public class WorkspacePaneEntryAiSessionTests
         Assert.Equal(nameof(PaneSessionKind.Sdk), entry.SessionKind);
     }
 
-    [Fact]
-    public void ToDomain_AnUnrecognisedSessionKindString_FallsBackToSdkRatherThanThrowing()
+    // One behaviour, one test: ToDomain reads the stored string through a single case-insensitive TryParse and
+    // falls back to Sdk on anything it does not recognise — a future kind, a blank, or a differently cased name.
+    [Theory]
+    [InlineData("some-future-kind", PaneSessionKind.Sdk)]
+    [InlineData("", PaneSessionKind.Sdk)]
+    [InlineData("tty", PaneSessionKind.Tty)]
+    public void ToDomain_ReadsTheSessionKindString_FallingBackToSdkWhenItIsNotOne(string stored, PaneSessionKind expected)
     {
-        var entry = new WorkspacePaneEntry { Id = "p1", Kind = nameof(PaneKind.AiSession), SessionKind = "some-future-kind" };
+        var entry = new WorkspacePaneEntry { Id = "p1", Kind = nameof(PaneKind.AiSession), SessionKind = stored };
 
         var pane = entry.ToDomain();
 
-        Assert.Equal(PaneSessionKind.Sdk, pane.SessionKind);
-    }
-
-    [Fact]
-    public void ToDomain_ABlankSessionKindString_FallsBackToSdk()
-    {
-        var entry = new WorkspacePaneEntry { Id = "p1", Kind = nameof(PaneKind.AiSession), SessionKind = string.Empty };
-
-        var pane = entry.ToDomain();
-
-        Assert.Equal(PaneSessionKind.Sdk, pane.SessionKind);
-    }
-
-    [Fact]
-    public void ToDomain_SessionKindMatchingIsCaseInsensitive()
-    {
-        var entry = new WorkspacePaneEntry { Id = "p1", Kind = nameof(PaneKind.AiSession), SessionKind = "tty" };
-
-        var pane = entry.ToDomain();
-
-        Assert.Equal(PaneSessionKind.Tty, pane.SessionKind);
+        Assert.Equal(expected, pane.SessionKind);
     }
 }

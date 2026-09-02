@@ -16,16 +16,9 @@ public class PortaPtyLineDisciplineTests
     // only buy flakiness — which it did at 2s per read.
     private static readonly TimeSpan ReadBudget = TimeSpan.FromSeconds(30);
 
-    [Fact]
+    [LinuxFact("The spawn path and these termios values are Linux-only.")]
     public async Task SpawnedPty_TranslatesNewlinesForTheTerminal()
     {
-        // OperatingSystem.IsLinux() (not RuntimeInformation) is the guard the platform-compatibility analyzer
-        // understands. The spawn path and these termios values are Linux-only; elsewhere there is nothing to assert.
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
-
         using var pty = PortaPtyProcess.Start(
             "/bin/sh",
             ["-c", "printf 'AA\\nBB\\n'"],
@@ -45,14 +38,9 @@ public class PortaPtyLineDisciplineTests
     /// interactive session actually takes: type a line in, read the result back. It pins the input side too — the
     /// echo and line editing that <c>ICANON</c>/<c>ECHO</c> carry — which a one-shot command never exercises.
     /// </summary>
-    [Fact]
+    [LinuxFact("The spawn path and these termios values are Linux-only.")]
     public async Task InteractiveShell_EchoesTypedInputAndAnswersWithCrLf()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
-
         using var pty = PortaPtyProcess.Start(
             "/bin/sh",
             ["-i"],

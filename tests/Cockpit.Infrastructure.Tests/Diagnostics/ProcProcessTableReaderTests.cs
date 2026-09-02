@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using Cockpit.Infrastructure.Diagnostics;
 
 namespace Cockpit.Infrastructure.Tests.Diagnostics;
@@ -16,14 +16,10 @@ public class ProcProcessTableReaderTests
     /// reach one of them. The swap is only allowed to be cheaper, never to move the number, so this pins it against
     /// the `VmRSS` the old path read — the same field an operator would check with `ps`.
     /// </summary>
-    [Fact]
+    [LinuxFact("procfs is Linux-only; no other platform has /proc to read.")]
+    [SupportedOSPlatform("linux")]
     public void Read_ReportsTheSameResidentMemoryAsVmRss_ForThisVeryProcess()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            return;
-        }
-
         // Bracketed rather than compared against one reading: the test host is live and the rest of this assembly's
         // collections run beside it, so its own RSS moves between two reads — the SkiaSharp rasterisation tests alone
         // shift it by more than a tight band would allow. Taking VmRSS either side of the call gives a window the
@@ -46,14 +42,10 @@ public class ProcProcessTableReaderTests
     /// one still gives you: the neighbouring fields are pgrp, session and tty, all positive on hundreds of rows, so
     /// a shifted parse would leave this green while every session's tree quietly measured the wrong processes.
     /// </summary>
-    [Fact]
+    [LinuxFact("procfs is Linux-only; no other platform has /proc to read.")]
+    [SupportedOSPlatform("linux")]
     public void Read_ReportsTheRealParent_ForThisVeryProcess()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            return;
-        }
-
         var rows = new ProcProcessTableReader().Read();
         var row = rows.SingleOrDefault(row => row.ProcessId == Environment.ProcessId);
 

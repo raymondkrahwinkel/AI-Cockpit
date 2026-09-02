@@ -135,14 +135,9 @@ public sealed class ClaimCollisionMonitorTests
     /// real path. Skipped on Windows, where creating a symlink from a test process needs a privilege this suite
     /// cannot assume — the documented gap in <see cref="PhysicalResourceIdentity"/> covers this platform difference.
     /// </summary>
-    [Fact]
+    [PosixFact("Creating a directory symlink needs elevation on Windows, and PhysicalResourceIdentity documents that gap rather than closing it.")]
     public void PanesInCollision_ResourceReachedThroughASymlink_CollidesWithTheRealPath()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var root = Directory.CreateTempSubdirectory("ac439-");
         try
         {
