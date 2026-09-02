@@ -130,7 +130,13 @@ internal sealed class CockpitMcpEndpointHost
                 CallToolResult result;
                 try
                 {
-                    result = await next(context, cancellationToken).ConfigureAwait(false);
+                    var expectedParameters = _ExpectedParameterNames(context.MatchedPrimitive);
+                    var unknownParameters = context.MatchedPrimitive is McpServerTool tool && context.Params.Arguments is { } arguments
+                        ? UnknownParameterNames(tool.ProtocolTool.InputSchema, arguments.Keys)
+                        : null;
+                    result = unknownParameters is { Count: > 0 }
+                        ? _UnknownToolArgumentsResult(context.Params.Name, unknownParameters, expectedParameters)
+                        : await next(context, cancellationToken).ConfigureAwait(false);
                 }
                 // ArgumentException narrowed to the marshaller's own signature (ParamName "arguments") so a bug
                 // inside a tool's own logic is never mislabelled as a bad call; JsonException is left broad, since
@@ -357,6 +363,24 @@ internal sealed class CockpitMcpEndpointHost
         return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = message }] };
     }
 
+    private static CallToolResult _UnknownToolArgumentsResult(string toolName, IReadOnlyList<string> parameters, IReadOnlyList<string> expectedParameters) =>
+        new()
+        {
+            IsError = true,
+            Content = [new TextContentBlock
+            {
+                Text = $"{toolName}: {string.Join(" ", parameters.Select(parameter => _UnknownParameterMessage(parameter, expectedParameters)))}",
+            }],
+        };
+
+    private static string _UnknownParameterMessage(string parameter, IReadOnlyList<string> expectedParameters)
+    {
+        var suggestion = expectedParameters.FirstOrDefault(candidate => parameter.StartsWith(candidate, StringComparison.OrdinalIgnoreCase));
+        return suggestion is null
+            ? $"Unknown parameter '{parameter}'."
+            : $"Unknown parameter '{parameter}'; did you mean '{suggestion}'?";
+    }
+
     // AC-1138: the same `ok`/`error` shape the tools themselves answer in, plus the code an agent branches on.
     private static CallToolResult _UiUnavailableResult(UiUnavailableException exception)
     {
@@ -376,10 +400,25 @@ internal sealed class CockpitMcpEndpointHost
 
     private static IReadOnlyList<string> _ExpectedParameterNames(IMcpServerPrimitive? primitive) =>
         primitive is McpServerTool tool
-            && tool.ProtocolTool.InputSchema.TryGetProperty("properties", out var properties)
-            && properties.ValueKind == JsonValueKind.Object
-            ? [.. properties.EnumerateObject().Select(property => property.Name)]
+            ? _SchemaParameterNames(tool.ProtocolTool.InputSchema) ?? []
             : [];
+
+    // Suggestion matching is deliberately prefix-only: it fixes profileLabel → profile without pretending to be fuzzy search.
+    internal static IReadOnlyList<string>? UnknownParameterNames(JsonElement inputSchema, IEnumerable<string> parameters)
+    {
+        var expectedParameters = _SchemaParameterNames(inputSchema);
+        if (expectedParameters is null)
+        {
+            return null;
+        }
+
+        return [.. parameters.Where(parameter => !expectedParameters.Contains(parameter, StringComparer.Ordinal))];
+    }
+
+    private static IReadOnlyList<string>? _SchemaParameterNames(JsonElement inputSchema) =>
+        inputSchema.TryGetProperty("properties", out var properties) && properties.ValueKind == JsonValueKind.Object
+            ? [.. properties.EnumerateObject().Select(property => property.Name)]
+            : null;
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
