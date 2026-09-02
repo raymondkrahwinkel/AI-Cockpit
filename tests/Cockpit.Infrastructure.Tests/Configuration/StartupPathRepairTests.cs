@@ -166,34 +166,21 @@ public sealed class StartupPathRepairTests
         Assert.Equal("/home/user/bin", StartupPathRepair.PrependMissingEntries(string.Empty, ["/home/user/bin"]));
     }
 
-    [Fact]
-    public void ExtractMarkedPath_PullsThePathOutOfNoisyShellOutput()
-    {
-        var output = $"Welcome to Fedora!\nsome motd line\n{StartupPathRepair.Marker}/usr/local/bin:/usr/bin\n";
+    // The marker line is pulled out of whatever the shell printed around it. Rows, because this is one function
+    // over four input classes: a noisy motd, an init that echoes the unexpanded probe first (`set -x`), output with
+    // no marker at all, and a marker with nothing after it. Built through MemberData so Marker stays a runtime read.
+    public static IEnumerable<object[]> ExtractMarkedPathCases() =>
+    [
+        [$"Welcome to Fedora!\nsome motd line\n{StartupPathRepair.Marker}/usr/local/bin:/usr/bin\n", "/usr/local/bin:/usr/bin"],
+        [$"+ echo {StartupPathRepair.Marker}$PATH\n{StartupPathRepair.Marker}/usr/bin\n", "/usr/bin"],
+        ["login: something went wrong\n", null!],
+        [$"{StartupPathRepair.Marker}\n", null!],
+    ];
 
-        Assert.Equal("/usr/local/bin:/usr/bin", StartupPathRepair.ExtractMarkedPath(output));
-    }
-
-    [Fact]
-    public void ExtractMarkedPath_WhenAnInitEchoesTheProbe_TakesTheLastMarkerLine()
-    {
-        // An init with `set -x` (or an echoing plugin) prints the unexpanded probe before the real answer.
-        var output = $"+ echo {StartupPathRepair.Marker}$PATH\n{StartupPathRepair.Marker}/usr/bin\n";
-
-        Assert.Equal("/usr/bin", StartupPathRepair.ExtractMarkedPath(output));
-    }
-
-    [Fact]
-    public void ExtractMarkedPath_WithoutAMarkerLine_IsNull()
-    {
-        Assert.Null(StartupPathRepair.ExtractMarkedPath("login: something went wrong\n"));
-    }
-
-    [Fact]
-    public void ExtractMarkedPath_WithAnEmptyValue_IsNull()
-    {
-        Assert.Null(StartupPathRepair.ExtractMarkedPath($"{StartupPathRepair.Marker}\n"));
-    }
+    [Theory]
+    [MemberData(nameof(ExtractMarkedPathCases))]
+    public void ExtractMarkedPath_TakesTheLastMarkerLine_OrNothingWhenThereIsNoUsableOne(string output, string? expected) =>
+        Assert.Equal(expected, StartupPathRepair.ExtractMarkedPath(output));
 
     [PosixFact("Reading the PATH from a login shell is the POSIX repair; Windows edits the registry instead.")]
     public void ReadLoginShellPath_FromAnAnsweringShell_ReturnsItsMarkedPath()

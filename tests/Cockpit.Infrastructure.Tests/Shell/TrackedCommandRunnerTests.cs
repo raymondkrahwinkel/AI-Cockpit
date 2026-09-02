@@ -64,10 +64,13 @@ public class TrackedCommandRunnerTests : IDisposable
     /// anyway, because cgroup membership does not change on reparenting. Skips rather than fails where there is no
     /// real cgroup v2 to prove it against (non-Linux, no delegation) — same as `LinuxCrashLogReaderTests`.
     /// </summary>
-    [Fact]
+    [LinuxFact("Cgroup v2 membership is a Linux kernel feature; there is nothing to prove elsewhere.")]
     public async Task RunAsync_EndsAGrandchildReparentedToPidOne_ThatAProcessTreeWalkWouldMiss()
     {
-        if (!OperatingSystem.IsLinux() || LinuxCgroupMemoryLimiter.FindWritableParent() is null)
+        // The platform half is the attribute above. This is the runtime half: a Linux box without cgroup
+        // delegation has no real cgroup v2 to prove this against. xunit 2.9 has no dynamic skip, so it stays a
+        // guard — the one case here that still reports a pass it did not earn, and only on such a box.
+        if (LinuxCgroupMemoryLimiter.FindWritableParent() is null)
         {
             return;
         }
@@ -93,10 +96,13 @@ public class TrackedCommandRunnerTests : IDisposable
     /// never twice. Proves the run's cgroup ends only what it holds: a second, unrelated process started outside
     /// this run survives the same cleanup that ends the run's own reparented grandchild.
     /// </summary>
-    [Fact]
+    [LinuxFact("Cgroup v2 membership is a Linux kernel feature; there is nothing to prove elsewhere.")]
     public async Task RunAsync_LeavesAnUnrelatedProcessRunning()
     {
-        if (!OperatingSystem.IsLinux() || LinuxCgroupMemoryLimiter.FindWritableParent() is null)
+        // The platform half is the attribute above. This is the runtime half: a Linux box without cgroup
+        // delegation has no real cgroup v2 to prove this against. xunit 2.9 has no dynamic skip, so it stays a
+        // guard — the one case here that still reports a pass it did not earn, and only on such a box.
+        if (LinuxCgroupMemoryLimiter.FindWritableParent() is null)
         {
             return;
         }

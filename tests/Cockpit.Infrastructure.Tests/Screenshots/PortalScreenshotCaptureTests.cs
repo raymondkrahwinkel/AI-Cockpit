@@ -178,34 +178,26 @@ public class PortalScreenshotCaptureTests : IDisposable
         Assert.Null((await capture.CaptureAsync()));
     }
 
-    /// <summary>A portal that answers with a code nobody asked for is broken, and broken is not cancelled — the operator pressed a key and is owed the difference.</summary>
-    [Fact]
-    public async Task APortalThatRefuses_Throws()
+    /// <summary>
+    /// Two ways the portal can fail to hand over an image, one refusal path. A code nobody asked for is broken, and
+    /// broken is not cancelled — the operator pressed a key and is owed the difference. A success that names no
+    /// location is a portal that did not do what it said: nothing to read, and nothing to invent. Either way it
+    /// throws, and the message says which of the two happened.
+    /// </summary>
+    [Theory]
+    [InlineData(2u, "response code 2")]
+    [InlineData(0u, "where the image is")]
+    public async Task APortalThatHandsOverNoImage_Throws_SayingWhichWayItFailed(uint responseCode, string expected)
     {
         var capture = _Capture();
         capture.UseTestHarness(
             _ => Task.FromResult(2u),
-            (_, _) => Task.FromResult(new PortalResponse(2, new Dictionary<string, object>())));
+            (_, _) => Task.FromResult(new PortalResponse(responseCode, new Dictionary<string, object>())));
 
         var act = async () => await capture.CaptureAsync();
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
-        Assert.Contains("response code 2", ex.Message, StringComparison.Ordinal);
-    }
-
-    /// <summary>Success without a location is a portal that did not do what it said. Nothing to read, and nothing to invent.</summary>
-    [Fact]
-    public async Task ASuccessWithoutAUri_Throws()
-    {
-        var capture = _Capture();
-        capture.UseTestHarness(
-            _ => Task.FromResult(2u),
-            (_, _) => Task.FromResult(new PortalResponse(0, new Dictionary<string, object>())));
-
-        var act = async () => await capture.CaptureAsync();
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
-        Assert.Contains("where the image is", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(expected, ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>The file the portal wrote is gone by the time the capture returns — a successful read is no reason to leave a picture of the operator's screen in a cache directory.</summary>

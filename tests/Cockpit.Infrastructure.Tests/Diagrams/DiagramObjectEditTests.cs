@@ -34,22 +34,17 @@ public class DiagramObjectEditTests
         Assert.Equal("flowchart TD\n    A[\"Start\"]", edit.Text);
     }
 
-    [Fact]
-    public void AddNode_WhenTheIdIsAlreadyThere_IsRefused()
+    // One refusal, two reasons an id can be unusable: it is already in the diagram, or it is not one word and would
+    // otherwise be written into the source as its own arrow. Neither may produce text.
+    [Theory]
+    [InlineData("B", "already in this diagram")]
+    [InlineData("C --> D", "one word")]
+    public void AddNode_WithAnIdThatCannotBeUsed_IsRefused_RatherThanWrittenIntoTheSource(string id, string expected)
     {
-        var edit = DiagramObjectEdit.AddNode(Source, "B", "Other");
+        var edit = DiagramObjectEdit.AddNode(Source, id, "Other");
 
         Assert.Null(edit.Text);
-        Assert.Contains("already in this diagram", edit.Refusal);
-    }
-
-    [Fact]
-    public void AddNode_WithAnIdThatIsNotOne_IsRefused_RatherThanWrittenIntoTheSource()
-    {
-        var edit = DiagramObjectEdit.AddNode(Source, "C --> D", "Sneaky");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("one word", edit.Refusal);
+        Assert.Contains(expected, edit.Refusal);
     }
 
     [Fact]
