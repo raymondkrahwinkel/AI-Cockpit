@@ -11,7 +11,7 @@ namespace Cockpit.App.Controls;
 
 // AC-1013: The MCP-server checklist as one control shared by the profile editor, New-session dialog and
 // project editor (AC-140) — the three used to keep their own copy, which is how the project editor ended up
-// listing stale servers. Collapsed by default behind a live "N of M selected" count so it doesn't block Save.
+// listing stale servers. Collapsed by default behind a live summary line so it doesn't block Save.
 public partial class McpServerChecklist : UserControl
 {
     public static readonly StyledProperty<IEnumerable?> ServersProperty =
@@ -185,12 +185,21 @@ public partial class McpServerChecklist : UserControl
         }
     }
 
+    // Naming what is off, not only how many are on: a count is what let a switched-off Depot sit unnoticed on a
+    // project for months, since the one line a collapsed list shows was true and said nothing. Past a handful the
+    // names stop being readable at a glance, and the count is the better answer again.
+    private const int NamesShownWhenOff = 3;
+
     private void _RefreshSummary()
     {
         var servers = Servers?.OfType<McpServerSelectionItemViewModel>().ToList() ?? [];
-        var selected = servers.Count(server => server.IsEnabledForSession);
-        SummaryText = servers.Count == 0
-            ? Header
-            : $"{Header} · {selected} of {servers.Count} selected";
+        var off = servers.Where(server => !server.IsEnabledForSession).Select(server => server.Name).ToList();
+        SummaryText = servers switch
+        {
+            { Count: 0 } => Header,
+            _ when off.Count == 0 => $"{Header} · all {servers.Count} selected",
+            _ when off.Count <= NamesShownWhenOff => $"{Header} · {string.Join(", ", off)} off",
+            _ => $"{Header} · {servers.Count - off.Count} of {servers.Count} selected",
+        };
     }
 }
