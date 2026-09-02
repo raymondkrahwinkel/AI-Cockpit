@@ -47,15 +47,15 @@ public sealed class Ac1196FreezeDetectorTests
     public Task ABlockedUiThreadThatAnsweredOnce_IsStillNotCalledStarvation() =>
         _ABlockIsTheRenderClocksToAnswerFor(dispatcherBusyFirst: true);
 
-    /// <summary>T2 — starved at Render (4), the priority a runaway render pass reposts at.</summary>
+    /// <summary>
+    /// T2 — starved at Render (4), the priority a runaway render pass reposts at. A second case at Loaded (1)
+    /// stood here and was dropped: the priority never crosses into the production code —
+    /// <c>UiDispatchHeartbeat.Decide</c> takes two <c>TimeSpan</c>s — and Loaded and Render sit the same side of
+    /// the one threshold there is, Background.
+    /// </summary>
     [Fact]
     public Task AStarvedUiThreadAtRender_IsReportedAsDispatchStarvation() =>
         _StarvationIsItsOwnAlarm(DispatcherPriority.Render);
-
-    /// <summary>T2 — the same at Loaded (1), one step above the Background the probe is posted at.</summary>
-    [Fact]
-    public Task AStarvedUiThreadAtLoaded_IsReportedAsDispatchStarvation() =>
-        _StarvationIsItsOwnAlarm(DispatcherPriority.Loaded);
 
     /// <summary>T7 — the silent positive control: a quiet thread earns neither alarm, in the same run.</summary>
     [Fact]
@@ -68,10 +68,11 @@ public sealed class Ac1196FreezeDetectorTests
         {
             service.Start();
 
-            // Armed on the short budget, and long enough past it that a detector which alarms on anything would
-            // have. Without this wait the run would prove only that three seconds is longer than nothing.
+            // Armed on the short budget, and past it by a whole budget more. Twice rather than three times (3s
+            // off this test): both alarms are threshold comparisons against it, so a detector that fires on a
+            // quiet thread fires as the budget passes at 3s — the third multiple watched an empty window.
             Assert.True(await _Appears(logger, $"stallAfter={AlarmAfter.TotalSeconds:0}s"));
-            await Task.Delay(AlarmAfter * 3);
+            await Task.Delay(AlarmAfter * 2);
 
             Assert.DoesNotContain(logger.Lines, line => line.Contains(Stalled, StringComparison.Ordinal));
             Assert.DoesNotContain(logger.Lines, line => line.Contains(Starved, StringComparison.Ordinal));
