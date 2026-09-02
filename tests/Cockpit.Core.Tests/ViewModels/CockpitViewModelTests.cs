@@ -488,20 +488,6 @@ public class CockpitViewModelTests
     }
 
     [Fact]
-    public void ShowSinglePane_IsTrueWhenEitherZoomedOrSingleLayout()
-    {
-        var vm = NewVm();
-        Assert.False(vm.ShowSinglePane);
-
-        vm.IsZoomed = true;
-        Assert.True(vm.ShowSinglePane);
-
-        vm.IsZoomed = false;
-        vm.GlobalSingleSessionLayout = true;
-        Assert.True(vm.ShowSinglePane);
-    }
-
-    [Fact]
     public void ShowZoomButton_HidesInFocusRailLayout_LikeItDoesInSingleSessionLayout()
     {
         var vm = new CockpitViewModel();

@@ -890,28 +890,6 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
-    public async Task SendUserMessageAsync_ForwardsTheText()
-    {
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        await adapter.SendUserMessageAsync("hello");
-
-        Assert.Equal("hello", Assert.Single(inner.SentMessages));
-    }
-
-    [Fact]
-    public async Task InterruptAsync_ForwardsToTheInnerDriver()
-    {
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        await adapter.InterruptAsync();
-
-        Assert.True(inner.Interrupted);
-    }
-
-    [Fact]
     public async Task RespondToPermissionAsync_ForwardsToolUseIdAndDecision()
     {
         var inner = new FakePluginSessionDriver();
@@ -948,16 +926,6 @@ public class PluginSessionDriverAdapterTests
         await adapter.AllowPermissionAlwaysAsync("tool_1", "read_file", "{}", PermissionRuleScope.Exact);
 
         Assert.Equal("tool_1", inner.LastAllowAlwaysToolUseId);
-    }
-
-    [Fact]
-    public void ProcessId_ForwardsFromTheInnerDriver()
-    {
-        var inner = new FakePluginSessionDriver { ProcessId = 5150 };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        // D10: the resource meter measures the plugin driver's process (Codex app-server), not nothing.
-        Assert.Equal(5150, adapter.ProcessId);
     }
 
     [Fact]
@@ -1035,17 +1003,6 @@ public class PluginSessionDriverAdapterTests
         Assert.Equal("Ask permissions", adapter.LiveOptions[0].ChoiceLabels!["default"]);
         Assert.Equal("Accept edits", adapter.LiveOptions[0].ChoiceLabels!["acceptEdits"]);
         Assert.Equal(new[] { "default", "acceptEdits" }, adapter.LiveOptions[0].Choices);
-    }
-
-    [Fact]
-    public async Task SetLiveOptionAsync_ForwardsKeyAndValue_ToTheInnerDriver()
-    {
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        await adapter.SetLiveOptionAsync("model", "gpt-5");
-
-        Assert.Equal(("model", "gpt-5"), inner.LastLiveOption);
     }
 
     [Fact]

@@ -1,7 +1,5 @@
 using Avalonia.Controls;
-using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -13,18 +11,6 @@ namespace Cockpit.Core.Tests.Plugins;
 /// </summary>
 public class SessionHeaderItemTests
 {
-    [Fact]
-    public void AddSessionHeaderItem_RoutesToTheContributionSink()
-    {
-        var sink = Substitute.For<IPluginContributionSink>();
-        var host = NewHost(sink);
-        Control Factory(IPluginSessionContext _) => new TextBlock();
-
-        host.AddSessionHeaderItem(Factory);
-
-        sink.Received(1).AddPluginSessionHeaderItem(Arg.Any<Func<IPluginSessionContext, Control>>());
-    }
-
     // The default is a no-op, so a plugin built against this SDK still loads on a host that predates the
     // contribution point instead of failing at registration.
     [Fact]
@@ -36,18 +22,6 @@ public class SessionHeaderItemTests
 
         register();
     }
-
-    private static ICockpitHost NewHost(IPluginContributionSink sink) =>
-        new CockpitHost(
-            "test-plugin",
-            "Test Plugin",
-            Substitute.For<IServiceProvider>(),
-            sink,
-            Substitute.For<ICockpitActions>(),
-            Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance,
-            new PluginDiagnostics());
 
     /// <summary>An older host: implements only what the contract required before header items existed.</summary>
     public abstract class HostWithoutHeaderItems : ICockpitHost

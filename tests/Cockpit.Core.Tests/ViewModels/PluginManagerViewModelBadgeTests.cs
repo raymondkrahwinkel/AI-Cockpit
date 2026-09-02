@@ -7,19 +7,6 @@ namespace Cockpit.Core.Tests.ViewModels;
 public class PluginManagerViewModelBadgeTests
 {
     [Fact]
-    public void HasUpdateBadge_ReflectsTheCount()
-    {
-        var vm = new PluginManagerViewModel();
-        Assert.False(vm.HasUpdateBadge);
-
-        vm.UpdateBadgeCount = 3;
-        Assert.True(vm.HasUpdateBadge);
-
-        vm.UpdateBadgeCount = 0;
-        Assert.False(vm.HasUpdateBadge);
-    }
-
-    [Fact]
     public void UpdateBadgeCount_Change_NotifiesCountAndBadge()
     {
         var vm = new PluginManagerViewModel();

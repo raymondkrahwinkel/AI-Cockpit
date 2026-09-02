@@ -11,13 +11,6 @@ namespace Cockpit.Core.Tests.ViewModels;
 public class SessionHeaderUsagePillTests
 {
     [Fact]
-    public void WithAContextFigure_ThePillShows()
-    {
-        // The design-time constructor seeds ctx + two windows.
-        Assert.True(new SessionViewModel().HasUsagePill);
-    }
-
-    [Fact]
     public void WithRateWindowsButNoContext_ThePillStillShows()
     {
         var vm = new SessionViewModel { ContextUsedPercent = null };

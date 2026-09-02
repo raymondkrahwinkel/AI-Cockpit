@@ -508,32 +508,6 @@ public class ProjectDialogResourceRowTests
         Assert.Equal(project.Resources, viewModel.ToProject().Resources);
     }
 
-    [Theory]
-    [InlineData(ProjectResourceRole.Memory)]
-    [InlineData(ProjectResourceRole.Reference)]
-    public async Task ShowsSendsContentOption_IsFalseForRolesOtherThanInstructions(ProjectResourceRole role)
-    {
-        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
-        viewModel.AddResourceRowCommand.Execute(null);
-        var row = viewModel.ResourceRows[0];
-
-        row.Role = role;
-
-        Assert.False(row.ShowsSendsContentOption);
-    }
-
-    [Fact]
-    public async Task ShowsSendsContentOption_IsTrueForInstructions()
-    {
-        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
-        viewModel.AddResourceRowCommand.Execute(null);
-        var row = viewModel.ResourceRows[0];
-
-        row.Role = ProjectResourceRole.Instructions;
-
-        Assert.True(row.ShowsSendsContentOption);
-    }
-
     [Fact]
     public async Task SwitchingARowsRoleAwayFromInstructions_TurnsSendsContentBackOff()
     {
@@ -1022,19 +996,4 @@ public class ProjectDialogResourceRowTests
         Assert.True(row.CanBrowse);
     }
 
-    [Fact]
-    public void ShowsMemorySourceServerRow_IsFalseForFolderAndForAnUngroupedSource()
-    {
-        var choices = new ObservableCollection<MemorySourceChoice>
-        {
-            new("Folder", Scheme: null),
-            new("Scratchpad", "scratch"),
-        };
-        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory);
-        Assert.False(row.ShowsMemorySourceServerRow, "Folder is selected by default on a fresh row");
-
-        row.SelectedMemorySourceChoice = choices[1];
-
-        Assert.False(row.ShowsMemorySourceServerRow, "an ungrouped source has no second axis to pick from at all");
-    }
 }

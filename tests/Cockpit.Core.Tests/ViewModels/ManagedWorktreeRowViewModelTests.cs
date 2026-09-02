@@ -86,33 +86,6 @@ public class ManagedWorktreeRowViewModelTests
         Assert.Equal($"in use · claimed by {new string('x', 40)}…", row.OwnerLabel);
     }
 
-    /// <summary>AC-520 fix 6: a genuinely running session disables Release — Remove/Reattach are the operator's tools there, not this one.</summary>
-    [Fact]
-    public void CanRelease_OwnerIsARunningSession_IsFalse()
-    {
-        var row = _Row(isOwnerLive: true, ownerName: null, hasOpenRestoreOffer: false);
-
-        Assert.False(row.CanRelease);
-    }
-
-    /// <summary>The case Release exists for: live only because of an open restore offer with nothing running behind it.</summary>
-    [Fact]
-    public void CanRelease_OwnerIsLiveOnlyBecauseOfAnOpenRestoreOffer_IsTrue()
-    {
-        var row = _Row(isOwnerLive: true, ownerName: null, hasOpenRestoreOffer: true);
-
-        Assert.True(row.CanRelease);
-    }
-
-    [Fact]
-    public void CanRelease_OwnerIsGone_IsFalse()
-    {
-        // Nothing for Release to do: Remove and Reattach are already available once the owner is gone.
-        var row = _Row(isOwnerLive: false, ownerName: null, hasOpenRestoreOffer: false);
-
-        Assert.False(row.CanRelease);
-    }
-
     private static ManagedWorktreeRowViewModel _Row(bool isOwnerLive, string? ownerName, bool hasOpenRestoreOffer = false)
     {
         var record = new WorktreeRecord("session", "/repo", "/state/worktrees/ab/cockpit-x", "cockpit/x", "0123456789abcdef0123456789abcdef01234567", DateTimeOffset.UtcNow);

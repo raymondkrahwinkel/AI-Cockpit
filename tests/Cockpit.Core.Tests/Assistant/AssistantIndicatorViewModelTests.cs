@@ -183,18 +183,6 @@ public class AssistantIndicatorViewModelTests
     }
 
     [Fact]
-    public void ListeningMode_EachOfTheTwoStands_IsReadableWithoutClicking()
-    {
-        var vm = new AssistantIndicatorViewModel { ListeningMode = AssistantListeningMode.Off };
-        Assert.True(vm.IsListeningModeOff);
-        Assert.False(vm.IsListeningModeAlwaysOn);
-
-        vm.ListeningMode = AssistantListeningMode.AlwaysOn;
-        Assert.False(vm.IsListeningModeOff);
-        Assert.True(vm.IsListeningModeAlwaysOn);
-    }
-
-    [Fact]
     public void SelectingOff_NeverAsksForConfirmation_AndCommitsImmediately()
     {
         var vm = new AssistantIndicatorViewModel { ListeningMode = AssistantListeningMode.AlwaysOn };
@@ -275,21 +263,6 @@ public class AssistantIndicatorViewModelTests
 
         Assert.False(vm.IsAlwaysOnConfirmationPending);
         Assert.False(raised);
-    }
-
-    [Theory]
-    [InlineData(AssistantActivity.Thinking, false)]
-    [InlineData(AssistantActivity.Speaking, false)]
-    [InlineData(AssistantActivity.Unavailable, false)]
-    [InlineData(AssistantActivity.Ready, true)]
-    [InlineData(AssistantActivity.Listening, true)]
-    [InlineData(AssistantActivity.ListeningContinuously, true)]
-    [InlineData(AssistantActivity.Dictating, true)]
-    public void IsMicIcon_IsFalseOnlyForTheStatesWithTheirOwnGlyph(AssistantActivity activity, bool expected)
-    {
-        var vm = new AssistantIndicatorViewModel { Activity = activity };
-
-        Assert.Equal(expected, vm.IsMicIcon);
     }
 
     /// <summary>

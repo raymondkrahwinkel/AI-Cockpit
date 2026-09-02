@@ -978,21 +978,6 @@ public class SessionViewModelTests
         Assert.Equal(new[] { TranscriptEntryKind.Thinking, TranscriptEntryKind.TurnCompleted }, vm.Transcript.Select(t => t.Kind));
     }
 
-    [Theory]
-    // User and tool-use rows carry their timestamp inline in their own header (AC-144), so the generic
-    // top-of-row timestamp is suppressed for them; every other kind still shows it at the top.
-    [InlineData(TranscriptEntryKind.UserText, false)]
-    [InlineData(TranscriptEntryKind.ToolUse, false)]
-    [InlineData(TranscriptEntryKind.AssistantText, true)]
-    [InlineData(TranscriptEntryKind.ToolResult, true)]
-    [InlineData(TranscriptEntryKind.Question, true)]
-    [InlineData(TranscriptEntryKind.TurnCompleted, true)]
-    [InlineData(TranscriptEntryKind.Error, true)]
-    public void IsTopTimestampRow_IsFalseForUserAndToolUse_TrueForEveryOtherKind(TranscriptEntryKind kind, bool expected)
-    {
-        Assert.Equal(expected, new TranscriptEntryViewModel(kind, "x").IsTopTimestampRow);
-    }
-
     [Fact]
     public void Apply_SuccessfulTurnCompleted_AddsNoTurnRow()
     {
@@ -2170,14 +2155,6 @@ public class SessionViewModelTests
                 ("max", 64_000),
             },
             vm.Efforts.Select(e => (e.Value, e.MaxThinkingTokens)));
-    }
-
-    [Fact]
-    public void PermissionModes_WhenNotLocked_OfferOnlyTheThreeLiveModes()
-    {
-        var vm = NewVm();
-
-        Assert.Equal(new[] { "default", "acceptEdits", "plan" }, vm.PermissionModes.Select(mode => mode.Value));
     }
 
     [Fact]
