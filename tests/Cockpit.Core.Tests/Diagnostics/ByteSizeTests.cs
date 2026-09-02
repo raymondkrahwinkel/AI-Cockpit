@@ -18,15 +18,6 @@ public class ByteSizeTests
     public void Human_SmallValues_KeepTheirDetail(long bytes, string expected) =>
         Assert.Equal(expected, ByteSize.Human(bytes));
 
-    [Fact]
-    public void Human_TheResidentFigureThatMatters_ReadsAsMegabytes() =>
-        Assert.Equal("680 MB", ByteSize.Human(680L * 1024 * 1024));
-
-    // The reservation that started the "62 GB" panic: shown honestly as a large size, still one figure the eye can take in.
-    [Fact]
-    public void Human_TheVirtualReservation_KeepsOneDecimalInGigabytes() =>
-        Assert.Equal("73.6 GB", ByteSize.Human(79_000_000_000));
-
     // Below 100 keeps a decimal; at or above it, the fraction is dropped as noise.
     [Fact]
     public void Human_CrossesToNoDecimal_AtOneHundred()

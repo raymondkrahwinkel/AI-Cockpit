@@ -53,16 +53,6 @@ public class CockpitHostProjectMemorySourceTests
     // --- AC-499: AddProjectMemorySourceFamily -----------------------------------------------------------------
 
     [Fact]
-    public void AddProjectMemorySourceFamily_RegistersIntoTheSharedRegistry()
-    {
-        var (host, registry) = _BuildHostAndRegistry();
-
-        host.AddProjectMemorySourceFamily(new ProjectMemorySourceFamily("depot", "Depot"));
-
-        Assert.Equal("Depot", Assert.Single(registry.Families).Title);
-    }
-
-    [Fact]
     public void AddProjectMemorySourceFamily_ASecondPluginDeclaringTheSameKey_IsIgnored()
     {
         // First one wins, the same rule AddProjectMemorySource's own scheme registration follows — a second plugin

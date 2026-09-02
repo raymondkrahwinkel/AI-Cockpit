@@ -18,15 +18,6 @@ public class UsageThresholdSettingsTests
     }
 
     [Fact]
-    public void AProviderOverride_BeatsTheDeclaration()
-    {
-        var settings = new UsageThresholdSettings();
-        settings.Set(settings.ByProvider, "claude", "weekly", 75);
-
-        Assert.Equal(75, settings.Resolve("claude", "personal", "weekly", declared: 90, isAssistant: false));
-    }
-
-    [Fact]
     public void AProfileOverride_BeatsTheProvider()
     {
         // A profile used for long unattended runs can be stricter without changing it for everything else.

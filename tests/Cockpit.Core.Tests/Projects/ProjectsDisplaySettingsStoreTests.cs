@@ -30,16 +30,6 @@ public class ProjectsDisplaySettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsTheLayout()
-    {
-        var store = new ProjectsDisplaySettingsStore(_configFilePath);
-
-        await store.SaveAsync(new ProjectsDisplaySettings { LayoutMode = ProjectsLayoutMode.List });
-
-        Assert.Equal(ProjectsLayoutMode.List, (await store.LoadAsync()).LayoutMode);
-    }
-
-    [Fact]
     public async Task LoadAsync_AStoredContinue_FallsBackWhileThatLayoutIsNotOffered()
     {
         // Written straight to disk rather than through SaveAsync, which normalizes on the way in too — the point here

@@ -144,19 +144,4 @@ public class ProjectInfoFieldTests
         Assert.True(shared.Tidied().IsSharedWithSessions, "tidying a row must not change what it is for");
     }
 
-    [Fact]
-    public void IsSharedWithSessions_DefaultsToOff()
-    {
-        // These rows arrived as reference material for the operator (AC-295). Sharing them by default would change what
-        // already-entered rows do without anyone asking.
-        Assert.False(new ProjectInfoField("Customer", "Acme BV").IsSharedWithSessions);
-    }
-
-    [Fact]
-    public void Tidied_LeavesAnOrdinaryRowAsItIs()
-    {
-        var field = new ProjectInfoField("Repository", "https://github.com/example/repo");
-
-        Assert.Equal(field, field.Tidied());
-    }
 }

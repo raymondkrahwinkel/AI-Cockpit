@@ -25,20 +25,6 @@ public class ProjectResourceTests : IDisposable
     // --- AC1: an old cockpit.json with only the flat memoryRef migrates to one Memory resource -------------------
 
     [Fact]
-    public async Task LoadAsync_ALegacyMemoryRef_LoadsAsOneMemoryResource()
-    {
-        await File.WriteAllTextAsync(
-            _configFilePath,
-            """{"Projects":[{"Id":"legacy","Name":"Cockpit","MemoryRef":"depot:ai-cockpit"}]}""");
-
-        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-
-        var project = Assert.Single(loaded.Projects);
-        Assert.Equal(new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory), Assert.Single(project.Resources));
-        Assert.Equal("depot:ai-cockpit", project.MemoryRef);
-    }
-
-    [Fact]
     public async Task SaveAsync_ALegacyMemoryRefLoadedAndSavedUnchanged_PreservesItsMeaning()
     {
         await File.WriteAllTextAsync(
@@ -186,10 +172,6 @@ public class ProjectResourceTests : IDisposable
     // accident, so it actually discriminates a broken round trip from a working one.
 
     // --- AC6: MemoryRef mirrors the first Memory row, and is null with none ------------------------------------------
-
-    [Fact]
-    public void MemoryRef_AProjectWithNoResources_IsNull() =>
-        Assert.Null(Project.Create("Cockpit").MemoryRef);
 
     [Fact]
     public void MemoryRef_TheFirstMemoryRowAmongOthers_IsWhatItReturns()

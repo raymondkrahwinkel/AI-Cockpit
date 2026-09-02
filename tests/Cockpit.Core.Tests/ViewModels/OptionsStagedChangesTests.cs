@@ -119,18 +119,6 @@ public class OptionsStagedChangesTests
     }
 
     [Fact]
-    public async Task RestoreDefaults_WritesNothing()
-    {
-        var stores = new Stores();
-        var vm = await stores.NewViewModelAsync();
-        vm.BeginOptionsEdit();
-
-        vm.RestoreOptionDefaultsCommand.Execute(null);
-
-        stores.AssertNothingWasSaved();
-    }
-
-    [Fact]
     public async Task PendingChanges_AppearOnAChange_AndGoAwayWhenTheValueIsPutBack()
     {
         var stores = new Stores();

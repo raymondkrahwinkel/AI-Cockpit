@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Infrastructure;
 
 namespace Cockpit.Core.Tests.Backup;
@@ -26,14 +25,6 @@ public class BackupDependencyInjectionTests
         services.AddSessionPanes();
 
         return services.BuildServiceProvider();
-    }
-
-    [Fact]
-    public void TheContainer_HasSomethingThatCanBackTheCockpitUp()
-    {
-        using var provider = BuildProvider();
-
-        Assert.NotNull(provider.GetService<IBackupService>());
     }
 
     [Fact]

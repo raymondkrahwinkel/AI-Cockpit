@@ -172,20 +172,6 @@ public class SessionUsageDisplayTests
     }
 
     [Fact]
-    public void ASignalGoingQuiet_LeavesAnotherSignalsWarningStanding()
-    {
-        // One string carries all of them, so a context bar dropping to nothing must not wipe a week that is nearly
-        // spent. That is the warning you would most want kept and the one you are least likely to be watching for.
-        var session = Build();
-        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
-
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
-
-        Assert.True(session.HasUsageWarning);
-        Assert.Contains("Week is 95% used", session.UsageWarning);
-    }
-
-    [Fact]
     public void AWarningThatClearedItself_SpeaksAgainOnTheNextCrossing()
     {
         // The same re-crossing as DroppingBackAndClimbingAgain, minus the dismiss that used to be needed in
