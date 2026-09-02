@@ -60,63 +60,11 @@ public sealed class SessionStateStoreTests : IDisposable
         Assert.Equal(record.RecordedAt, single.RecordedAt);
     }
 
-    [Fact]
-    public async Task LoadAsync_MultipleRecordsForOnePane_ReturnsOnlyTheLatest()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord(conversationId: "conv-1", permissionMode: "default"));
-        await store.RecordAsync(CreateRecord(conversationId: "conv-2", permissionMode: "acceptEdits"));
-        await store.RecordAsync(CreateRecord(conversationId: "conv-3", permissionMode: "bypassPermissions"));
-
-        var loaded = await store.LoadAsync();
-
-        var single = Assert.Single(loaded);
-        Assert.Equal("conv-3", single.ConversationId);
-        Assert.Equal("bypassPermissions", single.PermissionMode);
-    }
-
-    [Fact]
-    public async Task LoadAsync_RecordsForDifferentPanes_KeepsTheLatestPerPane()
-    {
-        var store = CreateStore();
-        await store.RecordAsync(CreateRecord(paneId: "pane-a", conversationId: "a-1"));
-        await store.RecordAsync(CreateRecord(paneId: "pane-b", conversationId: "b-1"));
-        await store.RecordAsync(CreateRecord(paneId: "pane-a", conversationId: "a-2"));
-
-        var loaded = await store.LoadAsync();
-
-        Assert.Equal(2, loaded.Count);
-        Assert.Equal("a-2", loaded.Single(r => r.PaneId == "pane-a").ConversationId);
-        Assert.Equal("b-1", loaded.Single(r => r.PaneId == "pane-b").ConversationId);
-    }
-
     /// <summary>
-    /// Criterion 3 (AC-409): the write has to be on disk the instant <c>RecordAsync</c> returns, not buffered until
-    /// something later flushes or disposes it — proven with a *second*, independently constructed store reading the
-    /// same file, so this cannot pass merely because the first store cached the record in memory.
-    /// </summary>
-    [Fact]
-    public async Task RecordAsync_IsVisibleToASeparateStoreInstanceImmediately_WithNoDisposeOrShutdown()
-    {
-        var writer = CreateStore();
-
-        await writer.RecordAsync(CreateRecord(paneId: "pane-live", conversationId: "conv-live"));
-
-        // A fresh instance, as a second reader (or the next process) would construct — never told about `writer`,
-        // and `writer` itself is never disposed, flushed at shutdown, or otherwise finalized.
-        var reader = CreateStore();
-        var loaded = await reader.LoadAsync();
-
-        var single = Assert.Single(loaded);
-        Assert.Equal("pane-live", single.PaneId);
-        Assert.Equal("conv-live", single.ConversationId);
-    }
-
-    /// <summary>
-    /// Criterion 4 (AC-409) — the reason this ticket exists: a session that ends without a graceful shutdown (a
-    /// crash, a killed process) must still leave every write it made behind. Simulated by never calling any
-    /// teardown on the store that wrote — there is none to call, RecordAsync is the only write path — and reading
-    /// the file back through a brand-new instance, the way a restarted cockpit would.
+    /// Criteria 3 and 4 (AC-409): a session that ends without a graceful shutdown must still leave every write it
+    /// made behind. The store that wrote is simply abandoned — RecordAsync is its only write path — and a brand-new
+    /// instance reads the file back, so nothing here can pass on a record the writer merely cached. That read is
+    /// also the "last record per pane wins" rule, for every field and across two panes at once.
     /// </summary>
     [Fact]
     public async Task AfterSeveralAppendsWithNoGracefulShutdown_ARestartReadsBackTheLatestStateForEveryPane()

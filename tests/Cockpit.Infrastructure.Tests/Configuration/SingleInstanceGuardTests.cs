@@ -61,37 +61,16 @@ public sealed class SingleInstanceGuardTests
     }
 
     [Fact]
-    public void IsHeldByAnotherCockpit_WhileAnotherCockpitHoldsTheClaim_SaysSo()
-    {
-        var claimName = UniqueClaimName();
-        using var other = new CockpitHoldingTheClaim(claimName);
-
-        Assert.True(SingleInstanceGuard.IsHeldByAnotherCockpit(claimName));
-    }
-
-    [Fact]
     public void IsHeldByAnotherCockpit_WhenNothingHoldsTheClaim_SaysSo()
     {
         Assert.False(SingleInstanceGuard.IsHeldByAnotherCockpit(UniqueClaimName()));
     }
 
     /// <summary>
-    /// The reading has to go back to false once the holder is gone, or the staged-update decision it gates (AC-738)
-    /// would be permanently stuck at "some other cockpit is running" after the first launch this machine ever had.
-    /// </summary>
-    [Fact]
-    public void IsHeldByAnotherCockpit_AfterTheHolderReleasedTheClaim_SaysNobodyHoldsIt()
-    {
-        var claimName = UniqueClaimName();
-        new CockpitHoldingTheClaim(claimName).Dispose();
-
-        Assert.False(SingleInstanceGuard.IsHeldByAnotherCockpit(claimName));
-    }
-
-    /// <summary>
-    /// Asking must not leave a handle behind. A named claim lives as long as any handle to it does, so a reading that
-    /// kept one would answer "another cockpit is running" forever after — and the staged-update decision it gates
-    /// (AC-738) would never apply an update again on that machine.
+    /// Both readings in one exercise, because the second only means anything after the first. Asking must not leave
+    /// a handle behind: a named claim lives as long as any handle to it does, so a reading that kept one would answer
+    /// "another cockpit is running" forever after — and the staged-update decision it gates (AC-738) would never
+    /// apply an update again on that machine.
     /// </summary>
     [Fact]
     public void IsHeldByAnotherCockpit_AskedWhileAnotherCockpitHeldIt_SaysNobodyDoesOnceThatCockpitIsGone()

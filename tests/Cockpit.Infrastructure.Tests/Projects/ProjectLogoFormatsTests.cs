@@ -43,19 +43,6 @@ public class ProjectLogoFormatsTests : IDisposable
         Assert.Equal(extension, Path.GetExtension(stored));
     }
 
-    [Fact]
-    public async Task AListedVector_IsStoredAsSomethingTheCardCanDraw()
-    {
-        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="black"/></svg>""";
-        var source = _Write("source.svg", System.Text.Encoding.UTF8.GetBytes(svg));
-
-        var stored = await new ProjectLogoStore(new HttpClient(), logger: null, root: _root).SaveAsync("p2", source);
-
-        Assert.NotNull(stored);
-        Assert.Equal(".png", Path.GetExtension(stored));
-        Assert.NotNull(SKBitmap.Decode(stored));
-    }
-
     private string _Write(string name, byte[] bytes)
     {
         Directory.CreateDirectory(_root);

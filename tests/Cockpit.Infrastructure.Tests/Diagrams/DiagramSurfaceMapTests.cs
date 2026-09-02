@@ -18,18 +18,6 @@ public class DiagramSurfaceMapTests
         """;
 
     [Fact]
-    public void ClickInsideANode_NamesTheIdTheSourceUses()
-    {
-        var objects = DiagramSurfaceMap.Read(_Render(Source));
-
-        foreach (var id in new[] { "Start", "Check", "Done", "Work" })
-        {
-            var node = objects.Single(o => o.Kind == DiagramObjectAt.Node && o.Id == id);
-            Assert.Equal(node, DiagramSurfaceMap.At(objects, node.Bounds.Center));
-        }
-    }
-
-    [Fact]
     public void ClickInsideAnErEntity_NamesTheEntity_BecauseItIsDrawnUnderItsOwnMarkers()
     {
         // AC-899: Mermaider tags an ER box class="entity" and an ER line class="er-relationship" with

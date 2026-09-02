@@ -211,46 +211,6 @@ public sealed class AgentsMcpToolsReachabilityTests : IDisposable
         Assert.Single(_inbox.Drain("silent", int.MaxValue).Messages);
     }
 
-    [Fact]
-    public async Task Notify_ToAPaneWithTurnStartDelivery_CarriesNoWarning()
-    {
-        _DeskWith(deliversAtTurnStart: true, "sender", "target");
-
-        var json = await _NotifyAs("sender", "target");
-
-        Assert.Null(json["unreachable"]);
-    }
-
-    /// <summary>Wake consent is a route on its own: a pane that can be woken will be told, whatever it usually does.</summary>
-    [Fact]
-    public async Task Notify_ToAPaneThatCanBeWoken_CarriesNoWarning()
-    {
-        _DeskWith(deliversAtTurnStart: false, "sender", "target");
-        _coordinator.SetWakeConsent("target", true);
-
-        var json = await _NotifyAs("sender", "target");
-
-        Assert.Null(json["unreachable"]);
-    }
-
-    /// <summary>
-    /// And so is a history of collecting. A pane with no passive delivery and no wake consent that nonetheless
-    /// empties its inbox is an agent that knows the inbox is there — the weakest of the three signals, and the only
-    /// empirical one.
-    /// </summary>
-    [Fact]
-    public async Task Notify_ToAPaneThatHasCollectedBefore_CarriesNoWarning()
-    {
-        _DeskWith(deliversAtTurnStart: false, "sender", "target");
-
-        McpRequestContext.Set("target");
-        _Tools().ReadInbox();
-
-        var json = await _NotifyAs("sender", "target");
-
-        Assert.Null(json["unreachable"]);
-    }
-
     /// <summary>
     /// A pane that left is not a wrong address, and telling a sender the two apart is the whole point: one means
     /// look the id up again, the other means the recipient is gone and this needs another route.

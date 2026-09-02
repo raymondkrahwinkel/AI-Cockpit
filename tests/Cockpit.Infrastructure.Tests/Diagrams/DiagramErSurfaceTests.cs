@@ -94,84 +94,46 @@ public class DiagramErSurfaceTests
             second => Assert.Equal("ORDER>PURCHASE", second.ObjectKey));
     }
 
-    [Fact]
-    public void Revert_OfARemovedEntity_PutsBackItsAttributesAndItsRelationship()
-    {
-        // An entity block is several lines, and two entities can hold the same line ("int id PK", "}") — this is
-        // where a revert that puts back the wrong lines would show.
-        var text = Reverted(Opened(), new DiagramHandEdit(DiagramHandEditKind.RemoveEntity, "CUSTOMER"));
-
-        Assert.Contains("CUSTOMER ||--o{ ORDER : \"places\"", text, StringComparison.Ordinal);
-        Assert.Contains("string name", text, StringComparison.Ordinal);
-        Assert.Equal(2, DiagramObjectEdit.Attributes(text, "CUSTOMER").Count);
-        Assert.Single(DiagramObjectEdit.Attributes(text, "ORDER"));
-    }
-
-    [Fact]
-    public void Revert_OfARenamedEntity_PutsTheOldNameBackOnItsBlockAndItsRelationship()
-    {
-        var text = Reverted(Opened(), new DiagramHandEdit(DiagramHandEditKind.RenameEntity, "CUSTOMER", Label: "CLIENT"));
-
-        Assert.Equal(Source.ReplaceLineEndings("\n"), text);
-    }
-
-    [Fact]
-    public void Revert_OfAnAddedAttribute_TakesItOutAgain()
-    {
-        var text = Reverted(Opened(), new DiagramHandEdit(DiagramHandEditKind.SetAttribute, "ORDER") { Attribute = "total", AttributeType = "int" });
-
-        Assert.Equal(Source.ReplaceLineEndings("\n"), text);
-    }
-
-    [Fact]
-    public void Revert_OfAChangedAttribute_WritesTheOldTypeBack_NotADuplicateLine()
-    {
-        var text = Reverted(Opened(), new DiagramHandEdit(DiagramHandEditKind.SetAttribute, "CUSTOMER") { Attribute = "name", AttributeType = "varchar(50)" });
-
-        Assert.Equal(Source.ReplaceLineEndings("\n"), text);
-    }
-
-    [Fact]
-    public void Revert_OfARemovedAttribute_PutsItBackInsideItsOwnBlock()
-    {
-        var text = Reverted(Opened(), new DiagramHandEdit(DiagramHandEditKind.RemoveAttribute, "CUSTOMER") { Attribute = "id" });
-
-        Assert.Collection(
-            DiagramObjectEdit.Attributes(text, "CUSTOMER"),
-            first => Assert.Equal(new DiagramErAttribute("string", "name", null), first),
-            second => Assert.Equal(new DiagramErAttribute("int", "id", "PK"), second));
-    }
-
-    [Fact]
-    public void Revert_OfAChangedRelationship_RestoresTheCardinalitiesAndTheLabel()
-    {
-        var edit = new DiagramHandEdit(DiagramHandEditKind.Relate, "CUSTOMER", "ORDER", "owns")
+    // Every in-place ER handling, reverted on its own, against the whole source rather than the one line it touched:
+    // an entity block is several lines and two entities can hold the same one, so a revert writing the right lines in
+    // the wrong order is what this catches and a Contains does not. Removals append (see below), so they sit apart.
+    public static TheoryData<DiagramHandEdit> RevertedErHandEdits() =>
+    [
+        new DiagramHandEdit(DiagramHandEditKind.RenameEntity, "CUSTOMER", Label: "CLIENT"),
+        new DiagramHandEdit(DiagramHandEditKind.SetAttribute, "ORDER") { Attribute = "total", AttributeType = "int" },
+        new DiagramHandEdit(DiagramHandEditKind.SetAttribute, "CUSTOMER") { Attribute = "name", AttributeType = "varchar(50)" },
+        new DiagramHandEdit(DiagramHandEditKind.RemoveAttribute, "CUSTOMER") { Attribute = "id" },
+        new DiagramHandEdit(DiagramHandEditKind.Relate, "CUSTOMER", "ORDER", "owns")
         {
             FromCardinality = DiagramErCardinality.OneOrMore,
             ToCardinality = DiagramErCardinality.One,
-        };
-
-        Assert.Equal(Source.ReplaceLineEndings("\n"), Reverted(Opened(), edit));
-    }
-
-    [Fact]
-    public void Revert_OfANewRelationship_TakesTheLineOutAgain()
-    {
-        var edit = new DiagramHandEdit(DiagramHandEditKind.Relate, "ORDER", "CUSTOMER", "belongs to")
+        },
+        new DiagramHandEdit(DiagramHandEditKind.Relate, "ORDER", "CUSTOMER", "belongs to")
         {
             FromCardinality = DiagramErCardinality.ZeroOrMore,
             ToCardinality = DiagramErCardinality.One,
-        };
+        },
+    ];
 
+    [Theory]
+    [MemberData(nameof(RevertedErHandEdits))]
+    public void EveryErHandling_IsTakenBackToTheSourceItStartedFrom(DiagramHandEdit edit)
+    {
         Assert.Equal(Source.ReplaceLineEndings("\n"), Reverted(Opened(), edit));
     }
 
+    // Reverting a removal is the one case that does not restore the source verbatim: the entity's own lines and its
+    // relationship come back, but appended rather than in the place they were taken from. Asserted for what it is.
     [Fact]
-    public void Revert_OfARemovedRelationship_PutsItBack()
+    public void Revert_OfARemovedEntityOrRelationship_BringsTheLinesBack_ThoughNotWhereTheyStood()
     {
-        var text = Reverted(Opened(), new DiagramHandEdit(DiagramHandEditKind.Unrelate, "CUSTOMER", "ORDER"));
+        var afterEntity = Reverted(Opened(), new DiagramHandEdit(DiagramHandEditKind.RemoveEntity, "CUSTOMER"));
+        Assert.Contains("CUSTOMER ||--o{ ORDER : \"places\"", afterEntity, StringComparison.Ordinal);
+        Assert.Equal(2, DiagramObjectEdit.Attributes(afterEntity, "CUSTOMER").Count);
+        Assert.Single(DiagramObjectEdit.Attributes(afterEntity, "ORDER"));
 
-        Assert.Contains("CUSTOMER ||--o{ ORDER : \"places\"", text, StringComparison.Ordinal);
+        var afterRelationship = Reverted(Opened(), new DiagramHandEdit(DiagramHandEditKind.Unrelate, "CUSTOMER", "ORDER"));
+        Assert.Contains("CUSTOMER ||--o{ ORDER : \"places\"", afterRelationship, StringComparison.Ordinal);
     }
 
     [Fact]

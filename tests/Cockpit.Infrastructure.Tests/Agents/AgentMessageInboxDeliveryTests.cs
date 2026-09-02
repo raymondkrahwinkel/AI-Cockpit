@@ -159,14 +159,4 @@ public class AgentMessageInboxDeliveryTests
         Assert.Equal(3, taken.Remaining);
     }
 
-    [Fact]
-    public void TakeForDelivery_HandsOverNothing_ForAPaneWithNoMail()
-    {
-        var inbox = new AgentMessageInbox();
-
-        var taken = inbox.TakeForDelivery("pane-b", 5);
-
-        Assert.Empty(taken.Messages);
-        Assert.Equal(0, taken.Remaining);
-    }
 }

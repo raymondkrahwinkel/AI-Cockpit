@@ -18,17 +18,6 @@ public sealed class PhysicalResourceIdentityTests
     }
 
     [Fact]
-    public void Canonicalize_ARootedPathThatDoesNotExist_IsReturnedUnchanged()
-    {
-        // No filesystem entry to resolve against, so this is the honest fallback: compared exactly, same as any
-        // other free-text resource. Two different spellings of a path that has been removed (a worktree already torn
-        // down) therefore stay two different groups — the accepted phase-1 gap, not a bug.
-        var path = Path.Combine(Path.GetTempPath(), $"ac439-missing-{Guid.NewGuid():N}");
-
-        Assert.Equal(path, PhysicalResourceIdentity.Canonicalize(path));
-    }
-
-    [Fact]
     public void Canonicalize_ARootedPathThatDoesNotExist_KeepsItsCaseAndItsRedundantSegments()
     {
         // The same rule as above, pinned so it cannot quietly become OS-dependent again: the previous version case

@@ -89,28 +89,10 @@ public class ProjectInstructionContentReaderTests : IDisposable
 
     /// <summary>
     /// AC-486's read-limit rule: a file whose size alone already exceeds what the shared prompt ceiling could ever
-    /// hold must never be opened at all — proven with a hook that would throw if the read were ever attempted.
-    /// </summary>
-    [Fact]
-    public void AFileLargerThanTheReadLimit_IsNeverOpened()
-    {
-        var file = _File("huge.md");
-        var resources = new[] { new ProjectResource(file, ProjectResourceRole.Instructions) { SendsContent = true } };
-
-        var result = ProjectInstructionContentReader.Read(
-            resources,
-            fileLength: _ => 32 * 1024 + 1,
-            readAllText: _ => throw new InvalidOperationException("must never be called for a file over the read limit"));
-
-        Assert.Empty(result);
-    }
-
-    /// <summary>
-    /// The same rule, proven a second way that a broken size check cannot silently pass: <c>readAllText</c> here
-    /// returns normally rather than throwing, so a size check that failed to skip this file would let its content
-    /// straight into the result — the earlier throwing hook alone could not catch that, because this reader's own
-    /// unreadable-file handling swallows any exception the same way, masking a broken size check behind the
-    /// unrelated "never blocks a session" guarantee.
+    /// hold must never be opened at all. Proven with a <c>readAllText</c> that returns normally rather than throwing,
+    /// because a throwing hook proves nothing here: this reader's own unreadable-file handling swallows any exception
+    /// the same way it swallows a genuinely missing file, so the result reads empty whether or not the size check did
+    /// anything. Content coming back is the only shape that fails when the check stops skipping.
     /// </summary>
     [Fact]
     public void AFileLargerThanTheReadLimit_IsNeverOpenedEvenWhenTheReadWouldHaveSucceeded()

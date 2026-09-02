@@ -6,38 +6,31 @@ namespace Cockpit.Infrastructure.Tests.Voice;
 /// <summary>Custom quantized names (AC-706) used to fall back to Base silently; this pins the parsing that fixed it.</summary>
 public sealed class WhisperModelCatalogTests
 {
-    [Fact]
-    public void Resolve_QuantizedName_ReturnsBaseTypeAndQuantization()
+    // One behaviour, one test: a stored model name splits into the ggml type and the quantization it names. The rows
+    // are the three shapes a name can have — quantized, plain, and one this build does not know, which falls back to
+    // the base model rather than refusing to start dictation at all.
+    [Theory]
+    [InlineData("large-v3-turbo-q5_0", GgmlType.LargeV3Turbo, QuantizationType.Q5_0)]
+    [InlineData("large-v3-turbo", GgmlType.LargeV3Turbo, QuantizationType.NoQuantization)]
+    [InlineData("not-a-real-model", GgmlType.Base, QuantizationType.NoQuantization)]
+    public void Resolve_ReadsTheBaseTypeAndTheQuantizationOutOfTheName(
+        string name,
+        GgmlType expectedType,
+        QuantizationType expectedQuantization)
     {
-        var (type, quantization) = WhisperModelCatalog.Resolve("large-v3-turbo-q5_0");
+        var (type, quantization) = WhisperModelCatalog.Resolve(name);
 
-        Assert.Equal(GgmlType.LargeV3Turbo, type);
-        Assert.Equal(QuantizationType.Q5_0, quantization);
+        Assert.Equal(expectedType, type);
+        Assert.Equal(expectedQuantization, quantization);
     }
 
-    [Fact]
-    public void Resolve_UnknownName_FallsBackToBaseWithNoQuantization()
+    // The catalogue's other question, and a separate one: Resolve always answers, falling back to Base, so it can
+    // never say "this name is not one of ours" — which is what the settings surface needs before it offers a name.
+    [Theory]
+    [InlineData("large-v3-turbo-q8_0", true)]
+    [InlineData("not-a-real-model", false)]
+    public void IsKnown_SaysWhetherTheNameIsOneTheCatalogueHas(string name, bool known)
     {
-        var (type, quantization) = WhisperModelCatalog.Resolve("not-a-real-model");
-
-        Assert.Equal(GgmlType.Base, type);
-        Assert.Equal(QuantizationType.NoQuantization, quantization);
+        Assert.Equal(known, WhisperModelCatalog.IsKnown(name));
     }
-
-    [Fact]
-    public void Resolve_PlainName_ReturnsNoQuantization()
-    {
-        var (type, quantization) = WhisperModelCatalog.Resolve("large-v3-turbo");
-
-        Assert.Equal(GgmlType.LargeV3Turbo, type);
-        Assert.Equal(QuantizationType.NoQuantization, quantization);
-    }
-
-    [Fact]
-    public void IsKnown_QuantizedName_IsTrue() =>
-        Assert.True(WhisperModelCatalog.IsKnown("large-v3-turbo-q8_0"));
-
-    [Fact]
-    public void IsKnown_UnknownName_IsFalse() =>
-        Assert.False(WhisperModelCatalog.IsKnown("not-a-real-model"));
 }

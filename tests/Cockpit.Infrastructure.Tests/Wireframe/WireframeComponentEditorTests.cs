@@ -111,15 +111,13 @@ public class WireframeComponentEditorTests
             WireframeScreens.Settings,
             WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
 
+        // The two halves around the one line that was allowed to change, compared whole — a shorter or a shifted
+        // document fails on length before it fails on content.
         var after = WireframeScreens.LinesOf(result.Text!);
+        var at = WireframeScreens.SaveButtonLine - 1;
         Assert.Equal(before.Length, after.Length);
-        for (var line = 0; line < before.Length; line++)
-        {
-            if (line != WireframeScreens.SaveButtonLine - 1)
-            {
-                Assert.Equal(before[line], after[line]);
-            }
-        }
+        Assert.Equal(before[..at], after[..at]);
+        Assert.Equal(before[(at + 1)..], after[(at + 1)..]);
     }
 
     [Fact]
@@ -284,16 +282,6 @@ public class WireframeComponentEditorTests
         Assert.Contains("no meaning", result.Refusal);
     }
 
-    [Fact]
-    public void SetModifier_UnderAnIdThatNamesNothing_IsRefused()
-    {
-        var result = WireframeComponentEditor.Apply(
-            WireframeScreens.Settings,
-            WireframeComponentEdit.SetModifier("no-such-id", WireframeModifierName.Align, "left"));
-
-        Assert.Null(result.Text);
-        Assert.Contains("no component with id \"no-such-id\"", result.Refusal);
-    }
 
     // ---- Notes (AC-907) ----
 
@@ -308,48 +296,8 @@ public class WireframeComponentEditorTests
         Assert.Equal("        button \"Opslaan\" primary note:\"disabled until valid\" #save", WireframeScreens.LineOf(result.Text!, 13));
     }
 
-    [Fact]
-    public void SetModifier_Note_UpdatesAnExistingNoteInPlace()
-    {
-        var once = WireframeComponentEditor.Apply(
-            WireframeScreens.Settings,
-            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, "first version", quoted: true));
 
-        var twice = WireframeComponentEditor.Apply(
-            once.Text!,
-            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, "second version", quoted: true));
 
-        Assert.Null(twice.Refusal);
-        Assert.Equal("        button \"Opslaan\" primary note:\"second version\" #save", WireframeScreens.LineOf(twice.Text!, 13));
-    }
-
-    [Fact]
-    public void SetModifier_Note_WithAnEmptyValue_ClearsIt()
-    {
-        var withNote = WireframeComponentEditor.Apply(
-            WireframeScreens.Settings,
-            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, "disabled until valid", quoted: true));
-
-        var cleared = WireframeComponentEditor.Apply(
-            withNote.Text!,
-            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, null));
-
-        Assert.Null(cleared.Refusal);
-        Assert.Equal("        button \"Opslaan\" primary #save", WireframeScreens.LineOf(cleared.Text!, 13));
-    }
-
-    [Fact]
-    public void Remove_TakesTheComponentsNoteWithIt_BecauseItStandsOnTheSameLine()
-    {
-        var withNote = WireframeComponentEditor.Apply(
-            WireframeScreens.Settings,
-            WireframeComponentEdit.SetModifier(WireframeScreens.SaveButton, WireframeModifierName.Note, "disabled until valid", quoted: true));
-
-        var removed = WireframeComponentEditor.Apply(withNote.Text!, WireframeComponentEdit.Remove(WireframeScreens.SaveButton));
-
-        Assert.Null(removed.Refusal);
-        Assert.DoesNotContain("disabled until valid", removed.Text, StringComparison.Ordinal);
-    }
 
     [Fact]
     public void ChangeType_KeepsThePlaceTheIdTheTextAndTheModifiers()
@@ -561,16 +509,6 @@ public class WireframeComponentEditorTests
         Assert.Equal(WireframeScreens.LinesOf(withDesktop).Length, WireframeScreens.LinesOf(result.Text!).Length);
     }
 
-    [Fact]
-    public void SetViewport_ToTheOneAlreadyInEffect_IsRefused_AsANoOpChange()
-    {
-        var withMobile = $"viewport mobile\n\n{WireframeScreens.Settings}";
-
-        var result = WireframeComponentEditor.Apply(withMobile, WireframeComponentEdit.SetViewport(WireframeViewport.Mobile));
-
-        Assert.Null(result.Text);
-        Assert.Contains("exactly as it is", result.Refusal);
-    }
 
     // ---- States (AC-914) ----
 

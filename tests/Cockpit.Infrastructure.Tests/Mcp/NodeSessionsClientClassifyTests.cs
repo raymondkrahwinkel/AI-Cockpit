@@ -12,74 +12,36 @@ namespace Cockpit.Infrastructure.Tests.Mcp;
 /// </summary>
 public class NodeSessionsClientClassifyTests
 {
-    [Fact]
-    public void ARefusedSocketException_ReadsAsTheNodeLookingStopped()
+    // Every failure shape the node can hand back, and the wording it reads as — with the node's own name asserted
+    // for all of them, since a message that classified correctly and named nobody is no use with three nodes. Each
+    // shape appears bare and wrapped: the SDK's transport wraps some one level deep and is free to add another.
+    public static TheoryData<Exception, string> Failures() => new()
     {
-        var exception = new HttpRequestException("Connection refused", new SocketException((int)SocketError.ConnectionRefused));
-
-        var message = NodeSessionsClient.Classify("laptop", exception);
-
-        Assert.Contains("laptop", message, StringComparison.Ordinal);
-        Assert.Contains("refused", message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("looks stopped", message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ARefusedSocketException_NestedTwoLevelsDeep_IsStillFound()
-    {
-        // The shape the SDK's own transport actually produces is one level of wrapping; this pins that a third
-        // layer added upstream would not silently fall through to the unclassified wording.
-        var exception = new InvalidOperationException("wrapper", new HttpRequestException(
-            "Connection refused", new SocketException((int)SocketError.ConnectionRefused)));
-
-        var message = NodeSessionsClient.Classify("laptop", exception);
-
-        Assert.Contains("looks stopped", message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ACertificatePinMismatch_WrappedInHttpRequestException_NamesTheUntrustedCertificate()
-    {
+        { new HttpRequestException("Connection refused", new SocketException((int)SocketError.ConnectionRefused)), "looks stopped" },
+        {
+            new InvalidOperationException("wrapper", new HttpRequestException(
+                "Connection refused", new SocketException((int)SocketError.ConnectionRefused))),
+            "looks stopped"
+        },
         // The exact shape `NodeCertificatePin.Require`'s validation callback produces on the wire (see
         // `NodePairingHandshakeTests.Claim_WithACertificateOtherThanThePinnedOne_IsRefusedWithThatReason`).
-        var exception = new HttpRequestException("TLS", new NodeCertificatePinMismatchException("AAAA", "BBBB"));
+        { new HttpRequestException("TLS", new NodeCertificatePinMismatchException("AAAA", "BBBB")), "did not pin" },
+        { new NodeCertificatePinMismatchException("AAAA", "BBBB"), "did not pin" },
+        // What the call budget's own `CancellationTokenSource.CancelAfter` produces once it reaches `ReadAsync`'s
+        // broad catch — the caller's own token was never touched, which is why this needs its own wording rather
+        // than reading as "the caller gave up".
+        { new OperationCanceledException(), "did not answer within" },
+        { new HttpRequestException("initialize failed", new OperationCanceledException()), "did not answer within" },
+    };
 
-        var message = NodeSessionsClient.Classify("laptop", exception);
-
-        Assert.Contains("did not pin", message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ACertificatePinMismatch_AtTheTopLevel_IsStillClassified()
+    [Theory]
+    [MemberData(nameof(Failures))]
+    public void EveryKnownFailureShape_ReadsAsItsOwnWording_AndNamesTheNode(Exception failure, string wording)
     {
-        var message = NodeSessionsClient.Classify("laptop", new NodeCertificatePinMismatchException("AAAA", "BBBB"));
-
-        Assert.Contains("did not pin", message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ACancellationTheCallerNeverRequested_ReadsAsATimeout()
-    {
-        // This is what the call budget's own `CancellationTokenSource.CancelAfter` produces once it reaches
-        // `ReadAsync`'s broad catch — the caller's own token was never touched, which is exactly why this shape
-        // needs its own wording rather than reading as "the caller gave up".
-        var message = NodeSessionsClient.Classify("laptop", new OperationCanceledException());
+        var message = NodeSessionsClient.Classify("laptop", failure);
 
         Assert.Contains("laptop", message, StringComparison.Ordinal);
-        Assert.Contains("did not answer within", message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ACancellationWrappedByTheTransport_IsStillReadAsATimeout()
-    {
-        // `McpClient.CreateAsync`'s own `InitializationTimeout`/`DiscoverProbeTimeout` are as free to wrap the
-        // cancellation as the SDK's call path is — this must not fall through to the unclassified case just
-        // because the timeout did not arrive bare.
-        var exception = new HttpRequestException("initialize failed", new OperationCanceledException());
-
-        var message = NodeSessionsClient.Classify("laptop", exception);
-
-        Assert.Contains("did not answer within", message, StringComparison.Ordinal);
+        Assert.Contains(wording, message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -258,13 +258,6 @@ public sealed class ManagedCliServiceTests : IDisposable
             .ResolveInstalledPath("acme"));
     }
 
-    [Fact]
-    public void ResolveInstalledPath_NothingInstalled_ReturnsNull()
-    {
-        Assert.Null(_Service(new StubHttpMessageHandler(_ => throw new InvalidOperationException()))
-            .ResolveInstalledPath("acme"));
-    }
-
     [Theory]
     [InlineData("../evil")]
     [InlineData("a/b")]

@@ -36,17 +36,19 @@ public class SpawnOptionOverridesTests
         ["effort"] = "high",
     };
 
-    [Fact]
-    public void NoOverrides_ChangeNothing_SoAnOrdinarySpawnStaysExactlyWhatItWas()
+    public static TheoryData<IReadOnlyDictionary<string, string>?> NoOverrides() =>
+        [null, new Dictionary<string, string>()];
+
+    [Theory]
+    [MemberData(nameof(NoOverrides))]
+    public void NoOverrides_ChangeNothing_SoAnOrdinarySpawnStaysExactlyWhatItWas(IReadOnlyDictionary<string, string>? overrides)
     {
         // Criterion 1. Null rather than a copy of the defaults: the launch path reads null as "whatever the profile
         // says", which is the one behaviour every spawn made before this ticket relied on.
-        foreach (var overrides in new IReadOnlyDictionary<string, string>?[] { null, new Dictionary<string, string>() })
-        {
-            var (merged, refusal) = SpawnOptionOverrides.Merge("Claude", Claude, ProfileDefaults, overrides);
-            Assert.Null(merged);
-            Assert.Null(refusal);
-        }
+        var (merged, refusal) = SpawnOptionOverrides.Merge("Claude", Claude, ProfileDefaults, overrides);
+
+        Assert.Null(merged);
+        Assert.Null(refusal);
     }
 
     [Fact]

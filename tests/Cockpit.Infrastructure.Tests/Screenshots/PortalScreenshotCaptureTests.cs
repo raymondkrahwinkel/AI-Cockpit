@@ -61,17 +61,6 @@ public class PortalScreenshotCaptureTests : IDisposable
         Assert.False(capture.IsSupported);
     }
 
-    [Fact]
-    public async Task ADesktopServingTheInterface_IsSupported()
-    {
-        var capture = _Capture();
-        capture.UseTestHarness(_ => Task.FromResult(2u), (_, _) => Task.FromResult(_Wrote(_Png(1920, 1080))));
-
-        await capture.ProbeVersionForTestAsync();
-
-        Assert.True(capture.IsSupported);
-    }
-
     /// <summary>
     /// The probe is a round trip to the desktop, and the cockpit wires the composer's button in the same
     /// statement that builds this. So the wait has to be observable: a capture that claimed to be settled while

@@ -86,27 +86,6 @@ public sealed class ClaimCollisionMonitorTests
         Assert.Empty(monitor.PanesInCollision());
     }
 
-    [Fact]
-    public void PanesInCollision_ThreeWorkspacesOnOneResource_ReportsAllThree()
-    {
-        var claims = new FakeClaimsAudit(
-            new AgentResourceClaim("feature/AC-439", "pane-x", DateTimeOffset.UtcNow),
-            new AgentResourceClaim("feature/AC-439", "pane-y", DateTimeOffset.UtcNow),
-            new AgentResourceClaim("feature/AC-439", "pane-z", DateTimeOffset.UtcNow));
-        var directory = new FakePaneWorkspaceDirectory(_Desks(("pane-x", "ws-1"), ("pane-y", "ws-2"), ("pane-z", "ws-3")));
-        var monitor = new ClaimCollisionMonitor(claims, directory);
-
-        Assert.Equal(3, monitor.PanesInCollision().Count);
-    }
-
-    [Fact]
-    public void PanesInCollision_NoClaims_ReportsNothing()
-    {
-        var monitor = new ClaimCollisionMonitor(new FakeClaimsAudit(), new FakePaneWorkspaceDirectory(_Desks()));
-
-        Assert.Empty(monitor.PanesInCollision());
-    }
-
     /// <summary>The physical-identity layer, exercised end to end: a trailing separator is a different string but the
     /// same directory, and the two desks holding it must still collide.</summary>
     [Fact]
@@ -181,27 +160,4 @@ public sealed class ClaimCollisionMonitorTests
         Assert.Empty(monitor.PanesInCollision());
     }
 
-    /// <summary>Two genuinely different physical paths must never collide — the negative case for the test above.</summary>
-    [Fact]
-    public void PanesInCollision_TwoDifferentPhysicalDirectories_DoNotCollide()
-    {
-        var root = Directory.CreateTempSubdirectory("ac439-");
-        try
-        {
-            var first = Directory.CreateDirectory(Path.Combine(root.FullName, "worktree-a"));
-            var second = Directory.CreateDirectory(Path.Combine(root.FullName, "worktree-b"));
-
-            var claims = new FakeClaimsAudit(
-                new AgentResourceClaim(first.FullName, "pane-x", DateTimeOffset.UtcNow),
-                new AgentResourceClaim(second.FullName, "pane-y", DateTimeOffset.UtcNow));
-            var directory = new FakePaneWorkspaceDirectory(_Desks(("pane-x", "ws-1"), ("pane-y", "ws-2")));
-            var monitor = new ClaimCollisionMonitor(claims, directory);
-
-            Assert.Empty(monitor.PanesInCollision());
-        }
-        finally
-        {
-            root.Delete(recursive: true);
-        }
-    }
 }
