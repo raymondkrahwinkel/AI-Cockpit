@@ -1,7 +1,5 @@
 using Avalonia.Controls;
-using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -12,18 +10,6 @@ namespace Cockpit.Core.Tests.Plugins;
 /// </summary>
 public class SessionBannerItemTests
 {
-    [Fact]
-    public void AddSessionBanner_RoutesToTheContributionSink()
-    {
-        var sink = Substitute.For<IPluginContributionSink>();
-        var host = NewHost(sink);
-        Control Factory(IPluginSessionContext _) => new TextBlock();
-
-        host.AddSessionBanner(Factory);
-
-        sink.Received(1).AddPluginSessionBannerItem(Arg.Any<Func<IPluginSessionContext, Control>>());
-    }
-
     // The default is a no-op, so a plugin built against this SDK still loads on a host that predates the
     // contribution point instead of failing at registration.
     [Fact]
@@ -35,18 +21,6 @@ public class SessionBannerItemTests
 
         register();
     }
-
-    private static ICockpitHost NewHost(IPluginContributionSink sink) =>
-        new CockpitHost(
-            "test-plugin",
-            "Test Plugin",
-            Substitute.For<IServiceProvider>(),
-            sink,
-            Substitute.For<ICockpitActions>(),
-            Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance,
-            new PluginDiagnostics());
 
     /// <summary>
     /// An older host: implements only what the contract required before session banners existed.

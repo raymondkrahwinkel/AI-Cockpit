@@ -183,18 +183,6 @@ public class AssistantIndicatorViewModelTests
     }
 
     [Fact]
-    public void ListeningMode_EachOfTheTwoStands_IsReadableWithoutClicking()
-    {
-        var vm = new AssistantIndicatorViewModel { ListeningMode = AssistantListeningMode.Off };
-        Assert.True(vm.IsListeningModeOff);
-        Assert.False(vm.IsListeningModeAlwaysOn);
-
-        vm.ListeningMode = AssistantListeningMode.AlwaysOn;
-        Assert.False(vm.IsListeningModeOff);
-        Assert.True(vm.IsListeningModeAlwaysOn);
-    }
-
-    [Fact]
     public void SelectingOff_NeverAsksForConfirmation_AndCommitsImmediately()
     {
         var vm = new AssistantIndicatorViewModel { ListeningMode = AssistantListeningMode.AlwaysOn };

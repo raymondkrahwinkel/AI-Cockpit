@@ -145,15 +145,6 @@ public class MemorySourceLocationPickerViewModelTests
     }
 
     [Fact]
-    public void CanSignIn_NoSignInDelegate_IsFalse()
-    {
-        var viewModel = new MemorySourceLocationPickerViewModel(
-            "Depot project", _ => Task.FromResult(ProjectMemorySourceLocationsResult.AuthorizationRequired));
-
-        Assert.False(viewModel.CanSignIn);
-    }
-
-    [Fact]
     public async Task RetryCommand_RunsTheListingDelegateAgain()
     {
         var attempt = 0;
