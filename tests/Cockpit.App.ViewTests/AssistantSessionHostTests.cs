@@ -398,15 +398,26 @@ public class AssistantSessionHostTests
     // holding nothing but its system prompt, so the profile was passed along and then, on the three settings that
     // decide what it may do, ignored.
 
-    [Fact]
-    public void LaunchOptions_CarryTheProfilesOwnPermissionMode()
+    // The same map, the same route, the same driver read (ClaudeSdkSessionDriver._ResolveOption) for all three, so
+    // they are one behaviour with three rows rather than three findings — a fix that only reached the permission
+    // mode would be a fix for one of three settings that were all lost the same way. All three sit on the one
+    // profile the rows share, so a copy that stops after the first entry fails here too. The model and effort keys
+    // are literals because they are the plugin's own: the host does not (and must not) know what they mean.
+    [Theory]
+    [InlineData(WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)]
+    [InlineData("model", "opus")]
+    [InlineData("effort", "high")]
+    public void LaunchOptions_CarryEveryStartDefaultTheProfileNames(string key, string expected)
     {
-        var options = AssistantSessionHost._LaunchOptions(_ProfileWithDefaults(
-            (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)), replacesStandingInstruction: false, memory: null);
+        var options = AssistantSessionHost._LaunchOptions(
+            _ProfileWithDefaults(
+                (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue),
+                ("model", "opus"),
+                ("effort", "high")),
+            replacesStandingInstruction: false,
+            memory: null);
 
-        Assert.Equal(
-            SessionOptionCatalog.BypassPermissionModeValue,
-            options[WellKnownPluginSessionOptions.PermissionMode]);
+        Assert.Equal(expected, options[key]);
     }
 
     // ── AC-759: the acting paragraph's SDK gate agrees with the profile's own permission mode ────────────────────
@@ -446,21 +457,6 @@ public class AssistantSessionHostTests
     }
 
     [Fact]
-    public void LaunchOptions_CarryTheProfilesOwnModelAndEffort()
-    {
-        // The same map, the same route, the same driver read (ClaudeSdkSessionDriver._ResolveOption) — so a fix
-        // that only reached the permission mode would be a fix for one of three settings that were all lost the
-        // same way. The keys are the plugin's own, which is why they are literals here rather than host constants:
-        // the host does not (and must not) know what a provider's options mean.
-        var options = AssistantSessionHost._LaunchOptions(_ProfileWithDefaults(
-            ("model", "opus"),
-            ("effort", "high")), replacesStandingInstruction: false, memory: null);
-
-        Assert.Equal("opus", options["model"]);
-        Assert.Equal("high", options["effort"]);
-    }
-
-    [Fact]
     public void LaunchOptions_ForAProfileThatSaysNothing_NameNoneOfThem_SoTheAppDefaultStillStands()
     {
         // The half that protects everyone who has set nothing. The typed permission mode/model/effort at the call
@@ -480,93 +476,52 @@ public class AssistantSessionHostTests
         Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
-    [Fact]
-    public void LaunchOptions_CarryTheRuleThatTheAssistantImplementsNothingItself()
+    // One behaviour, one exercise: the capability map a plain launch actually hands the session. Each row is a
+    // phrase some ticket put in AssistantStandingInstruction and that an assistant stops knowing about the moment
+    // it stops arriving — AC-639 (implements nothing itself), AC-647 (what a profile runs at), AC-648 (a spawn may
+    // override options, never the permission mode), AC-641 (delegated background work), AC-640 (the watcher and
+    // every event it can be armed for), AC-656 (woken by its own waiting mail). Asserted on what the launch
+    // delivers rather than on the constant: that the constant reads well is not the claim.
+    [Theory]
+    // AC-639
+    [InlineData("YOU DO NOT IMPLEMENT")]
+    [InlineData("on its own worktree")]
+    // AC-647
+    [InlineData("`list_profiles` carries an `Options` list")]
+    [InlineData("Providers do not share a shape")]
+    // AC-648 criterion 6
+    [InlineData("`start_agent` takes an `options` map")]
+    [InlineData("PERMISSION-MODE IS NEVER OVERRIDABLE")]
+    [InlineData("`list_profiles` showed for that profile")]
+    // AC-641
+    [InlineData("list_delegated_tasks")]
+    // AC-640: naming only the two tools would leave the assistant knowing it can watch something and not what for.
+    [InlineData("watch_session")]
+    [InlineData("unwatch_session")]
+    [InlineData("busy-to-idle")]
+    [InlineData("needs-attention")]
+    [InlineData("gone")]
+    [InlineData("stuck")]
+    [InlineData("pattern")]
+    // AC-656
+    [InlineData("AC-656")]
+    [InlineData("no opt-in")]
+    public void LaunchOptions_CarryTheCapabilityMap(string phrase)
     {
-        // AC-639. The rule exists because the assistant built and fixed straight in a checkout rather than
-        // spawning for it (AC-638), and the capability map is the only place it is written down. Asserted on what
-        // a launch actually hands the session rather than on the constant: that the constant reads well is not the
-        // claim — that the rule arrives is. The other asserts in this file compare `Default` with itself and would
-        // pass just as happily with this paragraph deleted, which is exactly why this one names the text.
         var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
 
-        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
-        Assert.Contains("YOU DO NOT IMPLEMENT", instruction, StringComparison.Ordinal);
-        Assert.Contains("on its own worktree", instruction, StringComparison.Ordinal);
+        Assert.Contains(phrase, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
     }
 
     [Fact]
-    public void LaunchOptions_CarryWhereToLookBeforeAssumingWhatAProfileRunsAt()
+    public void LaunchOptions_NoLongerSayTheAssistantCannotBeWoken()
     {
-        // AC-647, asserted the same way as AC-639 above: on what a launch actually hands the session, because that
-        // the constant reads well is not the claim. The gap it closes is a spawn picked on a label — the profile
-        // that turned out to run in a bypass permission mode on the costly model was indistinguishable from one
-        // that did not, and both read "Plugin" as their provider.
+        // AC-656's other half, and the only one of these that is an absence: the old line told the assistant an
+        // urgent notify would always be refused for it. That stopped being true, and a capability map still saying
+        // so would send the assistant looking for a route (polling, a relayed message) it no longer needs.
         var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
 
-        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
-        Assert.Contains("`list_profiles` carries an `Options` list", instruction, StringComparison.Ordinal);
-        Assert.Contains("Providers do not share a shape", instruction, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void LaunchOptions_CarryThatASpawnMayOverrideOptions_AndThatThePermissionModeIsNeverOneOfThem()
-    {
-        // AC-648 criterion 6, asserted the way AC-639's test above is. Both halves matter: an assistant that never
-        // learns the `options` map exists cannot honour "the same profile, but lighter", and one that learns it
-        // without the exception will try the permission mode and spend a turn being refused.
-        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
-
-        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
-        Assert.Contains("`start_agent` takes an `options` map", instruction, StringComparison.Ordinal);
-        Assert.Contains("PERMISSION-MODE IS NEVER OVERRIDABLE", instruction, StringComparison.Ordinal);
-        Assert.Contains("`list_profiles` showed for that profile", instruction, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void LaunchOptions_CarryTheToolThatSeesDelegatedBackgroundWork()
-    {
-        // AC-641, asserted the way AC-639's test above is: off the instruction a launch actually delivers, not off
-        // the constant. A tool the map never names is a tool the assistant does not know it has (AC-635), and this
-        // one is the only route to work that appears in no session list at all.
-        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
-
-        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
-        Assert.Contains("list_delegated_tasks", instruction, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void LaunchOptions_CarryTheWatcherAndEveryEventItCanBeArmedFor()
-    {
-        // AC-640, asserted the way AC-639's test above is: off the instruction a launch actually delivers. Naming
-        // only the two tools would leave the assistant knowing it can watch something and not what it can watch
-        // for — and the point of the ticket is that it stops polling `list_sessions`, which it will not do for
-        // events it cannot name.
-        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
-
-        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
-        Assert.Contains("watch_session", instruction, StringComparison.Ordinal);
-        Assert.Contains("unwatch_session", instruction, StringComparison.Ordinal);
-        Assert.Contains("busy-to-idle", instruction, StringComparison.Ordinal);
-        Assert.Contains("needs-attention", instruction, StringComparison.Ordinal);
-        Assert.Contains("gone", instruction, StringComparison.Ordinal);
-        Assert.Contains("stuck", instruction, StringComparison.Ordinal);
-        Assert.Contains("pattern", instruction, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void LaunchOptions_SayTheAssistantIsWokenByItsOwnWaitingMail_NotRefusedAsNotWakeable()
-    {
-        // AC-656, asserted the way AC-639's test above is: off the instruction a launch actually delivers. The old
-        // line told the assistant an urgent notify would always be refused for it; that stopped being true, and a
-        // capability map that still said so would send the assistant looking for a route (polling, a relayed
-        // message) it no longer needs.
-        var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
-
-        var instruction = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
-        Assert.Contains("AC-656", instruction, StringComparison.Ordinal);
-        Assert.Contains("no opt-in", instruction, StringComparison.Ordinal);
-        Assert.DoesNotContain("not-wakeable", instruction, StringComparison.Ordinal);
+        Assert.DoesNotContain("not-wakeable", options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
     }
 
     [Fact]

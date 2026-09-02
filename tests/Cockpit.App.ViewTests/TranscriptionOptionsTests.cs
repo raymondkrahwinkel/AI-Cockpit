@@ -11,43 +11,25 @@ namespace Cockpit.App.ViewTests;
 /// </summary>
 public class TranscriptionOptionsTests
 {
-    private static readonly TranscriptionCapabilities CpuOnly = TranscriptionCapabilities.CpuOnly;
-    private static readonly TranscriptionCapabilities Cuda = new(CudaUsable: true, VulkanUsable: false);
-    private static readonly TranscriptionCapabilities Vulkan = new(CudaUsable: false, VulkanUsable: true);
-    private static readonly TranscriptionCapabilities Both = new(CudaUsable: true, VulkanUsable: true);
-
-    [Fact]
-    public void ACpuOnlyHost_IsOfferedAutoAndCpuOnly_NeverAGpu()
-    {
+    [Theory]
+    // A CPU-only host is offered no GPU at all, and no host is ever offered a runtime it cannot load.
+    [InlineData(false, false, new[] { VoiceBackendPreference.Auto, VoiceBackendPreference.Cpu })]
+    [InlineData(false, true, new[] { VoiceBackendPreference.Auto, VoiceBackendPreference.Vulkan, VoiceBackendPreference.Cpu })]
+    [InlineData(true, false, new[] { VoiceBackendPreference.Auto, VoiceBackendPreference.Cuda, VoiceBackendPreference.Cpu })]
+    // There is one GPU entry, never two, and when both runtimes load it is the CUDA one.
+    [InlineData(true, true, new[] { VoiceBackendPreference.Auto, VoiceBackendPreference.Cuda, VoiceBackendPreference.Cpu })]
+    public void TheOfferedBackends_AreExactlyTheOnesThisHostCanLoad(
+        bool cuda, bool vulkan, VoiceBackendPreference[] expected) =>
         Assert.Equal(
-            new[] { VoiceBackendPreference.Auto, VoiceBackendPreference.Cpu },
-            TranscriptionOptions.BackendChoices(CpuOnly).Select(choice => choice.Value));
-    }
+            expected,
+            TranscriptionOptions.BackendChoices(new TranscriptionCapabilities(cuda, vulkan)).Select(choice => choice.Value));
 
     [Fact]
-    public void AVulkanHost_IsOfferedAGpuOption_ButNeverCuda()
+    public void TheGpuEntry_IsLabelledWithoutJargonTheOperatorHasToDecode()
     {
-        var values = TranscriptionOptions.BackendChoices(Vulkan).Select(choice => choice.Value).ToList();
-        Assert.Equal(
-            new[] { VoiceBackendPreference.Auto, VoiceBackendPreference.Vulkan, VoiceBackendPreference.Cpu },
-            values);
-        Assert.DoesNotContain(VoiceBackendPreference.Cuda, values);
-    }
+        var choices = TranscriptionOptions.BackendChoices(new TranscriptionCapabilities(CudaUsable: true, VulkanUsable: false));
 
-    [Fact]
-    public void AnNvidiaHost_IsOfferedCuda_AsAPlainGpuLabel()
-    {
-        var gpu = TranscriptionOptions.BackendChoices(Cuda).Single(choice => choice.Value == VoiceBackendPreference.Cuda);
-        Assert.Equal("GPU (CUDA)", gpu.Label);
-    }
-
-    [Fact]
-    public void WhenBothLoad_TheSingleGpuEntry_PrefersCuda()
-    {
-        var choices = TranscriptionOptions.BackendChoices(Both);
-        Assert.Single(choices, choice =>
-            choice.Value == VoiceBackendPreference.Cuda || choice.Value == VoiceBackendPreference.Vulkan);
-        Assert.Contains(choices, choice => choice.Value == VoiceBackendPreference.Cuda);
+        Assert.Equal("GPU (CUDA)", choices.Single(choice => choice.Value == VoiceBackendPreference.Cuda).Label);
     }
 
     [Theory]
@@ -57,18 +39,14 @@ public class TranscriptionOptionsTests
     public void TheHardwareBadge_NamesTheDetectedAcceleration(bool cuda, bool vulkan, string expected) =>
         Assert.Equal(expected, TranscriptionOptions.HardwareBadge(new TranscriptionCapabilities(cuda, vulkan)));
 
-    [Fact]
-    public void Advice_ForcingTheGpu_WarnsAboutDesktopStutter() =>
-        Assert.Contains("stutter", TranscriptionOptions.Advice(VoiceBackendPreference.Vulkan, Vulkan));
-
-    [Fact]
-    public void Advice_Cpu_PromisesASmoothDesktop() =>
-        Assert.Contains("smooth", TranscriptionOptions.Advice(VoiceBackendPreference.Cpu, CpuOnly));
-
-    [Fact]
-    public void Advice_Auto_ReflectsWhetherAGpuWasDetected()
-    {
-        Assert.Contains("GPU", TranscriptionOptions.Advice(VoiceBackendPreference.Auto, Cuda));
-        Assert.Contains("CPU", TranscriptionOptions.Advice(VoiceBackendPreference.Auto, CpuOnly));
-    }
+    [Theory]
+    // Forcing the GPU is the one choice with a cost to warn about; CPU is the one that promises none.
+    [InlineData(VoiceBackendPreference.Vulkan, false, true, "stutter")]
+    [InlineData(VoiceBackendPreference.Cpu, false, false, "smooth")]
+    // Auto says nothing of its own — it reports what the host turned out to have.
+    [InlineData(VoiceBackendPreference.Auto, true, false, "GPU")]
+    [InlineData(VoiceBackendPreference.Auto, false, false, "CPU")]
+    public void TheAdvice_NamesWhatTheChoiceCostsOnThisHost(
+        VoiceBackendPreference preference, bool cuda, bool vulkan, string expected) =>
+        Assert.Contains(expected, TranscriptionOptions.Advice(preference, new TranscriptionCapabilities(cuda, vulkan)));
 }

@@ -21,17 +21,9 @@ public class TtyPromptReadinessTests
     private const string BracketedPasteStart = "\x1b[200~";
     private const string BracketedPasteEnd = "\x1b[201~";
 
-    [Fact]
-    public Task APaneWhosePtyExists_CannotTakeAPrompt_UntilBracketedPasteTurnsOn() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (_, viewModel, _) = _NewLaunchedView();
-
-            // The pty process exists (PromptSink is wired, mirroring StartPty) but the hosted CLI has said nothing
-            // yet — this is exactly the gap AC-760 reports.
-            Assert.False(viewModel.CanTakeAPrompt);
-        });
-
+    // APaneWhosePtyExists_CannotTakeAPrompt_UntilBracketedPasteTurnsOn stood here: a freshly launched view,
+    // Assert.False(CanTakeAPrompt). SubmitPromptWhenReady returns true exactly when CanTakeAPrompt does, so a pane
+    // that took a prompt too early makes `deliveredNow` true and leaves bytes in the pty — the test below goes red.
     [Fact]
     public Task AHeldBrief_IsNotWrittenToThePty_BeforeBracketedPasteTurnsOn() =>
         HeadlessAvalonia.RunAsync(async () =>
@@ -58,36 +50,24 @@ public class TtyPromptReadinessTests
             Assert.Equal($"{BracketedPasteStart}review the migration{BracketedPasteEnd}\r", written);
         });
 
-    [Fact]
-    public Task TheFallbackDeadline_DeliversTheHeldBrief_IfBracketedPasteNeverArrives() =>
+    // A CLI that never announces bracketed paste must not hold the brief forever — and must not have it taken off
+    // it early either. The fallback is a fixed 15s in production; here the clock is moved rather than waited out.
+    [Theory]
+    [InlineData(16, true)]
+    [InlineData(5, false)]
+    public Task TheFallbackDeadline_DeliversTheHeldBrief_OnlyOnceItHasElapsed(int secondsSinceFirstOutput, bool elapsed) =>
         HeadlessAvalonia.RunAsync(async () =>
         {
             var (view, viewModel, pty) = _NewLaunchedView();
             viewModel.SubmitPromptWhenReady("review the migration");
 
-            // A CLI that never announces bracketed paste must not hold the brief forever — ponytail: the fallback is
-            // a fixed 15s in production; here the clock is moved instead of the test waiting for real seconds.
-            _SetFirstPtyOutputAt(view, DateTime.UtcNow - TimeSpan.FromSeconds(16));
+            _SetFirstPtyOutputAt(view, DateTime.UtcNow - TimeSpan.FromSeconds(secondsSinceFirstOutput));
             _InvokeCheckReadiness(view);
             await _LetPostedWorkRunAsync();
 
-            Assert.True(viewModel.CanTakeAPrompt);
-            Assert.False(viewModel.HasPromptWaitingToBeDelivered);
-            Assert.NotEmpty(pty.Written);
-        });
-
-    [Fact]
-    public Task TheFallbackDeadline_DoesNotFire_BeforeItHasElapsed() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (view, viewModel, pty) = _NewLaunchedView();
-            viewModel.SubmitPromptWhenReady("review the migration");
-
-            _SetFirstPtyOutputAt(view, DateTime.UtcNow - TimeSpan.FromSeconds(5));
-            _InvokeCheckReadiness(view);
-
-            Assert.False(viewModel.CanTakeAPrompt);
-            Assert.Empty(pty.Written);
+            Assert.Equal(elapsed, viewModel.CanTakeAPrompt);
+            Assert.Equal(elapsed, !viewModel.HasPromptWaitingToBeDelivered);
+            Assert.Equal(elapsed, pty.Written.Length > 0);
         });
 
     [Fact]

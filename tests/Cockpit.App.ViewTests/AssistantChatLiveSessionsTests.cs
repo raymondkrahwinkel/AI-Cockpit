@@ -58,15 +58,9 @@ public sealed class AssistantChatLiveSessionsTests
         Assert.True(vm.HasLiveSessions);
     });
 
-    [Fact]
-    public void WithNoLiveSessions_ThePillHasNothingToShow() => HeadlessAvalonia.Run(() =>
-    {
-        var vm = _Vm(_Cockpit());
-
-        Assert.Empty(vm.LiveSessions);
-        Assert.False(vm.HasLiveSessions);
-    });
-
+    // WithNoLiveSessions_ThePillHasNothingToShow stood here. Its whole body — a fresh view model over an empty
+    // cockpit, Empty(LiveSessions) and False(HasLiveSessions) — is the opening of the test below, on the same two
+    // objects built the same way; and HasLiveSessions is LiveSessions.Count > 0, so the two assertions are one.
     [Fact]
     public void ASessionStartingOrStopping_UpdatesLiveSessionsWithoutReopening() => HeadlessAvalonia.Run(() =>
     {

@@ -24,8 +24,12 @@ public class WorktreeBadgeAdoptionTests
 {
     private const string Repository = "/repo";
 
-    [Fact]
-    public async Task WorkingDirectoryIsARegisteredWorktree_SetsTheBranchEvenWhenAnotherPaneOwnsIt()
+    // The worktree is registered to another pane ("cockpit-assistant") in both rows: that it is somebody else's is
+    // the whole of AC-633, and the badge follows the directory rather than the owner.
+    [Theory]
+    [InlineData("wt", "ac-633-badge")]
+    [InlineData("plain", null)]
+    public async Task TheBadge_FollowsTheWorkingDirectory_WhoeverRegisteredTheWorktree(string leaf, string? expected)
     {
         var worktrees = _Registry(new WorktreeRecord(
             "cockpit-assistant", Repository, _Path("wt"), "ac-633-badge", "abc123", DateTimeOffset.UnixEpoch)
@@ -34,21 +38,9 @@ public class WorktreeBadgeAdoptionTests
         });
 
         var (cockpit, session) = _NewSession(worktrees);
-        await cockpit._AdoptWorktreeBadgeAsync(session, _Path("wt"));
+        await cockpit._AdoptWorktreeBadgeAsync(session, _Path(leaf));
 
-        Assert.Equal("ac-633-badge", session.WorktreeBranch);
-    }
-
-    [Fact]
-    public async Task WorkingDirectoryIsNotAWorktree_LeavesTheBadgeOff()
-    {
-        var worktrees = _Registry(new WorktreeRecord(
-            "cockpit-assistant", Repository, _Path("wt"), "ac-633-badge", "abc123", DateTimeOffset.UnixEpoch));
-
-        var (cockpit, session) = _NewSession(worktrees);
-        await cockpit._AdoptWorktreeBadgeAsync(session, _Path("plain"));
-
-        Assert.Null(session.WorktreeBranch);
+        Assert.Equal(expected, session.WorktreeBranch);
     }
 
     // The UI-driven paths resolve the branch themselves, before this runs; a second lookup must not talk over them.

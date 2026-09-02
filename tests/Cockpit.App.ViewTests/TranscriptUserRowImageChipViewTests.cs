@@ -15,39 +15,19 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class TranscriptUserRowImageChipViewTests
 {
-    private static Button _ImageChip(Window window) => window.GetVisualDescendants().OfType<Button>()
-        .Single(button => button.GetVisualDescendants().OfType<MaterialIcon>()
-            .Any(icon => icon.Kind == MaterialIconKind.ImageMultipleOutline));
-
+    // Both rows in one pane rather than one per test: the chip's Grid is built for every user row and only its
+    // visibility differs, so asking which of the two carries the visible one is the whole behaviour — and it is
+    // a question a per-row test asked of a single row cannot even pose.
     [Fact]
-    public void ARowWithImages_ShowsAVisibleChipWithTheCount() => HeadlessAvalonia.Run(() =>
+    public void OfTwoUserRows_OnlyTheOneStillHoldingItsBytes_ShowsTheChip() => HeadlessAvalonia.Run(() =>
     {
         var session = new SessionViewModel();
         session.Transcript.Clear();
-        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "look at this")
+        var withImages = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "look at this")
         {
             Images = [new ImageAttachment("image/png", _TinyPngBase64())],
-        });
-
-        var window = new Window { Width = 800, Height = 600, Content = new SessionView { DataContext = session } };
-        window.Show();
-        Dispatcher.UIThread.RunJobs();
-        try
-        {
-            var chip = _ImageChip(window);
-            Assert.True(chip.IsEffectivelyVisible);
-        }
-        finally
-        {
-            window.Close();
-        }
-    });
-
-    [Fact]
-    public void ARowWithoutImages_ShowsNoChip() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        session.Transcript.Clear();
+        };
+        session.Transcript.Add(withImages);
         session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "just text"));
 
         var window = new Window { Width = 800, Height = 600, Content = new SessionView { DataContext = session } };
@@ -55,11 +35,14 @@ public class TranscriptUserRowImageChipViewTests
         Dispatcher.UIThread.RunJobs();
         try
         {
-            var chip = window.GetVisualDescendants().OfType<Button>()
+            var visible = window.GetVisualDescendants().OfType<Button>()
                 .Where(button => button.GetVisualDescendants().OfType<MaterialIcon>()
-                    .Any(icon => icon.Kind == MaterialIconKind.ImageMultipleOutline));
+                    .Any(icon => icon.Kind == MaterialIconKind.ImageMultipleOutline))
+                .Where(button => button.IsEffectivelyVisible)
+                .ToList();
 
-            Assert.All(chip, button => Assert.False(button.IsEffectivelyVisible));
+            var chip = Assert.Single(visible);
+            Assert.Same(withImages, chip.DataContext);
         }
         finally
         {

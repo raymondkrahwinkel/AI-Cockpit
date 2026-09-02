@@ -48,7 +48,7 @@ public class VisualTreeSnapshotTests
     });
 
     [Fact]
-    public void Capture_ResolvesBrushesTextAndCorner() => WithTree(window =>
+    public void Capture_ResolvesBrushesTextAndCorner_AndLeavesHiddenChromeOut() => WithTree(window =>
     {
         var snapshot = VisualTreeSnapshot.Capture(window);
 
@@ -56,25 +56,22 @@ public class VisualTreeSnapshotTests
         Assert.Contains("corner=11", snapshot);
         Assert.Contains("\"82%\"", snapshot);
         Assert.Contains("fg=#D9B25A", snapshot);
+        Assert.DoesNotContain("HIDDEN_MARKER", snapshot);
     });
 
-    [Fact]
-    public void Capture_SkipsHiddenSubtrees() => WithTree(window =>
-        Assert.DoesNotContain("HIDDEN_MARKER", VisualTreeSnapshot.Capture(window)));
+    [Theory]
+    [InlineData("Pill", "Border \"Pill\"")]
+    // No control is named "TextBlock", so the type fallback must scope to a TextBlock subtree.
+    [InlineData("TextBlock", "TextBlock")]
+    public void Capture_TargetsANamedSubtree_OrFallsBackToAControlType(string target, string expectedStart) =>
+        WithTree(window =>
+        {
+            var snapshot = VisualTreeSnapshot.Capture(window, target);
 
-    [Fact]
-    public void Capture_TargetsANamedSubtree() => WithTree(window =>
-    {
-        var snapshot = VisualTreeSnapshot.Capture(window, "Pill");
-
-        Assert.StartsWith("Border \"Pill\"", snapshot);
-        Assert.Contains("\"82%\"", snapshot);
-    });
-
-    [Fact]
-    public void Capture_TargetsByControlType_WhenNoNameMatches() => WithTree(window =>
-        // No control is named "TextBlock", so the type fallback must scope to a TextBlock subtree.
-        Assert.StartsWith("TextBlock", VisualTreeSnapshot.Capture(window, "TextBlock")));
+            Assert.StartsWith(expectedStart, snapshot);
+            // The subtree comes with its own children, or an agent verifying a pill reads an empty box.
+            Assert.Contains("\"82%\"", snapshot);
+        });
 
     [Fact]
     public void Capture_NotesAMissingTarget() => WithTree(window =>

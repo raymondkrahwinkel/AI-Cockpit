@@ -13,20 +13,16 @@ namespace Cockpit.App.ViewTests;
 public class TranscriptionModelDropdownViewTests
 {
     [Fact]
-    public void WithoutAnAdvisor_TheBackendList_IsAutoAndCpuOnly() => HeadlessAvalonia.Run(() =>
+    public void AFreshViewModel_OffersACuratedModelAndNoBackendItCannotLoad() => HeadlessAvalonia.Run(() =>
     {
         var vm = new CockpitViewModel();
+
+        Assert.Equal("large-v3-turbo", vm.SelectedTranscriptionModel!.Name);
+        Assert.False(vm.IsTranscriptionModelCustom);
+        // No advisor in the design-time graph, so nothing has reported a GPU.
         Assert.Equal(
             new[] { VoiceBackendPreference.Auto, VoiceBackendPreference.Cpu },
             vm.VoiceBackendPreferences.Select(option => option.Value));
-    });
-
-    [Fact]
-    public void TheModelDropdown_DefaultsToACuratedModel_NotCustom() => HeadlessAvalonia.Run(() =>
-    {
-        var vm = new CockpitViewModel();
-        Assert.Equal("large-v3-turbo", vm.SelectedTranscriptionModel!.Name);
-        Assert.False(vm.IsTranscriptionModelCustom);
     });
 
     [Fact]

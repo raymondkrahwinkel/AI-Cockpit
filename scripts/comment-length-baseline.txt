@@ -389,7 +389,7 @@ inline	tests/Cockpit.App.ViewTests/AssistantChatComposerTests.cs	1
 inline	tests/Cockpit.App.ViewTests/AssistantChatViewLifecycleTests.cs	1
 inline	tests/Cockpit.App.ViewTests/AssistantChatWindowStickToBottomTests.cs	1
 inline	tests/Cockpit.App.ViewTests/AssistantCreateProjectTests.cs	2
-inline	tests/Cockpit.App.ViewTests/AssistantSessionHostTests.cs	9
+inline	tests/Cockpit.App.ViewTests/AssistantSessionHostTests.cs	6
 inline	tests/Cockpit.App.ViewTests/AssistantWorkspacePlacementTests.cs	1
 inline	tests/Cockpit.App.ViewTests/DiagnosticsBackgroundServiceTests.cs	1
 inline	tests/Cockpit.App.ViewTests/DiagnosticsReportTests.cs	1

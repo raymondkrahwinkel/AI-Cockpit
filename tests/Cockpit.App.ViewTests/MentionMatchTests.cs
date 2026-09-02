@@ -9,43 +9,23 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class MentionMatchTests
 {
-    [Fact]
-    public void AFile_WithADirectory_SplitsNameFromParent()
+    // One split, one table. Four facts stood here reading the same four properties off the same constructor;
+    // the root-level file row asserted only the parent, and now carries the whole answer like every other row.
+    [Theory]
+    //          path                          isDirectory  fileName              parent       displayName
+    [InlineData("src/Views/SessionView.axaml", false, "SessionView.axaml", "src/Views", "SessionView.axaml")]
+    [InlineData("Program.cs", false, "Program.cs", "", "Program.cs")]
+    // The trailing '/' is what marks a directory, and the display name keeps it — in the row and in the mention.
+    [InlineData("src/Views/", true, "Views", "src", "Views/")]
+    [InlineData("src/", true, "src", "", "src/")]
+    public void APath_SplitsIntoWhatTheRowShows(
+        string path, bool isDirectory, string fileName, string parentDirectory, string displayName)
     {
-        var match = new MentionMatch("src/Views/SessionView.axaml");
+        var match = new MentionMatch(path);
 
-        Assert.False(match.IsDirectory);
-        Assert.Equal("SessionView.axaml", match.FileName);
-        Assert.Equal("src/Views", match.ParentDirectory);
-        Assert.Equal("SessionView.axaml", match.DisplayName);
-    }
-
-    [Fact]
-    public void ARootLevelFile_HasNoParent()
-    {
-        var match = new MentionMatch("Program.cs");
-
-        Assert.Equal(string.Empty, match.ParentDirectory);
-    }
-
-    [Fact]
-    public void ADirectory_TrailingSlashMarksItAndTheDisplayNameKeepsIt()
-    {
-        var match = new MentionMatch("src/Views/");
-
-        Assert.True(match.IsDirectory);
-        Assert.Equal("Views", match.FileName);
-        Assert.Equal("src", match.ParentDirectory);
-        Assert.Equal("Views/", match.DisplayName);
-    }
-
-    [Fact]
-    public void ARootLevelDirectory_HasNoParent()
-    {
-        var match = new MentionMatch("src/");
-
-        Assert.True(match.IsDirectory);
-        Assert.Equal("src", match.FileName);
-        Assert.Equal(string.Empty, match.ParentDirectory);
+        Assert.Equal(isDirectory, match.IsDirectory);
+        Assert.Equal(fileName, match.FileName);
+        Assert.Equal(parentDirectory, match.ParentDirectory);
+        Assert.Equal(displayName, match.DisplayName);
     }
 }

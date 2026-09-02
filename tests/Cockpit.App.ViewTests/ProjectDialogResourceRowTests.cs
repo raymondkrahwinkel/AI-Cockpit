@@ -121,18 +121,23 @@ public class ProjectDialogResourceRowTests
     });
 
     [Fact]
-    public void AnUnbrokenRow_NeverShowsTheNotFoundHint() => HeadlessAvalonia.Run(() =>
+    public void AFreshlyAddedRow_ShowsNeitherOfTheHints() => HeadlessAvalonia.Run(() =>
     {
+        // The negative half of both hints above, on one row and one layout pass: a row nobody has broken and
+        // nobody has bound to this machine is the state every new row starts in, so a hint that leaks into it
+        // would be the first thing an operator sees on an empty form.
         var viewModel = new ProjectDialogViewModel();
         viewModel.AddResourceRowCommand.Execute(null);
         var window = new ProjectDialog { DataContext = viewModel };
         window.Show();
         window.UpdateLayout();
 
-        var hint = VisibleTextContaining(window, "could not be found");
+        var notFound = VisibleTextContaining(window, "could not be found");
+        var machineBound = VisibleTextContaining(window, "specific to this machine");
         window.Close();
 
-        Assert.Null(hint);
+        Assert.Null(notFound);
+        Assert.Null(machineBound);
     });
 
     [Fact]
@@ -150,21 +155,6 @@ public class ProjectDialogResourceRowTests
 
         // An absolute, unshared path must be visible as such rather than only failing silently on another machine.
         Assert.NotNull(hint);
-    });
-
-    [Fact]
-    public void APortableRow_NeverShowsTheMachineBoundHint() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = new ProjectDialogViewModel();
-        viewModel.AddResourceRowCommand.Execute(null);
-        var window = new ProjectDialog { DataContext = viewModel };
-        window.Show();
-        window.UpdateLayout();
-
-        var hint = VisibleTextContaining(window, "specific to this machine");
-        window.Close();
-
-        Assert.Null(hint);
     });
 
     /// <summary>
