@@ -21,23 +21,11 @@ public class AppRestartServiceTests
 
         service.Restart();
 
+        // The whole sequence, so "exactly once each" is settled here too: a second launch or a second shutdown
+        // would show up as an extra entry rather than as a silently doubled call.
         Assert.Equal(new[] { "launch", "shutdown" }, callOrder);
     }
 
-    [Fact]
-    public void Restart_CallsBothStepsExactlyOnce()
-    {
-        var launchCalls = 0;
-        var shutdownCalls = 0;
-        var service = new AppRestartService(
-            launchNewInstance: () => launchCalls++,
-            shutDownCurrentInstance: () => shutdownCalls++);
-
-        service.Restart();
-
-        Assert.Equal(1, launchCalls);
-        Assert.Equal(1, shutdownCalls);
-    }
 
     [Fact]
     public void Restart_StillShutsDownWhenLaunchingTheNewInstanceIsANoOp()

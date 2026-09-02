@@ -13,6 +13,9 @@ public class ClaudePluginProfileTests
     [Fact]
     public void Claude_ForAMigratedPluginProfile_ReconstructsTheConfigFromThePluginConfigJson()
     {
+        // The bug this guards: after migration profile.Claude read as null, so consumers fell back to ~/.claude and
+        // read-aloud/login/spawn all used the wrong directory for a profile with its own config dir. The provider
+        // plugin resolves the transcript/credentials directory from this reconstructed ConfigDir.
         var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", "/usr/local/bin/claude"));
 
         Assert.NotNull(profile.Claude);
@@ -26,17 +29,6 @@ public class ClaudePluginProfileTests
         var profile = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1"));
 
         Assert.Null(profile.Claude);
-    }
-
-    [Fact]
-    public void MigratedNonDefaultProfile_ReconstructsItsOwnConfigDir()
-    {
-        // The bug this guards: after migration profile.Claude read as null, so consumers fell back to ~/.claude and
-        // read-aloud/login/spawn all used the wrong directory for a profile with its own config dir. The provider
-        // plugin resolves the transcript/credentials directory from this reconstructed ConfigDir.
-        var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null));
-
-        Assert.Equal("/home/raymond/.claude-work", profile.Claude!.ConfigDir);
     }
 
     [Fact]

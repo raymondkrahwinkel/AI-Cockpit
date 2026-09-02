@@ -17,19 +17,12 @@ public class RedChecksTests
     {
         var checks = RedChecks.Parse(GhOutput);
 
+        // Three checks in, and only the failed one is red — the pending `xmldoc-scope` is the half that matters,
+        // because gh reports a run that has merely started with the same non-zero exit as a failure, and reading
+        // that as red would mean an alarm on every run.
         Assert.Equal(3, checks.Count);
         Assert.Equal(["plugins"], checks.Where(check => check.IsRed).Select(check => check.Name));
         Assert.Equal("https://github.com/o/r/actions/runs/1/job/2", checks.Single(check => check.IsRed).Link);
-    }
-
-    // Pending is the state a check spends most of its life in, and gh reports it with the same non-zero exit as a
-    // failure. Reading it as red would mean an alarm on every run that had merely started.
-    [Fact]
-    public void APendingCheck_IsNotRed()
-    {
-        var pending = RedChecks.Parse(GhOutput).Single(check => check.Name == "xmldoc-scope");
-
-        Assert.False(pending.IsRed);
     }
 
     [Theory]
@@ -94,7 +87,8 @@ public class RedChecksTests
     public void AllGreen_IsEveryCheckInAndNoneOfThemRedOrStillRunning(string json, bool expected) =>
         Assert.Equal(expected, RedChecks.AllGreen(RedChecks.Parse(json)));
 
-    // AC-645, criterion 4: green checks are one question, "may this be merged" is another.
+    // AC-645, criterion 4: green checks are one question, "may this be merged" is another. The last three rows are
+    // what gh prints when there is no pull request, no login, or nothing at all — not ready, so never a report.
     [Theory]
     [InlineData("""{"mergeable":"MERGEABLE","reviewDecision":""}""", true)]
     [InlineData("""{"mergeable":"MERGEABLE","reviewDecision":"APPROVED"}""", true)]
@@ -102,14 +96,9 @@ public class RedChecksTests
     [InlineData("""{"mergeable":"MERGEABLE","reviewDecision":"REVIEW_REQUIRED"}""", false)]
     [InlineData("""{"mergeable":"CONFLICTING","reviewDecision":"APPROVED"}""", false)]
     [InlineData("""{"mergeable":"UNKNOWN","reviewDecision":"APPROVED"}""", false)]
+    [InlineData("", false)]
+    [InlineData("not json", false)]
+    [InlineData("[]", false)]
     public void IsReadyToMerge_MeansNothingIsBlockingIt(string json, bool expected) =>
         Assert.Equal(expected, RedChecks.ParseMergeState(json).IsReadyToMerge);
-
-    // What gh prints when there is no pull request, no login, or nothing at all. Not ready, never a report.
-    [Theory]
-    [InlineData("")]
-    [InlineData("not json")]
-    [InlineData("[]")]
-    public void AMergeStateThatCannotBeRead_IsNotReady(string json) =>
-        Assert.False(RedChecks.ParseMergeState(json).IsReadyToMerge);
 }

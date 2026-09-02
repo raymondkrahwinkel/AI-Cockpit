@@ -5,53 +5,25 @@ namespace Cockpit.Core.Tests.Audio;
 /// <summary>The pure microphone-loudness measurement behind the voice overlay's live waveform (#34b).</summary>
 public class AudioLevelMeterTests
 {
-    [Fact]
-    public void NormalizedRms_Silence_IsZero()
+    /// <summary>
+    /// A constant-amplitude frame has RMS == that amplitude, so these are the four points that fix the whole
+    /// -55..-12 dB window: the floor and anything under it read as nothing, full scale clamps rather than
+    /// overflowing, and an ordinary -20 dBFS speech level sits well up the meter instead of hugging the floor.
+    /// </summary>
+    [Theory]
+    [InlineData(0f, 0.0)]
+    [InlineData(0.001f, 0.0)]
+    [InlineData(0.1f, 0.81)]
+    [InlineData(1f, 1.0)]
+    public void NormalizedRms_MapsAmplitudeOntoTheMeter(float amplitude, double expected)
     {
-        var silence = ConstantFrame(0f, sampleCount: 64);
-
-        Assert.Equal(0, AudioLevelMeter.NormalizedRms(silence));
+        Assert.Equal(expected, AudioLevelMeter.NormalizedRms(ConstantFrame(amplitude, sampleCount: 128)), 0.02);
     }
 
     [Fact]
     public void NormalizedRms_EmptyFrame_IsZero()
     {
         Assert.Equal(0, AudioLevelMeter.NormalizedRms(ReadOnlySpan<byte>.Empty));
-    }
-
-    [Fact]
-    public void NormalizedRms_FullScale_ClampsToOne()
-    {
-        var loud = ConstantFrame(1f, sampleCount: 64);
-
-        Assert.Equal(1, AudioLevelMeter.NormalizedRms(loud));
-    }
-
-    [Fact]
-    public void NormalizedRms_OrdinarySpeechLevel_FillsMostOfTheMeter()
-    {
-        // A constant-amplitude frame has RMS == that amplitude; 0.1 is -20 dBFS, which on the default
-        // -55..-12 dB window maps to ~0.81 — well up the meter rather than hugging the floor.
-        var speech = ConstantFrame(0.1f, sampleCount: 128);
-
-        Assert.Equal(0.81, AudioLevelMeter.NormalizedRms(speech), 0.02);
-    }
-
-    [Fact]
-    public void NormalizedRms_BelowTheNoiseFloor_ReadsAsZero()
-    {
-        var veryQuiet = ConstantFrame(0.001f, sampleCount: 128);
-
-        Assert.Equal(0, AudioLevelMeter.NormalizedRms(veryQuiet));
-    }
-
-    [Fact]
-    public void NormalizedRms_LouderInput_ReadsHigherThanQuieter()
-    {
-        var quiet = ConstantFrame(0.02f, sampleCount: 128);
-        var loud = ConstantFrame(0.2f, sampleCount: 128);
-
-        Assert.True(AudioLevelMeter.NormalizedRms(loud) > AudioLevelMeter.NormalizedRms(quiet));
     }
 
     private static byte[] ConstantFrame(float amplitude, int sampleCount)

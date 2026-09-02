@@ -9,42 +9,23 @@ namespace Cockpit.Core.Tests.Diagnostics;
 /// </summary>
 public class ResourceMeterTests
 {
-    [Fact]
-    public void CpuPercent_OneCoreFullyBusyOnAFourCoreMachine_IsAQuarterOfTheMachine()
+    // A share of the machine, not of a core: one core flat out on four is 25%, four cores is 100%. A tree
+    // reporting more CPU time than the wall clock allows (a child that died mid-sample) is clamped rather than
+    // shown as 340%, and the first sample, with no elapsed time behind it, is zero rather than a guess.
+    [Theory]
+    [InlineData(0, 2, 2, 4, 25)]
+    [InlineData(0, 8, 2, 4, 100)]
+    [InlineData(0, 30, 2, 4, 100)]
+    [InlineData(9, 9, 0, 8, 0)]
+    public void CpuPercent_IsAShareOfTheWholeMachine_ClampedToIt(
+        int previousSeconds, int currentSeconds, int elapsedSeconds, int processorCount, double expected)
     {
-        var previous = new ResourceSample(TimeSpan.Zero, 0);
-        var current = new ResourceSample(TimeSpan.FromSeconds(2), 0);
+        var previous = new ResourceSample(TimeSpan.FromSeconds(previousSeconds), 0);
+        var current = new ResourceSample(TimeSpan.FromSeconds(currentSeconds), 0);
 
-        var percent = CpuPercent.Between(previous, current, TimeSpan.FromSeconds(2), processorCount: 4);
+        var percent = CpuPercent.Between(previous, current, TimeSpan.FromSeconds(elapsedSeconds), processorCount);
 
-        Assert.True(Math.Abs(percent - 25) <= 0.01);
-    }
-
-    [Fact]
-    public void CpuPercent_EveryCoreBusy_IsOneHundred()
-    {
-        var previous = new ResourceSample(TimeSpan.Zero, 0);
-        var current = new ResourceSample(TimeSpan.FromSeconds(8), 0);
-
-        Assert.True(Math.Abs(CpuPercent.Between(previous, current, TimeSpan.FromSeconds(2), processorCount: 4) - 100) <= 0.01);
-    }
-
-    [Fact]
-    public void CpuPercent_WhenAChildDiedMidSample_IsClampedRatherThanAbsurd()
-    {
-        // A tree that briefly reports more CPU time than the wall clock allows must not show 340%.
-        var previous = new ResourceSample(TimeSpan.Zero, 0);
-        var current = new ResourceSample(TimeSpan.FromSeconds(30), 0);
-
-        Assert.Equal(100, CpuPercent.Between(previous, current, TimeSpan.FromSeconds(2), processorCount: 4));
-    }
-
-    [Fact]
-    public void CpuPercent_OnTheFirstSample_IsZeroRatherThanAGuess()
-    {
-        var sample = new ResourceSample(TimeSpan.FromSeconds(9), 0);
-
-        Assert.Equal(0, CpuPercent.Between(sample, sample, TimeSpan.Zero, processorCount: 8));
+        Assert.Equal(expected, percent, 2);
     }
 
     [Fact]

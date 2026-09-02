@@ -24,6 +24,9 @@ public class ToastHostViewModelTests
         Assert.Same(toast, single);
         Assert.Equal("Hello", toast.Message);
         Assert.Equal(ToastSeverity.Information, toast.Severity);
+
+        // No action callback was given, so there is no action button to offer.
+        Assert.False(toast.HasAction);
     }
 
     [Fact]
@@ -84,16 +87,6 @@ public class ToastHostViewModelTests
 
         Assert.True(invoked);
         Assert.Empty(host.Toasts);
-    }
-
-    [Fact]
-    public void Add_NoActionCallback_HasActionIsFalse()
-    {
-        var host = _CreateHost(out _, out _);
-
-        var toast = host.Add("Hello", ToastSeverity.Information, null, null);
-
-        Assert.False(toast.HasAction);
     }
 
     // Records every scheduled delay (call order) and, separately, an invokable callback per toast that

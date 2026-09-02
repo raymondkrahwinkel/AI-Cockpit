@@ -142,29 +142,14 @@ public class DelegationWorktreeCleanupTests
     [Fact]
     public async Task TwoClosingPathsOnTheSameTask_HandTheWorktreeBackOnce()
     {
-        // Two of these paths can land together — an idle reap whose delay has already elapsed cannot be cancelled by
-        // a stop arriving at that instant — and both would release the same checkout. Stopping twice is the
-        // deterministic stand-in: it drives the same claim, which is the thing that has to hold.
+        // Two of these paths can land together and both would release the same checkout; stopping twice is the
+        // deterministic stand-in. It is also where "a stop hands the checkout back" is settled, on ReleaseAsync
+        // rather than RemoveAsync — that one call *is* the policy a closing pane goes through.
         var service = _Service(_StreamThatNeverFinishes(), out var worktrees);
         var task = await service.DelegateAsync(new DelegationRequest("local", "long job"));
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Running);
 
         await service.StopAsync(task.TaskId);
-        await service.StopAsync(task.TaskId);
-
-        Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
-    }
-
-    [Fact]
-    public async Task StopAsync_HandsTheTasksWorktreeBackToTheCleanupPolicy()
-    {
-        // ReleaseAsync and not RemoveAsync, deliberately: that one call *is* the policy a closing pane goes through
-        // (CockpitViewModel.CloseSessionAsync), so a clean checkout goes with its branch and one holding work is
-        // retained. Reaching past it would mean a second, drifting copy of that decision.
-        var service = _Service(_StreamThatNeverFinishes(), out var worktrees);
-        var task = await service.DelegateAsync(new DelegationRequest("local", "long job"));
-        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Running);
-
         await service.StopAsync(task.TaskId);
 
         Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));

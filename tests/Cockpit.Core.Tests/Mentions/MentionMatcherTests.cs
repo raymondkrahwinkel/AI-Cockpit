@@ -17,17 +17,23 @@ public class MentionMatcherTests
     public void Rank_MaxIsZero_ReturnsNothing() =>
         Assert.Empty(MentionMatcher.Rank(["a"], "foo", 0));
 
-    [Fact]
-    public void Rank_NoCandidateContainsTheQueryAsASubsequence_ExcludesAll() =>
-        Assert.Empty(MentionMatcher.Rank(["src/Foo.cs"], "zzz", 10));
+    // A candidate that does not carry the query as a subsequence is excluded — including when the query is
+    // simply longer than it is.
+    [Theory]
+    [InlineData("src/Foo.cs", "zzz")]
+    [InlineData("a", "abcdef")]
+    public void Rank_ACandidateThatDoesNotCarryTheQuery_IsExcluded(string candidate, string query) =>
+        Assert.Empty(MentionMatcher.Rank([candidate], query, 10));
 
-    [Fact]
-    public void Rank_QueryLongerThanTheCandidate_IsExcluded() =>
-        Assert.Empty(MentionMatcher.Rank(["a"], "abcdef", 10));
-
-    [Fact]
-    public void Rank_IsCaseInsensitive() =>
-        Assert.Equal(["src/SessionView.cs"], MentionMatcher.Rank(["src/SessionView.cs"], "SESSIONVIEW", 10));
+    // Matching is case-insensitive, does not have to be contiguous, treats a root-level file's whole path as
+    // its name, and lets a directory match on its own name.
+    [Theory]
+    [InlineData("src/SessionView.cs", "SESSIONVIEW")]
+    [InlineData("src/SessionView.cs", "sv")]
+    [InlineData("Program.cs", "prog")]
+    [InlineData("src/", "src")]
+    public void Rank_ACandidateThatCarriesTheQuery_IsKept(string candidate, string query) =>
+        Assert.Equal([candidate], MentionMatcher.Rank([candidate], query, 10));
 
     [Fact]
     public void Rank_AFilenameMatch_OutranksAPathOnlyMatch()
@@ -56,16 +62,4 @@ public class MentionMatcherTests
     [Fact]
     public void Rank_MoreMatchesThanMax_IsCappedAtMax() =>
         Assert.Equal(2, MentionMatcher.Rank(["a1", "a2", "a3"], "a", 2).Count);
-
-    [Fact]
-    public void Rank_ARootLevelFile_TreatsTheWholePathAsTheFileName() =>
-        Assert.Equal(["Program.cs"], MentionMatcher.Rank(["Program.cs"], "prog", 10));
-
-    [Fact]
-    public void Rank_ADirectoryPath_CanStillMatchOnItsOwnName() =>
-        Assert.Equal(["src/"], MentionMatcher.Rank(["src/"], "src", 10));
-
-    [Fact]
-    public void Rank_NonContiguousSubsequence_StillMatches() =>
-        Assert.Equal(["src/SessionView.cs"], MentionMatcher.Rank(["src/SessionView.cs"], "sv", 10));
 }

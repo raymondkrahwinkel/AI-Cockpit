@@ -8,37 +8,21 @@ namespace Cockpit.Core.Tests.Views;
 /// </summary>
 public class TtyAutoRedrawGateTests
 {
-    [Fact]
-    public void ShouldScheduleRedraw_PtyRunningWithKnownSize_ReturnsTrue()
-    {
-        Assert.True(
-            TtyAutoRedrawGate.ShouldScheduleRedraw(hasPty: true, columns: 120, rows: 40, resizeSettleInFlight: false));
-    }
-
-    [Fact]
-    public void ShouldScheduleRedraw_NoPty_ReturnsFalse()
-    {
-        Assert.False(
-            TtyAutoRedrawGate.ShouldScheduleRedraw(hasPty: false, columns: 120, rows: 40, resizeSettleInFlight: false));
-    }
-
+    /// <summary>
+    /// A redraw is only scheduled once the pty is running with a known terminal size — and not at all while a
+    /// resize-settle timer is already pending for the same trigger (#58): let that own the decision, so a focus
+    /// event that also caused a transient resize does not force two redraws.
+    /// </summary>
     [Theory]
-    [InlineData(0, 40)]
-    [InlineData(120, 0)]
-    [InlineData(-1, 40)]
-    public void ShouldScheduleRedraw_UnknownSize_ReturnsFalse(int columns, int rows)
+    [InlineData(true, 120, 40, false, true)]
+    [InlineData(false, 120, 40, false, false)]
+    [InlineData(true, 0, 40, false, false)]
+    [InlineData(true, 120, 0, false, false)]
+    [InlineData(true, -1, 40, false, false)]
+    [InlineData(true, 120, 40, true, false)]
+    public void ShouldScheduleRedraw_OnlyForARunningPtyOfKnownSizeWithNoSettlePending(
+        bool hasPty, int columns, int rows, bool resizeSettleInFlight, bool expected)
     {
-        Assert.False(
-            TtyAutoRedrawGate.ShouldScheduleRedraw(hasPty: true, columns, rows, resizeSettleInFlight: false));
-    }
-
-    [Fact]
-    public void ShouldScheduleRedraw_ResizeSettleInFlight_ReturnsFalse()
-    {
-        // #58: a resize-settle timer is already pending for the same trigger — let it own the redraw
-        // decision instead of also firing this debounce, so a focus event that also caused a transient
-        // resize does not force two redraws.
-        Assert.False(
-            TtyAutoRedrawGate.ShouldScheduleRedraw(hasPty: true, columns: 120, rows: 40, resizeSettleInFlight: true));
+        Assert.Equal(expected, TtyAutoRedrawGate.ShouldScheduleRedraw(hasPty, columns, rows, resizeSettleInFlight));
     }
 }

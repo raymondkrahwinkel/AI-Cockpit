@@ -10,31 +10,19 @@ namespace Cockpit.Core.Tests.Diagnostics;
 /// </summary>
 public class ProcessTableParsingTests
 {
-    [Fact]
-    public void ProcStat_ReadsTheParentAndTheProcessorTime()
+    // pid (comm) state ppid ... utime(14) stime(15). The second row is the trap in /proc/&lt;pid&gt;/stat: field 2 is
+    // the name in parentheses, and it may itself contain both spaces and parentheses. A parser counting fields from
+    // the left reads garbage there — which is why we count after the LAST ')'.
+    [Theory]
+    [InlineData("1234 (claude) S 1000 1234 1000 0 -1 4194304 5000 0 0 0 250 130 0 0 20 0 12 0 999 0 0", 1000, 380)]
+    [InlineData("77 (my prog (v2) :)) S 5 77 5 0 -1 0 0 0 0 0 11 4 0 0 20 0 1 0 5 0 0", 5, 15)]
+    public void ProcStat_ReadsTheParentAndTheProcessorTime(string line, int expectedParent, long expectedTicks)
     {
-        // pid (comm) state ppid ... utime(14) stime(15)
-        var line = "1234 (claude) S 1000 1234 1000 0 -1 4194304 5000 0 0 0 250 130 0 0 20 0 12 0 999 0 0";
-
         var stat = ProcStatLine.Parse(line);
 
         Assert.NotNull(stat);
-        Assert.Equal(1000, stat.ParentProcessId);
-        Assert.Equal(380, stat.TotalTicks);
-    }
-
-    [Fact]
-    public void ProcStat_WhenTheExecutableNameContainsSpacesAndParentheses_StillReadsTheRightFields()
-    {
-        // The trap in /proc/<pid>/stat: field 2 is the name in parentheses, and it may itself contain both. A
-        // parser counting fields from the left reads garbage here — which is why we count after the LAST ')'.
-        var line = "77 (my prog (v2) :)) S 5 77 5 0 -1 0 0 0 0 0 11 4 0 0 20 0 1 0 5 0 0";
-
-        var stat = ProcStatLine.Parse(line);
-
-        Assert.NotNull(stat);
-        Assert.Equal(5, stat.ParentProcessId);
-        Assert.Equal(15, stat.TotalTicks);
+        Assert.Equal(expectedParent, stat.ParentProcessId);
+        Assert.Equal(expectedTicks, stat.TotalTicks);
     }
 
     [Fact]

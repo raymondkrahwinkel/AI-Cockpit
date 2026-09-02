@@ -14,33 +14,27 @@ public class OomdKillLineTests
         + "with reclaim activity";
 
     [Fact]
-    public void ARealKillLine_NamesTheGroupCockpitCreated()
+    public void ARealKillLine_NamesTheGroupCockpitCreated_AndKeepsOomdsOwnAccountOfWhy()
     {
         var kill = OomdKillLine.Parse(RealLine);
 
         Assert.NotNull(kill);
         Assert.Equal("cockpit-session-481979", kill.CgroupName);
+
+        // The reason is kept verbatim rather than re-worded, so the row in the session and the journal say the
+        // same thing.
+        Assert.Equal("82.71% > 80.00% for > 20s with reclaim activity", kill.Pressure);
     }
 
-    [Fact]
-    public void ItKeepsOomdsOwnAccountOfWhy() =>
-        // Kept verbatim rather than re-worded, so the row in the session and the journal say the same thing.
-        Assert.Equal(
-            "82.71% > 80.00% for > 20s with reclaim activity",
-            OomdKillLine.Parse(RealLine)!.Pressure);
-
-    [Fact]
-    public void AnythingElseOomdLogs_IsNotAKill()
-    {
-        Assert.Null(OomdKillLine.Parse("Considered 4 cgroups for memory pressure kill, top candidate was app.slice"));
-        Assert.Null(OomdKillLine.Parse(string.Empty));
-        Assert.Null(OomdKillLine.Parse("Killed something without a reason"));
-    }
-
-    [Fact]
-    public void ALineNamingNoGroup_IsNotAKill() =>
-        // A trailing slash leaves no name behind it, and a kill of nothing must not match a session of ours.
-        Assert.Null(OomdKillLine.Parse("Killed / due to memory pressure for /app.slice being 90% > 80.00%"));
+    // The last row is the one that matters: a trailing slash leaves no name behind it, and a kill of nothing must
+    // not match a session of ours.
+    [Theory]
+    [InlineData("Considered 4 cgroups for memory pressure kill, top candidate was app.slice")]
+    [InlineData("")]
+    [InlineData("Killed something without a reason")]
+    [InlineData("Killed / due to memory pressure for /app.slice being 90% > 80.00%")]
+    public void AnythingElseOomdLogs_IsNotAKill(string line) =>
+        Assert.Null(OomdKillLine.Parse(line));
 
     [Fact]
     public void AKillOfSomethingElse_KeepsItsOwnName() =>

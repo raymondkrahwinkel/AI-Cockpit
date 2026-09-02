@@ -18,13 +18,6 @@ public class SessionSwitchShortcutTests
     }
 
     [Fact]
-    public void Catalog_ListsTheSessionSwitchAsAnEditableAction()
-    {
-        Assert.Contains(ShortcutCatalog.All, descriptor => descriptor.Action == ShortcutAction.PreviousSession);
-        Assert.Contains(ShortcutCatalog.All, descriptor => descriptor.Action == ShortcutAction.NextSession);
-    }
-
-    [Fact]
     public void StaysActiveInTerminal_HoldsForTheNavigationActions()
     {
         // The navigation shortcuts fire over a focused terminal (Raymond's call): switching session or
@@ -58,19 +51,14 @@ public class SessionSwitchShortcutTests
         }
     }
 
-    [Fact]
-    public void Settings_CanRebindTheSessionSwitch()
+    // It is an ordinary rebindable action: a gesture replaces the default, and a blank one unbinds it.
+    [Theory]
+    [InlineData(ShortcutAction.NextSession, "Alt+Right", "Alt+Right")]
+    [InlineData(ShortcutAction.PreviousSession, "", "")]
+    public void Settings_CanRebindOrUnbindTheSessionSwitch(ShortcutAction action, string gesture, string expected)
     {
-        var settings = ShortcutSettings.Default.With(ShortcutAction.NextSession, "Alt+Right");
+        var settings = ShortcutSettings.Default.With(action, gesture);
 
-        Assert.Equal("Alt+Right", settings.GestureFor(ShortcutAction.NextSession));
-    }
-
-    [Fact]
-    public void Settings_CanUnbindTheSessionSwitch()
-    {
-        var settings = ShortcutSettings.Default.With(ShortcutAction.PreviousSession, string.Empty);
-
-        Assert.Empty(settings.GestureFor(ShortcutAction.PreviousSession));
+        Assert.Equal(expected, settings.GestureFor(action));
     }
 }

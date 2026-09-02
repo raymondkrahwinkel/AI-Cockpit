@@ -100,14 +100,6 @@ public class SessionProfileEntryTests
     }
 
     [Fact]
-    public void ToDomain_WithoutEnvironmentVariables_LeavesTheProfileWithoutAny()
-    {
-        var entry = new SessionProfileEntry { Label = "work", ConfigDir = "/home/raymond/.claude-work" };
-
-        Assert.Null(entry.ToDomain().EnvironmentVariables);
-    }
-
-    [Fact]
     public void RoundTrip_KeepsTheMcpPreSelectionAndDefaultWorkingDirectory()
     {
         var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null))
@@ -136,26 +128,20 @@ public class SessionProfileEntryTests
         Assert.Null(SessionProfileEntry.FromDomain(unrestricted).ToDomain().EnabledMcpServerNames);
     }
 
+    // What every profile written before these fields existed looks like on disk: a label and ConfigDir, nothing
+    // else. Each absent field must read as "not set" rather than throwing or being invented — AC-139/AC-6's
+    // DefaultKind in particular, which SessionKindDefaults then falls back to TTY for rather than picking SDK.
     [Fact]
-    public void ToDomain_WithoutTheNewFields_LeavesThemUnset_SoOlderConfigsKeepWorking()
+    public void ToDomain_WithoutTheNewerFields_LeavesThemAllUnset_SoOlderConfigsKeepWorking()
     {
         var entry = new SessionProfileEntry { Label = "work", ConfigDir = "/home/raymond/.claude-work" };
 
         var profile = entry.ToDomain();
 
+        Assert.Null(profile.EnvironmentVariables);
         Assert.Null(profile.EnabledMcpServerNames);
         Assert.Null(profile.DefaultWorkingDirectory);
-    }
-
-    // AC-139/AC-6: a cockpit.json written before "Default kind" existed has no DefaultKind key at all — this is
-    // exactly that pre-change shape, and it must keep resolving to no saved default (which SessionKindDefaults
-    // falls back to TTY for) rather than throwing or silently picking SDK.
-    [Fact]
-    public void ToDomain_WithNoDefaultKindKey_LeavesItUnset_SoAPreChangeCockpitJsonKeepsWorking()
-    {
-        var entry = new SessionProfileEntry { Label = "work", ConfigDir = "/home/raymond/.claude-work" };
-
-        Assert.Null(entry.ToDomain().DefaultKind);
+        Assert.Null(profile.DefaultKind);
     }
 
     [Fact]

@@ -9,32 +9,6 @@ namespace Cockpit.Core.Tests.Audio;
 public class PcmSampleConverterTests
 {
     [Fact]
-    public void ToInt16Bytes_Silence_ProducesZeroBytes()
-    {
-        var bytes = PcmSampleConverter.ToInt16Bytes([0f, 0f]);
-
-        Assert.Equal(new byte[] { 0, 0, 0, 0 }, bytes);
-    }
-
-    [Fact]
-    public void ToInt16Bytes_FullScalePositive_ProducesMaxShort_LittleEndian()
-    {
-        var bytes = PcmSampleConverter.ToInt16Bytes([1f]);
-
-        // short.MaxValue (32767) little-endian: low byte 0xFF, high byte 0x7F.
-        Assert.Equal(new byte[] { 0xFF, 0x7F }, bytes);
-    }
-
-    [Fact]
-    public void ToInt16Bytes_FullScaleNegative_ProducesMinShort_LittleEndian()
-    {
-        var bytes = PcmSampleConverter.ToInt16Bytes([-1f]);
-
-        // (short)(-1f * 32767) == -32767 == 0x8001 little-endian: low byte 0x01, high byte 0x80.
-        Assert.Equal(new byte[] { 0x01, 0x80 }, bytes);
-    }
-
-    [Fact]
     public void ToInt16Bytes_OutOfRangeSamples_AreClampedBeforeConversion()
     {
         var bytes = PcmSampleConverter.ToInt16Bytes([2f, -2f]);
@@ -42,6 +16,11 @@ public class PcmSampleConverterTests
         Assert.Equal(new byte[] { 0xFF, 0x7F, 0x01, 0x80 }, bytes);
     }
 
+    /// <summary>
+    /// One run spells out the whole conversion: two bytes per sample, in order, with silence, full-scale positive
+    /// (32767 == 0xFF 0x7F little-endian) and full-scale negative (-32767 == 0x01 0x80) each landing where they
+    /// should — the byte order is the half that is easy to ship reversed and impossible to hear as anything but noise.
+    /// </summary>
     [Fact]
     public void ToInt16Bytes_MultipleSamples_ProducesTwoBytesPerSampleInOrder()
     {

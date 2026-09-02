@@ -27,34 +27,28 @@ public class DelegatedWorkspaceChangesTests : IDisposable
 
     // --- Parsing: git's own answer, read whole ---
 
-    [Fact]
-    public void ParsePorcelain_ReadsEveryChangedPath()
+    /// <summary>
+    /// git's own answer, read whole. The second row is the one -z mode exists for: a rename's origin is a separate
+    /// NUL-terminated field, and read as a record of its own it would be truncated to garbage ("Old.cs" losing its
+    /// first three characters), while skipping it would hide a path the task really did touch. The third is the
+    /// other half of the same choice — git's display form would quote and escape that name, and a mangled path is
+    /// a change the report would silently misname.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(PorcelainAnswers))]
+    public void ParsePorcelain_ReadsEveryChangedPath(string porcelain, string[] expected)
     {
-        var paths = DelegatedWorkspaceChanges.ParsePorcelain(" M src/App.cs\0?? new/file.txt\0 D gone.txt\0");
+        var paths = DelegatedWorkspaceChanges.ParsePorcelain(porcelain);
 
-        Assert.Equal(["gone.txt", "new/file.txt", "src/App.cs"], paths.OrderBy(path => path, StringComparer.Ordinal));
+        Assert.Equal(expected, paths.OrderBy(path => path, StringComparer.Ordinal));
     }
 
-    [Fact]
-    public void ParsePorcelain_KeepsBothSidesOfARename_AndDoesNotReadTheOriginAsItsOwnRecord()
-    {
-        // In -z mode a rename's origin is a separate NUL-terminated field. Read as a record of its own it would be
-        // truncated to garbage ("Old.cs" losing its first three characters); skipped entirely it would hide a path
-        // the task really did touch.
-        var paths = DelegatedWorkspaceChanges.ParsePorcelain("R  src/New.cs\0src/Old.cs\0?? third.txt\0");
-
-        Assert.Equal(["src/New.cs", "src/Old.cs", "third.txt"], paths.OrderBy(path => path, StringComparer.Ordinal));
-    }
-
-    [Fact]
-    public void ParsePorcelain_KeepsAPathWithSpacesAndAccentsWhole()
-    {
-        // The -z form is what makes this true: git's display form would quote and escape it, and a mangled path is
-        // a change the report would silently misname.
-        var paths = DelegatedWorkspaceChanges.ParsePorcelain("?? docs/café notes.md\0");
-
-        Assert.Equal("docs/café notes.md", Assert.Single(paths));
-    }
+    public static IEnumerable<object[]> PorcelainAnswers() =>
+    [
+        [" M src/App.cs\0?? new/file.txt\0 D gone.txt\0", new[] { "gone.txt", "new/file.txt", "src/App.cs" }],
+        ["R  src/New.cs\0src/Old.cs\0?? third.txt\0", new[] { "src/New.cs", "src/Old.cs", "third.txt" }],
+        ["?? docs/café notes.md\0", new[] { "docs/café notes.md" }],
+    ];
 
     [Fact]
     public void Added_TellsWhatThisTaskChangedFromWhatWasAlreadyDirty()

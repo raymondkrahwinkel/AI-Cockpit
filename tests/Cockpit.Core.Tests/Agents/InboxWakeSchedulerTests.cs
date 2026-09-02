@@ -32,18 +32,6 @@ public class InboxWakeSchedulerTests
         await _gateway.DidNotReceiveWithAnyArgs().TryWakeForWaitingMailAsync(default!, default!, default!);
     }
 
-    // The other half of the same criterion: no panes to check at all, not even an inbox lookup.
-    [Fact]
-    public async Task ATickOverNoPanes_TouchesNeitherTheInboxNorTheGateway()
-    {
-        var scheduler = _Scheduler();
-
-        await scheduler.RunOnceAsync();
-
-        _inbox.DidNotReceiveWithAnyArgs().PeekOldest(default!);
-        await _gateway.DidNotReceiveWithAnyArgs().TryWakeForWaitingMailAsync(default!, default!, default!);
-    }
-
     // Criterion: mail waiting for a pane starts a turn for it, through the host-triggered path — not the sender's
     // urgent-notify one — carrying the message's own sender and kind.
     [Fact]

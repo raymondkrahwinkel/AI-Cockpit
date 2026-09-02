@@ -20,38 +20,23 @@ public class BuildChannelTests
     [InlineData("0.8.0-nightly.123+abc1234", UpdateChannel.Nightly)]
     [InlineData("0.8.0", UpdateChannel.Stable)]
     [InlineData("0.8.0+abc1234", UpdateChannel.Stable)]
+    // Reading every pre-release as a nightly would put a build on a feed it was never packed for. The tag gate
+    // turns away anything that is not vX.Y.Z, so a release candidate came from somewhere else and stable offers
+    // it less rather than more; a version that says nothing at all gets the same answer for the same reason.
+    [InlineData("1.0.0-rc.1", UpdateChannel.Stable)]
+    [InlineData("", UpdateChannel.Stable)]
     public void ABuild_FollowsTheStreamItsOwnVersionNames(string version, UpdateChannel expected) =>
         Assert.Equal(expected, BuildChannel.FromVersion(version));
 
     /// <summary>
-    /// Reading every pre-release as a nightly would put a build on a feed it was never packed for. A release
-    /// candidate is not even something the pipeline can produce — the release workflow's tag gate turns away
-    /// anything that is not <c>vX.Y.Z</c> — so this is a build from somewhere else, and stable is the answer that
-    /// offers it less rather than more.
+    /// The rolling tag is republished every night, so a nightly install cannot ask "is this a different release
+    /// than mine" — it asks whether the version climbed. Two runs of the same night's tag differ, which is what
+    /// makes the answer possible at all; and the release beats the nightlies leading up to it, so a nightly
+    /// install crossing onto stable moves forward.
     /// </summary>
-    [Fact]
-    public void AReleaseCandidate_IsNotANightly() =>
-        Assert.Equal(UpdateChannel.Stable, BuildChannel.FromVersion("1.0.0-rc.1"));
-
-    /// <summary>
-    /// A build that cannot say what it is gets the channel that offers less. The opposite default is the whole
-    /// failure this exists to remove, only pointing the other way.
-    /// </summary>
-    [Fact]
-    public void AVersionThatSaysNothing_IsStable() =>
-        Assert.Equal(UpdateChannel.Stable, BuildChannel.FromVersion(string.Empty));
-
-    /// <summary>
-    /// The rolling tag is republished every night, so a nightly install cannot ask "is this a different release than
-    /// mine" — it asks whether the version climbed. Two runs of the same night's tag differ here, which is what makes
-    /// the answer possible at all.
-    /// </summary>
-    [Fact]
-    public void OneNightlyToTheNext_Climbs() =>
-        Assert.True(SemanticVersion.Parse("0.8.0-nightly.6") > SemanticVersion.Parse("0.8.0-nightly.5"));
-
-    /// <summary>The release beats the nightlies leading up to it, so a nightly install crossing onto stable moves forward.</summary>
-    [Fact]
-    public void TheRelease_BeatsTheNightliesOfItself() =>
-        Assert.True(SemanticVersion.Parse("0.8.0") > SemanticVersion.Parse("0.8.0-nightly.99"));
+    [Theory]
+    [InlineData("0.8.0-nightly.6", "0.8.0-nightly.5")]
+    [InlineData("0.8.0", "0.8.0-nightly.99")]
+    public void TheVersionsTheWorkflowsPack_SortTheWayTheUpdaterNeeds(string later, string earlier) =>
+        Assert.True(SemanticVersion.Parse(later) > SemanticVersion.Parse(earlier));
 }

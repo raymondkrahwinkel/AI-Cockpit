@@ -29,48 +29,34 @@ public class PngImageTests
         Assert.Equal(1920, width);
     }
 
-    /// <summary>A JPEG, an error page, a truncated write — none of them are the capture, and reporting a size for one would put a nonsense rectangle into the layout.</summary>
+    /// <summary>
+    /// Everything that is not the capture must read as exactly that rather than as a plausible size. A JPEG or a
+    /// truncated write is obvious; the interesting rows look like a PNG. A wrong first byte is a header copied
+    /// into a file that is not one — the dimensions read perfectly well and are not the capture's. A first chunk
+    /// that is not IHDR is worse, because the bytes at that offset parse as a number anyway. And the spec forbids
+    /// a zero dimension, so a zero is a big-endian read of something that was never a size.
+    /// </summary>
     [Theory]
-    [InlineData("not a png at all")]
-    [InlineData("\x89PNG\r\n\x1a\n")]
-    public void BytesThatAreNotAPng_HaveNoSize(string content)
+    [MemberData(nameof(BytesThatAreNotTheCapture))]
+    public void BytesThatAreNotAPng_HaveNoSize(byte[] content)
     {
-        Assert.False(PngImage.TryReadSize(System.Text.Encoding.Latin1.GetBytes(content), out _, out _));
+        Assert.False(PngImage.TryReadSize(content, out _, out _));
     }
 
-    /// <summary>
-    /// Everything about it says PNG except the eight bytes that decide — a header block copied into a file that
-    /// is not one, or a transfer that mangled the first line. The dimensions would read perfectly well; they
-    /// just would not be the capture's.
-    /// </summary>
-    [Fact]
-    public void BytesCarryingAValidHeaderBehindAWrongSignature_AreRefused()
+    public static IEnumerable<object[]> BytesThatAreNotTheCapture()
     {
-        var png = Png(1920, 1080);
-        png[0] = 0xFF;
+        yield return [System.Text.Encoding.Latin1.GetBytes("not a png at all")];
+        yield return [System.Text.Encoding.Latin1.GetBytes("\x89PNG\r\n\x1a\n")];
 
-        Assert.False(PngImage.TryReadSize(png, out _, out _));
-    }
+        var wrongSignature = Png(1920, 1080);
+        wrongSignature[0] = 0xFF;
+        yield return [wrongSignature];
 
-    /// <summary>
-    /// The signature is right and the first chunk is not IHDR. The spec requires IHDR first, so this is a file
-    /// whose dimensions are somewhere other than where they would be read from — the worst case, because the
-    /// bytes at that offset would parse as a number.
-    /// </summary>
-    [Fact]
-    public void APngWhoseFirstChunkIsNotTheHeader_IsRefused()
-    {
-        var png = Png(1920, 1080);
-        "sRGB"u8.CopyTo(png.AsSpan(12));
+        var notIhdrFirst = Png(1920, 1080);
+        "sRGB"u8.CopyTo(notIhdrFirst.AsSpan(12));
+        yield return [notIhdrFirst];
 
-        Assert.False(PngImage.TryReadSize(png, out _, out _));
-    }
-
-    /// <summary>The spec forbids a zero dimension, so a zero is a big-endian read of something that was never a size.</summary>
-    [Fact]
-    public void APngClaimingNoWidth_IsRefused()
-    {
-        Assert.False(PngImage.TryReadSize(Png(0, 1080), out _, out _));
+        yield return [Png(0, 1080)];
     }
 
     /// <summary>

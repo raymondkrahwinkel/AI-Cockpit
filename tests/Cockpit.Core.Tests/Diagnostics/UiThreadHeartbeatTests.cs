@@ -12,8 +12,12 @@ public class UiThreadHeartbeatTests
     private static readonly TimeSpan Calm = UiThreadHeartbeat.CalmBelow;
 
     [Fact]
-    public void BelowTheThreshold_SaysNothing() =>
+    public void UpToAndIncludingTheThreshold_SaysNothing()
+    {
+        Assert.False(UiThreadHeartbeat.Decide(sinceLastPong: TimeSpan.Zero, warned: false).Warn);
         Assert.False(UiThreadHeartbeat.Decide(sinceLastPong: TimeSpan.FromSeconds(2), warned: false).Warn);
+        Assert.False(UiThreadHeartbeat.Decide(sinceLastPong: Warn, warned: false).Warn);
+    }
 
     [Fact]
     public void PastTheThreshold_ItWarns()
@@ -24,10 +28,6 @@ public class UiThreadHeartbeatTests
         Assert.False(decision.Recovered);
         Assert.True(decision.Warned, "so the next tick does not say it again");
     }
-
-    [Fact]
-    public void RightAtTheThreshold_NotYetOverIt_SaysNothing() =>
-        Assert.False(UiThreadHeartbeat.Decide(sinceLastPong: Warn, warned: false).Warn);
 
     [Fact]
     public void HavingWarnedOnce_ItDoesNotRepeatEveryTick()
@@ -64,8 +64,4 @@ public class UiThreadHeartbeatTests
 
         Assert.True(UiThreadHeartbeat.Decide(sinceLastPong: Warn + TimeSpan.FromSeconds(1), recovered.Warned).Warn);
     }
-
-    [Fact]
-    public void ANormalTick_SaysNothing() =>
-        Assert.False(UiThreadHeartbeat.Decide(sinceLastPong: TimeSpan.Zero, warned: false).Warn);
 }

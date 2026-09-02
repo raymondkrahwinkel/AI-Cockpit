@@ -11,26 +11,30 @@ namespace Cockpit.Core.Tests.Services;
 /// </summary>
 public class RenderBackendOverrideTests
 {
+    /// <summary>
+    /// Every recognised backend keeps Software as the final fallback, so a machine that cannot create the
+    /// requested surface still starts — and the name is trimmed and case-folded, because it comes off an
+    /// environment variable somebody typed.
+    /// </summary>
     [Theory]
-    [InlineData("opengl")]
-    [InlineData("OpenGL")]
-    [InlineData("  gl  ")]
-    public void Parse_OpenGl_PrefersOpenGlThenSoftware(string value)
+    [MemberData(nameof(RecognisedBackends))]
+    public void Parse_PrefersTheNamedBackend_AndFallsBackToSoftware(string value, object expectedModes, string label)
     {
         var selection = RenderBackendOverride.Parse(value);
 
         Assert.NotNull(selection);
-        Assert.Equal(new[] { AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software }, selection!.Modes);
-        Assert.Equal("OpenGL", selection.Label);
+        Assert.Equal(expectedModes, selection!.Modes);
+        Assert.Equal(label, selection.Label);
     }
 
-    [Fact]
-    public void Parse_Software_IsSoftwareOnly() =>
-        Assert.Equal(new[] { AvaloniaNativeRenderingMode.Software }, RenderBackendOverride.Parse("software")!.Modes);
-
-    [Fact]
-    public void Parse_Metal_PrefersMetalThenSoftware() =>
-        Assert.Equal(new[] { AvaloniaNativeRenderingMode.Metal, AvaloniaNativeRenderingMode.Software }, RenderBackendOverride.Parse("metal")!.Modes);
+    public static IEnumerable<object[]> RecognisedBackends() =>
+    [
+        ["opengl", new[] { AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software }, "OpenGL"],
+        ["OpenGL", new[] { AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software }, "OpenGL"],
+        ["  gl  ", new[] { AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software }, "OpenGL"],
+        ["metal", new[] { AvaloniaNativeRenderingMode.Metal, AvaloniaNativeRenderingMode.Software }, "Metal"],
+        ["software", new[] { AvaloniaNativeRenderingMode.Software }, "Software"],
+    ];
 
     [Theory]
     [InlineData(null)]
@@ -46,19 +50,21 @@ public class RenderBackendOverrideTests
     public void FromChoice_Auto_IsNoOverride() =>
         Assert.Null(RenderBackendOverride.FromChoice(RenderBackendChoice.Auto));
 
-    [Fact]
-    public void FromChoice_OpenGl_PrefersOpenGlThenSoftware()
+    [Theory]
+    [MemberData(nameof(ChosenBackends))]
+    public void FromChoice_PrefersTheChosenBackend_AndFallsBackToSoftware(
+        RenderBackendChoice choice, object expectedModes, string label)
     {
-        var selection = RenderBackendOverride.FromChoice(RenderBackendChoice.OpenGl);
+        var selection = RenderBackendOverride.FromChoice(choice);
 
         Assert.NotNull(selection);
-        Assert.Equal("OpenGL", selection!.Label);
-        Assert.Equal(new[] { AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software }, selection.Modes);
+        Assert.Equal(expectedModes, selection!.Modes);
+        Assert.Equal(label, selection.Label);
     }
 
-    [Fact]
-    public void FromChoice_Metal_PrefersMetalThenSoftware() =>
-        Assert.Equal(
-            new[] { AvaloniaNativeRenderingMode.Metal, AvaloniaNativeRenderingMode.Software },
-            RenderBackendOverride.FromChoice(RenderBackendChoice.Metal)!.Modes);
+    public static IEnumerable<object[]> ChosenBackends() =>
+    [
+        [RenderBackendChoice.OpenGl, new[] { AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software }, "OpenGL"],
+        [RenderBackendChoice.Metal, new[] { AvaloniaNativeRenderingMode.Metal, AvaloniaNativeRenderingMode.Software }, "Metal"],
+    ];
 }

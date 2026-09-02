@@ -29,6 +29,11 @@ public class UpdateOnNextStartTests : IDisposable
     [Fact]
     public void ARequestedUpdate_IsAppliedByTheNextLaunch()
     {
+        // A first run has no state directory yet — nothing here creates one — so the request has to make it,
+        // because the answer "we could not write it down" is what the operator is told instead of the promise
+        // that it will install.
+        Assert.False(Directory.Exists(_stateRoot));
+
         Assert.True(UpdateOnNextStart.Request(_stateRoot));
 
         Assert.True(UpdateOnNextStart.TakeRequest(_stateRoot));
@@ -45,18 +50,6 @@ public class UpdateOnNextStartTests : IDisposable
         UpdateOnNextStart.TakeRequest(_stateRoot);
 
         Assert.False(UpdateOnNextStart.TakeRequest(_stateRoot));
-    }
-
-    /// <summary>
-    /// A first run has no state directory yet — the request has to create it, because the answer "we could not write
-    /// it down" is what the operator is told instead of the promise that it will install.
-    /// </summary>
-    [Fact]
-    public void ARequestOnAMachineWithNoStateDirectory_CreatesItRatherThanFailing()
-    {
-        Assert.False(Directory.Exists(_stateRoot));
-
-        Assert.True(UpdateOnNextStart.Request(_stateRoot));
     }
 
     /// <summary>

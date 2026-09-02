@@ -82,20 +82,14 @@ public class VelopackUpdateServiceTests : IDisposable
         Assert.Equal("0.8.0-nightly.9", result.Release?.Version);
     }
 
-    /// <summary>And the same feed against an install that already has it: a retag on its own is not an update.</summary>
-    [Fact]
-    public async Task AfterTheNightlyTagIsRemade_TheSameBuildIsNotOfferedAgain()
-    {
-        var result = await Check(UpdateChannel.Nightly, new Feed(Package("0.8.0-nightly.9")), installed: "0.8.0-nightly.9");
-
-        Assert.Null(result.Release);
-        Assert.Null(result.Failure);
-    }
-
-    /// <summary>Nothing newer on the channel is an "up to date", and that is the only thing that may report one.</summary>
+    /// <summary>
+    /// Nothing newer on the channel is an "up to date", and that is the only thing that may report one. The last
+    /// row is a nightly retag offering the build that is already installed: republishing the tag is not an update.
+    /// </summary>
     [Theory]
     [InlineData(UpdateChannel.Stable, "0.7.0", "0.8.0")]
     [InlineData(UpdateChannel.Nightly, "0.8.0-nightly.4", "0.8.0-nightly.5")]
+    [InlineData(UpdateChannel.Nightly, "0.8.0-nightly.9", "0.8.0-nightly.9")]
     public async Task NothingNewerOnTheChannel_IsUpToDate(UpdateChannel channel, string offered, string installed)
     {
         var result = await Check(channel, new Feed(Package(offered)), installed);

@@ -53,21 +53,9 @@ public class GlobalHotkeyCoordinatorTests
 
         Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "nothing was registered");
         Assert.Equal("could not be armed", _Describe(coordinator, GlobalHotkeys.PushToTalk));
-    }
 
-    /// <summary>
-    /// And a key nobody asked for still says nothing, even when arming something else failed. Telling an operator
-    /// their desktop refused a shortcut they never switched on sends them into their settings looking for nothing.
-    /// </summary>
-    [Fact]
-    public async Task AKeyNobodyAskedFor_StillSaysNothing()
-    {
-        var service = new FakeGlobalHotkeyService { StartFailure = new InvalidOperationException("the desktop said no") };
-        var coordinator = TestGlobalHotkeys.Coordinator(
-            service, new VoiceSettings { IsEnabled = true, GlobalPushToTalk = true, PushToTalkKeyName = "F9" });
-
-        await coordinator.ApplyAsync();
-
+        // And a key nobody asked for still says nothing, even in the same failed run. Telling an operator their
+        // desktop refused a shortcut they never switched on sends them into their settings looking for nothing.
         Assert.Empty(_Describe(coordinator, GlobalHotkeys.Screenshot));
     }
 
@@ -102,24 +90,11 @@ public class GlobalHotkeyCoordinatorTests
             binding => Assert.Equivalent(new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8"), binding));
         Assert.True(coordinator.IsArmed(GlobalHotkeys.PushToTalk));
         Assert.True(coordinator.IsArmed(GlobalHotkeys.Screenshot));
-    }
 
-    /// <summary>
-    /// The whole reason a second key could not simply arm itself: <see cref="IGlobalHotkeyService.StartAsync"/>
-    /// registers a set, so two features each arming their own would leave only the last one working. One call,
-    /// both keys.
-    /// </summary>
-    [Fact]
-    public async Task BothKeysAreArmedInOneRegistration()
-    {
-        var service = new FakeGlobalHotkeyService();
-        var coordinator = TestGlobalHotkeys.Coordinator(
-            service, TestGlobalHotkeys.GlobalPushToTalkOn, new ScreenshotSettings { GlobalHotkeyEnabled = true });
-
-        await coordinator.ApplyAsync();
-
+        // And in one registration, which is the whole reason a second key could not simply arm itself:
+        // IGlobalHotkeyService.StartAsync registers a set, so two features each arming their own would leave only
+        // the last one working.
         Assert.Equal(1, service.StartCallCount);
-        Assert.Equal(2, System.Linq.Enumerable.Count(service.LastBindings));
     }
 
     /// <summary>
@@ -137,18 +112,9 @@ public class GlobalHotkeyCoordinatorTests
         await coordinator.ApplyAsync();
 
         Assert.Equal(2, service.StartCallCount);
-    }
 
-    /// <summary>Re-arming must not double a hold: a second subscription on the same service means every press fires twice.</summary>
-    [Fact]
-    public async Task ReArming_DoesNotSubscribeTwice()
-    {
-        var service = new FakeGlobalHotkeyService();
-        var coordinator = TestGlobalHotkeys.Coordinator(service, TestGlobalHotkeys.GlobalPushToTalkOn);
-
-        await coordinator.ApplyAsync();
-        await coordinator.ApplyAsync();
-
+        // And it must not double the hold while doing so: a second subscription on the same service means every
+        // press fires twice.
         Assert.Equal(1, service.PressedSubscriberCount);
     }
 
@@ -284,19 +250,6 @@ public class GlobalHotkeyCoordinatorTests
         Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "another cockpit instance already holds the key");
         Assert.Empty(service.LastBindings);
         toasts.Received(1).Show(Arg.Is<string>(message => message.Contains("another cockpit instance")), ToastSeverity.Warning);
-    }
-
-    /// <summary>A key nobody else is competing for is claimed and reaches the OS service exactly as before AC-71.</summary>
-    [Fact]
-    public async Task AKeyNobodyElseHolds_IsClaimedAndArmed()
-    {
-        var service = new FakeGlobalHotkeyService();
-        var coordinator = TestGlobalHotkeys.Coordinator(service, TestGlobalHotkeys.GlobalPushToTalkOn);
-
-        await coordinator.ApplyAsync();
-
-        Assert.True(coordinator.IsArmed(GlobalHotkeys.PushToTalk));
-        Assert.Single(service.LastBindings, binding => binding.Id == GlobalHotkeys.PushToTalk);
     }
 
     /// <summary>

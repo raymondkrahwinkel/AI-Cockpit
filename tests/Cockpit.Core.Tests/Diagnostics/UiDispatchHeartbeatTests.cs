@@ -12,31 +12,28 @@ public class UiDispatchHeartbeatTests
     private static readonly TimeSpan Over = Starved + TimeSpan.FromSeconds(1);
     private static readonly TimeSpan Fresh = TimeSpan.FromMilliseconds(800);
 
-    [Fact]
-    public void APendingProbeOnAThreadStillAnsweringAboveIt_IsStarvation() =>
-        Assert.True(UiDispatchHeartbeat.IsStarved(Over, Fresh));
+    /// <summary>
+    /// Starvation is a probe waiting past the budget on a thread that is demonstrably still answering; every other
+    /// shape is somebody else's. At the threshold and not over it, nothing has waited too long yet. A thread that
+    /// answers nothing, has never answered, or last answered beyond the pumping window is not running at all — the
+    /// pong is posted every tick above a layout loop's priority, so a stale one is cause 1 and the render clock's
+    /// to report. And with nothing pending there is nothing to be starved of.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(StarvationReadings))]
+    public void IsStarved_OnlyForAProbeWaitingOnAThreadThatIsStillAnswering(
+        object? pendingFor, object? sinceHighPriorityPong, bool expected) =>
+        Assert.Equal(expected, UiDispatchHeartbeat.IsStarved((TimeSpan?)pendingFor, (TimeSpan?)sinceHighPriorityPong));
 
-    [Fact]
-    public void RightAtTheThreshold_NotYetOverIt_IsNotYetStarvation() =>
-        Assert.False(UiDispatchHeartbeat.IsStarved(Starved, Fresh));
-
-    [Fact]
-    public void APendingProbeOnAThreadThatAnswersNothing_IsNotStarvation() =>
-        // The pong is posted every tick above a layout loop's priority, so a stale one means the thread is not
-        // running at all. That is cause 1, and it is the render clock's to report — not this alarm's.
-        Assert.False(UiDispatchHeartbeat.IsStarved(Over, sinceHighPriorityPong: Over));
-
-    [Fact]
-    public void APendingProbeOnAThreadThatHasNeverAnswered_IsNotStarvation() =>
-        Assert.False(UiDispatchHeartbeat.IsStarved(Over, sinceHighPriorityPong: null));
-
-    [Fact]
-    public void APongOlderThanTheThreadCountsAsPumping_IsNotStarvation() =>
-        Assert.False(UiDispatchHeartbeat.IsStarved(Over, UiDispatchHeartbeat.PumpingWithin + TimeSpan.FromSeconds(1)));
-
-    [Fact]
-    public void NothingPending_IsNeverStarvation() =>
-        Assert.False(UiDispatchHeartbeat.IsStarved(pendingFor: null, sinceHighPriorityPong: Fresh));
+    public static IEnumerable<object?[]> StarvationReadings() =>
+    [
+        [Over, Fresh, true],
+        [Starved, Fresh, false],
+        [Over, Over, false],
+        [Over, null, false],
+        [Over, UiDispatchHeartbeat.PumpingWithin + TimeSpan.FromSeconds(1), false],
+        [null, Fresh, false],
+    ];
 
     // T3: the misdiagnosis this ticket exists to stop. Under starvation the clock is ticking and the app draws,
     // so nothing may be handed to the render clock's decision — it would report a stall that is not happening.

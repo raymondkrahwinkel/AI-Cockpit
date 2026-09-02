@@ -28,6 +28,11 @@ public class VelopackBootstrapTests
     /// break is somebody adding a line above the hook without ever thinking about update passes.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// The whole line, so the argument is pinned with the position: Velopack applies a staged update during
+    /// <c>Run()</c> and restarts unless told not to, and this project does not do that on its own — applying is an
+    /// action the operator takes, so the decision is the request they left behind and never a constant <c>true</c>.
+    /// </remarks>
     [Fact]
     public void TheVelopackHook_IsTheFirstStatementInMain()
     {
@@ -79,17 +84,6 @@ public class VelopackBootstrapTests
     public void TheReading_WithoutABootstrappedLocator_AnswersRatherThanThrows()
     {
         Assert.False(VelopackUpdateSupportProbe.IsInstalledCopy());
-    }
-
-    /// <summary>
-    /// Velopack applies a staged update during <c>Run()</c> and restarts, unless told not to. This project does not
-    /// do that on its own — applying is an action the operator takes — so the decision is the request they left
-    /// behind, never a constant <c>true</c>.
-    /// </summary>
-    [Fact]
-    public void TheVelopackHook_AppliesAnUpdateOnlyWhenOneWasAskedFor()
-    {
-        Assert.Contains("SetAutoApplyOnStartup(_AppliesAStagedUpdate(args))", _FirstStatementInMain(), StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -148,16 +142,12 @@ public class VelopackBootstrapTests
             static () => throw new InvalidOperationException("the version was read without a locator")));
     }
 
-    [Fact]
-    public void TheProbe_WhenTheCopyIsInstalled_ReportsSupported()
+    [Theory]
+    [InlineData(true, UpdateSupport.Supported)]
+    [InlineData(false, UpdateSupport.NotPackaged)]
+    public void TheProbe_ReportsSupportedOnlyForAnInstalledCopy(bool isInstalled, UpdateSupport expected)
     {
-        Assert.Equal(UpdateSupport.Supported, VelopackUpdateSupportProbe.Detect(static () => true));
-    }
-
-    [Fact]
-    public void TheProbe_WhenTheCopyIsNotInstalled_ReportsNotPackaged()
-    {
-        Assert.Equal(UpdateSupport.NotPackaged, VelopackUpdateSupportProbe.Detect(static () => false));
+        Assert.Equal(expected, VelopackUpdateSupportProbe.Detect(() => isInstalled));
     }
 
     /// <summary>

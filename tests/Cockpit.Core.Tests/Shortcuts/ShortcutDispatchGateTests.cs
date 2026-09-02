@@ -23,22 +23,15 @@ public class ShortcutDispatchGateTests
     private static readonly ShortcutBinding NewSession =
         new("Ctrl+N", "New session", () => { }, ActiveInTerminal: true);
 
-    [Fact]
-    public void ASingleModifierBinding_StandsDownInsideATextBox()
+    // One modifier carries a binding nowhere on its own: it stands down for anything being typed into, and fires
+    // only where nothing is.
+    [Theory]
+    [InlineData(ShortcutFocus.TextBox, false)]
+    [InlineData(ShortcutFocus.Terminal, false)]
+    [InlineData(ShortcutFocus.Elsewhere, true)]
+    public void ASingleModifierBinding_FiresOnlyWhenNothingIsBeingTypedInto(ShortcutFocus focus, bool expected)
     {
-        Assert.False(Live(OneModifier, ShortcutFocus.TextBox));
-    }
-
-    [Fact]
-    public void ASingleModifierBinding_StandsDownOverAFocusedTerminal()
-    {
-        Assert.False(Live(OneModifier, ShortcutFocus.Terminal));
-    }
-
-    [Fact]
-    public void ASingleModifierBinding_FiresWhenNothingIsBeingTypedInto()
-    {
-        Assert.True(Live(OneModifier, ShortcutFocus.Elsewhere));
+        Assert.Equal(expected, Live(OneModifier, focus));
     }
 
     [Fact]
@@ -48,16 +41,13 @@ public class ShortcutDispatchGateTests
         Assert.True(Live(Palette, ShortcutFocus.Terminal));
     }
 
-    [Fact]
-    public void ATerminalAllowedBinding_FiresOverTheTerminalOnItsFlagAlone()
+    // The flag carries a one-modifier binding over a focused terminal and no further: a text box still wins.
+    [Theory]
+    [InlineData(ShortcutFocus.Terminal, true)]
+    [InlineData(ShortcutFocus.TextBox, false)]
+    public void ATerminalAllowedBinding_FiresOverTheTerminalOnly(ShortcutFocus focus, bool expected)
     {
-        Assert.True(Live(NewSession, ShortcutFocus.Terminal));
-    }
-
-    [Fact]
-    public void ATerminalAllowedBinding_StillStandsDownInATextBox()
-    {
-        Assert.False(Live(NewSession, ShortcutFocus.TextBox));
+        Assert.Equal(expected, Live(NewSession, focus));
     }
 
     [Fact]

@@ -4,31 +4,18 @@ namespace Cockpit.Core.Tests.Views;
 
 public class TranscriptScrollAnchorTests
 {
-    [Fact]
-    public void IsAtBottom_WhenParkedAtTheBottom_IsTrue()
+    // Extent 1000 against a 300 viewport leaves a maximum offset of 700. Exactly there is the bottom, and so is
+    // one pixel short of it (sub-pixel layout rounding). Scrolled up is not, and content that fits in the viewport
+    // always is, so new rows keep following.
+    [Theory]
+    [InlineData(700, 1000, 300, true)]
+    [InlineData(699, 1000, 300, true)]
+    [InlineData(400, 1000, 300, false)]
+    [InlineData(0, 200, 300, true)]
+    public void IsAtBottom_CountsTheBottomAndTheLastPixelShortOfIt(
+        double offsetY, double extentHeight, double viewportHeight, bool expected)
     {
-        // extent 1000, viewport 300 -> max offset 700; offset exactly at 700.
-        Assert.True(TranscriptScrollAnchor.IsAtBottom(offsetY: 700, extentHeight: 1000, viewportHeight: 300));
-    }
-
-    [Fact]
-    public void IsAtBottom_WithinTolerance_IsTrue()
-    {
-        // 1px short of the bottom still counts as the bottom (sub-pixel layout rounding).
-        Assert.True(TranscriptScrollAnchor.IsAtBottom(offsetY: 699, extentHeight: 1000, viewportHeight: 300));
-    }
-
-    [Fact]
-    public void IsAtBottom_WhenScrolledUp_IsFalse()
-    {
-        Assert.False(TranscriptScrollAnchor.IsAtBottom(offsetY: 400, extentHeight: 1000, viewportHeight: 300));
-    }
-
-    [Fact]
-    public void IsAtBottom_WhenContentFitsInTheViewport_IsTrue()
-    {
-        // Nothing to scroll (extent <= viewport): always counts as the bottom so new rows keep following.
-        Assert.True(TranscriptScrollAnchor.IsAtBottom(offsetY: 0, extentHeight: 200, viewportHeight: 300));
+        Assert.Equal(expected, TranscriptScrollAnchor.IsAtBottom(offsetY, extentHeight, viewportHeight));
     }
 
     [Fact]

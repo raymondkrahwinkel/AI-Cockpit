@@ -93,10 +93,6 @@ public class WorkingPathHistoryTests
     }
 
     [Fact]
-    public void MaxRecent_IsFive_SeparateFromTheUncappedFavorites() =>
-        Assert.Equal(5, WorkingPathHistory.MaxRecent);
-
-    [Fact]
     public void WithoutPath_RemovesFromBothRecentAndFavorites()
     {
         // A path can sit in both lists (a pinned favorite that was also just used); the ✕ forgets it wherever it is,

@@ -24,14 +24,12 @@ public sealed class CockpitBuildTests
     }
 
     [Fact]
-    public void StateFolders_ForDevelopmentAndProduction_AreDifferentDirectories()
+    public void TheTwoStateFolders_AreDifferent_AndProductionKeepsTheNameTheOperatorsStateIsAlreadyUnder()
     {
         Assert.NotEqual(CockpitBuild.ProductionStateFolder, CockpitBuild.DevelopmentStateFolder);
-    }
 
-    [Fact]
-    public void ProductionStateFolder_IsTheNameTheOperatorsStateIsAlreadyUnder()
-    {
+        // Spelt out rather than read from the constant: renaming it would orphan every existing installation's
+        // state, silently and without a single other test noticing.
         Assert.Equal("Cockpit", CockpitBuild.ProductionStateFolder);
     }
 }

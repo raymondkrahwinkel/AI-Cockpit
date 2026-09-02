@@ -184,14 +184,15 @@ public class SessionTilePanelTests
         Assert.Equal(2, SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Right, stackVertically: true));
     }
 
-    [Fact]
-    public void NeighbourCell_WithASinglePane_HasNoNeighbourInAnyDirection()
+    [Theory]
+    [InlineData(PaneDirection.Left)]
+    [InlineData(PaneDirection.Right)]
+    [InlineData(PaneDirection.Up)]
+    [InlineData(PaneDirection.Down)]
+    public void NeighbourCell_WithASinglePane_HasNoNeighbourInAnyDirection(PaneDirection direction)
     {
         var one = new[] { true };
 
-        foreach (var direction in Enum.GetValues<PaneDirection>())
-        {
-            Assert.Null(SessionTilePanel.NeighbourCell(one, 0, direction, stackVertically: false));
-        }
+        Assert.Null(SessionTilePanel.NeighbourCell(one, 0, direction, stackVertically: false));
     }
 }
