@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Cockpit.Infrastructure.Formatting;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -7,6 +8,11 @@ namespace Cockpit.Infrastructure.Mcp;
 // the tool result instead of an execution.
 internal sealed class GatedTool(AIFunction inner, IToolApprovalGate gate) : DelegatingAIFunction(inner)
 {
+    // [measured, 2026-09-02] Of 9,970 persisted tool-result rows, 446 exceeded 16k but only 8 exceeded 131k
+    // (seven shell, one read_many). This prevents one pathological result filling a context window; it cannot
+    // protect a conversation that was already nearly full.
+    private const int MaxResultLength = 131_072;
+
     protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
     {
         var toolUseId = Guid.NewGuid().ToString("N");
@@ -18,15 +24,15 @@ internal sealed class GatedTool(AIFunction inner, IToolApprovalGate gate) : Dele
             // The gate owns the reason: an operator's deny is generic, a delegated policy deny explains the ceiling
             // so the model can adapt instead of retrying. Reported once, here, for both the UI and the model.
             var refusal = approval.DenyReason ?? "Tool call was denied.";
-            gate.ReportToolResult(toolUseId, refusal, isError: true);
-            return refusal;
+            return _ReportResult(toolUseId, refusal, isError: true);
         }
 
         try
         {
             var result = await base.InvokeCoreAsync(arguments, cancellationToken).ConfigureAwait(false);
-            gate.ReportToolResult(toolUseId, result?.ToString() ?? string.Empty, isError: false);
-            return result;
+            var content = result?.ToString() ?? string.Empty;
+            var visibleContent = _ReportResult(toolUseId, content, isError: false);
+            return visibleContent == content ? result : visibleContent;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -34,9 +40,15 @@ internal sealed class GatedTool(AIFunction inner, IToolApprovalGate gate) : Dele
             // path, an unreachable server) must not abort the whole turn — the model should see the error and
             // be able to recover or explain it, exactly as it would a normal tool result.
             var message = $"Tool call failed: {ex.Message}";
-            gate.ReportToolResult(toolUseId, message, isError: true);
-            return message;
+            return _ReportResult(toolUseId, message, isError: true);
         }
+    }
+
+    private string _ReportResult(string toolUseId, string content, bool isError)
+    {
+        var visibleContent = BoundedText.ToolResult(content, MaxResultLength);
+        gate.ReportToolResult(toolUseId, visibleContent, isError);
+        return visibleContent;
     }
 
     private static string _SerializeArguments(AIFunctionArguments arguments)
