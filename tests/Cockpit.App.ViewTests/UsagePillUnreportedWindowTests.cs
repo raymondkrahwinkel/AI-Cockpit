@@ -38,59 +38,54 @@ public class UsagePillUnreportedWindowTests
 
     private static Pane _PaneShowing(params UsagePillField[] fields) => new() { UsagePillVisibleFields = fields };
 
-    [Fact]
-    public void ADeclaredWindowTheProviderNeverSent_IsNamedInTheFlyout()
+    public static IEnumerable<object[]> Notices()
     {
-        var pane = _PaneShowing(UsagePillField.Context, UsagePillField.RateWindows);
-        pane.ApplyUsage([_Context, _FiveHour], [new PluginUsageReading("context", 10, null)]);
+        UsagePillField[] both = [UsagePillField.Context, UsagePillField.RateWindows];
+        PluginUsageReading[] contextOnly = [new PluginUsageReading("context", 10, null)];
 
-        Assert.Equal("5h: no figure reported for this session.", pane.UnreportedWindowsNotice);
-        Assert.DoesNotContain(pane.UsagePillItems, item => item.DisplayText.StartsWith("5h", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void OnceTheWindowArrives_TheNoticeGoesAway()
-    {
-        var pane = _PaneShowing(UsagePillField.Context, UsagePillField.RateWindows);
-        pane.ApplyUsage([_Context, _FiveHour],
+        // The window was declared and never sent: the flyout is where that is said.
+        yield return [both, new[] { _Context, _FiveHour }, contextOnly, "5h: no figure reported for this session."];
+        // Two of them, named together rather than one notice each.
+        yield return [both, new[] { _Context, _FiveHour, _Weekly }, contextOnly, "5h, wk: no figure reported for this session."];
+        // It arrived, so there is nothing to explain.
+        yield return
         [
-            new PluginUsageReading("context", 10, null),
-            new PluginUsageReading("five-hour", 42, null),
-        ]);
+            both, new[] { _Context, _FiveHour },
+            new[] { new PluginUsageReading("context", 10, null), new PluginUsageReading("five-hour", 42, null) },
+            string.Empty,
+        ];
+        // RateWindows is one all-or-nothing toggle now (#1105 A2, replacing the old per-window 5h/wk toggles): an
+        // operator who never asked to see rate windows at all should not be told one is missing.
+        yield return [new[] { UsagePillField.Context }, new[] { _Context, _FiveHour }, contextOnly, string.Empty];
+        // A signal of kind Fill (context) never counts as a "missing window" — only Allowance signals do.
+        yield return
+        [
+            both, new[] { _Context, _FiveHour },
+            new[] { new PluginUsageReading("five-hour", 42, null) },
+            string.Empty,
+        ];
+    }
 
-        Assert.Equal(string.Empty, pane.UnreportedWindowsNotice);
+    [Theory]
+    [MemberData(nameof(Notices))]
+    public void TheFlyout_NamesEveryDeclaredWindowTheProviderDidNotSend(
+        UsagePillField[] fields, PluginUsageSignal[] declared, PluginUsageReading[] readings, string expected)
+    {
+        var pane = _PaneShowing(fields);
+        pane.ApplyUsage(declared, readings);
+
+        Assert.Equal(expected, pane.UnreportedWindowsNotice);
     }
 
     [Fact]
-    public void BothDeclaredWindowsMissing_AreNamedTogether()
+    public void AnUnsentWindow_IsLeftOutOfThePillItself_NotDrawnEmpty()
     {
+        // AC-530 criterion 5, and the reason the notice has to exist at all: the pill stays silent about it, so
+        // without the flyout the ticked setting simply looks broken.
         var pane = _PaneShowing(UsagePillField.Context, UsagePillField.RateWindows);
-        pane.ApplyUsage([_Context, _FiveHour, _Weekly], [new PluginUsageReading("context", 10, null)]);
-
-        Assert.Equal("5h, wk: no figure reported for this session.", pane.UnreportedWindowsNotice);
-    }
-
-    [Fact]
-    public void RateWindowsNotSelected_NothingIsMentioned()
-    {
-        // RateWindows is one all-or-nothing toggle now (#1105 A2, replacing the old per-window 5h/wk toggles):
-        // an operator who never asked to see rate windows at all should not be told one is missing.
-        var pane = _PaneShowing(UsagePillField.Context);
         pane.ApplyUsage([_Context, _FiveHour], [new PluginUsageReading("context", 10, null)]);
 
-        Assert.Equal(string.Empty, pane.UnreportedWindowsNotice);
-    }
-
-    /// <summary>
-    /// A signal of kind Fill (context) never counts as a "missing window" — only Allowance signals do.
-    /// </summary>
-    [Fact]
-    public void AMissingFillSignal_IsNotMentionedAsAWindow()
-    {
-        var pane = _PaneShowing(UsagePillField.Context, UsagePillField.RateWindows);
-        pane.ApplyUsage([_Context, _FiveHour], [new PluginUsageReading("five-hour", 42, null)]);
-
-        Assert.Equal(string.Empty, pane.UnreportedWindowsNotice);
+        Assert.DoesNotContain(pane.UsagePillItems, item => item.DisplayText.StartsWith("5h", StringComparison.Ordinal));
     }
 
     /// <summary>

@@ -3,81 +3,54 @@ using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
 
-// The soort-choice per file kind (AC-642), one case per kind — FilePreviewClassifier.
+/// <summary>
+/// The soort-choice per file kind (AC-642) — FilePreviewClassifier. One behaviour, two tables: the extension
+/// decides, and where it does not the first bytes do. FilePreviewKind is internal, so it cannot stand in a public
+/// signature (CS0051): the rows carry it boxed and the parameter is object, which keeps the enum member's own
+/// name in the case report.
+/// </summary>
 public class FilePreviewClassifierTests
 {
-    [Theory]
-    [InlineData("photo.png")]
-    [InlineData("photo.JPG")]
-    [InlineData("photo.jpeg")]
-    [InlineData("photo.gif")]
-    [InlineData("photo.bmp")]
-    [InlineData("photo.webp")]
-    public void ImageExtensions_ClassifyAsImage(string path)
-    {
-        Assert.Equal(FilePreviewKind.Image, FilePreviewClassifier.Classify(path, []));
-    }
-
-    [Fact]
-    public void SvgExtension_ClassifiesAsSvg()
-    {
-        Assert.Equal(FilePreviewKind.Svg, FilePreviewClassifier.Classify("icon.svg", []));
-    }
-
-    [Fact]
-    public void MarkdownExtension_ClassifiesAsMarkdown()
-    {
-        Assert.Equal(FilePreviewKind.Markdown, FilePreviewClassifier.Classify("Notes.md", []));
-    }
-
-    [Fact]
-    public void JsonExtension_ClassifiesAsJson()
-    {
-        Assert.Equal(FilePreviewKind.Json, FilePreviewClassifier.Classify("data.json", []));
-    }
+    public static IEnumerable<object[]> Extensions() =>
+    [
+        ["photo.png", FilePreviewKind.Image],
+        ["photo.JPG", FilePreviewKind.Image],
+        ["photo.jpeg", FilePreviewKind.Image],
+        ["photo.gif", FilePreviewKind.Image],
+        ["photo.bmp", FilePreviewKind.Image],
+        ["photo.webp", FilePreviewKind.Image],
+        ["icon.svg", FilePreviewKind.Svg],
+        ["Notes.md", FilePreviewKind.Markdown],
+        ["data.json", FilePreviewKind.Json],
+        ["data.csv", FilePreviewKind.Csv],
+        ["data.tsv", FilePreviewKind.Csv],
+    ];
 
     [Theory]
-    [InlineData("data.csv")]
-    [InlineData("data.tsv")]
-    public void CsvAndTsvExtensions_ClassifyAsCsv(string path)
+    [MemberData(nameof(Extensions))]
+    public void TheExtensionNamesTheKind(string path, object expected)
     {
-        Assert.Equal(FilePreviewKind.Csv, FilePreviewClassifier.Classify(path, []));
+        Assert.Equal(expected, FilePreviewClassifier.Classify(path, []));
     }
 
-    [Fact]
-    public void Utf8SourceFile_ClassifiesAsText()
+    public static IEnumerable<object[]> Heads()
     {
-        var head = Encoding.UTF8.GetBytes("public sealed class Foo { }");
-        Assert.Equal(FilePreviewKind.Text, FilePreviewClassifier.Classify("MarkdownView.cs", head));
+        // A generic binary is caught by its NUL byte; the same head under a .pdf name is a PDF anyway (AC-730),
+        // which is the pair that says the extension is read before the content is sniffed at all.
+        byte[] pdfHead = [0x25, 0x50, 0x44, 0x46, 0x00, 0x01];
+
+        yield return ["MarkdownView.cs", Encoding.UTF8.GetBytes("public sealed class Foo { }"), FilePreviewKind.Text];
+        yield return ["empty.log", Array.Empty<byte>(), FilePreviewKind.Text];
+        yield return ["report.bin", pdfHead, FilePreviewKind.Other];
+        yield return ["report.pdf", pdfHead, FilePreviewKind.Pdf];
+        // 0xFF is not valid anywhere in UTF-8, and there is no NUL byte to catch it by.
+        yield return ["data.bin", new byte[] { 0xFF, 0xFE, 0x01, 0x02 }, FilePreviewKind.Other];
     }
 
-    [Fact]
-    public void EmptyFile_ClassifiesAsText()
+    [Theory]
+    [MemberData(nameof(Heads))]
+    public void WithoutAKindOfItsOwn_TheFirstBytesDecide(string path, byte[] head, object expected)
     {
-        Assert.Equal(FilePreviewKind.Text, FilePreviewClassifier.Classify("empty.log", []));
-    }
-
-    [Fact]
-    public void BinaryWithNulByte_ClassifiesAsOther()
-    {
-        byte[] head = [0x25, 0x50, 0x44, 0x46, 0x00, 0x01];
-        Assert.Equal(FilePreviewKind.Other, FilePreviewClassifier.Classify("report.bin", head));
-    }
-
-    // AC-730: .pdf classifies by extension, same as the other kinds above — regardless of content, unlike the
-    // NUL-byte sniff generic binaries fall back on.
-    [Fact]
-    public void PdfExtension_ClassifiesAsPdf()
-    {
-        byte[] head = [0x25, 0x50, 0x44, 0x46, 0x00, 0x01];
-        Assert.Equal(FilePreviewKind.Pdf, FilePreviewClassifier.Classify("report.pdf", head));
-    }
-
-    [Fact]
-    public void InvalidUtf8WithoutNulByte_ClassifiesAsOther()
-    {
-        // 0xFF is not valid anywhere in UTF-8.
-        byte[] head = [0xFF, 0xFE, 0x01, 0x02];
-        Assert.Equal(FilePreviewKind.Other, FilePreviewClassifier.Classify("data.bin", head));
+        Assert.Equal(expected, FilePreviewClassifier.Classify(path, head));
     }
 }

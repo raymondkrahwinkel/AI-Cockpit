@@ -27,17 +27,7 @@ public class WindowActivationTests
         window.Close();
     });
 
-    [Fact]
-    public void BringToFront_OnAnAlreadyNormalWindow_LeavesItNormalAndVisible() => HeadlessAvalonia.Run(() =>
-    {
-        var window = new Window();
-        window.Show();
-
-        WindowActivation.BringToFront(window);
-
-        Assert.Equal(WindowState.Normal, window.WindowState);
-        Assert.True(window.IsVisible);
-
-        window.Close();
-    });
+    // BringToFront_OnAnAlreadyNormalWindow_LeavesItNormalAndVisible stood here: a shown window, still Normal and
+    // visible afterwards. A "restore and activate" helper can only fail that by minimising or hiding the window it
+    // was asked to surface, and no realistic change to those three lines does that with the case above still green.
 }

@@ -52,34 +52,19 @@ public class PluginsMenuTests
         Assert.Equal(["workflows"], cockpit.CollapsedMenuEntries.Select(entry => entry.PluginId));
     });
 
-    [Fact]
-    public void NoCollapsedBadgeHasAnything_DotStaysOff()
-    {
-        var badge = new SideMenuButtonBadge();
-        Assert.False(PluginsMenuButton.ShouldShowDot([badge]));
-    }
+    public static IEnumerable<object[]> Dot() =>
+    [
+        // Nothing collapsed at all, and one collapsed badge with nothing on it: both leave the dot off.
+        [Array.Empty<SideMenuButtonBadge>(), false],
+        [new[] { new SideMenuButtonBadge() }, false],
+        [new[] { new SideMenuButtonBadge(), new SideMenuButtonBadge { Primary = 3 } }, true],
+        // Not a summed number: the dot is on/off only, whatever the counters say — 19 PR's + 3 issues never
+        // becomes "22" anywhere in this control, which is what makes the row above and this one one behaviour.
+        [new[] { new SideMenuButtonBadge { Primary = 19, Secondary = 0 }, new SideMenuButtonBadge { Primary = 3 } }, true],
+    ];
 
-    [Fact]
-    public void NoCollapsedBadgesAtAll_DotStaysOff() =>
-        Assert.False(PluginsMenuButton.ShouldShowDot([]));
-
-    [Fact]
-    public void AnyCollapsedBadgeHasSomethingToShow_DotTurnsOn()
-    {
-        var empty = new SideMenuButtonBadge();
-        var active = new SideMenuButtonBadge { Primary = 3 };
-
-        Assert.True(PluginsMenuButton.ShouldShowDot([empty, active]));
-    }
-
-    // Not a summed number: the dot is on/off only, exactly what ShouldShowDot returns regardless of how many
-    // collapsed badges are active — 19 PR's + 3 issues never becomes "22" anywhere in this control.
-    [Fact]
-    public void MultipleActiveBadges_StillJustOneBooleanDot()
-    {
-        var prs = new SideMenuButtonBadge { Primary = 19, Secondary = 0 };
-        var issues = new SideMenuButtonBadge { Primary = 3 };
-
-        Assert.True(PluginsMenuButton.ShouldShowDot([prs, issues]));
-    }
+    [Theory]
+    [MemberData(nameof(Dot))]
+    public void TheDot_FollowsWhetherAnyCollapsedBadgeHasSomethingToShow(SideMenuButtonBadge[] collapsed, bool expected) =>
+        Assert.Equal(expected, PluginsMenuButton.ShouldShowDot(collapsed));
 }

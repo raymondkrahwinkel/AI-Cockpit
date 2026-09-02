@@ -25,26 +25,19 @@ public class WorktreesDialogRowActionsTests
         Assert.DoesNotContain(_RowActions(window), button => _NameOf(button) == "Release" && button.IsVisible);
     });
 
-    [Fact]
-    public void ARowLiveOnlyBecauseOfARestoreOffer_ShowsTheReleaseButton() => HeadlessAvalonia.Run(() =>
-    {
-        var window = _DialogShowing(_Row(isOwnerLive: true, hasOpenRestoreOffer: true));
-
-        var release = Assert.Single(_RowActions(window), button => _NameOf(button) == "Release");
-        Assert.True(release.IsVisible, "the one row where releasing applies is the row that must offer it");
-    });
-
     /// <summary>
     /// Release comes first because it is what unlocks the other two — checked on the rendered order rather than the
     /// markup, so a later edit that appends it back at the end fails here.
     /// </summary>
     [Fact]
-    public void WhenOffered_ReleaseIsTheFirstAction() => HeadlessAvalonia.Run(() =>
+    public void ARowLiveOnlyBecauseOfARestoreOffer_OffersReleaseAndOffersItFirst() => HeadlessAvalonia.Run(() =>
     {
         var window = _DialogShowing(_Row(isOwnerLive: true, hasOpenRestoreOffer: true));
 
-        var visible = _RowActions(window).Where(button => button.IsVisible).ToList();
+        var release = Assert.Single(_RowActions(window), button => _NameOf(button) == "Release");
+        Assert.True(release.IsVisible, "the one row where releasing applies is the row that must offer it");
 
+        var visible = _RowActions(window).Where(button => button.IsVisible).ToList();
         Assert.Equal("Release", _NameOf(visible[0]));
     });
 

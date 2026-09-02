@@ -13,21 +13,31 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class McpServerChecklistTests
 {
-    [Fact]
-    public void TheHeader_NamesWhatIsSwitchedOff() => HeadlessAvalonia.Run(() =>
-    {
-        var checklist = new McpServerChecklist
-        {
-            Servers = new System.Collections.ObjectModel.ObservableCollection<McpServerSelectionItemViewModel>
-            {
-                new("depot"),
-                new("youtrack") { IsEnabledForSession = false },
-                new("playwright"),
-            },
-        };
+    // What a collapsed header says about the list under it: naming one switched-off server makes it findable
+    // without expanding, past a handful the count reads better, and an empty list adds nothing to its own name.
+    // Order-independent here — `_RefreshSummary` joins the off names in list order, and no row has two of them.
+    [Theory]
+    [InlineData(new[] { "depot", "playwright" }, new[] { "youtrack" }, "MCP servers · youtrack off")]
+    [InlineData(new[] { "depot" }, new[] { "youtrack", "playwright", "docker", "k8s" }, "MCP servers · 1 of 5 selected")]
+    [InlineData(new string[0], new string[0], "MCP servers")]
+    public void TheCollapsedHeader_SaysWhatTheListHolds(string[] on, string[] off, string expected) =>
+        HeadlessAvalonia.Run(() => Assert.Equal(expected, _Checklist(on, off).SummaryText));
 
-        Assert.Equal("MCP servers · youtrack off", checklist.SummaryText);
-    });
+    private static McpServerChecklist _Checklist(string[] on, string[] off)
+    {
+        var servers = new System.Collections.ObjectModel.ObservableCollection<McpServerSelectionItemViewModel>();
+        foreach (var name in on)
+        {
+            servers.Add(new McpServerSelectionItemViewModel(name));
+        }
+
+        foreach (var name in off)
+        {
+            servers.Add(new McpServerSelectionItemViewModel(name) { IsEnabledForSession = false });
+        }
+
+        return new McpServerChecklist { Servers = servers };
+    }
 
     [Fact]
     public void TickingABox_MovesTheSummary_SoACollapsedListStillSaysWhatItHolds() => HeadlessAvalonia.Run(() =>
@@ -61,32 +71,6 @@ public class McpServerChecklistTests
         servers[0].IsEnabledForSession = false;
 
         Assert.Equal("MCP servers · depot, youtrack off", checklist.SummaryText);
-    });
-
-    [Fact]
-    public void ManySwitchedOff_FallBackToTheCount() => HeadlessAvalonia.Run(() =>
-    {
-        // Naming them is what makes one switched-off server findable without expanding; past a handful the line
-        // stops being readable at a glance and the count is the better answer again.
-        var checklist = new McpServerChecklist
-        {
-            Servers = new System.Collections.ObjectModel.ObservableCollection<McpServerSelectionItemViewModel>
-            {
-                new("depot"),
-                new("youtrack") { IsEnabledForSession = false },
-                new("playwright") { IsEnabledForSession = false },
-                new("docker") { IsEnabledForSession = false },
-                new("k8s") { IsEnabledForSession = false },
-            },
-        };
-
-        Assert.Equal("MCP servers · 1 of 5 selected", checklist.SummaryText);
-    });
-
-    [Fact]
-    public void WithNoServers_TheHeaderIsJustTheName() => HeadlessAvalonia.Run(() =>
-    {
-        Assert.Equal("MCP servers", new McpServerChecklist().SummaryText);
     });
 
     [Fact]

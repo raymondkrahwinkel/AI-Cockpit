@@ -14,16 +14,9 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class WorktreesDialogRemoveFailureTests
 {
-    [Fact]
-    public void WithNothingFailed_TheDialogShowsNoFailureLine() => HeadlessAvalonia.Run(() =>
-    {
-        var window = new WorktreesDialog { DataContext = new WorktreesViewModel() };
-        window.Show();
-        window.UpdateLayout();
-
-        Assert.Empty(_FailureLines(window));
-    });
-
+    // WithNothingFailed_TheDialogShowsNoFailureLine stood here: a fresh view model, Empty(_FailureLines).
+    // AfterARemovalThatLeftAFolderBehind_TheNoticeIsOnScreen makes that same assertion with a notice set — a
+    // harder case for the predicate, so a failure line nobody asked for turns that test red as well.
     [Fact]
     public void AfterARefusal_TheReasonIsOnScreen() => HeadlessAvalonia.Run(() =>
     {

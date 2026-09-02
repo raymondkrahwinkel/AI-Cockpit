@@ -29,27 +29,20 @@ public class RenderedInkTests
     /// <summary>Where a <see cref="LimitBar"/>'s track starts with an empty label: nothing, then the 5px gap.</summary>
     private const double TrackLeft = 5;
 
-    [Fact]
-    public void AFullLimitBar_PaintsTheThemesErrorColour_NotAFrameworkRed() => HeadlessAvalonia.Run(() =>
+    // The one that stings: this bar is the operator's warning that a limit is nearly gone, on a control no baseline
+    // can see. What this pins is the ink, so replacing the lookup with a framework red or orange turns it red. It
+    // says nothing about the hex the lookup falls back to when there are no resources at all — that branch is
+    // unreachable with a theme loaded, and is held to its token by ThemeHexColorGuardTests instead.
+    [Theory]
+    [InlineData(95, "CockpitStatusErrorBrush")]
+    // Past the threshold its provider declared, but not yet halfway from there to full.
+    [InlineData(85, "CockpitStatusWaitingBrush")]
+    public void ALimitBarsFill_IsTheThemesColourForItsSeverity(double percent, string brushKey) => HeadlessAvalonia.Run(() =>
     {
-        // The one that stings: this bar is the operator's warning that a limit is nearly gone, on a control no
-        // baseline can see. What this pins is the ink, so replacing the lookup with a framework red turns it red.
-        // It says nothing about the hex the lookup falls back to when there are no resources at all — that branch
-        // is unreachable with a theme loaded, and is held to its token by ThemeHexColorGuardTests instead.
-        var bar = _Bar(percent: 95);
+        var bar = _Bar(percent);
         using var scene = RenderedScene.Show(bar);
 
-        _AssertInk("CockpitStatusErrorBrush", bar, scene, TrackLeft + 5);
-    });
-
-    [Fact]
-    public void ALimitBarPastItsThreshold_PaintsTheThemesWaitingColour_NotAFrameworkOrange() => HeadlessAvalonia.Run(() =>
-    {
-        // Past the threshold its provider declared, but not yet halfway from there to full.
-        var bar = _Bar(percent: 85);
-        using var scene = RenderedScene.Show(bar);
-
-        _AssertInk("CockpitStatusWaitingBrush", bar, scene, TrackLeft + 5);
+        _AssertInk(brushKey, bar, scene, TrackLeft + 5);
     });
 
     [Fact]
@@ -80,34 +73,21 @@ public class RenderedInkTests
         }
     });
 
-    [Fact]
-    public void AMicMeterOverItsThreshold_PaintsTheThemesAccent() => HeadlessAvalonia.Run(() =>
-    {
-        // The meter says "this is loud enough to interrupt with" by colour alone, so which colour is the message.
-        var meter = _Meter(level: 1, threshold: 0.5);
-        using var scene = RenderedScene.Show(meter);
+    // The meter says "this is loud enough to interrupt with" by colour alone, so which colour is the message. All
+    // three sampled at x=40, left of the marker line — that is drawn on top at the threshold and is a colour of its
+    // own, which AMicMetersMarker below pins where it actually sits.
+    [Theory]
+    [InlineData(1, 0.5, "CockpitAccentBrush")]
+    [InlineData(0.6, 0.9, "CockpitStatusDoneBrush")]
+    [InlineData(0, 0.9, "CockpitHairlineBrush")]
+    public void AMicMetersInk_FollowsItsLevelAgainstItsThreshold(double level, double threshold, string brushKey) =>
+        HeadlessAvalonia.Run(() =>
+        {
+            var meter = _Meter(level, threshold);
+            using var scene = RenderedScene.Show(meter);
 
-        _AssertInk("CockpitAccentBrush", meter, scene, 40);
-    });
-
-    [Fact]
-    public void AMicMeterUnderItsThreshold_PaintsTheThemesDoneColour() => HeadlessAvalonia.Run(() =>
-    {
-        var meter = _Meter(level: 0.6, threshold: 0.9);
-        using var scene = RenderedScene.Show(meter);
-
-        _AssertInk("CockpitStatusDoneBrush", meter, scene, 40);
-    });
-
-    [Fact]
-    public void AMicMeterAtRest_LeavesItsTrackInTheThemesHairline() => HeadlessAvalonia.Run(() =>
-    {
-        // Sampled left of the marker line, which is drawn on top at the threshold and is a colour of its own.
-        var meter = _Meter(level: 0, threshold: 0.9);
-        using var scene = RenderedScene.Show(meter);
-
-        _AssertInk("CockpitHairlineBrush", meter, scene, 40);
-    });
+            _AssertInk(brushKey, meter, scene, 40);
+        });
 
     [Fact]
     public void AMicMetersMarker_StandsOnTheThemesBrightestText() => HeadlessAvalonia.Run(() =>
