@@ -57,9 +57,10 @@ public class CockpitBreakdownTests
     }
 
     // Two servers started the same way are one line: "npm exec" twice over is not something the operator can tell
-    // apart, let alone act on separately.
+    // apart, let alone act on separately. And a merged line has no single process id left to mean, so a caller
+    // matching on id (AC-734, the assistant's own process) must not be handed either one's at random.
     [Fact]
-    public void TwoToolServersWithTheSameName_AreOneLine_AddedUp()
+    public void TwoToolServersWithTheSameName_AreOneAddedUpLine_CarryingNoProcessId()
     {
         var rows = new List<ProcessRow>
         {
@@ -72,6 +73,7 @@ public class CockpitBreakdownTests
 
         Assert.Equal("npm exec @model ×2", child.Name);
         Assert.Equal(188_000_000, child.MemoryBytes);
+        Assert.Null(child.ProcessId);
     }
 
     // AC-734: a caller that wants to match one specific child (the assistant's own process) needs its id, and only
@@ -86,21 +88,6 @@ public class CockpitBreakdownTests
         };
 
         Assert.Equal(20, CockpitBreakdown.From(rows, 10, []).Children.Single().ProcessId);
-    }
-
-    // Two same-named children merge into one line with no single id left to mean — a caller matching on id must
-    // not be handed either one's id at random.
-    [Fact]
-    public void TwoToolServersWithTheSameName_CarryNoProcessId()
-    {
-        var rows = new List<ProcessRow>
-        {
-            new(10, 1, TimeSpan.Zero, 300_000_000, "Cockpit.App"),
-            new(20, 10, TimeSpan.Zero, 95_000_000, "npm exec @model"),
-            new(21, 10, TimeSpan.Zero, 93_000_000, "npm exec @model"),
-        };
-
-        Assert.Null(CockpitBreakdown.From(rows, 10, []).Children.Single().ProcessId);
     }
 
     [Fact]

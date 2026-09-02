@@ -16,12 +16,10 @@ public class BackupContentsTests
     [InlineData("models/ggml-large-v3.bin", false)]
     [InlineData("models\\piper\\nl.onnx", false)]
     [InlineData("logs/cockpit.log", false)]
+    // A file merely named like an excluded folder is not mistaken for one.
+    [InlineData("models.json", true)]
     public void TheModelsAndTheLogs_StayOut_EverythingElseGoesIn(string path, bool included) =>
         Assert.Equal(included, BackupContents.Includes(path));
-
-    [Fact]
-    public void AFileMerelyNamedLikeAnExcludedFolder_IsNotMistakenForOne() =>
-        Assert.True(BackupContents.Includes("models.json"));
 
     [Fact]
     public void ABackupTakesNoCredentialsUnlessAsked() =>

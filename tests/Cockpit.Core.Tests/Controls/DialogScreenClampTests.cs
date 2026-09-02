@@ -9,30 +9,20 @@ namespace Cockpit.Core.Tests.Controls;
 /// </summary>
 public class DialogScreenClampTests
 {
-    [Fact]
-    public void Fit_WhenTheDesignedSizeFits_LeavesItUnchanged()
+    // A screen that fits leaves the designed size alone; a smaller one takes 90% of the working area; and
+    // below the dialog's own minimums the minimums win, because a dialog too small to use is the failure
+    // the clamp avoids rather than a fix for it.
+    [Theory]
+    [InlineData(860, 680, 620, 480, 1920, 1080, 860, 680)]
+    [InlineData(1200, 820, 760, 480, 1280, 720, 1280 * 0.9, 720 * 0.9)]
+    [InlineData(860, 680, 620, 480, 600, 400, 620, 480)]
+    public void Fit_ShrinksToTheScreenFraction_ButNeverBelowTheDialogsOwnMinimums(
+        double designedWidth, double designedHeight, double minWidth, double minHeight,
+        double availableWidth, double availableHeight, double expectedWidth, double expectedHeight)
     {
-        var (width, height) = DialogScreenClamp.Fit(860, 680, minWidth: 620, minHeight: 480, availableWidth: 1920, availableHeight: 1080);
+        var (width, height) = DialogScreenClamp.Fit(designedWidth, designedHeight, minWidth, minHeight, availableWidth, availableHeight);
 
-        Assert.Equal(860, width);
-        Assert.Equal(680, height);
-    }
-
-    [Fact]
-    public void Fit_WhenTheScreenIsSmaller_ShrinksToTheScreenFraction()
-    {
-        var (width, height) = DialogScreenClamp.Fit(1200, 820, minWidth: 760, minHeight: 480, availableWidth: 1280, availableHeight: 720);
-
-        Assert.Equal(1280 * 0.9, width);
-        Assert.Equal(720 * 0.9, height);
-    }
-
-    [Fact]
-    public void Fit_WhenTheScreenFractionFallsBelowTheMinimums_TheMinimumsWin()
-    {
-        var (width, height) = DialogScreenClamp.Fit(860, 680, minWidth: 620, minHeight: 480, availableWidth: 600, availableHeight: 400);
-
-        Assert.Equal(620, width);
-        Assert.Equal(480, height);
+        Assert.Equal(expectedWidth, width);
+        Assert.Equal(expectedHeight, height);
     }
 }

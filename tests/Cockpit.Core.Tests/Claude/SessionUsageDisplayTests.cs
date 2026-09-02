@@ -72,22 +72,23 @@ public class SessionUsageDisplayTests
     [Fact]
     public void APartialSnapshot_LeavesTheOmittedSignalsShowingTheirLastKnownValue()
     {
-        // AC-761 F1 / acceptance criterion 2: a snapshot with only ctx must not clear the two rate windows a
-        // fuller snapshot already reported.
+        // AC-761 F1 / criterion 2, both directions at once: Claude reports no context percentage right after a
+        // /compact and no rate windows on an ordinary turn, so an omitted signal must keep its last known figure
+        // rather than blank out — a session that never completes another turn used to show nothing, permanently.
         var session = Build();
 
         session.ApplyUsage(Signals,
         [
-            new PluginUsageReading("context", 20, null),
+            new PluginUsageReading("context", 88, null),
             new PluginUsageReading("five-hour", 18, DateTimeOffset.Parse("2026-07-14T22:00:00Z")),
             new PluginUsageReading("weekly", 7, DateTimeOffset.Parse("2026-07-20T00:00:00Z")),
         ]);
 
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 21, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 20, DateTimeOffset.Parse("2026-07-14T22:00:00Z"))]);
 
-        Assert.Equal(21, session.ContextUsedPercent);
+        Assert.Equal(88, session.ContextUsedPercent);
         Assert.Equal(2, session.RateLimits.Count);
-        Assert.Contains(session.RateLimits, w => w.Label == "5h" && w.UsedPercent == 18);
+        Assert.Contains(session.RateLimits, w => w.Label == "5h" && w.UsedPercent == 20);
         Assert.Contains(session.RateLimits, w => w.Label == "wk" && w.UsedPercent == 7);
     }
 
@@ -294,20 +295,5 @@ public class SessionUsageDisplayTests
         session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
 
         Assert.Contains("Session (5 hours) is 100% used", session.UsageWarning);
-    }
-
-    [Fact]
-    public void AfterACompaction_TheContextFigureKeepsShowingItsLastKnownValue()
-    {
-        // AC-761 F1: Claude reports no context percentage right after a /compact — a snapshot that omits a
-        // signal must not blank it out, since a known-but-stale figure beats no figure at all until the next
-        // one lands (a session that never completes another turn used to show nothing here permanently).
-        var session = Build();
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 88, null)]);
-
-        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 20, null)]);
-
-        Assert.Equal(88, session.ContextUsedPercent);
-        Assert.Single(session.RateLimits);
     }
 }

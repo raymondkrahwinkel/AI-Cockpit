@@ -11,15 +11,16 @@ namespace Cockpit.Core.Tests.Converters;
 /// </summary>
 public class ListeningModeIconConverterTests
 {
-    [Fact]
-    public void Icon_DiffersBetweenAlwaysOnAndOff()
+    // The two faces must differ, or the button says nothing. The null row is the view binding through a
+    // coordinator that is not there (the Screenshotter, a test built without one): that has to land on the
+    // off face, never on the open one.
+    [Theory]
+    [InlineData(true, MaterialIconKind.Microphone)]
+    [InlineData(false, MaterialIconKind.MicrophoneOff)]
+    [InlineData(null, MaterialIconKind.MicrophoneOff)]
+    public void Icon_ShowsTheStatesOwnFace_AndFallsBackToOffWhenNothingIsBound(bool? value, MaterialIconKind expected)
     {
-        var on = _ConvertIcon(true);
-        var off = _ConvertIcon(false);
-
-        Assert.NotEqual(off, on);
-        Assert.Equal(MaterialIconKind.Microphone, on);
-        Assert.Equal(MaterialIconKind.MicrophoneOff, off);
+        Assert.Equal(expected, _ConvertIcon(value));
     }
 
     [Fact]
@@ -27,14 +28,6 @@ public class ListeningModeIconConverterTests
     {
         Assert.Contains("Click to stop listening", _ConvertTip(true));
         Assert.Contains("Click to keep it open", _ConvertTip(false));
-    }
-
-    [Fact]
-    public void Icon_WithNoBoundValueYet_FallsBackToTheOffFace()
-    {
-        // The view binds through `Indicator`, which is null in the Screenshotter and in tests built without a
-        // coordinator — that has to land on "not listening", never on the open-mic face.
-        Assert.Equal(_ConvertIcon(false), _ConvertIcon(null));
     }
 
     private static MaterialIconKind _ConvertIcon(bool? value) =>

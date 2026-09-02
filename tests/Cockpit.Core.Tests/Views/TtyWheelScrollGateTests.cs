@@ -12,69 +12,39 @@ namespace Cockpit.Core.Tests.Views;
 /// </summary>
 public class TtyWheelScrollGateTests
 {
-    [Fact]
-    public void Decide_AltScreenWithoutMouseTracking_ReturnsForwardArrowKeys()
-    {
-        Assert.Equal(TtyWheelScrollAction.ForwardArrowKeys, TtyWheelScrollGate.Decide(isAltScreen: true, mouseMode: 0));
-    }
-
-    [Fact]
-    public void Decide_PrimaryScreen_ReturnsNativeScroll()
-    {
-        // #57: the primary screen has real scrollback — scroll Exclr8's buffer directly.
-        Assert.Equal(TtyWheelScrollAction.NativeScroll, TtyWheelScrollGate.Decide(isAltScreen: false, mouseMode: 0));
-    }
-
+    /// <summary>
+    /// The alternate screen has no scrollback, so a notch over a full-screen TUI that did not ask for mouse
+    /// tracking is forwarded as an arrow key (xterm's alternateScroll fallback); one that did is left to
+    /// TerminalControl's own SGR-mouse-report path. The primary screen keeps real scrollback and is scrolled
+    /// natively whatever a stray MouseMode value says, because those modes only mean anything on the alternate
+    /// screen in this codebase's usage.
+    /// </summary>
     [Theory]
-    [InlineData(1000)]
-    [InlineData(1002)]
-    [InlineData(1003)]
-    public void Decide_PrimaryScreenRegardlessOfMouseMode_ReturnsNativeScroll(int mouseMode)
+    [InlineData(true, 0, TtyWheelScrollAction.ForwardArrowKeys)]
+    [InlineData(true, 1000, TtyWheelScrollAction.PassThrough)]
+    [InlineData(true, 1002, TtyWheelScrollAction.PassThrough)]
+    [InlineData(true, 1003, TtyWheelScrollAction.PassThrough)]
+    [InlineData(false, 0, TtyWheelScrollAction.NativeScroll)]
+    [InlineData(false, 1000, TtyWheelScrollAction.NativeScroll)]
+    [InlineData(false, 1002, TtyWheelScrollAction.NativeScroll)]
+    [InlineData(false, 1003, TtyWheelScrollAction.NativeScroll)]
+    public void Decide_ForwardsOnlyOnAnAltScreenThatAskedForNoMouseTracking(
+        bool isAltScreen, int mouseMode, TtyWheelScrollAction expected)
     {
-        // Mouse-tracking modes only mean anything on the alternate screen in this codebase's usage —
-        // still native-scroll the primary screen regardless of a stray MouseMode value.
-        Assert.Equal(TtyWheelScrollAction.NativeScroll, TtyWheelScrollGate.Decide(isAltScreen: false, mouseMode));
+        Assert.Equal(expected, TtyWheelScrollGate.Decide(isAltScreen, mouseMode));
     }
 
+    // CSI in normal mode, SS3 once the app asked for application cursor keys; A up, B down.
     [Theory]
-    [InlineData(1000)]
-    [InlineData(1002)]
-    [InlineData(1003)]
-    public void Decide_AltScreenWithMouseTrackingRequested_ReturnsPassThrough(int mouseMode)
-    {
-        // The app asked for mouse reporting — TerminalControl's own SGR-mouse-report path already covers it.
-        Assert.Equal(TtyWheelScrollAction.PassThrough, TtyWheelScrollGate.Decide(isAltScreen: true, mouseMode));
-    }
-
-    [Fact]
-    public void EncodeArrowKey_ScrollUp_NormalMode_ReturnsCsiUp()
+    [InlineData(true, false, '[', 'A')]
+    [InlineData(false, false, '[', 'B')]
+    [InlineData(true, true, 'O', 'A')]
+    [InlineData(false, true, 'O', 'B')]
+    public void EncodeArrowKey_UsesTheIntroducerTheModeAsksFor(
+        bool scrollUp, bool applicationCursorKeys, char introducer, char direction)
     {
         Assert.Equal(
-            new byte[] { 0x1b, (byte)'[', (byte)'A' },
-            TtyWheelScrollGate.EncodeArrowKey(scrollUp: true, applicationCursorKeys: false));
-    }
-
-    [Fact]
-    public void EncodeArrowKey_ScrollDown_NormalMode_ReturnsCsiDown()
-    {
-        Assert.Equal(
-            new byte[] { 0x1b, (byte)'[', (byte)'B' },
-            TtyWheelScrollGate.EncodeArrowKey(scrollUp: false, applicationCursorKeys: false));
-    }
-
-    [Fact]
-    public void EncodeArrowKey_ScrollUp_ApplicationCursorKeys_ReturnsSs3Up()
-    {
-        Assert.Equal(
-            new byte[] { 0x1b, (byte)'O', (byte)'A' },
-            TtyWheelScrollGate.EncodeArrowKey(scrollUp: true, applicationCursorKeys: true));
-    }
-
-    [Fact]
-    public void EncodeArrowKey_ScrollDown_ApplicationCursorKeys_ReturnsSs3Down()
-    {
-        Assert.Equal(
-            new byte[] { 0x1b, (byte)'O', (byte)'B' },
-            TtyWheelScrollGate.EncodeArrowKey(scrollUp: false, applicationCursorKeys: true));
+            new byte[] { 0x1b, (byte)introducer, (byte)direction },
+            TtyWheelScrollGate.EncodeArrowKey(scrollUp, applicationCursorKeys));
     }
 }

@@ -126,14 +126,18 @@ public class OpenAiCompatSessionDriverTests
         Assert.Equal("interrupted", Assert.Single(events.OfType<TurnCompleted>()).Subtype);
     }
 
-    [Fact]
-    public async Task SendUserMessage_WhenTheStreamIsEmptyWithNoToolCalls_EmitsAVisibleNoResponseError()
+    /// <summary>
+    /// AC-132 vangnet: a request that ends the stream with nothing to show — a 200 with an empty body, a
+    /// swallowed error, or a reply that is only whitespace — used to emit a blank success and show nothing
+    /// at all. Both must leave a visible notice instead.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RepliesWithNothingToShow))]
+    public async Task SendUserMessage_WhenTheReplyHasNothingToShow_EmitsAVisibleNoResponseError(string[] chunks)
     {
-        // AC-132 vangnet: a request that ends the stream empty without throwing (a 200 with an empty body, a
-        // swallowed error) used to emit a blank success — nothing shown. It must leave a visible notice.
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_Stream());
+            .Returns(_Stream(chunks));
         var driver = _CreateDriver(chatClient);
 
         await driver.StartAsync(LocalProfile);
@@ -286,24 +290,6 @@ public class OpenAiCompatSessionDriverTests
         Assert.DoesNotContain("does not support tool-calling", error.Message);
         Assert.True(Assert.Single(events.OfType<TurnCompleted>()).IsError);
         chatClient.Received(1).GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task SendUserMessage_WhenTheReplyIsWhitespaceOnly_EmitsTheNoResponseNotice()
-    {
-        // A whitespace-only reply is as empty as no reply — it must hit the no-response net, not show a blank
-        // success bubble.
-        var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_Stream("   ", "\n"));
-        var driver = _CreateDriver(chatClient);
-
-        await driver.StartAsync(LocalProfile);
-        await driver.SendUserMessageAsync("hi");
-        var events = await _CollectUntilTurnCompletedAsync(driver);
-
-        Assert.Contains("no response", Assert.Single(events.OfType<SessionError>()).Message);
-        Assert.True(Assert.Single(events.OfType<TurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -561,6 +547,12 @@ public class OpenAiCompatSessionDriverTests
 
         Assert.Equal("task-42", captured);
     }
+
+    public static IEnumerable<object[]> RepliesWithNothingToShow() =>
+    [
+        [Array.Empty<string>()],
+        [new[] { "   ", "\n" }],
+    ];
 
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools) =>
         _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass>(), tools);

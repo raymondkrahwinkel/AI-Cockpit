@@ -10,56 +10,44 @@ namespace Cockpit.Core.Tests.Hotkeys;
 /// </summary>
 public class GlobalHotkeyConflictCheckTests
 {
-    [Fact]
-    public void KeysThatAreEachTheirOwn_AreNoClash()
+    /// <summary>
+    /// Two features on one key are named together with the key. The lower-case row is the one that would
+    /// otherwise pass this check and fail at the desktop: the settings store the Avalonia key name and nothing
+    /// upstream forces its casing, so "f8" clashes with "F8" just as thoroughly.
+    /// </summary>
+    [Theory]
+    [InlineData("F8")]
+    [InlineData("f8")]
+    public void TwoFeaturesOnOneKey_AreNamedTogetherWithTheKey_WhateverTheCasing(string pushToTalkKey)
     {
         var clash = GlobalHotkeyConflictCheck.Describe(
         [
-            new GlobalHotkeyBinding(GlobalHotkeys.PushToTalk, "Push to talk (hold)", "F9"),
-            new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8"),
-        ]);
-
-        Assert.Null(clash);
-    }
-
-    [Fact]
-    public void TwoFeaturesOnOneKey_AreNamedTogetherWithTheKey()
-    {
-        var clash = GlobalHotkeyConflictCheck.Describe(
-        [
-            new GlobalHotkeyBinding(GlobalHotkeys.PushToTalk, "Push to talk (hold)", "F8"),
+            new GlobalHotkeyBinding(GlobalHotkeys.PushToTalk, "Push to talk (hold)", pushToTalkKey),
             new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8"),
         ]);
 
         Assert.NotNull(clash);
         Assert.Contains("Push to talk (hold)", clash);
         Assert.Contains("Take a screenshot", clash);
-        Assert.Contains("F8", clash);
+        // Case-insensitively: the sentence names the key as the first binding spells it, so a clash found through
+        // the lower-case spelling reports that one.
+        Assert.Contains("F8", clash, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
-    /// The settings store the Avalonia key name, and nothing upstream forces its casing — a key typed as "f8"
-    /// clashes with "F8" just as thoroughly, and would otherwise pass this check and fail at the desktop.
+    /// Keys that are each their own are no clash — and neither is a single armed key, which is what one
+    /// switched-off feature leaves behind and which cannot clash with itself.
     /// </summary>
     [Fact]
-    public void CasingDoesNotHideAClash()
+    public void KeysThatAreEachTheirOwn_AreNoClash()
     {
-        var clash = GlobalHotkeyConflictCheck.Describe(
+        Assert.Null(GlobalHotkeyConflictCheck.Describe(
         [
-            new GlobalHotkeyBinding(GlobalHotkeys.PushToTalk, "Push to talk (hold)", "f8"),
+            new GlobalHotkeyBinding(GlobalHotkeys.PushToTalk, "Push to talk (hold)", "F9"),
             new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8"),
-        ]);
+        ]));
 
-        Assert.NotNull(clash);
-    }
-
-    /// <summary>A single armed key cannot clash with itself, and one switched-off feature leaves exactly that.</summary>
-    [Fact]
-    public void OneArmedKey_IsNoClash()
-    {
-        var clash = GlobalHotkeyConflictCheck.Describe(
-            [new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8")]);
-
-        Assert.Null(clash);
+        Assert.Null(GlobalHotkeyConflictCheck.Describe(
+            [new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8")]));
     }
 }

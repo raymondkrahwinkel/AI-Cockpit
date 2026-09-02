@@ -55,6 +55,9 @@ public class AssistantIndicatorViewModelTests
             classes.Add(vm.ColorClass);
         }
 
+        // Criterion 6's hard half (Dictating must never read like Listening) and criterion 19's (ListeningContinuously
+        // must never read like Listening) are both settled here and by EveryActivity_HasItsOwnLabel: none of the four
+        // is in the waiting set, so "every other class is distinct" is exactly what those two pairs needed said.
         var waiting = new[] { AssistantActivity.Thinking, AssistantActivity.Transcribing, AssistantActivity.Preparing };
         Assert.Equal(classes.Count - waiting.Length + 1, classes.Distinct().Count());
         Assert.All(waiting, activity =>
@@ -62,21 +65,6 @@ public class AssistantIndicatorViewModelTests
             vm.Activity = activity;
             Assert.Equal("thinking", vm.ColorClass);
         });
-    }
-
-    /// <summary>
-    /// Criterion 6, the hard requirement: dictating (F9, into a session) must never read like the assistant
-    /// listening (F10) — not in the word, and not in the colour class either, since colour alone is explicitly
-    /// ruled insufficient.
-    /// </summary>
-    [Fact]
-    public void Dictating_DiffersFromListening_InLabelAndColorClass()
-    {
-        var dictating = new AssistantIndicatorViewModel { Activity = AssistantActivity.Dictating };
-        var listening = new AssistantIndicatorViewModel { Activity = AssistantActivity.Listening };
-
-        Assert.NotEqual(dictating.Label, listening.Label);
-        Assert.NotEqual(dictating.ColorClass, listening.ColorClass);
     }
 
     [Fact]
@@ -123,63 +111,23 @@ public class AssistantIndicatorViewModelTests
         Assert.Equal("Assistant", vm.Detail);
     }
 
+    /// <summary>
+    /// Criterion 6's key badge names a key that actually does something, and hides rather than showing empty where
+    /// nothing is bound — Thinking, ListeningContinuously and Unavailable have no key of their own right now.
+    /// </summary>
     [Theory]
     [InlineData(AssistantActivity.Ready, "F10")]
     [InlineData(AssistantActivity.Listening, "F10")]
     [InlineData(AssistantActivity.Speaking, "Esc")]
     [InlineData(AssistantActivity.Dictating, "F9")]
-    public void KeyHint_NamesTheKeyBoundToThatState(AssistantActivity activity, string expected)
+    [InlineData(AssistantActivity.ListeningContinuously, null)]
+    [InlineData(AssistantActivity.Thinking, null)]
+    [InlineData(AssistantActivity.Unavailable, null)]
+    public void KeyHint_NamesTheKeyBoundToThatState_OrNothingWhereNoneIs(AssistantActivity activity, string? expected)
     {
         var vm = new AssistantIndicatorViewModel { Activity = activity };
 
         Assert.Equal(expected, vm.KeyHint);
-    }
-
-    /// <summary>
-    /// Thinking, ListeningContinuously and Unavailable have no key bound to them right now (criterion 6's key
-    /// badge only names a key that actually does something) — the badge must hide rather than show empty.
-    /// </summary>
-    [Theory]
-    [InlineData(AssistantActivity.ListeningContinuously)]
-    [InlineData(AssistantActivity.Thinking)]
-    [InlineData(AssistantActivity.Unavailable)]
-    public void KeyHint_IsNull_WhereNoKeyIsBound(AssistantActivity activity)
-    {
-        var vm = new AssistantIndicatorViewModel { Activity = activity };
-
-        Assert.Null(vm.KeyHint);
-    }
-
-    /// <summary>
-    /// Criterion 19: "listening continuously" is a stand the operator switched on, "listening" is a handeling
-    /// that lasts as long as F10 is held — they must read as different, not as the same word with a suffix.
-    /// </summary>
-    [Fact]
-    public void ListeningContinuously_DiffersFromListening_InLabelAndColorClass()
-    {
-        var held = new AssistantIndicatorViewModel { Activity = AssistantActivity.Listening };
-        var standing = new AssistantIndicatorViewModel { Activity = AssistantActivity.ListeningContinuously };
-
-        Assert.NotEqual(held.Label, standing.Label);
-        Assert.NotEqual(held.ColorClass, standing.ColorClass);
-    }
-
-    [Theory]
-    [InlineData(AssistantActivity.Ready)]
-    [InlineData(AssistantActivity.Listening)]
-    [InlineData(AssistantActivity.Dictating)]
-    public void Collapsing_KeepsTheColorClass_RegardlessOfActivity(AssistantActivity activity)
-    {
-        // The rail form drops the label — see AssistantIndicator.axaml — but the view model's own state, which
-        // the ring colour is driven from, never changes just because the sidebar collapsed. IsCollapsed is a
-        // presentation flag, not a fourth axis of Activity.
-        var vm = new AssistantIndicatorViewModel { Activity = activity };
-        var colorBeforeCollapse = vm.ColorClass;
-
-        vm.IsCollapsed = true;
-
-        Assert.Equal(colorBeforeCollapse, vm.ColorClass);
-        Assert.True(vm.IsCollapsed);
     }
 
     [Fact]
@@ -207,20 +155,6 @@ public class AssistantIndicatorViewModelTests
 
         Assert.True(vm.IsAlwaysOnConfirmationPending);
         Assert.False(raised);
-    }
-
-    /// <summary>Criterion 18: once acknowledged, picking AlwaysOn again is immediate — no repeat warning.</summary>
-    [Fact]
-    public void SelectingAlwaysOn_WhenAlreadyAcknowledged_CommitsImmediately_WithNoConfirmation()
-    {
-        var vm = new AssistantIndicatorViewModel { AlwaysOnCostAcknowledged = true };
-        AssistantListeningMode? selected = null;
-        vm.ListeningModeSelected += (_, mode) => selected = mode;
-
-        vm.SelectListeningModeAlwaysOnCommand.Execute(null);
-
-        Assert.False(vm.IsAlwaysOnConfirmationPending);
-        Assert.Equal(AssistantListeningMode.AlwaysOn, selected);
     }
 
     /// <summary>

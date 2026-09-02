@@ -19,23 +19,12 @@ public class PluginSessionDriverAdapterConversationTests
     private static readonly IReadOnlyDictionary<string, string> _PaneOneLaunchOptions =
         new Dictionary<string, string> { [WellKnownPluginSessionOptions.PaneId] = "pane-1" };
 
+    /// <summary>
+    /// Reported once the inner driver has an id, and exactly once however many events carry the same one —
+    /// re-reporting an unchanged id on every event is what the change check exists to stop.
+    /// </summary>
     [Fact]
-    public async Task Events_ReportsTheKnownConversationId_OnceTheInnerDriverHasOne()
-    {
-        var inner = new FakePluginSessionDriver { SessionId = "session-a" };
-        var sink = Substitute.For<ISessionConversationSink>();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, conversationSink: sink);
-        await adapter.StartAsync(launchOptions: _PaneOneLaunchOptions);
-
-        inner.Emit(_TurnCompleted("session-a"));
-        inner.Complete();
-        await _DrainAsync(adapter);
-
-        sink.Received(1).Report("pane-1", SessionConversationId.Known("session-a"));
-    }
-
-    [Fact]
-    public async Task Events_DoesNotReReport_WhenTheConversationIdIsUnchangedAcrossMultipleEvents()
+    public async Task Events_ReportsTheKnownConversationIdOnce_HoweverManyEventsCarryIt()
     {
         var inner = new FakePluginSessionDriver { SessionId = "session-a" };
         var sink = Substitute.For<ISessionConversationSink>();

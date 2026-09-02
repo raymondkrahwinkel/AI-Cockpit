@@ -10,12 +10,14 @@ namespace Cockpit.Core.Tests.Configuration;
 public class ProviderConfigEntryTests
 {
     [Fact]
-    public void FromDomain_WithAPluginProviderConfig_MapsProviderIdAndConfigJson()
+    public void APluginProviderConfig_LandsInItsOwnTwoFields_AndComesBackWhole()
     {
-        var config = new PluginProviderConfig("gemini-provider.gemini", """{"apiKey":"secret","model":"gemini-2.5-flash"}""");
+        var original = new PluginProviderConfig("gemini-provider.gemini", """{"apiKey":"secret","model":"gemini-2.5-flash"}""");
 
-        var entry = ProviderConfigEntry.FromDomain(config);
+        var entry = ProviderConfigEntry.FromDomain(original);
 
+        // On disk a plugin-backed profile is a provider id and one opaque blob — the typed Ollama/LM-Studio fields
+        // stay empty, so nothing reads a plugin's settings as if they were a built-in provider's.
         Assert.NotNull(entry);
         Assert.Equal(SessionProvider.Plugin, entry!.Provider);
         Assert.Equal("gemini-provider.gemini", entry.PluginProviderId);
@@ -23,17 +25,10 @@ public class ProviderConfigEntryTests
         Assert.Null(entry.BaseUrl);
         Assert.Null(entry.Model);
         Assert.Null(entry.ApiKey);
-    }
 
-    [Fact]
-    public void ToDomain_WithAPluginProvider_RoundTripsBackToAPluginProviderConfig()
-    {
-        var original = new PluginProviderConfig("gemini-provider.gemini", """{"apiKey":"secret","model":"gemini-2.5-flash"}""");
+        var roundTripped = entry.ToDomain(claudeConfigDir: string.Empty, claudeExecutablePath: null);
 
-        var roundTripped = ProviderConfigEntry.FromDomain(original)!.ToDomain(claudeConfigDir: string.Empty, claudeExecutablePath: null);
-
-        Assert.IsType<PluginProviderConfig>(roundTripped);
-        var plugin = (PluginProviderConfig)roundTripped!;
+        var plugin = Assert.IsType<PluginProviderConfig>(roundTripped);
         Assert.Equal(original.ProviderId, plugin.ProviderId);
         Assert.Equal(original.ConfigJson, plugin.ConfigJson);
     }

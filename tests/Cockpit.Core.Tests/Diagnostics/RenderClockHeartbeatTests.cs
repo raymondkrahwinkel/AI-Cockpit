@@ -10,6 +10,8 @@ public class RenderClockHeartbeatTests
 {
     private static readonly TimeSpan Stall = RenderClockHeartbeat.StallAfter;
 
+    // The caller reports null until the commit is actually requested on the UI thread, so a hung dispatcher is left
+    // to the UI-thread heartbeat instead of being blamed on the render clock.
     [Fact]
     public void NoProbeOutstanding_SaysNothing() =>
         Assert.Equal(
@@ -17,12 +19,11 @@ public class RenderClockHeartbeatTests
             RenderClockHeartbeat.Decide(probeInFlightFor: null, warned: false));
 
     [Fact]
-    public void AProbeStillWellWithinItsBudget_SaysNothing() =>
+    public void AProbeStillWithinItsBudget_UpToAndIncludingTheThreshold_SaysNothing()
+    {
         Assert.False(RenderClockHeartbeat.Decide(TimeSpan.FromSeconds(1), warned: false).Stalled);
-
-    [Fact]
-    public void RightAtTheThreshold_NotYetOverIt_SaysNothing() =>
         Assert.False(RenderClockHeartbeat.Decide(Stall, warned: false).Stalled);
+    }
 
     [Fact]
     public void AProbeOutstandingPastTheThreshold_ReportsAStall()
@@ -113,10 +114,4 @@ public class RenderClockHeartbeatTests
         // pausing there. Their working behaviour after af2fe273/cc85ca1e stays exactly as it was.
         Assert.False(
             RenderClockHeartbeat.ShouldPauseRenderers(TimeSpan.FromSeconds(stalledForSeconds), isMacOs: false));
-
-    [Fact]
-    public void APostedProbeTheUiThreadHasNotStartedYet_IsNotAStall() =>
-        // The caller reports null until the commit is actually requested on the UI thread, so a hung dispatcher
-        // is left to the UI-thread heartbeat instead of being blamed on the render clock.
-        Assert.False(RenderClockHeartbeat.Decide(probeInFlightFor: null, warned: false).Stalled);
 }

@@ -47,10 +47,11 @@ public class DelegationWorkspaceTests
         Assert.NotEqual(DelegatedTaskStatus.Failed, task.Status);
     }
 
-    // The grant is the caller's own reach, not a way around the policy: somewhere no session of yours is, and the
-    // profile does not allow, is still refused.
+    // The grant is the caller's own reach, not a way around the policy: a directory no session is in and the
+    // profile does not allow is still refused — and the refusal names where the caller *may* go, since it cannot
+    // read those directories off the MCP surface and a bare "no" leaves it guessing (AC-114).
     [Fact]
-    public async Task ADirectoryNoSessionIsIn_IsStillRefused()
+    public async Task ADirectoryNoSessionIsIn_IsRefused_NamingTheDirectoriesThatAreAllowed()
     {
         var service = _ServiceWith(
             workspaces: ["/home/you/projects/webshop"],
@@ -59,24 +60,9 @@ public class DelegationWorkspaceTests
         var delegate_ = async () => await service.DelegateAsync(
             new DelegationRequest("qwen", "read the secrets", WorkingDirectory: "/home/raymond/.ssh"));
 
-        var thrown1 = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
-        Assert.Contains("does not allow a task to run in", thrown1.Message);
-    }
-
-    // A refusal has to say where the caller *may* go — it cannot read the profile's dirs or the active-session
-    // dirs off the MCP surface, so a bare "no" leaves it guessing (AC-114).
-    [Fact]
-    public async Task ARefusal_NamesTheDirectoriesThatAreAllowed()
-    {
-        var service = _ServiceWith(
-            workspaces: ["/home/you/projects/webshop"],
-            _Target("qwen"));
-
-        var delegate_ = async () => await service.DelegateAsync(
-            new DelegationRequest("qwen", "read the secrets", WorkingDirectory: "/home/raymond/.ssh"));
-
-        var thrown2 = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
-        Assert.Contains("webshop", thrown2.Message);
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        Assert.Contains("does not allow a task to run in", thrown.Message);
+        Assert.Contains("webshop", thrown.Message);
     }
 
     [Fact]

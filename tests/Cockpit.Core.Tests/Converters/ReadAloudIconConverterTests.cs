@@ -10,15 +10,16 @@ namespace Cockpit.Core.Tests.Converters;
 /// </summary>
 public class ReadAloudIconConverterTests
 {
-    [Fact]
-    public void Icon_DiffersBetweenOnAndOff()
+    // The two faces must differ, or the button says nothing. The null row is the view binding through a
+    // coordinator that is not there (the Screenshotter, a test built without one): that has to land on the
+    // off face, never on the open one.
+    [Theory]
+    [InlineData(true, MaterialIconKind.VolumeHigh)]
+    [InlineData(false, MaterialIconKind.VolumeOff)]
+    [InlineData(null, MaterialIconKind.VolumeOff)]
+    public void Icon_ShowsTheStatesOwnFace_AndFallsBackToOffWhenNothingIsBound(bool? value, MaterialIconKind expected)
     {
-        var on = _ConvertIcon(true);
-        var off = _ConvertIcon(false);
-
-        Assert.NotEqual(off, on);
-        Assert.Equal(MaterialIconKind.VolumeHigh, on);
-        Assert.Equal(MaterialIconKind.VolumeOff, off);
+        Assert.Equal(expected, _ConvertIcon(value));
     }
 
     [Fact]
@@ -26,12 +27,6 @@ public class ReadAloudIconConverterTests
     {
         Assert.Contains("Click to stop", _ConvertTip(true));
         Assert.Contains("Click to start", _ConvertTip(false));
-    }
-
-    [Fact]
-    public void Icon_WithNoBoundValueYet_FallsBackToTheOffFace()
-    {
-        Assert.Equal(_ConvertIcon(false), _ConvertIcon(null));
     }
 
     private static MaterialIconKind _ConvertIcon(bool? value) =>

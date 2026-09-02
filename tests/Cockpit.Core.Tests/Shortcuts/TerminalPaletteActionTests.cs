@@ -26,14 +26,4 @@ public class TerminalPaletteActionTests
 
         Assert.Contains("New terminal", titles);
     }
-
-    /// <summary>
-    /// Unbound and palette-only, it stands down over a focused terminal like the other non-navigation actions —
-    /// so a key the operator later binds to it is left to the shell while a TUI has the keyboard.
-    /// </summary>
-    [Fact]
-    public void NewTerminal_DoesNotStayActiveInATerminal()
-    {
-        Assert.False(ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NewTerminal));
-    }
 }

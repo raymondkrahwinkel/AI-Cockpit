@@ -10,28 +10,15 @@ public class PresenceDecisionTests
 {
     private static readonly TimeSpan Threshold = TimeSpan.FromMinutes(15);
 
-    [Fact]
-    public void Decide_RecentInput_Unlocked_IsPresent()
+    // Idle at or past the threshold counts as away, so the boundary itself is away; and a locked screen is away
+    // however recent the input was.
+    [Theory]
+    [InlineData(2, false, PresenceState.Present)]
+    [InlineData(20, false, PresenceState.Away)]
+    [InlineData(15, false, PresenceState.Away)]
+    [InlineData(0, true, PresenceState.Away)]
+    public void Decide_ReadsIdleTimeAndTheLockScreen(int idleMinutes, bool isLocked, PresenceState expected)
     {
-        Assert.Equal(PresenceState.Present, PresenceDecision.Decide(TimeSpan.FromMinutes(2), isLocked: false, Threshold));
-    }
-
-    [Fact]
-    public void Decide_IdlePastThreshold_Unlocked_IsAway()
-    {
-        Assert.Equal(PresenceState.Away, PresenceDecision.Decide(TimeSpan.FromMinutes(20), isLocked: false, Threshold));
-    }
-
-    [Fact]
-    public void Decide_IdleExactlyAtThreshold_IsAway()
-    {
-        // >= threshold counts as away, so the boundary itself is away.
-        Assert.Equal(PresenceState.Away, PresenceDecision.Decide(Threshold, isLocked: false, Threshold));
-    }
-
-    [Fact]
-    public void Decide_Locked_IsAway_EvenWithRecentInput()
-    {
-        Assert.Equal(PresenceState.Away, PresenceDecision.Decide(TimeSpan.Zero, isLocked: true, Threshold));
+        Assert.Equal(expected, PresenceDecision.Decide(TimeSpan.FromMinutes(idleMinutes), isLocked, Threshold));
     }
 }

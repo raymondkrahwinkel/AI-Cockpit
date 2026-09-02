@@ -28,20 +28,13 @@ public sealed class StateRootOverrideTests
     // rule, so a second path cannot join it without this line being edited.
     private const string DoesNotMoveByDesign = "CockpitBuild.DefaultStateRoot";
 
-    [Fact]
-    public void WithoutTheVariable_TheStateRootIsExactlyWhatItWasBefore()
-    {
-        using var _ = new OverrideScope(null);
-
-        Assert.Equal(
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), CockpitBuild.StateFolder),
-            CockpitBuild.StateRoot);
-    }
-
+    // Unset, and the two ways a shell hands over a set-but-empty variable: the state root is exactly what it was
+    // before this feature existed.
     [Theory]
+    [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void AnEmptyVariable_CountsAsUnset(string value)
+    public void WithNoUsableVariable_TheStateRootIsExactlyWhatItWasBefore(string? value)
     {
         using var _ = new OverrideScope(value);
 

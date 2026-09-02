@@ -11,17 +11,12 @@ namespace Cockpit.Core.Tests.Claude;
 public class SessionCapabilitiesTests
 {
     [Fact]
-    public void Constructor_DefaultsSupportsVisionToFalse_WhenOmitted()
+    public void Vision_IsOffUnlessADriverSaysOtherwise()
     {
         var capabilities = new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: true, SupportsPlanMode: true, SupportsThinking: true);
 
         Assert.False(capabilities.SupportsVision);
-    }
-
-    [Fact]
-    public void ClaudeCli_SupportsVision_IsTrue()
-    {
         Assert.True(SessionCapabilities.ClaudeCli.SupportsVision);
     }
 }

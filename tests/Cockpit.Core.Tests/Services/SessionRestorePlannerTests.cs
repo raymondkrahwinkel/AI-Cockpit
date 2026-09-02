@@ -50,8 +50,13 @@ public class SessionRestorePlannerTests
         Assert.Equal("work", plan.Profile!.Label);
     }
 
+    /// <summary>
+    /// AC-513 criterion 4: a pane that genuinely never had a conversation id — no <c>SessionStateRecord</c> was
+    /// ever written for it at all (a crash before the session got far enough to report anything) — must not just
+    /// carry <see cref="SessionRestoreAvailability.Unknown"/>, the banner has to be able to say why in words.
+    /// </summary>
     [Fact]
-    public async Task ComposeAsync_NoSavedStateForThePane_YieldsUnknown()
+    public async Task ComposeAsync_NoSavedStateForThePane_YieldsUnknown_AndNamesTheReasonInWords()
     {
         var planner = Build(WorkProfile);
 
@@ -59,22 +64,6 @@ public class SessionRestorePlannerTests
 
         Assert.Equal(SessionRestoreAvailability.Unknown, plan.Availability);
         Assert.NotNull(plan.Profile);
-    }
-
-    /// <summary>
-    /// AC-513 criterion 4: a pane that genuinely never had a conversation id — no <c>SessionStateRecord</c> was
-    /// ever written for it at all (a crash before the session got far enough to report anything) — must not just
-    /// carry <see cref="SessionRestoreAvailability.Unknown"/>, the banner has to be able to say why in words. This
-    /// was already true before AC-513 (<see cref="SessionRestorePlanner.ComposeAsync"/>'s no-state branch has
-    /// always set an explanation); pinned here as a regression test rather than left implicit.
-    /// </summary>
-    [Fact]
-    public async Task ComposeAsync_NoSavedStateForThePane_NamesTheReasonInWords()
-    {
-        var planner = Build(WorkProfile);
-
-        var plan = await planner.ComposeAsync(Pane(), state: null);
-
         Assert.False(string.IsNullOrWhiteSpace(plan.Explanation));
         Assert.Contains("conversation", plan.Explanation, StringComparison.Ordinal);
     }
@@ -126,25 +115,15 @@ public class SessionRestorePlannerTests
         Assert.Contains(missingPath, plan.Explanation, StringComparison.Ordinal);
     }
 
-    // Criterion 4: a provider that keeps no resumable conversation says so on its own account — a directory that has
-    // since been tidied away must not turn that honest "cannot" into a different one.
+    // Criterion 4: a provider that keeps no resumable conversation says so on its own account, and a directory that
+    // has since been tidied away must not turn that honest "cannot" into a different one — which is what the
+    // deliberately absent path here is for.
     [Fact]
     public async Task ComposeAsync_AnUnsupportedProviderInAMissingDirectory_StillYieldsUnsupported()
     {
         var planner = Build(WorkProfile);
         var missingPath = Path.Combine(Path.GetTempPath(), $"cockpit-gone-{Guid.NewGuid():n}");
         var state = new SessionStateRecord("pane-1", "work", "Ollama", null, SessionConversationIdState.Unsupported, missingPath, null, null, null, DateTimeOffset.UtcNow);
-
-        var plan = await planner.ComposeAsync(Pane(), state);
-
-        Assert.Equal(SessionRestoreAvailability.Unsupported, plan.Availability);
-    }
-
-    [Fact]
-    public async Task ComposeAsync_AnUnsupportedProvider_YieldsUnsupported()
-    {
-        var planner = Build(WorkProfile);
-        var state = new SessionStateRecord("pane-1", "work", "Ollama", null, SessionConversationIdState.Unsupported, "/repo", null, null, null, DateTimeOffset.UtcNow);
 
         var plan = await planner.ComposeAsync(Pane(), state);
 

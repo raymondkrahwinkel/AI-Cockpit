@@ -25,29 +25,18 @@ public class ScreenshotOptionsTests
     }
 
     /// <summary>
-    /// A key that is not armed cannot clash with anything: switching push-to-talk off frees its key, and warning
-    /// about it would be warning about something that is not happening.
+    /// A key that is not armed cannot clash with anything, and either switch disarms it — the push-to-talk binding
+    /// is only contributed when voice and the desktop-wide hold are both on. Warning about it would be warning
+    /// about something that is not happening.
     /// </summary>
-    [Fact]
-    public void AKeyBelongingToASwitchedOffFeature_IsNoClash()
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void AKeyBelongingToASwitchedOffFeature_IsNoClash(bool voiceEnabled, bool globalPushToTalk)
     {
         var cockpit = TestCockpit.NewViewModel();
-        cockpit.VoiceEnabled = true;
-        cockpit.VoiceGlobalPushToTalk = false;
-        cockpit.VoicePushToTalkKeyName = "F9";
-        cockpit.ScreenshotGlobalHotkeyEnabled = true;
-        cockpit.ScreenshotHotkeyKeyName = "F9";
-
-        Assert.Empty(cockpit.HotkeyConflict);
-    }
-
-    /// <summary>Switching voice itself off frees push-to-talk's key too — the binding is only contributed when both are on.</summary>
-    [Fact]
-    public void WithVoiceOff_ThePushToTalkKeyIsNotClaimed()
-    {
-        var cockpit = TestCockpit.NewViewModel();
-        cockpit.VoiceEnabled = false;
-        cockpit.VoiceGlobalPushToTalk = true;
+        cockpit.VoiceEnabled = voiceEnabled;
+        cockpit.VoiceGlobalPushToTalk = globalPushToTalk;
         cockpit.VoicePushToTalkKeyName = "F9";
         cockpit.ScreenshotGlobalHotkeyEnabled = true;
         cockpit.ScreenshotHotkeyKeyName = "F9";

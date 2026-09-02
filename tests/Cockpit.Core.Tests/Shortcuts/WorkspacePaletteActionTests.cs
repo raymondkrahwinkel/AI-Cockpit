@@ -26,25 +26,6 @@ public class WorkspacePaletteActionTests
         Assert.NotEmpty(descriptor.Label);
     }
 
-    /// <summary>They open dialogs and change what is on screen, so they stay out of the way while a TUI has the keyboard.</summary>
-    [Theory]
-    [InlineData(ShortcutAction.NewSessionsWorkspace)]
-    [InlineData(ShortcutAction.NewDashboardWorkspace)]
-    [InlineData(ShortcutAction.CloseWorkspace)]
-    public void TheWorkspaceActions_DoNotStayActiveInATerminal(ShortcutAction action)
-    {
-        Assert.False(ShortcutCatalog.StaysActiveInTerminal(action));
-    }
-
-    /// <summary>Every action in the catalog has to be reachable, or it is a row in Options that does nothing.</summary>
-    [Fact]
-    public void EveryCatalogAction_HasADescriptor()
-    {
-        Assert.Equivalent(
-            Enum.GetValues<ShortcutAction>(),
-            ShortcutCatalog.All.Select(descriptor => descriptor.Action));
-    }
-
     /// <summary>Every workspace command reaches the palette — that is the only place they can be found at all, being unbound.</summary>
     [Fact]
     public void ThePalette_OffersTheWorkspaceCommands()

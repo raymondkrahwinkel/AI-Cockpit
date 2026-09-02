@@ -70,23 +70,16 @@ public class MemoryPressureTests
     public void AnIdleCockpit_SaysNothing() =>
         Assert.False(MemoryPressure.Decide(usedBytes: 300L * 1024 * 1024, totalBytes: 16 * Gb, budgetPercent: 66, warned: false).Warn);
 
-    [Fact]
-    public void TheFigureTurnsAmberBeforeAnybodyIsInterrupted() =>
-        // A colour is something you can act on quietly. A toast is an interruption, and it is only worth one when the
-        // machine is actually close to killing something.
-        Assert.Equal(MemoryPressureLevel.Elevated, MemoryPressure.Level(usedBytes: 9 * Gb, totalBytes: 16 * Gb, budgetPercent: 66));
-
-    [Fact]
-    public void AtThePointTheWarningFires_TheFigureIsRed() =>
-        Assert.Equal(MemoryPressureLevel.High, MemoryPressure.Level(usedBytes: 11 * Gb, totalBytes: 16 * Gb, budgetPercent: 66));
-
-    [Fact]
-    public void AnIdleCockpit_ReadsAsCalm() =>
-        Assert.Equal(MemoryPressureLevel.Calm, MemoryPressure.Level(usedBytes: 400L * 1024 * 1024, totalBytes: 16 * Gb, budgetPercent: 66));
-
-    [Fact]
-    public void WithNoMachineToCompareAgainst_ItReadsAsCalm_RatherThanAsAlarm() =>
-        Assert.Equal(MemoryPressureLevel.Calm, MemoryPressure.Level(usedBytes: 12 * Gb, totalBytes: 0, budgetPercent: 66));
+    // Amber before anybody is interrupted (a colour you can act on quietly; a toast is only worth it when the
+    // machine is close to killing something), red where the warning fires. An idle cockpit reads calm, and so does
+    // an unknown total — a share of one is not a fact and must not arrive as an alarm.
+    [Theory]
+    [InlineData(9 * Gb, 16 * Gb, MemoryPressureLevel.Elevated)]
+    [InlineData(11 * Gb, 16 * Gb, MemoryPressureLevel.High)]
+    [InlineData(400L * 1024 * 1024, 16 * Gb, MemoryPressureLevel.Calm)]
+    [InlineData(12 * Gb, 0, MemoryPressureLevel.Calm)]
+    public void Level_ColoursTheFigureByHowCloseTheBudgetIs(long usedBytes, long totalBytes, MemoryPressureLevel expected) =>
+        Assert.Equal(expected, MemoryPressure.Level(usedBytes, totalBytes, budgetPercent: 66));
 
     [Fact]
     public void TheBudgetIsTheOperatorsAndNotAFixedFraction()

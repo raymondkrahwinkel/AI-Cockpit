@@ -13,19 +13,14 @@ public class HelpAddressTests
     [InlineData("welcome#finding", "welcome", "finding")]
     [InlineData("discord/setup#bot-token", "discord/setup", "bot-token")]
     [InlineData("  welcome # finding ", "welcome", "finding")]
+    // A trailing hash with nothing after it means the article, not a section named "".
+    [InlineData("welcome#", "welcome", null)]
     public void Parse_SplitsArticleFromSection(string input, string article, string? section)
     {
         var address = HelpAddress.Parse(input);
 
         Assert.Equal(article, address.Article);
         Assert.Equal(section, address.Section);
-    }
-
-    // An address with a trailing hash and nothing after it means the article, not a section named "".
-    [Fact]
-    public void Parse_TreatsAnEmptySectionAsNone()
-    {
-        Assert.Null(HelpAddress.Parse("welcome#").Section);
     }
 
     [Fact]

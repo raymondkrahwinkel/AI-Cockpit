@@ -4,25 +4,17 @@ namespace Cockpit.Core.Tests.Views;
 
 public class TerminalLinkGestureTests
 {
-    [Fact]
-    public void CtrlPlusASingleLeftPress_Opens() =>
-        Assert.True(TerminalLinkGesture.Opens(controlHeld: true, leftButtonPressed: true, clickCount: 1));
-
     /// <summary>
-    /// AC-560. A double-click delivers two presses over the same link — the first with ClickCount 1, the second
-    /// with 2 — and without this the second one opened the URL a second time.
+    /// Ctrl and a single left press opens; everything else leaves the press for the pty. AC-560 is the middle
+    /// pair: a double-click delivers two presses over the same link — the first with ClickCount 1, the second
+    /// with 2 — and without the count check the second one opened the URL again.
     /// </summary>
     [Theory]
-    [InlineData(2)]
-    [InlineData(3)]
-    public void TheLaterPressesOfAMultiClick_DoNotOpenAgain(int clickCount) =>
-        Assert.False(TerminalLinkGesture.Opens(controlHeld: true, leftButtonPressed: true, clickCount));
-
-    [Fact]
-    public void WithoutCtrl_NothingOpens_SoThePressReachesThePty() =>
-        Assert.False(TerminalLinkGesture.Opens(controlHeld: false, leftButtonPressed: true, clickCount: 1));
-
-    [Fact]
-    public void ANonLeftButton_DoesNotOpen() =>
-        Assert.False(TerminalLinkGesture.Opens(controlHeld: true, leftButtonPressed: false, clickCount: 1));
+    [InlineData(true, true, 1, true)]
+    [InlineData(true, true, 2, false)]
+    [InlineData(true, true, 3, false)]
+    [InlineData(false, true, 1, false)]
+    [InlineData(true, false, 1, false)]
+    public void Opens_OnlyForCtrlAndASingleLeftPress(bool controlHeld, bool leftButtonPressed, int clickCount, bool expected) =>
+        Assert.Equal(expected, TerminalLinkGesture.Opens(controlHeld, leftButtonPressed, clickCount));
 }

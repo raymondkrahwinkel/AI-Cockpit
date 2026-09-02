@@ -9,35 +9,21 @@ namespace Cockpit.Core.Tests.Controls;
 /// </summary>
 public class RailLayoutMathTests
 {
-    [Fact]
-    public void Compute_NarrowRail_StaysOneColumn()
+    // Six 16:10-ish tiles with a 206px minimum, at the three rail widths that matter: the mockup's narrow
+    // 280px rail, one pixel short of the fold, and the 420px the divider reaches when dragged left — where
+    // (420 - 1*8) / 2 lands exactly on the minimum and the second column opens.
+    [Theory]
+    [InlineData(280, 1, 280, 6)]
+    [InlineData(411, 1, 411, 6)]
+    [InlineData(420, 2, 206, 3)]
+    public void Compute_FoldsToASecondColumn_OnlyAtTwiceTheMinimumTileWidth(
+        double railWidth, int expectedColumns, double expectedTileWidth, int expectedRows)
     {
-        // Mockup scene 1: a 280px rail, six 16:10-ish tiles, minimum tile width 206.
-        var geometry = RailLayoutMath.Compute(railWidth: 280, railHeight: 600, tileCount: 6, minTileWidth: 206, focusAspectRatio: 1.5625, gutter: 8);
+        var geometry = RailLayoutMath.Compute(railWidth, railHeight: 600, tileCount: 6, minTileWidth: 206, focusAspectRatio: 1.5625, gutter: 8);
 
-        Assert.Equal(1, geometry.Columns);
-        Assert.Equal(280, geometry.TileWidth);
-        Assert.Equal(6, geometry.Rows);
-    }
-
-    [Fact]
-    public void Compute_RailAtTwiceMinimumWidth_FoldsToTwoColumns()
-    {
-        // Mockup scene 2: divider dragged left, rail widens to 420px (>= 2x the 206px minimum) -> two columns.
-        var geometry = RailLayoutMath.Compute(railWidth: 420, railHeight: 600, tileCount: 6, minTileWidth: 206, focusAspectRatio: 1.5625, gutter: 8);
-
-        Assert.Equal(2, geometry.Columns);
-        // (420 - 1*8) / 2 = 206.
-        Assert.Equal(206, geometry.TileWidth);
-        Assert.Equal(3, geometry.Rows);
-    }
-
-    [Fact]
-    public void Compute_JustBelowTwiceMinimumWidth_StaysOneColumn()
-    {
-        var geometry = RailLayoutMath.Compute(railWidth: 411, railHeight: 600, tileCount: 6, minTileWidth: 206, focusAspectRatio: 1.5625, gutter: 8);
-
-        Assert.Equal(1, geometry.Columns);
+        Assert.Equal(expectedColumns, geometry.Columns);
+        Assert.Equal(expectedTileWidth, geometry.TileWidth);
+        Assert.Equal(expectedRows, geometry.Rows);
     }
 
     [Fact]
@@ -61,26 +47,21 @@ public class RailLayoutMathTests
         Assert.Equal(600, geometry.TileWidth);
     }
 
-    [Fact]
-    public void Compute_MoreTilesThanFit_OverflowsAndReportsVisibleCount()
+    // One column, 100px tiles + 8px gutter = 108px per row. A 250px-tall rail fits two full rows (216px) and
+    // says so; a 1000px one fits everything and reports no overflow at all.
+    [Theory]
+    [InlineData(250, 6, 6, 2, 2, true)]
+    [InlineData(1000, 3, 3, 3, 3, false)]
+    public void Compute_ReportsWhatFitsBeforeAScrollbarIsNeeded(
+        double railHeight, int tileCount, int expectedRows, int expectedVisibleRows, int expectedVisibleCount, bool expectedOverflows)
     {
-        // One column, 100px tiles + 8px gutter = 108px per row; a 250px-tall rail fits 2 full rows (216px).
-        var geometry = RailLayoutMath.Compute(railWidth: 100, railHeight: 250, tileCount: 6, minTileWidth: 100, focusAspectRatio: 1.0, gutter: 8);
+        var geometry = RailLayoutMath.Compute(railWidth: 100, railHeight, tileCount, minTileWidth: 100, focusAspectRatio: 1.0, gutter: 8);
 
         Assert.Equal(1, geometry.Columns);
-        Assert.Equal(6, geometry.Rows);
-        Assert.Equal(2, geometry.VisibleRows);
-        Assert.Equal(2, geometry.VisibleCount);
-        Assert.True(geometry.Overflows);
-    }
-
-    [Fact]
-    public void Compute_EverythingFits_DoesNotOverflow()
-    {
-        var geometry = RailLayoutMath.Compute(railWidth: 100, railHeight: 1000, tileCount: 3, minTileWidth: 100, focusAspectRatio: 1.0, gutter: 8);
-
-        Assert.False(geometry.Overflows);
-        Assert.Equal(3, geometry.VisibleCount);
+        Assert.Equal(expectedRows, geometry.Rows);
+        Assert.Equal(expectedVisibleRows, geometry.VisibleRows);
+        Assert.Equal(expectedVisibleCount, geometry.VisibleCount);
+        Assert.Equal(expectedOverflows, geometry.Overflows);
     }
 
     [Theory]

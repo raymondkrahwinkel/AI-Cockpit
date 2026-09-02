@@ -14,14 +14,13 @@ public class CgroupPressureLineTests
     private const string Stalling =
         "some avg10=90.80 avg60=71.12 avg300=30.44 total=262148711\nfull avg10=64.20 avg60=52.01 avg300=22.13 total=201773115\n";
 
-    [Fact]
-    public void AQuietSession_ReadsZero() =>
-        Assert.Equal(0.0, CgroupPressureLine.SomeAvg10(Quiet));
-
-    [Fact]
-    public void AStallingSession_ReadsTheSomeLineNotTheFullOne() =>
-        // 90.80 is the figure oomd printed for the slice it killed on 2026-08-25; 64.20 would be the wrong meter.
-        Assert.Equal(90.80, CgroupPressureLine.SomeAvg10(Stalling));
+    // 90.80 is the figure oomd printed for the slice it killed on 2026-08-25 — the `some` line. The `full` line's
+    // 64.20 sits right beside it in the same file and would be the wrong meter.
+    [Theory]
+    [InlineData(Quiet, 0.0)]
+    [InlineData(Stalling, 90.80)]
+    public void ItReadsTheSomeLine_NotTheFullOne(string file, double expected) =>
+        Assert.Equal(expected, CgroupPressureLine.SomeAvg10(file));
 
     [Fact]
     public void ADecimalPoint_IsReadTheKernelsWayWhateverTheMachinesLocale()

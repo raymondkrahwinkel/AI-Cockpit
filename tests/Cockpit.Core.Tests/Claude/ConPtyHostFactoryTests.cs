@@ -10,93 +10,31 @@ namespace Cockpit.Core.Tests.Claude;
 /// </summary>
 public class ConPtyHostFactoryTests
 {
-    [Fact]
-    public void QuoteArgument_LeavesAPathWithoutSpacesUnquoted()
-    {
-        var quoted = ConPtyHostFactory.QuoteArgument(@"C:\Users\raymo\AppData\Roaming\Claude\claude-code\2.1.197\claude.exe");
-
-        Assert.Equal(@"C:\Users\raymo\AppData\Roaming\Claude\claude-code\2.1.197\claude.exe", quoted);
-    }
-
-    [Fact]
-    public void QuoteArgument_WrapsAPathWithASpaceInIt()
-    {
-        var quoted = ConPtyHostFactory.QuoteArgument(@"C:\Program Files\Claude\claude.exe");
-
-        Assert.Equal(@"""C:\Program Files\Claude\claude.exe""", quoted);
-    }
-
-    [Fact]
-    public void QuoteArgument_LeavesABareTokenUnquoted()
-    {
-        var quoted = ConPtyHostFactory.QuoteArgument("claude");
-
-        Assert.Equal("claude", quoted);
-    }
-
     /// <summary>
-    /// The regression that matters: <c>--settings &lt;json&gt;</c> (the statusline relay) is an argument
-    /// full of double quotes and spaces. The old "wrap it in quotes when it has a space" quoting left the
-    /// embedded quotes unescaped, so <c>CommandLineToArgvW</c> split the JSON at its first space and handed
-    /// <c>claude.exe</c> broken argv — which exited on the spot, closing every new TTY panel instantly.
-    /// Correct escaping doubles nothing here (no backslash runs) but escapes each embedded quote as <c>\"</c>.
+    /// One argument, quoted the way <c>CommandLineToArgvW</c> reads it back. The last two rows matter most.
+    /// <c>--settings &lt;json&gt;</c> is full of quotes and spaces: the old "wrap it when it has a space" quoting
+    /// left them unescaped, so the parser split the JSON at its first space and handed <c>claude.exe</c> broken
+    /// argv, which exited on the spot and closed every new TTY panel. And a backslash run is literal on its own
+    /// but must be doubled before a quote, or the parser reads it as escaping that quote.
     /// </summary>
-    [Fact]
-    public void QuoteArgument_EscapesEmbeddedDoubleQuotes()
+    [Theory]
+    [InlineData(@"C:\Users\raymo\AppData\Roaming\Claude\claude-code\2.1.197\claude.exe", @"C:\Users\raymo\AppData\Roaming\Claude\claude-code\2.1.197\claude.exe")]
+    [InlineData("claude", "claude")]
+    [InlineData(@"C:\Program Files\Claude\claude.exe", @"""C:\Program Files\Claude\claude.exe""")]
+    [InlineData(@"{""statusLine"":{""type"":""command""}}", @"""{\""statusLine\"":{\""type\"":\""command\""}}""")]
+    [InlineData(@"\""", @"""\\\""""")]
+    public void QuoteArgument_QuotesOnlyWhatNeedsIt_AndEscapesWhatWouldBeReadAsSyntax(string argument, string expected)
     {
-        var quoted = ConPtyHostFactory.QuoteArgument(@"{""statusLine"":{""type"":""command""}}");
-
-        Assert.Equal(@"""{\""statusLine\"":{\""type\"":\""command\""}}""", quoted);
+        Assert.Equal(expected, ConPtyHostFactory.QuoteArgument(argument));
     }
 
-    /// <summary>
-    /// The subtle half of the algorithm: a run of backslashes is literal on its own, but when it precedes a
-    /// quote (or the closing quote) each backslash must be doubled so the parser does not read them as
-    /// escaping that quote. A lone <c>\"</c> token therefore becomes <c>"\\\""</c>.
-    /// </summary>
-    [Fact]
-    public void QuoteArgument_DoublesBackslashesThatPrecedeAQuote()
+    [Theory]
+    [InlineData("claude", new string[0], "claude")]
+    [InlineData("claude", new[] { "--permission-mode", "acceptEdits", "--model", "opus", "--effort", "high" }, "claude --permission-mode acceptEdits --model opus --effort high")]
+    [InlineData(@"C:\Program Files\Claude\claude.exe", new[] { "--model", "opus" }, @"""C:\Program Files\Claude\claude.exe"" --model opus")]
+    [InlineData("claude", new[] { "--settings", @"{""statusLine"":{""type"":""command""}}" }, @"claude --settings ""{\""statusLine\"":{\""type\"":\""command\""}}""")]
+    public void BuildCommandLine_JoinsTheQuotedExecutableAndArgumentsWithSpaces(string executable, string[] arguments, string expected)
     {
-        var quoted = ConPtyHostFactory.QuoteArgument(@"\""");
-
-        Assert.Equal(@"""\\\""""", quoted);
-    }
-
-    [Fact]
-    public void BuildCommandLine_WithNoArguments_IsJustTheExecutable()
-    {
-        var commandLine = ConPtyHostFactory.BuildCommandLine("claude", []);
-
-        Assert.Equal("claude", commandLine);
-    }
-
-    [Fact]
-    public void BuildCommandLine_AppendsEachArgumentSpaceSeparated()
-    {
-        var commandLine = ConPtyHostFactory.BuildCommandLine(
-            "claude",
-            ["--permission-mode", "acceptEdits", "--model", "opus", "--effort", "high"]);
-
-        Assert.Equal("claude --permission-mode acceptEdits --model opus --effort high", commandLine);
-    }
-
-    [Fact]
-    public void BuildCommandLine_QuotesAnExecutablePathWithASpace()
-    {
-        var commandLine = ConPtyHostFactory.BuildCommandLine(
-            @"C:\Program Files\Claude\claude.exe",
-            ["--model", "opus"]);
-
-        Assert.Equal(@"""C:\Program Files\Claude\claude.exe"" --model opus", commandLine);
-    }
-
-    [Fact]
-    public void BuildCommandLine_EscapesASettingsJsonArgument()
-    {
-        var commandLine = ConPtyHostFactory.BuildCommandLine(
-            "claude",
-            ["--settings", @"{""statusLine"":{""type"":""command""}}"]);
-
-        Assert.Equal(@"claude --settings ""{\""statusLine\"":{\""type\"":\""command\""}}""", commandLine);
+        Assert.Equal(expected, ConPtyHostFactory.BuildCommandLine(executable, arguments));
     }
 }

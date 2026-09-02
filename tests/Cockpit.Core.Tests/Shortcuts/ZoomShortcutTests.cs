@@ -16,35 +16,21 @@ namespace Cockpit.Core.Tests.Shortcuts;
 /// </summary>
 public class ZoomShortcutTests
 {
-    [Fact]
-    public void DefaultGesture_ForToggleZoom_IsTheTwoModifierChord()
-    {
-        Assert.Equal("Ctrl+Shift+M", ShortcutCatalog.DefaultGesture(ShortcutAction.ToggleZoom));
-    }
-
-    [Fact]
-    public void ToggleZoom_StaysOutOfTheTerminalAllowList_BecauseItsModifiersCarryIt()
-    {
-        Assert.False(ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.ToggleZoom));
-    }
-
-    [Fact]
-    public void TheZoomBinding_IsLiveWithTheTerminalFocused()
+    // Live over a focused terminal on its two modifiers alone, where the one-modifier Ctrl+B it replaced went to
+    // the shell instead — the bug this chord exists to fix. The gesture's own value is
+    // ShortcutSettingsStoreZoomMigrationTests' to pin, and its absence from the allow-list is settled by the sweep.
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("Ctrl+B", false)]
+    public void TheZoomBinding_IsLiveWithTheTerminalFocused_WhereItsOneModifierPredecessorWasNot(
+        string? gesture, bool expected)
     {
         var zoom = BindingFor(ShortcutAction.ToggleZoom);
+        zoom = gesture is null ? zoom : zoom with { Gesture = gesture };
 
-        Assert.True(ShortcutDispatchGate.IsBindingLive(
-            zoom, KeyGesture.Parse(zoom.Gesture), ShortcutFocus.Terminal));
-    }
-
-    [Fact]
-    public void TheOldCtrlBZoom_WasDeadWithTheTerminalFocused()
-    {
-        // The bug this replaced: one modifier, and not in the terminal allow list, so the press went to the shell.
-        var zoom = BindingFor(ShortcutAction.ToggleZoom) with { Gesture = "Ctrl+B" };
-
-        Assert.False(ShortcutDispatchGate.IsBindingLive(
-            zoom, KeyGesture.Parse(zoom.Gesture), ShortcutFocus.Terminal));
+        Assert.Equal(
+            expected,
+            ShortcutDispatchGate.IsBindingLive(zoom, KeyGesture.Parse(zoom.Gesture), ShortcutFocus.Terminal));
     }
 
     [Fact]

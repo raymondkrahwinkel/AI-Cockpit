@@ -9,27 +9,16 @@ namespace Cockpit.Core.Tests.Notifications;
 /// </summary>
 public class FinishedNotificationDecisionTests
 {
-    [Fact]
-    public void WatchingThatSession_StaysSilent()
+    // The one silent case is the session you are actually watching. Another session selected, a window in the
+    // background, or you away from the PC each mean the answer would go unnoticed — which is what the
+    // notification is for.
+    [Theory]
+    [InlineData(true, true, PresenceState.Present, false)]
+    [InlineData(false, true, PresenceState.Present, true)]
+    [InlineData(true, false, PresenceState.Present, true)]
+    [InlineData(true, true, PresenceState.Away, true)]
+    public void OnlyTheSessionYouAreWatching_StaysSilent(bool isSelected, bool isWindowActive, PresenceState presence, bool expected)
     {
-        Assert.False(FinishedNotificationDecision.ShouldNotify(isSelected: true, isWindowActive: true, PresenceState.Present));
-    }
-
-    [Fact]
-    public void AnotherSessionSelected_Notifies()
-    {
-        Assert.True(FinishedNotificationDecision.ShouldNotify(isSelected: false, isWindowActive: true, PresenceState.Present));
-    }
-
-    [Fact]
-    public void WindowInTheBackground_Notifies()
-    {
-        Assert.True(FinishedNotificationDecision.ShouldNotify(isSelected: true, isWindowActive: false, PresenceState.Present));
-    }
-
-    [Fact]
-    public void AwayFromThePc_NotifiesEvenForTheSelectedSessionInAFocusedWindow()
-    {
-        Assert.True(FinishedNotificationDecision.ShouldNotify(isSelected: true, isWindowActive: true, PresenceState.Away));
+        Assert.Equal(expected, FinishedNotificationDecision.ShouldNotify(isSelected, isWindowActive, presence));
     }
 }

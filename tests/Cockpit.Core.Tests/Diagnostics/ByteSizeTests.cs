@@ -15,16 +15,11 @@ public class ByteSizeTests
     [InlineData(512, "512 B")]
     [InlineData(1024, "1.0 KB")]
     [InlineData(1536, "1.5 KB")]
-    public void Human_SmallValues_KeepTheirDetail(long bytes, string expected) =>
+    // Below 100 the decimal is kept; at or above it the fraction is dropped as noise.
+    [InlineData(99L * 1024 * 1024, "99.0 MB")]
+    [InlineData(100L * 1024 * 1024, "100 MB")]
+    public void Human_ChoosesTheUnitThatKeepsTheNumberReadable(long bytes, string expected) =>
         Assert.Equal(expected, ByteSize.Human(bytes));
-
-    // Below 100 keeps a decimal; at or above it, the fraction is dropped as noise.
-    [Fact]
-    public void Human_CrossesToNoDecimal_AtOneHundred()
-    {
-        Assert.Equal("99.0 MB", ByteSize.Human(99L * 1024 * 1024));
-        Assert.Equal("100 MB", ByteSize.Human(100L * 1024 * 1024));
-    }
 
     // The formatter must not follow a comma-decimal locale, or the copied report would read "73,6 GB" on a Dutch machine.
     [Fact]

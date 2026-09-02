@@ -189,10 +189,12 @@ public class MarkdownParserTests
     /// <summary>
     /// The reported shape: <c>**[#365](url)**</c> showed its own syntax on screen, bold and all.
     /// </summary>
-    [Fact]
-    public void LinkInsideBold_IsOneBoldLinkAndNotLiteralSyntax()
+    [Theory]
+    [InlineData("Pushed: **[#365](https://x.io/pull/365)**")]
+    [InlineData("Pushed: [**#365**](https://x.io/pull/365)")]
+    public void BoldAndLink_NestEitherWayRound_AndNeverShowTheirOwnSyntax(string markdown)
     {
-        var runs = MarkdownParser.ParseInlines("Pushed: **[#365](https://x.io/pull/365)**");
+        var runs = MarkdownParser.ParseInlines(markdown);
 
         var link = Assert.Single(runs, r => r.Kind == MarkdownInlineKind.Link);
         Assert.Equal("#365", link.Text);
@@ -212,17 +214,6 @@ public class MarkdownParserTests
         Assert.Equal("#365", link.Text);
         Assert.Equal("https://x.io/p", link.Url);
         Assert.True(link.IsItalic);
-    }
-
-    [Fact]
-    public void BoldInsideALink_KeepsBothTheLinkAndTheWeight()
-    {
-        var link = Assert.Single(MarkdownParser.ParseInlines("[**#365**](https://x.io/p)"));
-
-        Assert.Equal(MarkdownInlineKind.Link, link.Kind);
-        Assert.Equal("#365", link.Text);
-        Assert.Equal("https://x.io/p", link.Url);
-        Assert.True(link.IsBold);
     }
 
     [Fact]

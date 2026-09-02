@@ -20,25 +20,14 @@ public class DiagramDiffTests
     }
 
     [Fact]
-    public void Apply_AcceptingEveryBlock_ReconstructsAfter()
-    {
-        const string before = "flowchart LR\nA-->B\nB-->C\nC-->D";
-        const string after = "flowchart LR\nA-->B\nB-->E";
-
-        var blocks = DiagramDiff.Compute(before, after);
-        var allAccepted = Enumerable.Range(0, blocks.Count).ToHashSet();
-
-        Assert.Equal(after, DiagramDiff.Apply(blocks, allAccepted));
-    }
-
-    [Fact]
-    public void Apply_RejectingEveryBlock_ReconstructsBefore()
+    public void Apply_AcceptingOrRejectingEverything_ReconstructsAfterOrBefore()
     {
         const string before = "flowchart LR\nA-->B\nB-->C\nC-->D";
         const string after = "flowchart LR\nA-->B\nB-->E";
 
         var blocks = DiagramDiff.Compute(before, after);
 
+        Assert.Equal(after, DiagramDiff.Apply(blocks, Enumerable.Range(0, blocks.Count).ToHashSet()));
         Assert.Equal(before, DiagramDiff.Apply(blocks, new HashSet<int>()));
     }
 

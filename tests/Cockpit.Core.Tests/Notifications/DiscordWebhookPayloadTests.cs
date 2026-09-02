@@ -6,14 +6,7 @@ namespace Cockpit.Core.Tests.Notifications;
 /// <summary>Pins the Discord webhook body to the <c>{"content":"..."}</c> shape Discord expects.</summary>
 public class DiscordWebhookPayloadTests
 {
-    [Fact]
-    public void FromNotification_RendersTitleAndBodyIntoContent()
-    {
-        var payload = DiscordWebhookPayload.FromNotification(new AttentionNotification("Claude 2", "Needs attention"));
-
-        Assert.Equal("**Claude 2** — Needs attention", payload.Content);
-    }
-
+    // The title and body are rendered into the one property Discord reads, and there is nothing else in the body.
     [Fact]
     public void ToJson_ProducesASingleContentProperty()
     {

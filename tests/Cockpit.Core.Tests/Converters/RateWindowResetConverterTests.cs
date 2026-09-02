@@ -13,16 +13,13 @@ public class RateWindowResetConverterTests
     private static string Convert(object? value) =>
         (string)RateWindowResetConverter.Instance.Convert(value, typeof(string), null, CultureInfo.InvariantCulture)!;
 
-    [Fact]
-    public void Null_IsEmpty()
+    // No reset, or something that is not one at all: the row then shows just the bar rather than a stray word.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("not a date")]
+    public void AValueThatIsNoReset_IsEmpty(object? value)
     {
-        Assert.Empty(Convert(null));
-    }
-
-    [Fact]
-    public void ANonDateValue_IsEmpty()
-    {
-        Assert.Empty(Convert("not a date"));
+        Assert.Empty(Convert(value));
     }
 
     [Fact]

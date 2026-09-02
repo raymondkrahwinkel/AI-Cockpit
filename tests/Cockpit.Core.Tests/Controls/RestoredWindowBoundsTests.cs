@@ -12,40 +12,21 @@ public class RestoredWindowBoundsTests
 {
     private static readonly PixelRect PrimaryWorkingArea = new(0, 0, 1920, 1040);
 
-    [Fact]
-    public void IsOnAScreen_WhenFullyOnScreen_IsAccepted()
+    /// <summary>
+    /// Fully on screen is restored; fully off is not. The two rejections in between are the ones the old
+    /// 1px-overlap check waved through: a window whose left edge sits one pixel inside the screen's right edge,
+    /// and one positioned so only its titlebar's top sliver pokes above a bottom panel — plenty of overlap with
+    /// the screen's raw <c>Bounds</c>, next to none with the <c>WorkingArea</c> the operator can actually reach.
+    /// </summary>
+    [Theory]
+    [InlineData(100, 100, true)]
+    [InlineData(5000, 5000, false)]
+    [InlineData(1920 - 1, 100, false)]
+    [InlineData(100, 1040 - 2, false)]
+    public void IsOnAScreen_AcceptsOnlyAMeaningfulOverlapWithAWorkingArea(int x, int y, bool expected)
     {
-        var bounds = new WindowBounds(100, 100, 800, 600, IsMaximized: false);
+        var bounds = new WindowBounds(x, y, 800, 600, IsMaximized: false);
 
-        Assert.True(RestoredWindowBounds.IsOnAScreen(bounds, [PrimaryWorkingArea]));
-    }
-
-    [Fact]
-    public void IsOnAScreen_WhenFullyOffAllScreens_IsRejected()
-    {
-        var bounds = new WindowBounds(5000, 5000, 800, 600, IsMaximized: false);
-
-        Assert.False(RestoredWindowBounds.IsOnAScreen(bounds, [PrimaryWorkingArea]));
-    }
-
-    [Fact]
-    public void IsOnAScreen_WithOnlyAOnePixelOverlap_IsRejected()
-    {
-        // Left edge of the window sits 1px inside the screen's right edge — the old 1px-overlap check accepted
-        // this even though nothing of the window is actually reachable.
-        var bounds = new WindowBounds(PrimaryWorkingArea.Width - 1, 100, 800, 600, IsMaximized: false);
-
-        Assert.False(RestoredWindowBounds.IsOnAScreen(bounds, [PrimaryWorkingArea]));
-    }
-
-    [Fact]
-    public void IsOnAScreen_WhenOnlyTheTitleBarSitsUnderAPanel_IsRejected()
-    {
-        // WorkingArea already excludes a bottom panel, e.g. y >= 1040 is under the dock. A window positioned so
-        // only its titlebar's top sliver pokes above the panel has next to no overlap with WorkingArea, even
-        // though it would have overlapped plenty with the screen's raw Bounds.
-        var bounds = new WindowBounds(100, PrimaryWorkingArea.Height - 2, 800, 600, IsMaximized: false);
-
-        Assert.False(RestoredWindowBounds.IsOnAScreen(bounds, [PrimaryWorkingArea]));
+        Assert.Equal(expected, RestoredWindowBounds.IsOnAScreen(bounds, [PrimaryWorkingArea]));
     }
 }

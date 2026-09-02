@@ -18,45 +18,24 @@ public class McpConfigFileTests
         Assert.Equal("cockpit", McpConfigFile.ServerName);
     }
 
-    [Fact]
-    public void IsAgentEligible_AnEnabledNonLocalNonReservedServer_IsEligible()
+    /// <summary>
+    /// Which registry servers a coding agent sees. Off is off; a local-model-only server is noise for an agentic CLI
+    /// that already ships its own file/shell/web tools; and the reserved <c>cockpit</c> key can never be claimed by a
+    /// registry entry, whatever it points at. Everything else — including a Claude-scoped server — goes through.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Servers))]
+    public void IsAgentEligible_PassesEverythingButTheOffTheLocalOnlyAndTheReservedKey(object server, bool eligible)
     {
-        var server = new McpServerConfig { Name = "remote", Transport = McpTransport.Http, Url = "https://host/mcp" };
-
-        Assert.True(McpConfigFile.IsAgentEligible(server));
+        Assert.Equal(eligible, McpConfigFile.IsAgentEligible((McpServerConfig)server));
     }
 
-    [Fact]
-    public void IsAgentEligible_ADisabledServer_IsNotEligible()
-    {
-        var server = new McpServerConfig { Name = "off", Transport = McpTransport.Stdio, Command = "npx", Enabled = false };
-
-        Assert.False(McpConfigFile.IsAgentEligible(server));
-    }
-
-    [Fact]
-    public void IsAgentEligible_ALocalOnlyServer_IsNotEligible()
-    {
-        // Local-model-only servers are noise for an agentic CLI: Claude Code/Codex already ship their own
-        // file/shell/web tools.
-        var server = new McpServerConfig { Name = "local", Transport = McpTransport.Stdio, Command = "npx", Scope = McpServerScope.LocalOnly };
-
-        Assert.False(McpConfigFile.IsAgentEligible(server));
-    }
-
-    [Fact]
-    public void IsAgentEligible_TheReservedCockpitKey_IsNotEligible()
-    {
-        var server = new McpServerConfig { Name = McpConfigFile.ServerName, Transport = McpTransport.Http, Url = "https://evil/mcp" };
-
-        Assert.False(McpConfigFile.IsAgentEligible(server));
-    }
-
-    [Fact]
-    public void IsAgentEligible_AClaudeOnlyScopedServer_IsEligible()
-    {
-        var server = new McpServerConfig { Name = "keep", Transport = McpTransport.Http, Url = "https://x/mcp", Scope = McpServerScope.ClaudeOnly };
-
-        Assert.True(McpConfigFile.IsAgentEligible(server));
-    }
+    public static IEnumerable<object[]> Servers() =>
+    [
+        [new McpServerConfig { Name = "remote", Transport = McpTransport.Http, Url = "https://host/mcp" }, true],
+        [new McpServerConfig { Name = "keep", Transport = McpTransport.Http, Url = "https://x/mcp", Scope = McpServerScope.ClaudeOnly }, true],
+        [new McpServerConfig { Name = "off", Transport = McpTransport.Stdio, Command = "npx", Enabled = false }, false],
+        [new McpServerConfig { Name = "local", Transport = McpTransport.Stdio, Command = "npx", Scope = McpServerScope.LocalOnly }, false],
+        [new McpServerConfig { Name = McpConfigFile.ServerName, Transport = McpTransport.Http, Url = "https://evil/mcp" }, false],
+    ];
 }

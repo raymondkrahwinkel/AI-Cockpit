@@ -13,7 +13,8 @@ public class LocalModelServerTests
     public void ARunningOllama_IsFoundWithTheModelItLoaded()
     {
         // Ollama keeps the model in a child process, which is where the gigabytes are. Measured as a tree, exactly
-        // like a session is.
+        // like a session is — and as one line, because the runner counted on its own as well would put the model in
+        // the panel twice and claim more memory in use than the machine has.
         var rows = new List<ProcessRow>
         {
             new(1, 0, TimeSpan.Zero, 0, "systemd"),
@@ -26,20 +27,6 @@ public class LocalModelServerTests
         Assert.Single(servers);
         Assert.Equal("Ollama", servers[0].Name);
         Assert.Equal(5_040_000_000, servers[0].MemoryBytes);
-    }
-
-    // The runner is inside the server's tree. Counted on its own as well, the model would appear twice — and the panel
-    // would claim more memory in use than the machine has.
-    [Fact]
-    public void TheModelRunner_IsNotCountedTwice()
-    {
-        var rows = new List<ProcessRow>
-        {
-            new(100, 1, TimeSpan.Zero, 40_000_000, "ollama"),
-            new(101, 100, TimeSpan.Zero, 5_000_000_000, "ollama runner"),
-        };
-
-        Assert.Equal(5_040_000_000, LocalModelServers.From(rows).Single().MemoryBytes);
     }
 
     [Fact]

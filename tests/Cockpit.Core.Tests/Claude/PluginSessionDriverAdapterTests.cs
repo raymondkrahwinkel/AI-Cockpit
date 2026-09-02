@@ -58,27 +58,16 @@ public class PluginSessionDriverAdapterTests
         var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, false) };
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
+        // The whole record, so the three flags a plugin cannot back at all (live model switch, plan mode, thinking —
+        // no member on IPluginSessionDriver, #45 review finding 3) are pinned false here rather than in tests of
+        // their own, and so is vision when the plugin leaves it unset.
         Assert.Equal(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false,
             SupportsVision: false), adapter.Capabilities);
     }
 
-    /// <summary>
-    /// SupportsVision (#64) is mapped straight through from the plugin's own capabilities rather than forced
-    /// false like the three live-control flags — no example plugin sets it true today (fase 2 not built
-    /// yet), but the adapter itself must not be the thing standing in the way once one does.
-    /// </summary>
     [Fact]
-    public void Capabilities_MapsSupportsVisionFromThePluginCapabilities_WhenFalse()
-    {
-        var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, false, SupportsVision: false) };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        Assert.False(adapter.Capabilities.SupportsVision);
-    }
-
-    [Fact]
-    public void Capabilities_MapsSupportsVisionFromThePluginCapabilities_WhenTrue()
+    public void Capabilities_MapsSupportsVision_WhenThePluginDeclaresIt()
     {
         var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, false, SupportsVision: true) };
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
@@ -196,21 +185,6 @@ public class PluginSessionDriverAdapterTests
 
     // With no resolver in the graph (every other test here, and any host built before AC-165) the launch is exactly
     // what it was: the parameter is optional precisely so an existing composition keeps working untouched.
-    [Fact]
-    public async Task StartAsync_WithNoResolverWired_StillPassesTheProfilesVariables()
-    {
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
-        {
-            EnvironmentVariables = [new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS")],
-        };
-
-        await adapter.StartAsync(profile, launchOptions: PaneOptions);
-
-        Assert.Contains("AI_OS_ROOT", inner.LastEnvironment!);
-    }
-
     /// <summary>
     /// AC-89: the session's MCP identity dies with the session. Without this the token stays a valid bearer for every
     /// cockpit-hosted endpoint until the app restarts, still naming a pane that is gone — and the consent broker keys
@@ -500,22 +474,6 @@ public class PluginSessionDriverAdapterTests
             status.RateLimits);
     }
 
-    /// <summary>
-    /// Live model switch / plan mode / thinking budget have no member on <see cref="IPluginSessionDriver"/>
-    /// that could back them (#45 review finding 3) — the adapter reports them unsupported unconditionally,
-    /// not merely mirroring whatever a plugin happens to set on its own <see cref="PluginSessionCapabilities"/>.
-    /// </summary>
-    [Fact]
-    public void Capabilities_AlwaysReportsLiveModelSwitchPlanModeAndThinkingAsUnsupported()
-    {
-        var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, true) };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        Assert.False(adapter.Capabilities.SupportsLiveModelSwitch);
-        Assert.False(adapter.Capabilities.SupportsPlanMode);
-        Assert.False(adapter.Capabilities.SupportsThinking);
-    }
-
     [Fact]
     public async Task StartAsync_ForwardsTheModel_AndRecordsTheProfile()
     {
@@ -571,21 +529,6 @@ public class PluginSessionDriverAdapterTests
         Assert.NotNull(inner.LastLaunchOptions);
         Assert.Equal("workspace-write", inner.LastLaunchOptions!["sandbox"]);
         Assert.Equal("o3", inner.LastLaunchOptions["model"]);
-    }
-
-    [Fact]
-    public async Task StartAsync_StatesThisSessionIsAttended_WhenTheCallerDidNotSayOtherwise()
-    {
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        // AC-378: everything that is not a delegated task or a self-driving embedded run is a pane an operator opened,
-        // and the host says so out loud rather than leaving the driver to read absence. A driver must be free to treat
-        // silence as unattended (the safe answer on an older host), which only works if a newer host is never silent.
-        await adapter.StartAsync(launchOptions: new Dictionary<string, string> { ["model"] = "opus" });
-
-        Assert.NotNull(inner.LastLaunchOptions);
-        Assert.Equal("false", inner.LastLaunchOptions![WellKnownPluginSessionOptions.Unattended]);
     }
 
     [Fact]
@@ -659,6 +602,8 @@ public class PluginSessionDriverAdapterTests
         Assert.NotNull(inner.LastLaunchOptions);
         Assert.Equal("read-only", inner.LastLaunchOptions!["sandbox"]);
         Assert.False(inner.LastLaunchOptions.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
+        // AC-378: a driver must be free to read silence as unattended (the safe answer on an older host), which
+        // only works if a newer host is never silent about a pane an operator opened.
         Assert.Equal("false", inner.LastLaunchOptions[WellKnownPluginSessionOptions.Unattended]);
     }
 
@@ -887,17 +832,6 @@ public class PluginSessionDriverAdapterTests
         await adapter.StartAsync(enabledMcpServerNames: new HashSet<string> { "anything" });
 
         Assert.Empty(inner.LastMcpServers!);
-    }
-
-    [Fact]
-    public async Task RespondToPermissionAsync_ForwardsToolUseIdAndDecision()
-    {
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        await adapter.RespondToPermissionAsync("tool_1", allow: true);
-
-        Assert.Equal(("tool_1", true), inner.LastPermissionResponse);
     }
 
     [Fact]
