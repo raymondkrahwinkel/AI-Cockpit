@@ -26,6 +26,14 @@ public class AutopilotStepEvidenceTests
     }
 
     [Fact]
+    public void From_UsesLfOnlyForItsObservation()
+    {
+        var evidence = AutopilotStepEvidence.From(_Change(files: ["src/Thing.cs"], patch: "-old\r\n+new"), _Step(), ["done"]);
+
+        Assert.DoesNotContain("\r", evidence.Observation);
+    }
+
+    [Fact]
     public void From_ListsUntrackedFilesSeparately_BecauseTheDiffCannotShowThem()
     {
         var change = _Change(untracked: ["src/Brand.cs"]);
