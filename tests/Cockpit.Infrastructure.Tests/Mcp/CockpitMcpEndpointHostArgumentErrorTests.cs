@@ -39,6 +39,45 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
     }
 
     [Fact]
+    public async Task UnknownArgument_WithAValidProjectId_IsRejectedBeforeTheToolRuns()
+    {
+        await using var endpoint = await _MountedEndpoint.StartAsync();
+
+        var result = await endpoint.Client.CallToolAsync("start_agent", new Dictionary<string, object?>
+        {
+            ["projectId"] = "project-with-default-profile",
+            ["profileLabel"] = "work",
+        });
+
+        Assert.True(result.IsError);
+        var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+        Assert.Contains("profileLabel", text, StringComparison.Ordinal);
+        Assert.Contains("profile", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ArgumentsWithoutADeclaredPropertiesSchema_AreNotRejected()
+    {
+        using var document = JsonDocument.Parse("""{"type":"object"}""");
+
+        var unknown = CockpitMcpEndpointHost.UnknownParameterNames(document.RootElement, ["profileLabel"]);
+
+        Assert.Null(unknown);
+    }
+
+    [Fact]
+    public async Task DifferentCasedArgument_IsRejected()
+    {
+        await using var endpoint = await _MountedEndpoint.StartAsync();
+
+        var result = await endpoint.Client.CallToolAsync("echo_pane", new Dictionary<string, object?> { ["ToPaneId"] = "pane-1" });
+
+        Assert.True(result.IsError);
+        var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+        Assert.Contains("ToPaneId", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ValidCall_StillSucceeds_TheFilterOnlyCatchesTheBrokenPath()
     {
         await using var endpoint = await _MountedEndpoint.StartAsync();
@@ -89,6 +128,10 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
         [McpServerTool(Name = "echo_pane")]
         [Description("Echoes the given pane id back.")]
         public string Echo([Description("Required pane id.")] string toPaneId) => toPaneId;
+
+        [McpServerTool(Name = "start_agent")]
+        [Description("Starts an agent for a project.")]
+        public string StartAgent([Description("Project id.")] string projectId) => projectId;
 
         // AC-1138: stands in for any gateway hop that hit its cap — what the tool did to get here does not change
         // what the caller must be able to read off the answer.
