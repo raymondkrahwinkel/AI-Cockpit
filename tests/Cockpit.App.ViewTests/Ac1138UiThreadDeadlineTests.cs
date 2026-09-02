@@ -106,26 +106,36 @@ public sealed class Ac1138UiThreadDeadlineTests
     {
         var (_, sink) = Dispatcher.UIThread.Invoke(_SinkWithOneSession);
 
-        // Longer than the cap by a margin, which is the point: how long this job runs no longer decides how long
-        // the caller waits. Before this ticket the call came back at 8 s, with no error and no sign anything was up.
-        Dispatcher.UIThread.Post(() => Thread.Sleep(TimeSpan.FromSeconds(8)));
+        // Longer than the cap by a margin, and a Wait with that 8 s as its ceiling rather than a bare Sleep of it
+        // (AC-1196's blocking test, same reason): the ceiling keeps this able to fail, and releasing it below
+        // returns the thread ~3 s earlier, which the next test in the collection was paying for.
+        using var release = new ManualResetEventSlim();
+        Dispatcher.UIThread.Post(() => release.Wait(TimeSpan.FromSeconds(8)));
 
-        var (failure, elapsed) = await _TimedRefusal(sink);
+        try
+        {
+            var (failure, elapsed) = await _TimedRefusal(sink);
 
-        Assert.Equal(UiThreadCall.DefaultGrace, failure.Deadline);
-        Assert.Contains(UiUnavailableException.Code, failure.Message, StringComparison.Ordinal);
-        Assert.True(elapsed < UiThreadCall.DefaultGrace + _Slack, $"answered after {elapsed}, cap is {UiThreadCall.DefaultGrace}");
+            Assert.Equal(UiThreadCall.DefaultGrace, failure.Deadline);
+            Assert.Contains(UiUnavailableException.Code, failure.Message, StringComparison.Ordinal);
+            Assert.True(elapsed < UiThreadCall.DefaultGrace + _Slack, $"answered after {elapsed}, cap is {UiThreadCall.DefaultGrace}");
+        }
+        finally
+        {
+            release.Set();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        }
     }
 
-    /// <summary>T2 — starved at Render (4), the priority a runaway layout or render pass reposts at.</summary>
+    /// <summary>
+    /// T2 — starved at Render (4), the priority a runaway layout or render pass reposts at. A second case at
+    /// Loaded (1) stood here and was dropped: <see cref="UiThreadCall"/> never learns what the starving loop is
+    /// posted at, and all the number decides is whether it outranks the Default the gateway hops at — which
+    /// Loaded and Render both do.
+    /// </summary>
     [Fact]
     public Task AGatewayCalledWhileTheUiThreadIsStarvedAtRender_AnswersUiUnavailableWithinTheCap() =>
         _StarvedGatewayIsCapped(DispatcherPriority.Render);
-
-    /// <summary>T2 — the same at Loaded (1), one step above the Default the gateways hop at.</summary>
-    [Fact]
-    public Task AGatewayCalledWhileTheUiThreadIsStarvedAtLoaded_AnswersUiUnavailableWithinTheCap() =>
-        _StarvedGatewayIsCapped(DispatcherPriority.Loaded);
 
     /// <summary>T3 — the silent positive control: a quiet thread still answers normally, exactly once, at once.</summary>
     [Fact]

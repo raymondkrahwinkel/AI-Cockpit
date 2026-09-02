@@ -113,44 +113,9 @@ public sealed class Ac1256StarvedLayoutReportTests
         }
     }
 
-    /// <summary>
-    /// One reading cannot tell a subtree that is stuck from one walking through the tree, and which of those it is
-    /// decides where the next investigation goes. So an episode is asked more than once, and the samples say which.
-    /// </summary>
-    [Fact]
-    public async Task AFreezeThatGoesOn_IsAskedMoreThanOnce()
-    {
-        var logger = new _CapturingLogger();
-        var service = new DiagnosticsBackgroundService(logger, alarmAfter: AlarmAfter);
-        Window? window = null;
-
-        try
-        {
-            window = await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                var opened = new Window { Width = 400, Height = 300, Content = new StackPanel() };
-                opened.Show();
-                opened.UpdateLayout();
-                return opened;
-            });
-
-            service.SetLayoutRoots(() => [window]);
-
-            using var starver = StarvedDispatcher.Start(DispatcherPriority.Normal);
-            service.Start();
-
-            Assert.True(await _Appears(logger, "sample=2/"), "a freeze that goes on was read only once");
-
-            // Numbered rather than repeated verbatim: reading two lines side by side is the whole point, and
-            // without the number an investigator cannot tell a second reading from a duplicated first.
-            Assert.Contains(logger.Lines, line => line.Contains("sample=1/", StringComparison.Ordinal));
-        }
-        finally
-        {
-            service.Dispose();
-            await Dispatcher.UIThread.InvokeAsync(() => window?.Close(), DispatcherPriority.Background);
-        }
-    }
+    // AFreezeThatGoesOn_IsAskedMoreThanOnce stood here, waiting for "sample=1/" and "sample=2/". LayoutLoopGuard-
+    // Tests.WithTheSwitchOff_TheSameStandstillIsSampledAndLeftAlone waits for "sample=3/" over the same
+    // starvation: strictly more, same counter, same log statement, and on 1s samples where this sat out 10s.
 
     private static async Task<bool> _Appears(_CapturingLogger logger, string token)
     {

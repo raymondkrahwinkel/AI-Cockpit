@@ -24,13 +24,14 @@ public sealed class Ac1204SessionEventQueueBackpressureTests
     private const string SessionId = "ac-1204-session";
     private const int TotalEvents = 10_000;
 
+    /// <summary>
+    /// A second case at Loaded (1) stood beside this one and was dropped. <see cref="SessionEventQueue"/> is
+    /// handed no priority and reads none; the only thing the number settles is whether the starving loop outranks
+    /// the drain, and Loaded and Render both do. It was this case with a different constant in it.
+    /// </summary>
     [Fact]
     public Task EnqueueingWhileTheUiThreadIsStarvedAtRender_StaysBounded_AndAppliesAfterRecovery() =>
         _StarvedEnqueueStaysBounded(DispatcherPriority.Render);
-
-    [Fact]
-    public Task EnqueueingWhileTheUiThreadIsStarvedAtLoaded_StaysBounded_AndAppliesAfterRecovery() =>
-        _StarvedEnqueueStaysBounded(DispatcherPriority.Loaded);
 
     /// <summary>The silent positive control: a quiet UI thread applies one event within a few ms, in the same run.</summary>
     [Fact]
