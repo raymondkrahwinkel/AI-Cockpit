@@ -35,7 +35,8 @@
                     <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
                         <!-- name checkbox on the left, its pre-flight tool-token figure (AC-134) on the right -->
                         <Grid ColumnDefinitions="*,Auto">
-                            <CheckBox Grid.Column="0" Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
+                            <CheckBox Grid.Column="0" Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"
+                                      IsEnabled="{Binding IsTickEnabled}"/>
                             <TextBlock Grid.Column="1" Text="{Binding TokenLabel}" VerticalAlignment="Center"
                                        Margin="8,0,0,0" FontSize="11"
                                        Foreground="{StaticResource CockpitTextFaintBrush}"

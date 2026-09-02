@@ -14,7 +14,7 @@ namespace Cockpit.App.ViewTests;
 public class McpServerChecklistTests
 {
     [Fact]
-    public void TheHeader_CountsWhatIsTicked() => HeadlessAvalonia.Run(() =>
+    public void TheHeader_NamesWhatIsSwitchedOff() => HeadlessAvalonia.Run(() =>
     {
         var checklist = new McpServerChecklist
         {
@@ -26,11 +26,11 @@ public class McpServerChecklistTests
             },
         };
 
-        Assert.Equal("MCP servers · 2 of 3 selected", checklist.SummaryText);
+        Assert.Equal("MCP servers · youtrack off", checklist.SummaryText);
     });
 
     [Fact]
-    public void TickingABox_MovesTheCount_SoACollapsedListStillSaysWhatItHolds() => HeadlessAvalonia.Run(() =>
+    public void TickingABox_MovesTheSummary_SoACollapsedListStillSaysWhatItHolds() => HeadlessAvalonia.Run(() =>
     {
         var youtrack = new McpServerSelectionItemViewModel("youtrack") { IsEnabledForSession = false };
         var checklist = new McpServerChecklist
@@ -44,11 +44,11 @@ public class McpServerChecklistTests
 
         youtrack.IsEnabledForSession = true;
 
-        Assert.Equal("MCP servers · 2 of 2 selected", checklist.SummaryText);
+        Assert.Equal("MCP servers · all 2 selected", checklist.SummaryText);
     });
 
     [Fact]
-    public void RowsRebuilt_AreCountedToo() => HeadlessAvalonia.Run(() =>
+    public void RowsRebuilt_AreSummarisedToo() => HeadlessAvalonia.Run(() =>
     {
         // The New-session dialog rebuilds its rows on every project switch; a count that only ever listened to the
         // first set would then freeze at whatever the previous project had.
@@ -60,7 +60,27 @@ public class McpServerChecklistTests
         servers.Add(new McpServerSelectionItemViewModel("youtrack") { IsEnabledForSession = false });
         servers[0].IsEnabledForSession = false;
 
-        Assert.Equal("MCP servers · 0 of 2 selected", checklist.SummaryText);
+        Assert.Equal("MCP servers · depot, youtrack off", checklist.SummaryText);
+    });
+
+    [Fact]
+    public void ManySwitchedOff_FallBackToTheCount() => HeadlessAvalonia.Run(() =>
+    {
+        // Naming them is what makes one switched-off server findable without expanding; past a handful the line
+        // stops being readable at a glance and the count is the better answer again.
+        var checklist = new McpServerChecklist
+        {
+            Servers = new System.Collections.ObjectModel.ObservableCollection<McpServerSelectionItemViewModel>
+            {
+                new("depot"),
+                new("youtrack") { IsEnabledForSession = false },
+                new("playwright") { IsEnabledForSession = false },
+                new("docker") { IsEnabledForSession = false },
+                new("k8s") { IsEnabledForSession = false },
+            },
+        };
+
+        Assert.Equal("MCP servers · 1 of 5 selected", checklist.SummaryText);
     });
 
     [Fact]

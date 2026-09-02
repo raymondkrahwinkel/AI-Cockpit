@@ -288,6 +288,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
         viewModel._carriedEnabledServerNames = [.. decided.Where(overlay.IsSelectedByDefault)];
         viewModel._carriedDisabledServerNames = [.. decided.Where(name => !overlay.IsSelectedByDefault(name))];
 
+        // AC-130's off-state, now on the project too: on exactly when this project narrows something today, so what
+        // it already does keeps happening and only becomes visible. The pre-AC-736 off-list shape reads as on for
+        // that same reason — it is what the very next save would have written anyway.
+        viewModel.RestrictMcpServers = overlay.EnabledServerNames is not null
+            || viewModel._carriedDisabledServerNames.Count > 0
+            || offered.Any(server => !server.ProjectLinked && !overlay.IsSelectedByDefault(server));
+        viewModel._SyncMcpTickEditability();
+
         // Opening the editor without reconciling the two would let SaveAsync send the stale local values back to Depot
         // with a checksum that legitimately matches its current state, silently overwriting whatever a colleague
         // changed before this editor ever opened — not a race, a guaranteed clobber on every edit to a project
@@ -412,6 +420,29 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     // Every offered MCP server with whether this project's sessions get it. Unticking one is what fills the overlay's disabled list.
     public ObservableCollection<McpServerSelectionItemViewModel> McpServers { get; } = [];
+
+    // Whether this project pre-selects a specific set of MCP servers, the same question a profile answers (AC-130)
+    // and with the same storage: on is a `ProjectMcpOverlay.EnabledServerNames` list, off is null. Off — the
+    // default for a new project — means every server goes along, including ones registered after this save.
+    [ObservableProperty]
+    private bool _restrictMcpServers;
+
+    partial void OnRestrictMcpServersChanged(bool value) => _SyncMcpTickEditability();
+
+    // With the pre-selection off, every ordinary row shows what a session actually gets — all of them — and is not
+    // tickable into a choice `ToProject` would drop. A project-linked row stays tickable either way: its own name in
+    // DisabledServerNames is the only "off" it has (AC-766), and that one is not part of this gate.
+    private void _SyncMcpTickEditability()
+    {
+        foreach (var server in McpServers.Where(server => !server.IsProjectLinked))
+        {
+            server.IsTickEnabled = RestrictMcpServers;
+            if (!RestrictMcpServers)
+            {
+                server.IsEnabledForSession = true;
+            }
+        }
+    }
 
     // The project's extra information, in the order the operator put it in (AC-295). Rows they add and leave empty
     // cost them nothing: `ToProject` drops them.
@@ -812,9 +843,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
     }
 
     // The same "null means no opinion, otherwise every ticked ordinary name plus whatever this build has no row for"
-    // logic both ToProject's own overlay and AC-247's remote edit need (AC-766, AC-763).
+    // logic both ToProject's own overlay and AC-247's remote edit need (AC-766, AC-763). Which of the two it is comes
+    // from the gate the operator can see, never from whether some row happens to be unticked.
     private IReadOnlyList<string>? _ComputeEnabledMcpServerNames() =>
-        McpServers.Any(server => !server.IsProjectLinked && !server.IsEnabledForSession) || _carriedEnabledServerNames.Count > 0 || _carriedDisabledServerNames.Count > 0
+        RestrictMcpServers
             ? [.. McpServers.Where(server => !server.IsProjectLinked && server.IsEnabledForSession).Select(server => server.Name), .. _carriedEnabledServerNames]
             : null;
 
@@ -843,6 +875,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
         Description = description ?? string.Empty;
         BehaviorPrompt = behaviorPrompt ?? string.Empty;
         IsolateInWorktreeByDefault = isolate;
+
+        // The gate moves with the names it stands for, or "take theirs" would leave a remote list showing as no
+        // pre-selection at all — and the next save would then write that list away.
+        RestrictMcpServers = enabledMcpServerNames is not null;
 
         var enabled = enabledMcpServerNames?.ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var server in McpServers)

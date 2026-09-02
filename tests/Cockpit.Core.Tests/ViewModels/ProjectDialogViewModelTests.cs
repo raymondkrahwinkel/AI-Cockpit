@@ -100,7 +100,8 @@ public class ProjectDialogViewModelTests
     /// <summary>
     /// The point of the whole list (Raymond, 2026-08-01): a project that narrowed its servers is saved as "these are
     /// on", so a server added to the registry afterwards is in nobody's list and starts unticked there — where the
-    /// old off-list had it arrive ticked in every project.
+    /// old off-list had it arrive ticked in every project. Narrowing is now the operator switching the pre-selection
+    /// on, not merely unticking a row, which is why the gate is set here.
     /// </summary>
     [Fact]
     public async Task ToProject_ANarrowedProject_DoesNotTickAServerAddedLater()
@@ -108,6 +109,7 @@ public class ProjectDialogViewModelTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), Catalog(Server("youtrack"), Server("depot")));
         viewModel.Name = "Cockpit";
+        viewModel.RestrictMcpServers = true;
         viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession = false;
 
         Assert.False(viewModel.ToProject().McpOverlay.IsSelectedByDefault("brand-new"));
@@ -234,12 +236,75 @@ public class ProjectDialogViewModelTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), ScopedCatalog(ProjectLinkedServer(), Server("youtrack")));
         viewModel.Name = "Cockpit";
+        viewModel.RestrictMcpServers = true;
         viewModel.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession = false;
 
         var overlay = viewModel.ToProject().McpOverlay;
 
         Assert.NotNull(overlay.EnabledServerNames);
         Assert.DoesNotContain("Depot: krahwinkel-it.nl", overlay.EnabledServerNames!);
+    }
+
+    /// <summary>
+    /// EVE Together's shape, and the whole point of the gate: thirteen names written by an older build, and a server
+    /// registered since that is in none of them. That server falls out of every session on this project, and the
+    /// dialog has to say so rather than let it look like an accident — the pre-selection reads as on, and the row it
+    /// does not name reads as unticked. Switching the gate off is what puts the server back, and it puts every
+    /// future one back with it. Turn <c>RestrictMcpServers</c> into a constant either way and one half goes red.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_AProjectWithASavedPreSelection_ShowsItAsOnAndCanBeSwitchedOff()
+    {
+        var project = Project.Create("EVE Together") with
+        {
+            McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["youtrack"] },
+        };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, ProfileStore("personal"), Catalog(Server("youtrack"), Server("registered-later")));
+
+        Assert.True(viewModel.RestrictMcpServers, "a saved list stays a list, and the dialog says which state that is");
+        Assert.False(viewModel.McpServers.Single(server => server.Name == "registered-later").IsEnabledForSession);
+        Assert.False(viewModel.ToProject().McpOverlay.IsSelectedByDefault("registered-later"),
+            "what the dialog shows unticked is what the session does not get — same call ProjectQuickStart makes");
+
+        // Ticking the gap closed is not the same as saying "take everything": the gate is what decides, so this
+        // still saves a list, and the server registered after it is still outside. Only the switch below changes that.
+        viewModel.McpServers.Single(server => server.Name == "registered-later").IsEnabledForSession = true;
+        Assert.Equal(new[] { "youtrack", "registered-later" }, viewModel.ToProject().McpOverlay.EnabledServerNames);
+
+        viewModel.RestrictMcpServers = false;
+
+        var row = viewModel.McpServers.Single(server => server.Name == "registered-later");
+        Assert.True(row.IsEnabledForSession);
+        Assert.False(row.IsTickEnabled, "off means every server goes, so a tick that would be dropped cannot be made");
+        Assert.Null(viewModel.ToProject().McpOverlay.EnabledServerNames);
+        Assert.True(viewModel.ToProject().McpOverlay.IsSelectedByDefault("registered-later"));
+    }
+
+    /// <summary>
+    /// The route the gate must not swallow (AC-766): a project-linked server has no row in EnabledServerNames to be
+    /// left out of, so its name in <see cref="ProjectMcpOverlay.DisabledServerNames"/> is the only way to turn it
+    /// off — and that has to keep working with the pre-selection off, where there is no enabled list at all.
+    /// </summary>
+    [Fact]
+    public async Task ToProject_WithNoPreSelection_StillTurnsOffAProjectLinkedServer()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore(), ScopedCatalog(ProjectLinkedServer(), Server("youtrack")));
+        viewModel.Name = "EVE Together";
+
+        Assert.False(viewModel.RestrictMcpServers, "a project that narrowed nothing pre-selects nothing");
+        var depot = viewModel.McpServers.Single(server => server.Name == "Depot: krahwinkel-it.nl");
+        Assert.True(depot.IsTickEnabled, "the gate is about ordinary rows; this row's own off is the only one it has");
+        depot.IsEnabledForSession = false;
+
+        var overlay = viewModel.ToProject().McpOverlay;
+
+        Assert.Null(overlay.EnabledServerNames);
+        Assert.Contains("Depot: krahwinkel-it.nl", overlay.DisabledServerNames);
+        Assert.False(overlay.IsSelectedByDefault(ProjectLinkedServer()));
+        Assert.True(overlay.IsSelectedByDefault("youtrack"), "the rest of the project is untouched by that one off");
     }
 
     [Fact]
@@ -269,6 +334,7 @@ public class ProjectDialogViewModelTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), Catalog(Server("youtrack"), Server("depot")));
         viewModel.Name = "Cockpit";
+        viewModel.RestrictMcpServers = true;
         viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession = false;
 
         Assert.Equal(new[] { "youtrack" }, viewModel.ToProject().McpOverlay.EnabledServerNames);

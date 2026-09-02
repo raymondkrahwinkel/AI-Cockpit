@@ -17,6 +17,12 @@ public partial class McpServerSelectionItemViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isEnabledForSession = true;
 
+    // Whether this row's box may be ticked at all. Off only in the project editor, for an ordinary row while that
+    // project pre-selects nothing (AC-130's off-state): every server goes along, so a tick that would be dropped
+    // on save cannot be made in the first place.
+    [ObservableProperty]
+    private bool _isTickEnabled = true;
+
     // True while the estimate is being enumerated in the background, so the row can show a placeholder.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TokenLabel))]
