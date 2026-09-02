@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.Autopilot.Tests;
+﻿namespace Cockpit.Plugin.Autopilot.Tests;
 
 // `AutopilotRunRecord.Capture` — the write path from live plan state to the persisted record shape, extracted out
 // of `_RecordAndNotify` so it is unit-testable. Previously untested: mutations like a fixed `None` or hard-coded
@@ -17,14 +17,9 @@ public class AutopilotRunCaptureTests
     [Fact]
     public void Capture_ProjectsEachStepOnItsOwnValues_NeverOneStepsOntoTheRest()
     {
-        // Three steps, no two alike in anything the record carries: order, title, tier, attempt count and what those
-        // attempts classify as. That is the whole design of this fixture — a mutation that hard-codes any single
-        // field (a fixed `None`, a blanked model, a zero attempt count, one step's tier for all) cannot satisfy
-        // three different expectations at once, where a record of identical steps would let it pass.
-        //
-        // AC-256 is why the tier is here at all: live it shows as a chip on the block and then vanishes with the run,
-        // so without it the tier mix of a finished run — what a before/after on model cost is measured from — cannot
-        // be read back at all.
+        // Three steps, no two alike in order, title, tier, attempt count or what those attempts classify as: a
+        // mutation hard-coding any single field cannot satisfy three different expectations at once. AC-256 is why
+        // the tier is here — without it the tier mix a before/after on model cost is measured from is unreadable.
         var plan = new AutopilotPlan("goal", null,
         [
             Step("1", "Alpha", attempts: 4, reworks: 2) with { ProfileLabel = "Claude", Model = "haiku" },

@@ -684,7 +684,7 @@ summary	tests/Cockpit.Core.Tests/Services/ShutdownTeardownTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/EmbeddedConfinementGateTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/HeldPromptDeliveryTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/PluginTtySessionProviderAdapterTests.cs	1
-summary	tests/Cockpit.Core.Tests/Sessions/SessionStartDefaultsTests.cs	4
+summary	tests/Cockpit.Core.Tests/Sessions/SessionStartDefaultsTests.cs	3
 summary	tests/Cockpit.Core.Tests/Sessions/SessionStateStoreDependencyInjectionTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/TtyLauncherTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/TtySessionProviderResolverTests.cs	1

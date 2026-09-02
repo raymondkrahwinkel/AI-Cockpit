@@ -1,4 +1,4 @@
-using Avalonia.Controls;
+﻿using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Tracking;
@@ -222,10 +222,9 @@ public class AutopilotRunCoordinatorTests
     [Fact]
     public async Task RunAsync_ForANonGitFolder_EmbedsOneUnisolatedAgent_InTheWorkingDirectory()
     {
-        // AC-174: a run whose folder the host reported is not a git repository runs its steps without worktree
-        // isolation, directly in that folder — an admin task with no repo, not refused at the first step. Measured on
-        // a step that asks for three agents, because the two halves only mean anything together: with no per-agent
-        // worktree isolation to hand out, a parallel step would race three agents on the one folder.
+        // AC-174: a folder the host reported is no git repository runs its steps unisolated, in that folder — an
+        // admin task with no repo, not refused at the first step. Measured on a step asking for three agents: with
+        // no per-agent worktree to hand out, a parallel step would race all three on the one folder.
         var plan = _RunningPlan(_ParallelStep("1", agents: 3));
         var context = _Context(_Session("step-pane"));
         var coordinator = new AutopilotRunCoordinator(_Host(), plan);

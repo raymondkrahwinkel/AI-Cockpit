@@ -1,12 +1,11 @@
-using Cockpit.Core.Wireframe;
+﻿using Cockpit.Core.Wireframe;
 using Cockpit.Plugin.Diagram.Wireframe;
 
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
 
 // AC-911 criterion 4: every wireframe type picker template parses without error and produces at least one screen
 // — Parse itself resolves every goto:, so a dangling one shows up here as a parse error, not a broken preview.
-// `SurfaceTemplate` is internal, so the rows carry the two fields this test reads rather than the template itself;
-// that also makes every template a case of its own, where the loop this replaced stopped at the first that broke.
+// `SurfaceTemplate` is internal (CS0051), so the rows carry the fields read here — one case per template.
 public class WireframeTemplatesTests
 {
     public static IEnumerable<object[]> Templates() =>

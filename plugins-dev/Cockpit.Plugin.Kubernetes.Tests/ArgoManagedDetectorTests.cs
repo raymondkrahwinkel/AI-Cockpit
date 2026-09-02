@@ -1,13 +1,11 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Cockpit.Plugin.Kubernetes.Argo;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
 // AC-576 phase 2: exercised against the exact tracking-id shape measured on a real cluster (2026-08-25),
 // `<app>:<group>/<kind>:<namespace>/<name>`, plus the instance-label fallback for pre-v3.3.2 tracking methods.
-// One resource shape per row: the detector reads one blob of metadata and answers which application owns it and
-// which signal said so, so the shapes are values of one behaviour rather than behaviours of their own. A null
-// expectation means the detector must claim nothing at all.
+// One shape per row: who owns it and which signal said so; a null expectation means it must claim nothing.
 public class ArgoManagedDetectorTests
 {
     public static IEnumerable<object[]> Resources() =>

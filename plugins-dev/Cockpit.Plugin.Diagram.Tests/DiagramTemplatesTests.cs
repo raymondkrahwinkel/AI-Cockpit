@@ -1,13 +1,12 @@
-using Cockpit.Core.Abstractions.Diagrams;
+﻿using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Infrastructure.Diagrams;
 using Mermaider;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
-// AC-911 criterion 2: the diagram type picker may only ever offer what DiagramObjectEdit.DialectOf (AC-899) can
-// still hand-edit afterwards. `SurfaceTemplate` is internal, so the rows carry the two fields these tests read
-// rather than the template itself — a public test method may not name an internal type in its signature (CS0051).
-// That also makes every template a case of its own, where the loop this replaced stopped at the first that broke.
+// AC-911 criterion 2: the diagram type picker may only offer what DiagramObjectEdit.DialectOf (AC-899) can still
+// hand-edit afterwards. `SurfaceTemplate` is internal (CS0051), so the rows carry the two fields read here rather
+// than the template — which also makes every template its own case, where the loop stopped at the first break.
 public class DiagramTemplatesTests
 {
     public static IEnumerable<object[]> Templates() =>

@@ -1,15 +1,11 @@
-using Cockpit.Plugins.Abstractions.Profiles;
+﻿using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The cost ceiling (AC-256). These pin the two things a ceiling has to get right: that it actually turns a plan down,
 // and that it stays silent about everything it cannot fairly judge — otherwise it either does nothing or blocks work
-// on a guess.
-//
-// The strategies are an internal enum, so the rows below box them and each test casts one back. xUnit still discovers
-// every case separately and names it after the enum member, which is what a spend guard needs: when one combination
-// breaks you want to read which one off the failure, not go looking.
+// on a guess. The strategies are an internal enum, so the rows box them and xUnit names each case after it.
 public class AutopilotModelTierTests
 {
     private static readonly IReadOnlyList<PluginProfileInfo> Roster =

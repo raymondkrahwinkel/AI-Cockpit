@@ -35,10 +35,9 @@ public class AskMessageTests
         Assert.Contains("A — Line one Line two", text);
     }
 
-    // AC-910 criterion 4: what each surface sends as its object reference is what the agent can actually address —
-    // never just a title, since two windows can carry the same one (criterion 3). The diagram side of that is pinned
-    // by Compose_WithAnObject_NamesTheSurfaceAndTheObject, which asserts the whole composed line; this is the one
-    // combination it does not cover — a second surface kind, carrying an object.
+    // AC-910 criterion 4: the object reference must be one the agent can address, never just a title (criterion 3).
+    // Compose_WithAnObject_NamesTheSurfaceAndTheObject asserts the whole composed line for a diagram; this is the
+    // one combination it does not cover — a second surface kind, carrying an object.
     [Fact]
     public void Compose_ForWireframe_IncludesTheComponentIdAndTheScreenTitle()
     {

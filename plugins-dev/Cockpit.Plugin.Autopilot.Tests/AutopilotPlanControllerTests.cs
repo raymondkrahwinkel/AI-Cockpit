@@ -1,11 +1,8 @@
-namespace Cockpit.Plugin.Autopilot.Tests;
+﻿namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The AC-174 plan controller: the planning round (living plan + single approval), the run driving its steps, and the
 // settle that reads the per-step hard/skip policy — the plan-based counterpart of AutopilotRunControllerTests.
-//
-// The gate modes, statuses and outcomes are internal enums, so the data sources box them and each test casts back —
-// a public test method may not name an internal type in its signature (CS0051), and xUnit1000 forbids making the
-// class internal instead.
+// Gate modes, statuses and outcomes are internal enums (CS0051), so the rows box them and each test casts back.
 public class AutopilotPlanControllerTests
 {
     private static AutopilotStep Step(string id, GateMode mode = GateMode.Skip, AutopilotStepStatus status = AutopilotStepStatus.Pending) =>
@@ -141,10 +138,9 @@ public class AutopilotPlanControllerTests
         Assert.Contains("Step 1", controller.BlockReason);
     }
 
-    // One validation round, with an attempt still in hand. `Rejected` is a genuine CEO verdict — the step's output was
-    // judged against its acceptance and turned down — so it is the one outcome that counts as a rework (AC-347).
-    // `Faulted` means no verdict was ever reached (a crash, a stall, a refused isolation, a dead CEO): the step still
-    // reworks, but it must never be classified as a review finding later, so Reworks stays untouched.
+    // One validation round, with an attempt still in hand. `Rejected` is a genuine CEO verdict, so it is the one
+    // outcome that counts as a rework (AC-347). `Faulted` reached no verdict (crash, stall, refused isolation, dead
+    // CEO): the step still reworks, but must never read as a review finding later, so Reworks stays untouched.
     public static IEnumerable<object[]> ValidationRounds() =>
     [
         [AutopilotStepOutcome.Passed, false, AutopilotStepStatus.Passed, 0],

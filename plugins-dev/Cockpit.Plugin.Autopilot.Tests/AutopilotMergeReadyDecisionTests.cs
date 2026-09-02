@@ -1,12 +1,8 @@
-namespace Cockpit.Plugin.Autopilot.Tests;
+﻿namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The template-driven merge-ready PR decision (AC-216) and its preflight (AC-215): a code run (the template asked for a
 // PR) delivers one when it can, degrades fail-soft when it cannot (no git run, no remote, no gh), and an administrative
-// run reports nothing. Pure, so the outcome/fallback is proven here without a git repo, a live run or the network.
-//
-// The delivery travels as object so every data source's signature stays public while the members stay named rather
-// than numbered; each test casts it back once. `[InlineData]` cannot carry it: a public test method may not name an
-// internal type in its signature (CS0051), and xUnit1000 rules out making the class internal instead.
+// run reports nothing. The delivery travels as object (CS0051), so the rows keep it named, not numbered.
 public class AutopilotMergeReadyDecisionTests
 {
     [Theory]

@@ -1,12 +1,10 @@
-using Cockpit.Plugin.Kubernetes.Helm;
+﻿using Cockpit.Plugin.Kubernetes.Helm;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
-// `HelmRunner` is a translation layer over `CliRunner` (AC-179 pulled the process handling out so kind could reuse
-// it), so the process behaviour itself — a missing executable, a deadline, a locked environment — is proven once in
-// `CliRunnerTests` against the code that actually implements it. What is left here, and cannot be proven there, is
-// the translation: `HelmResult` is built positionally from `CliResult`, so a swapped pair would go unnoticed by
-// every caller until a clean run read as timed out.
+// `HelmRunner` only translates `CliRunner` (AC-179), so the process behaviour — missing executable, deadline,
+// locked environment — is proven once in `CliRunnerTests` against the code that implements it. Left here is the
+// translation: `HelmResult` is built positionally, so a swapped pair reads a clean run as timed out.
 public class HelmRunnerTests
 {
     [Fact]

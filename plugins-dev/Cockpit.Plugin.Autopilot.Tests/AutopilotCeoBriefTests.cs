@@ -4,13 +4,8 @@ using Cockpit.Plugins.Abstractions.Profiles;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The CEO planning brief (AC-174): it states the goal, points the CEO at the plan-emit tool, and adapts to whether the
-// run was triggered from a source item or started CEO-first. Kept a pure builder off the workspace body so its wording
-// is tested without a live session.
-//
-// The brief is one string built from one builder, so "the brief says X" is one behaviour with many values — the
-// instruction blocks are rows, not methods. Each row is a phrase set the brief must carry and one it must not; the
-// pairing is what keeps a row honest, since an instruction that is present but also contradicted elsewhere would pass
-// a presence-only assertion.
+// run was triggered from a source item or started CEO-first. One string from one builder, so "the brief says X" is one
+// behaviour with many values: each row is a phrase set it must carry paired with one it must not.
 public class AutopilotCeoBriefTests
 {
     // Every row below is measured against the same plainest possible plan: CEO-first, no roster, no identity, default
@@ -100,8 +95,7 @@ public class AutopilotCeoBriefTests
 
     // A tracker-triggered plan. AC-212's read/write split lives here: planning may READ the tracker but must NOT move
     // stage or post notes — that is the run's job (CEO validator + coordinator auto-advance, AC-202). The write tools
-    // live on the run-only CEO endpoint and must never be named in the planning brief, or the CEO reports missing
-    // tools while planning.
+    // live on the run-only CEO endpoint, so naming them here makes the CEO report missing tools while planning.
     public static IEnumerable<object[]> TriggeredRunInstructions() =>
     [
         [

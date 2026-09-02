@@ -1,14 +1,10 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The pure decision logic a run context carries: the edge guard that fires the "needs you" toast exactly once when
 // a run enters AwaitingOperator (AC-194), and the settled-outcome classification that records a run in history
-// rather than silently dropping it — including an operator-stopped run (AC-196). Both are pure statics.
-//
-// The phases travel as object throughout so each data source's own signature stays public while the members are
-// still named rather than numbered; the tests cast them back once. `[InlineData]` cannot carry them — a public test
-// method may not name an internal type in its signature (CS0051), and xUnit1000 forbids making the class internal.
+// rather than silently dropping it (AC-196). The phases are internal enums (CS0051), so the rows box them.
 public class AutopilotRunContextTests
 {
     public static IEnumerable<object[]> ToastEdges() =>
@@ -47,11 +43,9 @@ public class AutopilotRunContextTests
     public void IsSettledOutcome_RecordsExactlyTheRunsThatEnded(object phase, bool settled) =>
         Assert.Equal(settled, AutopilotPlanWorkspaceBody.IsSettledOutcome((AutopilotPlanPhase)phase));
 
-    // The persistent "needs you" marker's condition (AC-203): a run in AwaitingOperator raises the standing signal and
-    // it stays raised as long as any active run is in that phase, regardless of what the others do. It clears the
-    // moment the run leaves the wait — answered (→ Running) or settled — so it never outlives the wait it signals.
-    // A CEO consult (spoor 2, AC-201) keeps the run Running, so however many Running runs there are, none of them
-    // raises it; only an operator escalation (spoor 3) does.
+    // The persistent "needs you" marker (AC-203): raised while any active run is in AwaitingOperator, cleared the
+    // moment it leaves — answered or settled — so it never outlives the wait it signals. A CEO consult (spoor 2,
+    // AC-201) keeps the run Running and must not raise it; only an operator escalation (spoor 3) does.
     public static IEnumerable<object[]> ActiveRunPhases() =>
     [
         [new[] { AutopilotPlanPhase.AwaitingOperator }, true],
@@ -70,10 +64,9 @@ public class AutopilotRunContextTests
     public void NeedsOperatorAttention_IsRaised_ExactlyWhileARunAwaitsTheOperator(object phases, bool needed) =>
         Assert.Equal(needed, AutopilotPlanWorkspaceBody.NeedsOperatorAttention((AutopilotPlanPhase[])phases));
 
-    // AC-440's bug: the pane always rendered _activeContexts[0] while the "Needs you" badge lit up for any active run
-    // in AwaitingOperator — so a second, later run's blockade could sit behind the first run's still-running step
-    // surface with no way to reach it. The awaiting run wins regardless of its position; with none awaiting, the
-    // first run stays the default, exactly what the surface showed before AC-440.
+    // AC-440's bug: the pane always rendered _activeContexts[0] while the badge lit up for any awaiting run, so a
+    // second run's blockade could sit behind the first run's step surface unreachable. The awaiting run now wins
+    // regardless of position; with none awaiting the first run stays the default, as before AC-440.
     public static IEnumerable<object[]> ContextPreferences() =>
     [
         [new[] { AutopilotPlanPhase.Running }, 0],

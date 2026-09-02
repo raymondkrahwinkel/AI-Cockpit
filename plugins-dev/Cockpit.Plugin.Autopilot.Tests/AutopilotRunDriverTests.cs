@@ -80,10 +80,9 @@ public class AutopilotRunDriverTests
         Assert.Equal(0, controller.Plan!.Steps[0].Reworks);
     }
 
-    // AC-347, both ways a first attempt can end short of a pass. `Faulted` never reached a verdict, so it costs an
-    // attempt and no rework — the exact shape `Classify` reads as a run restart. `Rejected` DID reach one: the CEO
-    // judged the work and turned it down, which is a review finding. Proven by running the actual driver loop rather
-    // than calling Classify with a hand-picked state.
+    // AC-347, both ways a first attempt can end short of a pass. `Faulted` reached no verdict, so it costs an
+    // attempt and no rework — what `Classify` reads as a run restart. `Rejected` did reach one, so it is a review
+    // finding. Proven through the real driver loop rather than by calling Classify with a hand-picked state.
     public static IEnumerable<object[]> FirstAttemptOutcomes() =>
     [
         [AutopilotStepOutcome.Faulted, 0, AutopilotCorrectionKind.RunRestart],

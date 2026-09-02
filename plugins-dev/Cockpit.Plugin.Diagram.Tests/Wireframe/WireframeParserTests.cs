@@ -1,4 +1,4 @@
-using Cockpit.Core.Wireframe;
+﻿using Cockpit.Core.Wireframe;
 using Cockpit.Core.Wireframe.Model;
 
 namespace Cockpit.Plugin.Diagram.Tests.Wireframe;
@@ -34,10 +34,9 @@ public class WireframeParserTests
         Assert.Equal(WireframeNodeKind.Button, result.Screens.Single().Children.Single().Children.Single().Kind);
     }
 
-    // Every way a single line can be refused. Each is the same guarantee with different values — one error, on the
-    // line that caused it, saying enough for the author to fix it — so they are rows rather than methods. A refusal
-    // that also has something to say about the tree it left behind is a test of its own further down; these rows
-    // deliberately claim nothing beyond the error itself.
+    // Every way a single line can be refused: the same guarantee with different values — one error, on the line
+    // that caused it, saying enough to fix it — so rows, not methods. A refusal that also says something about the
+    // tree it left behind is a test of its own below; these rows claim nothing beyond the error itself.
     public static IEnumerable<object[]> RefusedLines() =>
     [
         // ---- Indentation, tabs and quoting ----

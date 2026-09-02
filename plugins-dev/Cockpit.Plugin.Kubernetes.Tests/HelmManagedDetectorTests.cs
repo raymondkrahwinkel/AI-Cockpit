@@ -1,15 +1,11 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Cockpit.Plugin.Kubernetes.Helm;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
 // AC-1061 phase 1 / AC-1068: get_resource must flag a Helm-managed resource without the caller having to know
 // the raw label/annotation names — and must not claim a resource is an installed Helm release on the label
-// alone, since Argo CD's `helm template` sets that same label without ever installing anything (AC-1068 AC1).
-//
-// One resource shape per row. A null `installed` means the detector must not report on this resource at all;
-// null name/namespace mean it reports the resource without claiming a release, which is the distinction AC-1068
-// exists for — before it, those two came back as empty strings and read as a real release with no name.
+// alone — Argo CD's `helm template` sets that label without installing anything (AC-1068 AC1).
 public class HelmManagedDetectorTests
 {
     public static IEnumerable<object[]> Resources() =>
