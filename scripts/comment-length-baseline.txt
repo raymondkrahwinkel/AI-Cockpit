@@ -623,7 +623,7 @@ summary	tests/Cockpit.App.ViewTests/TtyPendingOutputBoundTests.cs	1
 summary	tests/Cockpit.App.ViewTests/UsagePillUnreportedWindowTests.cs	1
 summary	tests/Cockpit.App.ViewTests/WhiteboardAccessIntegrationTests.cs	1
 summary	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayDeliveryTests.cs	1
-summary	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayTests.cs	3
+summary	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayTests.cs	2
 summary	tests/Cockpit.App.ViewTests/WorkspaceAgentGatewayWakeTests.cs	2
 summary	tests/Cockpit.Core.Tests/Backup/BackupSelectionTests.cs	1
 summary	tests/Cockpit.Core.Tests/Claude/ConPtyProcessExitTests.cs	1

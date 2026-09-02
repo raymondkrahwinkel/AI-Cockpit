@@ -13,10 +13,9 @@ public class AutopilotMergeReadyDecisionTests
         Assert.Equal(AutopilotPrDelivery.NotExpected, AutopilotMergeReadyDecision.Decide(deliversPullRequest: false, isGitRun: false, hasRemote: false, ghAvailable: false));
     }
 
-    // How far a code run gets, by what the environment offers. The expected delivery travels as object so this
-    // source's own signature stays public while the members are still named rather than numbered; the test casts it
-    // back once. `[InlineData]` cannot carry it — a public test method may not name an internal type in its
-    // signature (CS0051), and xUnit1000 forbids making the class internal instead.
+    // The delivery travels as object so this source's signature stays public while the members stay named rather than
+    // numbered; the test casts it back once. `[InlineData]` cannot carry it: a public test method may not name an
+    // internal type in its signature (CS0051), and xUnit1000 rules out making the class internal instead.
     public static IEnumerable<object[]> CodeRunEnvironments() =>
     [
         [false, false, false, AutopilotPrDelivery.NoGitRun],
