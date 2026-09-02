@@ -132,50 +132,20 @@ public sealed class AssistantSettingsWritersTests
         Assert.Contains(nameof(IAssistantSettingsStore.SaveAsync), path);
     }
 
-    [Fact]
-    public void TheWalkerActuallyTraversesTheCockpitsOwnCode()
-    {
-        // The second half of the control: the walker must go deeper than the root. A stand-in for the real thing —
-        // the tool calls a helper which calls the door — so a walker that only ever inspected the root's own body
-        // fails here instead of quietly under-reporting on the real tools.
-        Assert.NotNull(_PathToAWriteDoor(typeof(WritesTheSettings).GetMethod(nameof(WritesTheSettings.IndirectTool))!));
-    }
-
     /// <summary>
-    /// The control that this file exists in its current form because of. Every MCP tool in this repo is
-    /// <c>async</c>, and an async method's own body holds nothing but a call into the BCL's builder — the code is in
-    /// a compiler-generated state machine. The first version of this walk did not follow that hop, so it read every
-    /// tool as an empty method and reported no offenders at all; a probe tool that wrote the settings was added to
-    /// the assistant's own acting server and the test stayed green. This keeps that hop pinned.
+    /// The rest of the control, one row per hole this walk has actually had: deeper than the root, into an
+    /// <c>async</c> method's state machine (every MCP tool here is async, and the first version read them all as
+    /// empty — a probe tool that wrote the settings was added and this stayed green), and onto the implementation
+    /// at a virtual call rather than the bodyless declaration. One <c>private readonly IFoo</c> once hid a door.
     /// </summary>
-    [Fact]
-    public void TheWalkerFollowsAnAsyncMethodIntoItsStateMachine()
+    [Theory]
+    [InlineData(nameof(WritesTheSettings.IndirectTool))]
+    [InlineData(nameof(WritesTheSettings.AsyncTool))]
+    [InlineData(nameof(WritesTheSettings.ThroughAnInterface))]
+    [InlineData(nameof(WritesTheSettings.ThroughAVirtual))]
+    public void TheWalkerReachesADoorThroughEveryHopItHasEverMissed(string toolName)
     {
-        Assert.NotNull(_PathToAWriteDoor(typeof(WritesTheSettings).GetMethod(nameof(WritesTheSettings.AsyncTool))!));
-    }
-
-    /// <summary>
-    /// A call through an interface has to be followed into the implementation. <c>ResolveMethod</c> on the
-    /// <c>callvirt</c> yields <c>IWriteDoorHop.Hop</c>, which is abstract and has no body, so the walk used to stop
-    /// on the declaration and report nothing — one <c>private readonly IFoo</c> between a tool and the door was
-    /// enough to hide it. Not a path that exists in the cockpit today, which is exactly why it needs a control
-    /// rather than a comment.
-    /// </summary>
-    [Fact]
-    public void TheWalkerFollowsAnInterfaceCallIntoItsImplementation()
-    {
-        Assert.NotNull(_PathToAWriteDoor(typeof(WritesTheSettings).GetMethod(nameof(WritesTheSettings.ThroughAnInterface))!));
-    }
-
-    /// <summary>
-    /// The same hole one step over: a <c>virtual</c> that does nothing and an override that writes. Here the
-    /// declared method does have a body, so the walk happily read the base's empty one and never looked at the
-    /// override the call actually lands on.
-    /// </summary>
-    [Fact]
-    public void TheWalkerFollowsAVirtualCallIntoItsOverride()
-    {
-        Assert.NotNull(_PathToAWriteDoor(typeof(WritesTheSettings).GetMethod(nameof(WritesTheSettings.ThroughAVirtual))!));
+        Assert.NotNull(_PathToAWriteDoor(typeof(WritesTheSettings).GetMethod(toolName)!));
     }
 
     /// <summary>A stand-in tool that does the forbidden thing, so the walker's own correctness is asserted rather than assumed.</summary>

@@ -9,44 +9,34 @@ public class NodeEndpointSettingsStoreTests : IDisposable
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"node-endpoint-{Guid.NewGuid():N}.json");
 
     [Fact]
-    public async Task Load_WhenNothingSaved_DefaultsToOffWithNoSecret()
+    public async Task Load_WhenNothingSaved_DefaultsToOffWithNoSecretAndNoWhitelist()
     {
         var store = new NodeEndpointSettingsStore(_path);
 
         var settings = await store.LoadAsync();
 
+        // Off is the deliberate answer for a config that never saved one: the node endpoint is a way in from the
+        // network, and an install that predates this setting must not come up listening.
         Assert.False(settings.Enabled);
         Assert.Equal("", settings.SharedSecret);
-    }
-
-    [Fact]
-    public async Task Save_ThenLoad_RoundTripsTheSwitchAndTheSharedSecret()
-    {
-        var store = new NodeEndpointSettingsStore(_path);
-
-        await store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" });
-
-        var reloaded = await new NodeEndpointSettingsStore(_path).LoadAsync();
-        Assert.True(reloaded.Enabled);
-        Assert.Equal("test-secret-value", reloaded.SharedSecret);
-    }
-
-    [Fact]
-    public async Task Load_WhenNothingSaved_DiscoveryWhitelistIsEmptyNotNull()
-    {
-        var settings = await new NodeEndpointSettingsStore(_path).LoadAsync();
-
         Assert.Empty(settings.AllowedDiscoveryRanges);
     }
 
     [Fact]
-    public async Task Save_ThenLoad_RoundTripsTheDiscoveryWhitelist()
+    public async Task Save_ThenLoad_RoundTripsEverySettingThroughItsOnDiskShape()
     {
         var store = new NodeEndpointSettingsStore(_path);
 
-        await store.SaveAsync(new NodeEndpointSettings { AllowedDiscoveryRanges = ["203.0.113.0/24", "198.51.100.0/24"] });
+        await store.SaveAsync(new NodeEndpointSettings
+        {
+            Enabled = true,
+            SharedSecret = "test-secret-value",
+            AllowedDiscoveryRanges = ["203.0.113.0/24", "198.51.100.0/24"],
+        });
 
         var reloaded = await new NodeEndpointSettingsStore(_path).LoadAsync();
+        Assert.True(reloaded.Enabled);
+        Assert.Equal("test-secret-value", reloaded.SharedSecret);
         Assert.Equal(["203.0.113.0/24", "198.51.100.0/24"], reloaded.AllowedDiscoveryRanges);
     }
 

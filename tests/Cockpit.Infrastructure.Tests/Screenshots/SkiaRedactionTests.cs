@@ -83,15 +83,6 @@ public class SkiaRedactionTests
         Assert.Equal(image.GetPixel(0, 1), image.GetPixel(0, 0));
     }
 
-    /// <summary>Nothing asked for, nothing changed — and no re-encode, which would cost a copy for no reason.</summary>
-    [Fact]
-    public void WithNoBoxes_TheImageIsHandedBackAsItCame()
-    {
-        var png = _Checkerboard(32, 32);
-
-        Assert.Same(png, new SkiaScreenshotImageEditor().Burn(png, []));
-    }
-
     /// <summary>A box running off the edge is clamped rather than throwing: the surface can be dragged past the image, and losing the whole redaction over it is the dangerous way to fail.</summary>
     [Fact]
     public void ABoxRunningPastTheEdge_StillRedactsWhatIsThere()

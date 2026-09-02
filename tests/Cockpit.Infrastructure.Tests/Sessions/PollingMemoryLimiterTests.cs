@@ -33,20 +33,8 @@ public class PollingMemoryLimiterTests
         Assert.Equal(1, limiter.CheckOnce());
     }
 
-    [Fact]
-    public void AReportedSessionIsNotReportedAgainOnTheNextSweep_WhileStillOverCap()
-    {
-        // Otherwise a session sitting over its cap logs the same warning every 1.5 seconds for as long as it
-        // stays there — the same one-shot shape as every other memory warning in this codebase.
-        var table = new FakeProcessTable(new ProcessRow(200, 1, TimeSpan.Zero, 2048 * Megabyte));
-        using var limiter = new PollingMemoryLimiter(table, NullLogger<PollingMemoryLimiter>.Instance);
-
-        using var watch = limiter.Apply(200, 512 * Megabyte);
-
-        Assert.Equal(1, limiter.CheckOnce());
-        Assert.Equal(0, limiter.CheckOnce());
-    }
-
+    // A session sitting over its cap must warn once and then stay quiet — otherwise it logs the same line every
+    // 1.5 seconds for as long as it stays there — and must be able to warn again after it has been back under.
     [Fact]
     public void OnceBackUnderCap_TheNextCrossingIsReportedAgain()
     {

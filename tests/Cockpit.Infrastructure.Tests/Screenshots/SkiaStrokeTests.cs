@@ -13,20 +13,9 @@ public class SkiaStrokeTests
     private const uint Blue = 0xFF0000FF;
     private const int Thickness = 6;
 
-    /// <summary>The line is in the bytes, where it was drawn and not where it was not.</summary>
-    [Fact]
-    public void AStroke_IsInTheReturnedBytes_WhereItWasDrawn()
-    {
-        using var image = _Burn(new StrokeMark(
-            [new(40, 40), new(140, 40), new(240, 40)], Blue, Thickness));
-
-        Assert.Equal(new SKColor(0, 0, 255), image.GetPixel(140, 40));
-        Assert.Equal(SKColors.Black, image.GetPixel(140, 120));
-    }
-
     /// <summary>
-    /// The line is its colour and nothing else. It carried a contrasting ring until AC-375, for want of knowing
-    /// what it would cross; the palette makes that the operator's answer to give, and a white outline they did not
+    /// The line is in the bytes where it was drawn and nowhere beside it — its colour and nothing else. It carried
+    /// a contrasting ring until AC-375, for want of knowing what it would cross; the palette makes that the operator's answer to give, and a white outline they did not
     /// ask for around a red line they did is noise.
     /// </summary>
     [Fact]

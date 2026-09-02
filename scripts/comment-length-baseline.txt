@@ -525,7 +525,7 @@ inline	tests/Cockpit.Core.Tests/Voice/ProcessStderrTailTests.cs	2
 inline	tests/Cockpit.Core.Tests/Workspaces/SessionWorkspaceSeparationTests.cs	1
 inline	tests/Cockpit.Core.Tests/Workspaces/WorkspacesViewModelTests.cs	2
 inline	tests/Cockpit.Core.Tests/Worktrees/WorktreeToolsAssistantOwnershipTests.cs	2
-inline	tests/Cockpit.Infrastructure.Tests/Agents/AgentsMcpToolsTests.cs	3
+inline	tests/Cockpit.Infrastructure.Tests/Agents/AgentsMcpToolsTests.cs	2
 inline	tests/Cockpit.Infrastructure.Tests/Agents/PhysicalResourceIdentityTests.cs	1
 inline	tests/Cockpit.Infrastructure.Tests/Assistant/AssistantActMountRuleTests.cs	2
 inline	tests/Cockpit.Infrastructure.Tests/Assistant/AssistantCreateProjectConsentTests.cs	1
@@ -684,7 +684,7 @@ summary	tests/Cockpit.Core.Tests/Services/ShutdownTeardownTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/EmbeddedConfinementGateTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/HeldPromptDeliveryTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/PluginTtySessionProviderAdapterTests.cs	1
-summary	tests/Cockpit.Core.Tests/Sessions/SessionStartDefaultsTests.cs	4
+summary	tests/Cockpit.Core.Tests/Sessions/SessionStartDefaultsTests.cs	3
 summary	tests/Cockpit.Core.Tests/Sessions/SessionStateStoreDependencyInjectionTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/TtyLauncherTests.cs	1
 summary	tests/Cockpit.Core.Tests/Sessions/TtySessionProviderResolverTests.cs	1
@@ -724,7 +724,7 @@ summary	tests/Cockpit.Infrastructure.Tests/Agents/AgentTurnInboxDeliveryTests.cs
 summary	tests/Cockpit.Infrastructure.Tests/Agents/AgentWakeConsentDefaultTests.cs	1
 summary	tests/Cockpit.Infrastructure.Tests/Agents/AgentsMcpToolsRateLimitTests.cs	1
 summary	tests/Cockpit.Infrastructure.Tests/Agents/AgentsMcpToolsReachabilityTests.cs	1
-summary	tests/Cockpit.Infrastructure.Tests/Agents/AgentsMcpToolsTests.cs	4
+summary	tests/Cockpit.Infrastructure.Tests/Agents/AgentsMcpToolsTests.cs	3
 summary	tests/Cockpit.Infrastructure.Tests/Agents/AgentsMcpToolsWakeTests.cs	1
 summary	tests/Cockpit.Infrastructure.Tests/Agents/WorkspaceAgentCoordinatorTests.cs	1
 summary	tests/Cockpit.Infrastructure.Tests/Assistant/AssistantReadMountRuleTests.cs	1

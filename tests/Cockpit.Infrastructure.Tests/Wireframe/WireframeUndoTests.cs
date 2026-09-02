@@ -43,44 +43,53 @@ public class WireframeUndoTests
         Assert.Equal(WireframeScreens.Settings, _Revert(registry));
     }
 
-    [Fact]
-    public void Add_IsJournaled_AndTakenBackByRemovingExactlyTheLineItWrote()
+    // One journal line per handling, and every kind of handling taken back on its own — found by the lines it wrote
+    // rather than by a line number a later edit has moved, so each of these ends back at the source it started from.
+    public static IEnumerable<object[]> JournaledEdits() =>
+    [
+        [WireframeComponentEdit.Add(WireframeScreens.Group, "input", "Telefoonnummer", null, null), WireframeEditKind.Add],
+        [WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"), WireframeEditKind.SetText],
+        [WireframeComponentEdit.Remove(WireframeScreens.LeftColumn), WireframeEditKind.Remove],
+        [WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.Group, position: 0), WireframeEditKind.Move],
+        [WireframeComponentEdit.SetViewport(WireframeViewport.Mobile), WireframeEditKind.SetViewport],
+    ];
+
+    [Theory]
+    [MemberData(nameof(JournaledEdits))]
+    public void EveryKindOfEdit_IsJournaledUnderItsOwnKind_AndTakenBackToTheSourceItStartedFrom(
+        WireframeComponentEdit edit,
+        WireframeEditKind kind)
     {
         var registry = _Coupled();
-        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.Add(WireframeScreens.Group, "input", "Telefoonnummer", null, null));
+        registry.EditCoupled(Session, SurfaceId, edit);
 
-        Assert.Equal(WireframeEditKind.Add, Assert.Single(registry.History(SurfaceId)).Kind);
+        Assert.Equal(kind, Assert.Single(registry.History(SurfaceId)).Kind);
         Assert.Equal(WireframeScreens.Settings, _Revert(registry));
     }
 
-    [Fact]
-    public void SetText_IsJournaled_AndTakenBackToTheWordingItReplaced()
+    // AC-841: the operator's hold covers whichever end of the call names the held component — the component being
+    // changed, the container something is added into, and either end of a move.
+    public static IEnumerable<object[]> EditsTouchingTheHeldComponent() =>
+    [
+        [WireframeScreens.SaveButton, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren")],
+        [WireframeScreens.Group, WireframeComponentEdit.Add(WireframeScreens.Group, "input", "Telefoon", null, null)],
+        [WireframeScreens.Group, WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.Group, null)],
+    ];
+
+    [Theory]
+    [MemberData(nameof(EditsTouchingTheHeldComponent))]
+    public void AnEditTouchingAComponentTheOperatorIsHolding_IsRefusedWithAReason_NotSwallowed(
+        string held,
+        WireframeComponentEdit edit)
     {
         var registry = _Coupled();
-        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
+        registry.HoldComponent(SurfaceId, held);
 
-        Assert.Equal(WireframeEditKind.SetText, Assert.Single(registry.History(SurfaceId)).Kind);
-        Assert.Equal(WireframeScreens.Settings, _Revert(registry));
-    }
+        var result = registry.EditCoupled(Session, SurfaceId, edit);
 
-    [Fact]
-    public void Remove_IsJournaled_AndPutsTheWholeBlockBackWhereItStood()
-    {
-        var registry = _Coupled();
-        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.Remove(WireframeScreens.LeftColumn));
-
-        Assert.Equal(WireframeEditKind.Remove, Assert.Single(registry.History(SurfaceId)).Kind);
-        Assert.Equal(WireframeScreens.Settings, _Revert(registry));
-    }
-
-    [Fact]
-    public void Move_IsJournaled_AndPutsTheComponentBackWhereItCameFrom()
-    {
-        var registry = _Coupled();
-        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.Group, position: 0));
-
-        Assert.Equal(WireframeEditKind.Move, Assert.Single(registry.History(SurfaceId)).Kind);
-        Assert.Equal(WireframeScreens.Settings, _Revert(registry));
+        Assert.Contains($"editing the component with id \"{held}\" right now", result.Refusal);
+        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
+        Assert.Empty(registry.History(SurfaceId));
     }
 
     [Fact]
@@ -148,42 +157,6 @@ public class WireframeUndoTests
     }
 
     [Fact]
-    public void AnEditOnAComponentTheOperatorIsHolding_IsRefusedWithAReason_NotSwallowed()
-    {
-        var registry = _Coupled();
-        registry.HoldComponent(SurfaceId, WireframeScreens.SaveButton);
-
-        var result = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
-
-        Assert.Contains("editing the component with id \"save\" right now", result.Refusal);
-        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
-        Assert.Empty(registry.History(SurfaceId));
-    }
-
-    [Fact]
-    public void AnAddIntoAContainerTheOperatorIsHolding_IsRefused()
-    {
-        var registry = _Coupled();
-        registry.HoldComponent(SurfaceId, WireframeScreens.Group);
-
-        var result = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.Add(WireframeScreens.Group, "input", "Telefoon", null, null));
-
-        Assert.Contains("right now", result.Refusal);
-        Assert.Equal(WireframeScreens.Settings, registry.PeekText(SurfaceId));
-    }
-
-    [Fact]
-    public void AMoveIsRefusedWhenEitherEndIsHeld()
-    {
-        var registry = _Coupled();
-        registry.HoldComponent(SurfaceId, WireframeScreens.Group);
-
-        var result = registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.Move(WireframeScreens.SaveButton, WireframeScreens.Group, null));
-
-        Assert.Contains("right now", result.Refusal);
-    }
-
-    [Fact]
     public void SetText_OnAScreenWithAFlowPointingAtIt_IsOneStep_AndUndoRestoresTitleAndReferences()
     {
         // AC-902 AC4: the rename and every goto: it carries along are one journaled edit, so reverting it puts the
@@ -197,17 +170,6 @@ public class WireframeUndoTests
         Assert.Equal(WireframeEditKind.SetText, Assert.Single(registry.History(SurfaceId)).Kind);
         var reverted = _Revert(registry);
         Assert.Equal(WireframeScreens.TwoScreensWithFlow, reverted);
-    }
-
-    // AC-915: a viewport switch is a document change like any other — one journal line, taken back the same way.
-    [Fact]
-    public void SetViewport_IsJournaled_AndTakenBackToNoViewportLineAtAll()
-    {
-        var registry = _Coupled();
-        registry.EditCoupled(Session, SurfaceId, WireframeComponentEdit.SetViewport(WireframeViewport.Mobile));
-
-        Assert.Equal(WireframeEditKind.SetViewport, Assert.Single(registry.History(SurfaceId)).Kind);
-        Assert.Equal(WireframeScreens.Settings, _Revert(registry));
     }
 
     [Fact]

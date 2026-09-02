@@ -39,120 +39,80 @@ public class DiagramUndoTests
     }
 
     [Fact]
-    public void Revert_IsMarkedOnTheEntry_NotErasedFromHistory()
+    public void Revert_IsMarkedOnTheEntry_NotErasedFromHistory_AndCannotBeDoneTwice()
     {
-        // Does not vanish from the history as if it never happened — the row stays, flagged.
+        // Does not vanish from the history as if it never happened — the row stays, flagged, and that flag is what
+        // refuses a second revert instead of undoing whatever stands there now.
         var registry = new DiagramAccessRegistry();
         registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD");
         registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.AddNode, "A", Label: "Start"));
         var entry = Assert.Single(registry.History("surface-1"));
 
-        registry.Revert("surface-1", entry.Id);
+        Assert.Null(registry.Revert("surface-1", entry.Id));
 
         var after = Assert.Single(registry.History("surface-1"));
         Assert.Equal(entry.Id, after.Id);
         Assert.True(after.Reverted);
+        Assert.NotNull(registry.Revert("surface-1", entry.Id));
     }
 
-    [Fact]
-    public void Revert_TheSameEntryTwice_IsRefusedTheSecondTime()
+    // Every hand-edit that changes a line in place, reverted on its own, against the source it started from —
+    // asserted whole rather than by the one line each happens to touch, so a revert that writes the right text on the
+    // wrong line fails here. A removal is not among them: putting a block back appends it (see the test below).
+    public static TheoryData<string, DiagramHandEdit> RevertedHandEdits() => new()
+    {
+        { TwoNodesConnected, new DiagramHandEdit(DiagramHandEditKind.RenameNode, "A", Label: "Begin") },
+        { TwoNodesConnected, new DiagramHandEdit(DiagramHandEditKind.Disconnect, "A", To: "B") },
+        { TwoNodesConnected, new DiagramHandEdit(DiagramHandEditKind.RelabelConnection, "A", To: "B", Label: "gaat naar") },
+        { TwoNodesLabelledConnection, new DiagramHandEdit(DiagramHandEditKind.Disconnect, "A", To: "B") },
+        { TwoNodesLabelledConnection, new DiagramHandEdit(DiagramHandEditKind.RelabelConnection, "A", To: "B", Label: "loopt naar") },
+        { TwoNodesApart, new DiagramHandEdit(DiagramHandEditKind.Connect, "A", To: "B") },
+    };
+
+    [Theory]
+    [MemberData(nameof(RevertedHandEdits))]
+    public void EveryKindOfHandEdit_IsTakenBackToTheSourceItStartedFrom(string source, DiagramHandEdit edit)
     {
         var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD");
-        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.AddNode, "A", Label: "Start"));
-        var entry = Assert.Single(registry.History("surface-1"));
-        Assert.Null(registry.Revert("surface-1", entry.Id));
+        registry.SurfaceOpened("surface-1", "Onboarding flow", source);
+        Assert.Null(registry.ApplyHandEdit("surface-1", edit));
 
-        var refusal = registry.Revert("surface-1", entry.Id);
+        Assert.Null(registry.Revert("surface-1", registry.History("surface-1")[^1].Id));
 
-        Assert.NotNull(refusal);
+        Assert.Equal(source, registry.PeekText("surface-1"));
     }
 
+    private const string TwoNodesApart = """
+        flowchart TD
+            A["Start"]
+            B["Eind"]
+        """;
+
+    private const string TwoNodesConnected = $"""
+        {TwoNodesApart}
+            A --> B
+        """;
+
+    private const string TwoNodesLabelledConnection = $"""
+        {TwoNodesApart}
+            A -->|"gaat naar"| B
+        """;
+
+    // A removal is the one revert that does not restore the source verbatim: the node and its connection come back,
+    // but appended rather than in the place the block was taken from. Asserted for what it is rather than for what
+    // the name of the operation suggests.
     [Fact]
-    public void Revert_RemoveNode_RestoresTheNodeAndItsConnection()
+    public void Revert_RemoveNode_BringsTheNodeAndItsConnectionBack_ThoughNotToTheLineTheyStoodOn()
     {
         var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]\n    B[\"Eind\"]\n    A --> B");
+        registry.SurfaceOpened("surface-1", "Onboarding flow", TwoNodesConnected);
         registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RemoveNode, "A"));
-        var entry = registry.History("surface-1").Single(candidate => candidate.Kind == DiagramHandEditKind.RemoveNode);
 
-        Assert.Null(registry.Revert("surface-1", entry.Id));
+        Assert.Null(registry.Revert("surface-1", registry.History("surface-1")[^1].Id));
 
         var text = registry.PeekText("surface-1")!;
-        Assert.Contains("A[\"Start\"]", text, StringComparison.Ordinal);
+        Assert.Contains("""A["Start"]""", text, StringComparison.Ordinal);
         Assert.Contains("A --> B", text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Revert_RenameNode_RestoresThePreviousLabel_EvenAfterALaterEditOnAnotherNode()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]");
-        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RenameNode, "A", Label: "Begin"));
-        var entry = Assert.Single(registry.History("surface-1"));
-        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.AddNode, "C", Label: "Later"));
-
-        Assert.Null(registry.Revert("surface-1", entry.Id));
-
-        var text = registry.PeekText("surface-1")!;
-        Assert.Contains("A[\"Start\"]", text, StringComparison.Ordinal);
-        Assert.Contains("C[\"Later\"]", text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Revert_Connect_DisconnectsTheTwoNodesAndLeavesThemStanding()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]\n    B[\"Eind\"]");
-        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.Connect, "A", To: "B"));
-        var entry = Assert.Single(registry.History("surface-1"));
-
-        Assert.Null(registry.Revert("surface-1", entry.Id));
-
-        var text = registry.PeekText("surface-1")!;
-        Assert.DoesNotContain("A --> B", text, StringComparison.Ordinal);
-        Assert.Contains("A[\"Start\"]", text, StringComparison.Ordinal);
-        Assert.Contains("B[\"Eind\"]", text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Revert_Disconnect_ReconnectsWithTheOriginalLabel()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]\n    B[\"Eind\"]\n    A -->|\"gaat naar\"| B");
-        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.Disconnect, "A", To: "B"));
-        var entry = Assert.Single(registry.History("surface-1"));
-
-        Assert.Null(registry.Revert("surface-1", entry.Id));
-
-        Assert.Contains("A -->|\"gaat naar\"| B", registry.PeekText("surface-1"), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Revert_RelabelConnection_RestoresThePreviousLabel()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]\n    B[\"Eind\"]\n    A -->|\"gaat naar\"| B");
-        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RelabelConnection, "A", To: "B", Label: "loopt naar"));
-        var entry = Assert.Single(registry.History("surface-1"));
-
-        Assert.Null(registry.Revert("surface-1", entry.Id));
-
-        Assert.Contains("A -->|\"gaat naar\"| B", registry.PeekText("surface-1"), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Revert_RelabelConnection_ThatAddedALabel_RemovesItAgain()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart TD\n    A[\"Start\"]\n    B[\"Eind\"]\n    A --> B");
-        registry.ApplyHandEdit("surface-1", new DiagramHandEdit(DiagramHandEditKind.RelabelConnection, "A", To: "B", Label: "gaat naar"));
-        var entry = Assert.Single(registry.History("surface-1"));
-
-        Assert.Null(registry.Revert("surface-1", entry.Id));
-
-        Assert.Contains("A --> B", registry.PeekText("surface-1"), StringComparison.Ordinal);
-        Assert.DoesNotContain("gaat naar", registry.PeekText("surface-1"), StringComparison.Ordinal);
     }
 
     [Fact]

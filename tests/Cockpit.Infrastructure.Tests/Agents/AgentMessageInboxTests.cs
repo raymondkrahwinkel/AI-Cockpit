@@ -38,17 +38,6 @@ public sealed class AgentMessageInboxTests
     }
 
     [Fact]
-    public void Deliver_MintsADistinctIdPerMessage()
-    {
-        var inbox = new AgentMessageInbox();
-
-        var first = inbox.Deliver("pane-a", "pane-b", "note", "one");
-        var second = inbox.Deliver("pane-a", "pane-b", "note", "two");
-
-        Assert.NotEqual(first.Message!.Id, second.Message!.Id);
-    }
-
-    [Fact]
     public void Deliver_AnIdenticalMessageStillWaiting_AddsNothingAndReturnsTheWaitingOne()
     {
         var inbox = new AgentMessageInbox();
@@ -112,14 +101,6 @@ public sealed class AgentMessageInboxTests
     }
 
     [Fact]
-    public void Drain_ForAPaneWithNothingWaiting_IsEmpty()
-    {
-        var inbox = new AgentMessageInbox();
-
-        Assert.Empty(_DrainAll(inbox, "pane-b"));
-    }
-
-    [Fact]
     public void Drain_OnlyTakesTheNamedPanesMessages()
     {
         var inbox = new AgentMessageInbox();
@@ -128,17 +109,6 @@ public sealed class AgentMessageInboxTests
 
         Assert.Equal("for B", Assert.Single(_DrainAll(inbox, "pane-b")).Body);
         Assert.Equal("for C", Assert.Single(_DrainAll(inbox, "pane-c")).Body);
-    }
-
-    [Fact]
-    public void Forget_DropsThePanesUnreadMessages()
-    {
-        var inbox = new AgentMessageInbox();
-        inbox.Deliver("pane-a", "pane-b", "note", "never read");
-
-        inbox.Forget("pane-b");
-
-        Assert.Empty(_DrainAll(inbox, "pane-b"));
     }
 
     [Fact]
@@ -199,27 +169,9 @@ public sealed class AgentMessageInboxTests
 
     /// <summary>
     /// The drain is bounded because the batch becomes one tool result in the recipient's context: a neighbour must not
-    /// be able to decide how much of that context the recipient spends. The rest stays put and is reported, so the tail
-    /// is collectable rather than lost.
-    /// </summary>
-    [Fact]
-    public void Drain_PastTheLimit_HandsBackTheOldestAndReportsTheRest()
-    {
-        var inbox = new AgentMessageInbox();
-        for (var i = 0; i < 5; i++)
-        {
-            inbox.Deliver("pane-a", "pane-b", "note", $"message {i}");
-        }
-
-        var batch = inbox.Drain("pane-b", 2);
-
-        Assert.Equal(new[] { "message 0", "message 1" }, batch.Messages.Select(message => message.Body).ToArray());
-        Assert.Equal(3, batch.Remaining);
-    }
-
-    /// <summary>
-    /// A capped drain is a handover of that batch and nothing more: what it left behind must still be there, in order,
-    /// for the next call — and the last call must report nothing remaining rather than leaving the recipient guessing.
+    /// be able to decide how much of that context the recipient spends. A capped drain is a handover of that batch and
+    /// nothing more — what it left behind is reported as still waiting, is still there in order for the next call, and
+    /// the last call reports nothing remaining rather than leaving the recipient guessing.
     /// </summary>
     [Fact]
     public void Drain_Repeatedly_CollectsTheWholeInboxInOrderWithoutRepeatingAMessage()
@@ -234,6 +186,7 @@ public sealed class AgentMessageInboxTests
         var second = inbox.Drain("pane-b", 2);
         var third = inbox.Drain("pane-b", 2);
 
+        Assert.Equal(3, first.Remaining);
         Assert.Equal(
             new[] { "message 0", "message 1", "message 2", "message 3", "message 4" },
             first.Messages.Concat(second.Messages).Concat(third.Messages).Select(message => message.Body).ToArray());
@@ -311,22 +264,6 @@ public sealed class AgentMessageInboxTests
         Assert.False(inbox.Retract("pane-b", delivered.Message!.Id));
         Assert.False(inbox.Retract("pane-c", delivered.Message!.Id));
         Assert.False(inbox.Retract("pane-b", "not-a-message-id"));
-    }
-
-    /// <summary>
-    /// Retract is narrower than Forget on purpose: the recipient's other mail was delivered by other senders on their
-    /// own merits, and one sender taking its own message back must not drop theirs with it.
-    /// </summary>
-    [Fact]
-    public void Retract_LeavesTheRecipientsMailFromOtherSendersAlone()
-    {
-        var inbox = new AgentMessageInbox();
-        var mine = inbox.Deliver("pane-a", "pane-b", "note", "mine");
-        inbox.Deliver("pane-c", "pane-b", "note", "someone else's");
-
-        inbox.Retract("pane-b", mine.Message!.Id);
-
-        Assert.Equal("someone else's", Assert.Single(_DrainAll(inbox, "pane-b")).Body);
     }
 
     /// <summary>

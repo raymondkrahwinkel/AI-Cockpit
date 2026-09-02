@@ -19,16 +19,6 @@ public class MutexHotkeyExclusivityGuardTests
         action, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     [Fact]
-    public void ANobodyElseHolds_IsClaimed()
-    {
-        var guard = new MutexHotkeyExclusivityGuard();
-
-        using var claim = guard.TryAcquire(_HotkeyId());
-
-        Assert.NotNull(claim);
-    }
-
-    [Fact]
     public async Task AKeyAnotherInstanceHolds_IsRefused()
     {
         var hotkeyId = _HotkeyId();

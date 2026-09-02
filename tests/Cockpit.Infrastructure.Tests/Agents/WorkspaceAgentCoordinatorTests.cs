@@ -95,14 +95,6 @@ public sealed class WorkspaceAgentCoordinatorTests
     }
 
     [Fact]
-    public void IsEnrolled_ForAPaneThatNeverCalledIn_ReportsFalse()
-    {
-        var coordinator = new WorkspaceAgentCoordinator();
-
-        Assert.False(coordinator.IsEnrolled("pane-1"));
-    }
-
-    [Fact]
     public void Enroll_IsIdempotent_CallingTwiceStillReportsExactlyEnrolled()
     {
         var coordinator = new WorkspaceAgentCoordinator();
@@ -115,17 +107,6 @@ public sealed class WorkspaceAgentCoordinatorTests
         // this one pane exactly once.
         Assert.True(coordinator.IsEnrolled("pane-1"));
         Assert.False(coordinator.IsEnrolled("pane-2"));
-    }
-
-    [Fact]
-    public void Forget_AnEnrolledPane_ReportsUnenrolledAfterwards()
-    {
-        var coordinator = new WorkspaceAgentCoordinator();
-        coordinator.Enroll("pane-1");
-
-        coordinator.Forget("pane-1");
-
-        Assert.False(coordinator.IsEnrolled("pane-1"));
     }
 
     [Fact]

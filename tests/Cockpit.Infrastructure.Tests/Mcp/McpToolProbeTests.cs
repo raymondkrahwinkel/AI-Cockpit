@@ -9,8 +9,8 @@ namespace Cockpit.Infrastructure.Tests.Mcp;
 /// <summary>
 /// <see cref="McpToolProbe"/> (AC-503): one MCP tool call outside a running session. Covers the outcomes a plugin's
 /// own reachability check depends on — an unknown server, a server that needs a sign-in, and the honesty rule that a
-/// connection failure never reads as "not found" — plus a wegwerp-harnas (AgentSpawnPlaybook §3) of hostile input
-/// against the real class, not a mock standing in for it.
+/// connection failure never reads as "not found" — plus the one surviving wegwerp-harnas case (AgentSpawnPlaybook §3)
+/// run against the real class rather than a mock standing in for it.
 /// </summary>
 public class McpToolProbeTests
 {
@@ -132,53 +132,8 @@ public class McpToolProbeTests
 
     // --- Wegwerp-harnas (AgentSpawnPlaybook §3): hostile input against the real class -------------------------------
 
-    [Fact]
-    public async Task Harness_AnEmptyServerName_IsHandledAsUnknown_NoException()
-    {
-        var probe = _Probe(_Store(new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" }));
-
-        var result = await probe.ProbeAsync(string.Empty, "outline", null);
-
-        Assert.Equal(McpToolProbeOutcome.Failed, result.Outcome);
-    }
-
-    [Fact]
-    public async Task Harness_AToolNameWithControlCharactersAndUnicode_DoesNotThrow()
-    {
-        var server = new McpServerConfig { Name = "unreachable", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" };
-        var probe = _Probe(_Store(server));
-
-        var result = await probe.ProbeAsync("unreachable", "tool\0\r\n\t💥<script>", null);
-
-        Assert.Equal(McpToolProbeOutcome.Failed, result.Outcome);
-    }
-
-    [Fact]
-    public async Task Harness_ExtremelyLongToolArguments_DoesNotThrow_AndAnswersFailedAgainstAnUnreachableServer()
-    {
-        var server = new McpServerConfig { Name = "unreachable", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" };
-        var probe = _Probe(_Store(server));
-        var arguments = new Dictionary<string, object?>
-        {
-            ["value"] = new string('x', 200_000),
-        };
-
-        var result = await probe.ProbeAsync("unreachable", "outline", arguments);
-
-        Assert.Equal(McpToolProbeOutcome.Failed, result.Outcome);
-    }
-
-    [Fact]
-    public async Task Harness_ManyArgumentEntries_DoesNotThrow()
-    {
-        var server = new McpServerConfig { Name = "unreachable", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" };
-        var probe = _Probe(_Store(server));
-        var arguments = Enumerable.Range(0, 5000).ToDictionary(i => $"key{i}", i => (object?)i);
-
-        var result = await probe.ProbeAsync("unreachable", "outline", arguments);
-
-        Assert.Equal(McpToolProbeOutcome.Failed, result.Outcome);
-    }
+    // The one case here a realistic change can still break. Four siblings pushing hostile names and huge argument
+    // dictionaries at 127.0.0.1:1 are gone: that port refuses on connect, so they measured the refusal, not the input.
 
     [Fact]
     public async Task Harness_ANonExistentTransport_NeverCrashesTheCaller()

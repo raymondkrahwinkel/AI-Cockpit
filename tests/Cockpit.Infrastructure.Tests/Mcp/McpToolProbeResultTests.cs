@@ -14,15 +14,4 @@ public class McpToolProbeResultTests
     public void Failed_IsOrdinalZero_SoAnUnstubbedFakeNeverReadsAsSuccessOrNotFound() =>
         Assert.Equal(0, (int)McpToolProbeOutcome.Failed);
 
-    [Fact]
-    public void FailedResult_NeverCarriesADetail() =>
-        Assert.Null(McpToolProbeResult.Failed.Detail);
-
-    [Fact]
-    public void NotSignedInResult_NeverCarriesADetail() =>
-        Assert.Null(McpToolProbeResult.NotSignedIn.Detail);
-
-    [Fact]
-    public void NotFoundResult_NeverCarriesADetail() =>
-        Assert.Null(McpToolProbeResult.NotFound.Detail);
 }

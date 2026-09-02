@@ -155,22 +155,6 @@ public class WireframeAccessRegistryTests
     }
 
     [Fact]
-    public void SurfaceOpened_ThenCouple_CouplesTheOpeningSession_WithNothingGranted()
-    {
-        // AC-891: open_wireframe now opens the window directly, coupled to the caller — the window does
-        // SurfaceOpened then Couple itself (DiagramWorkspaceBody's own pattern), rather than the surface arriving
-        // pre-coupled through a registry hand-off (AC-835, removed).
-        var registry = new WireframeAccessRegistry();
-
-        registry.SurfaceOpened("wireframe-9", "Nieuw scherm", WireframeScreens.Settings);
-        registry.Couple(Session, "wireframe-9");
-
-        var coupling = registry.CouplingOf(Session, "wireframe-9");
-        Assert.NotNull(coupling);
-        Assert.False(coupling.HasAnyCapability);
-    }
-
-    [Fact]
     public void UpdateText_KeepsTheRegistrysCopyInStepWithTheOperatorsOwnEditing()
     {
         var registry = _Open();

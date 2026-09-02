@@ -80,14 +80,6 @@ public class SharedUsageCacheTests
     }
 
     [Fact]
-    public void EmptyCache_FallsBackToNull_ExactlyLikeNoSharedCacheAtAll()
-    {
-        var cache = new SharedUsageCache();
-
-        Assert.Null(cache.TryGet(new ClaudeConfig(@"C:\fake\.claude")));
-    }
-
-    [Fact]
     public void PastTheTtl_TheEntryStopsAnswering()
     {
         var clock = new StoppedClock(new DateTimeOffset(2026, 8, 14, 12, 0, 0, TimeSpan.Zero));

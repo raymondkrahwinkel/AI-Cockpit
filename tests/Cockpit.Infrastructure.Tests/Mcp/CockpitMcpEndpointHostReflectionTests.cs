@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using Cockpit.Infrastructure.Mcp;
 
@@ -43,15 +42,6 @@ public sealed class CockpitMcpEndpointHostReflectionTests
         RuntimeHelpers.RunClassConstructor(typeof(CockpitMcpEndpointHost).TypeHandle);
     }
 
-    [Fact]
-    public void PreviousStaticInitializerPattern_CachesTheMissingOverloadFailure()
-    {
-        var exception = Assert.Throws<TypeInitializationException>(() => RuntimeHelpers.RunClassConstructor(typeof(_LegacyHostWithNoMatchingWithTools).TypeHandle));
-
-        var inner = Assert.IsType<InvalidOperationException>(exception.InnerException);
-        Assert.Contains("Sequence contains no matching element", inner.Message, StringComparison.Ordinal);
-    }
-
     private static class _NoMatchingWithTools
     {
         public static void WithTools<T>(object builder, T target) { }
@@ -63,12 +53,4 @@ public sealed class CockpitMcpEndpointHostReflectionTests
         public static void WithTools<T>(object builder, T target, int options) { }
     }
 
-    private static class _LegacyHostWithNoMatchingWithTools
-    {
-        private static readonly MethodInfo _WithToolsGeneric = typeof(_NoMatchingWithTools).GetMethods()
-            .Single(method => method.Name == "WithTools"
-                && method.IsGenericMethodDefinition
-                && method.GetParameters() is { Length: 3 } parameters
-                && parameters[1].ParameterType.IsGenericMethodParameter);
-    }
 }

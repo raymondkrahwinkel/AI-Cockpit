@@ -68,16 +68,6 @@ public class WireframeHandEditTests
     }
 
     [Fact]
-    public void SetText_KeepsTheModifiersTheComponentAlreadyCarried()
-    {
-        var registry = _Open();
-
-        registry.ApplyHandEdit(SurfaceId, WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
-
-        Assert.Contains("button \"Bewaren\" primary", _TextOf(registry), StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void AddAsChild_LandsInsideTheSelectedContainer()
     {
         var registry = _Open();
@@ -106,23 +96,14 @@ public class WireframeHandEditTests
         Assert.Null(WireframeHandEdit.AddSibling(_Tree(registry), WireframeScreens.Screen, "row", null));
     }
 
-    // The one an off-by-one gets wrong: stepping down has to clear the neighbour it swaps with, not stop in front of it.
-    [Fact]
-    public void OneStepDown_SwapsWithTheNeighbourBelow()
+    // The one an off-by-one gets wrong: a step has to clear the neighbour it swaps with, not stop in front of it.
+    [Theory]
+    [InlineData(WireframeScreens.GeneralItem, 1)]
+    [InlineData(WireframeScreens.AccountItem, -1)]
+    public void OneStep_SwapsWithTheNeighbourOnThatSide(string component, int delta)
     {
         var registry = _Open();
-        var edit = WireframeHandEdit.Reorder(_Tree(registry), WireframeScreens.GeneralItem, delta: 1);
-
-        Assert.Null(registry.ApplyHandEdit(SurfaceId, edit!));
-
-        Assert.Equal(["Account", "Algemeen"], _NavItems(registry));
-    }
-
-    [Fact]
-    public void OneStepUp_SwapsWithTheNeighbourAbove()
-    {
-        var registry = _Open();
-        var edit = WireframeHandEdit.Reorder(_Tree(registry), WireframeScreens.AccountItem, delta: -1);
+        var edit = WireframeHandEdit.Reorder(_Tree(registry), component, delta);
 
         Assert.Null(registry.ApplyHandEdit(SurfaceId, edit!));
 

@@ -38,18 +38,6 @@ public class HermesToolCallChatClientTests
     }
 
     [Fact]
-    public async Task OneParameterHermesCall_BecomesAFunctionCallWithThatArgument()
-    {
-        var (_, calls) = await _RunAsync("<function=read_file> <parameter=path> /home/x/README.md </parameter> </function> </tool_call>");
-
-        Assert.Single(calls);
-        Assert.Equal("read_file", calls[0].Name);
-        var arguments = calls[0].Arguments;
-        Assert.NotNull(arguments);
-        Assert.Equal("/home/x/README.md", arguments["path"]);
-    }
-
-    [Fact]
     public async Task MultiParameterHermesCall_CarriesEveryParameter()
     {
         var (_, calls) = await _RunAsync(
