@@ -16,15 +16,9 @@ namespace Cockpit.Core.Tests.Claude;
 /// </summary>
 public class TtyStdinIsConsoleProbeTests
 {
-    [Fact]
+    [WindowsFact("ConPTY is Windows-only; the Unix host (PortaPtyProcess) always hands the child a real pty.")]
     public async Task ConPtyChild_SeesAllStdStreamsAsATty_EvenWhenTheCockpitsOwnHandlesArePipes()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            // ConPTY is Windows-only; the Unix host (PortaPtyProcess) always hands the child a real pty.
-            return;
-        }
-
         if (ResolveOnPath("node.exe") is null)
         {
             // The probe needs Node to ask process.stdin.isTTY; skip where it is not installed.

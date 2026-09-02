@@ -5,98 +5,46 @@ namespace Cockpit.Plugin.Depot.Tests;
 // `/mcp` (`https://host/mcp/mcp`), which a naive "strip every trailing /mcp" implementation gets wrong.
 public class DepotUrlNormalizerTests
 {
-    [Fact]
-    public void Normalize_RootWithoutPath_IsUnchanged()
+    // One row per spelling that reaches the strip branch. `https://host/mcp/mcp` is the row that fails under a
+    // loop stripping every trailing /mcp instead of exactly one: that deployment's own base path is /mcp.
+    [Theory]
+    [InlineData("https://depot.example.com/mcp", "https://depot.example.com")]
+    [InlineData("https://depot.example.com/mcp/", "https://depot.example.com")]
+    [InlineData("https://depot.example.com/MCP", "https://depot.example.com")]
+    [InlineData("https://host/depot/mcp", "https://host/depot")]
+    [InlineData("https://host/mcp/mcp", "https://host/mcp")]
+    [InlineData("depot.example.com/mcp", "depot.example.com")]
+    [InlineData("https://depot.example.com:8443/mcp", "https://depot.example.com:8443")]
+    public void Normalize_StripsExactlyOneTrailingMcpSegment(string url, string expected)
     {
-        Assert.Equal("https://depot.example.com", DepotUrlNormalizer.Normalize("https://depot.example.com"));
-    }
-
-    [Fact]
-    public void Normalize_WithTrailingMcp_StripsIt()
-    {
-        Assert.Equal("https://depot.example.com", DepotUrlNormalizer.Normalize("https://depot.example.com/mcp"));
-    }
-
-    [Fact]
-    public void Normalize_WithTrailingMcpAndSlash_StripsBoth()
-    {
-        Assert.Equal("https://depot.example.com", DepotUrlNormalizer.Normalize("https://depot.example.com/mcp/"));
-    }
-
-    [Fact]
-    public void Normalize_McpSuffixUppercase_StripsCaseInsensitively()
-    {
-        Assert.Equal("https://depot.example.com", DepotUrlNormalizer.Normalize("https://depot.example.com/MCP"));
-    }
-
-    [Fact]
-    public void Normalize_SubpathDeployment_StripsOnlyTheMcpSegment()
-    {
-        Assert.Equal("https://host/depot", DepotUrlNormalizer.Normalize("https://host/depot/mcp"));
-    }
-
-    [Fact]
-    public void Normalize_DoubledMcpSuffix_StripsOnlyOneSegment()
-    {
-        // The case a "strip every trailing /mcp" loop gets wrong: this deployment's own base path is /mcp (its
-        // real endpoint is https://host/mcp/mcp), so only one segment comes off, not both down to the origin.
-        Assert.Equal("https://host/mcp", DepotUrlNormalizer.Normalize("https://host/mcp/mcp"));
-    }
-
-    [Fact]
-    public void Normalize_EmptyString_ReturnsEmpty()
-    {
-        Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize(string.Empty));
-    }
-
-    [Fact]
-    public void Normalize_Whitespace_ReturnsEmpty()
-    {
-        Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize("   "));
-    }
-
-    [Fact]
-    public void Normalize_Null_ReturnsEmpty()
-    {
-        Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize(null));
-    }
-
-    [Fact]
-    public void Normalize_UrlWithoutScheme_StillStripsTheMcpSuffix()
-    {
-        Assert.Equal("depot.example.com", DepotUrlNormalizer.Normalize("depot.example.com/mcp"));
-    }
-
-    [Fact]
-    public void Normalize_NotAUrlAtAll_IsOnlyTrimmed()
-    {
-        Assert.Equal("not a url at all", DepotUrlNormalizer.Normalize("  not a url at all  "));
-    }
-
-    [Fact]
-    public void Normalize_UrlWithPort_StripsTheMcpSuffixAfterThePort()
-    {
-        Assert.Equal("https://depot.example.com:8443", DepotUrlNormalizer.Normalize("https://depot.example.com:8443/mcp"));
+        Assert.Equal(expected, DepotUrlNormalizer.Normalize(url));
     }
 
     // Decision (documented on the class): a literal trailing-substring transform, not a URI parse — a query string
     // or fragment after /mcp stops the literal suffix match, so it is left untouched rather than guessed at. Depot's
     // own documented URL never carries either.
-    [Fact]
-    public void Normalize_UrlWithQueryStringAfterMcp_IsLeftUntouched()
+    [Theory]
+    [InlineData("https://depot.example.com", "https://depot.example.com")]
+    [InlineData("  not a url at all  ", "not a url at all")]
+    [InlineData("https://depot.example.com/mcp?token=abc", "https://depot.example.com/mcp?token=abc")]
+    [InlineData("https://depot.example.com/mcp#section", "https://depot.example.com/mcp#section")]
+    public void Normalize_WithNoTrailingMcpSegment_IsOnlyTrimmed(string url, string expected)
     {
-        Assert.Equal("https://depot.example.com/mcp?token=abc", DepotUrlNormalizer.Normalize("https://depot.example.com/mcp?token=abc"));
+        Assert.Equal(expected, DepotUrlNormalizer.Normalize(url));
     }
 
-    [Fact]
-    public void Normalize_UrlWithFragmentAfterMcp_IsLeftUntouched()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Normalize_NullOrBlank_ReturnsEmpty(string? url)
     {
-        Assert.Equal("https://depot.example.com/mcp#section", DepotUrlNormalizer.Normalize("https://depot.example.com/mcp#section"));
+        Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize(url));
     }
 
     // For every endpoint URL an operator actually pastes (always the full endpoint, including /mcp), stripping
-    // it down and re-appending "/mcp" must land back on the same endpoint. "https://host/mcp/mcp" is the case
-    // that breaks under a loop stripping every trailing /mcp instead of exactly one.
+    // it down and re-appending "/mcp" must land back on the same endpoint. This states the guarantee itself
+    // rather than a table of outputs, so it stays alongside the tables above rather than being folded into them.
     [Theory]
     [InlineData("https://depot.example.com/mcp")] // root deployment
     [InlineData("https://depot.example.com/mcp/")] // trailing slash after the suffix
@@ -110,44 +58,14 @@ public class DepotUrlNormalizerTests
         Assert.Equal(trimmedEndpoint, DepotUrlNormalizer.Normalize(endpointUrl) + "/mcp");
     }
 
-    // The round-trip promise is scoped to a real endpoint URL: Depot's documented URL never carries a query
-    // string or fragment after /mcp, and Normalize deliberately leaves both untouched, so nothing is stripped
-    // here — the value returns unchanged aside from trimming.
     [Theory]
-    [InlineData("https://depot.example.com/mcp?token=abc")]
-    [InlineData("https://depot.example.com/mcp#section")]
-    public void Normalize_EndpointWithQueryOrFragment_DoesNotRoundTrip(string endpointUrl)
+    [InlineData("https://depot.example.com", "https://depot.example.com")]
+    [InlineData("https://host/depot", "https://host")]
+    [InlineData("https://depot.example.com:8443", "https://depot.example.com:8443")]
+    [InlineData("depot.example.com", null)] // no scheme is not a URL to take an origin from
+    [InlineData("not a url at all", null)]
+    public void Origin_KeepsSchemeHostAndPort_AndIsNullWithoutAUrl(string url, string? expected)
     {
-        Assert.Equal(endpointUrl, DepotUrlNormalizer.Normalize(endpointUrl));
-    }
-
-    [Fact]
-    public void Origin_RootUrl_IsTheUrlItself()
-    {
-        Assert.Equal("https://depot.example.com", DepotUrlNormalizer.Origin("https://depot.example.com"));
-    }
-
-    [Fact]
-    public void Origin_UrlWithSubpath_DropsThePath()
-    {
-        Assert.Equal("https://host", DepotUrlNormalizer.Origin("https://host/depot"));
-    }
-
-    [Fact]
-    public void Origin_UrlWithPort_KeepsThePort()
-    {
-        Assert.Equal("https://depot.example.com:8443", DepotUrlNormalizer.Origin("https://depot.example.com:8443"));
-    }
-
-    [Fact]
-    public void Origin_UrlWithoutScheme_ReturnsNull()
-    {
-        Assert.Null(DepotUrlNormalizer.Origin("depot.example.com"));
-    }
-
-    [Fact]
-    public void Origin_NotAUrlAtAll_ReturnsNull()
-    {
-        Assert.Null(DepotUrlNormalizer.Origin("not a url at all"));
+        Assert.Equal(expected, DepotUrlNormalizer.Origin(url));
     }
 }

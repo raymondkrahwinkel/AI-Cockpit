@@ -217,16 +217,11 @@ public sealed class SingleInstanceGuardTests
         Assert.Equal(SingleInstanceGuard.ClaimNameFor(root), SingleInstanceGuard.ClaimNameFor(roundabout));
     }
 
-    [Fact]
+    [WindowsFact("Only Windows compares paths case-insensitively; elsewhere the two spellings are genuinely two directories.")]
     public void ClaimNameFor_OneRootInDifferentCase_IsOneClaimOnWindows()
     {
         // Windows compares paths case-insensitively, so C:\Temp\X and c:\temp\x are one directory and must be one
         // claim. Linux and macOS are left alone: there they can genuinely be two directories.
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var root = Path.Combine(Path.GetTempPath(), "Cockpit-Case");
 
         Assert.Equal(SingleInstanceGuard.ClaimNameFor(root), SingleInstanceGuard.ClaimNameFor(root.ToUpperInvariant()));

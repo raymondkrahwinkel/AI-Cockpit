@@ -49,16 +49,11 @@ public class ProjectResourcePortabilityClassifierTests
         Assert.Equal(ProjectResourcePortability.Absolute, ProjectResourcePortabilityClassifier.Classify(reference));
     }
 
-    [Fact]
+    [WindowsFact("A drive-letter path is only an absolute path on Windows.")]
     public void Classify_WindowsDriveLetterPath_IsAbsoluteNotAOneCharacterScheme()
     {
         // Mirrors Cockpit.Core.Projects.ProjectMemoryRef.TryParse's own guard: "C:\Users\raymond" puts a colon at
         // index 1, which without the two-character floor would misparse as scheme "C".
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         Assert.Equal(ProjectResourcePortability.Absolute, ProjectResourcePortabilityClassifier.Classify(@"C:\Users\raymond\Notes.md"));
     }
 

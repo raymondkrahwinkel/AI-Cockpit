@@ -257,14 +257,9 @@ public class McpToolProviderConnectAsyncTests
         await coordinator.Received(1).GetStateAsync(Arg.Is<McpServerConfig>(server => server.Name == "server-oauth"), Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [WindowsFact("The stdio server this drives is a powershell.exe script, so only Windows can run it.")]
     public async Task ConnectAsync_DisposesAStdioServer_WhenListingItsToolsIsCancelled()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var directory = Directory.CreateTempSubdirectory();
         var pidPath = Path.Combine(directory.FullName, "pid");
         var scriptPath = Path.Combine(directory.FullName, "server.ps1");

@@ -1,5 +1,5 @@
-using System.Runtime.InteropServices;
 using Cockpit.Infrastructure.Screenshots;
+using System.Runtime.Versioning;
 
 namespace Cockpit.Infrastructure.Tests.Screenshots;
 
@@ -9,16 +9,12 @@ namespace Cockpit.Infrastructure.Tests.Screenshots;
 /// does not fail loudly. A list of invisible helper windows enumerates perfectly well.
 /// </summary>
 /// <remarks>Runs only on Windows, so CI (Linux) passes over it — evidence from the machine it ran on, not a gate.</remarks>
+[SupportedOSPlatform("windows")]
 public class Win32DesktopWindowsTests
 {
-    [Fact]
+    [WindowsFact("Reads the real Windows desktop through user32.")]
     public void TheDesktopsWindowsAreReported_WithTitlesAndArea()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return;
-        }
-
         var windows = new Win32DesktopWindows().Enumerate();
 
         Assert.NotEmpty(windows);

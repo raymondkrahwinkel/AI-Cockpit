@@ -22,3 +22,10 @@ internal sealed class PosixFactAttribute : FactAttribute
 {
     public PosixFactAttribute(string windowsCoverage) => Skip = OperatingSystem.IsWindows() ? windowsCoverage : null;
 }
+
+// A test whose subject is Windows-only behaviour. The reason says why the other platforms have nothing to prove,
+// and xUnit reports it as a skip there — a body that returns early instead reports a pass it never earned.
+internal sealed class WindowsFactAttribute : FactAttribute
+{
+    public WindowsFactAttribute(string windowsOnly) => Skip = OperatingSystem.IsWindows() ? null : windowsOnly;
+}

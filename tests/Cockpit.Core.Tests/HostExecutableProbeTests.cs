@@ -70,14 +70,9 @@ public sealed class HostExecutableProbeTests : IDisposable
         Assert.Null(HostExecutableProbe.Resolve(command, _dir));
     }
 
-    [Fact]
+    [WindowsFact("Only Windows resolves a bare name through a .cmd shim on PATHEXT.")]
     public void Resolve_Windows_FindsACmdShimForABareName()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         // npm-style installs (codex, claude) commonly land as a .cmd shim; Process does no PATHEXT lookup for a
         // bare name, so the probe must try the extension itself.
         var codex = Touch("codex.cmd");

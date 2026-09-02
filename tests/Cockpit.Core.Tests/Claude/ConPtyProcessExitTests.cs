@@ -13,15 +13,9 @@ namespace Cockpit.Core.Tests.Claude;
 /// </summary>
 public class ConPtyProcessExitTests
 {
-    [Fact]
+    [WindowsFact("ConPTY is Windows-only (kernel32 CreatePseudoConsole); the Unix host is PortaPtyProcess.")]
     public async Task OutputStream_ReachesEof_AfterTheChildProcessExits()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            // ConPTY is Windows-only (kernel32 CreatePseudoConsole); the Unix host is PortaPtyProcess.
-            return;
-        }
-
         // cmd.exe /c exit terminates immediately after the ConPTY spawns it.
         var comSpec = Environment.GetEnvironmentVariable("ComSpec") ?? @"C:\Windows\System32\cmd.exe";
         var commandLine = ConPtyHostFactory.BuildCommandLine(comSpec, ["/c", "exit"]);
