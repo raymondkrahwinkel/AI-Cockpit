@@ -7,24 +7,13 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 // cannot drift; an inconclusive answer (an older host, a failed probe) must never drop the confinement guard.
 public class AutopilotRunEnvironmentTests
 {
-    [Fact]
-    public void IsolateFor_AGitRepository_Isolates()
-    {
-        Assert.True(AutopilotRunEnvironment.IsolateFor(GitDirectoryStatus.Repository));
-    }
-
-    [Fact]
-    public void IsolateFor_ANonRepository_DoesNotIsolate()
-    {
-        // The one case that runs without isolation — a plain folder the host confirmed is not a git repository.
-        Assert.False(AutopilotRunEnvironment.IsolateFor(GitDirectoryStatus.NotARepository));
-    }
-
-    [Fact]
-    public void IsolateFor_AnUnknownStatus_Isolates_FailClosed()
-    {
-        // An older host or a failed probe answers Unknown — it must be treated as needing isolation, never as a licence
-        // to run free, so the guard is never dropped by an inconclusive answer.
-        Assert.True(AutopilotRunEnvironment.IsolateFor(GitDirectoryStatus.Unknown));
-    }
+    [Theory]
+    [InlineData(GitDirectoryStatus.Repository, true)]
+    // The one case that runs without isolation — a plain folder the host confirmed is not a git repository.
+    [InlineData(GitDirectoryStatus.NotARepository, false)]
+    // An older host or a failed probe answers Unknown — it must be treated as needing isolation, never as a licence
+    // to run free, so the guard is never dropped by an inconclusive answer.
+    [InlineData(GitDirectoryStatus.Unknown, true)]
+    public void IsolateFor_IsolatesUnlessTheHostSaidItIsNotARepository(GitDirectoryStatus status, bool isolates) =>
+        Assert.Equal(isolates, AutopilotRunEnvironment.IsolateFor(status));
 }

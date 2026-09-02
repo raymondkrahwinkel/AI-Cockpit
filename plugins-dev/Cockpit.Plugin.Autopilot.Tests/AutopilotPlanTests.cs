@@ -13,17 +13,11 @@ public class AutopilotPlanTests
         new(goal, new AutopilotPlanSource("YouTrack", issueId, "A title"),
             [new AutopilotStep("1", "Step", "desc", "work", "opus", "brief", "compiles", GateMode.Hard)]) { Name = name };
 
-    [Fact]
-    public void Label_FallsBackToGoal_WhenNoNameSet()
-    {
-        Assert.Equal("Add a helper class", _Plan("Add a helper class").Label);
-    }
-
-    [Fact]
-    public void Label_IsTheName_WhenSet()
-    {
-        Assert.Equal("HelperTwo", _Plan("Add a helper class", "HelperTwo").Label);
-    }
+    [Theory]
+    [InlineData("", "Add a helper class")]
+    [InlineData("HelperTwo", "HelperTwo")]
+    public void Label_IsTheName_FallingBackToTheGoal(string name, string expected) =>
+        Assert.Equal(expected, _Plan("Add a helper class", name).Label);
 
     [Fact]
     public void SuggestedName_FallsThroughNameThenGoalThenFirstStepTitle()
