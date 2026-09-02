@@ -141,37 +141,15 @@ public class ProjectInstructionContentReaderTests : IDisposable
         Assert.Equal("content at exactly the boundary", result[file]);
     }
 
-    [Fact]
-    public void AnEmptyFile_IsReadAsEmptyContent()
+    // One behaviour, one test: a ticked file's bytes come back verbatim under the key it was named by. The rows
+    // are the content classes that used to be a Fact each — empty, whitespace only, and multibyte unicode.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   \n\t  \n")]
+    [InlineData("Lees dit zorgvuldig: 🚀 中文说明 café naïve — schema volgen.")]
+    public void ATickedFile_IsReadFaithfully(string content)
     {
-        var file = _File("empty.md");
-        File.WriteAllText(file, string.Empty);
-        var resources = new[] { new ProjectResource(file, ProjectResourceRole.Instructions) { SendsContent = true } };
-
-        var result = ProjectInstructionContentReader.Read(resources);
-
-        Assert.True(result.ContainsKey(file));
-        Assert.Equal(string.Empty, result[file]);
-    }
-
-    [Fact]
-    public void AWhitespaceOnlyFile_IsReadFaithfully()
-    {
-        var file = _File("whitespace.md");
-        File.WriteAllText(file, "   \n\t  \n");
-        var resources = new[] { new ProjectResource(file, ProjectResourceRole.Instructions) { SendsContent = true } };
-
-        var result = ProjectInstructionContentReader.Read(resources);
-
-        Assert.True(result.ContainsKey(file));
-        Assert.Equal("   \n\t  \n", result[file]);
-    }
-
-    [Fact]
-    public void MultibyteUnicodeContent_IsReadCorrectly()
-    {
-        var file = _File("unicode.md");
-        var content = "Lees dit zorgvuldig: 🚀 中文说明 café naïve — schema volgen.";
+        var file = _File("faithful.md");
         File.WriteAllText(file, content);
         var resources = new[] { new ProjectResource(file, ProjectResourceRole.Instructions) { SendsContent = true } };
 

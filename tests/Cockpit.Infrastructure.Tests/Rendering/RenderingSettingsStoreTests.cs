@@ -24,25 +24,21 @@ public sealed class RenderingSettingsStoreTests : IDisposable
         }
     }
 
+    // One exercise over the whole contract: what the two readers say before anything is saved, and that they still
+    // agree afterwards. The backend choice is not a security boundary, so "something here broke" is diagnosis enough.
     [Fact]
-    public async Task Save_RoundTripsThroughBothTheStoreAndTheStartupReader()
+    public async Task TheBackendChoice_ReadsAutoUntilOneIsSaved_AndBothReadersAgreeEitherWay()
     {
         Directory.CreateDirectory(_directory);
         var store = new RenderingSettingsStore(ConfigPath);
+
+        Assert.Equal(RenderBackendChoice.Auto, (await store.LoadAsync()).Backend);
+        Assert.Equal(RenderBackendChoice.Auto, RenderBackendConfig.Read(ConfigPath));
 
         await store.SaveAsync(new RenderingSettings { Backend = RenderBackendChoice.OpenGl });
 
         Assert.Equal(RenderBackendChoice.OpenGl, (await store.LoadAsync()).Backend);
         // The early, pre-container reader must see exactly what the store wrote.
         Assert.Equal(RenderBackendChoice.OpenGl, RenderBackendConfig.Read(ConfigPath));
-    }
-
-    [Fact]
-    public async Task DefaultsToAuto_WhenNothingWasSaved()
-    {
-        Directory.CreateDirectory(_directory);
-
-        Assert.Equal(RenderBackendChoice.Auto, (await new RenderingSettingsStore(ConfigPath).LoadAsync()).Backend);
-        Assert.Equal(RenderBackendChoice.Auto, RenderBackendConfig.Read(ConfigPath));
     }
 }

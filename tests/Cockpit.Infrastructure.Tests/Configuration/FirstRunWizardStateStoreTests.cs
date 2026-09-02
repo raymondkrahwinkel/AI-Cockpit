@@ -23,28 +23,19 @@ public sealed class FirstRunWizardStateStoreTests : IDisposable
         }
     }
 
+    // The marker's whole life in one exercise: absent before the wizard ever ran, carrying the version once it has,
+    // and — the point of AC-509 — keeping the latest rather than collapsing to a flag a second run cannot move.
     [Fact]
-    public async Task GetCompletedVersionAsync_NothingSaved_IsNull() =>
-        Assert.Null(await new FirstRunWizardStateStore(ConfigPath).GetCompletedVersionAsync());
-
-    [Fact]
-    public async Task MarkCompletedAsync_ThenGetCompletedVersionAsync_RoundTripsTheVersion()
+    public async Task TheCompletionMarker_IsAbsentUntilMarked_ThenCarriesTheLatestVersionRatherThanAFlag()
     {
         var store = new FirstRunWizardStateStore(ConfigPath);
 
-        await store.MarkCompletedAsync(3);
-
-        Assert.Equal(3, await store.GetCompletedVersionAsync());
-    }
-
-    // A version rather than a bool is the whole point (AC-509): a later run marking a newer version must not be
-    // indistinguishable from an older one — both would just be "true" if this collapsed to a flag.
-    [Fact]
-    public async Task MarkCompletedAsync_TwiceWithDifferentVersions_KeepsTheLatestOne()
-    {
-        var store = new FirstRunWizardStateStore(ConfigPath);
+        Assert.Null(await store.GetCompletedVersionAsync());
 
         await store.MarkCompletedAsync(1);
+
+        Assert.Equal(1, await store.GetCompletedVersionAsync());
+
         await store.MarkCompletedAsync(2);
 
         Assert.Equal(2, await store.GetCompletedVersionAsync());

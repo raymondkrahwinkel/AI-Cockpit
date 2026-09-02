@@ -52,25 +52,18 @@ public class ProjectResourceProbeTests : IDisposable
     }
 
     /// <summary>
-    /// AC-484's explicit boundary: a <c>&lt;scheme&gt;:&lt;value&gt;</c> reference is the registering plugin's to
-    /// judge, never this probe's — even though "depot" is not a real path and obviously does not exist on disk.
+    /// The reference classes AC-484 puts outside this probe's remit, one row each: a
+    /// <c>&lt;scheme&gt;:&lt;value&gt;</c> reference is the registering plugin's to judge, a relative path's
+    /// portability is AC-485's question, and a blank row is not a reference yet. None of the three exists on
+    /// disk, and the probe still says nothing about any of them.
     /// </summary>
-    [Fact]
-    public void ASchemeReference_IsNeverReportedUnresolved()
+    [Theory]
+    [InlineData("depot:cockpit")]
+    [InlineData("notes/does-not-exist-either")]
+    [InlineData("   ")]
+    public void AReferenceThisProbeDoesNotJudge_IsNeverReportedUnresolved(string reference)
     {
-        var resources = new[] { new ProjectResource("depot:cockpit", ProjectResourceRole.Memory) };
-
-        Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
-    }
-
-    /// <summary>
-    /// AC-484's other explicit boundary: a relative path's portability is AC-485's question, so this probe says
-    /// nothing about one at all — even one that plainly does not exist relative to the current directory.
-    /// </summary>
-    [Fact]
-    public void ARelativePath_IsNeverReportedUnresolved()
-    {
-        var resources = new[] { new ProjectResource("notes/does-not-exist-either", ProjectResourceRole.Memory) };
+        var resources = new[] { new ProjectResource(reference, ProjectResourceRole.Memory) };
 
         Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
     }
@@ -96,14 +89,6 @@ public class ProjectResourceProbeTests : IDisposable
     {
         // "~" itself always exists (it is the home directory) — no fixture needed beyond that.
         var resources = new[] { new ProjectResource("~", ProjectResourceRole.Memory) };
-
-        Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
-    }
-
-    [Fact]
-    public void ABlankReference_IsNeverReportedUnresolved()
-    {
-        var resources = new[] { new ProjectResource("   ", ProjectResourceRole.Reference) };
 
         Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
     }

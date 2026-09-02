@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Worktrees;
@@ -1142,15 +1143,9 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
     }
 
-    [Fact]
+    [PosixFact("A colon cannot appear in a Windows filename, so the collision this is about cannot be built there.")]
     public async Task CreateAsync_UpdateWouldOverwriteAPathGitReadsAsPathspecMagic_LeavesItAlone()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            // A colon cannot appear in a Windows filename, so the collision this is about cannot be built there.
-            return;
-        }
-
         _AddRemote();
         File.WriteAllText(Path.Combine(_repo, ".gitignore"), ":colon.txt\n");
         _Git(_repo, "add", "-A");
@@ -1168,15 +1163,9 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
     }
 
-    [Fact]
+    [PosixFact("Creating a symlink on Windows needs privileges this test cannot assume.")]
     public async Task CreateAsync_UpdateWouldReplaceASymlinkedDirectory_LeavesItAlone()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            // Creating a symlink on Windows needs privileges this test cannot assume.
-            return;
-        }
-
         _AddRemote();
         File.WriteAllText(Path.Combine(_repo, ".gitignore"), "libs\n");
         _Git(_repo, "add", "-A");
@@ -1248,16 +1237,10 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.Equal("the only copy\n", File.ReadAllText(Path.Combine(_repo, "local.cfg")));
     }
 
-    [Fact]
+    [PosixFact("Driven by a shell hook and a process-tree kill; both behave differently enough on Windows to prove something other than what this is about.")]
+    [UnsupportedOSPlatform("windows")]
     public async Task BringUpToDateAsync_FastForwardKilledAfterTheBranchMoved_ReportsWhereItActuallyLanded()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            // Driven by a shell hook and a process-tree kill; both behave differently enough on Windows to prove
-            // something other than what this is about.
-            return;
-        }
-
         _AddRemote();
         var moved = _PushFromAnotherClone("shipped.txt");
         var hook = Path.Combine(_repo, ".git", "hooks", "post-merge");
@@ -1275,15 +1258,10 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.Equal(moved, refresh.ForkCommit);
     }
 
-    [Fact]
+    [PosixFact("Paced by a shell hook, which behaves differently enough on Windows to prove something else.")]
+    [UnsupportedOSPlatform("windows")]
     public async Task BringUpToDateAsync_CancelledWhileTheFastForwardRuns_StillReportsWhatItDid()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            // Paced by a shell hook, which behaves differently enough on Windows to prove something else.
-            return;
-        }
-
         _AddRemote();
         var moved = _PushFromAnotherClone("shipped.txt");
         var hook = Path.Combine(_repo, ".git", "hooks", "post-merge");
@@ -1303,15 +1281,10 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.Equal(moved, refresh.ForkCommit);
     }
 
-    [Fact]
+    [PosixFact("Paced by a shell hook, which behaves differently enough on Windows to prove something else.")]
+    [UnsupportedOSPlatform("windows")]
     public async Task CreateAsync_CancelledAfterTheBranchMoved_StillAnnouncesThatItMoved()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            // Paced by a shell hook, which behaves differently enough on Windows to prove something else.
-            return;
-        }
-
         _AddRemote();
         var moved = _PushFromAnotherClone("shipped.txt");
         var hook = Path.Combine(_repo, ".git", "hooks", "post-merge");

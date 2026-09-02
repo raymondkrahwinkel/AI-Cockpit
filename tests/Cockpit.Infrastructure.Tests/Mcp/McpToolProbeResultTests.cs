@@ -15,10 +15,6 @@ public class McpToolProbeResultTests
         Assert.Equal(0, (int)McpToolProbeOutcome.Failed);
 
     [Fact]
-    public void DefaultOutcome_IsFailed() =>
-        Assert.Equal(McpToolProbeOutcome.Failed, default);
-
-    [Fact]
     public void FailedResult_NeverCarriesADetail() =>
         Assert.Null(McpToolProbeResult.Failed.Detail);
 
