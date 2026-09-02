@@ -1,4 +1,3 @@
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The hidden brief a run's CEO validator session is started with (AC-174): a pure builder, so its wording and the
@@ -9,38 +8,46 @@ public class AutopilotValidatorBriefTests
     private static AutopilotPlan _SourcePlan() =>
         new("Do the work", new AutopilotPlanSource("YouTrack", "AC-198", "A title"), []);
 
-    [Fact]
-    public void For_NamesTheTrackerAndValidateTools_OnTheCeoEndpoint()
-    {
-        var brief = AutopilotValidatorBrief.For(_SourcePlan());
-
-        Assert.Contains("mcp__cockpit-autopilot-ceo__autopilot_tracker_stage", brief);
-        Assert.Contains("mcp__cockpit-autopilot-ceo__autopilot_tracker_note", brief);
-        Assert.Contains("mcp__cockpit-autopilot-ceo__autopilot_validate", brief);
-    }
-
-    [Fact]
-    public void For_DoesNotNameTheTrackerOrValidateTools_OnTheRunEndpoint()
-    {
-        var brief = AutopilotValidatorBrief.For(_SourcePlan());
-
-        // The step-agent run endpoint hosts only step_done/blocked — the tracker and validate tools are not there, so
-        // the brief must never point the CEO at cockpit-autopilot-run for them.
-        Assert.DoesNotContain("cockpit-autopilot-run__autopilot_tracker_stage", brief);
-        Assert.DoesNotContain("cockpit-autopilot-run__autopilot_tracker_note", brief);
-        Assert.DoesNotContain("cockpit-autopilot-run__autopilot_validate", brief);
-    }
-
-    [Fact]
-    public void For_TellsTheCeoItManagesWorkerConsults_ViaAnswerAndEscalateTools()
-    {
-        var brief = AutopilotValidatorBrief.For(_SourcePlan());
-
+    public static IEnumerable<object[]> ToolsOnTheCeoEndpoint() =>
+    [
+        // Naming them on the CEO endpoint and *not* on the run endpoint is one guarantee seen from two sides: the
+        // step-agent run endpoint hosts only step_done/blocked, so a brief that points the CEO at
+        // cockpit-autopilot-run for these makes every one of its calls miss.
+        [
+            new[]
+            {
+                "mcp__cockpit-autopilot-ceo__autopilot_tracker_stage",
+                "mcp__cockpit-autopilot-ceo__autopilot_tracker_note",
+                "mcp__cockpit-autopilot-ceo__autopilot_validate",
+            },
+            new[]
+            {
+                "cockpit-autopilot-run__autopilot_tracker_stage",
+                "cockpit-autopilot-run__autopilot_tracker_note",
+                "cockpit-autopilot-run__autopilot_validate",
+            },
+        ],
         // AC-201: the CEO is also the workers' manager — a mid-step consult is answered (relayed to the worker) or, only
         // when it is genuinely an operator call, escalated. Both tools live on the CEO endpoint.
-        Assert.Contains("consult you before it continues", brief);
-        Assert.Contains("mcp__cockpit-autopilot-ceo__autopilot_answer_worker", brief);
-        Assert.Contains("mcp__cockpit-autopilot-ceo__autopilot_escalate_to_operator", brief);
+        [
+            new[]
+            {
+                "consult you before it continues",
+                "mcp__cockpit-autopilot-ceo__autopilot_answer_worker",
+                "mcp__cockpit-autopilot-ceo__autopilot_escalate_to_operator",
+            },
+            Array.Empty<string>(),
+        ],
+    ];
+
+    [Theory]
+    [MemberData(nameof(ToolsOnTheCeoEndpoint))]
+    public void For_NamesEveryToolItHandsTheCeo_OnTheCeoEndpointOnly(string[] present, string[] absent)
+    {
+        var brief = AutopilotValidatorBrief.For(_SourcePlan());
+
+        Assert.All(present, name => Assert.Contains(name, brief));
+        Assert.All(absent, name => Assert.DoesNotContain(name, brief));
     }
 
     [Fact]

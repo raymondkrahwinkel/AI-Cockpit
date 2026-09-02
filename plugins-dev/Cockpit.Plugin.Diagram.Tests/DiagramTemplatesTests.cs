@@ -1,33 +1,30 @@
-using Cockpit.Core.Abstractions.Diagrams;
+﻿using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Infrastructure.Diagrams;
 using Mermaider;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
-// AC-911 criterion 2: the diagram type picker may only ever offer what DiagramObjectEdit.DialectOf (AC-899) can
-// still hand-edit afterwards. One [Fact] looping the list rather than [Theory]/MemberData: SurfaceTemplate is
-// internal, and a public theory method cannot take an internal parameter type.
+// AC-911 criterion 2: the diagram type picker may only offer what DiagramObjectEdit.DialectOf (AC-899) can still
+// hand-edit afterwards. `SurfaceTemplate` is internal (CS0051), so the rows carry the two fields read here rather
+// than the template — which also makes every template its own case, where the loop stopped at the first break.
 public class DiagramTemplatesTests
 {
-    [Fact]
-    public void EveryTemplate_HasASupportedDialect()
-    {
-        foreach (var template in DiagramTemplates.All)
-        {
-            Assert.NotEqual(DiagramEditDialect.Unsupported, DiagramObjectEdit.DialectOf(template.Source));
-        }
-    }
+    public static IEnumerable<object[]> Templates() =>
+        DiagramTemplates.All.Select(template => new object[] { template.Name, template.Source });
 
-    [Fact]
-    public void EveryTemplate_RendersWithoutThrowing()
-    {
-        foreach (var template in DiagramTemplates.All)
-        {
-            var markup = MermaidRenderer.RenderSvg(template.Source, DiagramTheme.Options);
+    [Theory]
+    [MemberData(nameof(Templates))]
+    public void EveryTemplate_HasASupportedDialect(string name, string source) =>
+        Assert.True(
+            DiagramObjectEdit.DialectOf(source) != DiagramEditDialect.Unsupported,
+            $"the \"{name}\" template is offered by the picker but cannot be hand-edited afterwards");
 
-            Assert.False(string.IsNullOrWhiteSpace(markup));
-        }
-    }
+    [Theory]
+    [MemberData(nameof(Templates))]
+    public void EveryTemplate_RendersWithoutThrowing(string name, string source) =>
+        Assert.True(
+            !string.IsNullOrWhiteSpace(MermaidRenderer.RenderSvg(source, DiagramTheme.Options)),
+            $"the \"{name}\" template rendered to nothing");
 
     [Fact]
     public void Blank_IsExactlyDiagramDocumentEmpty()

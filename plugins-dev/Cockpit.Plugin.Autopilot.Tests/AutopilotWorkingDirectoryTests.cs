@@ -14,25 +14,19 @@ public class AutopilotWorkingDirectoryTests
     private static readonly string ChosenFolder = Path.Combine(Path.GetTempPath(), "chosen");
     private static readonly string ActiveSession = Path.Combine(Path.GetTempPath(), "active", "session");
 
-    [Fact]
-    public void Resolve_PrefersTheChosenFolder_OverTheActiveSession()
-    {
-        Assert.Equal(ChosenFolder, AutopilotWorkingDirectory.Resolve(_Context(ActiveSession), ChosenFolder));
-    }
+    public static IEnumerable<object[]> Preferences() =>
+    [
+        [ActiveSession, ChosenFolder, ChosenFolder],
+        [ActiveSession, null!, ActiveSession],
+        [ActiveSession, "   ", ActiveSession],
+        [null!, null!, Directory.GetCurrentDirectory()],
+    ];
 
-    [Fact]
-    public void Resolve_FallsBackToTheActiveSession_WhenNoFolderChosen()
-    {
-        var context = _Context(ActiveSession);
-        Assert.Equal(ActiveSession, AutopilotWorkingDirectory.Resolve(context, null));
-        Assert.Equal(ActiveSession, AutopilotWorkingDirectory.Resolve(context, "   "));
-    }
-
-    [Fact]
-    public void Resolve_FallsBackToTheCurrentDirectory_WhenNeitherIsSet()
-    {
-        Assert.Equal(Directory.GetCurrentDirectory(), AutopilotWorkingDirectory.Resolve(_Context(null), null));
-    }
+    [Theory]
+    [MemberData(nameof(Preferences))]
+    public void Resolve_PrefersTheChosenFolder_ThenTheActiveSession_ThenTheCockpitsOwn(
+        string? activeSession, string? chosen, string expected) =>
+        Assert.Equal(expected, AutopilotWorkingDirectory.Resolve(_Context(activeSession), chosen));
 
     [Fact]
     public void Resolve_AnswersAnAbsolutePath_EvenWhenItWasGivenARelativeOne()

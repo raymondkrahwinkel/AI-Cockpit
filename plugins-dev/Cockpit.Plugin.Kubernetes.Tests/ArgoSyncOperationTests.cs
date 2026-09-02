@@ -9,13 +9,7 @@ public class ArgoSyncOperationTests
     [Fact]
     public void PatchJson_IsExactlyAnEmptySync_NoPruneOrForce()
     {
+        // The whole literal, so there is nowhere for a flag to be added unnoticed — prune and force included.
         Assert.Equal("""{"operation":{"sync":{}}}""", ArgoSyncOperation.PatchJson);
-    }
-
-    [Fact]
-    public void PatchJson_MentionsNeitherPruneNorForce()
-    {
-        Assert.DoesNotContain("prune", ArgoSyncOperation.PatchJson, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("force", ArgoSyncOperation.PatchJson, StringComparison.OrdinalIgnoreCase);
     }
 }

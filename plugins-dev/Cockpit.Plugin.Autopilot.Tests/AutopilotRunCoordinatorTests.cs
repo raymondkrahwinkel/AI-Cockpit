@@ -1,4 +1,4 @@
-using Avalonia.Controls;
+﻿using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Tracking;
@@ -220,34 +220,11 @@ public class AutopilotRunCoordinatorTests
     }
 
     [Fact]
-    public async Task RunAsync_ForANonGitFolder_EmbedsTheStepUnisolatedInTheWorkingDirectory()
+    public async Task RunAsync_ForANonGitFolder_EmbedsOneUnisolatedAgent_InTheWorkingDirectory()
     {
-        // AC-174: a run whose folder the host reported is not a git repository runs its steps
-        // without worktree isolation, directly in that folder — an admin task with no repo, not refused at the first step.
-        var plan = _RunningPlan(_HardStep("1"));
-        var context = _Context(_Session("step-pane"));
-        var coordinator = new AutopilotRunCoordinator(_Host(), plan);
-
-        var shown = new TaskCompletionSource();
-        using var cts = new CancellationTokenSource();
-        var environment = new AutopilotRunEnvironment("/plain/folder", null, IsolateSteps: false);
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
-
-        await shown.Task.WaitAsync(Timeout);
-        // Not isolated in a worktree, but its file tools are confined to the working folder (least-privilege: a local
-        // model without an OS sandbox is held to the operator's folder, not their home).
-        context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request =>
-            !request.IsolateInWorktree && request.WorkingDirectory == "/plain/folder" && request.ConfineFileToolsToWorkingDirectory));
-
-        cts.Cancel();
-        await run.WaitAsync(Timeout);
-    }
-
-    [Fact]
-    public async Task RunAsync_ForANonGitFolder_ForcesASingleAgent_EvenWhenTheStepAsksForMore()
-    {
-        // A non-git run has no per-agent worktree isolation, so a parallel step would race N agents on the same folder;
-        // it is clamped to one agent (an isolated run keeps the split — each agent gets its own worktree).
+        // AC-174: a folder the host reported is no git repository runs its steps unisolated, in that folder — an
+        // admin task with no repo, not refused at the first step. Measured on a step asking for three agents: with
+        // no per-agent worktree to hand out, a parallel step would race all three on the one folder.
         var plan = _RunningPlan(_ParallelStep("1", agents: 3));
         var context = _Context(_Session("step-pane"));
         var coordinator = new AutopilotRunCoordinator(_Host(), plan);
@@ -258,8 +235,14 @@ public class AutopilotRunCoordinatorTests
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
 
         await shown.Task.WaitAsync(Timeout);
-        // Only one agent session is embedded despite the step asking for three.
+
+        // Only one agent session is embedded despite the step asking for three (an isolated run keeps the split —
+        // there each agent gets its own worktree).
         context.Received(1).EmbedSession(Arg.Any<EmbeddedSessionRequest>());
+        // Not isolated in a worktree, but its file tools are confined to the working folder (least-privilege: a local
+        // model without an OS sandbox is held to the operator's folder, not their home).
+        context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request =>
+            !request.IsolateInWorktree && request.WorkingDirectory == "/plain/folder" && request.ConfineFileToolsToWorkingDirectory));
 
         cts.Cancel();
         await run.WaitAsync(Timeout);

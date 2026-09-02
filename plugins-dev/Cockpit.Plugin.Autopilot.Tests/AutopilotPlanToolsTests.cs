@@ -49,66 +49,44 @@ public class AutopilotPlanToolsTests
     }
 
     [Fact]
-    public void TryParseSteps_KeepsTheMinimalMcpSetPerStep_DroppingBlanks()
+    public void TryParseSteps_OptionalFields_AreFilledIn_OmittedOrMalformed()
     {
+        // What a step gets when the CEO leaves an optional field out or writes nonsense into it. One array, because
+        // these only mean anything together: the same parse that keeps a named MCP server has to drop the blank next
+        // to it, leave the bare step with nothing, and clamp an agent count that would launch no agent at all.
         const string json = """
             [
-              {"id":"2","title":"Visual verify","profile":"Claude","brief":"b","mcp":["cockpit-verify","  "]},
-              {"id":"3","title":"Code review","profile":"Claude","brief":"b"}
-            ]
-            """;
-
-        Assert.True(AutopilotPlanTools.TryParseSteps(json, out var steps, out _));
-        Assert.Equal(new[] { "cockpit-verify" }, steps[0].McpServers);
-        Assert.Empty(steps[1].McpServers);
-    }
-
-    [Fact]
-    public void TryParseSteps_TreatsAMissingModel_AsNull()
-    {
-        const string json = """[{"id":"5","title":"Conventions","profile":"Qwen (local)","brief":"b"}]""";
-
-        Assert.True(AutopilotPlanTools.TryParseSteps(json, out var steps, out _));
-        Assert.Null(steps[0].Model);
-    }
-
-    [Fact]
-    public void TryParseSteps_ReadsAgentCount_DefaultingToOne_AndClampingBelowOne()
-    {
-        const string json = """
-            [
-              {"id":"1","title":"Code","profile":"Claude","brief":"b","agents":3},
-              {"id":"2","title":"Review","profile":"Claude","brief":"b"},
+              {"id":"1","title":"Visual verify","profile":"Claude","brief":"b","model":"Sonnet","mcp":["cockpit-verify","  "],"agents":3},
+              {"id":"2","title":"Conventions","profile":"Qwen (local)","brief":"b"},
               {"id":"3","title":"PR","profile":"Claude","brief":"b","agents":0}
             ]
             """;
 
         Assert.True(AutopilotPlanTools.TryParseSteps(json, out var steps, out _));
+
+        Assert.Equal(new[] { "cockpit-verify" }, steps[0].McpServers);
         Assert.Equal(3, steps[0].AgentCount);
+        // A local profile pins its own model, so an omitted one reads back as null rather than blank.
+        Assert.Null(steps[1].Model);
+        Assert.Empty(steps[1].McpServers);
         Assert.Equal(1, steps[1].AgentCount);
         Assert.Equal(1, steps[2].AgentCount);
     }
 
-    [Fact]
-    public void TryParseSteps_RejectsAnEmptyArray()
+    public static IEnumerable<object[]> MalformedPlans() =>
+    [
+        ["[]", "at least one step"],
+        ["not json", "not valid JSON"],
+        ["""[{"title":"no id","profile":"Claude"}]""", "id and a title"],
+    ];
+
+    [Theory]
+    [MemberData(nameof(MalformedPlans))]
+    public void TryParseSteps_RefusesAPlanItCannotRun_AndSaysWhy(string json, string expectedReason)
     {
-        Assert.False(AutopilotPlanTools.TryParseSteps("[]", out var steps, out var error));
+        Assert.False(AutopilotPlanTools.TryParseSteps(json, out var steps, out var error));
         Assert.Empty(steps);
-        Assert.Contains("at least one step", error);
-    }
-
-    [Fact]
-    public void TryParseSteps_RejectsInvalidJson()
-    {
-        Assert.False(AutopilotPlanTools.TryParseSteps("not json", out _, out var error));
-        Assert.Contains("not valid JSON", error);
-    }
-
-    [Fact]
-    public void TryParseSteps_RejectsAStepWithoutIdOrTitle()
-    {
-        Assert.False(AutopilotPlanTools.TryParseSteps("""[{"title":"no id","profile":"Claude"}]""", out _, out var error));
-        Assert.Contains("id and a title", error);
+        Assert.Contains(expectedReason, error);
     }
 
     // AC-210: the (profile, model) validity check the CEO's plan is held to.
@@ -121,33 +99,31 @@ public class AutopilotPlanToolsTests
     private static AutopilotStep _Step(string profile, string? model) =>
         new("1", "Code", "do it", profile, model, "brief", "compiles", GateMode.Hard);
 
-    [Fact]
-    public void ValidateStepProfiles_AcceptsAModelOnTheProfilesList_AndAnEmptyModelForALocalProfile()
-    {
-        Assert.Null(AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "opus")], Roster));
-        // Case-insensitive: the CEO may write "Opus" where the roster lists "opus".
-        Assert.Null(AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "Sonnet")], Roster));
-        Assert.Null(AutopilotPlanTools.ValidateStepProfiles([_Step("Qwen (local)", null)], Roster));
-    }
+    [Theory]
+    [InlineData("Claude", "opus")]
+    // Case-insensitive: the CEO may write "Sonnet" where the roster lists "sonnet".
+    [InlineData("Claude", "Sonnet")]
+    // A local profile pins its own model, so it is the one case where an empty model is right.
+    [InlineData("Qwen (local)", null)]
+    public void ValidateStepProfiles_AcceptsAPairingTheRosterOffers(string profile, string? model) =>
+        Assert.Null(AutopilotPlanTools.ValidateStepProfiles([_Step(profile, model)], Roster));
 
-    [Fact]
-    public void ValidateStepProfiles_RejectsAModelTheProfileDoesNotOffer()
-    {
-        var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "gpt-5")], Roster);
-        Assert.Contains("Claude", error);
-        Assert.Contains("gpt-5", error);
-        Assert.Contains("opus, sonnet, haiku", error);
-    }
+    public static IEnumerable<object[]> UnofferedPairings() =>
+    [
+        // A model the profile does not offer is named alongside the ones it does, so the CEO can redraft in one pass.
+        ["Claude", "gpt-5", new[] { "Claude", "gpt-5", "opus, sonnet, haiku" }],
+        ["Claude", null!, new[] { "Claude", "no model" }],
+        ["Qwen (local)", "qwen2.5-coder", new[] { "Qwen (local)", "leave 'model' empty" }],
+        ["Codex", null!, new[] { "Codex", "not one of the configured profiles" }],
+    ];
 
     [Theory]
-    [InlineData("Claude", null, "Claude", "no model")]
-    [InlineData("Qwen (local)", "qwen2.5-coder", "Qwen (local)", "leave 'model' empty")]
-    [InlineData("Codex", null, "Codex", "not one of the configured profiles")]
-    public void ValidateStepProfiles_RejectsAndNamesTheOffendingProfile(string profile, string? model, string expectedProfile, string expectedReason)
+    [MemberData(nameof(UnofferedPairings))]
+    public void ValidateStepProfiles_RejectsAndNamesTheOffendingProfile(string profile, string? model, string[] expected)
     {
         var error = AutopilotPlanTools.ValidateStepProfiles([_Step(profile, model)], Roster);
-        Assert.Contains(expectedProfile, error);
-        Assert.Contains(expectedReason, error);
+
+        Assert.All(expected, fragment => Assert.Contains(fragment, error));
     }
 
     [Fact]
@@ -204,56 +180,49 @@ public class AutopilotPlanToolsTests
         return (new AutopilotPlanTools(host, controller, new AutopilotSettings(new FakeStorage())), controller);
     }
 
+    private static ITrackerProvider _TrackerWith(string childTitle, string childStage)
+    {
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        tracker.GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new TrackerIssueSnapshot(childTitle, childStage)));
+        return tracker;
+    }
+
     private static bool _Ok(string result) =>
         JsonDocument.Parse(result).RootElement.GetProperty("ok").GetBoolean();
 
     // AC-411: the child-stage code-gate. A step whose issueId names a tracker child other than the run's own source
-    // issue is checked against the tracker's own stage before the plan is accepted.
-    [Fact]
-    public async Task SetPlan_RejectsAChildStep_WhoseTrackerStageIsNotExecutable()
+    // issue is checked against the tracker's own snapshot before the plan is accepted — and the snapshot is what
+    // decides, not the CEO's step title, which is the exact gap AC-345's brief-only version left.
+    public static IEnumerable<object[]> RefusedChildren() =>
+    [
+        ["Fix the widget", "Backlog", new[] { "AC-1", "Backlog" }],
+        ["[Brainstorm] a loose idea", "Ready", new[] { "Brainstorm" }],
+    ];
+
+    [Theory]
+    [MemberData(nameof(RefusedChildren))]
+    public async Task SetPlan_RejectsAChildStep_TheTrackersOwnSnapshotRulesOut(string childTitle, string childStage, string[] expected)
     {
-        var tracker = Substitute.For<ITrackerProvider>();
-        tracker.TrackerId.Returns("youtrack");
-        tracker.GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new TrackerIssueSnapshot("Fix the widget", "Backlog")));
-        var (tools, _) = _PlanningTools(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), tracker);
-
-        var result = await tools.SetPlan(
-            "Work the epic",
-            """[{"id":"1","title":"Fix the child","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-1"}]""");
-
-        Assert.False(_Ok(result));
-        Assert.Contains("AC-1", result);
-        Assert.Contains("Backlog", result);
-    }
-
-    [Fact]
-    public async Task SetPlan_RejectsAChildStep_StillMarkedBrainstorm_OnTheIssuesOwnTitle()
-    {
-        // The tracker's own title carries the marker, not the CEO's step title — proving the check reads the real
-        // issue rather than trusting whatever the CEO wrote into the plan (the exact gap AC-345's brief-only version left).
-        var tracker = Substitute.For<ITrackerProvider>();
-        tracker.TrackerId.Returns("youtrack");
-        tracker.GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new TrackerIssueSnapshot("[Brainstorm] a loose idea", "Ready")));
-        var (tools, _) = _PlanningTools(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), tracker);
+        var (tools, _) = _PlanningTools(
+            new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"),
+            _TrackerWith(childTitle, childStage));
 
         var result = await tools.SetPlan(
             "Work the epic",
             """[{"id":"1","title":"A perfectly normal-sounding step title","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-1"}]""");
 
         Assert.False(_Ok(result));
-        Assert.Contains("Brainstorm", result);
+        Assert.All(expected, fragment => Assert.Contains(fragment, result));
     }
 
     [Fact]
     public async Task SetPlan_AcceptsAChildStep_OnTheExecutableStage()
     {
-        var tracker = Substitute.For<ITrackerProvider>();
-        tracker.TrackerId.Returns("youtrack");
-        tracker.GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new TrackerIssueSnapshot("Fix the widget", "Ready")));
-        var (tools, controller) = _PlanningTools(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), tracker);
+        var (tools, controller) = _PlanningTools(
+            new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"),
+            _TrackerWith("Fix the widget", "Ready"));
 
         var result = await tools.SetPlan(
             "Work the epic",
@@ -283,10 +252,7 @@ public class AutopilotPlanToolsTests
     [Fact]
     public async Task SetPlan_WithTwoStepsOnTheSameChild_FetchesItsSnapshotOnlyOnce()
     {
-        var tracker = Substitute.For<ITrackerProvider>();
-        tracker.TrackerId.Returns("youtrack");
-        tracker.GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new TrackerIssueSnapshot("Fix the widget", "Ready")));
+        var tracker = _TrackerWith("Fix the widget", "Ready");
         var (tools, _) = _PlanningTools(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), tracker);
 
         var result = await tools.SetPlan(

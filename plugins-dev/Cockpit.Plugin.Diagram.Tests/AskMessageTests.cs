@@ -1,4 +1,4 @@
-using Cockpit.Plugin.Diagram.Collab;
+﻿using Cockpit.Plugin.Diagram.Collab;
 
 namespace Cockpit.Plugin.Diagram.Tests;
 
@@ -35,29 +35,9 @@ public class AskMessageTests
         Assert.Contains("A — Line one Line two", text);
     }
 
-    [Fact]
-    public void Compose_ForADiagramConnection_UsesTheFromArrowToForm()
-    {
-        var context = new AskContext("diagram", "d1", "Flow", "A->B", "Login -> Dashboard");
-
-        var text = AskMessage.Compose(context, "why does this connect here?");
-
-        Assert.Contains("A->B", text);
-    }
-
-    // AC-910 criterion 4: what each surface sends as its object reference is what the agent can actually address —
-    // never just a title, since two windows can carry the same one (criterion 3).
-    [Fact]
-    public void Compose_ForDiagram_IncludesTheMermaidIdAndTheLabel()
-    {
-        var context = new AskContext("diagram", "d1", "Onboarding flow", "N3", "Sign up");
-
-        var text = AskMessage.Compose(context, "make this required");
-
-        Assert.Contains("N3", text);
-        Assert.Contains("Sign up", text);
-    }
-
+    // AC-910 criterion 4: the object reference must be one the agent can address, never just a title (criterion 3).
+    // Compose_WithAnObject_NamesTheSurfaceAndTheObject asserts the whole composed line for a diagram; this is the
+    // one combination it does not cover — a second surface kind, carrying an object.
     [Fact]
     public void Compose_ForWireframe_IncludesTheComponentIdAndTheScreenTitle()
     {

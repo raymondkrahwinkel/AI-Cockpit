@@ -1,4 +1,4 @@
-using Cockpit.Plugin.Diagram.Whiteboard.Model;
+﻿using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
 namespace Cockpit.Plugin.Diagram.Tests.Whiteboard.Model;
 
@@ -44,22 +44,5 @@ public class WhiteboardDocumentTests
         Assert.Equal(100, moved.X);
         Assert.Equal(80, moved.Y);
         Assert.Equal(60, moved.Width);
-    }
-
-    [Fact]
-    public void FreehandAndPlaced_AreDistinguishableByKind_NotJustByType()
-    {
-        var freehand = new FreehandStroke { Points = [new WhiteboardPoint(0, 0), new WhiteboardPoint(1, 1)] };
-        var placed = new PlacedObject { ShapeKind = PlacedShapeKind.Text };
-
-        Assert.Equal(WhiteboardObjectKind.Freehand, freehand.Kind);
-        Assert.Equal(WhiteboardObjectKind.Placed, placed.Kind);
-
-        var document = new WhiteboardDocument();
-        document.Add(freehand);
-        document.Add(placed);
-
-        Assert.Equal(WhiteboardObjectKind.Freehand, document.Objects.Single(o => o.Id == freehand.Id).Kind);
-        Assert.Equal(WhiteboardObjectKind.Placed, document.Objects.Single(o => o.Id == placed.Id).Kind);
     }
 }

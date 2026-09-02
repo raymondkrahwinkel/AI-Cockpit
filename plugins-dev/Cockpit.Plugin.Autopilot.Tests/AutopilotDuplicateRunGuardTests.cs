@@ -36,44 +36,30 @@ public class AutopilotDuplicateRunGuardTests
         Assert.False(AutopilotPlugin._HasRunInFlight(planController, queue, manager, "youtrack", "AC-1"));
     }
 
-    [Fact]
-    public void HasRunInFlight_WhileTheSameIssueIsStillOnTheSharedPlanningDraft_IsTrue()
-    {
-        // The window a double-click on the tracker button most often actually lands in: the operator's first click
-        // opened the CEO planning round on this sub, and a second click (impatience, or the epic's own button clicked
-        // twice) fires before that round is even approved.
-        var (planController, queue, manager) = Fresh();
-        planController.BeginPlanning(Plan("youtrack", "AC-1"));
-
-        Assert.True(AutopilotPlugin._HasRunInFlight(planController, queue, manager, "youtrack", "AC-1"));
-    }
-
-    [Fact]
-    public void HasRunInFlight_ForADifferentIssueOnTheDraft_IsFalse()
+    [Theory]
+    // The window a double-click on the tracker button most often actually lands in: the operator's first click
+    // opened the CEO planning round on this sub, and a second click (impatience, or the epic's own button clicked
+    // twice) fires before that round is even approved.
+    [InlineData("AC-1", true)]
+    [InlineData("AC-2", false)]
+    public void HasRunInFlight_ReadsTheSharedPlanningDraft(string queried, bool inFlight)
     {
         var (planController, queue, manager) = Fresh();
         planController.BeginPlanning(Plan("youtrack", "AC-1"));
 
-        Assert.False(AutopilotPlugin._HasRunInFlight(planController, queue, manager, "youtrack", "AC-2"));
+        Assert.Equal(inFlight, AutopilotPlugin._HasRunInFlight(planController, queue, manager, "youtrack", queried));
     }
 
-    [Fact]
-    public void HasRunInFlight_WhileQueuedBehindOthers_IsTrue()
+    [Theory]
+    // Approved and waiting for a free slot (MaxConcurrentRuns already full) — still in flight, not settled.
+    [InlineData("youtrack", true)]
+    // Two trackers could each carry an "AC-1"-shaped id in principle — the guard must not cross-match them.
+    [InlineData("github-issues", false)]
+    public void HasRunInFlight_ReadsTheQueue_MatchingOnTrackerAndIssue_NotIssueAlone(string queuedTracker, bool inFlight)
     {
-        // Approved and waiting for a free slot (MaxConcurrentRuns already full) — still in flight, not settled.
         var (planController, queue, manager) = Fresh();
-        queue.Enqueue(Plan("youtrack", "AC-1"));
+        queue.Enqueue(Plan(queuedTracker, "AC-1"));
 
-        Assert.True(AutopilotPlugin._HasRunInFlight(planController, queue, manager, "youtrack", "AC-1"));
-    }
-
-    [Fact]
-    public void HasRunInFlight_MatchesOnTrackerAndIssue_NotIssueAlone()
-    {
-        // Two trackers could each carry an "AC-1"-shaped id in principle — the guard must not cross-match them.
-        var (planController, queue, manager) = Fresh();
-        queue.Enqueue(Plan("github-issues", "AC-1"));
-
-        Assert.False(AutopilotPlugin._HasRunInFlight(planController, queue, manager, "youtrack", "AC-1"));
+        Assert.Equal(inFlight, AutopilotPlugin._HasRunInFlight(planController, queue, manager, "youtrack", "AC-1"));
     }
 }

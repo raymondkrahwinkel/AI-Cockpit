@@ -26,45 +26,36 @@ public class AutopilotPlanTierGateTests
         },
     ];
 
-    [Fact]
-    public async Task SetPlan_TurnsDownAStepAboveTheCostCeiling()
-    {
-        var tools = _PlanningTools();
-
-        var result = await tools.SetPlan(
-            "Ship it",
-            """[{"id":"1","title":"Code","profile":"Claude","model":"opus","brief":"b","hard":true}]""");
-
-        Assert.False(_Ok(result));
-        Assert.Contains("opus", result, StringComparison.Ordinal);
-        Assert.Contains("haiku", result, StringComparison.Ordinal);
-        Assert.Contains("sonnet", result, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task SetPlan_AcceptsTheSameStepOnAModelWithinTheCeiling()
-    {
-        var tools = _PlanningTools();
-
-        var result = await tools.SetPlan(
-            "Ship it",
-            """[{"id":"1","title":"Code","profile":"Claude","model":"sonnet","brief":"b","hard":true}]""");
-
-        Assert.True(_Ok(result));
-    }
-
-    [Fact]
-    public async Task SetPlan_LeavesAReviewGateOnTheDearestModel()
-    {
+    public static IEnumerable<object[]> Plans() =>
+    [
+        // Over the ceiling: turned down, and the refusal names the offender and what it may use instead.
+        [
+            """[{"id":"1","title":"Code","profile":"Claude","model":"opus","brief":"b","hard":true}]""",
+            false, new[] { "opus", "haiku", "sonnet" },
+        ],
+        // The same step on a model within the ceiling goes through.
+        [
+            """[{"id":"1","title":"Code","profile":"Claude","model":"sonnet","brief":"b","hard":true}]""",
+            true, Array.Empty<string>(),
+        ],
         // The ceiling stops at review gates on purpose, and that has to survive the round trip through the tool —
         // capping them would trade a cheaper run for missed findings.
+        [
+            """[{"id":"1","title":"Security review","profile":"Claude","model":"fable","brief":"b","reviewGate":true}]""",
+            true, Array.Empty<string>(),
+        ],
+    ];
+
+    [Theory]
+    [MemberData(nameof(Plans))]
+    public async Task SetPlan_HoldsTheEmittedPlanToTheCostCeiling(string steps, bool accepted, string[] expectedInRefusal)
+    {
         var tools = _PlanningTools();
 
-        var result = await tools.SetPlan(
-            "Ship it",
-            """[{"id":"1","title":"Security review","profile":"Claude","model":"fable","brief":"b","reviewGate":true}]""");
+        var result = await tools.SetPlan("Ship it", steps);
 
-        Assert.True(_Ok(result));
+        Assert.Equal(accepted, _Ok(result));
+        Assert.All(expectedInRefusal, fragment => Assert.Contains(fragment, result, StringComparison.Ordinal));
     }
 
     private static AutopilotPlanTools _PlanningTools()

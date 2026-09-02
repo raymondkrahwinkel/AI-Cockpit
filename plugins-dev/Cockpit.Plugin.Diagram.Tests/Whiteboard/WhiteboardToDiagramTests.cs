@@ -10,24 +10,34 @@ public class WhiteboardToDiagramTests
     private static WhiteboardCoupling Coupled(bool canRead) => new("pane-1", canRead);
 
     [Fact]
-    public void Blocker_IsNull_OnlyWithALiveSessionThatMayReadTheBoard()
-    {
+    public void Blocker_IsNull_OnlyWithALiveSessionThatMayReadTheBoard() =>
+        // The one combination that goes through: a live session, on a profile that draws diagrams, allowed to read.
         Assert.Null(WhiteboardToDiagram.Blocker(true, true, Coupled(canRead: true)));
 
-        Assert.Contains("No agent coupled", WhiteboardToDiagram.Blocker(true, true, null));
-        Assert.Contains("No agent coupled", WhiteboardToDiagram.Blocker(true, false, Coupled(canRead: true)));
-        Assert.Contains("may not read", WhiteboardToDiagram.Blocker(true, true, Coupled(canRead: false)));
-        Assert.Contains("does not draw diagrams", WhiteboardToDiagram.Blocker(false, true, Coupled(canRead: true)));
-    }
+    public static IEnumerable<object[]> Blockers() =>
+    [
+        [true, true, null!, "No agent coupled"],
+        [true, false, Coupled(canRead: true), "No agent coupled"],
+        [true, true, Coupled(canRead: false), "may not read"],
+        [false, true, Coupled(canRead: true), "does not draw diagrams"],
+    ];
+
+    [Theory]
+    [MemberData(nameof(Blockers))]
+    public void Blocker_SaysWhichConditionIsMissing(bool drawsDiagrams, bool hasSession, object? coupling, string expected) =>
+        Assert.Contains(expected, WhiteboardToDiagram.Blocker(drawsDiagrams, hasSession, (WhiteboardCoupling?)coupling));
+
+    [Theory]
+    // Nothing asked yet, so nothing to report at all.
+    [InlineData(false, 0, "")]
+    [InlineData(true, 1, "1 conversion proposed")]
+    [InlineData(true, 2, "2 conversions proposed")]
+    public void Status_ReportsWhatLandedInThePoort_NotWhatWasAsked(bool asked, int proposals, string expected) =>
+        Assert.Equal(expected, WhiteboardToDiagram.Status(asked, proposals));
 
     [Fact]
-    public void Status_ReportsWhatLandedInThePoort_NotWhatWasAsked()
-    {
-        Assert.Equal("", WhiteboardToDiagram.Status(asked: false, proposals: 0));
+    public void Status_AskedButNothingProposedYet_SaysItIsWaiting() =>
         Assert.Contains("waiting", WhiteboardToDiagram.Status(asked: true, proposals: 0));
-        Assert.Equal("1 conversion proposed", WhiteboardToDiagram.Status(asked: true, proposals: 1));
-        Assert.Equal("2 conversions proposed", WhiteboardToDiagram.Status(asked: true, proposals: 2));
-    }
 
     [Fact]
     public void ConvertPrompt_AsksForOneProposalThroughTheDiffPoort()

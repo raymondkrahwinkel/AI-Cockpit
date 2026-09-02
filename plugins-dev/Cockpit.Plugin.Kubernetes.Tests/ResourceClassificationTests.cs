@@ -24,6 +24,8 @@ public class ResourceClassificationTests
     [InlineData("", "persistentvolumes")]
     [InlineData("rbac.authorization.k8s.io", "clusterroles")]
     [InlineData("storage.k8s.io", "storageclasses")]
+    // A kind the caller spelled with a capital is the same kind — the jail must not be walked around by casing.
+    [InlineData("", "Nodes")]
     public void ResourceScope_ClusterScopedKinds_AreClusterScoped(string group, string plural) =>
         Assert.True(ResourceScope.IsClusterScoped(group, plural));
 
@@ -35,14 +37,9 @@ public class ResourceClassificationTests
     public void ResourceScope_NamespacedKinds_AreNotClusterScoped(string group, string plural) =>
         Assert.False(ResourceScope.IsClusterScoped(group, plural));
 
-    [Fact]
-    public void ResourceScope_Secrets_AreSensitive()
-    {
-        Assert.True(ResourceScope.IsSensitive("", "secrets"));
-        Assert.False(ResourceScope.IsSensitive("", "configmaps"));
-    }
-
-    [Fact]
-    public void ResourceScope_IsCaseInsensitive() =>
-        Assert.True(ResourceScope.IsClusterScoped("", "Nodes"));
+    [Theory]
+    [InlineData("", "secrets", true)]
+    [InlineData("", "configmaps", false)]
+    public void ResourceScope_SecretsAreSensitive_AndNothingElseIsMistakenForThem(string group, string plural, bool sensitive) =>
+        Assert.Equal(sensitive, ResourceScope.IsSensitive(group, plural));
 }

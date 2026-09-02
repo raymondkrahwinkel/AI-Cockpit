@@ -16,25 +16,16 @@ namespace Cockpit.Plugin.Diagram.Tests;
 [Collection("avalonia")]
 public class ToolbarOverflowTests
 {
-    [Fact]
-    public void Diagram_AtItsOwnDefaultWindowSize_EveryVisibleToolbarButtonIsReachable()
+    [Theory]
+    // Its own default window size (DiagramWindow.OpenAsync 900x640), then AC-973 criterion 4's wider one: wider than
+    // the default is where the ticket's own screenshots caught the hint text painted over the zoom percentage — the
+    // same reachability check, just at a size the toolbar has room to spread across.
+    [InlineData(900)]
+    [InlineData(1200)]
+    public void Diagram_EveryVisibleToolbarButtonIsReachable(double width)
     {
         var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), DiagramDocument.New("Test diagram"), null);
-        var window = _Show(body, width: 900, height: 640);
-
-        _AssertAllReachable(window, body);
-
-        window.Close();
-    }
-
-    [Fact]
-    public void Diagram_AtAWiderWindow_EveryVisibleToolbarButtonIsStillReachable()
-    {
-        // AC-973 criterion 4: wider than the default is where the ticket's own screenshots caught the hint text
-        // painted over the zoom percentage — the same reachability check, just at a size the toolbar has room to
-        // spread across.
-        var body = new DiagramWorkspaceBody(new ActivityStripTests.FakeHost(), DiagramDocument.New("Test diagram"), null);
-        var window = _Show(body, width: 1200, height: 640);
+        var window = _Show(body, width, height: 640);
 
         _AssertAllReachable(window, body);
 
@@ -62,22 +53,14 @@ public class ToolbarOverflowTests
         window.Close();
     }
 
-    [Fact]
-    public void Wireframe_AtItsOwnDefaultWindowSize_EveryVisibleToolbarButtonIsReachable()
+    [Theory]
+    // Its own default window size (WireframeWindow.OpenAsync 960x680), then the wider one criterion 4 calls out.
+    [InlineData(960)]
+    [InlineData(1200)]
+    public void Wireframe_EveryVisibleToolbarButtonIsReachable(double width)
     {
         var body = new WireframeWorkspaceBody(new ActivityStripTests.FakeHost(), WireframeDocument.New("Test wireframe"), null);
-        var window = _Show(body, width: 960, height: 680);
-
-        _AssertAllReachable(window, body);
-
-        window.Close();
-    }
-
-    [Fact]
-    public void Wireframe_AtAWiderWindow_EveryVisibleToolbarButtonIsStillReachable()
-    {
-        var body = new WireframeWorkspaceBody(new ActivityStripTests.FakeHost(), WireframeDocument.New("Test wireframe"), null);
-        var window = _Show(body, width: 1200, height: 680);
+        var window = _Show(body, width, height: 680);
 
         _AssertAllReachable(window, body);
 

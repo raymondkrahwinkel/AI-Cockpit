@@ -49,28 +49,25 @@ public class KubeconfigInspectorTests
     """;
 
     [Fact]
-    public void Inspect_ExecAuthContext_IsDetected()
-    {
-        var info = KubeconfigInspector.Inspect(ExecAuthKubeconfig, contextName: null);
-        Assert.True(info.UsesExecAuth);
-        Assert.Equal("aws", info.Command);
-    }
+    public void Inspect_ExecAuthContext_NamesTheCommandItWouldRun() =>
+        // The warning is only actionable if it says which external process the connect would launch.
+        Assert.Equal("aws", KubeconfigInspector.Inspect(ExecAuthKubeconfig, contextName: null).Command);
 
-    [Fact]
-    public void Inspect_TokenContext_IsNotExecAuth() =>
-        Assert.False(KubeconfigInspector.Inspect(TokenKubeconfig, contextName: null).UsesExecAuth);
+    public static IEnumerable<object[]> Kubeconfigs() =>
+    [
+        [ExecAuthKubeconfig, null!, true],
+        [TokenKubeconfig, null!, false],
+        // A blank context name falls back to the file's current-context.
+        [ExecAuthKubeconfig, "", true],
+        // Fail-safe: an unknown context or unreadable input never throws, and never claims exec-auth it did not see.
+        [ExecAuthKubeconfig, "no-such-context", false],
+        ["this: is: not: valid: kubeconfig: [", null!, false],
+    ];
 
-    [Fact]
-    public void Inspect_BlankContext_FallsBackToCurrentContext() =>
-        Assert.True(KubeconfigInspector.Inspect(ExecAuthKubeconfig, contextName: "").UsesExecAuth);
-
-    [Fact]
-    public void Inspect_UnknownContext_IsNotExecAuth() =>
-        Assert.False(KubeconfigInspector.Inspect(ExecAuthKubeconfig, contextName: "no-such-context").UsesExecAuth);
-
-    [Fact]
-    public void Inspect_UnparseableYaml_DoesNotThrow() =>
-        Assert.False(KubeconfigInspector.Inspect("this: is: not: valid: kubeconfig: [", contextName: null).UsesExecAuth);
+    [Theory]
+    [MemberData(nameof(Kubeconfigs))]
+    public void Inspect_ReportsExecAuth_ForTheContextItResolved(string yaml, string? contextName, bool usesExecAuth) =>
+        Assert.Equal(usesExecAuth, KubeconfigInspector.Inspect(yaml, contextName).UsesExecAuth);
 
     private const string MultiContextKubeconfig = """
     apiVersion: v1

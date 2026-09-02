@@ -33,18 +33,19 @@ public class AutopilotSettingsSectionsTests
         Assert.Equal(new[] { "CEO (planning)", "Cost & tokens", "Run safety", "Templates" }, control.SectionTitles);
     }
 
-    [Fact]
-    public void ShowingASection_PutsThatGroupOnScreen()
+    [Theory]
+    [InlineData(0, "CEO (planning)")]
+    [InlineData(1, "Cost & tokens")]
+    [InlineData(2, "Run safety")]
+    [InlineData(3, "Templates")]
+    public void ShowingASection_PutsThatGroupOnScreen(int index, string title)
     {
         var control = _Control();
 
-        for (int index = 0; index < control.SectionTitles.Count; index++)
-        {
-            control.ShowSection(index);
+        control.ShowSection(index);
 
-            var page = Assert.IsType<StackPanel>(control.Content);
-            Assert.Equal(control.SectionTitles[index], Assert.IsType<TextBlock>(page.Children[0]).Text);
-        }
+        var page = Assert.IsType<StackPanel>(control.Content);
+        Assert.Equal(title, Assert.IsType<TextBlock>(page.Children[0]).Text);
     }
 
     [Fact]

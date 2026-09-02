@@ -1,21 +1,19 @@
-namespace Cockpit.Plugin.Autopilot.Tests;
+﻿namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The template-driven merge-ready PR decision (AC-216) and its preflight (AC-215): a code run (the template asked for a
 // PR) delivers one when it can, degrades fail-soft when it cannot (no git run, no remote, no gh), and an administrative
-// run reports nothing. Pure, so the outcome/fallback is proven here without a git repo, a live run or the network.
+// run reports nothing. The delivery travels as object (CS0051), so the rows keep it named, not numbered.
 public class AutopilotMergeReadyDecisionTests
 {
-    [Fact]
-    public void NoPrExpected_IsNotExpected_WhateverTheEnvironment()
-    {
-        // An admin run: no PR expected, so the environment never matters — it must never report a missing-PR fault.
-        Assert.Equal(AutopilotPrDelivery.NotExpected, AutopilotMergeReadyDecision.Decide(deliversPullRequest: false, isGitRun: true, hasRemote: true, ghAvailable: true));
-        Assert.Equal(AutopilotPrDelivery.NotExpected, AutopilotMergeReadyDecision.Decide(deliversPullRequest: false, isGitRun: false, hasRemote: false, ghAvailable: false));
-    }
+    [Theory]
+    // An admin run: no PR expected, so the environment never matters — it must never report a missing-PR fault.
+    [InlineData(true, true, true)]
+    [InlineData(false, false, false)]
+    public void NoPrExpected_IsNotExpected_WhateverTheEnvironment(bool isGitRun, bool hasRemote, bool ghAvailable) =>
+        Assert.Equal(
+            AutopilotPrDelivery.NotExpected,
+            AutopilotMergeReadyDecision.Decide(deliversPullRequest: false, isGitRun, hasRemote, ghAvailable));
 
-    // The delivery travels as object so this source's signature stays public while the members stay named rather than
-    // numbered; the test casts it back once. `[InlineData]` cannot carry it: a public test method may not name an
-    // internal type in its signature (CS0051), and xUnit1000 rules out making the class internal instead.
     public static IEnumerable<object[]> CodeRunEnvironments() =>
     [
         [false, false, false, AutopilotPrDelivery.NoGitRun],
@@ -31,60 +29,60 @@ public class AutopilotMergeReadyDecisionTests
             (AutopilotPrDelivery)expected,
             AutopilotMergeReadyDecision.Decide(deliversPullRequest: true, isGitRun, hasRemote, ghAvailable));
 
-    [Fact]
-    public void PreflightWarning_FlagsEveryCannotFullyDeliverCase()
-    {
-        Assert.False(string.IsNullOrWhiteSpace(AutopilotMergeReadyDecision.PreflightWarning(AutopilotPrDelivery.NoGitRun)));
-        Assert.False(string.IsNullOrWhiteSpace(AutopilotMergeReadyDecision.PreflightWarning(AutopilotPrDelivery.NoRemote)));
-        Assert.False(string.IsNullOrWhiteSpace(AutopilotMergeReadyDecision.PreflightWarning(AutopilotPrDelivery.PushOnly)));
-    }
+    public static IEnumerable<object[]> PreflightCases() =>
+    [
+        // Every case that cannot fully deliver warns up front.
+        [AutopilotPrDelivery.NoGitRun, true],
+        [AutopilotPrDelivery.NoRemote, true],
+        [AutopilotPrDelivery.PushOnly, true],
+        // Nothing to warn about: an admin run, or a run that can open its PR.
+        [AutopilotPrDelivery.NotExpected, false],
+        [AutopilotPrDelivery.CanCreatePr, false],
+    ];
 
-    [Fact]
-    public void PreflightWarning_IsSilentWhenNothingToWarnAbout()
-    {
-        // Nothing to warn: an admin run, or a run that can open its PR — no up-front warning.
-        Assert.Null(AutopilotMergeReadyDecision.PreflightWarning(AutopilotPrDelivery.NotExpected));
-        Assert.Null(AutopilotMergeReadyDecision.PreflightWarning(AutopilotPrDelivery.CanCreatePr));
-    }
+    [Theory]
+    [MemberData(nameof(PreflightCases))]
+    public void PreflightWarning_SpeaksExactlyWhenTheRunCannotFullyDeliver(object delivery, bool warns) =>
+        Assert.Equal(
+            warns,
+            !string.IsNullOrWhiteSpace(AutopilotMergeReadyDecision.PreflightWarning((AutopilotPrDelivery)delivery)));
 
-    [Fact]
-    public void Outcome_NotExpected_IsAPlainSettle_NoMissingPrFault()
-    {
-        var outcome = AutopilotMergeReadyDecision.Outcome(AutopilotPrDelivery.NotExpected, branch: null, worktreePath: null, prUrl: null);
-        Assert.Contains("merge-ready", outcome);
-        Assert.DoesNotContain("no pull request", outcome.ToLowerInvariant());
-    }
+    // The settle sentence per delivery. Compared against the lower-cased outcome throughout, so a row states its
+    // fragments once rather than half of them twice.
+    public static IEnumerable<object[]> Outcomes() =>
+    [
+        // A plain settle: merge-ready, and no missing-PR fault reported anywhere in it.
+        [AutopilotPrDelivery.NotExpected, null!, null!, null!, new[] { "merge-ready" }, new[] { "no pull request" }],
+        // Nowhere to push to: name where the work is, so it does not evaporate with the worktree.
+        [
+            AutopilotPrDelivery.NoRemote, "ac-216-fix", "/tmp/wt", null!,
+            new[] { "ac-216-fix", "/tmp/wt", "no pull request could be created" }, Array.Empty<string>(),
+        ],
+        // Pushed, but no gh to open the PR with — the operator finishes it.
+        [
+            AutopilotPrDelivery.PushOnly, "ac-216-fix", "/tmp/wt", null!,
+            new[] { "ac-216-fix", "open the pull request yourself" }, Array.Empty<string>(),
+        ],
+        [
+            AutopilotPrDelivery.CanCreatePr, "ac-216-fix", "/tmp/wt", "https://github.com/o/r/pull/7",
+            new[] { "https://github.com/o/r/pull/7", "pull request opened" }, Array.Empty<string>(),
+        ],
+        // gh was available but opening the PR failed at the last step — the branch is pushed, so point at it.
+        [
+            AutopilotPrDelivery.CanCreatePr, "ac-216-fix", "/tmp/wt", null!,
+            new[] { "open it yourself" }, Array.Empty<string>(),
+        ],
+    ];
 
-    [Fact]
-    public void Outcome_NoRemote_NamesWhereTheWorkIs_SoItDoesNotEvaporate()
+    [Theory]
+    [MemberData(nameof(Outcomes))]
+    public void Outcome_SaysWhatWasDelivered_AndWhereTheRestOfItIs(
+        object delivery, string? branch, string? worktreePath, string? prUrl, string[] present, string[] absent)
     {
-        var outcome = AutopilotMergeReadyDecision.Outcome(AutopilotPrDelivery.NoRemote, "ac-216-fix", "/tmp/wt", prUrl: null);
-        Assert.Contains("ac-216-fix", outcome);
-        Assert.Contains("/tmp/wt", outcome);
-        Assert.Contains("no pull request could be created", outcome);
-    }
+        var outcome = AutopilotMergeReadyDecision.Outcome((AutopilotPrDelivery)delivery, branch, worktreePath, prUrl)
+            .ToLowerInvariant();
 
-    [Fact]
-    public void Outcome_PushOnly_TellsOperatorToOpenThePrThemselves()
-    {
-        var outcome = AutopilotMergeReadyDecision.Outcome(AutopilotPrDelivery.PushOnly, "ac-216-fix", "/tmp/wt", prUrl: null);
-        Assert.Contains("ac-216-fix", outcome);
-        Assert.Contains("open the pull request yourself", outcome.ToLowerInvariant());
-    }
-
-    [Fact]
-    public void Outcome_CanCreatePr_WithUrl_ReportsThePr()
-    {
-        var outcome = AutopilotMergeReadyDecision.Outcome(AutopilotPrDelivery.CanCreatePr, "ac-216-fix", "/tmp/wt", "https://github.com/o/r/pull/7");
-        Assert.Contains("https://github.com/o/r/pull/7", outcome);
-        Assert.Contains("pull request opened", outcome);
-    }
-
-    [Fact]
-    public void Outcome_CanCreatePr_WithoutUrl_FallsBackToOpenItYourself()
-    {
-        // gh was available but opening the PR failed at the last step — the branch is pushed, so point the operator at it.
-        var outcome = AutopilotMergeReadyDecision.Outcome(AutopilotPrDelivery.CanCreatePr, "ac-216-fix", "/tmp/wt", prUrl: null);
-        Assert.Contains("open it yourself", outcome.ToLowerInvariant());
+        Assert.All(present, fragment => Assert.Contains(fragment, outcome));
+        Assert.All(absent, fragment => Assert.DoesNotContain(fragment, outcome));
     }
 }

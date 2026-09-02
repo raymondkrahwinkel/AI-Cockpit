@@ -11,18 +11,11 @@ public class DepotConnectionRegistrationTests
     [Fact]
     public void McpServerName_IsThePrefixedName()
     {
+        // The connection's own name carries through the prefix, which is also why two connections named
+        // differently can never contribute under the same server name.
         var connection = new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com");
 
         Assert.Equal("Depot: Work", connection.McpServerName);
-    }
-
-    [Fact]
-    public void McpServerName_TwoConnectionsWithDifferentNames_ContributeUnderDifferentNames()
-    {
-        var first = new DepotConnectionRegistration("conn-1", "Work", "https://a.example.com");
-        var second = new DepotConnectionRegistration("conn-2", "Personal", "https://b.example.com");
-
-        Assert.NotEqual(first.McpServerName, second.McpServerName);
     }
 }
 

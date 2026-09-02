@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -27,42 +27,49 @@ public class WireframeDragTests
             label "Naam" #name
         """;
 
-    [Fact]
-    public void DraggingOntoTheLowerHalfOfItsNeighbour_MovesItPastThatNeighbour()
-    {
-        var surface = _Open();
-
-        surface.Select("general");
-        surface.Drag("general", "account", onto: 0.8);
-
-        // Position counts the children as they stand before the move, so past the neighbour below is index 2.
-        Assert.Equal(WireframeComponentEdit.Move("general", "nav", 2), Assert.Single(surface.Registry.Applied));
-        surface.Close();
-    }
-
-    [Fact]
-    public void DraggingOntoTheUpperHalfOfItsNeighbour_LandsInFrontOfIt()
-    {
-        var surface = _Open();
-
-        surface.Select("account");
-        surface.Drag("account", "general", onto: 0.2);
-
-        Assert.Equal(WireframeComponentEdit.Move("account", "nav", 0), Assert.Single(surface.Registry.Applied));
-        surface.Close();
-    }
-
+    [Theory]
+    // Which half of the neighbour the pointer is in decides where the drop lands. Position counts the children as
+    // they stand before the move, so past the neighbour below is index 2 and in front of it is index 0.
+    [InlineData("general", "account", 0.8, "nav", 2)]
+    [InlineData("account", "general", 0.2, "nav", 0)]
     // AC2/AC4: a drop in another container reparents it, and however far it travelled it is one edit — so one line in
     // the journal, and one thing to take back.
-    [Fact]
-    public void DraggingIntoAnotherContainer_IsOneMoveIntoThatContainer()
+    [InlineData("general", "name", 0.8, "group", 1)]
+    // A label is drawn as bare text with no background of its own, so hit-testing never reached it — which left a
+    // whole class of components unselectable, and so undraggable. The surface answers "what is here" from where the
+    // controls ended up instead.
+    [InlineData("name", "account", 0.8, "nav", 2)]
+    public void DraggingASelectedComponent_IsOneMove_ToWhereItWasDropped(
+        string dragged, string target, double onto, string expectedParent, int expectedIndex)
     {
         var surface = _Open();
 
-        surface.Select("general");
-        surface.Drag("general", "name", onto: 0.8);
+        surface.Select(dragged);
+        surface.Drag(dragged, target, onto);
 
-        Assert.Equal(WireframeComponentEdit.Move("general", "group", 1), Assert.Single(surface.Registry.Applied));
+        Assert.Equal(
+            WireframeComponentEdit.Move(dragged, expectedParent, expectedIndex),
+            Assert.Single(surface.Registry.Applied));
+        surface.Close();
+    }
+
+    [Theory]
+    // AC7: only the component the operator selected drags. The very same gesture on the one beside it is still a pan.
+    [InlineData("general", "account", "name")]
+    // AC5: a container cannot go inside what it already holds. The cursor said so during the drag, so letting go is
+    // silent — no edit, and no toast after the fact either.
+    [InlineData("nav", "nav", "general")]
+    // Letting go where it already sits is not a change, so it ends in silence rather than in the editor's refusal.
+    [InlineData("general", "general", "general")]
+    public void ADragThatDecidesOnNoMove_EndsInSilence(string selected, string dragged, string target)
+    {
+        var surface = _Open();
+
+        surface.Select(selected);
+        surface.Drag(dragged, target, onto: 0.8);
+
+        Assert.Empty(surface.Registry.Applied);
+        Assert.Empty(surface.Host.Toasts);
         surface.Close();
     }
 
@@ -93,62 +100,6 @@ public class WireframeDragTests
         surface.Window.MouseUp(surface.PointOn("name", 0.8), MouseButton.Left);
 
         Assert.Empty(surface.Registry.Applied);
-        surface.Close();
-    }
-
-    // AC7: only the component the operator selected drags. The very same gesture on the one beside it is still a pan.
-    [Fact]
-    public void DraggingAComponentThatIsNotSelected_MovesNothing()
-    {
-        var surface = _Open();
-
-        surface.Select("general");
-        surface.Drag("account", "name", onto: 0.8);
-
-        Assert.Empty(surface.Registry.Applied);
-        surface.Close();
-    }
-
-    // AC5: a container cannot go inside what it already holds. The cursor said so during the drag, so letting go is
-    // silent — no edit, and no toast after the fact either.
-    [Fact]
-    public void DraggingAContainerIntoItsOwnChild_IsRefusedWithoutAToast()
-    {
-        var surface = _Open();
-
-        surface.Select("nav");
-        surface.Drag("nav", "general", onto: 0.8);
-
-        Assert.Empty(surface.Registry.Applied);
-        Assert.Empty(surface.Host.Toasts);
-        surface.Close();
-    }
-
-    // Letting go where it already sits is not a change, so it ends in silence rather than in the editor's refusal.
-    [Fact]
-    public void DroppingAComponentBackWhereItAlreadyIs_AppliesNothing()
-    {
-        var surface = _Open();
-
-        surface.Select("general");
-        surface.Drag("general", "general", onto: 0.9);
-
-        Assert.Empty(surface.Registry.Applied);
-        surface.Close();
-    }
-
-    // A label is drawn as bare text with no background of its own, so hit-testing never reached it — which left a
-    // whole class of components unselectable, and so undraggable. The surface answers "what is here" from where the
-    // controls ended up instead.
-    [Fact]
-    public void AComponentDrawnWithoutABackground_CanStillBeSelectedAndDragged()
-    {
-        var surface = _Open();
-
-        surface.Select("name");
-        surface.Drag("name", "account", onto: 0.8);
-
-        Assert.Equal(WireframeComponentEdit.Move("name", "nav", 2), Assert.Single(surface.Registry.Applied));
         surface.Close();
     }
 

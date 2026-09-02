@@ -16,7 +16,7 @@ public class ArgoManagedResourcesDiffTests
         """;
 
     [Fact]
-    public void Summarize_CountsModifiedAndUnchanged_InTheHeadline()
+    public void Summarize_HeadlinesTheCounts_ThenListsOnlyWhatDiffers_WithItsLiteralDiffLines()
     {
         var root = JsonNode.Parse(TwoModifiedOneUnchanged);
 
@@ -24,26 +24,9 @@ public class ArgoManagedResourcesDiffTests
 
         Assert.Equal(2, modifiedCount);
         Assert.Equal("2 resource(s) differ from Git (1 unchanged)", lines[0]);
-    }
-
-    [Fact]
-    public void Summarize_OnlyListsModifiedResources()
-    {
-        var root = JsonNode.Parse(TwoModifiedOneUnchanged);
-
-        var (lines, _) = ArgoManagedResourcesDiff.Summarize(root, maxLength: 10_000);
-
         Assert.Contains(lines, line => line.Contains("Deployment/cert-manager"));
         Assert.DoesNotContain(lines, line => line.Contains("Service/cert-manager") && !line.Contains("ServiceAccount"));
-    }
-
-    [Fact]
-    public void Summarize_IncludesTheLiteralDiffLines()
-    {
-        var root = JsonNode.Parse(TwoModifiedOneUnchanged);
-
-        var (lines, _) = ArgoManagedResourcesDiff.Summarize(root, maxLength: 10_000);
-
+        // The card has to show what actually changes, not merely that something did.
         Assert.Contains("- replicas: 1", lines);
         Assert.Contains("+ replicas: 2", lines);
     }

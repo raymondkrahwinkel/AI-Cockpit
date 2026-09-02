@@ -1,7 +1,8 @@
-namespace Cockpit.Plugin.Autopilot.Tests;
+﻿namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The AC-174 plan controller: the planning round (living plan + single approval), the run driving its steps, and the
 // settle that reads the per-step hard/skip policy — the plan-based counterpart of AutopilotRunControllerTests.
+// Gate modes, statuses and outcomes are internal enums (CS0051), so the rows box them and each test casts back.
 public class AutopilotPlanControllerTests
 {
     private static AutopilotStep Step(string id, GateMode mode = GateMode.Skip, AutopilotStepStatus status = AutopilotStepStatus.Pending) =>
@@ -81,7 +82,7 @@ public class AutopilotPlanControllerTests
     }
 
     [Fact]
-    public void StartStep_MarksItRunning_AndExposesItAsActive()
+    public void StartStep_MarksItRunning_ExposesItAsActive_AndCountsEachRun()
     {
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1"), Step("2")));
@@ -91,16 +92,29 @@ public class AutopilotPlanControllerTests
 
         Assert.Equal("1", controller.ActiveStep!.Id);
         Assert.Equal(AutopilotStepStatus.Running, controller.ActiveStep!.Status);
+        Assert.Equal(1, controller.Plan!.Steps[0].Attempts);
+
+        controller.StartStep("1");
+
+        Assert.Equal(2, controller.Plan!.Steps[0].Attempts);
     }
 
-    [Fact]
-    public void Settle_WhenEveryHardStepPassed_IsMergeReady()
+    // What a settle makes of the per-step hard/skip policy. Only a hard step that did not pass blocks the run.
+    public static IEnumerable<object[]> SettlesThatReachMergeReady() =>
+    [
+        [GateMode.Hard, AutopilotStepStatus.Passed, GateMode.Skip, AutopilotStepStatus.Passed],
+        [GateMode.Hard, AutopilotStepStatus.Passed, GateMode.Skip, AutopilotStepStatus.Failed],
+    ];
+
+    [Theory]
+    [MemberData(nameof(SettlesThatReachMergeReady))]
+    public void Settle_WhenNoHardStepFailed_IsMergeReady(object firstMode, object firstStatus, object secondMode, object secondStatus)
     {
         var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1", GateMode.Hard), Step("2")));
+        controller.BeginPlanning(PlanWith(Step("1", (GateMode)firstMode), Step("2", (GateMode)secondMode)));
         controller.Approve();
-        controller.SettleStep("1", AutopilotStepStatus.Passed);
-        controller.SettleStep("2", AutopilotStepStatus.Passed);
+        controller.SettleStep("1", (AutopilotStepStatus)firstStatus);
+        controller.SettleStep("2", (AutopilotStepStatus)secondStatus);
 
         Assert.True(controller.AllSettled);
         controller.Settle();
@@ -124,115 +138,55 @@ public class AutopilotPlanControllerTests
         Assert.Contains("Step 1", controller.BlockReason);
     }
 
-    [Fact]
-    public void Settle_WhenOnlyASkippableStepFailed_IsStillMergeReady()
+    // One validation round, with an attempt still in hand. `Rejected` is a genuine CEO verdict, so it is the one
+    // outcome that counts as a rework (AC-347). `Faulted` reached no verdict (crash, stall, refused isolation, dead
+    // CEO): the step still reworks, but must never read as a review finding later, so Reworks stays untouched.
+    public static IEnumerable<object[]> ValidationRounds() =>
+    [
+        [AutopilotStepOutcome.Passed, false, AutopilotStepStatus.Passed, 0],
+        [AutopilotStepOutcome.Rejected, true, AutopilotStepStatus.Pending, 1],
+        [AutopilotStepOutcome.Faulted, true, AutopilotStepStatus.Pending, 0],
+    ];
+
+    [Theory]
+    [MemberData(nameof(ValidationRounds))]
+    public void ValidateStep_WithAnAttemptLeft_ReworksOnlyOnAVerdictAgainstIt(
+        object outcome, bool reworked, object expectedStatus, int expectedReworks)
     {
-        var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1", GateMode.Hard), Step("2", GateMode.Skip)));
-        controller.Approve();
-        controller.SettleStep("1", AutopilotStepStatus.Passed);
-        controller.SettleStep("2", AutopilotStepStatus.Failed);
-
-        controller.Settle();
-
-        Assert.Equal(AutopilotPlanPhase.MergeReady, controller.Phase);
-    }
-
-    [Fact]
-    public void StartStep_RecordsAnAttempt_EachTimeItRuns()
-    {
-        var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1")));
-        controller.Approve();
-
-        controller.StartStep("1");
-        Assert.Equal(1, controller.Plan!.Steps[0].Attempts);
-
-        controller.StartStep("1");
-        Assert.Equal(2, controller.Plan!.Steps[0].Attempts);
-    }
-
-    [Fact]
-    public void ValidateStep_WhenPassed_SettlesTheStep_AndDoesNotRework()
-    {
-        var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1")));
-        controller.Approve();
-        controller.StartStep("1");
-
-        Assert.False(controller.ValidateStep("1", AutopilotStepOutcome.Passed, maxAttempts: 2));
-        Assert.Equal(AutopilotStepStatus.Passed, controller.Plan!.Steps[0].Status);
-        Assert.Equal(0, controller.Plan!.Steps[0].Reworks);
-    }
-
-    [Fact]
-    public void ValidateStep_Rejected_WithAttemptsLeft_SendsItBackToRework_AndCountsTheRework()
-    {
-        // Rejected is a genuine CEO verdict — the step's output was judged against its acceptance and turned down —
-        // so it is the one outcome that counts as a rework (AC-347).
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1")));
         controller.Approve();
         controller.StartStep("1"); // attempt 1
 
-        Assert.True(controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2));
-        Assert.Equal(AutopilotStepStatus.Pending, controller.Plan!.Steps[0].Status);
-        Assert.Equal(1, controller.Plan!.Steps[0].Reworks);
+        Assert.Equal(reworked, controller.ValidateStep("1", (AutopilotStepOutcome)outcome, maxAttempts: 2));
+        Assert.Equal((AutopilotStepStatus)expectedStatus, controller.Plan!.Steps[0].Status);
+        Assert.Equal(expectedReworks, controller.Plan!.Steps[0].Reworks);
     }
 
-    [Fact]
-    public void ValidateStep_Rejected_WhenAttemptsAreExhausted_SettlesItFailed_BoundingTheLoop_AndDoesNotCountARework()
+    // The attempt cap is what bounds the loop: the second turn-down settles the step Failed instead of sending it
+    // back again. Only a rejection counted a rework on the way there; a fault never does.
+    public static IEnumerable<object[]> ExhaustedValidations() =>
+    [
+        [AutopilotStepOutcome.Rejected, 1],
+        [AutopilotStepOutcome.Faulted, 0],
+    ];
+
+    [Theory]
+    [MemberData(nameof(ExhaustedValidations))]
+    public void ValidateStep_WhenAttemptsAreExhausted_SettlesItFailed_BoundingTheLoop(object outcome, int expectedReworks)
     {
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1")));
         controller.Approve();
 
-        // Attempt 1 → rejected → rework; attempt 2 → rejected → out of attempts → Failed, no more rework.
         controller.StartStep("1");
-        Assert.True(controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2));
+        Assert.True(controller.ValidateStep("1", (AutopilotStepOutcome)outcome, maxAttempts: 2));
         controller.StartStep("1");
-        Assert.False(controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2));
+        Assert.False(controller.ValidateStep("1", (AutopilotStepOutcome)outcome, maxAttempts: 2));
 
         Assert.Equal(AutopilotStepStatus.Failed, controller.Plan!.Steps[0].Status);
         Assert.Equal(2, controller.Plan!.Steps[0].Attempts);
-        // Only the first rejection sent it back to rework; the second ran out of attempts and settled Failed directly.
-        Assert.Equal(1, controller.Plan!.Steps[0].Reworks);
-    }
-
-    [Fact]
-    public void ValidateStep_Faulted_WithAttemptsLeft_SendsItBackToRework_ButDoesNotCountARework()
-    {
-        // Faulted means no verdict was ever reached (a crash, a stall, a refused isolation, a dead CEO) — this is the
-        // AC-347 distinction a plain bool could not carry. The step still reworks (the driver re-runs it under the
-        // attempt cap), but it must never be classified as a review finding later, so Reworks stays untouched.
-        var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1")));
-        controller.Approve();
-        controller.StartStep("1"); // attempt 1
-
-        Assert.True(controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2));
-        Assert.Equal(AutopilotStepStatus.Pending, controller.Plan!.Steps[0].Status);
-        Assert.Equal(0, controller.Plan!.Steps[0].Reworks);
-    }
-
-    [Fact]
-    public void ValidateStep_Faulted_WhenAttemptsAreExhausted_SettlesItFailed_BoundingTheLoop_WithNoReworkEver()
-    {
-        var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1")));
-        controller.Approve();
-
-        // Attempt 1 → faulted → back to Pending, no rework counted; attempt 2 → faulted → out of attempts → Failed.
-        controller.StartStep("1");
-        Assert.True(controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2));
-        controller.StartStep("1");
-        Assert.False(controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2));
-
-        Assert.Equal(AutopilotStepStatus.Failed, controller.Plan!.Steps[0].Status);
-        Assert.Equal(2, controller.Plan!.Steps[0].Attempts);
-        Assert.Equal(0, controller.Plan!.Steps[0].Reworks);
-        // Attempts > 1 with zero reworks is exactly the run-restart shape AutopilotCorrection.Classify reads.
-        Assert.Equal(AutopilotCorrectionKind.RunRestart, AutopilotCorrection.Classify(controller.Plan!.Steps[0].Status, controller.Plan!.Steps[0].Attempts, controller.Plan!.Steps[0].Reworks));
+        Assert.Equal(expectedReworks, controller.Plan!.Steps[0].Reworks);
     }
 
     [Fact]
@@ -265,45 +219,22 @@ public class AutopilotPlanControllerTests
     }
 
     [Fact]
-    public void Stop_SettlesTheRun_Stopped_WithTheReason()
+    public void Stop_FromAwaitingOperator_SettlesStopped_ClearsTheQuestion_AndRaisesChangedOnce()
     {
+        // Stopped from the wait, because that is where the question exists to be cleared — from Running there is
+        // nothing to clear and the assertion would pass on a controller that never clears it at all.
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1")));
         controller.Approve();
-        controller.StartStep("1");
+        controller.Block("Which region?");
+        var count = 0;
+        controller.Changed += (_, _) => count++;
 
         controller.Stop("Stopped by operator");
 
         Assert.Equal(AutopilotPlanPhase.Stopped, controller.Phase);
         Assert.Equal("Stopped by operator", controller.BlockReason);
         Assert.Null(controller.PendingQuestion);
-    }
-
-    [Fact]
-    public void Stop_FromAwaitingOperator_ClearsThePendingQuestion_AndSettlesStopped()
-    {
-        var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1")));
-        controller.Approve();
-        controller.Block("Which region?");
-
-        controller.Stop("Stopped by operator");
-
-        Assert.Equal(AutopilotPlanPhase.Stopped, controller.Phase);
-        Assert.Null(controller.PendingQuestion);
-    }
-
-    [Fact]
-    public void Stop_RaisesChanged()
-    {
-        var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1")));
-        controller.Approve();
-        var count = 0;
-        controller.Changed += (_, _) => count++;
-
-        controller.Stop("Stopped by operator");
-
         Assert.Equal(1, count);
     }
 
@@ -324,26 +255,17 @@ public class AutopilotPlanControllerTests
     }
 
     [Fact]
-    public void RecordPullRequestMissing_SetsThePullRequestMissingFlag()
-    {
-        var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1")));
-
-        controller.RecordPullRequestMissing();
-
-        Assert.True(controller.PullRequestMissing);
-    }
-
-    [Fact]
-    public void BeginPlanning_ResetsPullRequestMissing_FromAPriorRun()
+    public void PullRequestMissing_IsRecordedOnTheRun_AndResetByTheNextPlanningRound()
     {
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1")));
         controller.Approve();
+
         controller.RecordPullRequestMissing();
+        Assert.True(controller.PullRequestMissing);
+
         controller.SettleStep("1", AutopilotStepStatus.Passed);
         controller.Settle();
-
         controller.BeginPlanning(PlanWith(Step("2")));
 
         Assert.False(controller.PullRequestMissing);

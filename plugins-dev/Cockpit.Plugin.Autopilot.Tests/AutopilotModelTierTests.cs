@@ -1,11 +1,11 @@
-using Cockpit.Plugins.Abstractions.Profiles;
+﻿using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 // The cost ceiling (AC-256). These pin the two things a ceiling has to get right: that it actually turns a plan down,
 // and that it stays silent about everything it cannot fairly judge — otherwise it either does nothing or blocks work
-// on a guess.
+// on a guess. The strategies are an internal enum, so the rows box them and xUnit names each case after it.
 public class AutopilotModelTierTests
 {
     private static readonly IReadOnlyList<PluginProfileInfo> Roster =
@@ -26,36 +26,50 @@ public class AutopilotModelTierTests
     private static AutopilotStep Step(string? model, bool reviewGate = false, string profile = "Claude") =>
         new("build", "Build it", string.Empty, profile, model, "brief", null) { IsReviewGate = reviewGate };
 
-    [Theory]
-    [InlineData("haiku")]
-    [InlineData("sonnet")]
-    public void Validate_UnderBalanced_AcceptsTheCheaperHalf(string model) =>
-        Assert.Null(AutopilotModelTier.Validate(Step(model), Roster, AutopilotCostStrategy.Balanced));
+    public static IEnumerable<object[]> WithinTheCeiling() =>
+    [
+        [AutopilotCostStrategy.Balanced, "haiku", false],
+        [AutopilotCostStrategy.Balanced, "sonnet", false],
+        [AutopilotCostStrategy.CostFirst, "haiku", false],
+        // Quality-first imposes no ceiling at all, so even the dearest model passes.
+        [AutopilotCostStrategy.QualityFirst, "fable", false],
+        // A gate that misses a finding costs more than the tokens it saved, so the ceiling deliberately stops at
+        // review gates — the same model the row below is refused on.
+        [AutopilotCostStrategy.Balanced, "fable", true],
+    ];
 
     [Theory]
-    [InlineData("opus")]
-    [InlineData("fable")]
-    public void Validate_UnderBalanced_RefusesTheDearerHalf(string model) =>
-        Assert.NotNull(AutopilotModelTier.Validate(Step(model), Roster, AutopilotCostStrategy.Balanced));
+    [MemberData(nameof(WithinTheCeiling))]
+    public void Validate_AModelTheCeilingAllows_Passes(object costStrategy, string model, bool reviewGate) =>
+        Assert.Null(AutopilotModelTier.Validate(Step(model, reviewGate), Roster, (AutopilotCostStrategy)costStrategy));
 
-    [Fact]
-    public void Validate_UnderBalanced_LeavesAReviewGateOnTheDearestModel()
-    {
-        // A gate that misses a finding costs more than the tokens it saved, so the ceiling deliberately stops at them.
-        Assert.NotNull(AutopilotModelTier.Validate(Step("fable"), Roster, AutopilotCostStrategy.Balanced));
-        Assert.Null(AutopilotModelTier.Validate(Step("fable", reviewGate: true), Roster, AutopilotCostStrategy.Balanced));
-    }
+    public static IEnumerable<object[]> AboveTheCeiling() =>
+    [
+        [AutopilotCostStrategy.Balanced, "opus"],
+        [AutopilotCostStrategy.Balanced, "fable"],
+        // Cost-first allows only the cheapest of the ranking, so the second-cheapest is already over.
+        [AutopilotCostStrategy.CostFirst, "sonnet"],
+    ];
 
-    [Fact]
-    public void Validate_UnderCostFirst_AllowsOnlyTheCheapest()
-    {
-        Assert.Null(AutopilotModelTier.Validate(Step("haiku"), Roster, AutopilotCostStrategy.CostFirst));
-        Assert.NotNull(AutopilotModelTier.Validate(Step("sonnet"), Roster, AutopilotCostStrategy.CostFirst));
-    }
+    [Theory]
+    [MemberData(nameof(AboveTheCeiling))]
+    public void Validate_AModelAboveTheCeiling_IsRefused(object costStrategy, string model) =>
+        Assert.NotNull(AutopilotModelTier.Validate(Step(model), Roster, (AutopilotCostStrategy)costStrategy));
 
-    [Fact]
-    public void Validate_UnderQualityFirst_ImposesNoCeiling() =>
-        Assert.Null(AutopilotModelTier.Validate(Step("fable"), Roster, AutopilotCostStrategy.QualityFirst));
+    public static IEnumerable<object[]> NothingToJudge() =>
+    [
+        // A local profile pins its own model and the step leaves it empty — there is nothing to place on the scale.
+        [null!, "Claude"],
+        // The profile gate (AC-210) already refuses an unknown profile; the ceiling must not produce a second,
+        // confusing message on top of it.
+        ["fable", "Nope"],
+    ];
+
+    [Theory]
+    [MemberData(nameof(NothingToJudge))]
+    public void Validate_WhatItCannotFairlyJudge_IsLeftAlone(string? model, string profile) =>
+        // Under the tightest ceiling there is, so silence here is silence everywhere.
+        Assert.Null(AutopilotModelTier.Validate(Step(model, profile: profile), Roster, AutopilotCostStrategy.CostFirst));
 
     [Fact]
     public void Validate_Refusal_NamesTheOffenderAndEveryModelTheStepMayUseInstead()
@@ -100,17 +114,19 @@ public class AutopilotModelTierTests
         Assert.Contains("haiku", refusal);
     }
 
-    [Fact]
-    public void HoldToCeiling_MovesAnOverCeilingStepToTheDearestModelStillAllowed() =>
+    public static IEnumerable<object[]> HeldToTheCeiling() =>
+    [
         // Not the cheapest: the point is to stay within budget, not to strip the step of every capability it may need.
-        Assert.Equal("sonnet", AutopilotModelTier.HoldToCeiling(Step("fable"), Roster, AutopilotCostStrategy.Balanced).Model);
+        [AutopilotCostStrategy.Balanced, "fable", "sonnet"],
+        // A step already within the ceiling is left exactly where the CEO put it.
+        [AutopilotCostStrategy.Balanced, "haiku", "haiku"],
+        [AutopilotCostStrategy.QualityFirst, "fable", "fable"],
+    ];
 
-    [Fact]
-    public void HoldToCeiling_LeavesAStepThatIsAlreadyWithinTheCeiling()
-    {
-        Assert.Equal("haiku", AutopilotModelTier.HoldToCeiling(Step("haiku"), Roster, AutopilotCostStrategy.Balanced).Model);
-        Assert.Equal("fable", AutopilotModelTier.HoldToCeiling(Step("fable"), Roster, AutopilotCostStrategy.QualityFirst).Model);
-    }
+    [Theory]
+    [MemberData(nameof(HeldToTheCeiling))]
+    public void HoldToCeiling_LandsOnTheDearestModelStillAllowed(object costStrategy, string model, string expected) =>
+        Assert.Equal(expected, AutopilotModelTier.HoldToCeiling(Step(model), Roster, (AutopilotCostStrategy)costStrategy).Model);
 
     [Fact]
     public void HoldToCeiling_NeverMovesAStepOntoAModelTheProfileDoesNotOffer()
@@ -138,29 +154,23 @@ public class AutopilotModelTierTests
         Assert.Equal("fable", AutopilotModelTier.HoldToCeiling(Step("fable", reviewGate: true), Roster, AutopilotCostStrategy.CostFirst).Model);
     }
 
-    [Fact]
-    public void Validate_StepWithoutAModel_JudgesNothing() =>
-        // A local profile pins its own model and the step leaves it empty — there is nothing to place on the scale.
-        Assert.Null(AutopilotModelTier.Validate(Step(null), Roster, AutopilotCostStrategy.CostFirst));
+    // A fraction rather than a fixed index, so a provider offering two models is not held to a four-model rule — and
+    // never zero, or a profile with one model could run nothing at all.
+    public static IEnumerable<object[]> AllowedCounts() =>
+    [
+        [4, AutopilotCostStrategy.Balanced, 2],
+        [5, AutopilotCostStrategy.Balanced, 2],
+        [2, AutopilotCostStrategy.Balanced, 1],
+        [1, AutopilotCostStrategy.Balanced, 1],
+        [4, AutopilotCostStrategy.CostFirst, 1],
+        [1, AutopilotCostStrategy.CostFirst, 1],
+        [4, AutopilotCostStrategy.QualityFirst, 4],
+    ];
 
-    [Fact]
-    public void Validate_UnknownProfile_JudgesNothing() =>
-        // The profile gate (AC-210) already refuses this; the ceiling must not produce a second, confusing message.
-        Assert.Null(AutopilotModelTier.Validate(Step("fable", profile: "Nope"), Roster, AutopilotCostStrategy.Balanced));
-
-    [Fact]
-    public void AllowedCount_ScalesWithTheRosterAndNeverStrandsAProfile()
-    {
-        // A fraction rather than a fixed index, so a provider offering two models is not held to a four-model rule —
-        // and never zero, or a profile with one model could run nothing at all.
-        Assert.Equal(2, AutopilotModelTier.AllowedCount(4, AutopilotCostStrategy.Balanced));
-        Assert.Equal(2, AutopilotModelTier.AllowedCount(5, AutopilotCostStrategy.Balanced));
-        Assert.Equal(1, AutopilotModelTier.AllowedCount(2, AutopilotCostStrategy.Balanced));
-        Assert.Equal(1, AutopilotModelTier.AllowedCount(1, AutopilotCostStrategy.Balanced));
-        Assert.Equal(1, AutopilotModelTier.AllowedCount(4, AutopilotCostStrategy.CostFirst));
-        Assert.Equal(1, AutopilotModelTier.AllowedCount(1, AutopilotCostStrategy.CostFirst));
-        Assert.Equal(4, AutopilotModelTier.AllowedCount(4, AutopilotCostStrategy.QualityFirst));
-    }
+    [Theory]
+    [MemberData(nameof(AllowedCounts))]
+    public void AllowedCount_ScalesWithTheRosterAndNeverStrandsAProfile(int rosterSize, object costStrategy, int expected) =>
+        Assert.Equal(expected, AutopilotModelTier.AllowedCount(rosterSize, (AutopilotCostStrategy)costStrategy));
 
     [Fact]
     public void ValidateAll_ReturnsTheFirstStepOverTheCeiling()

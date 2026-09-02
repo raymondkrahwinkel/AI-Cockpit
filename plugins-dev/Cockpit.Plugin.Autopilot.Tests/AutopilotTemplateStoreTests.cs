@@ -45,43 +45,6 @@ public class AutopilotTemplateStoreTests
     }
 
     [Fact]
-    public void List_CombinesRegistrationsThenUserTemplates_WithTheRightFlags()
-    {
-        var store = new AutopilotTemplateStore(new FakeStorage());
-        store.UpsertUserTemplate(AutopilotTemplate.ForUser("user.mine", "Mine", "body"));
-
-        var combined = store.List([_Registration("acme.triage", "Triage", "Triage {{issue.id}}")]);
-
-        Assert.Equal(2, System.Linq.Enumerable.Count(combined));
-        var plugin = combined[0];
-        Assert.Equal("acme.triage", plugin.Id);
-        Assert.Equal(AutopilotTemplateOrigin.Plugin, plugin.Origin);
-        Assert.Equal("acme", plugin.OwnerPluginId);
-        Assert.True(plugin.Editable);     // plugin templates are editable...
-        Assert.False(plugin.Deletable);   // ...but never deletable
-        Assert.Equal("user.mine", combined[1].Id);
-        Assert.Equal(AutopilotTemplateOrigin.User, combined[1].Origin);
-    }
-
-    [Fact]
-    public void Override_WinsOverTheRegistration_AndSurvivesARestart()
-    {
-        var storage = new FakeStorage();
-        var store = new AutopilotTemplateStore(storage);
-        store.UpsertOverride(new AutopilotTemplateOverride("acme.triage", "My triage", "My {{issue.id}} brief", ["issue.id"]));
-
-        var restored = new AutopilotTemplateStore(storage);
-        var template = Assert.Single(restored.List([_Registration("acme.triage", "Triage", "Triage {{issue.id}}")]));
-
-        Assert.Equal("My triage", template.Name);                  // the override's fields win...
-        Assert.Equal("My {{issue.id}} brief", template.Body);
-        Assert.NotNull(template.RequiredPlaceholders);
-        Assert.Equal("issue.id", Assert.Single(template.RequiredPlaceholders));
-        Assert.Equal(AutopilotTemplateOrigin.Plugin, template.Origin); // ...while it stays a plugin template
-        Assert.Equal("acme", template.OwnerPluginId);
-    }
-
-    [Fact]
     public void ResetOverride_DropsTheEditOnly_LeavingTheRegistrationToShowThrough()
     {
         var store = new AutopilotTemplateStore(new FakeStorage());
@@ -115,7 +78,7 @@ public class AutopilotTemplateStoreTests
         // persisted override applied, then the operator's own persisted templates — one list, right order, right flags.
         var storage = new FakeStorage();
         var store = new AutopilotTemplateStore(storage);
-        store.UpsertOverride(new AutopilotTemplateOverride("acme.triage", "My triage", "My {{issue.id}}", null));
+        store.UpsertOverride(new AutopilotTemplateOverride("acme.triage", "My triage", "My {{issue.id}}", ["issue.id"]));
         store.UpsertUserTemplate(AutopilotTemplate.ForUser("user.mine", "Mine", "Do {{input.thing}}"));
 
         // A fresh store over the same storage proves the persisted half survives a restart while the registrations are
@@ -130,8 +93,12 @@ public class AutopilotTemplateStoreTests
 
         Assert.Equal("My triage", combined[0].Name);                       // the override won over the registration...
         Assert.Equal("My {{issue.id}}", combined[0].Body);
+        Assert.NotNull(combined[0].RequiredPlaceholders);
+        Assert.Equal("issue.id", Assert.Single(combined[0].RequiredPlaceholders!));
         Assert.Equal(AutopilotTemplateOrigin.Plugin, combined[0].Origin);  // ...while it stayed a plugin template
-        Assert.False(combined[0].Deletable);
+        Assert.Equal("acme", combined[0].OwnerPluginId);
+        Assert.True(combined[0].Editable);                                 // plugin templates are editable...
+        Assert.False(combined[0].Deletable);                               // ...but never deletable
 
         Assert.Equal("Release", combined[1].Name);                         // an un-overridden registration shows through as-is
         Assert.Equal(AutopilotTemplateOrigin.Plugin, combined[1].Origin);
