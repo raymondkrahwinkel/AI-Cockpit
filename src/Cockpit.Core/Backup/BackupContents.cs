@@ -24,8 +24,9 @@ public static class BackupContents
         "assistant-memory.md",
         "assistant-state.md",
 
-        // The installed plugins, and the logos the settings point at — not re-creatable from the settings alone.
-        "plugins",
+        // The logos the settings point at: five kilobytes, and nothing else knows where the image came from.
+        // The plugins themselves are not here — an archive carries a `BackupPluginIndexEntry` per plugin and a
+        // restore fetches the binaries from their store again (AC-1275).
         "project-logos",
     ];
 

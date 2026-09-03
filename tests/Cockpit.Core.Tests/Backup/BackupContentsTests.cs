@@ -15,8 +15,9 @@ public class BackupContentsTests
     [InlineData("cockpit.json", true)]
     [InlineData("mcp-permission.json", true)]
     [InlineData("assistant-memory.md", true)]
-    [InlineData("plugins/youtrack/plugin.json", true)]
     [InlineData("project-logos\\acme.png", true)]
+    // The binaries come back out of their store, not out of the archive (AC-1275).
+    [InlineData("plugins/youtrack/plugin.json", false)]
     [InlineData("models/ggml-large-v3.bin", false)]
     [InlineData("logs/cockpit.log", false)]
     // The two that walked in unannounced (AC-1276): gigabytes of checkouts nobody meant to archive.
