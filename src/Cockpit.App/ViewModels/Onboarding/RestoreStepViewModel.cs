@@ -101,10 +101,10 @@ public sealed partial class RestoreStepViewModel : ObservableObject
     // Passed on as the restore worded it, under a heading that is not a verdict: a plugin that came back on a
     // newer version is worth reading and is not a problem, and one line cannot know which of the two it carries.
     private static string _AboutThePlugins(RestoreReport report) =>
-        report.MissingPlugins.Count == 0
+        report.Notes.Count == 0
             ? string.Empty
             : " About the plugins: "
-              + string.Join(", ", report.MissingPlugins.Select(plugin => $"{plugin.Id} ({plugin.Reason})")) + ".";
+              + string.Join(", ", report.Notes.Select(note => $"{note.Id} ({note.Note})")) + ".";
 
     private void _Report(RestoreProgress progress)
     {
