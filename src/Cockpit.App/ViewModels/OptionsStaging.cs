@@ -102,6 +102,7 @@ internal static class OptionsStaging
         "OnOpenUpdate",
         "OnCreateBackup",
         "OnRestoreBackup",
+        "OnStopBackup",
         "OnExportAssistantMemory",
         "OnImportAssistantMemory",
         "OnRefreshDiagnostics",

@@ -10,16 +10,37 @@ public sealed record BackupManifest(
     bool IncludesCredentials,
     IReadOnlyList<string> RemovedSecrets,
     IReadOnlyDictionary<string, string> ProfileConfigDirectories,
-    IReadOnlyDictionary<string, string> Plugins)
+    IReadOnlyDictionary<string, string> Plugins,
+    // AC-695: the config root the backup was made from, so a restore can re-anchor the paths that pointed into it.
+    // Recorded, never acted on here. Null means no anchor is known, and then nothing is re-anchored.
+
+    // Additive with a default, so `CurrentSchema` stays 2 even though AC-1276 made `CanRestore` exact equality: an
+    // older archive reads as null, a newer one read by older schema-2 code drops the field. Neither misreads the
+    // other, which is the test a new manifest field has to pass to stay at 2.
+    string? SourceConfigRoot = null)
 {
-    // The archive layout this build writes and reads.
-    public const int CurrentSchema = 1;
+    // The archive layout this build writes and reads. AC-1276 raised it to 2: an archive now holds a named
+    // part of the cockpit directory instead of nearly all of it, which a schema 1 reader would misread as
+    // "those folders were empty".
+    public const int CurrentSchema = 2;
 
     // The manifest's own name inside the archive.
     public const string FileName = "backup.json";
 
-    // Whether this build can restore the archive. A newer schema is refused rather than guessed at:
-    // a best-effort restore of an unknown layout leaves the cockpit only *nearly* what it was, which
-    // is worse than a refusal you can act on.
+    // Whether this build can restore the archive. A layout we do not know is refused rather than guessed at:
+    // a best-effort restore leaves the cockpit only *nearly* what it was, which is worse than a refusal you
+    // can act on.
     public bool CanRestore => Schema == CurrentSchema;
+
+    // Why not, in words the operator can do something with — null when the archive can be restored. The two
+    // directions need different answers: a newer archive waits for an update, an older one never gets one.
+    public string? RestoreRefusal => Schema switch
+    {
+        _ when CanRestore => null,
+        < CurrentSchema =>
+            $"This backup uses the old layout {Schema}; this cockpit reads {CurrentSchema}. It cannot be restored here. "
+            + "Keep the file — it is a zip, and the settings in it can be read out by hand — and make a fresh backup from this cockpit once it is set up.",
+        _ =>
+            $"This backup was made by a newer cockpit (layout {Schema}, this one reads {CurrentSchema}). Update first — a partial restore of a layout we do not know is worse than none.",
+    };
 }

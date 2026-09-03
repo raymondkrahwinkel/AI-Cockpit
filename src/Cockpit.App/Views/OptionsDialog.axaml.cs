@@ -733,6 +733,9 @@ public partial class OptionsDialog : Window
         }
     }
 
+    private void OnStopBackup(object? sender, RoutedEventArgs e) =>
+        (DataContext as CockpitViewModel)?.StopBackup();
+
     private async void OnRestoreBackup(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not CockpitViewModel cockpit)

@@ -173,11 +173,7 @@ public partial class App : Application
             FirstRunWizardViewModel.EpicPlan);
         var window = new FirstRunWizardWindow { DataContext = viewModel };
 
-        window.Closing += (_, _) =>
-        {
-            _ = stateStore.MarkCompletedAsync(FirstRunWizardVersion.Current);
-            _StartCockpit(desktop);
-        };
+        window.Closing += (_, _) => viewModel.FinishFromStartup(stateStore, () => _StartCockpit(desktop));
 
         desktop.MainWindow = window;
 

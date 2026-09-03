@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Views.Onboarding;
+using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.ViewModels.Onboarding;
 
@@ -26,6 +27,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         new(30, "What you work on"),
     ];
 
+    private readonly IReadOnlyList<IFirstRunWizardStep> _steps;
     private readonly IReadOnlyList<Control> _stepContents;
     private readonly IReadOnlyList<int> _navigableIndexes;
     private readonly IReadOnlyList<int> _stepBarIndexByOrderedIndex;
@@ -41,6 +43,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         }
 
         var ordered = steps.OrderBy(step => step.Order).ToList();
+        _steps = ordered;
         _stepContents = [.. ordered.Select(step => step.BuildContent())];
 
         if (plannedSlots is { Count: > 0 })
@@ -142,6 +145,20 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
     // the last step, so neither path has its own copy of that bookkeeping.
     [RelayCommand]
     private void Skip() => RequestClose?.Invoke(this, EventArgs.Empty);
+
+    // What the startup route does when the wizard window closes: mark the wizard done, then show the cockpit.
+    // A step that restored a backup (AC-1280) has already done the first and asked for a restart, so both are
+    // skipped — a cockpit started here would come up on the settings that restore had just replaced.
+    internal void FinishFromStartup(IFirstRunWizardStateStore stateStore, Action startCockpit)
+    {
+        if (_steps.OfType<RestoreStep>().Any(step => step.ViewModel.TookOver))
+        {
+            return;
+        }
+
+        _ = stateStore.MarkCompletedAsync(FirstRunWizardVersion.Current);
+        startCockpit();
+    }
 
     private void _ApplyPosition()
     {
