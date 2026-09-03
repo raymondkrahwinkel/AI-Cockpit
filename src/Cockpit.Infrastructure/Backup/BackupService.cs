@@ -67,14 +67,7 @@ internal sealed class BackupService(
 
                     var entryName = $"cockpit/{relative.Replace('\\', '/')}";
 
-                    // A plugin the operator left out takes its binaries and its settings with it.
-                    if (_PluginOf(relative) is { } pluginId && !options.Includes(pluginId))
-                    {
-                        continue;
-                    }
-
-                    // The settings are the one file that is rewritten on the way in: secrets out (unless asked for),
-                    // and the plugins that were left out taken with them — their whole point is what they stored.
+                    // The settings are the one file that is rewritten on the way in: secrets out, unless asked for.
                     if (string.Equals(relative, "cockpit.json", StringComparison.OrdinalIgnoreCase))
                     {
                         removed.AddRange(await _WriteSettingsAsync(archive, entryName, file, options, cancellationToken));
@@ -96,7 +89,8 @@ internal sealed class BackupService(
                     options.IncludeCredentials,
                     removed,
                     profileDirectories,
-                    _PluginsIn(root, options));
+                    _PluginsIn(root, options),
+                    root);
 
                 var entry = archive.CreateEntry(BackupManifest.FileName, CompressionLevel.Optimal);
                 await using var stream = entry.Open();
@@ -237,6 +231,11 @@ internal sealed class BackupService(
             stage?.Report(RestoreStage.Writing);
 
             await _RestoreSettingsAsync(root, archived, aside, options, CancellationToken.None);
+
+            // AC-695: after the merge on purpose, and safe there even though which value came from the archive can no
+            // longer be seen — restoring onto the same machine makes source and target root equal and the rewrite a
+            // no-op, and onto another machine this cockpit's own values do not start with the archive's foreign root.
+            await _RebaseRestoredPathsAsync(root, manifest);
             _WarnAboutPluginsWithoutBinaries(root, options);
 
             if (options.Settings)
@@ -312,6 +311,30 @@ internal sealed class BackupService(
         result["Plugins"] = restoredPlugins;
 
         await File.WriteAllTextAsync(currentFile, result.ToJsonString(Json), cancellationToken);
+    }
+
+    // AC-695: the merged file carries the backup machine's own absolute paths — a `D:\` on a machine that has no
+    // D:. Run over the result rather than over the archive so it covers the settings and the plugin registrations
+    // in one pass, whichever of the two this restore took from the archive.
+    private async Task _RebaseRestoredPathsAsync(string root, BackupManifest manifest)
+    {
+        var file = Path.Combine(root, "cockpit.json");
+        if (!File.Exists(file) || JsonNode.Parse(await File.ReadAllTextAsync(file)) is not JsonObject settings)
+        {
+            return;
+        }
+
+        var unresolved = RestorePathPortability.Rebase(settings, manifest.SourceConfigRoot, root);
+        await File.WriteAllTextAsync(file, settings.ToJsonString(Json));
+
+        if (unresolved.Count > 0)
+        {
+            logger.LogWarning(
+                "{Count} project folder(s) from this backup do not exist here and were left in the settings as they "
+                + "are, rather than being dropped or pointed somewhere else: {Folders}. Set each one again.",
+                unresolved.Count,
+                string.Join("; ", unresolved));
+        }
     }
 
     private static JsonObject _Without(JsonObject source, string key)
@@ -408,16 +431,9 @@ internal sealed class BackupService(
         var settings = JsonNode.Parse(await File.ReadAllTextAsync(file, cancellationToken))
             ?? throw new InvalidOperationException("cockpit.json could not be read, so the backup would not have been one.");
 
-        if (settings["Plugins"] is JsonObject plugins)
-        {
-            foreach (var pluginId in plugins.Select(entry => entry.Key).ToList())
-            {
-                if (!options.Includes(pluginId))
-                {
-                    plugins.Remove(pluginId);
-                }
-            }
-        }
+        // AC-1277: leaving a plugin out no longer strips its registration here. That registration — the menu, and
+        // the plugin's own `Data` — used to travel with the binaries, so dropping one dropped the other; with no
+        // binaries in the archive it is the content. The choice now only governs the manifest's plugin list.
 
         // The plugins' own declared fields too (a "pat", a "credential"), not just the names the host recognises:
         // an archive that says it carries no credentials must carry none, and a field the encryption protects but
@@ -433,16 +449,9 @@ internal sealed class BackupService(
         return removed;
     }
 
-    // Which plugin a path belongs to — "plugins/youtrack/plugin.json" is YouTrack's — or null for everything else.
-    private static string? _PluginOf(string relativePath)
-    {
-        var parts = relativePath.Replace('\\', '/').Split('/');
-
-        return parts.Length >= 2 && parts[0].Equals("plugins", StringComparison.OrdinalIgnoreCase) ? parts[1] : null;
-    }
-
-    // The plugins that went in, with the version each was at. Read from the folders rather than from the settings:
-    // what the archive carries is what is on disk.
+    // The plugins the archive asks a restore to fetch back, read off the folders. Not a `BackupPluginIndexEntry`:
+    // no plugin records which store it came from, and fetching every store's index here would let an expired token
+    // drop one in silence. AC-1279 resolves the store at restore, by id, version and the registration's `PinnedSha256`.
     private static Dictionary<string, string> _PluginsIn(string root, BackupOptions options)
     {
         var plugins = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -479,7 +488,7 @@ internal sealed class BackupService(
         }
         catch (JsonException)
         {
-            // A plugin whose manifest we cannot read still goes in the archive; only its version line is a shrug.
+            // A plugin whose manifest we cannot read is still listed; only its version line is a shrug.
             return "unknown";
         }
     }

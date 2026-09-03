@@ -3,8 +3,8 @@ using Cockpit.Core.Plugins;
 namespace Cockpit.Core.Backup;
 
 // AC-1276: one installed plugin as what it takes to fetch it again, not the megabytes it unpacked to. The id
-// alone does not identify it — the same id can sit in more than one store — so the store travels with it, and
-// the version carries what the provisioner checks before downloading.
+// alone does not identify it — the same id can sit in more than one store — so the store travels with it. Nothing
+// writes one yet: `BackupService._PluginsIn` says why a backup cannot fill it in and AC-1279 can.
 public sealed record BackupPluginIndexEntry(
     string Id,
     PluginStoreKind StoreKind,

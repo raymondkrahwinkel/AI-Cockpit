@@ -28,6 +28,10 @@ public static class BackupContents
         // The plugins themselves are not here — an archive carries a `BackupPluginIndexEntry` per plugin and a
         // restore fetches the binaries from their store again (AC-1275).
         "project-logos",
+
+        // The three small folders AC-1277 weighed and left out, on what they are and not on what they weigh:
+        // `worktree-leases` locks checkouts under `worktrees`, which is itself not in here; `claude-provider` is
+        // the provider plugin's generated scratch; `statusline` its snapshots of sessions that are already dead.
     ];
 
     // Whether a path inside the cockpit directory belongs in a backup. `relativePath` uses either separator.
@@ -50,7 +54,8 @@ public sealed record BackupOptions(
     bool IncludeProfileConfigs = false,
     IReadOnlyList<string>? Plugins = null)
 {
-    // Whether a plugin's folder and stored settings belong in this archive.
+    // Whether the archive asks a restore to fetch this plugin back. Its stored settings ride along in
+    // `cockpit.json` either way (AC-1277) — they are not the plugin, they are what the operator did with it.
     public bool Includes(string pluginId) =>
         Plugins is null || Plugins.Contains(pluginId, StringComparer.OrdinalIgnoreCase);
 }
