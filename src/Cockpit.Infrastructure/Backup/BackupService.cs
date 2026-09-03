@@ -186,10 +186,9 @@ internal sealed class BackupService(
     {
         var manifest = await ReadManifestAsync(archivePath, cancellationToken);
 
-        if (!manifest.CanRestore)
+        if (manifest.RestoreRefusal is { } refusal)
         {
-            throw new InvalidOperationException(
-                $"This backup was made by a newer cockpit (layout {manifest.Schema}, this one reads {BackupManifest.CurrentSchema}). Update first — a partial restore of a layout we do not know is worse than none.");
+            throw new InvalidOperationException(refusal);
         }
 
         if (!options.Settings && options.Plugins.Count == 0)

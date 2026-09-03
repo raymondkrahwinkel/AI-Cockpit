@@ -1,26 +1,32 @@
 namespace Cockpit.Core.Backup;
 
-// What a backup of the cockpit is made of (#70). The whole setup lives in one directory, but models
-// (gigabytes, re-downloadable) are excluded, and settings carry secrets, so credentials are a
-// deliberate opt-in (`BackupOptions.IncludeCredentials`) rather than a default.
+// What a backup of the cockpit is made of (#70). The whole setup lives in one directory, but only a named
+// part of it is worth carrying back; settings carry secrets, so credentials are a deliberate opt-in
+// (`BackupOptions.IncludeCredentials`) rather than a default.
 public static class BackupContents
 {
     // Where a backup or restore does its unpacking and half-finished work. Named here rather than where it is
-    // built, because the one thing that must never be forgotten about it is that it is excluded below.
+    // built, because the one thing that must never be forgotten about it is that it is not in the list below.
     public const string StagingFolder = "staging";
 
-    // Directories under the cockpit folder that never go into a backup, and why.
-    public static IReadOnlyList<string> Excluded { get; } =
+    // AC-1276: the top-level names a backup carries, and nothing else. Listing what stays out is how
+    // `worktrees` and `cli` walked in on the day they were added — gigabytes of re-creatable checkouts,
+    // silently, because nobody remembered to exclude a folder that did not exist yet.
+    public static IReadOnlyList<string> Included { get; } =
     [
-        // Gigabytes of Whisper/SupertonicTTS weights, downloadable again.
-        "models",
+        // The settings themselves — what a restore is for.
+        "cockpit.json",
 
-        // Yesterday's log lines restore nothing. They are the app talking to itself.
-        "logs",
+        // Which MCP servers the operator allowed; without it a restored cockpit asks every question again.
+        "mcp-permission.json",
 
-        // The archive being written lives here (AC-45), so a backup that walked it would reach the file
-        // it is holding open and try to put it inside itself — a sharing violation on every run (AC-689).
-        StagingFolder,
+        // What the assistant was told to remember, and where it left the conversation (AC-595, AC-596).
+        "assistant-memory.md",
+        "assistant-state.md",
+
+        // The installed plugins, and the logos the settings point at — not re-creatable from the settings alone.
+        "plugins",
+        "project-logos",
     ];
 
     // Whether a path inside the cockpit directory belongs in a backup. `relativePath` uses either separator.
@@ -31,7 +37,7 @@ public static class BackupContents
             .TrimStart('/')
             .Split('/', 2)[0];
 
-        return !Excluded.Contains(head, StringComparer.OrdinalIgnoreCase);
+        return Included.Contains(head, StringComparer.OrdinalIgnoreCase);
     }
 }
 
