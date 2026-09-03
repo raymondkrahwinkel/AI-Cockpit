@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels.Onboarding"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="380"
+             x:Class="Cockpit.App.Views.Onboarding.RestoreStepView"
+             x:DataType="vm:RestoreStepViewModel">
+
+    <Design.DataContext>
+        <vm:RestoreStepViewModel/>
+    </Design.DataContext>
+
+    <!-- AC-1280: offered before the wizard asks anything an archive already answers. Skipping it is the normal
+         thing to do — this page only does something when a file is chosen. -->
+    <StackPanel Spacing="18" Margin="4,8">
+        <StackPanel Spacing="2">
+            <TextBlock Text="Bring a backup along" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                       Text="Coming from another machine? Restore the backup you made there and the rest of this setup is already answered — settings, profiles, permissions, and the plugins the archive names are fetched from their store again."/>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                       Text="Nothing here is touched until a restore finishes. Once it does, this app restarts to come up on what you restored."/>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Choose a backup…" Classes="Accent" Click="OnChooseBackup"
+                        IsEnabled="{Binding !IsRunning}"/>
+                <Button Content="Stop" Click="OnStop" IsVisible="{Binding IsRunning}"
+                        IsEnabled="{Binding CanStop}"/>
+            </StackPanel>
+        </StackPanel>
+
+        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="11.5"
+                   IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+        <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource CockpitTextFaintBrush}"
+                   Text="No backup? Skip this step — the next few pages set this machine up from scratch."/>
+    </StackPanel>
+</UserControl>
