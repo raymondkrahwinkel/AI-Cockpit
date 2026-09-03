@@ -31,6 +31,10 @@ internal sealed class BackupService(
     // one "version" a store is never asked for.
     private const string UnknownVersion = "unknown";
 
+    // What a plugin the stop never reached is told about itself. One sentence for both moments a stop can land
+    // during the fetch, so two stops a second apart do not describe themselves differently.
+    private const string StoppedBeforeFetch = "the restore was stopped before it was fetched.";
+
     private static string CockpitDirectory => CockpitConfigPath.Root;
 
     // Backup and restore stage under the cockpit's own state root, never Path.GetTempPath() (AC-45): on Linux
@@ -457,7 +461,15 @@ internal sealed class BackupService(
             return (pinned, notes, false);
         }
 
-        var (catalogue, unreadable) = await _CataloguesAsync(incoming, cancellationToken);
+        var (catalogue, unreadable, stoppedReadingTheStores) = await _CataloguesAsync(incoming, cancellationToken);
+
+        if (stoppedReadingTheStores)
+        {
+            notes.AddRange(wanted.Select(id => new RestorePluginNote(id, StoppedBeforeFetch)));
+
+            return (pinned, notes, true);
+        }
+
         var requests = new List<PluginProvisionRequest>();
 
         // Held rather than added: a plugin coming back on another version is worth saying, but if its install then
@@ -494,7 +506,7 @@ internal sealed class BackupService(
             if (cancellationToken.IsCancellationRequested)
             {
                 notes.AddRange(requests.Skip(index).Select(request =>
-                    new RestorePluginNote(request.Id, "the restore was stopped before it was fetched.")));
+                    new RestorePluginNote(request.Id, StoppedBeforeFetch)));
 
                 return (pinned, notes, true);
             }
@@ -561,39 +573,56 @@ internal sealed class BackupService(
     // The stores to look in: the ones configured here first — they are the ones that still carry their token, which
     // the archive scrubs out — then any the archive named that this cockpit does not have, which on a machine set up
     // from scratch is all of them.
-    private async Task<(List<(PluginStoreConfig Store, PluginStoreIndex Index)> Catalogue, List<PluginStoreConfig> Unreadable)> _CataloguesAsync(
+    private async Task<(List<(PluginStoreConfig Store, PluginStoreIndex Index)> Catalogue, List<PluginStoreConfig> Unreadable, bool Stopped)> _CataloguesAsync(
         JsonObject? incoming,
         CancellationToken cancellationToken)
     {
-        var configured = (await stores.LoadAsync(cancellationToken)).ToList();
-
-        foreach (var archived in _ArchivedStores(incoming).Where(store => !configured.Any(store.SameStoreAs)))
-        {
-            configured.Add(archived);
-        }
-
         var catalogue = new List<(PluginStoreConfig, PluginStoreIndex)>();
         var unreadable = new List<PluginStoreConfig>();
 
-        foreach (var store in configured)
+        // Reported, not thrown — deliberately, because a `CancellationToken` without a `ThrowIfCancellationRequested`
+        // looks wrong here and one was in fact written. Reading an index writes nothing, so throwing would be *safe*;
+        // it would not be *consistent*. This step runs after the archive is unpacked, so it would be the one stop that
+        // leaves as an exception while the other two leave as a report, and the wizard reads an exception as "the
+        // restore failed" — which a stop is not (AC-1275, AC-1280, AC-1281).
+        try
         {
-            // Free to stop here: reading an index writes nothing, so nothing has happened yet to leave half-done.
-            cancellationToken.ThrowIfCancellationRequested();
+            var configured = (await stores.LoadAsync(cancellationToken)).ToList();
 
-            var fetched = await storeClient.FetchIndexAsync(store, cancellationToken);
-
-            if (fetched is { IsSuccess: true, Index: { } index })
+            foreach (var archived in _ArchivedStores(incoming).Where(store => !configured.Any(store.SameStoreAs)))
             {
-                catalogue.Add((store, index));
+                configured.Add(archived);
             }
-            else
+
+            foreach (var store in configured)
             {
-                logger.LogWarning("Store {Store} could not be read while restoring: {Error}", store.Location, fetched.Error);
-                unreadable.Add(store);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return (catalogue, unreadable, true);
+                }
+
+                var fetched = await storeClient.FetchIndexAsync(store, cancellationToken);
+
+                if (fetched is { IsSuccess: true, Index: { } index })
+                {
+                    catalogue.Add((store, index));
+                }
+                else
+                {
+                    logger.LogWarning("Store {Store} could not be read while restoring: {Error}", store.Location, fetched.Error);
+                    unreadable.Add(store);
+                }
             }
         }
+        catch (OperationCanceledException)
+        {
+            // An index request already on the wire. The token goes to the client on purpose — that is what makes a
+            // stop take effect now rather than after the last store has answered — so its throw is caught here and
+            // turned into the same report as every other stop.
+            return (catalogue, unreadable, true);
+        }
 
-        return (catalogue, unreadable);
+        return (catalogue, unreadable, false);
     }
 
     // Named, not counted: a local store is a path the operator picked themselves, and "D:\plugin-store is not here"

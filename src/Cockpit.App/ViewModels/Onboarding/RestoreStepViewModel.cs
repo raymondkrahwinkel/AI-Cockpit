@@ -86,6 +86,13 @@ public sealed partial class RestoreStepViewModel : ObservableObject
 
             _restart?.Restart();
         }
+        catch (OperationCanceledException)
+        {
+            // The restore reports its own stops, so this is only the one that beat it to the start — the token was
+            // already cancelled when the manifest was read. Worded like the reported stop, because to the operator
+            // it is the same thing: they pressed Stop and nothing here changed.
+            Status = "The restore was stopped before it began, so your settings are unchanged.";
+        }
         catch (Exception exception)
         {
             Status = $"Nothing was restored: {exception.Message}";

@@ -46,6 +46,10 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     // when the token is read rather than before the fetch has done anything.
     private CancellationTokenSource? _stopAfterInstalling;
 
+    // The same trick one step earlier: cancelled when the first store index is asked for, which is where a stop
+    // used to leave as an exception instead of a report.
+    private CancellationTokenSource? _stopWhenReadingTheStores;
+
     // The stores this cockpit has configured, and the ones whose index cannot be read — a local store on a drive
     // that is not this machine's is the case a restore has to tell apart from "nobody publishes it any more".
     private List<PluginStoreConfig> _configuredStores = [PluginStoreConfig.Remote("https://store.test")];
@@ -82,31 +86,48 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     }
 
     /// <summary>
-    /// The cancellation boundary: a restore stopped while it is still unpacking has touched nothing outside its
-    /// staging directory, and leaves no staging behind either.
+    /// The cancellation boundary, at both moments a stop can land before the settings are written: while unpacking,
+    /// and while the stores are being read for the plugins to fetch back. Both come back as a report and not as an
+    /// exception — the second one threw until the epic's end gate, and the wizard reads an exception as "the restore
+    /// failed", which a stop is not. Either way the cockpit and its staging are as they were.
     /// </summary>
-    [Fact]
-    public async Task ARestoreCancelledWhileUnpacking_LeavesTheCockpitAndItsStagingAsTheyWere()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ARestoreStoppedBeforeTheSettingsAreWritten_ComesBackAsAReport(bool whileTheStoresAreRead)
     {
         _Current("""{"Profiles":"current"}""");
+        _archivedVersions["demo"] = "1.0.0";
+        _Publish("demo", _Version("demo", "1.0.0"));
 
         var archive = _ArchiveWith(("cockpit.json", """{"Profiles":"archived"}"""), ("assistant-memory.md", "archived"));
 
         using var cancelled = new CancellationTokenSource();
-        var stage = new _CancelsOnceUnpacking(cancelled);
+
+        if (whileTheStoresAreRead)
+        {
+            _stopWhenReadingTheStores = cancelled;
+        }
 
         // Was ThrowsAnyAsync<OperationCanceledException> until AC-1281 gave the restore one exit for every stop.
         // What this test guards is untouched — the cockpit and its staging as they were — and is asserted below
         // exactly as it was; only the way the restore says it stopped has changed.
-        var report = await _Restore(archive, new RestoreOptions(true, []), stage, cancelled.Token);
+        var stage = new _Stages(whileTheStoresAreRead ? null : cancelled);
+        var report = await _Restore(archive, new RestoreOptions(true, ["demo"]), stage, cancelled.Token);
 
         Assert.True(report.Stopped);
 
-        // The boundary is what is being asserted: the write stage was never announced, so it was never entered.
+        // The boundary is what is being asserted: neither the fetch nor the write stage was ever announced, so
+        // neither was entered, and nothing was installed on the way past.
         Assert.Equal([RestoreStage.Unpacking], stage.Seen.Select(seen => seen.Stage));
         Assert.Equal("current", _Restored()["Profiles"]!.GetValue<string>());
         Assert.False(File.Exists(Path.Combine(_Root, "assistant-memory.md")));
         Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(_Root, BackupContents.StagingFolder)));
+        Assert.Empty(_installed);
+
+        // A stop that got as far as the stores names the plugin it never reached; one stopped before that has
+        // nothing to name yet. Either way the operator is not left guessing which of the two happened.
+        Assert.Equal(whileTheStoresAreRead ? ["demo"] : [], report.Notes.Select(note => note.Id));
     }
 
     /// <summary>
@@ -400,9 +421,18 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     {
         var storeClient = Substitute.For<IPluginStoreClient>();
         storeClient.FetchIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>())
-            .Returns(call => _unreadableStores.Contains(call.ArgAt<PluginStoreConfig>(0).Location)
-                ? new PluginStoreFetchResult(false, "The directory does not exist.", null, null)
-                : new PluginStoreFetchResult(true, null, new PluginStoreIndex("test", _published), "https://store.test/index.json"));
+            .Returns(call =>
+            {
+                _stopWhenReadingTheStores?.Cancel();
+
+                // A real client aborts a request that is on the wire rather than finishing it, so the stub does too:
+                // otherwise the one case the restore has to survive would never reach it.
+                call.ArgAt<CancellationToken>(1).ThrowIfCancellationRequested();
+
+                return _unreadableStores.Contains(call.ArgAt<PluginStoreConfig>(0).Location)
+                    ? new PluginStoreFetchResult(false, "The directory does not exist.", null, null)
+                    : new PluginStoreFetchResult(true, null, new PluginStoreIndex("test", _published), "https://store.test/index.json");
+            });
         storeClient.DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(call => _unreachableZips.Contains(call.ArgAt<string>(1))
                 ? new PluginStoreDownloadResult(false, "The store dropped the connection.", null)
@@ -523,16 +553,16 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
         }
     }
 
-    // Cancels the moment the restore says it has started unpacking, which is the only way to be standing at the
-    // boundary when the token is checked rather than before the restore has done anything at all.
-    private sealed class _CancelsOnceUnpacking(CancellationTokenSource source) : IProgress<RestoreProgress>
+    // Records the stages, and — when it is handed a source — cancels at the first one, which is the only way to be
+    // standing at the boundary when the token is checked rather than before the restore has done anything at all.
+    private sealed class _Stages(CancellationTokenSource? cancelAtTheFirst) : IProgress<RestoreProgress>
     {
         public List<RestoreProgress> Seen { get; } = [];
 
         public void Report(RestoreProgress value)
         {
             Seen.Add(value);
-            source.Cancel();
+            cancelAtTheFirst?.Cancel();
         }
     }
 }
