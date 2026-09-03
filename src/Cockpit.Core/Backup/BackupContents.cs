@@ -25,8 +25,8 @@ public static class BackupContents
         "assistant-state.md",
 
         // The logos the settings point at: five kilobytes, and nothing else knows where the image came from.
-        // The plugins themselves are not here — an archive carries a `BackupPluginIndexEntry` per plugin and a
-        // restore fetches the binaries from their store again (AC-1275).
+        // The plugins themselves are not here — the manifest names the version each was at, and a restore fetches
+        // the binaries from their store again (AC-1279).
         "project-logos",
 
         // The three small folders AC-1277 weighed and left out, on what they are and not on what they weigh:

@@ -1,8 +1,10 @@
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Backup;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Backup;
 
@@ -14,7 +16,13 @@ namespace Cockpit.Infrastructure.Tests.Backup;
 /// </summary>
 public class BackupServiceOffloadsToTheThreadPoolTests
 {
-    private static BackupService _Service() => new(new _NoProfiles(), NullLogger<BackupService>.Instance);
+    private static BackupService _Service() =>
+        new(
+            new _NoProfiles(),
+            Substitute.For<IPluginStoreConfigStore>(),
+            Substitute.For<IPluginStoreClient>(),
+            Substitute.For<IPluginProvisioningService>(),
+            NullLogger<BackupService>.Instance);
 
     [Fact]
     public async Task WriteAsync_WithAnAlreadyCancelledToken_NeverRunsItsBody()

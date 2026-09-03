@@ -5,9 +5,12 @@ using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Secrets;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
+using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Plugins.Abstractions;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Backup;
@@ -17,9 +20,16 @@ namespace Cockpit.Infrastructure.Backup;
 // it's sound does anything on disk move, so a restore that dies halfway leaves you with what you had.
 internal sealed class BackupService(
     ISessionProfileStore profiles,
+    IPluginStoreConfigStore stores,
+    IPluginStoreClient storeClient,
+    IPluginProvisioningService provisioning,
     ILogger<BackupService> logger) : IBackupService, ISingletonService
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+
+    // What a manifest goes in the archive as when its plugin.json could not be read — and, on the way back, the
+    // one "version" a store is never asked for.
+    private const string UnknownVersion = "unknown";
 
     private static string CockpitDirectory => CockpitConfigPath.Root;
 
@@ -228,37 +238,39 @@ internal sealed class BackupService(
             // The first of the two places a stop is honoured. Checked here rather than only at the hard line below,
             // so a stop does not first sit out the fetch — the step that takes minutes. Nothing outside staging has
             // been touched, so there is nothing to name: an empty report, and the `finally` clears staging.
+            // Nothing to re-anchor either (AC-695): that step hangs on the settings being written, and they are not.
             if (cancellationToken.IsCancellationRequested)
             {
                 return new RestoreReport(Stopped: true, []);
             }
 
-            // AC-1279 fetches the binaries here, honouring the token between plugins; until it does, the count runs
-            // straight to the end and every chosen plugin reads as still missing — which is what is true today.
-            progress?.Report(new RestoreProgress(RestoreStage.FetchingPlugins, options.Plugins.Count, options.Plugins.Count));
+            // Read on this side of the line: a cockpit.json the archive cannot hand back is the one remaining thing
+            // that can fail, and failing here means it failed while this cockpit was still untouched.
+            var incoming = await _ArchivedSettingsAsync(archived, cancellationToken);
+
+            // The one thing past the line that may still be stopped (Raymond, AC-1279): fetching writes only whole
+            // plugin folders, never `cockpit.json`, so a fetch cut short costs the restore and not the cockpit.
+            var fetched = await _FetchPluginsAsync(root, incoming, manifest, options, progress, cancellationToken);
 
             // The line the restore crosses once (AC-1281 moved it from "before writing" to "before cockpit.json"):
             // past here the token is deliberately not passed on. A stop asked for during the fetch returns rather
             // than throws — what landed stays, so naming what did not is the whole point of reporting back.
-            var stopped = cancellationToken.IsCancellationRequested;
-
-            var missing = _PluginsWithoutBinaries(root, options, stopped
-                ? "the restore was stopped before it was fetched"
-                : "its binaries were not fetched from its store");
-
-            if (stopped)
+            if (fetched.Stopped)
             {
                 logger.LogInformation(
-                    "Restore from {Path} stopped before the settings were written; {Plugins} plugin(s) are not installed",
+                    "Restore from {Path} stopped before the settings were written. {Landed} plugin(s) were installed and "
+                    + "stay; {Missing} are not: {Plugins}",
                     archivePath,
-                    missing.Count);
+                    fetched.Pinned.Count,
+                    fetched.Missing.Count,
+                    string.Join(", ", fetched.Missing.Select(plugin => $"{plugin.Id} ({plugin.Reason})")));
 
-                return new RestoreReport(Stopped: true, missing);
+                return new RestoreReport(Stopped: true, fetched.Missing);
             }
 
             progress?.Report(new RestoreProgress(RestoreStage.Writing));
 
-            await _RestoreSettingsAsync(root, archived, aside, options, CancellationToken.None);
+            await _RestoreSettingsAsync(root, incoming, aside, options, fetched.Pinned, CancellationToken.None);
 
             // AC-695: after the merge on purpose, and safe there even though which value came from the archive can no
             // longer be seen — restoring onto the same machine makes source and target root equal and the rewrite a
@@ -278,7 +290,7 @@ internal sealed class BackupService(
                 options.Plugins.Count,
                 aside);
 
-            return new RestoreReport(Stopped: false, missing);
+            return new RestoreReport(Stopped: false, fetched.Missing);
         }
         finally
         {
@@ -292,16 +304,18 @@ internal sealed class BackupService(
     // cockpit.json is one file holding two things the operator restores separately: the cockpit's own settings, and
     // each plugin's registration (which carries everything that plugin ever stored). So it is merged, key by key,
     // rather than swapped — restoring one plugin must not silently bring back yesterday's profiles with it.
-    private static async Task _RestoreSettingsAsync(string root, string archived, string aside, RestoreOptions options, CancellationToken cancellationToken)
+    private static async Task _RestoreSettingsAsync(
+        string root,
+        JsonObject? incoming,
+        string aside,
+        RestoreOptions options,
+        IReadOnlyDictionary<string, string> pinned,
+        CancellationToken cancellationToken)
     {
-        var archivedFile = Path.Combine(archived, "cockpit.json");
-        if (!File.Exists(archivedFile))
+        if (incoming is null)
         {
             return;
         }
-
-        var incoming = JsonNode.Parse(await File.ReadAllTextAsync(archivedFile, cancellationToken)) as JsonObject
-            ?? throw new InvalidOperationException("The cockpit.json in this backup could not be read, so nothing was restored.");
 
         var currentFile = Path.Combine(root, "cockpit.json");
         var current = File.Exists(currentFile)
@@ -337,9 +351,35 @@ internal sealed class BackupService(
             }
         }
 
+        // The one setting the archive does not get the last word on (AC-1279): a plugin pinned to a build other than
+        // the one it came back on is dropped to needs-consent at the next start, so what landed wins.
+        foreach (var (id, sha256) in pinned)
+        {
+            if (restoredPlugins[id] is JsonObject registration)
+            {
+                registration["PinnedSha256"] = sha256;
+            }
+            else
+            {
+                restoredPlugins[id] = new JsonObject { ["Enabled"] = true, ["PinnedSha256"] = sha256 };
+            }
+        }
+
         result["Plugins"] = restoredPlugins;
 
         await File.WriteAllTextAsync(currentFile, result.ToJsonString(Json), cancellationToken);
+    }
+
+    private static async Task<JsonObject?> _ArchivedSettingsAsync(string archived, CancellationToken cancellationToken)
+    {
+        var archivedFile = Path.Combine(archived, "cockpit.json");
+        if (!File.Exists(archivedFile))
+        {
+            return null;
+        }
+
+        return JsonNode.Parse(await File.ReadAllTextAsync(archivedFile, cancellationToken)) as JsonObject
+            ?? throw new InvalidOperationException("The cockpit.json in this backup could not be read, so nothing was restored.");
     }
 
     // AC-695: the merged file carries the backup machine's own absolute paths — a `D:\` on a machine that has no
@@ -381,26 +421,212 @@ internal sealed class BackupService(
         return copy;
     }
 
-    // Since AC-1276 an archive carries no plugin binaries: a restored plugin has its settings back and no code
-    // until it is fetched from its store again. Returned as well as logged (AC-1281), because a log line is not
-    // something the operator reads, and "the folder was not in the archive" then looks exactly like success.
-    private IReadOnlyList<RestoreMissingPlugin> _PluginsWithoutBinaries(string root, RestoreOptions options, string reason)
+    // An archive carries no plugin binaries since AC-1276, so a restore fetches them from their stores again before
+    // the settings that belong to them are written (AC-1279). One plugin that cannot be had is named and the rest
+    // still land. `Pinned` is the checksum each actually came back on — not always the one the archive pinned —
+    // and `Missing` is what the operator is shown, with the reason the attempt itself produced (AC-1281).
+    private async Task<(Dictionary<string, string> Pinned, IReadOnlyList<RestoreMissingPlugin> Missing, bool Stopped)> _FetchPluginsAsync(
+        string root,
+        JsonObject? incoming,
+        BackupManifest manifest,
+        RestoreOptions options,
+        IProgress<RestoreProgress>? progress,
+        CancellationToken cancellationToken)
     {
-        var missing = options.Plugins
-            .Where(id => !Directory.Exists(Path.Combine(root, "plugins", id)))
-            .Select(id => new RestoreMissingPlugin(id, reason))
-            .ToList();
+        var pinned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var missing = new List<RestoreMissingPlugin>();
 
-        if (missing.Count > 0)
+        var wanted = options.Plugins.Where(id => _IsWorthFetching(root, id, manifest.Plugins)).ToList();
+        if (wanted.Count == 0)
         {
-            logger.LogWarning(
-                "Restored the settings of {Count} plugin(s) that are not installed here: {Plugins}. "
-                + "They stay unusable until their binaries are fetched from their store again.",
-                missing.Count,
-                string.Join(", ", missing.Select(plugin => plugin.Id)));
+            return (pinned, missing, false);
         }
 
-        return missing;
+        var (catalogue, unreadable) = await _CataloguesAsync(incoming, cancellationToken);
+        var requests = new List<PluginProvisionRequest>();
+
+        foreach (var id in wanted)
+        {
+            var (request, report) = _Pick(catalogue, unreadable, id, manifest.Plugins.GetValueOrDefault(id));
+            logger.LogInformation("Restoring plugin '{Plugin}': {Report}", id, report);
+
+            if (request is null)
+            {
+                missing.Add(new RestoreMissingPlugin(id, report));
+            }
+            else
+            {
+                requests.Add(request);
+            }
+        }
+
+        // One plugin per call rather than one batch call for all of them: the batch cannot be stopped between
+        // plugins, and a fetch of eleven that will not stop is the whole complaint (AC-1281). The isolation is
+        // still the batch's own — a store that dies on the third plugin does not take the fourth with it.
+        for (var index = 0; index < requests.Count; index++)
+        {
+            // Between plugins, never inside one: what a stop leaves behind is whole plugins, and nothing is rolled
+            // back — an installed plugin without a registration asks for consent at the next start, which is milder
+            // than deleting it. Everything not reached is named, so a stop leaves no mystery.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                missing.AddRange(requests.Skip(index).Select(request =>
+                    new RestoreMissingPlugin(request.Id, "the restore was stopped before it was fetched.")));
+
+                return (pinned, missing, true);
+            }
+
+            progress?.Report(new RestoreProgress(RestoreStage.FetchingPlugins, index, requests.Count));
+
+            var request = requests[index];
+            var result = (await provisioning.InstallManyAsync([request], AbstractionsContract.Version)).Results[0];
+
+            if (result is { IsSuccess: true, FolderId: { } folderId, Sha256: { } sha256 })
+            {
+                pinned[folderId] = sha256;
+            }
+            else
+            {
+                // The reason the attempt itself produced, not one inferred from a folder that is not there: the
+                // operator is told a checksum was rejected or this cockpit is too old, rather than "not installed".
+                var reason = result.Outcome == PluginProvisionOutcome.Incompatible
+                    ? $"this cockpit cannot run it: {result.Error}"
+                    : result.Error ?? "the store could not hand it over.";
+
+                logger.LogWarning("Plugin '{Plugin}' did not come back ({Outcome}): {Reason}", result.Id, result.Outcome, reason);
+                missing.Add(new RestoreMissingPlugin(result.Id, reason));
+            }
+        }
+
+        progress?.Report(new RestoreProgress(RestoreStage.FetchingPlugins, requests.Count, requests.Count));
+
+        return (pinned, missing, false);
+    }
+
+    // A plugin already on disk at the archived version or past it is left alone. `PluginSourceInstaller` refuses to
+    // roll an installed plugin back to an older build, and a restore must not be the way around that rule.
+    private static bool _IsWorthFetching(string root, string id, IReadOnlyDictionary<string, string> archivedVersions)
+    {
+        var folder = Path.Combine(root, "plugins", id);
+        if (!Directory.Exists(folder))
+        {
+            return true;
+        }
+
+        return archivedVersions.GetValueOrDefault(id) is { Length: > 0 } archived
+            && PluginVersion.IsNewer(archived, _VersionOf(folder));
+    }
+
+    // The stores to look in: the ones configured here first — they are the ones that still carry their token, which
+    // the archive scrubs out — then any the archive named that this cockpit does not have, which on a machine set up
+    // from scratch is all of them.
+    private async Task<(List<(PluginStoreConfig Store, PluginStoreIndex Index)> Catalogue, List<PluginStoreConfig> Unreadable)> _CataloguesAsync(
+        JsonObject? incoming,
+        CancellationToken cancellationToken)
+    {
+        var configured = (await stores.LoadAsync(cancellationToken)).ToList();
+
+        foreach (var archived in _ArchivedStores(incoming).Where(store => !configured.Any(store.SameStoreAs)))
+        {
+            configured.Add(archived);
+        }
+
+        var catalogue = new List<(PluginStoreConfig, PluginStoreIndex)>();
+        var unreadable = new List<PluginStoreConfig>();
+
+        foreach (var store in configured)
+        {
+            // Free to stop here: reading an index writes nothing, so nothing has happened yet to leave half-done.
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var fetched = await storeClient.FetchIndexAsync(store, cancellationToken);
+
+            if (fetched is { IsSuccess: true, Index: { } index })
+            {
+                catalogue.Add((store, index));
+            }
+            else
+            {
+                logger.LogWarning("Store {Store} could not be read while restoring: {Error}", store.Location, fetched.Error);
+                unreadable.Add(store);
+            }
+        }
+
+        return (catalogue, unreadable);
+    }
+
+    // Named, not counted: a local store is a path the operator picked themselves, and "D:\plugin-store is not here"
+    // is something they can act on where "a store failed" is not.
+    private static string _Unreadable(IReadOnlyList<PluginStoreConfig> stores) =>
+        string.Join(", ", stores.Select(store => store.IsLocal ? $"the local store '{store.Location}'" : $"the store {store.Location}"));
+
+    private static IEnumerable<PluginStoreConfig> _ArchivedStores(JsonObject? incoming)
+    {
+        try
+        {
+            return incoming?["PluginStores"].Deserialize<List<PluginStoreConfig>>()?.Where(store => store is not null) ?? [];
+        }
+        catch (JsonException)
+        {
+            // A hand-edited store list is not worth failing a restore over; the configured stores still stand.
+            return [];
+        }
+    }
+
+    // Which store version a plugin comes back as — the four ways that can land (AC-1279), each of which says what it
+    // did rather than passing over it. The exact archived version goes to the provisioner as it is: whether this host
+    // can run it is its call, not a second opinion here.
+    private static (PluginProvisionRequest? Request, string Report) _Pick(
+        IReadOnlyList<(PluginStoreConfig Store, PluginStoreIndex Index)> catalogue,
+        IReadOnlyList<PluginStoreConfig> unreadable,
+        string id,
+        string? archivedVersion)
+    {
+        var found = catalogue
+            .Select(source => (source.Store, Entry: source.Index.Plugins.FirstOrDefault(plugin => string.Equals(plugin.Id, id, StringComparison.OrdinalIgnoreCase))))
+            .Where(candidate => candidate.Entry is not null)
+            .ToList();
+
+        if (found.Count == 0)
+        {
+            // Two different truths that used to read as one (Raymond, AC-1279). "Nobody publishes it" is the end of
+            // the road; "the store it came from is a path that is not on this machine" is something the operator can
+            // put right, and saying so beats silently moving a path they chose themselves.
+            return (null, unreadable.Count == 0
+                ? "none of the stores carries it any more, so its settings are back and its binaries are not."
+                : $"none of the stores that could be read carries it, and {_Unreadable(unreadable)} could not be read — "
+                  + "set that store up again on this machine and restore once more.");
+        }
+
+        // The rule when two stores publish the same id, a decision and not a detail: the first configured store
+        // carrying it wins. `PinnedSha256` cannot settle it — that hashes the installed folder, a store's `Sha256`
+        // hashes the zip, so the two never compare equal. Order the operator can see beats a comparison that cannot.
+        var (store, entry) = found[0];
+        var wanted = archivedVersion is { Length: > 0 } and not UnknownVersion ? archivedVersion : null;
+
+        if (entry!.Versions.FirstOrDefault(version => string.Equals(version.Version, wanted, StringComparison.OrdinalIgnoreCase)) is { } exact)
+        {
+            return (new PluginProvisionRequest(id, entry.Name, store, exact), $"fetching {wanted}, the version it was backed up at.");
+        }
+
+        var missed = wanted is null
+            ? "the archive does not record which version it was at"
+            : $"the store no longer offers {wanted}";
+
+        var newest = entry.Versions
+            .Where(version => PluginCompatibility.IsCompatible(version, AbstractionsContract.Version, HostVersionInfo.Current))
+            .Aggregate((PluginStoreVersion?)null, (best, version) => best is null || PluginVersion.IsNewer(version.Version, best.Version) ? version : best);
+
+        if (newest is null)
+        {
+            return (null, $"{missed}, and no version it does offer runs on this cockpit.");
+        }
+
+        // Said out loud on purpose: skipping it silently loses someone a plugin, and upgrading it silently changes
+        // what they run. Neither is a thing a restore may decide on its own without saying so.
+        return (
+            new PluginProvisionRequest(id, entry.Name, store, newest),
+            $"{missed}, so it is put back on {newest.Version} instead.");
     }
 
     // Everything the archive carries besides cockpit.json: the MCP permissions, the assistant's memory and state,
@@ -481,9 +707,9 @@ internal sealed class BackupService(
         return removed;
     }
 
-    // The plugins the archive asks a restore to fetch back, read off the folders. Not a `BackupPluginIndexEntry`:
-    // no plugin records which store it came from, and fetching every store's index here would let an expired token
-    // drop one in silence. AC-1279 resolves the store at restore, by id, version and the registration's `PinnedSha256`.
+    // The plugins the archive asks a restore to fetch back, read off the folders — id and version, no store. Nothing
+    // on disk records which store a plugin came from, and asking every store here would let an expired token drop one
+    // in silence. `_Pick` resolves the store at restore, where the indexes are fresh and a failure can be reported.
     private static Dictionary<string, string> _PluginsIn(string root, BackupOptions options)
     {
         var plugins = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -516,12 +742,12 @@ internal sealed class BackupService(
 
             return File.Exists(manifest) && JsonNode.Parse(File.ReadAllText(manifest))?["version"]?.ToString() is { Length: > 0 } version
                 ? version
-                : "unknown";
+                : UnknownVersion;
         }
         catch (JsonException)
         {
             // A plugin whose manifest we cannot read is still listed; only its version line is a shrug.
-            return "unknown";
+            return UnknownVersion;
         }
     }
 

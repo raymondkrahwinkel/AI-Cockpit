@@ -2,9 +2,12 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
+using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Backup;
+using Cockpit.Plugins.Abstractions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 
@@ -24,6 +27,30 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     // The config root the archive says it was made on (AC-695). Set per test rather than passed to `_ArchiveWith`,
     // which takes the entries as `params`.
     private string? _sourceConfigRoot;
+
+    // The store the restore fetches from, stood up in the test rather than reached over the network: what it
+    // publishes, what the archive says each plugin was at, which downloads break, and what actually got installed.
+    private readonly List<PluginStoreEntry> _published = [];
+
+    private readonly Dictionary<string, string> _archivedVersions = new(StringComparer.Ordinal);
+
+    private readonly HashSet<string> _unreachableZips = new(StringComparer.Ordinal);
+
+    private readonly List<string> _installed = [];
+
+    // What cockpit.json held at the moment the first install ran — the proof that a plugin's settings are written
+    // after it is back, not before.
+    private string? _settingsWhenInstalling;
+
+    // Cancelled once one plugin has been installed whole, which is the only way to be standing between two of them
+    // when the token is read rather than before the fetch has done anything.
+    private CancellationTokenSource? _stopAfterInstalling;
+
+    // The stores this cockpit has configured, and the ones whose index cannot be read — a local store on a drive
+    // that is not this machine's is the case a restore has to tell apart from "nobody publishes it any more".
+    private List<PluginStoreConfig> _configuredStores = [PluginStoreConfig.Remote("https://store.test")];
+
+    private readonly HashSet<string> _unreadableStores = new(StringComparer.Ordinal);
 
     // The cockpit directory sits inside the temp home rather than being it: the `.replaced-` directory is a sibling
     // of the root, so a root without a parent to write it into would not be the arrangement being tested.
@@ -120,10 +147,17 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
 
         var archive = _ArchiveWith(("cockpit.json", """{"Plugins":{"demo":{"Enabled":true,"Data":{"board":"archived"}}}}"""));
 
-        await _Restore(archive, new RestoreOptions(false, ["demo"]));
+        var report = await _Restore(archive, new RestoreOptions(false, ["demo"]));
 
         Assert.Equal("archived", _Restored()["Plugins"]!["demo"]!["Data"]!["board"]!.GetValue<string>());
         Assert.False(Directory.Exists(Path.Combine(_Root, "plugins", "demo")));
+
+        // Re-read rather than only kept green (AC-1281 asked for exactly this): the assertion above used to mean
+        // "nothing is fetched at all", and since AC-1279 it means "the fetch ran and could not get it". The stronger
+        // claim is what the operator is now told — named, with the reason, instead of absent from the report.
+        var stillMissing = Assert.Single(report.MissingPlugins);
+        Assert.Equal("demo", stillMissing.Id);
+        Assert.Contains("none of the stores carries it", stillMissing.Reason, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -190,13 +224,214 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
         Assert.Contains(gone, warning);
     }
 
+    /// <summary>
+    /// AC-1279, the ways a plugin's binaries can come back from its store: still published at the version the archive
+    /// names, gone from every store, published but not runnable here, or published only past that version — where the
+    /// newest compatible one is taken and the archive's pin gives way to what actually landed. The last row is the
+    /// one a bare "gone" used to swallow: its store is a local path that this machine does not have.
+    /// </summary>
+    [Theory]
+    [InlineData("still published", "1.0.0", "the version it was backed up at")]
+    [InlineData("gone from the store", null, "none of the stores carries it any more")]
+    [InlineData("published but incompatible", null, "Incompatible")]
+    [InlineData("only a newer version left", "2.0.0", "put back on 2.0.0 instead")]
+    [InlineData("its store is a path this machine does not have", null, @"the local store 'D:\plugin-store' could not be read")]
+    public async Task ARestoredPlugin_ComesBackFromItsStore_OrSaysWhichWayItCouldNot(string store, string? expected, string reported)
+    {
+        _Current("""{"Plugins":{}}""");
+        _archivedVersions["demo"] = "1.0.0";
+
+        switch (store)
+        {
+            case "still published":
+                _Publish("demo", _Version("demo", "1.0.0"));
+                break;
+            case "published but incompatible":
+                _Publish("demo", _Version("demo", "1.0.0", abstractions: AbstractionsContract.Version + 97));
+                break;
+            case "only a newer version left":
+                _Publish("demo", _Version("demo", "2.0.0"));
+                break;
+            case "its store is a path this machine does not have":
+                _configuredStores = [PluginStoreConfig.Local(@"D:\plugin-store")];
+                _unreadableStores.Add(@"D:\plugin-store");
+                break;
+        }
+
+        var archive = _ArchiveWith(("cockpit.json", """{"Plugins":{"demo":{"Enabled":true,"PinnedSha256":"archived-pin"}}}"""));
+
+        await _Restore(archive, new RestoreOptions(false, ["demo"]));
+
+        string[] installed = expected is null ? [] : [$"demo-{expected}"];
+        Assert.Equal(installed, _installed);
+        Assert.Equal(
+            expected is null ? "archived-pin" : $"sha-of-{expected}",
+            _Restored()["Plugins"]!["demo"]!["PinnedSha256"]!.GetValue<string>());
+        Assert.Contains(_log.Lines, line => line.Contains(reported, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The order the whole of AC-1279 turns on: the binaries first, their settings after — and a plugin that never
+    /// arrived keeps everything it stored, so it works the moment its store is reachable again.
+    /// </summary>
+    [Fact]
+    public async Task PluginSettings_AreWrittenAfterTheInstall_AndOutliveAPluginThatNeverArrived()
+    {
+        _Current("""{"Plugins":{}}""");
+        _archivedVersions["landed"] = _archivedVersions["gone"] = _archivedVersions["unsupported"] = "1.0.0";
+        _Publish("landed", _Version("landed", "1.0.0"));
+        _Publish("unsupported", _Version("unsupported", "1.0.0", abstractions: AbstractionsContract.Version + 97));
+
+        var archive = _ArchiveWith(("cockpit.json", """
+            {"Plugins":{
+              "landed":{"Enabled":true,"PinnedSha256":"archived-pin","MenuOrder":4,"Data":{"board":"archived"}},
+              "gone":{"Enabled":true,"PinnedSha256":"archived-pin","HiddenInMenu":true,"Data":{"board":"archived"}},
+              "unsupported":{"Enabled":true,"PinnedSha256":"archived-pin","Data":{"board":"archived"}}}}
+            """));
+
+        await _Restore(archive, new RestoreOptions(false, ["landed", "gone", "unsupported"]));
+
+        // The install ran while cockpit.json still said what it said before the restore: the settings that belong to
+        // a plugin are written once it is back, never ahead of it.
+        Assert.Equal("""{"Plugins":{}}""", _settingsWhenInstalling);
+
+        var restored = _Restored()["Plugins"]!;
+        Assert.Equal("sha-of-1.0.0", restored["landed"]!["PinnedSha256"]!.GetValue<string>());
+        Assert.Equal(4, restored["landed"]!["MenuOrder"]!.GetValue<int>());
+        Assert.Equal("archived", restored["landed"]!["Data"]!["board"]!.GetValue<string>());
+
+        foreach (var withoutBinaries in new[] { "gone", "unsupported" })
+        {
+            Assert.Equal("archived-pin", restored[withoutBinaries]!["PinnedSha256"]!.GetValue<string>());
+            Assert.Equal("archived", restored[withoutBinaries]!["Data"]!["board"]!.GetValue<string>());
+        }
+
+        Assert.True(restored["gone"]!["HiddenInMenu"]!.GetValue<bool>());
+    }
+
+    /// <summary>
+    /// One plugin the store cannot hand over is that plugin's problem: the ones on either side of it in the batch
+    /// still land, which is what makes a restore of eleven plugins worth starting at all.
+    /// </summary>
+    [Fact]
+    public async Task OnePluginTheStoreCannotHandOver_DoesNotHoldUpTheRest()
+    {
+        _Current("""{"Plugins":{}}""");
+
+        foreach (var id in new[] { "first", "broken", "last" })
+        {
+            _archivedVersions[id] = "1.0.0";
+            _Publish(id, _Version(id, "1.0.0"));
+        }
+
+        _unreachableZips.Add("broken-1.0.0.zip");
+
+        var archive = _ArchiveWith(("cockpit.json", """{"Plugins":{"first":{},"broken":{},"last":{}}}"""));
+
+        await _Restore(archive, new RestoreOptions(false, ["first", "broken", "last"]));
+
+        Assert.Equal(["first-1.0.0", "last-1.0.0"], _installed);
+    }
+
+    /// <summary>
+    /// Stopping a fetch that runs for minutes (Raymond, AC-1279): honoured between plugins and never inside one, so
+    /// what landed is whole plugins. Nothing is rolled back, and the settings are never written — a restore stopped
+    /// here cost the restore, not the cockpit.
+    /// </summary>
+    [Fact]
+    public async Task AFetchStoppedBetweenPlugins_KeepsWhatLanded_AndLeavesTheSettingsAlone()
+    {
+        _Current("""{"Plugins":{}}""");
+
+        foreach (var id in new[] { "first", "second", "third" })
+        {
+            _archivedVersions[id] = "1.0.0";
+            _Publish(id, _Version(id, "1.0.0"));
+        }
+
+        using var cancelled = new CancellationTokenSource();
+        _stopAfterInstalling = cancelled;
+
+        var archive = _ArchiveWith(("cockpit.json", """{"Plugins":{"first":{"Data":{"board":"archived"}}}}"""));
+
+        // Was ThrowsAnyAsync<OperationCanceledException> until AC-1281 gave the restore one exit for every stop.
+        // What this test guards is untouched and asserted below exactly as it was; only the way the restore says
+        // it stopped has changed — thrown now means it never really began, returned means it ran and was stopped.
+        var report = await _Restore(archive, new RestoreOptions(false, ["first", "second", "third"]), cancellationToken: cancelled.Token);
+
+        Assert.True(report.Stopped);
+
+        // The first plugin was installed whole and stays; the second was never begun.
+        Assert.Equal(["first-1.0.0"], _installed);
+        Assert.Equal("""{"Plugins":{}}""", File.ReadAllText(Path.Combine(_Root, "cockpit.json")));
+
+        // A stop leaves no mystery: everything it did not reach is named, and the one that landed is not in the list.
+        Assert.Equal(["second", "third"], report.MissingPlugins.Select(plugin => plugin.Id));
+        Assert.All(report.MissingPlugins, plugin => Assert.Contains("stopped before it was fetched", plugin.Reason, StringComparison.Ordinal));
+    }
+
     private Task<RestoreReport> _Restore(
         string archive,
         RestoreOptions options,
         IProgress<RestoreProgress>? stage = null,
-        CancellationToken cancellationToken = default) =>
-        new BackupService(Substitute.For<ISessionProfileStore>(), _log)
+        CancellationToken cancellationToken = default)
+    {
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        storeClient.FetchIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>())
+            .Returns(call => _unreadableStores.Contains(call.ArgAt<PluginStoreConfig>(0).Location)
+                ? new PluginStoreFetchResult(false, "The directory does not exist.", null, null)
+                : new PluginStoreFetchResult(true, null, new PluginStoreIndex("test", _published), "https://store.test/index.json"));
+        storeClient.DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(call => _unreachableZips.Contains(call.ArgAt<string>(1))
+                ? new PluginStoreDownloadResult(false, "The store dropped the connection.", null)
+                : new PluginStoreDownloadResult(true, null, Path.Combine(_home, call.ArgAt<string>(1))));
+
+        var stores = Substitute.For<IPluginStoreConfigStore>();
+        stores.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<PluginStoreConfig>>(_configuredStores);
+
+        return new BackupService(
+                Substitute.For<ISessionProfileStore>(),
+                stores,
+                storeClient,
+                new PluginProvisioningService(storeClient, new _RecordingInstaller(this)),
+                _log)
             .RestoreIntoAsync(archive, _Root, options, stage, cancellationToken);
+    }
+
+    // The one place a version's zip name is composed, so what the store publishes and what the installer reports
+    // having installed cannot drift apart.
+    private static PluginStoreVersion _Version(string id, string version, int abstractions = AbstractionsContract.Version) =>
+        new(version, $"{id}-{version}.zip", abstractions, MinHostVersion: null, Sha256: null, Notes: null);
+
+    private void _Publish(string id, params PluginStoreVersion[] versions) =>
+        _published.Add(new PluginStoreEntry(id, id, null, null, versions[^1].Version, versions));
+
+    // Stands in for the real installer, which would need a genuine plugin zip: it reports the id and checksum an
+    // install would have landed on, and notes what cockpit.json held while it ran.
+    private sealed class _RecordingInstaller(RestoreIntoATemporaryRootTests test) : IPluginInstaller
+    {
+        public Task<PluginInstallResult> InstallFromZipAsync(
+            string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default)
+        {
+            var name = Path.GetFileNameWithoutExtension(zipFilePath);
+            test._installed.Add(name);
+
+            var settings = Path.Combine(test._Root, "cockpit.json");
+            test._settingsWhenInstalling ??= File.Exists(settings) ? File.ReadAllText(settings) : "";
+
+            test._stopAfterInstalling?.Cancel();
+
+            var split = name.LastIndexOf('-');
+
+            return Task.FromResult(PluginInstallResult.Success(name[..split], $"sha-of-{name[(split + 1)..]}"));
+        }
+
+        public Task MarkForRemovalAsync(string folderId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task SweepRemovalsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task SweepPendingUpdatesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
 
     private void _Current(string settings) => _Write(Path.Combine(_Root, "cockpit.json"), settings);
 
@@ -229,7 +464,7 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
             IncludesCredentials: false,
             [],
             new Dictionary<string, string>(),
-            new Dictionary<string, string>(),
+            _archivedVersions,
             _sourceConfigRoot)));
 
         return archivePath;
@@ -242,10 +477,13 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     }
 
     // AC-695's report is a warning the operator reads, so the test reads the same thing rather than the rewriter's
-    // return value — the point is that the restore itself says it, not that a helper could have.
+    // return value — the point is that the restore itself says it, not that a helper could have. AC-1279 needs the
+    // rest too: what it says per plugin is an information line, and `Warnings` alone would not see it.
     private sealed class _CapturingLogger : ILogger<BackupService>
     {
         public List<string> Warnings { get; } = [];
+
+        public List<string> Lines { get; } = [];
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -253,9 +491,12 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
 
         public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
+            var line = formatter(state, exception);
+            Lines.Add(line);
+
             if (level == LogLevel.Warning)
             {
-                Warnings.Add(formatter(state, exception));
+                Warnings.Add(line);
             }
         }
     }
