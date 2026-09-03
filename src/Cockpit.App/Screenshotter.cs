@@ -507,6 +507,15 @@ internal static class Screenshotter
                 ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
         },
 
+        // AC-1280: the restore step in the shell it lives in, claiming slot 10. Staged without a container — the
+        // page does nothing until a file is chosen, so there is no archive for a scene to depend on.
+        ["first-run-restore"] = (_, _) => new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(
+                [new Views.Onboarding.RestoreStep(new ViewModels.Onboarding.RestoreStepViewModel())],
+                ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        },
+
         // Stage provider availability states directly so this headless scene does not depend on a store fetch
         // (AC-510[b]).
         ["provider-step-catalogue"] = (_, _) => _AsWindow(_ProviderStepCatalogue(), 640, 560),

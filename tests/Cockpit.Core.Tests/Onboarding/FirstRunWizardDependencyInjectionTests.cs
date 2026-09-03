@@ -68,6 +68,23 @@ public class FirstRunWizardDependencyInjectionTests
     }
 
     /// <summary>
+    /// AC-1280's restore step is only ever reached through this list: the shell sorts whatever the container hands
+    /// out, so a constructor dependency it cannot satisfy leaves the wizard one step shorter with nothing else
+    /// failing anywhere. Its place in the order is asserted too — offered after the welcome, before the first
+    /// question a backup would already have answered.
+    /// </summary>
+    [Fact]
+    public void TheContainer_ResolvesTheRestoreStep_BetweenTheWelcomeAndTheFirstQuestion()
+    {
+        using var provider = BuildProvider();
+
+        var steps = provider.GetServices<IFirstRunWizardStep>().OrderBy(step => step.Order).ToList();
+
+        Assert.Equal(10, Assert.Single(steps.OfType<RestoreStep>()).Order);
+        Assert.Equal([typeof(WelcomeStep), typeof(RestoreStep)], steps.Take(2).Select(step => step.GetType()));
+    }
+
+    /// <summary>
     /// The Help menu reaches the wizard through an optional constructor parameter that defaults to null (AC-512),
     /// which is a shape that fails quietly: an unsatisfied parameter still compiles, still passes a test that only
     /// asks the container for <see cref="IFirstRunWizard"/>, and only shows up as a menu item that does nothing.
