@@ -22,11 +22,12 @@ public interface IBackupService
     /// Puts back what <paramref name="options"/> asks for, and nothing else: the cockpit's own settings, and the
     /// registrations of whichever plugins the operator chose — their binaries are fetched from their store again,
     /// not carried by the archive. What it replaces is set aside rather than deleted — a restore is the one act
-    /// here that can cost someone a day. <paramref name="stage"/> reports when cancelling stops being safe.
+    /// here that can cost someone a day. <paramref name="progress"/> reports which stage it is in, and so whether
+    /// stopping is still on offer; the return says whether it was stopped and which plugins are still not here.
     /// </summary>
-    Task RestoreAsync(
+    Task<RestoreReport> RestoreAsync(
         string archivePath,
         RestoreOptions options,
-        IProgress<RestoreStage>? stage = null,
+        IProgress<RestoreProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }

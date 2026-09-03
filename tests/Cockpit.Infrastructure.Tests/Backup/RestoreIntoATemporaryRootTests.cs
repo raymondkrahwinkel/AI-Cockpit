@@ -68,11 +68,15 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
         using var cancelled = new CancellationTokenSource();
         var stage = new _CancelsOnceUnpacking(cancelled);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => _Restore(archive, new RestoreOptions(true, []), stage, cancelled.Token));
+        // Was ThrowsAnyAsync<OperationCanceledException> until AC-1281 gave the restore one exit for every stop.
+        // What this test guards is untouched — the cockpit and its staging as they were — and is asserted below
+        // exactly as it was; only the way the restore says it stopped has changed.
+        var report = await _Restore(archive, new RestoreOptions(true, []), stage, cancelled.Token);
+
+        Assert.True(report.Stopped);
 
         // The boundary is what is being asserted: the write stage was never announced, so it was never entered.
-        Assert.Equal([RestoreStage.Unpacking], stage.Seen);
+        Assert.Equal([RestoreStage.Unpacking], stage.Seen.Select(seen => seen.Stage));
         Assert.Equal("current", _Restored()["Profiles"]!.GetValue<string>());
         Assert.False(File.Exists(Path.Combine(_Root, "assistant-memory.md")));
         Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(_Root, BackupContents.StagingFolder)));
@@ -186,10 +190,10 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
         Assert.Contains(gone, warning);
     }
 
-    private Task _Restore(
+    private Task<RestoreReport> _Restore(
         string archive,
         RestoreOptions options,
-        IProgress<RestoreStage>? stage = null,
+        IProgress<RestoreProgress>? stage = null,
         CancellationToken cancellationToken = default) =>
         new BackupService(Substitute.For<ISessionProfileStore>(), _log)
             .RestoreIntoAsync(archive, _Root, options, stage, cancellationToken);
@@ -258,11 +262,11 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
 
     // Cancels the moment the restore says it has started unpacking, which is the only way to be standing at the
     // boundary when the token is checked rather than before the restore has done anything at all.
-    private sealed class _CancelsOnceUnpacking(CancellationTokenSource source) : IProgress<RestoreStage>
+    private sealed class _CancelsOnceUnpacking(CancellationTokenSource source) : IProgress<RestoreProgress>
     {
-        public List<RestoreStage> Seen { get; } = [];
+        public List<RestoreProgress> Seen { get; } = [];
 
-        public void Report(RestoreStage value)
+        public void Report(RestoreProgress value)
         {
             Seen.Add(value);
             source.Cancel();
