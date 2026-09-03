@@ -580,11 +580,9 @@ internal sealed class BackupService(
         var catalogue = new List<(PluginStoreConfig, PluginStoreIndex)>();
         var unreadable = new List<PluginStoreConfig>();
 
-        // Reported, not thrown — deliberately, because a `CancellationToken` without a `ThrowIfCancellationRequested`
-        // looks wrong here and one was in fact written. Reading an index writes nothing, so throwing would be *safe*;
-        // it would not be *consistent*. This step runs after the archive is unpacked, so it would be the one stop that
-        // leaves as an exception while the other two leave as a report, and the wizard reads an exception as "the
-        // restore failed" — which a stop is not (AC-1275, AC-1280, AC-1281).
+        // Reported, not thrown. A `ThrowIfCancellationRequested` stood here and is safe — reading an index writes
+        // nothing — but it runs after the unpack, so it was the one stop leaving as an exception while the other two
+        // left as a report, and the wizard reads an exception as a failure, which a stop is not (AC-1275).
         try
         {
             var configured = (await stores.LoadAsync(cancellationToken)).ToList();
