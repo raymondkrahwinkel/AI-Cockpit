@@ -33,7 +33,7 @@ public class BackupServiceOffloadsToTheThreadPoolTests
         await cancelled.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            _Service().RestoreAsync("unused.zip", new RestoreOptions(false, []), cancelled.Token));
+            _Service().RestoreAsync("unused.zip", new RestoreOptions(false, []), stage: null, cancelled.Token));
     }
 
     // Never reached: an already-cancelled Task.Run must not invoke the delegate, so this stands in as a tripwire —

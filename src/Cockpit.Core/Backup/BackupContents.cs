@@ -62,3 +62,16 @@ public sealed record RestoreOptions(bool Settings, IReadOnlyList<string> Plugins
 {
     public bool Includes(string pluginId) => Plugins.Contains(pluginId, StringComparer.OrdinalIgnoreCase);
 }
+
+// How far a restore has got, and with it the only question the operator can still be asked: may this be stopped?
+// Reported by `IBackupService.RestoreAsync` so the cancel button offers what is actually still possible (AC-1278).
+public enum RestoreStage
+{
+    // Everything so far happens inside staging. Stopping now removes the staging directory and leaves the
+    // cockpit exactly as it was.
+    Unpacking,
+
+    // The cockpit's own directory is being written. A half-written one is the state the staging step exists to
+    // prevent, so cancellation is no longer honoured past this point.
+    Writing,
+}

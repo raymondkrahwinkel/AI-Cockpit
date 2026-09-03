@@ -179,10 +179,21 @@ internal sealed class BackupService(
 
     // Same offload as WriteAsync, and for the same reason (AC-747): ZipFile.ExtractToDirectory unpacks the whole
     // archive synchronously, which blocked the UI thread for as long as the restore took.
-    public Task RestoreAsync(string archivePath, RestoreOptions options, CancellationToken cancellationToken = default) =>
-        Task.Run(() => _RestoreCoreAsync(archivePath, options, cancellationToken), cancellationToken);
+    public Task RestoreAsync(
+        string archivePath,
+        RestoreOptions options,
+        IProgress<RestoreStage>? stage = null,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => RestoreIntoAsync(archivePath, CockpitDirectory, options, stage, cancellationToken), cancellationToken);
 
-    private async Task _RestoreCoreAsync(string archivePath, RestoreOptions options, CancellationToken cancellationToken)
+    // The cockpit directory is a static, and a restore that writes into the operator's real one is not something a
+    // test may do — so the root written to is a parameter here, and the static is only what the public call passes.
+    internal async Task RestoreIntoAsync(
+        string archivePath,
+        string root,
+        RestoreOptions options,
+        IProgress<RestoreStage>? stage,
+        CancellationToken cancellationToken)
     {
         var manifest = await ReadManifestAsync(archivePath, cancellationToken);
 
@@ -199,10 +210,11 @@ internal sealed class BackupService(
         // Unpack first, write second. Everything that can fail — a corrupt entry, a full disk — fails while this
         // cockpit is still untouched. Extracted into an owner-only directory (AC-45): the archive holds every
         // credential, and the extraction window must not expose them to other users the way a shared /tmp would.
-        var staging = Path.Combine(StagingRoot, $"cockpit-restore-{Guid.NewGuid():n}");
+        var staging = Path.Combine(root, BackupContents.StagingFolder, $"cockpit-restore-{Guid.NewGuid():n}");
 
         try
         {
+            stage?.Report(RestoreStage.Unpacking);
             CockpitConfigPath.EnsurePrivateDirectory(staging);
             ZipFile.ExtractToDirectory(archivePath, staging);
 
@@ -212,15 +224,20 @@ internal sealed class BackupService(
                 throw new InvalidOperationException("This backup carries no cockpit directory, so there is nothing to restore.");
             }
 
-            var root = CockpitDirectory;
             Directory.CreateDirectory(root);
 
             // What is being replaced is set aside, never deleted: a restore is the one act here that can cost someone
             // a day, and "it is still there, under this name" is the difference between a mistake and a disaster.
             var aside = Path.Combine(Path.GetDirectoryName(root)!, $"{Path.GetFileName(root)}.replaced-{DateTimeOffset.Now:yyyyMMdd-HHmmss}");
 
-            await _RestoreSettingsAsync(root, archived, aside, options, cancellationToken);
-            _RestorePlugins(root, archived, aside, options);
+            // The line the restore crosses once. Up to here nothing outside staging has been touched, so stopping
+            // costs nothing and the `finally` below clears staging; past here the cancellation token is deliberately
+            // not passed on, because a cockpit directory abandoned half-written is what all of the above avoids.
+            cancellationToken.ThrowIfCancellationRequested();
+            stage?.Report(RestoreStage.Writing);
+
+            await _RestoreSettingsAsync(root, archived, aside, options, CancellationToken.None);
+            _WarnAboutPluginsWithoutBinaries(root, options);
 
             if (options.Settings)
             {
@@ -272,6 +289,7 @@ internal sealed class BackupService(
         var result = options.Settings ? _Without(incoming, "Plugins") : _Without(current, "Plugins");
 
         // The plugins section: whichever plugins were chosen come from the archive, the rest stay exactly as they are.
+        // Nothing here looks on disk — a plugin whose binaries are not back yet keeps its settings all the same (AC-1278).
         var plugins = current["Plugins"] as JsonObject ?? [];
         var restoredPlugins = new JsonObject();
 
@@ -311,50 +329,48 @@ internal sealed class BackupService(
         return copy;
     }
 
-    // A chosen plugin's folder replaces the one that is there; the ones nobody chose are not touched.
-    private static void _RestorePlugins(string root, string archived, string aside, RestoreOptions options)
+    // Since AC-1276 an archive carries no plugin binaries, only an index and each plugin's registration — so a
+    // restored plugin has its settings back and no code until AC-1279 fetches it from its store again. Said out
+    // loud rather than passed over: "the folder was not in the archive" used to be indistinguishable from success.
+    private void _WarnAboutPluginsWithoutBinaries(string root, RestoreOptions options)
     {
-        foreach (var id in options.Plugins)
+        var missing = options.Plugins
+            .Where(id => !Directory.Exists(Path.Combine(root, "plugins", id)))
+            .ToList();
+
+        if (missing.Count > 0)
         {
-            var source = Path.Combine(archived, "plugins", id);
-            if (!Directory.Exists(source))
-            {
-                continue;
-            }
-
-            var target = Path.Combine(root, "plugins", id);
-
-            if (Directory.Exists(target))
-            {
-                var kept = Path.Combine(aside, "plugins", id);
-                Directory.CreateDirectory(Path.GetDirectoryName(kept)!);
-                Directory.Move(target, kept);
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            Directory.Move(source, target);
+            logger.LogWarning(
+                "Restored the settings of {Count} plugin(s) that are not installed here: {Plugins}. "
+                + "They stay unusable until their binaries are fetched from their store again.",
+                missing.Count,
+                string.Join(", ", missing));
         }
     }
 
-    // The files that belong to the cockpit rather than to any plugin: MCP permissions, the delegation audit log.
+    // Everything the archive carries besides cockpit.json: the MCP permissions, the assistant's memory and state,
+    // the project logos. Walked recursively out of staging rather than off a list of names, so what a backup
+    // includes stays one decision, made in `BackupContents.Included`.
     private static void _RestoreLooseFiles(string root, string archived, string aside)
     {
-        foreach (var file in Directory.EnumerateFiles(archived))
+        foreach (var file in Directory.EnumerateFiles(archived, "*", SearchOption.AllDirectories))
         {
-            var name = Path.GetFileName(file);
-            if (name.Equals("cockpit.json", StringComparison.OrdinalIgnoreCase))
+            var relative = Path.GetRelativePath(archived, file);
+            if (relative.Equals("cockpit.json", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            var target = Path.Combine(root, name);
+            var target = Path.Combine(root, relative);
 
             if (File.Exists(target))
             {
-                Directory.CreateDirectory(aside);
-                File.Copy(target, Path.Combine(aside, name), overwrite: true);
+                var kept = Path.Combine(aside, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(kept)!);
+                File.Copy(target, kept, overwrite: true);
             }
 
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(file, target, overwrite: true);
         }
     }

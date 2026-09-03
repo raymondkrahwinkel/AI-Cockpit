@@ -19,9 +19,14 @@ public interface IBackupService
     Task<BackupManifest> ReadManifestAsync(string archivePath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Puts back what <paramref name="options"/> asks for, and nothing else: the cockpit's own settings, and whichever
-    /// plugins the operator chose from the ones the archive carries. What it replaces is set aside rather than deleted
-    /// — a restore is the one act here that can cost someone a day.
+    /// Puts back what <paramref name="options"/> asks for, and nothing else: the cockpit's own settings, and the
+    /// registrations of whichever plugins the operator chose — their binaries are fetched from their store again,
+    /// not carried by the archive. What it replaces is set aside rather than deleted — a restore is the one act
+    /// here that can cost someone a day. <paramref name="stage"/> reports when cancelling stops being safe.
     /// </summary>
-    Task RestoreAsync(string archivePath, RestoreOptions options, CancellationToken cancellationToken = default);
+    Task RestoreAsync(
+        string archivePath,
+        RestoreOptions options,
+        IProgress<RestoreStage>? stage = null,
+        CancellationToken cancellationToken = default);
 }
