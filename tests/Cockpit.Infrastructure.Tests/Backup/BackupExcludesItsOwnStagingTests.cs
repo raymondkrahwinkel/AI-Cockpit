@@ -12,7 +12,7 @@ public class BackupExcludesItsOwnStagingTests
     public void TheStagingDirectory_LivesInsideTheDirectoryThatGetsBackedUp() =>
         Assert.StartsWith(
             CockpitConfigPath.Root + Path.DirectorySeparatorChar,
-            BackupService.StagingRoot,
+            BackupService.StagingIn(CockpitConfigPath.Root),
             StringComparison.Ordinal);
 
     /// <summary>
@@ -21,7 +21,7 @@ public class BackupExcludesItsOwnStagingTests
     [Fact]
     public void TheArchiveBeingWritten_IsNotSweptIntoItself()
     {
-        var staged = Path.Combine(BackupService.StagingRoot, $"cockpit-backup-{Guid.NewGuid():n}.zip");
+        var staged = Path.Combine(BackupService.StagingIn(CockpitConfigPath.Root), $"cockpit-backup-{Guid.NewGuid():n}.zip");
 
         Assert.False(BackupContents.Includes(Path.GetRelativePath(CockpitConfigPath.Root, staged)));
     }

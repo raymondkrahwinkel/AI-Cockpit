@@ -36,17 +36,18 @@ internal sealed class BackupService(
     // Backup and restore stage under the cockpit's own state root, never Path.GetTempPath() (AC-45): on Linux
     // that is a world-readable 1777 /tmp, and a restore unpacks the whole archive — every credential — there
     // for its duration. Staged here, in an owner-only directory, that window is not readable by other users.
-    internal static string StagingRoot => Path.Combine(CockpitConfigPath.Root, BackupContents.StagingFolder);
+    internal static string StagingIn(string root) => Path.Combine(root, BackupContents.StagingFolder);
 
     // Offloaded to the thread pool (AC-747): CreateEntryFromFile has no async form, so archiving every file froze
     // whichever thread called this — the UI thread, in practice. The awaiter still marshals the continuation back
     // to the caller's dispatcher, so BackupStatus updates land on the UI thread exactly as before.
     public Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default) =>
-        Task.Run(() => _WriteCoreAsync(archivePath, options, cancellationToken), cancellationToken);
+        Task.Run(() => WriteIntoAsync(archivePath, CockpitDirectory, options, cancellationToken), cancellationToken);
 
-    private async Task<BackupManifest> _WriteCoreAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken)
+    // The root is a parameter for the same reason the restore's is: neither half of this service may be pointed at
+    // the operator's real cockpit directory by a test. The public pair is the only place that names it.
+    internal async Task<BackupManifest> WriteIntoAsync(string archivePath, string root, BackupOptions options, CancellationToken cancellationToken)
     {
-        var root = CockpitDirectory;
         if (!Directory.Exists(root))
         {
             throw new InvalidOperationException("There is nothing to back up: this cockpit has never saved anything.");
@@ -58,8 +59,8 @@ internal sealed class BackupService(
         // Written to a temporary file and moved into place: a half-written archive with the right name is a backup
         // you will trust exactly once. Under the owner-only staging root (AC-45), so the credential-bearing zip is
         // never briefly readable to other users while it is being built.
-        CockpitConfigPath.EnsurePrivateDirectory(StagingRoot);
-        var staging = Path.Combine(StagingRoot, $"cockpit-backup-{Guid.NewGuid():n}.zip");
+        CockpitConfigPath.EnsurePrivateDirectory(StagingIn(root));
+        var staging = Path.Combine(StagingIn(root), $"cockpit-backup-{Guid.NewGuid():n}.zip");
 
         try
         {
@@ -215,7 +216,7 @@ internal sealed class BackupService(
         // Unpack first, write second. Everything that can fail — a corrupt entry, a full disk — fails while this
         // cockpit is still untouched. Extracted into an owner-only directory (AC-45): the archive holds every
         // credential, and the extraction window must not expose them to other users the way a shared /tmp would.
-        var staging = Path.Combine(root, BackupContents.StagingFolder, $"cockpit-restore-{Guid.NewGuid():n}");
+        var staging = Path.Combine(StagingIn(root), $"cockpit-restore-{Guid.NewGuid():n}");
 
         try
         {

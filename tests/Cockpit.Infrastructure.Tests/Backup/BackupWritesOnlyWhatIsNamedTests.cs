@@ -3,7 +3,6 @@ using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
-using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Backup;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -12,11 +11,10 @@ using NSubstitute;
 namespace Cockpit.Infrastructure.Tests.Backup;
 
 /// <summary>
-/// AC-1277: what <see cref="BackupService.WriteAsync"/> actually puts in the zip, read back out of the zip rather
+/// AC-1277: what <see cref="BackupService.WriteIntoAsync"/> actually puts in the zip, read back out of the zip rather
 /// than asserted against the list it was built from — the list already has its own test, and a list that agrees
 /// with itself is what let <c>worktrees</c> and <c>cli</c> into every archive for months.
 /// </summary>
-[Collection(WritesOnlyWhatIsNamed.Alone)]
 public sealed class BackupWritesOnlyWhatIsNamedTests
 {
     /// <summary>
@@ -27,7 +25,7 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
     [Fact]
     public async Task TheArchiveHoldsEveryNamedPath_AndNothingElseTheCockpitDirectoryHappensToContain()
     {
-        using var root = new TemporaryStateRoot();
+        using var root = new TemporaryRoot();
 
         string[] expected =
         [
@@ -53,7 +51,7 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
         root.Write("logs/cockpit.log", "yesterday's noise");
 
         var archive = Path.Combine(root.Path, "backup.zip");
-        await _Service().WriteAsync(archive, new BackupOptions());
+        await _Service().WriteIntoAsync(archive, root.Path, new BackupOptions(), CancellationToken.None);
 
         using var written = ZipFile.OpenRead(archive);
         var entries = written.Entries
@@ -79,7 +77,7 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
     [Fact]
     public async Task APluginLeftOutOfTheArchive_KeepsItsRegistration_AndOnlyLosesItsPlaceInTheManifest()
     {
-        using var root = new TemporaryStateRoot();
+        using var root = new TemporaryRoot();
 
         root.Write("cockpit.json", """
             {
@@ -93,7 +91,7 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
         root.Write("plugins/docker/plugin.json", """{"id":"docker","version":"2.0.0"}""");
 
         var archive = Path.Combine(root.Path, "backup.zip");
-        var manifest = await _Service().WriteAsync(archive, new BackupOptions(Plugins: ["youtrack"]));
+        var manifest = await _Service().WriteIntoAsync(archive, root.Path, new BackupOptions(Plugins: ["youtrack"]), CancellationToken.None);
 
         Assert.Equal(["youtrack"], manifest.Plugins.Keys);
 
@@ -125,17 +123,12 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
             Task.CompletedTask;
     }
 
-    // A cockpit directory of this test's own, made by pointing the state root at a temp folder for the length of
-    // the test. Process-wide, hence the collection: these must not run while anything else resolves a cockpit path.
-    private sealed class TemporaryStateRoot : IDisposable
+    // A cockpit directory of this test's own, handed to `WriteIntoAsync` as its root — the same seam the restore
+    // tests use. Not `COCKPIT_STATE_ROOT`: that is process-wide, so it would serialise this whole assembly against
+    // everything that resolves a cockpit path, and it can name the operator's real directory. A parameter cannot.
+    private sealed class TemporaryRoot : IDisposable
     {
-        private readonly string? _previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
-
-        public TemporaryStateRoot()
-        {
-            Path = Directory.CreateTempSubdirectory("cockpit-backup-contents").FullName;
-            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, Path);
-        }
+        public TemporaryRoot() => Path = Directory.CreateTempSubdirectory("cockpit-backup-contents").FullName;
 
         public string Path { get; }
 
@@ -146,18 +139,6 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
             File.WriteAllText(file, content);
         }
 
-        public void Dispose()
-        {
-            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, _previous);
-            Directory.Delete(Path, recursive: true);
-        }
+        public void Dispose() => Directory.Delete(Path, recursive: true);
     }
-}
-
-[CollectionDefinition(WritesOnlyWhatIsNamed.Alone, DisableParallelization = true)]
-public sealed class WritesOnlyWhatIsNamedCollection;
-
-public static class WritesOnlyWhatIsNamed
-{
-    public const string Alone = "backup-writes-only-what-is-named";
 }
