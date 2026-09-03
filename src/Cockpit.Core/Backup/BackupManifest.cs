@@ -10,7 +10,14 @@ public sealed record BackupManifest(
     bool IncludesCredentials,
     IReadOnlyList<string> RemovedSecrets,
     IReadOnlyDictionary<string, string> ProfileConfigDirectories,
-    IReadOnlyDictionary<string, string> Plugins)
+    IReadOnlyDictionary<string, string> Plugins,
+    // AC-695: the config root the backup was made from, so a restore can re-anchor the paths that pointed into it.
+    // Recorded, never acted on here. Null means no anchor is known, and then nothing is re-anchored.
+
+    // Additive with a default, so `CurrentSchema` stays 2 even though AC-1276 made `CanRestore` exact equality: an
+    // older archive reads as null, a newer one read by older schema-2 code drops the field. Neither misreads the
+    // other, which is the test a new manifest field has to pass to stay at 2.
+    string? SourceConfigRoot = null)
 {
     // The archive layout this build writes and reads. AC-1276 raised it to 2: an archive now holds a named
     // part of the cockpit directory instead of nearly all of it, which a schema 1 reader would misread as

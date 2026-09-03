@@ -89,7 +89,8 @@ internal sealed class BackupService(
                     options.IncludeCredentials,
                     removed,
                     profileDirectories,
-                    _PluginsIn(root, options));
+                    _PluginsIn(root, options),
+                    root);
 
                 var entry = archive.CreateEntry(BackupManifest.FileName, CompressionLevel.Optimal);
                 await using var stream = entry.Open();
@@ -230,6 +231,11 @@ internal sealed class BackupService(
             stage?.Report(RestoreStage.Writing);
 
             await _RestoreSettingsAsync(root, archived, aside, options, CancellationToken.None);
+
+            // AC-695: after the merge on purpose, and safe there even though which value came from the archive can no
+            // longer be seen — restoring onto the same machine makes source and target root equal and the rewrite a
+            // no-op, and onto another machine this cockpit's own values do not start with the archive's foreign root.
+            await _RebaseRestoredPathsAsync(root, manifest);
             _WarnAboutPluginsWithoutBinaries(root, options);
 
             if (options.Settings)
@@ -305,6 +311,30 @@ internal sealed class BackupService(
         result["Plugins"] = restoredPlugins;
 
         await File.WriteAllTextAsync(currentFile, result.ToJsonString(Json), cancellationToken);
+    }
+
+    // AC-695: the merged file carries the backup machine's own absolute paths — a `D:\` on a machine that has no
+    // D:. Run over the result rather than over the archive so it covers the settings and the plugin registrations
+    // in one pass, whichever of the two this restore took from the archive.
+    private async Task _RebaseRestoredPathsAsync(string root, BackupManifest manifest)
+    {
+        var file = Path.Combine(root, "cockpit.json");
+        if (!File.Exists(file) || JsonNode.Parse(await File.ReadAllTextAsync(file)) is not JsonObject settings)
+        {
+            return;
+        }
+
+        var unresolved = RestorePathPortability.Rebase(settings, manifest.SourceConfigRoot, root);
+        await File.WriteAllTextAsync(file, settings.ToJsonString(Json));
+
+        if (unresolved.Count > 0)
+        {
+            logger.LogWarning(
+                "{Count} project folder(s) from this backup do not exist here and were left in the settings as they "
+                + "are, rather than being dropped or pointed somewhere else: {Folders}. Set each one again.",
+                unresolved.Count,
+                string.Join("; ", unresolved));
+        }
     }
 
     private static JsonObject _Without(JsonObject source, string key)
