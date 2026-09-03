@@ -25,8 +25,8 @@ public static class BackupContents
         "assistant-state.md",
 
         // The logos the settings point at: five kilobytes, and nothing else knows where the image came from.
-        // The plugins themselves are not here — an archive carries a `BackupPluginIndexEntry` per plugin and a
-        // restore fetches the binaries from their store again (AC-1275).
+        // The plugins themselves are not here — the manifest names the version each was at, and a restore fetches
+        // the binaries from their store again (AC-1279).
         "project-logos",
 
         // The three small folders AC-1277 weighed and left out, on what they are and not on what they weigh:
@@ -91,11 +91,11 @@ public enum RestoreStage
 // `Total` is 0 for the stages that have nothing to count.
 public sealed record RestoreProgress(RestoreStage Stage, int Done = 0, int Total = 0);
 
-// A plugin whose settings came back but whose binaries did not — after the restore has tried to fetch them
-// (AC-1279). Returned by `IBackupService.RestoreAsync` rather than only logged: a log line is silence to the
-// operator, and this is the difference between a restored plugin and a restored plugin that cannot run.
-public sealed record RestoreMissingPlugin(string Id, string Reason);
+// One sentence the operator needs about one plugin, after the restore has tried to fetch it (AC-1279). Wider than
+// "what is missing": a plugin put back on another version, or left alone because a newer one is installed here, is
+// not missing but is still a change nobody asked for. Returned rather than logged — a log line is silence.
+public sealed record RestorePluginNote(string Id, string Note);
 
 // How a restore ended. `Stopped` is a normal outcome, not a failure: stopping during the plugin fetch leaves the
 // settings untouched and whatever landed standing, so it returns what it knows instead of throwing it away.
-public sealed record RestoreReport(bool Stopped, IReadOnlyList<RestoreMissingPlugin> MissingPlugins);
+public sealed record RestoreReport(bool Stopped, IReadOnlyList<RestorePluginNote> Notes);

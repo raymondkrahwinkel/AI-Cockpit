@@ -4209,14 +4209,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 BackupStatus = _lastRestoreStage == RestoreStage.Unpacking
                     ? "The restore was stopped while unpacking. Nothing here was changed."
                     : "The restore was stopped before the settings were put back, so they are unchanged. "
-                      + "Anything already fetched was left in place." + _StillMissing(report);
+                      + "Anything already fetched was left in place." + _WorthKnowing(report);
 
                 return;
             }
 
-            BackupStatus = report.MissingPlugins.Count == 0
+            BackupStatus = report.Notes.Count == 0
                 ? "Restored. Restarting the cockpit to read it."
-                : $"Restored, but{_StillMissing(report)} Restarting the cockpit to read the rest.";
+                : $"Restored.{_WorthKnowing(report)} Restarting the cockpit to read the rest.";
 
             _appRestart?.Restart();
         }
@@ -4255,11 +4255,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public void StopBackup() => _backupCancellation?.Cancel();
 
-    private static string _StillMissing(RestoreReport report) =>
-        report.MissingPlugins.Count == 0
+    // "Worth knowing" rather than "still not installed" (AC-1279): the list carries plugins that came back on a
+    // different version too, and calling those missing would be a lie the operator could act on.
+    private static string _WorthKnowing(RestoreReport report) =>
+        report.Notes.Count == 0
             ? string.Empty
-            : " These plugins are still not installed: "
-              + string.Join(", ", report.MissingPlugins.Select(plugin => $"{plugin.Id} ({plugin.Reason})")) + ".";
+            : " Worth knowing about these plugins: "
+              + string.Join(", ", report.Notes.Select(plugin => $"{plugin.Id} ({plugin.Note})")) + ".";
 
     // Marshals onto the UI thread itself: BackupService reports from the thread pool it offloaded the unpacking to,
     // and Progress<T> would only do the same if this were always constructed on the UI thread.

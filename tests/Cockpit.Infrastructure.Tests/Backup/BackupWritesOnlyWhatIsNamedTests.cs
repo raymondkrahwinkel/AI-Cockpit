@@ -1,11 +1,13 @@
 using System.IO.Compression;
 using System.Text.Json.Nodes;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Backup;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Backup;
 
@@ -68,9 +70,11 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
     /// the operator configured, so it stays — while the manifest still leaves the plugin out of what to fetch back.
     /// </summary>
     /// <remarks>
-    /// Asserted here too, on the excluded plugin: its <c>PinnedSha256</c> comes through the secret scrub intact.
-    /// It is what AC-1279 has to tell two stores publishing the same id apart, and it travels down the one path in
-    /// the write that deletes fields — a scrub rule that grew a hint matching it would take the discriminator out.
+    /// Asserted here too, on the excluded plugin: its <c>PinnedSha256</c> comes through the secret scrub intact. It
+    /// is the consent the operator already gave, it travels down the one path in the write that deletes fields, and
+    /// a plugin restored without it is a plugin the loader drops to needs-consent. (It is <em>not</em> what tells two
+    /// stores publishing the same id apart — it hashes the installed folder, not the zip a store publishes a
+    /// <c>Sha256</c> for, so the two never compare equal. See AC-1279.)
     /// </remarks>
     [Fact]
     public async Task APluginLeftOutOfTheArchive_KeepsItsRegistration_AndOnlyLosesItsPlaceInTheManifest()
@@ -102,8 +106,14 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
         Assert.Equal(string.Empty, docker["Data"]!["token"]!.GetValue<string>());
     }
 
+    // The stores and the provisioner belong to the restore (AC-1279); the write path never reaches for them.
     private static BackupService _Service() =>
-        new(new NoProfiles(), NullLogger<BackupService>.Instance);
+        new(
+            new NoProfiles(),
+            Substitute.For<IPluginStoreConfigStore>(),
+            Substitute.For<IPluginStoreClient>(),
+            Substitute.For<IPluginProvisioningService>(),
+            NullLogger<BackupService>.Instance);
 
     // The write path only asks for profiles when `IncludeProfileConfigs` is on, which neither test turns on.
     private sealed class NoProfiles : ISessionProfileStore

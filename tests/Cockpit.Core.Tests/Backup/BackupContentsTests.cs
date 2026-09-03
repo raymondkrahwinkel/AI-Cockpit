@@ -1,6 +1,4 @@
-using System.Text.Json;
 using Cockpit.Core.Backup;
-using Cockpit.Core.Plugins;
 
 namespace Cockpit.Core.Tests.Backup;
 
@@ -51,19 +49,5 @@ public class BackupContentsTests
 
         Assert.Equal(refusal is null, manifest.CanRestore);
         Assert.Contains(refusal ?? string.Empty, manifest.RestoreRefusal ?? string.Empty, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ThePluginIndex_SurvivesTheRoundTrip_AndLeavesTheStoreTokenBehind()
-    {
-        var entry = BackupPluginIndexEntry.From(
-            "youtrack",
-            PluginStoreConfig.Remote("https://store.example/index.json", "s3cr3t-bearer"),
-            new PluginStoreVersion("1.4.0", "plugins/youtrack-1.4.0.zip", 3, "2.1.0", "abc123", "Release notes"));
-
-        var json = JsonSerializer.Serialize(entry);
-
-        Assert.DoesNotContain("s3cr3t-bearer", json, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(entry, JsonSerializer.Deserialize<BackupPluginIndexEntry>(json));
     }
 }
