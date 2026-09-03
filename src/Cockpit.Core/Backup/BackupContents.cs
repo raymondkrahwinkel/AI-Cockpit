@@ -76,7 +76,26 @@ public enum RestoreStage
     // cockpit exactly as it was.
     Unpacking,
 
-    // The cockpit's own directory is being written. A half-written one is the state the staging step exists to
-    // prevent, so cancellation is no longer honoured past this point.
+    // The plugins are being fetched from their stores again, since AC-1276 leaves their binaries out of the
+    // archive. The one stage with a number worth showing: plugins are countable, an archive's files are not.
+    // Still stoppable: this runs before cockpit.json is rewritten, and it is the stage that can take minutes.
+    FetchingPlugins,
+
+    // cockpit.json is being rewritten. A half-written one is the state the staging step exists to prevent, so
+    // cancellation is no longer honoured past this point.
     Writing,
 }
+
+// A restore's position, reported as a stage rather than a percentage (AC-1281): a percentage over tens of
+// thousands of archive entries tells the operator nothing, and "which of the three steps" tells them everything.
+// `Total` is 0 for the stages that have nothing to count.
+public sealed record RestoreProgress(RestoreStage Stage, int Done = 0, int Total = 0);
+
+// A plugin whose settings came back but whose binaries did not — after the restore has tried to fetch them
+// (AC-1279). Returned by `IBackupService.RestoreAsync` rather than only logged: a log line is silence to the
+// operator, and this is the difference between a restored plugin and a restored plugin that cannot run.
+public sealed record RestoreMissingPlugin(string Id, string Reason);
+
+// How a restore ended. `Stopped` is a normal outcome, not a failure: stopping during the plugin fetch leaves the
+// settings untouched and whatever landed standing, so it returns what it knows instead of throwing it away.
+public sealed record RestoreReport(bool Stopped, IReadOnlyList<RestoreMissingPlugin> MissingPlugins);

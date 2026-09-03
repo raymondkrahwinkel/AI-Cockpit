@@ -4123,18 +4123,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         if (_backupService is not { } backups)
         {
+            BackupStatus = NoBackupService;
             return;
         }
 
+        using var cancellation = new CancellationTokenSource();
+        _backupCancellation = cancellation;
+
         try
         {
+            IsBackupRunning = true;
+
+            // Unlike a restore, a backup can be stopped right up to the end: it builds its zip under staging and
+            // only moves it into place when it is whole, so nothing outside staging exists to be left half-done.
+            CanStopBackup = true;
             BackupStatus = "Backing up…";
 
             var chosen = BackupPlugins.Where(plugin => plugin.Selected).Select(plugin => plugin.Id).ToList();
 
             var manifest = await backups.WriteAsync(
                 archivePath,
-                new BackupOptions(BackupIncludesCredentials, BackupIncludesProfiles, chosen));
+                new BackupOptions(BackupIncludesCredentials, BackupIncludesProfiles, chosen),
+                cancellation.Token);
 
             var stripped = manifest.RemovedSecrets.Count == 0
                 ? string.Empty
@@ -4142,11 +4152,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             BackupStatus = $"Backed up to {Path.GetFileName(archivePath)}.{stripped}";
         }
+        catch (OperationCanceledException)
+        {
+            BackupStatus = "The backup was stopped. No archive was written.";
+        }
         catch (Exception exception)
         {
             BackupStatus = $"The backup was not made: {exception.Message}";
         }
+        finally
+        {
+            _backupCancellation = null;
+            IsBackupRunning = false;
+            CanStopBackup = false;
+        }
     }
+
+    // Said out loud rather than returned in silence (AC-1281): without a backup service the buttons do nothing,
+    // and "nothing happened" is the one outcome an operator cannot tell apart from a cockpit that has hung.
+    private const string NoBackupService = "Backup is not available in this build, so nothing was done.";
 
     // Preview archive settings/plugins before asking what to restore (#70). Move replaced data aside rather than
     // deleting it, then restart to load the restored state; a null choice cancels.
@@ -4154,28 +4178,119 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         if (_backupService is not { } backups)
         {
+            BackupStatus = NoBackupService;
             return;
         }
 
+        using var cancellation = new CancellationTokenSource();
+        _backupCancellation = cancellation;
+
         try
         {
-            var manifest = await backups.ReadManifestAsync(archivePath);
+            var manifest = await backups.ReadManifestAsync(archivePath, cancellation.Token);
 
             if (await choose(manifest) is not { } options)
             {
                 return;
             }
 
+            IsBackupRunning = true;
+            CanStopBackup = true;
             BackupStatus = "Restoring…";
-            await backups.RestoreAsync(archivePath, options);
+            _lastRestoreStage = null;
 
-            BackupStatus = "Restored. Restarting the cockpit to read it.";
+            var progress = new RestoreProgressReporter(this);
+            var report = await backups.RestoreAsync(archivePath, options, progress, cancellation.Token);
+
+            // How far it got is not asked for back: the stage arrived over `progress` on the way, and a second
+            // channel for the same fact is one that can disagree with the first.
+            if (report.Stopped)
+            {
+                BackupStatus = _lastRestoreStage == RestoreStage.Unpacking
+                    ? "The restore was stopped while unpacking. Nothing here was changed."
+                    : "The restore was stopped before the settings were put back, so they are unchanged. "
+                      + "Anything already fetched was left in place." + _StillMissing(report);
+
+                return;
+            }
+
+            BackupStatus = report.MissingPlugins.Count == 0
+                ? "Restored. Restarting the cockpit to read it."
+                : $"Restored, but{_StillMissing(report)} Restarting the cockpit to read the rest.";
+
             _appRestart?.Restart();
+        }
+        catch (OperationCanceledException)
+        {
+            // A stop the restore itself reports comes back as a report; this is only the one that beat it to the
+            // start — the token was already cancelled when the manifest was read, or before the work was queued.
+            BackupStatus = "The restore was stopped before it began. Nothing here was changed.";
         }
         catch (Exception exception)
         {
             BackupStatus = $"Nothing was restored: {exception.Message}";
         }
+        finally
+        {
+            _backupCancellation = null;
+            IsBackupRunning = false;
+            CanStopBackup = false;
+        }
+    }
+
+    // Whether a backup or restore is running at all, and — separately — whether it can still be stopped. Two flags
+    // rather than one so the button stays on screen and goes dead at the moment stopping stops being safe
+    // (AC-1278); a button that disappears tells the operator nothing about why.
+    [ObservableProperty]
+    private bool _isBackupRunning;
+
+    [ObservableProperty]
+    private bool _canStopBackup;
+
+    private CancellationTokenSource? _backupCancellation;
+
+    // The last stage the restore reported. Kept because a stopped restore comes back saying only that it stopped —
+    // where it stopped is what decides whether "nothing was changed" is true, and it already arrived over progress.
+    private RestoreStage? _lastRestoreStage;
+
+    public void StopBackup() => _backupCancellation?.Cancel();
+
+    private static string _StillMissing(RestoreReport report) =>
+        report.MissingPlugins.Count == 0
+            ? string.Empty
+            : " These plugins are still not installed: "
+              + string.Join(", ", report.MissingPlugins.Select(plugin => $"{plugin.Id} ({plugin.Reason})")) + ".";
+
+    // Marshals onto the UI thread itself: BackupService reports from the thread pool it offloaded the unpacking to,
+    // and Progress<T> would only do the same if this were always constructed on the UI thread.
+    private sealed class RestoreProgressReporter(CockpitViewModel cockpit) : IProgress<RestoreProgress>
+    {
+        public void Report(RestoreProgress value) => _OnUiThread(() =>
+        {
+            cockpit._lastRestoreStage = value.Stage;
+
+            // A stop is honoured between plugins, never in the middle of one, so the line says "finishing" rather
+            // than anything that would read as immediate — the fetch it interrupts can still take a moment.
+            var stopping = cockpit._backupCancellation?.IsCancellationRequested == true;
+
+            cockpit.BackupStatus = value.Stage switch
+            {
+                RestoreStage.Unpacking => "Unpacking the archive…",
+                RestoreStage.Writing => "Putting the settings back…",
+                RestoreStage.FetchingPlugins when stopping =>
+                    $"Finishing the plugin being fetched, then stopping… {value.Done} of {value.Total}.",
+                RestoreStage.FetchingPlugins when value.Total > 0 => $"Fetching plugins… {value.Done} of {value.Total}.",
+                RestoreStage.FetchingPlugins => "Fetching plugins…",
+                _ => cockpit.BackupStatus,
+            };
+
+            // Writing alone withdraws the offer: from there cockpit.json is being rewritten, and a half-written one
+            // is what all of this exists to prevent. Unpacking and the fetch both run before it and stay stoppable.
+            if (value.Stage == RestoreStage.Writing)
+            {
+                cockpit.CanStopBackup = false;
+            }
+        });
     }
 
     // The assistant's own memory, on its own (AC-657) — loose from the rest of the cockpit backup above: no

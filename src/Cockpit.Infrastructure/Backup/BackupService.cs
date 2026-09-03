@@ -173,20 +173,21 @@ internal sealed class BackupService(
 
     // Same offload as WriteAsync, and for the same reason (AC-747): ZipFile.ExtractToDirectory unpacks the whole
     // archive synchronously, which blocked the UI thread for as long as the restore took.
-    public Task RestoreAsync(
+    public Task<RestoreReport> RestoreAsync(
         string archivePath,
         RestoreOptions options,
-        IProgress<RestoreStage>? stage = null,
+        IProgress<RestoreProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => RestoreIntoAsync(archivePath, CockpitDirectory, options, stage, cancellationToken), cancellationToken);
+        Task.Run(() => RestoreIntoAsync(archivePath, CockpitDirectory, options, progress, cancellationToken), cancellationToken);
 
-    // The cockpit directory is a static, and a restore that writes into the operator's real one is not something a
-    // test may do — so the root written to is a parameter here, and the static is only what the public call passes.
-    internal async Task RestoreIntoAsync(
+    // The root is a parameter because a restore into the operator's real cockpit is not something a test may do.
+    // A stop is REPORTED, not thrown, against the usual reading of a CancellationToken (AC-1281): stopping leaves
+    // whatever already landed standing, and naming what did not is exactly what an exception cannot carry.
+    internal async Task<RestoreReport> RestoreIntoAsync(
         string archivePath,
         string root,
         RestoreOptions options,
-        IProgress<RestoreStage>? stage,
+        IProgress<RestoreProgress>? progress,
         CancellationToken cancellationToken)
     {
         var manifest = await ReadManifestAsync(archivePath, cancellationToken);
@@ -208,7 +209,7 @@ internal sealed class BackupService(
 
         try
         {
-            stage?.Report(RestoreStage.Unpacking);
+            progress?.Report(new RestoreProgress(RestoreStage.Unpacking));
             CockpitConfigPath.EnsurePrivateDirectory(staging);
             ZipFile.ExtractToDirectory(archivePath, staging);
 
@@ -224,11 +225,38 @@ internal sealed class BackupService(
             // a day, and "it is still there, under this name" is the difference between a mistake and a disaster.
             var aside = Path.Combine(Path.GetDirectoryName(root)!, $"{Path.GetFileName(root)}.replaced-{DateTimeOffset.Now:yyyyMMdd-HHmmss}");
 
-            // The line the restore crosses once. Up to here nothing outside staging has been touched, so stopping
-            // costs nothing and the `finally` below clears staging; past here the cancellation token is deliberately
-            // not passed on, because a cockpit directory abandoned half-written is what all of the above avoids.
-            cancellationToken.ThrowIfCancellationRequested();
-            stage?.Report(RestoreStage.Writing);
+            // The first of the two places a stop is honoured. Checked here rather than only at the hard line below,
+            // so a stop does not first sit out the fetch — the step that takes minutes. Nothing outside staging has
+            // been touched, so there is nothing to name: an empty report, and the `finally` clears staging.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return new RestoreReport(Stopped: true, []);
+            }
+
+            // AC-1279 fetches the binaries here, honouring the token between plugins; until it does, the count runs
+            // straight to the end and every chosen plugin reads as still missing — which is what is true today.
+            progress?.Report(new RestoreProgress(RestoreStage.FetchingPlugins, options.Plugins.Count, options.Plugins.Count));
+
+            // The line the restore crosses once (AC-1281 moved it from "before writing" to "before cockpit.json"):
+            // past here the token is deliberately not passed on. A stop asked for during the fetch returns rather
+            // than throws — what landed stays, so naming what did not is the whole point of reporting back.
+            var stopped = cancellationToken.IsCancellationRequested;
+
+            var missing = _PluginsWithoutBinaries(root, options, stopped
+                ? "the restore was stopped before it was fetched"
+                : "its binaries were not fetched from its store");
+
+            if (stopped)
+            {
+                logger.LogInformation(
+                    "Restore from {Path} stopped before the settings were written; {Plugins} plugin(s) are not installed",
+                    archivePath,
+                    missing.Count);
+
+                return new RestoreReport(Stopped: true, missing);
+            }
+
+            progress?.Report(new RestoreProgress(RestoreStage.Writing));
 
             await _RestoreSettingsAsync(root, archived, aside, options, CancellationToken.None);
 
@@ -236,7 +264,6 @@ internal sealed class BackupService(
             // longer be seen — restoring onto the same machine makes source and target root equal and the rewrite a
             // no-op, and onto another machine this cockpit's own values do not start with the archive's foreign root.
             await _RebaseRestoredPathsAsync(root, manifest);
-            _WarnAboutPluginsWithoutBinaries(root, options);
 
             if (options.Settings)
             {
@@ -250,6 +277,8 @@ internal sealed class BackupService(
                 options.Settings ? "settings" : "no settings",
                 options.Plugins.Count,
                 aside);
+
+            return new RestoreReport(Stopped: false, missing);
         }
         finally
         {
@@ -352,13 +381,14 @@ internal sealed class BackupService(
         return copy;
     }
 
-    // Since AC-1276 an archive carries no plugin binaries, only an index and each plugin's registration — so a
-    // restored plugin has its settings back and no code until AC-1279 fetches it from its store again. Said out
-    // loud rather than passed over: "the folder was not in the archive" used to be indistinguishable from success.
-    private void _WarnAboutPluginsWithoutBinaries(string root, RestoreOptions options)
+    // Since AC-1276 an archive carries no plugin binaries: a restored plugin has its settings back and no code
+    // until it is fetched from its store again. Returned as well as logged (AC-1281), because a log line is not
+    // something the operator reads, and "the folder was not in the archive" then looks exactly like success.
+    private IReadOnlyList<RestoreMissingPlugin> _PluginsWithoutBinaries(string root, RestoreOptions options, string reason)
     {
         var missing = options.Plugins
             .Where(id => !Directory.Exists(Path.Combine(root, "plugins", id)))
+            .Select(id => new RestoreMissingPlugin(id, reason))
             .ToList();
 
         if (missing.Count > 0)
@@ -367,8 +397,10 @@ internal sealed class BackupService(
                 "Restored the settings of {Count} plugin(s) that are not installed here: {Plugins}. "
                 + "They stay unusable until their binaries are fetched from their store again.",
                 missing.Count,
-                string.Join(", ", missing));
+                string.Join(", ", missing.Select(plugin => plugin.Id)));
         }
+
+        return missing;
     }
 
     // Everything the archive carries besides cockpit.json: the MCP permissions, the assistant's memory and state,
