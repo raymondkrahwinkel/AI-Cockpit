@@ -20,6 +20,12 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
     // delete a locked, loaded assembly mid-session; the swap happens at startup before any plugin loads.
     private const string PendingUpdatesFolder = ".pending-updates";
 
+    // Whether a folder under the plugins root is an installed plugin at all. Dot-prefixed ones are this installer's
+    // own reserved areas — a leftover `.staging-*` extraction, `.pending-updates` — and one carrying the marker is
+    // already removed. One rule for everything that reads the folders: discovery, and the backup's plugin index.
+    internal static bool IsInstalledPlugin(string folder) =>
+        !Path.GetFileName(folder).StartsWith('.') && !File.Exists(Path.Combine(folder, RemovalMarker));
+
     private readonly string _pluginsRoot;
 
     public PluginInstaller()

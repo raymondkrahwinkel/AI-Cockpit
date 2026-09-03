@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Microsoft.Extensions.Logging;
 
@@ -795,6 +796,14 @@ internal sealed class BackupService(
 
         foreach (var folder in Directory.EnumerateDirectories(directory))
         {
+            // Same rule as discovery, and for the same reason: a `.staging-*` leftover or a folder the operator
+            // already removed is not a plugin, so an index that names one asks a restore to fetch back something
+            // nobody ever installed — and offers it to the operator in the restore's list of plugins.
+            if (!PluginInstaller.IsInstalledPlugin(folder))
+            {
+                continue;
+            }
+
             var id = Path.GetFileName(folder);
             if (!options.Includes(id))
             {

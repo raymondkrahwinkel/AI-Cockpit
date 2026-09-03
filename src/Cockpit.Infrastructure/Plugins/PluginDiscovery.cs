@@ -24,17 +24,10 @@ internal sealed class PluginDiscovery : ISingletonService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Skip reserved, dot-prefixed folders (a leftover .staging-* extraction or the .pending-updates
-            // staging area): they hold a valid manifest but are not installed plugins, so discovering them
-            // would surface a phantom duplicate.
-            if (Path.GetFileName(folder).StartsWith('.'))
-            {
-                continue;
-            }
-
-            // Marked for removal: treated as gone even though the folder survives until next start deletes it —
-            // this keeps a removed plugin from reloading if that deletion ever fails (e.g. a locked file).
-            if (File.Exists(Path.Combine(folder, PluginInstaller.RemovalMarker)))
+            // A reserved folder holds a valid manifest but is not a plugin, and one marked for removal survives
+            // until the next start deletes it — discovering either would surface a phantom. The rule is the
+            // installer's, since the folders are: it is the one that writes both.
+            if (!PluginInstaller.IsInstalledPlugin(folder))
             {
                 continue;
             }

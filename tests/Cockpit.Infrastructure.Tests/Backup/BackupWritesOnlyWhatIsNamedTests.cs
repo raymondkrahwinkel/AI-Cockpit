@@ -104,6 +104,33 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
         Assert.Equal(string.Empty, docker["Data"]!["token"]!.GetValue<string>());
     }
 
+    /// <summary>
+    /// AC-1275: the plugin index names installed plugins, not every folder that happens to sit under
+    /// <c>plugins/</c>. A leftover <c>.staging-*</c> extraction carries a real <c>plugin.json</c>, so it read as a
+    /// plugin — and the operator's own machine had one, offered back by name in the restore's list.
+    /// </summary>
+    /// <remarks>
+    /// Both of the installer's reserved cases in one test, because they are one line: <c>PluginDiscovery</c>
+    /// skipped both and the index skipped neither. The counter-proof is dropping either half of
+    /// <c>PluginInstaller.IsInstalledPlugin</c> — the assertion below then names three plugins instead of one.
+    /// </remarks>
+    [Fact]
+    public async Task TheManifestNamesInstalledPluginsOnly_NotTheInstallersOwnFoldersNorOneAlreadyRemoved()
+    {
+        using var root = new TemporaryRoot();
+
+        root.Write("cockpit.json", "{}");
+        root.Write("plugins/youtrack/plugin.json", """{"id":"youtrack","version":"1.4.0"}""");
+        root.Write("plugins/.staging-41bb6131d5584f58922b011957565bf0/plugin.json", """{"id":"kubernetes","version":"0.1.2"}""");
+        root.Write("plugins/docker/plugin.json", """{"id":"docker","version":"2.0.0"}""");
+        root.Write("plugins/docker/.remove", "");
+
+        var archive = Path.Combine(root.Path, "backup.zip");
+        var manifest = await _Service().WriteIntoAsync(archive, root.Path, new BackupOptions(), CancellationToken.None);
+
+        Assert.Equal(["youtrack"], manifest.Plugins.Keys);
+    }
+
     // The stores and the provisioner belong to the restore (AC-1279); the write path never reaches for them.
     private static BackupService _Service() =>
         new(
