@@ -155,9 +155,9 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
         // Re-read rather than only kept green (AC-1281 asked for exactly this): the assertion above used to mean
         // "nothing is fetched at all", and since AC-1279 it means "the fetch ran and could not get it". The stronger
         // claim is what the operator is now told — named, with the reason, instead of absent from the report.
-        var stillMissing = Assert.Single(report.MissingPlugins);
+        var stillMissing = Assert.Single(report.Notes);
         Assert.Equal("demo", stillMissing.Id);
-        Assert.Contains("none of the stores carries it", stillMissing.Reason, StringComparison.Ordinal);
+        Assert.Contains("none of the stores carries it", stillMissing.Note, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -225,18 +225,19 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     }
 
     /// <summary>
-    /// AC-1279, the ways a plugin's binaries can come back from its store: still published at the version the archive
-    /// names, gone from every store, published but not runnable here, or published only past that version — where the
-    /// newest compatible one is taken and the archive's pin gives way to what actually landed. The last row is the
-    /// one a bare "gone" used to swallow: its store is a local path that this machine does not have.
+    /// AC-1279, every way a plugin can come out of a restore, and what the operator is told about each. Only the
+    /// first row is silent: getting back exactly what you backed up is the one outcome with nothing to say. The rest
+    /// each owe a note — including the two that used to go only to the log, which for the operator is silence: put
+    /// back on a version other than the archive's, and left alone because a newer one is installed here.
     /// </summary>
     [Theory]
-    [InlineData("still published", "1.0.0", "the version it was backed up at")]
+    [InlineData("still published", "1.0.0", null)]
     [InlineData("gone from the store", null, "none of the stores carries it any more")]
-    [InlineData("published but incompatible", null, "Incompatible")]
+    [InlineData("published but incompatible", null, "this cockpit cannot run it")]
     [InlineData("only a newer version left", "2.0.0", "put back on 2.0.0 instead")]
     [InlineData("its store is a path this machine does not have", null, @"the local store 'D:\plugin-store' could not be read")]
-    public async Task ARestoredPlugin_ComesBackFromItsStore_OrSaysWhichWayItCouldNot(string store, string? expected, string reported)
+    [InlineData("a newer one is already installed here", null, "newer than the 1.0.0 in the backup")]
+    public async Task ARestoredPlugin_ComesBackFromItsStore_OrSaysWhyNotAndWhatChanged(string store, string? expected, string? noted)
     {
         _Current("""{"Plugins":{}}""");
         _archivedVersions["demo"] = "1.0.0";
@@ -256,18 +257,34 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
                 _configuredStores = [PluginStoreConfig.Local(@"D:\plugin-store")];
                 _unreadableStores.Add(@"D:\plugin-store");
                 break;
+            case "a newer one is already installed here":
+                // On disk past what the backup holds. `PluginSourceInstaller` never rolls that back and a restore
+                // must not either — so nothing is fetched, and the operator is told why it stayed as it is.
+                _Publish("demo", _Version("demo", "1.0.0"));
+                _Write(Path.Combine(_Root, "plugins", "demo", "plugin.json"), """{"id":"demo","version":"1.2.0"}""");
+                break;
         }
 
         var archive = _ArchiveWith(("cockpit.json", """{"Plugins":{"demo":{"Enabled":true,"PinnedSha256":"archived-pin"}}}"""));
 
-        await _Restore(archive, new RestoreOptions(false, ["demo"]));
+        var report = await _Restore(archive, new RestoreOptions(false, ["demo"]));
 
         string[] installed = expected is null ? [] : [$"demo-{expected}"];
         Assert.Equal(installed, _installed);
         Assert.Equal(
             expected is null ? "archived-pin" : $"sha-of-{expected}",
             _Restored()["Plugins"]!["demo"]!["PinnedSha256"]!.GetValue<string>());
-        Assert.Contains(_log.Lines, line => line.Contains(reported, StringComparison.Ordinal));
+
+        // Asserted on the report and not on the log: the report is what reaches the operator, and a log line is the
+        // thing this ticket kept mistaking for telling them.
+        if (noted is null)
+        {
+            Assert.Empty(report.Notes);
+        }
+        else
+        {
+            Assert.Contains(noted, Assert.Single(report.Notes).Note, StringComparison.Ordinal);
+        }
     }
 
     /// <summary>
@@ -338,6 +355,11 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
     /// what landed is whole plugins. Nothing is rolled back, and the settings are never written — a restore stopped
     /// here cost the restore, not the cockpit.
     /// </summary>
+    /// <remarks>
+    /// A method rather than a row of the theory above: this one needs a token and ends in a thrown cancellation, not
+    /// in a restored plugin. What it guards is the state, not the shape — if the way a stop reports itself changes
+    /// (AC-1281 turns it into a returned report), these same two assertions must survive the change.
+    /// </remarks>
     [Fact]
     public async Task AFetchStoppedBetweenPlugins_KeepsWhatLanded_AndLeavesTheSettingsAlone()
     {
@@ -366,8 +388,8 @@ public sealed class RestoreIntoATemporaryRootTests : IDisposable
         Assert.Equal("""{"Plugins":{}}""", File.ReadAllText(Path.Combine(_Root, "cockpit.json")));
 
         // A stop leaves no mystery: everything it did not reach is named, and the one that landed is not in the list.
-        Assert.Equal(["second", "third"], report.MissingPlugins.Select(plugin => plugin.Id));
-        Assert.All(report.MissingPlugins, plugin => Assert.Contains("stopped before it was fetched", plugin.Reason, StringComparison.Ordinal));
+        Assert.Equal(["second", "third"], report.Notes.Select(plugin => plugin.Id));
+        Assert.All(report.Notes, plugin => Assert.Contains("stopped before it was fetched", plugin.Note, StringComparison.Ordinal));
     }
 
     private Task<RestoreReport> _Restore(

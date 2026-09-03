@@ -235,10 +235,9 @@ internal sealed class BackupService(
             // a day, and "it is still there, under this name" is the difference between a mistake and a disaster.
             var aside = Path.Combine(Path.GetDirectoryName(root)!, $"{Path.GetFileName(root)}.replaced-{DateTimeOffset.Now:yyyyMMdd-HHmmss}");
 
-            // The first of the two places a stop is honoured. Checked here rather than only at the hard line below,
-            // so a stop does not first sit out the fetch — the step that takes minutes. Nothing outside staging has
-            // been touched, so there is nothing to name: an empty report, and the `finally` clears staging.
-            // Nothing to re-anchor either (AC-695): that step hangs on the settings being written, and they are not.
+            // The first of the two places a stop is honoured, checked before the fetch so a stop does not first sit
+            // out the step that takes minutes. Nothing outside staging is touched, so there is nothing to name and
+            // nothing to re-anchor either (AC-695): that step hangs on settings being written, and they are not.
             if (cancellationToken.IsCancellationRequested)
             {
                 return new RestoreReport(Stopped: true, []);
@@ -258,14 +257,14 @@ internal sealed class BackupService(
             if (fetched.Stopped)
             {
                 logger.LogInformation(
-                    "Restore from {Path} stopped before the settings were written. {Landed} plugin(s) were installed and "
-                    + "stay; {Missing} are not: {Plugins}",
+                    "Restore from {Path} stopped before the settings were written. {Landed} plugin(s) were installed "
+                    + "and stay; {Noted} have something to say about them: {Plugins}",
                     archivePath,
                     fetched.Pinned.Count,
-                    fetched.Missing.Count,
-                    string.Join(", ", fetched.Missing.Select(plugin => $"{plugin.Id} ({plugin.Reason})")));
+                    fetched.Notes.Count,
+                    string.Join(", ", fetched.Notes.Select(plugin => $"{plugin.Id} ({plugin.Note})")));
 
-                return new RestoreReport(Stopped: true, fetched.Missing);
+                return new RestoreReport(Stopped: true, fetched.Notes);
             }
 
             progress?.Report(new RestoreProgress(RestoreStage.Writing));
@@ -290,7 +289,7 @@ internal sealed class BackupService(
                 options.Plugins.Count,
                 aside);
 
-            return new RestoreReport(Stopped: false, fetched.Missing);
+            return new RestoreReport(Stopped: false, fetched.Notes);
         }
         finally
         {
@@ -422,10 +421,9 @@ internal sealed class BackupService(
     }
 
     // An archive carries no plugin binaries since AC-1276, so a restore fetches them from their stores again before
-    // the settings that belong to them are written (AC-1279). One plugin that cannot be had is named and the rest
-    // still land. `Pinned` is the checksum each actually came back on — not always the one the archive pinned —
-    // and `Missing` is what the operator is shown, with the reason the attempt itself produced (AC-1281).
-    private async Task<(Dictionary<string, string> Pinned, IReadOnlyList<RestoreMissingPlugin> Missing, bool Stopped)> _FetchPluginsAsync(
+    // the settings that belong to them are written (AC-1279). `Pinned` is the checksum each actually came back on,
+    // not always the archive's; `Notes` is the one sentence per plugin the operator has to be told.
+    private async Task<(Dictionary<string, string> Pinned, IReadOnlyList<RestorePluginNote> Notes, bool Stopped)> _FetchPluginsAsync(
         string root,
         JsonObject? incoming,
         BackupManifest manifest,
@@ -434,30 +432,54 @@ internal sealed class BackupService(
         CancellationToken cancellationToken)
     {
         var pinned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var missing = new List<RestoreMissingPlugin>();
+        var notes = new List<RestorePluginNote>();
+        var wanted = new List<string>();
 
-        var wanted = options.Plugins.Where(id => _IsWorthFetching(root, id, manifest.Plugins)).ToList();
+        foreach (var id in options.Plugins)
+        {
+            var (skip, note) = _AlreadyOnDisk(root, id, manifest.Plugins);
+
+            if (note is not null)
+            {
+                logger.LogInformation("Restoring plugin '{Plugin}': {Note}", id, note);
+                notes.Add(new RestorePluginNote(id, note));
+            }
+
+            if (!skip)
+            {
+                wanted.Add(id);
+            }
+        }
+
         if (wanted.Count == 0)
         {
-            return (pinned, missing, false);
+            return (pinned, notes, false);
         }
 
         var (catalogue, unreadable) = await _CataloguesAsync(incoming, cancellationToken);
         var requests = new List<PluginProvisionRequest>();
 
+        // Held rather than added: a plugin coming back on another version is worth saying, but if its install then
+        // fails, the failure is the one thing to say about it. One note per plugin, never two.
+        var ifItLands = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var id in wanted)
         {
-            var (request, report) = _Pick(catalogue, unreadable, id, manifest.Plugins.GetValueOrDefault(id));
+            var (request, report, note) = _Pick(catalogue, unreadable, id, manifest.Plugins.GetValueOrDefault(id));
             logger.LogInformation("Restoring plugin '{Plugin}': {Report}", id, report);
 
             if (request is null)
             {
-                missing.Add(new RestoreMissingPlugin(id, report));
+                notes.Add(new RestorePluginNote(id, note ?? report));
+                continue;
             }
-            else
+
+            if (note is not null)
             {
-                requests.Add(request);
+                ifItLands[request.Id] = note;
             }
+
+            requests.Add(request);
         }
 
         // One plugin per call rather than one batch call for all of them: the batch cannot be stopped between
@@ -470,10 +492,10 @@ internal sealed class BackupService(
             // than deleting it. Everything not reached is named, so a stop leaves no mystery.
             if (cancellationToken.IsCancellationRequested)
             {
-                missing.AddRange(requests.Skip(index).Select(request =>
-                    new RestoreMissingPlugin(request.Id, "the restore was stopped before it was fetched.")));
+                notes.AddRange(requests.Skip(index).Select(request =>
+                    new RestorePluginNote(request.Id, "the restore was stopped before it was fetched.")));
 
-                return (pinned, missing, true);
+                return (pinned, notes, true);
             }
 
             progress?.Report(new RestoreProgress(RestoreStage.FetchingPlugins, index, requests.Count));
@@ -484,6 +506,11 @@ internal sealed class BackupService(
             if (result is { IsSuccess: true, FolderId: { } folderId, Sha256: { } sha256 })
             {
                 pinned[folderId] = sha256;
+
+                if (ifItLands.TryGetValue(result.Id, out var landed))
+                {
+                    notes.Add(new RestorePluginNote(result.Id, landed));
+                }
             }
             else
             {
@@ -494,27 +521,40 @@ internal sealed class BackupService(
                     : result.Error ?? "the store could not hand it over.";
 
                 logger.LogWarning("Plugin '{Plugin}' did not come back ({Outcome}): {Reason}", result.Id, result.Outcome, reason);
-                missing.Add(new RestoreMissingPlugin(result.Id, reason));
+                notes.Add(new RestorePluginNote(result.Id, reason));
             }
         }
 
         progress?.Report(new RestoreProgress(RestoreStage.FetchingPlugins, requests.Count, requests.Count));
 
-        return (pinned, missing, false);
+        return (pinned, notes, false);
     }
 
-    // A plugin already on disk at the archived version or past it is left alone. `PluginSourceInstaller` refuses to
-    // roll an installed plugin back to an older build, and a restore must not be the way around that rule.
-    private static bool _IsWorthFetching(string root, string id, IReadOnlyDictionary<string, string> archivedVersions)
+    // Whether what is on disk makes fetching pointless, and what to tell the operator when it does.
+    // `PluginSourceInstaller` refuses to roll an installed plugin back to an older build and a restore must not be
+    // the way around that rule — so a locally newer one stays, and is said out loud instead of passed over.
+    private static (bool Skip, string? Note) _AlreadyOnDisk(string root, string id, IReadOnlyDictionary<string, string> archivedVersions)
     {
         var folder = Path.Combine(root, "plugins", id);
         if (!Directory.Exists(folder))
         {
-            return true;
+            return (false, null);
         }
 
-        return archivedVersions.GetValueOrDefault(id) is { Length: > 0 } archived
-            && PluginVersion.IsNewer(archived, _VersionOf(folder));
+        if (archivedVersions.GetValueOrDefault(id) is not { Length: > 0 } archived || archived == UnknownVersion)
+        {
+            return (true, null);
+        }
+
+        var installed = _VersionOf(folder);
+        if (PluginVersion.IsNewer(archived, installed))
+        {
+            return (false, null);
+        }
+
+        return (true, PluginVersion.IsNewer(installed, archived)
+            ? $"{installed} is already installed here and is newer than the {archived} in the backup, so it was left alone rather than rolled back."
+            : null);
     }
 
     // The stores to look in: the ones configured here first — they are the ones that still carry their token, which
@@ -576,7 +616,7 @@ internal sealed class BackupService(
     // Which store version a plugin comes back as — the four ways that can land (AC-1279), each of which says what it
     // did rather than passing over it. The exact archived version goes to the provisioner as it is: whether this host
     // can run it is its call, not a second opinion here.
-    private static (PluginProvisionRequest? Request, string Report) _Pick(
+    private static (PluginProvisionRequest? Request, string Report, string? Note) _Pick(
         IReadOnlyList<(PluginStoreConfig Store, PluginStoreIndex Index)> catalogue,
         IReadOnlyList<PluginStoreConfig> unreadable,
         string id,
@@ -592,10 +632,12 @@ internal sealed class BackupService(
             // Two different truths that used to read as one (Raymond, AC-1279). "Nobody publishes it" is the end of
             // the road; "the store it came from is a path that is not on this machine" is something the operator can
             // put right, and saying so beats silently moving a path they chose themselves.
-            return (null, unreadable.Count == 0
+            var gone = unreadable.Count == 0
                 ? "none of the stores carries it any more, so its settings are back and its binaries are not."
                 : $"none of the stores that could be read carries it, and {_Unreadable(unreadable)} could not be read — "
-                  + "set that store up again on this machine and restore once more.");
+                  + "set that store up again on this machine and restore once more.";
+
+            return (null, gone, gone);
         }
 
         // The rule when two stores publish the same id, a decision and not a detail: the first configured store
@@ -606,7 +648,8 @@ internal sealed class BackupService(
 
         if (entry!.Versions.FirstOrDefault(version => string.Equals(version.Version, wanted, StringComparison.OrdinalIgnoreCase)) is { } exact)
         {
-            return (new PluginProvisionRequest(id, entry.Name, store, exact), $"fetching {wanted}, the version it was backed up at.");
+            // The only outcome with nothing to tell the operator: they get back exactly what they backed up.
+            return (new PluginProvisionRequest(id, entry.Name, store, exact), $"fetching {wanted}, the version it was backed up at.", null);
         }
 
         var missed = wanted is null
@@ -619,14 +662,16 @@ internal sealed class BackupService(
 
         if (newest is null)
         {
-            return (null, $"{missed}, and no version it does offer runs on this cockpit.");
+            var unrunnable = $"{missed}, and no version it does offer runs on this cockpit.";
+
+            return (null, unrunnable, unrunnable);
         }
 
         // Said out loud on purpose: skipping it silently loses someone a plugin, and upgrading it silently changes
         // what they run. Neither is a thing a restore may decide on its own without saying so.
-        return (
-            new PluginProvisionRequest(id, entry.Name, store, newest),
-            $"{missed}, so it is put back on {newest.Version} instead.");
+        var moved = $"{missed}, so it is put back on {newest.Version} instead.";
+
+        return (new PluginProvisionRequest(id, entry.Name, store, newest), moved, moved);
     }
 
     // Everything the archive carries besides cockpit.json: the MCP permissions, the assistant's memory and state,

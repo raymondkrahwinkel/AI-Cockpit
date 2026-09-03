@@ -106,8 +106,8 @@ public sealed class Ac1281RestoreProgressAndCancelTests
             {
                 Missing =
                 [
-                    new RestoreMissingPlugin("boards", "its store could not be reached"),
-                    new RestoreMissingPlugin("voice", "this cockpit is too old for the version in the archive"),
+                    new RestorePluginNote("boards", "its store could not be reached"),
+                    new RestorePluginNote("voice", "this cockpit is too old for the version in the archive"),
                 ],
             };
 
@@ -166,7 +166,7 @@ public sealed class Ac1281RestoreProgressAndCancelTests
     {
         public Action? WhenReported { get; set; }
 
-        public IReadOnlyList<RestoreMissingPlugin> Missing { get; init; } = [];
+        public IReadOnlyList<RestorePluginNote> Missing { get; init; } = [];
 
         public string? SeenStatus { get; set; }
 
