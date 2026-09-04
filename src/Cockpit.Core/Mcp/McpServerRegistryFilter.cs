@@ -1,8 +1,8 @@
 namespace Cockpit.Core.Mcp;
 
-// #44: applies the per-session MCP-server selection on top of the registry's own Enabled/Scope filtering. Both
-// registry consumers (`McpToolProvider`, `ClaudeCliProcess`) run through this first, so the per-session set is a
-// pure narrowing, never a way to reach a server the registry itself disabled.
+// #44: applies the per-session MCP-server selection on top of the registry's own Enabled/Scope filtering. All three
+// registry consumers (`McpToolProvider`, `PluginSessionDriverAdapter`, `PluginTtySessionProviderAdapter`) run through
+// this first, so the per-session set is a pure narrowing, never a way to reach a server the registry itself disabled.
 public static class McpServerRegistryFilter
 {
     // AC-204: drops enabled registry servers not named in `enabledServerNames`. `null` means no restriction;
