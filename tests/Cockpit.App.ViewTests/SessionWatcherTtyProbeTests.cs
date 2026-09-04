@@ -41,6 +41,7 @@ public class SessionWatcherTtyProbeTests
         {
             var cockpit = new CockpitViewModel();
             var tty = _Tty(_Reader(slice));
+            tty.TrackLimits("session-7.json", [], null);
             cockpit.Sessions.Add(tty);
             return (SessionWatcher.ProbeOf(cockpit), tty.PaneId);
         });
@@ -56,12 +57,34 @@ public class SessionWatcherTtyProbeTests
         Assert.Equal(["cutting the branch", "error: the build fell over"], pane.LastRows);
     }
 
+    // AC-294: `HasTranscript` asks the route, never the content. A watch is in practice armed straight after
+    // start_agent, when the CLI has not written a word yet, and gating on content would refuse it exactly there.
+    // `StatusFile` is set the moment the pty is up, which is the line between empty and unreadable.
     [Fact]
-    public async Task TheProbe_ReportsNoTranscriptForATtySessionNothingCanBeReadBackFrom()
+    public async Task TheProbe_CallsAnEmptyButReadableTtySessionWatchable()
     {
-        // A record that cannot be named, cannot be opened, or holds nothing yet. Reported as no transcript rather
-        // than as an empty one, so arming `stuck` on it is refused now instead of reporting a stall from the first
-        // tick on — a watch armed on nothing is worse than no watch, because it reads as coverage.
+        var (probe, paneId) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var cockpit = new CockpitViewModel();
+            var tty = _Tty(_Reader(SessionTranscriptSlice.Empty));
+            tty.TrackLimits("session-42.json", [], null);
+            cockpit.Sessions.Add(tty);
+            return (SessionWatcher.ProbeOf(cockpit), tty.PaneId);
+        });
+
+        var pane = await probe(paneId, 0);
+
+        Assert.NotNull(pane);
+        Assert.True(pane!.HasTranscript);
+        Assert.Equal(0, pane.TranscriptRows);
+    }
+
+    [Fact]
+    public async Task TheProbe_ReportsNoTranscriptForAProviderThatRecordsNothingReadable()
+    {
+        // Codex is the live example: it has an IPluginTranscriptReader that tails activity but never implements
+        // ReadEntries, and its TUI installs no statusline relay, so nothing names a record for it. Refused at
+        // arming rather than armed and forever silent — a watch that reads as coverage is worse than no watch.
         var (probe, paneId) = Dispatcher.UIThread.Invoke(() =>
         {
             var cockpit = new CockpitViewModel();
@@ -74,6 +97,5 @@ public class SessionWatcherTtyProbeTests
 
         Assert.NotNull(pane);
         Assert.False(pane!.HasTranscript);
-        Assert.Equal(0, pane.TranscriptRows);
     }
 }

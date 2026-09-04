@@ -14,8 +14,8 @@ namespace Cockpit.App.Services;
 // events rather than an error. `NewRows` is the bounded set of rows added since the tick's row count — what
 // `pattern` matches against; `LastRows` is the last few rows regardless, so every report carries content.
 
-// AC-294: `HasTranscript` is what this tick could actually read back, not what the session kind might offer — a
-// record that cannot be named or read is one `stuck` would otherwise report as silence forever.
+// AC-294: `HasTranscript` is whether this pane has a record that can be read back at all — a route, not content.
+// A session that has one and has written nothing to it yet is exactly what `stuck` is for.
 public sealed record WatchedPane(
     string Title,
     SessionStatus Status,
@@ -159,15 +159,15 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
         }
 
         // AC-294: not a question about the session kind any more — a TTY session's own CLI writes a transcript
-        // the cockpit reads back (AC-609). What is refused is a pane nothing was read back from at all, which
-        // would otherwise read as silent from the first tick on.
+        // the cockpit reads back (AC-609). Asked of the route and never of the content: a session that has a
+        // record and has written nothing to it yet is the one `stuck` is here for.
         var wantsTranscript = wanted.Contains(SessionWatchEvents.Stuck) || wanted.Contains(SessionWatchEvents.Pattern);
         if (wantsTranscript && !pane.HasTranscript)
         {
             return AssistantWatchResult.Refused(
-                $"Nothing has been read back from '{pane.Title}' — a plain terminal keeps no transcript at all, and "
-                + "a session whose CLI has not written one yet has nothing to match against — so stuck and pattern "
-                + "cannot be watched on it. busy-to-idle, needs-attention and gone still can.");
+                $"'{pane.Title}' keeps no transcript this cockpit can read — a plain terminal has no agent behind "
+                + "it, and a provider may record nothing readable — so stuck and pattern cannot be watched on it. "
+                + "busy-to-idle, needs-attention and gone still can.");
         }
 
         Regex? compiled = null;
@@ -299,14 +299,15 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
         // Growth first, and off the row count alone: this is the one event that would still fire for a pane whose
         // status is stuck reporting Busy forever, which is exactly the failure it is here for.
 
-        // AC-294: gated on a transcript this tick could read. A TTY record rotated away or caught mid-write reads
-        // back as nothing, and calling that "written nothing for fifteen minutes" is a stall the watcher invented.
+        // AC-294: a shrink is not a silence. A TTY record rotated away or caught mid-write reads back short of
+        // what we already saw, and calling that "written nothing" is a stall the watcher invented; a session that
+        // never started sits flat instead, and that one is the report worth having.
         if (pane.TranscriptRows > watch.Rows)
         {
             watch.LastGrowth = Clock();
             watch.ReportedStuck = false;
         }
-        else if (pane.HasTranscript
+        else if (pane.TranscriptRows >= watch.Rows
             && watch.Events.Contains(SessionWatchEvents.Stuck)
             && !watch.ReportedStuck
             && Clock() - watch.LastGrowth >= watch.StuckAfter)
@@ -318,12 +319,15 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
                 pane.LastRows);
         }
 
-        if (pane.HasTranscript && watch.Pattern is { } regex)
+        if (watch.Pattern is { } regex)
         {
             _Match(paneId, pane, regex);
         }
 
-        watch.Rows = pane.TranscriptRows;
+        // AC-294: a high-water mark, not the last reading. Writing a shrunken count back would make the next tick
+        // see the lost record as flat and report the stall the arm above just declined to invent; a transcript
+        // that really does start growing again passes the mark and carries on as before.
+        watch.Rows = Math.Max(watch.Rows, pane.TranscriptRows);
         watch.Status = pane.Status;
         watch.NeedsAttention = pane.NeedsAttention;
     }
@@ -428,6 +432,7 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
         var title = tty.Title;
         var status = tty.SessionStatus;
         var needsAttention = _NeedsAttention(tty);
+        var readable = tty.HasReadableTranscript;
 
         var slice = await Task.Run(() => tty.ReadTranscriptEntries(MaxNewRows)).ConfigureAwait(true);
         var rows = slice.Entries.Select(entry => entry.Text).ToList();
@@ -436,9 +441,7 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
             title,
             status,
             needsAttention,
-            // What was read, not what the provider might offer: a record that cannot be named, cannot be opened, or
-            // holds nothing yet is one `stuck` would otherwise report as silent from the first tick on.
-            slice.TotalEntries > 0,
+            readable,
             slice.TotalEntries,
             // The read hands back the last `min(total, MaxNewRows)` rows; the ones newer than what the caller has
             // already seen are the tail of those. Bounded by the read itself, so a session that wrote ten thousand

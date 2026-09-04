@@ -277,25 +277,44 @@ public class SessionWatcherTests
     }
 
     // AC-294: a TTY transcript is a file, and a file can go away — rotated, locked mid-write, or belonging to a
-    // session that just ended. That reads back as nothing, and turning it into "written nothing for ten minutes"
-    // would be a stall the watcher invented about a pane that may well be working.
+    // session that just ended. It then reads back *short of what we already saw*, and turning that into "written
+    // nothing for ten minutes" would be a stall the watcher invented about a pane that may well be working.
     [Fact]
-    public async Task APaneWhoseTranscriptBecomesUnreadable_IsNotReportedStuck()
+    public async Task APaneWhoseTranscriptShrinksAway_IsNotReportedStuck()
     {
         var pane = new FakePane { Status = SessionStatus.Busy };
         pane.Rows.Add("working");
         using var watcher = _Watcher(pane);
-        await watcher.WatchAsync(Pane, [SessionWatchEvents.Stuck, SessionWatchEvents.Pattern], afterMinutes: 10, "working");
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.Stuck], afterMinutes: 10, null);
 
-        // The record is gone, so the read hands back neither rows nor a total.
         pane.Rows.Clear();
-        pane.HasTranscript = false;
+        _now = _now.AddMinutes(11);
+        await watcher.RunOnceAsync();
 
+        // And still quiet a tick later: the row count is held at its high-water mark rather than followed down,
+        // so the lost record does not read as flat on the next look.
         _now = _now.AddMinutes(11);
         await watcher.RunOnceAsync();
 
         _Delivered(0, "stuck");
-        _Delivered(0, "pattern");
+    }
+
+    // AC-294, the other side of that line and the case the event exists for: a session that came up and then never
+    // wrote a word sits flat at zero. It looks identical from the outside to one that finished — which is exactly
+    // why `stuck` counts rows instead of reading status — so this is the report worth having.
+    [Fact]
+    public async Task APaneThatNeverWritesAnything_IsStillReportedStuck()
+    {
+        var pane = new FakePane { Status = SessionStatus.Busy };
+        using var watcher = _Watcher(pane);
+
+        // Armed with nothing written yet: the pane has a transcript route, which is what arming asks about.
+        Assert.True((await watcher.WatchAsync(Pane, [SessionWatchEvents.Stuck], afterMinutes: 10, null)).Ok);
+
+        _now = _now.AddMinutes(11);
+        await watcher.RunOnceAsync();
+
+        _Delivered(1, "stuck");
     }
 
     // Asked of the container rather than of the class: an unregistered watcher resolves to null in `App.axaml.cs`,
