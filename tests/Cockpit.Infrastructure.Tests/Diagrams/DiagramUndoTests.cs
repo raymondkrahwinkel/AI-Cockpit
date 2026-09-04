@@ -82,21 +82,24 @@ public class DiagramUndoTests
         Assert.Equal(source, registry.PeekText("surface-1"));
     }
 
-    private const string TwoNodesApart = """
+    // Raw string literals take their line endings from the source file on disk (CRLF on a Windows checkout, LF on
+    // CI's Linux runners), while the registry always normalizes to "\n" (DiagramAccessRegistry._Lines). Without this,
+    // the exact-equality asserts below compare CRLF against LF and fail on every Windows machine, never on CI.
+    private static readonly string TwoNodesApart = """
         flowchart TD
             A["Start"]
             B["Eind"]
-        """;
+        """.ReplaceLineEndings("\n");
 
-    private const string TwoNodesConnected = $"""
+    private static readonly string TwoNodesConnected = $"""
         {TwoNodesApart}
             A --> B
-        """;
+        """.ReplaceLineEndings("\n");
 
-    private const string TwoNodesLabelledConnection = $"""
+    private static readonly string TwoNodesLabelledConnection = $"""
         {TwoNodesApart}
             A -->|"gaat naar"| B
-        """;
+        """.ReplaceLineEndings("\n");
 
     // A removal is the one revert that does not restore the source verbatim: the node and its connection come back,
     // but appended rather than in the place the block was taken from. Asserted for what it is rather than for what
