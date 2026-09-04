@@ -122,16 +122,16 @@ public partial class OptionsDialog : Window
         // AC-1082: a rejected profile or plugin row only holds back its own section now, not the rest of the
         // dialog. Stay open with the error visible, and jump the sidebar to whichever refused — the operator
         // may be looking at a different category entirely.
-        PluginSettingsErrorText.IsVisible = cockpit.PluginSettingsError is { Length: > 0 };
-        PluginSettingsErrorText.Text = cockpit.PluginSettingsError;
-
         if (cockpit.OptionsApplyBlocked)
         {
+            // Jump first, then paint: selecting the category is what builds a plugin page that has never been
+            // opened, and only a built page has a label to write the reason into (AC-1084).
             if (cockpit.OptionsApplyBlockedCategoryTag is { } tag)
             {
                 SelectCategory(tag);
             }
 
+            _ShowPluginSectionErrors(cockpit);
             return;
         }
 
@@ -234,6 +234,23 @@ public partial class OptionsDialog : Window
         return item;
     }
 
+    // AC-1084: the label each plugin page carries for the reason its own last Apply refused, by nav tag. The host
+    // draws it rather than leaving it to the view, because only five of the seventeen settings views refuse at all
+    // and just two of those (Discord, Slack) draw an error themselves — the rest would go silent.
+    private readonly Dictionary<string, TextBlock> _pluginErrorLabels = new(StringComparer.Ordinal);
+
+    // Writes each built plugin page's refusal onto that page, and clears the pages that no longer have one, so a
+    // reason the operator has since fixed does not linger next to a section that now saves.
+    private void _ShowPluginSectionErrors(CockpitViewModel cockpit)
+    {
+        foreach (var (tag, label) in _pluginErrorLabels)
+        {
+            var reason = cockpit.OptionsSectionErrors.GetValueOrDefault(tag);
+            label.Text = reason;
+            label.IsVisible = reason is { Length: > 0 };
+        }
+    }
+
     private ScrollViewer _BuildPluginContent(string tag, PluginOptionsRowViewModel row)
     {
         row.EnsureContent();
@@ -252,6 +269,24 @@ public partial class OptionsDialog : Window
 
         body.Children.Add(heading);
         body.Children.Add(new Border { Height = 1, Background = _Brush("CockpitHairlineBrush"), Margin = new Thickness(0, 4) });
+
+        // Under the heading, above the plugin's own view: the reason this section refused the last Apply. Seeded
+        // from the view model so a page built by the jump below already carries it (AC-1084).
+        var errorLabel = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = _Brush("CockpitStatusWaitingBrush"),
+            FontWeight = FontWeight.SemiBold,
+            IsVisible = false,
+        };
+        _pluginErrorLabels[tag] = errorLabel;
+        if ((DataContext as CockpitViewModel)?.OptionsSectionErrors.GetValueOrDefault(tag) is { Length: > 0 } reason)
+        {
+            errorLabel.Text = reason;
+            errorLabel.IsVisible = true;
+        }
+
+        body.Children.Add(errorLabel);
 
         // No footer of its own and no window of its own (criteria 3/5): the view sits flat in the content column,
         // under the same shared Apply and Close the rest of Options uses.

@@ -218,9 +218,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // PLUGINS group in the Options sidebar renders straight from this instead of a per-plugin dialog.
     public ObservableCollection<PluginOptionsRowViewModel> PluginOptionsRows { get; } = [];
 
-    // Set by `ApplyOptionsAsync` when a plugin's own `TryStage` refuses the save (AC-1005) — same role as
-    // `Profiles.StatusMessage`, just for a plugin row instead of the profile list.
-    public string? PluginSettingsError { get; private set; }
+    // Why each refusing section refused, keyed by its nav tag ("profiles", "mcp-servers", "plugin:discord").
+    // AC-1084: joined into one footer line before, which put a plugin's complaint somewhere other than on that
+    // plugin's page. Keyed, each reason reaches the page the operator has to act on.
+    public IReadOnlyDictionary<string, string> OptionsSectionErrors { get; private set; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
 
     // Kept apart from `Sessions` on purpose: the session grid binds straight to `Sessions` and keeps its own positional
     // cell layout, so reordering the strip must never touch `Sessions` — moving an item there rebuilds its pane (a
@@ -6102,7 +6104,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private async Task ApplyOptionsAsync()
     {
         OptionsApplyBlocked = false;
-        PluginSettingsError = null;
+        OptionsSectionErrors = new Dictionary<string, string>(StringComparer.Ordinal);
         OptionsApplyBlockedCategoryTag = null;
 
         var failures = new List<(string Label, string Reason, string CategoryTag)>();
@@ -6154,7 +6156,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             if (failures.Count > 0)
             {
-                PluginSettingsError = string.Join(" · ", failures.Select(failure => $"{failure.Label}: {failure.Reason}"));
+                // Keyed by nav tag, not joined into one line (AC-1084). First-wins on a duplicate tag: a view that
+                // refuses at stage time cannot also have thrown at commit time, so this only guards a plugin that
+                // registered the same tag twice — and the earlier reason is the one the operator saw first.
+                var errors = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var failure in failures)
+                {
+                    errors.TryAdd(failure.CategoryTag, failure.Reason);
+                }
+
+                OptionsSectionErrors = errors;
                 OptionsApplyBlockedCategoryTag = failures[0].CategoryTag;
                 OptionsApplyBlocked = true;
             }

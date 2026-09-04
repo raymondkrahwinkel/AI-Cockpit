@@ -28,6 +28,7 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
     private readonly TextBox _appLevelToken;
     private readonly TextBox _channelId;
     private readonly TextBlock _errorText;
+    private readonly TextBlock _notConfiguredText;
 
     public SlackChannelSettingsControl(ICockpitHost host, SlackChannelSettings settings)
     {
@@ -129,6 +130,17 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
 
         _errorText = new TextBlock { Foreground = _Brush("CockpitStatusErrorBrush"), TextWrapping = TextWrapping.Wrap, IsVisible = false };
 
+        // AC-1084: what a never-configured install says for itself, on its own page. Not an error colour — it
+        // reports a state the operator chose by installing and has not finished, not something that went wrong.
+        _notConfiguredText = new TextBlock
+        {
+            Text = "Not set up yet. Nothing is relayed to Slack until a bot token, an app-level token and a channel id are saved here.",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.8,
+            IsVisible = false,
+        };
+
         // AC-1032/AC-1033: the `?` beside the heading, pointing at this plugin's own setup walkthrough —
         // creating the app, Socket Mode, Interactivity, bot scopes/install, inviting the bot to the channel.
         var botConnectionHeading = new StackPanel
@@ -150,6 +162,7 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
                 Spacing = 10,
                 Children =
                 {
+                    _notConfiguredText,
                     new TextBlock { Text = "Who may talk to the assistant here?", FontWeight = FontWeight.Bold },
                     audiencePanel,
                     new TextBlock { Text = "How much of the conversation to relay", FontWeight = FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) },
@@ -162,11 +175,39 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
                 },
             },
         };
+
+        _notConfiguredText.IsVisible = _IsBlank;
     }
+
+    // AC-1084: nothing entered and nothing stored — the line `ClusterRowControl.IsBlank` draws for a Kubernetes
+    // row. Only the fields that make the channel work, so a stray verbosity pick cannot turn a fresh install back
+    // into a refusing one; the audience radio does count, so picking "everyone" and typing nothing still refuses.
+    private bool _IsBlank =>
+        _settings.Access is null
+        && _singleUserOption.IsChecked == true
+        && string.IsNullOrWhiteSpace(_singleUserId.Text)
+        && string.IsNullOrWhiteSpace(_specificUserIds.Text)
+        && string.IsNullOrWhiteSpace(_everyoneConfirmation.Text)
+        && string.IsNullOrWhiteSpace(_botToken.Text)
+        && string.IsNullOrWhiteSpace(_appLevelToken.Text)
+        && string.IsNullOrWhiteSpace(_channelId.Text);
 
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = null;
+
+        // AC-1084: a plugin installed but never set up is not an invalid one. Staging with no commit is how the
+        // host reads "nothing to save" (PluginSettingsStaging), so a fresh install neither writes nor blocks the
+        // operator's Apply — while a half-filled one drops through to the checks below exactly as before.
+        if (_IsBlank)
+        {
+            _notConfiguredText.IsVisible = true;
+            _errorText.IsVisible = false;
+            error = null;
+            return true;
+        }
+
+        _notConfiguredText.IsVisible = false;
 
         // AC-1048: caught here, before AssistantChannelAccess even sees the value — a display name or anything
         // else that is not a Slack member id is refused with what the field actually needs, not just "invalid".

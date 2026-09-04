@@ -1222,7 +1222,7 @@ public class CockpitViewModelTests
         await vm.ApplyOptionsCommand.ExecuteAsync(null);
 
         Assert.True(vm.OptionsApplyBlocked);
-        Assert.Equal("YouTrack: Two connections are named 'work'", vm.PluginSettingsError);
+        Assert.Equal("Two connections are named 'work'", vm.OptionsSectionErrors["plugin:youtrack"]);
         Assert.Equal("plugin:youtrack", vm.OptionsApplyBlockedCategoryTag);
     }
 
@@ -1256,8 +1256,10 @@ public class CockpitViewModelTests
 
         Assert.True(vm.OptionsApplyBlocked);
         Assert.Equal(1, slackSaves);
-        Assert.Contains("Discord: A bot token is required.", vm.PluginSettingsError);
-        Assert.Contains("MCP Servers: Every server needs a name, plus a command (stdio) or a URL (http).", vm.PluginSettingsError);
+        Assert.Equal("A bot token is required.", vm.OptionsSectionErrors["plugin:discord"]);
+        Assert.Equal(
+            "Every server needs a name, plus a command (stdio) or a URL (http).",
+            vm.OptionsSectionErrors["mcp-servers"]);
         Assert.Equal("plugin:discord", vm.OptionsApplyBlockedCategoryTag);
     }
 
@@ -1291,7 +1293,9 @@ public class CockpitViewModelTests
         await vm.ApplyOptionsCommand.ExecuteAsync(null);
 
         Assert.True(vm.OptionsApplyBlocked);
-        Assert.Equal("MCP Servers: Every server needs a name, plus a command (stdio) or a URL (http).", vm.PluginSettingsError);
+        Assert.Equal(
+            "Every server needs a name, plus a command (stdio) or a URL (http).",
+            vm.OptionsSectionErrors["mcp-servers"]);
         await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<Cockpit.Core.Mcp.McpServerConfig>>());
     }
 

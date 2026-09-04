@@ -318,7 +318,7 @@ public sealed class MySettingsControl : UserControl, IPluginSettingsView
         if (string.IsNullOrWhiteSpace(_token.Text))
         {
             commit = null;
-            error = "Fill in an API token first.";   // shown by the host, in its own footer
+            error = "Fill in an API token first.";   // shown by the host, on your own settings page
             return false;
         }
 
@@ -339,8 +339,55 @@ You don't add your own Save button — every plugin's settings screen gets the s
 that applies changes live can skip the interface and just gets a Close button.
 
 **Refuse with a reason.** A `false` with an `error` keeps the screen open and shows your line to the operator,
-so say what is wrong and what to do about it ("Two connections are named 'work'. Rename one of them."). The
-host has nothing better to fall back on than telling them a plugin refused without saying why.
+on your own settings page — beside the fields it is about, not in the dialog's chrome. Say what is wrong and
+what to do about it ("Two connections are named 'work'. Rename one of them."). The host has nothing better to
+fall back on than telling them a plugin refused without saying why.
+
+**Installed is not configured — say "nothing to save" rather than refusing.** A plugin the operator has
+installed but not yet filled in is a normal state, not an error, and it must not hold up an Apply that is
+mostly about other settings. There is no separate flag for it and none is needed: return `true` with a `null`
+`commit`. The host reads that as "nothing to save", writes nothing for you, and lets the operator's Apply
+close the screen.
+
+Draw the line at *untouched*, not at *incomplete*:
+
+```csharp
+public bool TryStage(out Action? commit, out string? error)
+{
+    commit = null;
+
+    // Nothing typed and nothing stored: never set up, so there is nothing to save and nothing to complain about.
+    if (_IsBlank)
+    {
+        error = null;
+        return true;
+    }
+
+    // Anything at all filled in and the ordinary checks apply again — half-configured is a real mistake.
+    if (string.IsNullOrWhiteSpace(_token.Text))
+    {
+        error = "Fill in an API token first.";
+        return false;
+    }
+
+    commit = () => _host.Storage.SetSecret("token", _token.Text!.Trim());
+    error = null;
+    return true;
+}
+```
+
+"Nothing stored" is half of blank on purpose: a channel that was configured once and then had its fields
+cleared has something to undo, so that is a refusal, not a fresh install. `ClusterRowControl.IsBlank` in the
+Kubernetes plugin and `DiscordChannelSettingsControl` draw exactly this line.
+
+Say so on your own page, too — a plugin that stays silent leaves the operator with a screen that looks
+finished. A quiet line ("Not set up yet. Nothing is relayed until a bot token and a channel id are saved
+here.") is enough; it is a state, not an error, so it does not want an error colour.
+
+And if the plugin does more than settings — menu items, MCP tools, widgets — leave those running. Not being
+configured is not a reason to disappear; raise a readable error at the point of use instead, the way
+`ProxmoxEngine` does ("No Proxmox target is configured yet. Set the host, port and API token in the plugin
+settings.").
 
 #### Migrating from `bool Save()` — contract 1 → 2 {#migrating-from-bool-save--contract-1--2}
 
