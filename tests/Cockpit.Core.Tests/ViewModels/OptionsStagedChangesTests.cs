@@ -373,10 +373,11 @@ public class OptionsStagedChangesTests
         await profileStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
     }
 
-    // Criterion 5: a plugin provider's config view rejecting its fields blocks the whole Apply, dialog included —
-    // it does not close over an unsaved profile the way a silent partial-apply would.
+    // AC-1082: a rejecting profile used to block the whole Apply, silently — PluginSettingsError stayed empty.
+    // Now only Profiles is held back, everything else the operator changed still saves on the same click, and
+    // the refusal is no longer silent.
     [Fact]
-    public async Task Profiles_AnInvalidProfile_BlocksApplyEntirely_AndNothingIsWritten()
+    public async Task Profiles_AnInvalidProfile_BlocksOnlyProfiles_AndStillSavesTheRest()
     {
         var stores = new Stores();
         var vm = await stores.NewViewModelAsync();
@@ -392,11 +393,16 @@ public class OptionsStagedChangesTests
 
         Assert.True(vm.OptionsApplyBlocked);
         await profileStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
-        await stores.Notifications.DidNotReceive().SaveAsync(Arg.Any<NotificationSettings>());
+        await stores.Notifications.Received(1).SaveAsync(Arg.Any<NotificationSettings>());
+        Assert.StartsWith("Profiles: ", vm.PluginSettingsError);
+        Assert.Equal("profiles", vm.OptionsApplyBlockedCategoryTag);
     }
 
+    // AC-1082: MCP Servers refusing used to block the perfectly valid edited profile too. Now each section
+    // stands on its own: the profile commits, only MCP Servers is held back. Price named in the grooming: a
+    // section that already committed can no longer be undone by a Cancel on the same blocked Apply.
     [Fact]
-    public async Task McpRejection_LeavesTheProfileFileByteIdentical_AndCancelRestoresTheProfile()
+    public async Task McpRejection_StillWritesTheValidProfile_AndOnlyMcpServersIsHeldBack()
     {
         var stores = new Stores();
         var vm = await stores.NewViewModelAsync();
@@ -412,7 +418,8 @@ public class OptionsStagedChangesTests
             await profiles.LoadAsync();
             vm.Profiles = profiles;
 
-            var mcpServers = new McpServersViewModel(Substitute.For<IMcpServerStore>(), []);
+            var mcpStore = Substitute.For<IMcpServerStore>();
+            var mcpServers = new McpServersViewModel(mcpStore, []);
             mcpServers.AddServerCommand.Execute(null);
             mcpServers.SelectedServer!.Name = "incomplete";
             mcpServers.SelectedServer.Command = string.Empty;
@@ -421,15 +428,16 @@ public class OptionsStagedChangesTests
 
             vm.BeginOptionsEdit();
             profiles.SelectedProfile!.Purpose = "edited";
-            var before = await File.ReadAllBytesAsync(profileFile);
 
             await vm.ApplyOptionsCommand.ExecuteAsync(null);
 
             Assert.True(vm.OptionsApplyBlocked);
-            Assert.Equal(before, await File.ReadAllBytesAsync(profileFile));
+            Assert.StartsWith("MCP Servers: ", vm.PluginSettingsError);
+            Assert.Equal("mcp-servers", vm.OptionsApplyBlockedCategoryTag);
+            await mcpStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>());
 
-            await vm.CancelOptionsCommand.ExecuteAsync(null);
-            Assert.Equal("original", profiles.SelectedProfile!.Purpose);
+            var reloaded = new SessionProfileStore(profileFile);
+            Assert.Equal("edited", (await reloaded.LoadAsync()).Single().Purpose);
         }
         finally
         {

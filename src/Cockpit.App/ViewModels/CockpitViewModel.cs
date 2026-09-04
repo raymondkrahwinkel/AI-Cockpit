@@ -204,10 +204,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // test/design-time graphs, where the category simply shows nothing to edit.
     public McpServersViewModel? McpServers { get; set; }
 
-    // True once `ApplyOptionsAsync` has refused to write because a profile failed validation (a plugin provider's
-    // TryGetConfigJson returning false, most commonly) — read by `OptionsDialog.OnApplyAndClose` to keep the
-    // dialog open and the error visible instead of closing over it (AC-1001 criterion 5).
+    // True once `ApplyOptionsAsync` has refused to write one or more sections (a plugin's `TryStage`, Profiles,
+    // or MCP Servers) — read by `OptionsDialog.OnApplyAndClose` to keep the dialog open and the error visible
+    // instead of closing over it. Everything that did validate is still committed on the same click (AC-1082).
     public bool OptionsApplyBlocked { get; private set; }
+
+    // The nav tag of the first section that refused, e.g. "profiles" or "plugin:discord" — read by
+    // `OptionsDialog.OnApplyAndClose` to jump the sidebar there instead of leaving the operator to search the
+    // 15+ categories for whichever one is blocking (AC-1082).
+    public string? OptionsApplyBlockedCategoryTag { get; private set; }
 
     // One row per plugin with a registered settings view (AC-1005), rebuilt on every `BeginOptionsEdit` — the
     // PLUGINS group in the Options sidebar renders straight from this instead of a per-plugin dialog.
@@ -6090,16 +6095,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public bool ShouldConfirmOptionDiscard() => RefreshPendingOptionChanges();
 
-    // Writes everything the dialog holds. The five writers that `_optionsStaged` held off are flushed by hand
-    // here, in the same order they would have run in had they never been staged.
+    // Writes everything the dialog holds, in the order the five `_optionsStaged` writers would have run had
+    // they never been staged. AC-1082: used to stop at the first section that refused, blocking every other
+    // category too — now every section is attempted, what validates commits, refusers are reported together.
     [RelayCommand]
     private async Task ApplyOptionsAsync()
     {
         OptionsApplyBlocked = false;
         PluginSettingsError = null;
+        OptionsApplyBlockedCategoryTag = null;
 
-        // Validated first, before anything else writes (same reasoning as the Profiles check below, AC-1005):
-        // `TryStage` only checks fields and hands back the write, so nothing is persisted yet on a refusal.
+        var failures = new List<(string Label, string Reason, string CategoryTag)>();
+
+        // `TryStage` only checks fields and hands back the write, so a refusal here leaves nothing staged for that
+        // row — the rows that did pass still get committed below.
         var pluginStaging = new PluginSettingsStaging();
         foreach (var row in PluginOptionsRows)
         {
@@ -6110,42 +6119,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             if (!pluginStaging.TryStage(settingsView, () => ((IPluginContributionSink)this).NotifySettingsSaved(row.PluginId), out var error))
             {
-                PluginSettingsError = $"{row.DisplayName}: {error}";
-                OptionsApplyBlocked = true;
-                return;
+                failures.Add((row.DisplayName, error, $"plugin:{row.PluginId}"));
             }
         }
 
-        // Validated first, before anything else writes: a profile a plugin's TryGetConfigJson rejects must block
-        // the whole Apply (AC-1001 criterion 5), not just leave that one category unsaved while everything else
-        // goes through.
-        if (Profiles is not null && !Profiles.Validate())
-        {
-            OptionsApplyBlocked = true;
-            return;
-        }
-
-        // Same validation the standalone McpServersDialog enforced (a name plus a command or URL, unique names, no
-        // clash with a reserved server name) — now blocking Apply through the shared PluginSettingsError footer
-        // instead of its own Save button (AC-1002, following AC-1005's exact pattern for a plugin settings row).
-        if (McpServers is not null && !McpServers.Validate())
-        {
-            PluginSettingsError = $"MCP Servers: {McpServers.StatusMessage}";
-            OptionsApplyBlocked = true;
-            return;
-        }
-
+        // `PersistAsync` validates internally and leaves the store untouched on a refusal, so calling it
+        // unconditionally here — rather than gating it behind a separate `Validate()` pre-check — is what lets a
+        // Profiles refusal stay contained to Profiles instead of blocking MCP Servers and the plugin rows too.
         if (Profiles is not null && !await Profiles.PersistAsync())
         {
-            OptionsApplyBlocked = true;
-            return;
+            failures.Add(("Profiles", Profiles.StatusMessage, "profiles"));
         }
 
         if (McpServers is not null && !await McpServers.PersistAsync())
         {
-            PluginSettingsError = $"MCP Servers: {McpServers.StatusMessage}";
+            failures.Add(("MCP Servers", McpServers.StatusMessage, "mcp-servers"));
+        }
+
+        if (failures.Count > 0)
+        {
+            PluginSettingsError = string.Join(" · ", failures.Select(failure => $"{failure.Label}: {failure.Reason}"));
+            OptionsApplyBlockedCategoryTag = failures[0].CategoryTag;
             OptionsApplyBlocked = true;
-            return;
         }
 
         // AC-1108: Commit() below re-commits every plugin's settings, not only the tab opened — measured 51+
@@ -6154,7 +6149,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             pluginStaging.Commit();
 
-            _EndOptionsEdit();
+            // Left running when blocked: `_EndOptionsEdit` clears `PluginOptionsRows`, which is exactly the row the
+            // operator still needs to fix and retry — ending the edit here would make a second Apply silently skip
+            // it instead of validating it again.
+            if (!OptionsApplyBlocked)
+            {
+                _EndOptionsEdit();
+            }
+
             await SaveAllSettingsAsync();
         }
 

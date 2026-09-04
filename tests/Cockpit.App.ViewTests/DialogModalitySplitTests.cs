@@ -106,6 +106,18 @@ public sealed partial class DialogModalitySplitTests
         Assert.Contains("project?.Id", body, StringComparison.Ordinal);
     }
 
+    // AC-1082: a plugin category (e.g. Depot) is only added to CategoryNav by OptionsDialog's own Opened
+    // handler, so calling SelectCategory right after construction finds no such nav item yet. Held here, not
+    // exercised, for the same reason as the rest of this file: no desktop lifetime to show the window through.
+    [Fact]
+    public void ShowOptionsDialogAsync_DefersTheCategoryJumpUntilTheDialogHasOpened()
+    {
+        var body = _Body(_Members(_Source("src", "Cockpit.App", "Services", "SessionDialogService.cs")), "ShowOptionsDialogAsync");
+
+        Assert.DoesNotMatch(new Regex(@"^\s*dialog\.SelectCategory\(category\);", RegexOptions.Multiline), body);
+        Assert.Contains("dialog.Opened +=", body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void PluginDialogHost_OpensPluginWindowsBesideTheCockpit()
     {
