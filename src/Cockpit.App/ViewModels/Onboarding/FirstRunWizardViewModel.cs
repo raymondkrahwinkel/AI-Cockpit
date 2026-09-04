@@ -43,6 +43,19 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         }
 
         var ordered = steps.OrderBy(step => step.Order).ToList();
+
+        // An Order is a slot and only one step can hold it: the slot match below takes the first step with that
+        // Order, so a second one gets no bar item and keeps step number 0 — "Step 0 of 4", which compiles, passes
+        // and reads as nothing. Fail where it is caused rather than on the screen (AC-508).
+        var contestedSlot = ordered.GroupBy(step => step.Order).FirstOrDefault(slot => slot.Count() > 1);
+        if (contestedSlot is not null)
+        {
+            var claimants = string.Join(", ", contestedSlot.Select(step => step.GetType().Name));
+            throw new ArgumentException(
+                $"First-run wizard steps {claimants} both claim Order {contestedSlot.Key}; an Order holds one step.",
+                nameof(steps));
+        }
+
         _steps = ordered;
         _stepContents = [.. ordered.Select(step => step.BuildContent())];
 

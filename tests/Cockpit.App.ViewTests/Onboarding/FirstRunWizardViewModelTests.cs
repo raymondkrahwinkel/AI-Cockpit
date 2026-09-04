@@ -156,4 +156,27 @@ public class FirstRunWizardViewModelTests
         Assert.Equal("Step 3 of 3", viewModel.StepProgressLabel);
         Assert.True(viewModel.StepBar[2].IsCurrent);
     });
+
+    /// <summary>
+    /// Two steps on one Order is the shape AC-540's Depot step would take against AC-1280's restore step, which
+    /// already holds slot 10. Silently it costs the second step its bar item and its number — "Step 0 of 3" —
+    /// so construction refuses instead, naming both claimants.
+    /// </summary>
+    [Fact]
+    public void Constructor_RefusesTwoStepsOnOneOrder_RatherThanNumberingOneOfThemZero() => HeadlessAvalonia.Run(() =>
+    {
+        var exception = Assert.Throws<ArgumentException>(() => new FirstRunWizardViewModel(
+            [
+                new StubFirstRunWizardStep(0, "What this is", isSkipped: false),
+                new StubFirstRunWizardStep(10, "Your backup", isSkipped: false),
+                new StubFirstRunWizardStep(10, "Your account", isSkipped: false),
+            ],
+            [
+                new WizardPlannedSlot(0, "What this is"),
+                new WizardPlannedSlot(10, "Your account"),
+                new WizardPlannedSlot(20, "What you have"),
+            ]));
+
+        Assert.Contains("Order 10", exception.Message, StringComparison.Ordinal);
+    });
 }
