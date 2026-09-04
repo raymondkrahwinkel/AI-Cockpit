@@ -390,6 +390,9 @@ public partial class App : Application
         // and asked — rather than having it cleaned out of their plugins folder behind their back.
         _ = Program.Services.GetRequiredService<SupersededPluginNotice>().CheckAsync();
 
+        // After the plugins, so the servers they contribute (a Depot connection) are in the catalog to be asked about.
+        _ = Program.Services.GetRequiredService<McpSignInNotice>().CheckAsync();
+
 #if DEBUG
         // AC-185: the dev inner loop — watches plugins-dev for a rebuild and offers one toast action to reload
         // it, instead of a manual restart after every build. DEBUG only, and a no-op off a dev checkout.
