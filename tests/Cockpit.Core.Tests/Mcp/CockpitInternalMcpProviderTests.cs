@@ -72,6 +72,32 @@ public class CockpitInternalMcpProviderTests
     private static NodeSelfSignedCertificate _ThrowawayNodeCertificate() =>
         new(Path.Combine(Path.GetTempPath(), $"cockpit-test-node-{Guid.NewGuid():N}.pfx"));
 
+    // AC-856: a node listener is earned by the NodeOnly flag, and only registration can set it — `MountAsync` is
+    // the plugin door and deliberately hardcodes NodeOnly false. So a test that wants one goes in through
+    // `StartAsync` with a real registration, which is also the path production takes.
+    private static async Task<CockpitMcpEndpointHost> _StartedHostAsync(
+        bool nodeEnabled,
+        IServiceProvider? services = null,
+        params CockpitMcpEndpoint[] endpoints)
+    {
+        var host = new CockpitMcpEndpointHost(
+            endpoints: endpoints,
+            services: services ?? new ServiceCollection().BuildServiceProvider(),
+            authKey: new McpAuthKey(),
+            keyring: new SessionMcpKeyring(),
+            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
+                nodeEnabled ? new NodeEndpointSettings { Enabled = true, SharedSecret = NodeSecret } : null),
+            nodeCertificate: _ThrowawayNodeCertificate(),
+            nodeSharedSecret: new NodeSharedSecret(),
+            mounts: new SessionMcpMounts(),
+            loggerFactory: NullLoggerFactory.Instance);
+
+        await host.StartAsync(CancellationToken.None);
+        return host;
+    }
+
+    private const string NodeSecret = "test-secret-value";
+
     [Fact]
     public async Task EndpointHost_ReflectsTheLiveIsEnabledGate_AndMarksItselfCockpitHosted()
     {
@@ -151,60 +177,36 @@ public class CockpitInternalMcpProviderTests
         Assert.Empty(host.GetNodeAddresses());
     }
 
-    // AC-790: with the switch on, each mounted endpoint gets a second, HTTPS, off-loopback listener whose address
-    // GetNodeAddresses reports — one entry per mounted endpoint.
+    /// <summary>
+    /// AC-856, the whole bind rule in one table: with the master switch on, a NodeOnly endpoint gets the second,
+    /// HTTPS, off-loopback listener and nothing else does. Every row is mounted into the same host with the same
+    /// settings, so a difference can only come from the flags — on a machine where no LAN address resolves, a
+    /// one-row version of this would pass while proving nothing.
+    /// </summary>
+    /// <remarks>
+    /// Replaces three narrower tests: AC-790's "an address per mounted endpoint" (the behaviour this ticket
+    /// removes), AC-791's Internal case and AC-1148's switched-off case, both of which survive here as rows.
+    /// This is the only thing standing between the shipped default and N sockets on <c>0.0.0.0</c> — the state
+    /// measured on 2026-09-05, where one ticked profile answered 200 OK on every one of them.
+    /// </remarks>
     [Fact]
-    public async Task EndpointHost_NodeBindingOn_ReportsAnHttpsNodeAddressPerMountedEndpoint()
+    public async Task EndpointHost_NodeBindingOn_BindsANodeListenerForTheNodeOnlyEndpointAndNothingElse()
     {
-        await using var host = new CockpitMcpEndpointHost(
-            endpoints: [],
-            services: new ServiceCollection().BuildServiceProvider(),
-            authKey: new McpAuthKey(),
-            keyring: new SessionMcpKeyring(),
-            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
-                new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
-            nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
-            mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance);
-
-        await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
+        await using var host = await _StartedHostAsync(
+            nodeEnabled: true,
+            services: null,
+            new CockpitMcpEndpoint("cockpit-node-probe", typeof(ProbeTools), NodeOnly: true),
+            new CockpitMcpEndpoint("cockpit-ordinary", typeof(ProbeTools)),
+            new CockpitMcpEndpoint("cockpit-internal", typeof(ProbeTools), Internal: true),
+            new CockpitMcpEndpoint("cockpit-node-probe-off", typeof(ProbeTools), () => false, NodeOnly: true));
 
         var nodeAddress = Assert.Single(host.GetNodeAddresses());
-        Assert.Equal("cockpit-probe", nodeAddress.ServerName);
+        Assert.Equal("cockpit-node-probe", nodeAddress.ServerName);
         Assert.StartsWith("https://", nodeAddress.Url);
         Assert.EndsWith("/mcp", nodeAddress.Url);
 
-        // The loopback listener is still there too, unaffected by the node listener beside it.
-        Assert.StartsWith("http://127.0.0.1:", Assert.Single(host.GetServers()).Url);
-    }
-
-    // AC-791, criterion 2: an internal endpoint (AC-204) stays loopback-only even with the master switch on, so a
-    // caller on another machine has no socket to reach it on. A public endpoint is mounted in the same host and
-    // with the same settings, so the difference can only come from the internal flag — without that, this would
-    // also pass on a machine where no LAN address resolves at all, which would prove nothing.
-    [Fact]
-    public async Task EndpointHost_NodeBindingOn_BindsNoNodeListenerForAnInternalEndpoint()
-    {
-        await using var host = new CockpitMcpEndpointHost(
-            endpoints: [],
-            services: new ServiceCollection().BuildServiceProvider(),
-            authKey: new McpAuthKey(),
-            keyring: new SessionMcpKeyring(),
-            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
-                new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
-            nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
-            mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance);
-
-        await host.MountAsync("cockpit-public", new ProbeTools(), isEnabled: () => true);
-        await host.MountAsync("cockpit-private", new ProbeTools(), isEnabled: () => true, isInternal: true);
-
-        var nodeAddress = Assert.Single(host.GetNodeAddresses());
-        Assert.Equal("cockpit-public", nodeAddress.ServerName);
-
-        // Loopback is untouched for both: internal means "not off this machine", not "not hosted".
+        // And loopback is untouched for all four: none of these flags means "not hosted", only "not off this machine".
+        Assert.Equal(4, host.GetServers().Count);
         Assert.All(host.GetServers(), server => Assert.StartsWith("http://127.0.0.1:", server.Url));
     }
 
@@ -213,23 +215,15 @@ public class CockpitInternalMcpProviderTests
     [Fact]
     public async Task NodeListener_GuardsWithTheSharedSecret_SameGenericRejectionEitherWayItFails()
     {
-        const string sharedSecret = "test-secret-value";
+        const string sharedSecret = NodeSecret;
 
-        await using var host = new CockpitMcpEndpointHost(
-            endpoints: [],
+        await using var host = await _StartedHostAsync(
+            nodeEnabled: true,
             // AC-1148: a pairing the operator has scoped, so what this test measures stays the credential and not
             // the authorization beside it.
             services: _ServicesWithPairing(scoped: true),
-            authKey: new McpAuthKey(),
-            keyring: new SessionMcpKeyring(),
-            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
-                new NodeEndpointSettings { Enabled = true, SharedSecret = sharedSecret }),
-            nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
-            mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance);
+            new CockpitMcpEndpoint("cockpit-node-probe", typeof(ProbeTools), NodeOnly: true));
 
-        await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
         var nodeUrl = Assert.Single(host.GetNodeAddresses()).Url;
 
         using var client = _CreateClientTrustingTheSelfSignedCertificate();
@@ -264,19 +258,11 @@ public class CockpitInternalMcpProviderTests
     [Fact]
     public async Task NodeListener_RefusesPlainHttp_TheListenerIsTlsOnly()
     {
-        await using var host = new CockpitMcpEndpointHost(
-            endpoints: [],
-            services: new ServiceCollection().BuildServiceProvider(),
-            authKey: new McpAuthKey(),
-            keyring: new SessionMcpKeyring(),
-            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
-                new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
-            nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
-            mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance);
+        await using var host = await _StartedHostAsync(
+            nodeEnabled: true,
+            services: null,
+            new CockpitMcpEndpoint("cockpit-node-probe", typeof(ProbeTools), NodeOnly: true));
 
-        await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
         var nodeUrl = Assert.Single(host.GetNodeAddresses()).Url;
         var plainHttpUrl = "http://" + nodeUrl["https://".Length..];
 
@@ -286,11 +272,13 @@ public class CockpitInternalMcpProviderTests
 
     // AC-790 review finding: the node secret and the loopback-scoped credentials must not cross — a request on the
     // loopback listener presenting the persistent node secret as its bearer token must be rejected exactly like any
-    // other unrecognised credential, even though the same secret is valid on the off-loopback listener beside it.
+    // other unrecognised credential, even though the same secret is live on this cockpit's node listener. AC-856
+    // moved that listener onto the one NodeOnly endpoint, which makes this rule matter more rather than less: the
+    // secret is now the credential for a single endpoint, and every other one is loopback's alone.
     [Fact]
     public async Task LoopbackListener_RejectsTheNodeSecret_ItIsScopedToTheOffLoopbackListenerOnly()
     {
-        const string sharedSecret = "test-secret-value";
+        const string sharedSecret = NodeSecret;
 
         await using var host = new CockpitMcpEndpointHost(
             endpoints: [],
@@ -315,33 +303,8 @@ public class CockpitInternalMcpProviderTests
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    // AC-1148 (was AC-1158): an endpoint the operator switched off gets no node socket at all. Withholding it
-    // beats refusing on it — the master switch used to decide only what a session was told about, so a switched-off
-    // endpoint was still reachable from another machine for anyone holding the node secret. A switched-on endpoint
-    // is mounted beside it, so the difference can only come from the switch.
-    [Fact]
-    public async Task EndpointHost_NodeBindingOn_BindsNoNodeListenerForAnEndpointTheOperatorSwitchedOff()
-    {
-        await using var host = new CockpitMcpEndpointHost(
-            endpoints: [],
-            services: _ServicesWithPairing(scoped: true),
-            authKey: new McpAuthKey(),
-            keyring: new SessionMcpKeyring(),
-            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
-                new NodeEndpointSettings { Enabled = true, SharedSecret = "test-secret-value" }),
-            nodeCertificate: _ThrowawayNodeCertificate(),
-            nodeSharedSecret: new NodeSharedSecret(),
-            mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance);
-
-        await host.MountAsync("cockpit-on", new ProbeTools(), isEnabled: () => true);
-        await host.MountAsync("cockpit-off", new ProbeTools(), isEnabled: () => false);
-
-        Assert.Equal("cockpit-on", Assert.Single(host.GetNodeAddresses()).ServerName);
-
-        // Loopback still hosts both: the switch decides who may call, and the fan-out already skips a disabled one.
-        Assert.Equal(2, host.GetServers().Count);
-    }
+    // AC-1148's "a switched-off endpoint gets no node socket at all" is now the fourth row of the bind table
+    // above, where it sits beside the three other reasons an endpoint does not get one.
 
     // AC-1148, the loopback negative control on the real host: a session's own live token, on a mounted endpoint
     // its launch never selected. Every existing test here asked only "valid credential or not"; a wrong-scope call

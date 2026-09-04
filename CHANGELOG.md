@@ -864,13 +864,20 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: two Cockpits on the same network can now pair with each other instead of you copying an address and a key
   by hand. On the machine you want to reach, Options → Security shows a pairing address; type it on the other
   machine and both screens show the same six digits. Confirm on both sides and the pairing goes live — the
-  controlling Cockpit adds that machine's MCP endpoints for you and remembers its certificate, so nothing else can
+  controlling Cockpit adds that machine's session server for you and remembers its certificate, so nothing else can
   take its place at that address later. Either side can unpair, which immediately invalidates the key. A Cockpit
   that is already paired refuses a second one and says who it is paired with.
 
 - added: a Cockpit instance can now optionally accept MCP connections from a second Cockpit on the same network,
   over TLS with a shared key — off by default, enable it under Options → Security. Turning it on takes effect the
-  next time Cockpit starts.
+  next time Cockpit starts. Turning it on opens exactly one MCP port: the session server a paired Cockpit uses to
+  see and drive sessions here. Every other MCP endpoint stays on this machine's loopback and has no network
+  address at all, so there is nothing for another device to reach them on.
+
+  **What this costs:** a session running on the controlling Cockpit can no longer be given a node's individual
+  MCP endpoints as ordinary registry entries — pairing adds one entry per node now, not one per endpoint. The
+  Cockpit itself never used the others (the node card reads the session server alone), but if you had pointed a
+  session at one of them by hand, re-pair and it will not come back. Say so and it can be looked at again.
 
 - added: opencode as a session provider plugin, driven over the Agent Client Protocol via `opencode acp` — a
   second real agent alongside Claude, not just a chat window: real tool calls, permission prompts routed

@@ -100,7 +100,7 @@ internal sealed class OrchestratorMcpServer
             _app,
             _authKey,
             _keyring,
-            paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, ServerName, _mcpEnabled, nodeScopeGranted: false, _mounts)));
+            paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, ServerName, _mcpEnabled, nodeScopeGranted: false, nodeOnly: false, _mounts)));
         _app.MapMcp("/mcp");
 
         await _app.StartAsync(cancellationToken).ConfigureAwait(false);
