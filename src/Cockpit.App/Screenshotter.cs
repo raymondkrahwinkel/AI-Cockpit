@@ -1251,7 +1251,8 @@ internal static class Screenshotter
     }
 
     // AC-1082: the Discord repro — a refusing plugin row plus an unrelated pending change, applied once so the
-    // footer ends up in its real post-Apply state instead of one hand-assembled to look right.
+    // dialog ends up in its real post-Apply state, not one hand-assembled to look right. AC-1084 moved the reason
+    // onto the refusing plugin's own page, so the scene selects that page: it records the criterion itself.
     private static OptionsDialog _OptionsApplyBlockedFooter()
     {
         var cockpit = new ViewModels.CockpitViewModel();
@@ -1264,11 +1265,8 @@ internal static class Screenshotter
         cockpit.ApplyOptionsCommand.ExecuteAsync(null).GetAwaiter().GetResult();
 
         var dialog = new OptionsDialog { DataContext = cockpit };
-        var errorText = dialog.FindControl<TextBlock>("PluginSettingsErrorText")
-            ?? throw new InvalidOperationException("The Options dialog has no 'PluginSettingsErrorText' footer label.");
-        errorText.IsVisible = cockpit.PluginSettingsError is { Length: > 0 };
-        errorText.Text = cockpit.PluginSettingsError;
-
+        dialog.SelectCategory(cockpit.OptionsApplyBlockedCategoryTag
+            ?? throw new InvalidOperationException("The blocked Apply named no category to jump to."));
         return dialog;
     }
 

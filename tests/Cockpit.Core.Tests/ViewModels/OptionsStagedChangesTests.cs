@@ -373,7 +373,7 @@ public class OptionsStagedChangesTests
         await profileStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
     }
 
-    // AC-1082: a rejecting profile used to block the whole Apply, silently — PluginSettingsError stayed empty.
+    // AC-1082: a rejecting profile used to block the whole Apply, silently — nothing recorded why.
     // Now only Profiles is held back, everything else the operator changed still saves on the same click, and
     // the refusal is no longer silent.
     [Fact]
@@ -394,7 +394,7 @@ public class OptionsStagedChangesTests
         Assert.True(vm.OptionsApplyBlocked);
         await profileStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
         await stores.Notifications.Received(1).SaveAsync(Arg.Any<NotificationSettings>());
-        Assert.StartsWith("Profiles: ", vm.PluginSettingsError);
+        Assert.NotEmpty(vm.OptionsSectionErrors["profiles"]);
         Assert.Equal("profiles", vm.OptionsApplyBlockedCategoryTag);
     }
 
@@ -432,7 +432,7 @@ public class OptionsStagedChangesTests
             await vm.ApplyOptionsCommand.ExecuteAsync(null);
 
             Assert.True(vm.OptionsApplyBlocked);
-            Assert.StartsWith("MCP Servers: ", vm.PluginSettingsError);
+            Assert.NotEmpty(vm.OptionsSectionErrors["mcp-servers"]);
             Assert.Equal("mcp-servers", vm.OptionsApplyBlockedCategoryTag);
             await mcpStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>());
 

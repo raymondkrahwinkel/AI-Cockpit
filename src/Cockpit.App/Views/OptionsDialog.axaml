@@ -27,23 +27,22 @@
              button — under a staged model it could only ever appear on the click that closes the window. -->
         <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
-            <!-- AC-1082: the error and "Unsaved changes" used to share Grid.Column="1", both right-aligned with the
-                 same margin — a blocked Apply is by definition mid-edit, so the two rendered on top of each other
-                 and the reason was unreadable. Its own column keeps them apart. -->
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+            <!-- AC-1082 gave the refusal its own column here, apart from "Unsaved changes", because the two used to
+                 render on top of each other. AC-1084 took the label out again: joining every section's reason into
+                 one footer line put a plugin's complaint somewhere other than on that plugin's page, which is what
+                 AC-1078 criterion 3 is about. Each section states its own reason now — Profiles and MCP Servers in
+                 their `StatusMessage` below, plugins on their own page — and the sidebar still jumps to the first
+                 one that refused, so a blocked Apply is never silent. -->
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                 <Button Grid.Column="0" Content="Restore Options Defaults…" Click="OnRestoreDefaults"
                         ToolTip.Tip="Restores Options settings in every category. Profiles, MCP servers, and plugin settings are unchanged."/>
-                <TextBlock Grid.Column="1" x:Name="PluginSettingsErrorText" HorizontalAlignment="Right"
-                           VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" MaxWidth="360"
-                           IsVisible="False"
-                           Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12" FontWeight="SemiBold"/>
-                <TextBlock Grid.Column="2" Text="Unsaved changes" HorizontalAlignment="Right"
+                <TextBlock Grid.Column="1" Text="Unsaved changes" HorizontalAlignment="Right"
                            VerticalAlignment="Center" Margin="0,0,12,0"
                            IsVisible="{Binding HasPendingOptionChanges}"
                            Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
                 <!-- IsCancel, so Escape is a Cancel rather than the nothing it used to be. -->
-                <Button Grid.Column="3" Content="Cancel" Click="OnCancel" IsCancel="True" Margin="0,0,8,0"/>
-                <Button Grid.Column="4" Content="Apply and Close" Classes="Accent" Click="OnApplyAndClose"/>
+                <Button Grid.Column="2" Content="Cancel" Click="OnCancel" IsCancel="True" Margin="0,0,8,0"/>
+                <Button Grid.Column="3" Content="Apply and Close" Classes="Accent" Click="OnApplyAndClose"/>
             </Grid>
         </Border>
 
@@ -1735,12 +1734,12 @@
                      the "local models auto-get…" hint, Remove. Per server: Name, Transport, Enabled, Available to.
                      Stdio: Command, Arguments. Http: URL, Authentication, API key, OAuth authority/client id/
                      scopes, Sign-in (Sign in/Sign out + status), Custom headers.
-                     Validation (criterion 5, per the answered open question — AC-1005's PluginSettingsError
-                     pattern, reused rather than duplicated): the incomplete-server message lands on the Name field
+                     Validation (criterion 5, per the answered open question — AC-1005's refusing-section pattern,
+                     reused rather than duplicated): the incomplete-server message lands on the Name field
                      itself (below), the dialog-wide ones (duplicate names, a reserved name clash) on
-                     McpServers.StatusMessage next to the list, and either way CockpitViewModel.ApplyOptionsAsync
-                     also folds it into the shared footer as "MCP Servers: {reason}" via PluginSettingsErrorText —
-                     so an operator looking at a different category still learns which one refused. -->
+                     McpServers.StatusMessage next to the list. Since AC-1084 that is the only place it is shown —
+                     an operator looking at a different category is brought here by the sidebar jump instead of
+                     reading a copy of it in the footer. -->
                 <ScrollViewer Tag="mcp-servers"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=mcp-servers}">
                     <StackPanel Margin="24,20" Spacing="8">

@@ -10,6 +10,9 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.1" />
+    <!-- AC-1084: the settings view is a control, so the "not set up yet" tests need a platform to build it on —
+         the same headless runtime the Kubernetes plugin's staging tests use. -->
+    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="NSubstitute" Version="5.3.0" />

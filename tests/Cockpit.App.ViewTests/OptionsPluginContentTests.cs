@@ -3,6 +3,7 @@ using Avalonia.VisualTree;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -41,4 +42,50 @@ public class OptionsPluginContentTests
 
         dialog.Close();
     });
+
+    // AC-1078 criterion 3, the whole of it: a plugin with empty required fields says so on its own page and
+    // nowhere else. Until AC-1084 every section's reason was joined into one footer line, so a plugin's complaint
+    // stood in the dialog chrome instead of beside the fields it is about.
+    [Fact]
+    public async Task ARefusedPluginRow_StatesItsReasonOnItsOwnPage_AndNotInTheFooter() => await HeadlessAvalonia.RunAsync(async () =>
+    {
+        const string reason = "A bot token is required.";
+        var vm = new CockpitViewModel();
+        var sink = (IPluginContributionSink)vm;
+        sink.AddPluginSettings("discord", "Discord", () => new _RefusingView(reason));
+        vm.BeginOptionsEdit();
+        vm.PluginOptionsRows.Single().EnsureContent();
+
+        var dialog = new OptionsDialog { DataContext = vm };
+        dialog.Show();
+        dialog.UpdateLayout();
+
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
+        dialog.SelectCategory(vm.OptionsApplyBlockedCategoryTag!);
+        dialog.UpdateLayout();
+
+        var page = dialog.GetVisualDescendants().OfType<ScrollViewer>().Single(sv => sv.Tag as string == "plugin:discord");
+        Assert.Contains(page.GetVisualDescendants().OfType<TextBlock>(), tb => tb.Text == reason && tb.IsEffectivelyVisible);
+
+        // And nowhere else: no other visible label in the dialog repeats it, joined with anything or on its own.
+        var elsewhere = dialog.GetVisualDescendants().OfType<TextBlock>()
+            .Where(tb => !page.GetVisualDescendants().Contains(tb))
+            .Where(tb => tb.IsEffectivelyVisible && tb.Text is { } text && text.Contains(reason, StringComparison.Ordinal));
+        Assert.Empty(elsewhere);
+
+        dialog.Close();
+    });
+
+    // Refuses whatever it is handed, so the dialog has a reason to place. The plugin's own view draws nothing
+    // itself — like twelve of the seventeen real settings views, and the case that would go silent if the host
+    // left reporting to the plugin.
+    private sealed class _RefusingView(string reason) : TextBlock, IPluginSettingsView
+    {
+        public bool TryStage(out Action? commit, out string? error)
+        {
+            commit = null;
+            error = reason;
+            return false;
+        }
+    }
 }

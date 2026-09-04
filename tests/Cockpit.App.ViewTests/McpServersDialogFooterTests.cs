@@ -40,8 +40,8 @@ public class McpServersDialogFooterTests
     [InlineData(McpServerAuth.None, "")]
     [InlineData(McpServerAuth.ApiKey, "")]
     [InlineData(McpServerAuth.OAuth, "")]
-    // OAuth with a long notice is the tallest configuration and the one most likely to push the shared
-    // PluginSettingsErrorText wide — the case AC-427 named by number.
+    // OAuth with a long notice is the tallest configuration and the one most likely to push the shared footer
+    // wide — the case AC-427 named by number.
     [InlineData(McpServerAuth.OAuth, HiddenServerNotice)]
     public void EveryAuthMode_KeepsTheSharedFooterButtonsInsideTheWindow(McpServerAuth auth, string status)
         => HeadlessAvalonia.Run(() =>
