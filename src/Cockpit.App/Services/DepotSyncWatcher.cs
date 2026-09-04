@@ -114,6 +114,13 @@ public sealed class DepotSyncWatcher(
 
         if (!result.Succeeded || result.Binding?.Checksum is not { Length: > 0 } checksum)
         {
+            // Said rather than swallowed: "not signed in" is the reason a restored cockpit never syncs again, and
+            // this used to return on it without a word anywhere.
+            _logger.LogDebug(
+                "Checking {ProjectId} for a Depot change returned nothing usable: {Reason}",
+                bound.ProjectId,
+                result.Error is { Length: > 0 } reason ? reason : "no checksum came back.");
+
             return;
         }
 
