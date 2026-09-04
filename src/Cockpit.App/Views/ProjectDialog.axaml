@@ -683,9 +683,10 @@
                                   IsEnabled="{Binding !McpOverlayOrigin.IsLockedHere}"
                                   IsChecked="{Binding RestrictMcpServers}"
                                   ToolTip.Tip="Off: this project's sessions get every enabled server (and future ones). On: only the servers ticked below."/>
-                        <controls:McpServerChecklist IsVisible="{Binding HasMcpServers}"
+                        <controls:McpServerChecklist IsVisible="{Binding ShowsMcpSection}"
                                                      IsEnabled="{Binding !McpOverlayOrigin.IsLockedHere}"
                                                      Servers="{Binding McpServers}"
+                                                     UnavailableServers="{Binding UnavailableMcpServerNames}"
                                                      Hint="Which servers this project's sessions start with ticked. Unticking one turns it off for this project only — the server itself stays in the global configuration, and a session can tick it back on."/>
                         <TextBlock Classes="FieldReadOnlyReason" Text="{Binding McpOverlayOrigin.ReadOnlyReason}"
                                    IsVisible="{Binding McpOverlayOrigin.IsLockedHere}"/>

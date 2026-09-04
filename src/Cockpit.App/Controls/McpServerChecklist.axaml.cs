@@ -41,7 +41,17 @@ public partial class McpServerChecklist : UserControl
     public static readonly DirectProperty<McpServerChecklist, string> SummaryTextProperty =
         AvaloniaProperty.RegisterDirect<McpServerChecklist, string>(nameof(SummaryText), control => control.SummaryText);
 
+    // AC-248: names the hosting dialog found no server for on this machine. The control words it, so the project
+    // editor and the New-session dialog cannot end up saying two different things about one state.
+    public static readonly StyledProperty<IEnumerable?> UnavailableServersProperty =
+        AvaloniaProperty.Register<McpServerChecklist, IEnumerable?>(nameof(UnavailableServers));
+
+    public static readonly DirectProperty<McpServerChecklist, string?> UnavailableTextProperty =
+        AvaloniaProperty.RegisterDirect<McpServerChecklist, string?>(nameof(UnavailableText), control => control.UnavailableText);
+
     private string _summaryText = string.Empty;
+
+    private string? _unavailableText;
 
     // The rows this checklist shows — `McpServerSelectionItemViewModel`s owned by whichever dialog is hosting it.
     public IEnumerable? Servers
@@ -86,11 +96,25 @@ public partial class McpServerChecklist : UserControl
         set => SetValue(RefreshCommandProperty, value);
     }
 
+    // The names this checklist has no row for, because this machine offers no such server.
+    public IEnumerable? UnavailableServers
+    {
+        get => GetValue(UnavailableServersProperty);
+        set => SetValue(UnavailableServersProperty, value);
+    }
+
     // The header line: the name and how many of the rows are ticked, so a collapsed list still says what it holds.
     public string SummaryText
     {
         get => _summaryText;
         private set => SetAndRaise(SummaryTextProperty, ref _summaryText, value);
+    }
+
+    // The warning under the header; null when nothing is missing, which is also what hides the line.
+    public string? UnavailableText
+    {
+        get => _unavailableText;
+        private set => SetAndRaise(UnavailableTextProperty, ref _unavailableText, value);
     }
 
     public McpServerChecklist()
@@ -115,6 +139,23 @@ public partial class McpServerChecklist : UserControl
         {
             _RefreshSummary();
         }
+        else if (change.Property == UnavailableServersProperty)
+        {
+            _RefreshUnavailable();
+        }
+    }
+
+    // AC-248: names them rather than counting them — there is no row to expand to, so the name is the only way to
+    // know which server to go and set up.
+    private void _RefreshUnavailable()
+    {
+        var missing = UnavailableServers?.OfType<string>().ToList() ?? [];
+        UnavailableText = missing.Count switch
+        {
+            0 => null,
+            1 => $"Not on this machine: {missing[0]} — a session starts without it.",
+            _ => $"Not on this machine: {string.Join(", ", missing)} — a session starts without them.",
+        };
     }
 
     // The count has to follow the boxes as they are ticked, so the collapsed header keeps telling the truth: that

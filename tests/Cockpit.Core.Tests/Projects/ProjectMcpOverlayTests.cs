@@ -210,4 +210,25 @@ public class ProjectMcpOverlayTests
 
         Assert.False(Assert.Single(overlay.ApplyTo(registry)).Enabled);
     }
+
+    // AC-248: a shared definition can name a server this machine never had, and the session starts without it
+    // regardless — so this is the only thing that can say so. A globally switched-off server counts as missing for
+    // the same reason; a project that named nothing asked for nothing, so nothing can be missing.
+    [Theory]
+    [InlineData(new[] { "youtrack", "playwright" }, new[] { "playwright" })]
+    [InlineData(new[] { "youtrack", "filesystem" }, new string[0])]
+    [InlineData(new[] { "YOUTRACK" }, new string[0])]
+    [InlineData(new[] { "retired" }, new[] { "retired" })]
+    [InlineData(null, new string[0])]
+    public void UnavailableServerNames_NamesWhatThisMachineCannotOffer(string[]? enabled, string[] expected)
+    {
+        var registry = new List<McpServerConfig>
+        {
+            new() { Name = "youtrack" },
+            new() { Name = "filesystem" },
+            new() { Name = "retired", Enabled = false },
+        };
+
+        Assert.Equal(expected, new ProjectMcpOverlay { EnabledServerNames = enabled }.UnavailableServerNames(registry));
+    }
 }

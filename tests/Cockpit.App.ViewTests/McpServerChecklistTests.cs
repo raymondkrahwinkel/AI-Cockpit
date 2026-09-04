@@ -23,6 +23,17 @@ public class McpServerChecklistTests
     public void TheCollapsedHeader_SaysWhatTheListHolds(string[] on, string[] off, string expected) =>
         HeadlessAvalonia.Run(() => Assert.Equal(expected, _Checklist(on, off).SummaryText));
 
+    // AC-248: the one wording for "the shared definition names a server this machine has not got", written here so
+    // the project editor and the New-session dialog cannot drift into saying two things about one state. It sits
+    // outside the collapser, so an operator who never expands the list still reads it.
+    [Theory]
+    [InlineData(new[] { "playwright" }, "Not on this machine: playwright — a session starts without it.")]
+    [InlineData(new[] { "playwright", "depot" }, "Not on this machine: playwright, depot — a session starts without them.")]
+    [InlineData(new string[0], null)]
+    public void AServerThisMachineHasNot_IsNamed(string[] missing, string? expected) =>
+        HeadlessAvalonia.Run(() =>
+            Assert.Equal(expected, new McpServerChecklist { UnavailableServers = missing }.UnavailableText));
+
     private static McpServerChecklist _Checklist(string[] on, string[] off)
     {
         var servers = new System.Collections.ObjectModel.ObservableCollection<McpServerSelectionItemViewModel>();

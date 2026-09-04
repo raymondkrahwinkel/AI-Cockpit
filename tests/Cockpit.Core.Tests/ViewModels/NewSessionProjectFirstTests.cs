@@ -212,6 +212,31 @@ public class NewSessionProjectFirstTests
             viewModel.McpServers.Select(server => server.Name));
     }
 
+    /// <summary>
+    /// AC-248: a shared definition naming a server this machine has not got starts the session without it, and says
+    /// so here — somebody starting a shared project from the launcher never opens the editor that also warns.
+    /// </summary>
+    [Fact]
+    public async Task SelectingAProject_NamingAServerThisMachineHasNot_SaysSoRatherThanStartingSilently()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["youtrack", "playwright"] },
+        };
+
+        var viewModel = Build([project], registry: [new McpServerConfig { Name = "youtrack" }]);
+        await viewModel.LoadAsync();
+
+        viewModel.SelectedProject = viewModel.Projects[0];
+        await Task.Yield();
+
+        Assert.Equal(["playwright"], viewModel.UnavailableMcpServerNames);
+        Assert.True(viewModel.ShowsMcpSection);
+
+        // The other half of Raymond's 2026-08-02 decision: warned, never blocked.
+        Assert.Equal(["youtrack"], viewModel.McpServers.Select(server => server.Name));
+    }
+
     [Fact]
     public async Task Confirm_CarriesTheProjectIdSoTheSessionCanResolveItsOverlay()
     {

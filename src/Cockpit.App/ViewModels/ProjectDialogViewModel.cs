@@ -288,6 +288,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
         viewModel._carriedEnabledServerNames = [.. decided.Where(overlay.IsSelectedByDefault)];
         viewModel._carriedDisabledServerNames = [.. decided.Where(name => !overlay.IsSelectedByDefault(name))];
 
+        // AC-248: carrying a name this machine has no server for is right, but doing it silently is not.
+        viewModel.UnavailableMcpServerNames = overlay.UnavailableServerNames(servers);
+
         // AC-130's off-state, now on the project too: on exactly when this project narrows something today, so what
         // it already does keeps happening and only becomes visible. The pre-AC-736 off-list shape reads as on for
         // that same reason — it is what the very next save would have written anyway.
@@ -464,6 +467,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
     public bool HasPluginFields => PluginFields.Count > 0;
 
     public bool HasMcpServers => McpServers.Count > 0;
+
+    // AC-248: server names this project asks for that this machine has no enabled server of — warned about, not dropped.
+    public IReadOnlyList<string> UnavailableMcpServerNames { get; private set; } = [];
+
+    // AC-248: the checklist still shows with no rows at all, so a machine offering no servers can still name the one the project wanted.
+    public bool ShowsMcpSection => HasMcpServers || UnavailableMcpServerNames.Count > 0;
 
     // Fetches every contributed field's choices, all at once and after the dialog is already on screen — both
     // sources are a network call or a shelled-out CLI, and neither is worth making the operator wait on before

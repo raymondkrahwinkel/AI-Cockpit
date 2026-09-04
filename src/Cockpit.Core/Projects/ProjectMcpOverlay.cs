@@ -40,6 +40,24 @@ public sealed record ProjectMcpOverlay
         ? !DisabledServerNames.Any(name => string.Equals(name, server.Name, StringComparison.OrdinalIgnoreCase))
         : IsSelectedByDefault(server.Name);
 
+    // AC-248: names this project asks for that `registry` has no enabled server for — a definition shared from a
+    // plugin naming a server that was never set up here. Raymond, 2026-08-02: start without it and say so, never
+    // block. A null EnabledServerNames asks for nothing by name, so nothing can be missing.
+    public IReadOnlyList<string> UnavailableServerNames(IReadOnlyList<McpServerConfig> registry)
+    {
+        if (EnabledServerNames is not { } enabled)
+        {
+            return [];
+        }
+
+        var available = registry
+            .Where(server => server.Enabled)
+            .Select(server => server.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return [.. enabled.Where(name => !available.Contains(name))];
+    }
+
     // `servers` as this project's sessions see them: its own servers replacing same-named ones
     // and appended otherwise. Nothing is removed — which servers start ticked is a pre-selection, applied where the
     // checklist is built rather than here, so a project's servers are the registry's plus its own.
