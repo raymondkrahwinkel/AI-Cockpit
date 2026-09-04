@@ -185,6 +185,9 @@ internal static class Screenshotter
         // the old "voice-assistant" scene now lives on Security — its own scene rather than folding it into a plain
         // "security" scene, since nothing else needs that seeded ConsentBypassSources state.
         ["security-consent-bypass"] = (_, _) => _OptionsSecurityConsentBypassPage(),
+        // AC-1082: a refusing plugin row and an unrelated pending change at once — the footer state that used to
+        // draw the refusal over "Unsaved changes" in the same grid column.
+        ["options-apply-blocked"] = (_, _) => _OptionsApplyBlockedFooter(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
         // AC-1019: Options → Profiles at a resting height much shorter than the selected profile's detail form, so
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
@@ -1220,6 +1223,39 @@ internal static class Screenshotter
         nav.SelectedItem = nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "security");
 
         return dialog;
+    }
+
+    // AC-1082: the Discord repro — a refusing plugin row plus an unrelated pending change, applied once so the
+    // footer ends up in its real post-Apply state instead of one hand-assembled to look right.
+    private static OptionsDialog _OptionsApplyBlockedFooter()
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        ((Plugins.IPluginContributionSink)cockpit).AddPluginSettings(
+            "discord", "Discord", () => new _RefusingSettingsView(
+                "A channel needs the user id of the one account allowed to talk to the assistant."));
+        cockpit.BeginOptionsEdit();
+        cockpit.PluginOptionsRows.Single().EnsureContent();
+        cockpit.AutoCloseOnExit = !cockpit.AutoCloseOnExit;
+        cockpit.ApplyOptionsCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+
+        var dialog = new OptionsDialog { DataContext = cockpit };
+        var errorText = dialog.FindControl<TextBlock>("PluginSettingsErrorText")
+            ?? throw new InvalidOperationException("The Options dialog has no 'PluginSettingsErrorText' footer label.");
+        errorText.IsVisible = cockpit.PluginSettingsError is { Length: > 0 };
+        errorText.Text = cockpit.PluginSettingsError;
+
+        return dialog;
+    }
+
+    // A minimal IPluginSettingsView that always refuses, for the footer scene above.
+    private sealed class _RefusingSettingsView(string error) : TextBlock, IPluginSettingsView
+    {
+        public bool TryStage(out Action? commit, out string? error2)
+        {
+            commit = null;
+            error2 = error;
+            return false;
+        }
     }
 
     // Renders the cockpit with a couple of toolbar actions seeded (AC-91) so the quick-action buttons are verifiable

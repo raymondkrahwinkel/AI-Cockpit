@@ -552,9 +552,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             var dialog = new OptionsDialog { DataContext = viewModel };
             if (category is not null)
             {
-                // Only when Options is not already open — a category jump has no effect on the surface
-                // `_ShowSurfaceAsync` merely activates (AC-1001's deep-link is the common case, not this one).
-                dialog.SelectCategory(category);
+                // Only when Options is not already open (AC-1001). Deferred to Opened: a plugin category (tag
+                // "plugin:{id}", e.g. Depot) is added to CategoryNav by OptionsDialog's own Opened handler,
+                // which has not run yet here — SelectCategory would find no matching nav item (AC-1082).
+                dialog.Opened += (_, _) => dialog.SelectCategory(category);
             }
 
             return dialog;

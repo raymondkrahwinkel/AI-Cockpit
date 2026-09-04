@@ -119,14 +119,19 @@ public partial class OptionsDialog : Window
 
         await cockpit.ApplyOptionsCommand.ExecuteAsync(null);
 
-        // AC-1005/AC-1001 criterion 5: a rejected profile or plugin settings row blocks the whole
-        // Apply — stay open with the error visible. PluginSettingsError names which row refused,
-        // since the operator may be looking at a different category.
+        // AC-1082: a rejected profile or plugin row only holds back its own section now, not the rest of the
+        // dialog. Stay open with the error visible, and jump the sidebar to whichever refused — the operator
+        // may be looking at a different category entirely.
         PluginSettingsErrorText.IsVisible = cockpit.PluginSettingsError is { Length: > 0 };
         PluginSettingsErrorText.Text = cockpit.PluginSettingsError;
 
         if (cockpit.OptionsApplyBlocked)
         {
+            if (cockpit.OptionsApplyBlockedCategoryTag is { } tag)
+            {
+                SelectCategory(tag);
+            }
+
             return;
         }
 

@@ -1207,9 +1207,9 @@ public class CockpitViewModelTests
         Assert.Equal(0, saves);
     }
 
-    // A plugin settings view that refuses to save (IPluginSettingsView.TryStage returning false) blocks the
-    // whole Apply, the same as a rejected profile (AC-1001 criterion 5) — it must not close over the error.
-    // Plugin views are lazy since AC-1207; an unopened view cannot refuse staging by contract.
+    // A plugin settings view that refuses to save (IPluginSettingsView.TryStage returning false) keeps the
+    // dialog open with the error visible — it must not close over the error (AC-1001 criterion 5). Plugin
+    // views are lazy since AC-1207; an unopened view cannot refuse staging by contract.
     [Fact]
     public async Task ApplyingOptions_WithAnOpenedRefusingPluginView_BlocksApply()
     {
@@ -1223,6 +1223,42 @@ public class CockpitViewModelTests
 
         Assert.True(vm.OptionsApplyBlocked);
         Assert.Equal("YouTrack: Two connections are named 'work'", vm.PluginSettingsError);
+        Assert.Equal("plugin:youtrack", vm.OptionsApplyBlockedCategoryTag);
+    }
+
+    // AC-1082: the Discord repro (Slack shares the same construction) — a not-yet-configured plugin used to
+    // block every other plugin and section from saving at all. Now a refusing row is skipped and named, a
+    // second valid plugin next to it still commits, and several refusals are named together, not just the first.
+    [Fact]
+    public async Task ApplyingOptions_WithSeveralRefusingSections_CommitsTheRestAndNamesEveryRefusalTogether()
+    {
+        var vm = NewVm();
+        var sink = (IPluginContributionSink)vm;
+        var slackSaves = 0;
+        sink.AddPluginSettings("discord", "Discord", () => new FakeSettingsView(accepts: false, error: "A bot token is required."));
+        sink.AddPluginSettings("slack", "Slack", () => new FakeSettingsView());
+        sink.AddSettingsSavedHandler("slack", () => slackSaves++);
+
+        var store = Substitute.For<Cockpit.Core.Abstractions.Mcp.IMcpServerStore>();
+        store.LoadAsync().Returns([]);
+        vm.McpServers = new McpServersViewModel(store, []);
+        await vm.McpServers.LoadAsync();
+        vm.McpServers.AddServerCommand.Execute(null);
+        vm.McpServers.SelectedServer!.Name = string.Empty;
+
+        vm.BeginOptionsEdit();
+        foreach (var row in vm.PluginOptionsRows)
+        {
+            row.EnsureContent();
+        }
+
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
+
+        Assert.True(vm.OptionsApplyBlocked);
+        Assert.Equal(1, slackSaves);
+        Assert.Contains("Discord: A bot token is required.", vm.PluginSettingsError);
+        Assert.Contains("MCP Servers: Every server needs a name, plus a command (stdio) or a URL (http).", vm.PluginSettingsError);
+        Assert.Equal("plugin:discord", vm.OptionsApplyBlockedCategoryTag);
     }
 
     // The menu item and ShortcutAction.McpServers alike deep-link into Options on the mcp-servers category now
