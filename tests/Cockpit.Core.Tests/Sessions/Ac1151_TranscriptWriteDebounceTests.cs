@@ -33,7 +33,7 @@ public class Ac1151_TranscriptWriteDebounceTests : IDisposable
         await Task.WhenAll(writes);
 
         Assert.Equal(1, store.WriteCountForTests);
-        Assert.Equal(5, (await store.LoadAsync(Pane)).Count);
+        Assert.Equal(5, (await store.TryLoadAsync(Pane))!.Count);
     }
 
     // The same row changing repeatedly inside one window — a streaming reply — costs one line, not one per delta.
@@ -47,7 +47,7 @@ public class Ac1151_TranscriptWriteDebounceTests : IDisposable
         await Task.WhenAll(writes);
 
         Assert.Equal(1, store.WriteCountForTests);
-        var loaded = Assert.Single(await store.LoadAsync(Pane));
+        var loaded = Assert.Single((await store.TryLoadAsync(Pane))!);
         Assert.Equal(new string('x', 20), loaded.Text);
     }
 
@@ -77,7 +77,7 @@ public class Ac1151_TranscriptWriteDebounceTests : IDisposable
         // And the log itself is bounded by what it was told, not by the transcript squared: five versions of a
         // thousand rows is five thousand lines, nothing more.
         Assert.True(finalSize < 6_000_000, $"log grew to {finalSize} bytes for 5,000 recorded row versions");
-        Assert.Equal(1000, (await store.LoadAsync(Pane)).Count);
+        Assert.Equal(1000, (await store.TryLoadAsync(Pane))!.Count);
     }
 
     // Coalescing bounds the rate, it does not drop a later, separate change: once a window's write has landed, the
@@ -91,7 +91,7 @@ public class Ac1151_TranscriptWriteDebounceTests : IDisposable
         await store.AppendAsync(Pane, _Entry("row-b", "second"));
 
         Assert.Equal(2, store.WriteCountForTests);
-        Assert.Equal(["first", "second"], (await store.LoadAsync(Pane)).Select(entry => entry.Text));
+        Assert.Equal(["first", "second"], (await store.TryLoadAsync(Pane))!.Select(entry => entry.Text));
     }
 
     // AC-1134/AC-1151: shutdown must still land the last rows on disk without itself eating the exit budget.
@@ -109,7 +109,7 @@ public class Ac1151_TranscriptWriteDebounceTests : IDisposable
 
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1), $"took {stopwatch.ElapsedMilliseconds}ms");
         Assert.Equal(1, store.WriteCountForTests);
-        Assert.Equal("before the crash", Assert.Single(await store.LoadAsync(Pane)).Text);
+        Assert.Equal("before the crash", Assert.Single((await store.TryLoadAsync(Pane))!).Text);
     }
 
     // AC-1151: an archive must never lose rows still waiting out the debounce window — ArchiveAsync flushes them

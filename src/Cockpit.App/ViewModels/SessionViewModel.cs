@@ -1189,6 +1189,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
+    // AC-1080: replay or roll, decided by what this launch is actually resuming. One rule rather than a copy per
+    // caller — the assistant host and the restore path both start a pane that may or may not continue its log.
+    public Task PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken = default) =>
+        resume.Mode == SessionResumeMode.BySessionId
+            ? ReplayRecordedTranscriptAsync(cancellationToken)
+            : ArchiveRecordedTranscriptAsync(cancellationToken);
+
     // AC-1090: repaints this pane with the conversation Cockpit itself recorded, before anything new is added.
     // Only what the log holds — whether the provider is also resuming, and what the operator is told about the
     // difference, is the restore path's call, not this one's.
@@ -1199,7 +1206,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        var recorded = await store.LoadAsync(PaneId, cancellationToken).ConfigureAwait(true);
+        var recorded = await store.TryLoadAsync(PaneId, cancellationToken).ConfigureAwait(true);
+        if (recorded is null)
+        {
+            // AC-1080: the session still starts, so without this row the operator faces an empty window that looks
+            // like a pane with no history rather than one whose history could not be read back.
+            Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.Error,
+                "This session's earlier conversation could not be read back. It continues from here; what came before is not shown."));
+            return;
+        }
+
         _replayingRecordedTranscript = true;
         try
         {

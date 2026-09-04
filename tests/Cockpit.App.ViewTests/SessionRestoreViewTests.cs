@@ -412,6 +412,103 @@ public class SessionRestoreViewTests
         Assert.False(restored.HasRestoreOffer, "the banner disappears once the start actually lands");
     }
 
+    /// <summary>
+    /// AC-1080: the provider picking its own conversation back up says nothing about the window, which comes up
+    /// empty — the restore leaves the operator looking at a blank pane that is nonetheless mid-conversation. So a
+    /// resume repaints from the log Cockpit itself keeps (AC-1090), the route the assistant already took alone.
+    /// </summary>
+    [Fact]
+    public async Task ResumeConversation_OnARestoredPane_RepaintsWhatCockpitRecorded()
+    {
+        var root = _NewTranscriptRoot();
+        try
+        {
+            var store = new SessionTranscriptLog(root, NullLogger<SessionTranscriptLog>.Instance, TimeSpan.Zero);
+            await store.AppendAsync("known-pane", _Recorded("what came before the crash"));
+            await store.FlushAsync(CancellationToken.None);
+
+            var (_, restored, _) = await _RestoreOneKnownPaneAsync(transcriptStore: store);
+            restored.ResumeConversationCommand.Execute(null);
+            await _SettleAsync(() => ((SessionViewModel)restored).Transcript.Count > 0);
+
+            Assert.Equal("what came before the crash", Assert.Single(((SessionViewModel)restored).Transcript).Text);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// The other half: "Start fresh" is a new conversation, so it must not leave the old one in the log for the
+    /// next resume to repaint. Rolled aside rather than dropped, and by the same store every pane shares — the
+    /// assistant included — so the number of generations kept cannot differ per kind of session.
+    /// </summary>
+    [Fact]
+    public async Task StartFresh_OnARestoredPane_RollsTheRecordedConversationAside()
+    {
+        var root = _NewTranscriptRoot();
+        try
+        {
+            var store = new SessionTranscriptLog(root, NullLogger<SessionTranscriptLog>.Instance, TimeSpan.Zero);
+            await store.AppendAsync("known-pane", _Recorded("the conversation before this one"));
+            await store.FlushAsync(CancellationToken.None);
+
+            var (_, restored, _) = await _RestoreOneKnownPaneAsync(transcriptStore: store);
+            restored.StartFreshCommand.Execute(null);
+            await _SettleAsync(() => !File.Exists(store.LogPath("known-pane")));
+
+            Assert.False(File.Exists(store.LogPath("known-pane")), "the fresh conversation starts on an empty log");
+            var archive = Assert.Single(Directory.GetFiles(root, "known-pane.previous-*.jsonl"));
+            Assert.Contains("the conversation before this one", await File.ReadAllTextAsync(archive));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// A log that is there but unreadable must not repaint as nothing: the session starts either way, so silence
+    /// leaves the operator facing an empty window that reads as "this pane has no history" (AC-513's distinction,
+    /// one level down). The row saying so is the only thing between that and the silent failures this epic keeps
+    /// producing.
+    /// </summary>
+    [Fact]
+    public async Task ResumeConversation_WhenTheRecordedLogCannotBeRead_SaysSoInsteadOfShowingNothing()
+    {
+        var store = Substitute.For<ISessionTranscriptStore>();
+        store.TryLoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>?>(_ => null);
+
+        var (_, restored, _) = await _RestoreOneKnownPaneAsync(transcriptStore: store);
+        restored.ResumeConversationCommand.Execute(null);
+        await _SettleAsync(() => ((SessionViewModel)restored).Transcript.Count > 0);
+
+        var row = Assert.Single(((SessionViewModel)restored).Transcript);
+        Assert.Equal(TranscriptEntryKind.Error, row.Kind);
+        Assert.Contains("could not be read back", row.Text);
+    }
+
+    private static string _NewTranscriptRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        return root;
+    }
+
+    private static TranscriptSnapshotEntry _Recorded(string text) =>
+        new(Guid.NewGuid().ToString("n"), nameof(TranscriptEntryKind.UserText), text, null, null, null, null, false, DateTimeOffset.UtcNow);
+
+    // RestoreDecided's handler is fire-and-forget, and unlike the launch calls around it the transcript work
+    // touches a real file — so it does not finish inside Execute the way the rest of this chain does.
+    private static async Task _SettleAsync(Func<bool> done)
+    {
+        for (var poll = 0; poll < 100 && !done(); poll++)
+        {
+            await Task.Delay(20);
+        }
+    }
+
     [Fact]
     public async Task StartFresh_OnARestoredManagedWorktree_ReattachesBeforeStarting()
     {
@@ -623,7 +720,9 @@ public class SessionRestoreViewTests
     /// <see cref="SessionRestoreAvailability.Known"/> with conversation id "conv-1", wired to a fake
     /// <see cref="ISessionDriver"/> so the actual <c>StartAsync</c> call (and the resume it carries) can be observed.
     /// </summary>
-    private static async Task<(CockpitViewModel Vm, SessionPanelViewModel Restored, ISessionDriver Driver)> _RestoreOneKnownPaneAsync(IWorktreeManager? worktreeManager = null)
+    private static async Task<(CockpitViewModel Vm, SessionPanelViewModel Restored, ISessionDriver Driver)> _RestoreOneKnownPaneAsync(
+        IWorktreeManager? worktreeManager = null,
+        ISessionTranscriptStore? transcriptStore = null)
     {
         var pane = new WorkspacePane("known-pane", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Sdk };
         var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
@@ -650,7 +749,7 @@ public class SessionRestoreViewTests
             stateStore,
             new SessionRestorePlanner(profileStore),
             worktreeManager: worktreeManager,
-            sessionFactory: () => new SessionViewModel(new SessionManager(factory)));
+            sessionFactory: () => new SessionViewModel(new SessionManager(factory), transcriptStore: transcriptStore));
 
         await vm.Workspaces.InitializeAsync();
         await vm.RestoreSessionPanesAsync();

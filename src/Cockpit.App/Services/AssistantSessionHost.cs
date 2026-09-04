@@ -367,16 +367,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         // AC-684: replay before the launch so the window shows the earlier conversation the moment it attaches,
         // not after — a resume the provider ends up refusing (below) throws this whole session away anyway.
-        if (resume.Mode == SessionResumeMode.BySessionId)
-        {
-            await session.ReplayRecordedTranscriptAsync(cancellationToken).ConfigureAwait(true);
-        }
-        else
-        {
-            // AC-947/AC-1090: nothing will replay this log's rows into the new session, so roll it aside now,
-            // while it still holds the conversation before this restart — a new conversation is a new log.
-            await session.ArchiveRecordedTranscriptAsync(cancellationToken).ConfigureAwait(true);
-        }
+        await session.PrepareRecordedTranscriptAsync(resume, cancellationToken).ConfigureAwait(true);
 
         // AC-1089: fixed rather than inherited from Environment.CurrentDirectory — an AppImage's mount folder is a
         // fresh random name every launch, so a saved conversation id resumed from there never matches the folder

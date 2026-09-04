@@ -62,7 +62,7 @@ public class Ac1090_TranscriptRecordingWiringTests : IDisposable
         pane.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "what is the status of AC-1090"));
         await store.FlushAsync(CancellationToken.None);
 
-        var recorded = await store.LoadAsync(pane.PaneId);
+        var recorded = (await store.TryLoadAsync(pane.PaneId))!;
         Assert.Equal("what is the status of AC-1090", Assert.Single(recorded).Text);
     }
 

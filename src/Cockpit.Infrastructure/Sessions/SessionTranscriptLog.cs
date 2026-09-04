@@ -106,7 +106,7 @@ internal sealed class SessionTranscriptLog : ISessionTranscriptStore, ISingleton
         }
     }
 
-    public async Task<IReadOnlyList<TranscriptSnapshotEntry>> LoadAsync(string paneId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TranscriptSnapshotEntry>?> TryLoadAsync(string paneId, CancellationToken cancellationToken = default)
     {
         var path = LogPath(paneId);
         if (!File.Exists(path))
@@ -143,10 +143,10 @@ internal sealed class SessionTranscriptLog : ISessionTranscriptStore, ISingleton
         }
         catch (Exception ex)
         {
-            // Derived state, same contract as SessionStateStore.LoadAsync: a log this build cannot read must not
-            // stop the pane from starting — it only starts without its history.
+            // A log this build cannot read must not stop the pane from starting — but it is reported rather than
+            // returned as "no history", so the repaint can say so instead of showing an empty window (AC-1080).
             _logger.LogWarning(ex, "Could not read the transcript log at {Path}.", path);
-            return [];
+            return null;
         }
     }
 
