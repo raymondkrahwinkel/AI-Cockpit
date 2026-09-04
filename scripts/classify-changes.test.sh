@@ -40,8 +40,11 @@ git config core.autocrlf false
 # A minimal stand-in for the real Cockpit.Core / Cockpit.Infrastructure / Cockpit.App / *.Tests layout,
 # with the same layering: Infrastructure -> Core, App -> Core + Infrastructure, Core.Tests -> Core +
 # App (mirroring the real repo's own back-reference), Infrastructure.Tests -> Core + Infrastructure only,
-# App.ViewTests -> App only. Bar depends on Foo, while build-only Baz is independent.
-mkdir -p src/Cockpit.Core src/Cockpit.Infrastructure src/Cockpit.App src/Cockpit.Unknown \
+# App.ViewTests -> App only. Bar depends on Foo, every plugin depends on Abstractions -- mirroring the
+# real repo's Cockpit.Plugins.Abstractions, which all 33 plugins reference -- and Baz also depends on Core
+# directly, mirroring the real repo's five plugins that do, so a Core change has a genuine partial
+# plugin selection to prove rather than the all-or-nothing extremes.
+mkdir -p src/Cockpit.Core src/Cockpit.Infrastructure src/Cockpit.App src/Cockpit.Plugins.Abstractions src/Cockpit.Unknown \
          plugins-dev/Cockpit.Plugin.Foo plugins-dev/Cockpit.Plugin.Foo.Tests \
          plugins-dev/Cockpit.Plugin.Bar plugins-dev/Cockpit.Plugin.Bar.Tests plugins-dev/Cockpit.Plugin.Baz \
          tests/Cockpit.Core.Tests tests/Cockpit.Infrastructure.Tests tests/Cockpit.App.ViewTests tests/Cockpit.TestSupport \
@@ -74,8 +77,15 @@ cat >src/Cockpit.App/Cockpit.App.csproj <<'EOF'
 </Project>
 EOF
 
+printf 'seed\n' >src/Cockpit.Plugins.Abstractions/Seed.cs
+printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' >src/Cockpit.Plugins.Abstractions/Cockpit.Plugins.Abstractions.csproj
+
 printf 'seed\n' >plugins-dev/Cockpit.Plugin.Foo/Seed.cs
-printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' >plugins-dev/Cockpit.Plugin.Foo/Cockpit.Plugin.Foo.csproj
+cat >plugins-dev/Cockpit.Plugin.Foo/Cockpit.Plugin.Foo.csproj <<'EOF'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" /></ItemGroup>
+</Project>
+EOF
 printf 'seed\n' >plugins-dev/Cockpit.Plugin.Foo.Tests/Seed.cs
 cat >plugins-dev/Cockpit.Plugin.Foo.Tests/Cockpit.Plugin.Foo.Tests.csproj <<'EOF'
 <Project Sdk="Microsoft.NET.Sdk">
@@ -86,7 +96,10 @@ EOF
 printf 'seed\n' >plugins-dev/Cockpit.Plugin.Bar/Seed.cs
 cat >plugins-dev/Cockpit.Plugin.Bar/Cockpit.Plugin.Bar.csproj <<'EOF'
 <Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup><ProjectReference Include="../Cockpit.Plugin.Foo/Cockpit.Plugin.Foo.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Cockpit.Plugin.Foo/Cockpit.Plugin.Foo.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
+  </ItemGroup>
 </Project>
 EOF
 printf 'seed\n' >plugins-dev/Cockpit.Plugin.Bar.Tests/Seed.cs
@@ -97,7 +110,14 @@ cat >plugins-dev/Cockpit.Plugin.Bar.Tests/Cockpit.Plugin.Bar.Tests.csproj <<'EOF
 EOF
 
 printf 'seed\n' >plugins-dev/Cockpit.Plugin.Baz/Seed.cs
-printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' >plugins-dev/Cockpit.Plugin.Baz/Cockpit.Plugin.Baz.csproj
+cat >plugins-dev/Cockpit.Plugin.Baz/Cockpit.Plugin.Baz.csproj <<'EOF'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
+  </ItemGroup>
+</Project>
+EOF
 
 printf 'seed\n' >tests/Cockpit.Core.Tests/Seed.cs
 # Stands in for ThemeHexColorGuardTests.cs: a source-tree lint that reads plugins-dev/ by path, with no
@@ -192,24 +212,39 @@ run "single plugin" false true false true false true \
 run "build-only plugin" false true false true false false \
   '["Cockpit.Plugin.Baz"]' plugins-dev/Cockpit.Plugin.Baz/Seed.cs
 
-# Core is the leaf every suite transitively depends on -- touching it must run all three.
+# Core is the leaf every suite transitively depends on -- touching it must run all three. Only Baz
+# references Core in this fixture (mirroring the real repo's five Core-dependent plugins out of 32) --
+# so this must select exactly Baz, a genuine partial selection rather than all-or-nothing. This is the
+# exact case this ticket is about: a src/ change no longer forces the full plugin matrix just for
+# touching src/.
 run "Core change" true false false true true true \
-  "$all_plugins" src/Cockpit.Core/Seed.cs
+  '["Cockpit.Plugin.Baz"]' src/Cockpit.Core/Seed.cs
 
 # App references Infrastructure directly, and both Core.Tests and App.ViewTests reference App -- so an
 # Infrastructure change reaches every suite here too, same as a Core change. There is no test suite in
-# this repo's layering an Infrastructure change can safely skip.
+# this repo's layering an Infrastructure change can safely skip. No plugin references Infrastructure.
 run "Infrastructure change" true false false true true true \
-  "$all_plugins" src/Cockpit.Infrastructure/Seed.cs
+  '[]' src/Cockpit.Infrastructure/Seed.cs
 
 # The scenario the ticket calls out by name: App-only must not still run Infrastructure.Tests, but
 # Core.Tests still must -- its own csproj references App directly, so skipping it here would be exactly
-# the silent, wrongly-skipped test AC-863 is written against.
+# the silent, wrongly-skipped test AC-863 is written against. Bar references App the wrong way round (App
+# depends on Bar, not the other way), so App-only must select zero plugins -- proof the matrix actually
+# shrinks for a real host-only change instead of running all 32 plugin jobs regardless.
 run "App-only" true false false true false true \
-  "$all_plugins" src/Cockpit.App/Seed.cs
+  '[]' src/Cockpit.App/Seed.cs
 
+# Touching both Core and Foo: Foo (and Bar, which depends on Foo) run because of Foo, and Baz runs
+# because of Core -- all three, but each for its own reason rather than because src/ was touched at all.
 run "src plus plugins-dev" true true false true true true \
   "$all_plugins" src/Cockpit.Core/Seed.cs plugins-dev/Cockpit.Plugin.Foo/Seed.cs
+
+# Every plugin here depends on Abstractions, mirroring the real Cockpit.Plugins.Abstractions that all 33
+# plugins reference -- a change to it must still select every plugin, via the same closure walk and no
+# special-casing. Core.Tests and App.ViewTests also reach it transitively, through App -> Bar -> Foo/
+# Abstractions; Infrastructure.Tests never references App or any plugin, so it does not.
+run "Abstractions change" true false false true false true \
+  "$all_plugins" src/Cockpit.Plugins.Abstractions/Seed.cs
 
 # A suite's own test file changing (no source change) must only require that suite.
 run "Infrastructure.Tests-only" false false true false true false '[]' tests/Cockpit.Infrastructure.Tests/Seed.cs
