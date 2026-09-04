@@ -27,10 +27,13 @@ public class ProviderStepDependencyInjectionTests
         return services.BuildServiceProvider();
     }
 
+    // Awaited rather than plain `using`: AC-585's assistant step depends on `ISessionDialogService`, whose own
+    // graph reaches an `IAsyncDisposable`-only singleton (`OrchestratorMcpServer`) — a synchronous `Dispose()`
+    // over that throws on the way out, over whatever this test was actually asserting.
     [Fact]
-    public void TheContainer_HasTheProviderStepRegistered()
+    public async Task TheContainer_HasTheProviderStepRegistered()
     {
-        using var provider = BuildProvider();
+        await using var provider = BuildProvider();
 
         var steps = provider.GetServices<IFirstRunWizardStep>().ToList();
 

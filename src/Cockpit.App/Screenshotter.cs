@@ -504,7 +504,7 @@ internal static class Screenshotter
         ["screenshot-preview-narrow"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(500, 1400), "personal - webshop"),
 
         // AC-509: the first-run wizard shell on its first step, wired the way both production call sites build it
-        // — the epic's own four-slot plan, so this baseline is what "Step 1 of 4" and the Depot placeholder
+        // — the epic's own five-slot plan, so this baseline is what "Step 1 of 5" and the Depot placeholder
         // actually render as, not just the shell in isolation. Iron Law #9.
         ["first-run-wizard"] = (_, _) => new Views.Onboarding.FirstRunWizardWindow
         {
@@ -519,6 +519,15 @@ internal static class Screenshotter
         {
             DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(
                 [new Views.Onboarding.RestoreStep(new ViewModels.Onboarding.RestoreStepViewModel())],
+                ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        },
+
+        // AC-585: the assistant step in the shell it lives in, claiming slot 25 — no store wired, so it renders the
+        // design-time AssistantStepViewModel (off, no profile, local-only note showing).
+        ["first-run-assistant"] = (_, _) => new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(
+                [new Views.Onboarding.AssistantStep(new ViewModels.Onboarding.AssistantStepViewModel())],
                 ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
         },
 

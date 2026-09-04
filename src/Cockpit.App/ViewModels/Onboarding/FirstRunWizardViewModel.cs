@@ -16,14 +16,14 @@ public sealed record WizardPlannedSlot(int Order, string Title);
 // Back/Next step over it — shown, not silently dropped.
 public sealed partial class FirstRunWizardViewModel : ObservableObject
 {
-    // The epic's own plan (AC-508's four subs), so the step bar reads "Step 1 of 4" from the first screen even before
-    // the Depot step (AC-540) exists to fill its slot — a slot nothing has registered for yet is shown dim rather than
-    // left out, the same honesty AC-510's "Found ≠ works" already applies to a provider.
+    // The epic's own plan (AC-508's subs — AC-585 added slot 25), so the step bar reads "Step 1 of 5" even before
+    // a slot's step exists (AC-540's Depot step) — shown dim rather than left out, the honesty AC-510 applies too.
     public static readonly IReadOnlyList<WizardPlannedSlot> EpicPlan =
     [
         new(0, "What this is"),
         new(10, "Your account"),
         new(20, "What you have"),
+        new(25, "Your assistant"),
         new(30, "What you work on"),
     ];
 
