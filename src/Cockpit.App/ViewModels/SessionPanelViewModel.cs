@@ -354,6 +354,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // quiet long enough.
     public DateTimeOffset LastActivityUtc { get; private set; } = DateTimeOffset.UtcNow;
 
+    // AC-1273: when this session's last background shell left the provider's task list, or null while one is still
+    // running or the session has already moved on since. Kept on the session rather than in a dictionary beside the
+    // sweep so it dies with the session instead of needing pruning at every place a pane goes away.
+    public DateTimeOffset? BackgroundShellsEndedUtc { get; set; }
+
     // Label of the profile the running session was started under, once known.
     [ObservableProperty]
     private string? _activeProfileLabel;
