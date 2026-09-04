@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Assistant;
+using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Mcp;
 
@@ -162,6 +164,61 @@ public sealed class McpInboxPiggybackTests : IDisposable
         // Still waiting, and still the same message — not dropped, not duplicated.
         var waiting = Assert.Single(_inbox.Drain("pane-a", int.MaxValue).Messages);
         Assert.Equal("I am merging DEP-85 to dev", waiting.Body);
+    }
+
+    /// <summary>
+    /// AC-856: the paired controller is not a session on this machine and has no inbox here, so nothing rides back
+    /// to it on a tool result. The mail is posted straight into the store rather than through <c>notify</c> — what
+    /// keeps this shut today is that <c>notify</c> will not address a pane off the desk, and that is somebody
+    /// else's invariant to change. This asserts the boundary that does not depend on it.
+    /// </summary>
+    [Fact]
+    public void Attach_ForThePairedController_CarriesNothing_EvenWithMailSittingInItsInbox()
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId);
+        _inbox.Deliver("pane-b", NodeCallerIdentity.PaneId, "heads-up", "post for the controller");
+        var result = _Result();
+
+        var after = McpInboxPiggyback.Attach(result, _Delivery(), NullLogger.Instance);
+
+        Assert.Same(result, after);
+        Assert.Single(after.Content);
+        Assert.DoesNotContain("post for the controller", _TextOf(after), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// AC-856, the half that makes the one above safe: withheld is not consumed. Had the skip been written as
+    /// "take it and drop it", mail addressed to this pane would vanish with its sender told it was delivered —
+    /// the one failure the whole piggyback path is built to avoid.
+    /// </summary>
+    [Fact]
+    public void Attach_ForThePairedController_LeavesThatMailWaiting_RatherThanEatingIt()
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId);
+        _inbox.Deliver("pane-b", NodeCallerIdentity.PaneId, "heads-up", "post for the controller");
+
+        McpInboxPiggyback.Attach(_Result(), _Delivery(), NullLogger.Instance);
+
+        var waiting = Assert.Single(_inbox.Drain(NodeCallerIdentity.PaneId, int.MaxValue).Messages);
+        Assert.Equal("post for the controller", waiting.Body);
+    }
+
+    /// <summary>
+    /// The positive control the two above are worth nothing without: the skip is one reserved identity and not the
+    /// route. An ordinary session's pane, and the assistant's own reserved pane beside it, still get their mail.
+    /// </summary>
+    [Theory]
+    [InlineData("pane-a")]
+    [InlineData(AssistantIdentity.PaneId)]
+    public void Attach_ForEveryOtherPane_StillCarriesItsMail(string paneId)
+    {
+        McpRequestContext.Set(paneId);
+        _inbox.Deliver("pane-b", paneId, "heads-up", "post for a real session");
+
+        var after = McpInboxPiggyback.Attach(_Result(), _Delivery(), NullLogger.Instance);
+
+        Assert.Equal(2, after.Content.Count);
+        Assert.Contains("post for a real session", _TextOf(after), StringComparison.Ordinal);
     }
 
     /// <summary>A content list that cannot be enumerated, so building the new list throws where the attach happens.</summary>
