@@ -100,14 +100,23 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
                 // than for the holding: staging it here and committing on the next line is what pins that signal to
                 // the write for both hosts at once, instead of each host remembering to fire it in the right order.
                 var staging = new PluginSettingsStaging();
-                if (!staging.TryStage(settingsView, onSaved, out var error))
+                // The tag is unread here — this window hosts one view, so only the reason below is ever shown.
+                if (!staging.TryStage(settingsView, view.GetType().Name, onSaved, out var error))
                 {
                     status.Text = error;
                     status.IsVisible = true;
                     return;
                 }
 
-                staging.Commit();
+                // AC-479: a write that threw keeps the window open with its reason, like a refusal — closing on it
+                // would report a save that did not happen.
+                if (staging.Commit() is [var failure, ..])
+                {
+                    status.Text = failure.Reason;
+                    status.IsVisible = true;
+                    return;
+                }
+
                 window.Close();
             };
             buttons.Children.Add(save);

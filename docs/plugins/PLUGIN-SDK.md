@@ -17,7 +17,8 @@ the active session — without touching the cockpit's own code. This guide is th
 > **Trust model — read this first.** A plugin is a .NET assembly that runs **in-process, unsandboxed, with
 > your account's permissions**. There is no security boundary (.NET cannot provide one for in-process
 > plugins). The cockpit protects you only by requiring a **manual install** and a **first-load consent**
-> that pins the assembly's SHA-256 — a changed file re-prompts. **Only install plugins you trust.**
+> that pins a SHA-256 over every file in the plugin's folder — a changed file re-prompts. **Only install
+> plugins you trust.** [The trust boundary](#the-trust-boundary) says exactly what that does and does not buy you.
 
 ## The three layers {#the-three-layers}
 
@@ -50,10 +51,86 @@ built from the .NET "app with plugins" pattern:
   itself is only actually freed when the process restarts (a loaded assembly cannot be truly unloaded from a
   non-collectible context). The plugin manager says as much when you disable one.
 
-**Unsandboxed.** A plugin runs with the same rights as the cockpit process — your account, your file
-system, your network. There is no capability restriction, permission prompt per-API, or process isolation.
-The only gate is the **manual install + first-load consent** flow (see [Installing](#installing-enabling-disabling-removing)),
-which pins the entry assembly's SHA-256 so a subsequent tampering or update re-prompts for consent.
+**Unsandboxed.** A plugin runs with the same rights as the cockpit process. The next section says exactly
+what the host does and does not enforce, and why.
+
+## The trust boundary {#the-trust-boundary}
+
+This is the one place that says what the host can hold a plugin to. Everything else on this page describes
+what a plugin may do; this describes what stops it, and — more usefully — what does not.
+
+### The decision, and its date
+
+**Informed consent, not a sandbox (2026-07-28).** A plugin runs in-process with the same rights as the
+operator: your account, your file system, your network. There is no capability restriction, no per-API
+permission prompt, and no process isolation. .NET cannot give an in-process plugin a security boundary, so
+the choice was between moving plugins out-of-process behind a broker and being honest that there is no wall.
+The broker route was **declined** and is not a direction this design is working towards.
+
+That makes the capability grant a contract on trust rather than a technical barrier: it records what a
+plugin said it needs and what the operator agreed to, and it keeps a well-behaved plugin inside its declared
+surface. It does not stop a hostile one — that one is already inside. Which is why writing this down *is*
+the protection, and why the list below of what is **not** covered is the more important half.
+
+### What the host does enforce
+
+- **Manual install and first-load consent.** A plugin only loads after the operator saw its
+  name/version/author/path/hash and clicked Enable. See
+  [Installing](#installing-enabling-disabling-removing) for the full state machine.
+- **A closure pin over the whole plugin folder.** Consent pins a hash of *every file* under the installed
+  folder, recursively — dependency DLLs, natives under `runtimes/`, the manifest — not just the entry
+  assembly (`PluginClosureHash.OfInstalledFolderAsync`, verified on each discovery pass in
+  `PluginDiscovery.cs`). Swapping a dependency re-prompts exactly as rebuilding the plugin does.
+- **The abstractions major-version gate.** A mismatch is refused outright, before any plugin code runs.
+- **Mount authorization on the MCP endpoints the cockpit hosts for you.** A session reaches exactly the
+  endpoints its own launch mounted for it, checked server-side on the already-verified caller identity and
+  fail-closed (`McpEndpointAuthorization.Allows`, `SessionMcpMounts.IsMounted`). Before this landed, the
+  per-profile server selection decided only what a session was *told about*, not what it could reach.
+- **That the cockpit survives a plugin surface that throws.** A global UI-thread handler logs and continues
+  rather than exiting (`Program.cs`). Note what this promise is *not*, in point 4 below.
+
+### What this does not cover
+
+1. **The pin covers bytes at consent time, not behaviour.** A plugin whose hash matches is the code you
+   consented to; it says nothing about what that code does when it runs. There is no runtime restriction to
+   fall back on.
+2. **Every plugin can reach every credential the cockpit holds.** While the app is unlocked, any loaded
+   plugin can read any other plugin's stored tokens, and the host's. The boundary is the install, not the
+   runtime. (Said again under [Credentials](#credentials--say-what-holds-one), where you will meet it.)
+3. **The pin presumes an unaltered host.** It is the cockpit that computes and checks the hash, and the
+   cockpit itself installs per-user into a folder that user can write, and ships unsigned — `release.yml`
+   states that as a deliberate, documented state. Anyone who can write there replaces the checker rather
+   than the checked, and the pin then confirms itself. That is the normal risk profile of a per-user
+   install, not a defect; it is listed here because a trust boundary that stays silent about its own
+   foundation is exactly the untruth this section exists to remove. Code signing is tracked separately.
+4. **A settings view that throws is not contained.** See the next heading — this one is measured, recent,
+   and the reason this section is not just a restatement of the install flow.
+
+### The settings-view surface
+
+A plugin's settings view is hosted by the cockpit in two places, and they no longer offer the same
+guarantee.
+
+Historically it was only a standalone window (`PluginDialogHost.ShowSettingsDialogAsync`), and that shape
+carried a property nobody had to write down: a view that threw or hung took its own window with it and
+nothing else. It was deliberately a window rather than a modal for that reason — as a modal it took every
+running session down with it.
+
+Since Options became one staged transaction, plugin settings are also embedded in the Options screen, and
+`IPluginSettingsView` changed from `bool Save()` to `TryStage`, handing the host a write to run later. There
+the old property does not hold. Measured on `main` (2026-09-04): `PluginSettingsStaging.Commit()` runs each
+staged write in a plain loop, and `ApplyOptionsAsync` calls `TryStage` directly, neither guarded. A plugin
+that **throws** — rather than returning `false` — aborts the whole Apply: the remaining plugins' writes and
+the host's own save never run. A plugin that returns `false` is handled properly and reported per section;
+the difference between refusing and throwing is the whole distance between contained and not.
+
+So, precisely: the host enforces that the cockpit stays up. It does not enforce that your neighbours' writes
+complete, and until that is fixed it does not tell the operator that they did not.
+
+**What this means for you as a plugin author:** `TryStage` and the `commit` you hand back are on the host's
+Apply path. Validate by returning `false` with a reason, and let `commit` do only the write you already know
+can succeed. Throwing from either is not a way to report a problem — it is a way to lose someone else's
+settings.
 
 ## Quickstart {#quickstart}
 
@@ -971,10 +1048,10 @@ What actually happens under the hood, so you can reason about the "restart to ap
 - **Install from zip.** The zip is extracted into a staging folder (rejecting any entry that would escape
   it — a zip-slip guard), its root `plugin.json` is parsed and its `abstractionsVersion` checked against the
   host's, and only then is the staging folder moved into `plugins/<id>/`. Installing over an existing folder
-  for the same `id` **replaces it outright**, which is what re-triggers consent below (a changed entry
-  assembly means a changed hash).
-- **First load / consent.** On startup the host scans `plugins/`, hashes each plugin's entry assembly
-  (SHA-256), and decides what to do with it:
+  for the same `id` **replaces it outright**, which is what re-triggers consent below (any changed file in
+  the folder means a changed hash).
+- **First load / consent.** On startup the host scans `plugins/`, hashes each plugin's whole folder —
+  every file, recursively (SHA-256) — and decides what to do with it:
   - Never seen before → **needs consent**: the first-load dialog shows name/version/author/path/hash and the
     "runs unsandboxed" warning; only an explicit **Enable** click pins the hash into `cockpit.json` and
     enables it.
@@ -1130,7 +1207,8 @@ nightly workflows run, so what you build locally is what the release page hands 
 - **Unload is an illusion:** disabling removes the UI and disposes the plugin, but the assembly is freed only
   on restart. The manager says so.
 - **Not sandboxed:** your plugin runs with the operator's rights. Do not do anything you wouldn't want a
-  trusted local tool to do.
+  trusted local tool to do. [The trust boundary](#the-trust-boundary) has the full list, including the
+  parts the host does not enforce.
 - **Version gate:** build against the host's abstractions major and Avalonia version, or the host rejects
   (abstractions major) or fails to load with a less clean error (Avalonia mismatch).
 - **Secrets belong in `IPluginStorage`, never hardcoded.** Tokens, API keys and instance URLs (see the GitHub

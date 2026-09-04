@@ -35,7 +35,7 @@ public class PluginSettingsStagingTests
         var staging = new PluginSettingsStaging();
         var view = new FakeSettingsView();
 
-        Assert.True(staging.TryStage(view, onSaved: null, out var error));
+        Assert.True(staging.TryStage(view, tag: "view", onSaved: null, out var error));
         Assert.Null(error);
         Assert.Equal(0, view.Committed);
         Assert.True(staging.HasStagedChanges);
@@ -51,7 +51,7 @@ public class PluginSettingsStagingTests
     {
         var staging = new PluginSettingsStaging();
         var view = new FakeSettingsView();
-        staging.TryStage(view, onSaved: null, out _);
+        staging.TryStage(view, tag: "view", onSaved: null, out _);
 
         staging.Revert();
         staging.Commit();
@@ -65,7 +65,7 @@ public class PluginSettingsStagingTests
     {
         var staging = new PluginSettingsStaging();
 
-        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "Pick a cluster first."), onSaved: null, out var error));
+        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "Pick a cluster first."), tag: "view", onSaved: null, out var error));
 
         Assert.Equal("Pick a cluster first.", error);
         Assert.False(staging.HasStagedChanges);
@@ -76,7 +76,7 @@ public class PluginSettingsStagingTests
     {
         var staging = new PluginSettingsStaging();
 
-        Assert.False(staging.TryStage(new FakeSettingsView(refusal: string.Empty), onSaved: null, out var error));
+        Assert.False(staging.TryStage(new FakeSettingsView(refusal: string.Empty), tag: "view", onSaved: null, out var error));
 
         Assert.False(string.IsNullOrWhiteSpace(error));
     }
@@ -86,8 +86,8 @@ public class PluginSettingsStagingTests
     {
         var staging = new PluginSettingsStaging();
         var order = new List<string>();
-        staging.TryStage(new OrderedView("first", order), onSaved: null, out _);
-        staging.TryStage(new OrderedView("second", order), onSaved: null, out _);
+        staging.TryStage(new OrderedView("first", order), tag: "view", onSaved: null, out _);
+        staging.TryStage(new OrderedView("second", order), tag: "view", onSaved: null, out _);
 
         staging.Commit();
 
@@ -102,9 +102,9 @@ public class PluginSettingsStagingTests
     {
         var staging = new PluginSettingsStaging();
         var accepted = new FakeSettingsView();
-        staging.TryStage(accepted, onSaved: null, out _);
+        staging.TryStage(accepted, tag: "view", onSaved: null, out _);
 
-        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "no"), onSaved: null, out _));
+        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "no"), tag: "view", onSaved: null, out _));
 
         staging.Commit();
         Assert.Equal(1, accepted.Committed);
@@ -119,7 +119,7 @@ public class PluginSettingsStagingTests
     {
         var staging = new PluginSettingsStaging();
         var order = new List<string>();
-        staging.TryStage(new OrderedView("write", order), onSaved: () => order.Add("notified"), out _);
+        staging.TryStage(new OrderedView("write", order), tag: "view", onSaved: () => order.Add("notified"), out _);
 
         Assert.Empty(order);
 
@@ -133,7 +133,7 @@ public class PluginSettingsStagingTests
     {
         var staging = new PluginSettingsStaging();
         var notified = 0;
-        staging.TryStage(new FakeSettingsView(), onSaved: () => notified++, out _);
+        staging.TryStage(new FakeSettingsView(), tag: "view", onSaved: () => notified++, out _);
 
         staging.Revert();
         staging.Commit();
@@ -147,7 +147,7 @@ public class PluginSettingsStagingTests
         var staging = new PluginSettingsStaging();
         var notified = 0;
 
-        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "no"), onSaved: () => notified++, out _));
+        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "no"), tag: "view", onSaved: () => notified++, out _));
 
         staging.Commit();
         Assert.Equal(0, notified);
@@ -160,12 +160,46 @@ public class PluginSettingsStagingTests
     {
         var staging = new PluginSettingsStaging();
         var order = new List<string>();
-        staging.TryStage(new OrderedView("first write", order), onSaved: () => order.Add("first notified"), out _);
-        staging.TryStage(new OrderedView("second write", order), onSaved: () => order.Add("second notified"), out _);
+        staging.TryStage(new OrderedView("first write", order), tag: "view", onSaved: () => order.Add("first notified"), out _);
+        staging.TryStage(new OrderedView("second write", order), tag: "view", onSaved: () => order.Add("second notified"), out _);
 
         staging.Commit();
 
         Assert.Equal(["first write", "first notified", "second write", "second notified"], order);
+    }
+
+    // AC-479: a plugin that throws instead of refusing used to abort the whole Apply, so whichever plugins were
+    // staged behind it silently kept their old settings. The neighbour's write is the assertion that matters.
+    [Fact]
+    public void AThrowingWriteLeavesTheOtherPluginsSettingsWritten_AndIsReportedAgainstItsOwnTag()
+    {
+        var staging = new PluginSettingsStaging();
+        var neighbour = new FakeSettingsView();
+        staging.TryStage(new ThrowingView(onCommit: true), tag: "plugin:broken", onSaved: null, out _);
+        staging.TryStage(neighbour, tag: "plugin:neighbour", onSaved: null, out _);
+
+        var failures = staging.Commit();
+
+        Assert.Equal(1, neighbour.Committed);
+        var failure = Assert.Single(failures);
+        Assert.Equal("plugin:broken", failure.Tag);
+        Assert.Contains("disk full", failure.Reason);
+    }
+
+    // The same fault one step earlier: throwing out of TryStage is answered as a refusal, so the rows behind it
+    // are still asked rather than never reached.
+    [Fact]
+    public void AThrowingStageReadsAsARefusal_AndTheNextViewIsStillStaged()
+    {
+        var staging = new PluginSettingsStaging();
+        var neighbour = new FakeSettingsView();
+
+        Assert.False(staging.TryStage(new ThrowingView(onCommit: false), tag: "plugin:broken", onSaved: null, out var error));
+        Assert.Contains("disk full", error);
+        Assert.True(staging.TryStage(neighbour, tag: "plugin:neighbour", onSaved: null, out _));
+
+        Assert.Empty(staging.Commit());
+        Assert.Equal(1, neighbour.Committed);
     }
 
     private sealed class OrderedView(string name, List<string> order) : IPluginSettingsView
@@ -173,6 +207,21 @@ public class PluginSettingsStagingTests
         public bool TryStage(out Action? commit, out string? error)
         {
             commit = () => order.Add(name);
+            error = null;
+            return true;
+        }
+    }
+
+    private sealed class ThrowingView(bool onCommit) : IPluginSettingsView
+    {
+        public bool TryStage(out Action? commit, out string? error)
+        {
+            if (!onCommit)
+            {
+                throw new IOException("disk full");
+            }
+
+            commit = () => throw new IOException("disk full");
             error = null;
             return true;
         }
