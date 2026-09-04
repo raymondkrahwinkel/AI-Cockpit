@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.Kubernetes.Kind;
+namespace Cockpit.Plugin.Kind;
 
 // Whether the `kind` binary is available, and which version (AC-179 criterion 2). The cockpit does not manage it —
 // see KindRuntime's remarks for why — so the plugin says what to install instead of guessing at the first failure.

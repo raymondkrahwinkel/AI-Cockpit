@@ -1,7 +1,7 @@
-namespace Cockpit.Plugin.Kubernetes.Cli;
+namespace Cockpit.Plugin.Kind.Cli;
 
 // What one CliRunner.RunAsync call produced. Exit code decides success — stderr text alone never flips a zero exit
-// code to a failure, since helm writes deprecation warnings there on a clean exit.
+// code to a failure, since kind writes its own progress chatter there on a clean run.
 // `Started`: false when the executable was not found. `TimedOut`: true when it ran past the deadline.
 internal sealed record CliResult(
     bool Started,

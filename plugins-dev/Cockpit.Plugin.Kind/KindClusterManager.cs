@@ -1,19 +1,19 @@
-using Cockpit.Plugin.Kubernetes.Cli;
-using Cockpit.Plugin.Kubernetes.Model;
-using Cockpit.Plugin.Kubernetes.Settings;
+using Cockpit.Plugin.Kind.Cli;
+using Cockpit.Plugin.Kind.Settings;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 
-namespace Cockpit.Plugin.Kubernetes.Kind;
+namespace Cockpit.Plugin.Kind;
 
-// Owns the kind-cluster lifecycle (AC-179): the registry (KubernetesSettings.KindClusters, not the containers on
-// disk) is the source of truth for cleanup, mirroring WorktreeManager. Create also writes a matching
-// ClusterRegistration so the rest of this plugin can reach the cluster with no manual step.
+// Owns the kind-cluster lifecycle (AC-179): the registry (KindSettings.KindClusters, not the containers on disk)
+// is the source of truth for cleanup, mirroring WorktreeManager.
 internal sealed class KindClusterManager(
-    KubernetesSettings settings,
+    KindSettings settings,
     ICliRunner runner,
     KindRuntime kindRuntime,
     string kindExecutablePath,
-    string kubeconfigDirectory) : ISupervisedActivitySource
+    string kubeconfigDirectory,
+    ICockpitHost? host = null) : ISupervisedActivitySource
 {
     // Cold node-image pull measured at 1.35 GB (AC-179 grooming) — helm's 2-minute test deadline is too tight here.
     private static readonly TimeSpan CreateTimeout = TimeSpan.FromMinutes(10);
@@ -48,19 +48,8 @@ internal sealed class KindClusterManager(
 
         var record = new KindClusterRecord(name, ownerPaneId, kubeconfigPath, DateTimeOffset.UtcNow);
         settings.KindClusters = [.. settings.KindClusters, record];
-
-        var registrationId = _RegistrationId(name);
-        if (settings.Clusters.Any(existing => string.Equals(existing.Id, registrationId, StringComparison.Ordinal)))
-        {
-            // Criterion 6: a hand-edited registration with this id is never silently overwritten.
-            Changed?.Invoke();
-            return (record, $"The kind cluster was created, but a Kubernetes-plugin cluster registration named " +
-                $"\"{registrationId}\" already existed and was left unchanged — check it points at this kubeconfig.");
-        }
-
-        settings.Clusters = [.. settings.Clusters, new ClusterRegistration(registrationId, name, $"kind-{name}", ["default"], KubeconfigPath: kubeconfigPath)];
         Changed?.Invoke();
-        return (record, null);
+        return (record, await KubernetesClusterGate.RegisterAsync(host, name, kubeconfigPath));
     }
 
     public async Task<IReadOnlyList<KindClusterListEntry>> ListAsync(CancellationToken cancellationToken)
@@ -94,7 +83,7 @@ internal sealed class KindClusterManager(
         }
 
         settings.KindClusters = settings.KindClusters.Where(candidate => !string.Equals(candidate.Name, name, StringComparison.Ordinal)).ToList();
-        settings.Clusters = settings.Clusters.Where(candidate => !string.Equals(candidate.Id, _RegistrationId(name), StringComparison.Ordinal)).ToList();
+        await KubernetesClusterGate.UnregisterAsync(host, name);
         try
         {
             File.Delete(record.KubeconfigPath);
@@ -117,7 +106,7 @@ internal sealed class KindClusterManager(
     public Task SweepExpiredAsync(CancellationToken cancellationToken) =>
         _DeleteMatchingAsync(record => DateTimeOffset.UtcNow - record.CreatedAt > settings.KindClusterMaxLifetime, cancellationToken);
 
-    // Shutdown teardown (criterion 9) — called from KubernetesPlugin.Dispose(), bounded and best-effort there.
+    // Shutdown teardown (criterion 9) — called from KindPlugin.Dispose(), bounded and best-effort there.
     public Task StopAllAsync(CancellationToken cancellationToken) => _DeleteMatchingAsync(_ => true, cancellationToken);
 
     public IReadOnlyList<SupervisedActivity> Snapshot()
@@ -175,8 +164,6 @@ internal sealed class KindClusterManager(
             return [];
         }
     }
-
-    private static string _RegistrationId(string name) => $"kind-{name}";
 
     private static string _FormatAge(TimeSpan age) =>
         age < TimeSpan.FromHours(1) ? $"{(int)age.TotalMinutes}m" : $"{(int)age.TotalHours}h{age.Minutes}m";

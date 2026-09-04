@@ -1,0 +1,53 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Kind plugin (AC-1079, split out of the Kubernetes plugin): spin up, list and tear down disposable local kind
+       (Kubernetes-in-Docker) clusters through an mcp__cockpit-kind__* server. Nothing here talks to a cluster's API
+       — it drives the `kind` binary — so unlike the Kubernetes plugin this one has no KubernetesClient dependency
+       and ships no runtime packages at all. Built OUTSIDE the main solution (plugins-dev/) like the other plugins;
+       package bin/<config>/net10.0 into a .zip and install it via the plugin store. EnableDynamicLoading emits the
+       .deps.json the host's AssemblyDependencyResolver needs. Shared assemblies (Cockpit.Plugins.Abstractions,
+       Avalonia, the DI abstractions, ModelContextProtocol) are compile-only (Private=false / ExcludeAssets=runtime)
+       so the host's copies load and shared types keep one identity. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- The [McpServerTool] attributes for the kind MCP. Host-provided (the cockpit already loads
+         ModelContextProtocol), so compile-only — the plugin ships no copy and the attribute types keep one identity. -->
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Kind.Tests" />
+  </ItemGroup>
+
+</Project>

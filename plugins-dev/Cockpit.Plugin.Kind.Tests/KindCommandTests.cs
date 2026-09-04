@@ -1,6 +1,5 @@
-using Cockpit.Plugin.Kubernetes.Kind;
 
-namespace Cockpit.Plugin.Kubernetes.Tests;
+namespace Cockpit.Plugin.Kind.Tests;
 
 // argv assembly for the three kind invocations this plugin makes (AC-179), mirroring HelmCommandTests. Argv only,
 // never a shell string — a cluster name is agent-supplied. No locked-down environment: unlike helm's env vars,

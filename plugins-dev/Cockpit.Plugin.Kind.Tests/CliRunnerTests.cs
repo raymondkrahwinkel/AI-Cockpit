@@ -1,10 +1,10 @@
 using System.Diagnostics;
-using Cockpit.Plugin.Kubernetes.Cli;
+using Cockpit.Plugin.Kind.Cli;
 
-namespace Cockpit.Plugin.Kubernetes.Tests;
+namespace Cockpit.Plugin.Kind.Tests;
 
-// The generic process wrapper helm commands run through (AC-179) — extracted from HelmRunner so a
-// a second CLI never needs its own copy. Same cases as HelmRunnerTests, generalized off HelmCommand/HelmResult.
+// The process wrapper every kind invocation runs through (AC-179): argv, both pipes drained while the process
+// runs, and the not-started case that is how "kind is not installed" is learned.
 public class CliRunnerTests
 {
     private static readonly TimeSpan Generous = TimeSpan.FromSeconds(30);
