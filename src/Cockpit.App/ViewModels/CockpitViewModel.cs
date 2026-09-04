@@ -6815,9 +6815,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // notification would not merely be delayed but lost for good, on every session that ran one.
         if (e.PropertyName == nameof(SessionPanelViewModel.HasOutstandingBackgroundShells))
         {
-            // AC-1273: the same edge, read a second way — this is also the moment from which a session that ended
-            // its turn to wait for that shell has nothing left to wait for. `SweepIdleSessions` measures the grace
-            // from here; a shell starting disarms it again.
+            // AC-1273: the same edge, read a second way — the moment from which a session that ended its turn to wait
+            // for that shell has nothing left to wait for. Unmeasured on the TTY route: every measurement behind this
+            // came from an SDK session, and the gap is not theirs alone. A shell starting disarms it again.
             session.BackgroundShellsEndedUtc = session.HasOutstandingBackgroundShells
                 ? null
                 : DateTimeOffset.UtcNow;
