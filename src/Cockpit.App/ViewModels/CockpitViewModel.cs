@@ -6128,7 +6128,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Profiles refusal stay contained to Profiles instead of blocking MCP Servers and the plugin rows too.
         if (Profiles is not null && !await Profiles.PersistAsync())
         {
-            failures.Add(("Profiles", Profiles.StatusMessage, "profiles"));
+            failures.Add(("Profiles", Profiles.StatusMessage, _ProfilesCategoryTag));
         }
 
         if (McpServers is not null && !await McpServers.PersistAsync())
@@ -6176,6 +6176,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await thresholds.SaveAsync();
             UsageThresholds = await thresholds.ReloadAsync();
         }
+
+        _RebaselineFingerprintAfterBlockedApply(failures);
+    }
+
+    // The only refuser whose staged values the fingerprint covers, so the only one that may leave it dirty below.
+    private const string _ProfilesCategoryTag = "profiles";
+
+    // A blocked Apply keeps the edit open, so the fingerprint still holds the value taken at open and the footer
+    // goes on calling settings this click just wrote unsaved — with ✕ offering to discard what Cancel can now only
+    // reload straight back (AC-1078). Refused profile rows are the exception: those really did stay unwritten.
+    private void _RebaselineFingerprintAfterBlockedApply(List<(string Label, string Reason, string CategoryTag)> failures)
+    {
+        var profilesRefused = failures.Any(failure => failure.CategoryTag == _ProfilesCategoryTag);
+        if (!OptionsApplyBlocked || profilesRefused)
+        {
+            return;
+        }
+
+        _optionsFingerprintAtOpen = OptionsStaging.Fingerprint(this);
+        RefreshPendingOptionChanges();
     }
 
     // Puts the cockpit back exactly as the dialog found it. The flag stays up across the whole re-seed: these

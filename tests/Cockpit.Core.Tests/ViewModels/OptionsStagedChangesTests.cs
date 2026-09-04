@@ -445,6 +445,50 @@ public class OptionsStagedChangesTests
         }
     }
 
+    // AC-1078: a blocked Apply kept the fingerprint on its open-time value, so the footer went on calling settings
+    // this very click wrote unsaved and ✕ offered a Discard that Cancel could only reload straight back. An MCP
+    // refusal leaves nothing the fingerprint covers unwritten, so it must stop claiming otherwise.
+    [Fact]
+    public async Task McpRejection_StopsReportingUnsavedChanges_ForWhatTheSameClickWrote()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        var mcpServers = new McpServersViewModel(Substitute.For<IMcpServerStore>(), []);
+        mcpServers.AddServerCommand.Execute(null);
+        mcpServers.SelectedServer!.Name = string.Empty;
+        vm.McpServers = mcpServers;
+
+        vm.BeginOptionsEdit();
+        vm.LocalNotificationsEnabled = !vm.LocalNotificationsEnabled;
+        Assert.True(vm.HasPendingOptionChanges);
+
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
+
+        Assert.True(vm.OptionsApplyBlocked);
+        await stores.Notifications.Received(1).SaveAsync(Arg.Any<NotificationSettings>());
+        Assert.False(vm.ShouldConfirmOptionDiscard());
+    }
+
+    // The counter-proof to the test above: refused profile rows really did stay unwritten, so Profiles is the one
+    // refusal that must keep the footer and the discard prompt up instead of being re-baselined away (AC-1078).
+    [Fact]
+    public async Task ProfilesRejection_KeepsReportingUnsavedChanges()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        var profiles = new ManageProfilesDialogViewModel(Substitute.For<ISessionProfileStore>(), Substitute.For<IProfileLoginChecker>());
+        vm.Profiles = profiles;
+
+        vm.BeginOptionsEdit();
+        profiles.AddProfileCommand.Execute(null);
+        vm.LocalNotificationsEnabled = !vm.LocalNotificationsEnabled;
+
+        await vm.ApplyOptionsCommand.ExecuteAsync(null);
+
+        Assert.True(vm.OptionsApplyBlocked);
+        Assert.True(vm.ShouldConfirmOptionDiscard());
+    }
+
     [Fact]
     public async Task McpConfirmationReadFailure_DoesNotBlockAnApplyThatAlreadySaved()
     {
