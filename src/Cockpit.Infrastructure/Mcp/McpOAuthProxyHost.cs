@@ -136,7 +136,7 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
             app,
             _authKey,
             _keyring,
-            paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, server.Name, isEnabled: true, nodeScopeGranted: false, _mounts)));
+            paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, server.Name, isEnabled: true, nodeScopeGranted: false, nodeOnly: false, _mounts)));
 
         var forwarder = new McpOAuthProxyForwarder(
             server,

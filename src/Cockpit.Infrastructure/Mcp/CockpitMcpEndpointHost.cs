@@ -18,8 +18,8 @@ using Cockpit.Core.Sessions;
 namespace Cockpit.Infrastructure.Mcp;
 
 // AC-13/AC-12: hosts one loopback MCP server per cockpit endpoint, mounted at startup or by a plugin via
-// MountAsync; not written into the user-managed registry (AC-40). AC-790/AC-791: with the node switch on, each
-// endpoint but Internal also gets an HTTPS listener guarded by a persistent shared secret.
+// MountAsync; not written into the user-managed registry (AC-40). AC-790/AC-791/AC-856: with the node switch on,
+// a NodeOnly endpoint — and only that — also gets an HTTPS listener guarded by a persistent shared secret.
 internal sealed class CockpitMcpEndpointHost
     : IHostedService, ICockpitMcpEndpointHost, ICockpitInternalMcpProvider, ISingletonService, IAsyncDisposable
 {
@@ -167,11 +167,11 @@ internal sealed class CockpitMcpEndpointHost
 
             var nodeSettings = _nodeSettings ??= await _nodeEndpointSettings.LoadAsync(cancellationToken).ConfigureAwait(false);
 
-            // AC-791: an Internal endpoint (AC-204) gets no network listener whatever the master switch says —
-            // withholding the socket rather than refusing leaves a remote prober nothing to learn. AC-1148: nor
-            // does one the operator switched off, so the switch decides the bind and not only the advertisement.
+            // AC-856: a network listener is something an endpoint is built for, not something it gets for lacking
+            // Internal — only NodeOnly binds off loopback. Withholding the socket beats refusing on it (AC-791),
+            // and AC-1148's switch still decides the bind and not only the advertisement.
             var enabled = isEnabled ?? (static () => true);
-            var bindNodeListener = nodeSettings.Enabled && !isInternal && enabled();
+            var bindNodeListener = nodeSettings.Enabled && nodeOnly && enabled();
 
             builder.WebHost.ConfigureKestrel(options =>
             {
@@ -186,7 +186,10 @@ internal sealed class CockpitMcpEndpointHost
                 }
             });
 
-            if (bindNodeListener && !_nodeSecretSeeded)
+            // Keyed on the master switch, not on this mount's own listener: AC-856 left one endpoint binding, and
+            // hanging the seeding off that would make the live credential depend on cockpit-node happening to
+            // mount — a mount `StartAsync` swallows the failure of.
+            if (nodeSettings.Enabled && !_nodeSecretSeeded)
             {
                 // AC-792: seed the live holder from disk only once — MountAsync may run long after startup, and
                 // repeating this would overwrite _nodeSettings with a secret since rotated or cleared.
@@ -201,7 +204,7 @@ internal sealed class CockpitMcpEndpointHost
                 app,
                 _authKey,
                 _keyring,
-                paneId => _AuthorizeAsync(paneId, serverName, enabled),
+                paneId => _AuthorizeAsync(paneId, serverName, enabled, nodeOnly),
                 bindNodeListener ? _nodeSharedSecret : null);
             app.MapMcp("/mcp");
             _apps.Add(app);
@@ -285,10 +288,10 @@ internal sealed class CockpitMcpEndpointHost
 
     // AC-1148: the mount decision this host already makes, enforced at the door. Every input is read now rather
     // than captured at mount time, so a master switch flipped off or a pairing narrowed applies to the next call.
-    private async ValueTask<bool> _AuthorizeAsync(string? paneId, string serverName, Func<bool> isEnabled)
+    private async ValueTask<bool> _AuthorizeAsync(string? paneId, string serverName, Func<bool> isEnabled, bool nodeOnly)
     {
         var nodeScopeGranted = paneId == NodeCallerIdentity.PaneId && await _NodeScopeGrantedAsync().ConfigureAwait(false);
-        return McpEndpointAuthorization.Allows(paneId, serverName, isEnabled(), nodeScopeGranted, _mounts);
+        return McpEndpointAuthorization.Allows(paneId, serverName, isEnabled(), nodeScopeGranted, nodeOnly, _mounts);
     }
 
     // AC-794: a pairing grants nothing until the operator ticks a profile or a project, so an empty scope reaches

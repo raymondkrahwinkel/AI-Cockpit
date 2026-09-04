@@ -83,8 +83,8 @@ public static class DependencyInjection
             Internal: true));
 
         // cockpit-node (AC-795): sessions on this machine, as its paired controller cockpit may see and drive
-        // them. Must NOT be Internal — an Internal endpoint binds no network listener (AC-791), which is the one
-        // thing this needs. AC-1148: NodeOnly keeps it out of every session's fan-out while it keeps that listener.
+        // them. AC-1148: NodeOnly keeps it out of every session's fan-out. AC-856: it also earns the network
+        // listener, so adding the flag to a second endpoint is what putting that endpoint on the network means.
         services.AddSingleton(new CockpitMcpEndpoint(
             "cockpit-node",
             typeof(Mcp.NodeSessionMcpTools),

@@ -175,6 +175,20 @@ public class McpAuthMiddlewareTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    // AC-856: right secret, scoped pairing, and still no endpoint that was not built to face a controller. The
+    // grant used to be a boolean — one ticked profile answered 200 on every enabled non-Internal endpoint, a shell
+    // among them, because AC-794's per-profile checks live in NodeSessionMcpTools and narrow nothing elsewhere.
+    [Fact]
+    public async Task NodeListener_AnEndpointThatIsNotNodeOnly_Is403EvenWithAScopedPairing()
+    {
+        await using var listeners = await _AuthGatedListeners.StartAsync(
+            new McpAuthKey(), new SessionMcpKeyring(), NodeSecret, serverName: "cockpit-shell", nodeOnly: false);
+
+        using var response = await listeners.SendAsync(listeners.NodeUrl, NodeSecret);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     private static SessionMcpMounts _Mounting(string paneId, string serverName = "cockpit-probe")
     {
         var mounts = new SessionMcpMounts();
@@ -200,7 +214,9 @@ public class McpAuthMiddlewareTests
             SessionMcpMounts? mounts = null,
             string serverName = "cockpit-probe",
             bool isEnabled = true,
-            bool nodeScopeGranted = true)
+            bool nodeScopeGranted = true,
+            // AC-856: only a NodeOnly endpoint has a node listener, so that is what this harness stands in for.
+            bool nodeOnly = true)
         {
             // AC-792: the node's certificate now lives in a file, so the test gets one of its own rather than the
             // real cockpit's — and a live secret holder rather than a captured string, which is what the
@@ -226,7 +242,7 @@ public class McpAuthMiddlewareTests
                 app,
                 authKey,
                 keyring,
-                paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, serverName, isEnabled, nodeScopeGranted, grants)),
+                paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, serverName, isEnabled, nodeScopeGranted, nodeOnly, grants)),
                 liveSecret);
             app.MapGet("/whoami", () => McpRequestContext.CurrentPaneId ?? "<none>");
             await app.StartAsync();
