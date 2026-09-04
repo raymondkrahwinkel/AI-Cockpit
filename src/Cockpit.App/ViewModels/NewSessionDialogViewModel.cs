@@ -181,6 +181,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // Whether the MCP checklist is shown at all — hidden when the registry has no enabled servers.
     public bool HasMcpServers => McpServers.Count > 0;
 
+    // AC-248: server names the selected project asks for that this machine has no row for — warned about, not blocked.
+    public IReadOnlyList<string> UnavailableMcpServerNames { get; private set; } = [];
+
+    // AC-248: the MCP row still shows with no rows at all, so a machine offering no servers can still name the one the project wanted.
+    public bool ShowsMcpSection => HasMcpServers || UnavailableMcpServerNames.Count > 0;
+
     // Whether a *selected* server needs a sign-in it does not have (AC-355) — the dialog says so, but it never blocks
     // Start over it: the operator may well know it and mean to proceed without that server's tools, or sign in from a
     // session that is already running.
@@ -673,6 +679,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             item.PropertyChanged += _OnMcpServerToggled;
             McpServers.Add(item);
         }
+
+        // AC-248: the selected project's own MCP choice can name a server this machine never had. Starting without
+        // it is the decision (Raymond, 2026-08-02); this is the half that makes it visible at start rather than only
+        // in the editor, which somebody starting a shared project straight from the launcher never opens.
+        UnavailableMcpServerNames = SelectedProject?.McpOverlay.UnavailableServerNames(registry) ?? [];
+        OnPropertyChanged(nameof(UnavailableMcpServerNames));
+        OnPropertyChanged(nameof(ShowsMcpSection));
 
         OnPropertyChanged(nameof(HasMcpServers));
         OnPropertyChanged(nameof(HasMcpTokenSummary));

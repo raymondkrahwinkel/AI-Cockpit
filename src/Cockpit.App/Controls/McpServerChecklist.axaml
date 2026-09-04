@@ -24,6 +24,12 @@
             </StackPanel>
         </ToggleButton>
 
+        <!-- AC-248: outside the collapsible panel on purpose. A shared definition naming a server this machine has
+             not got is exactly what the operator who never expands this list needs told (Raymond, 2026-08-02). -->
+        <TextBlock Text="{Binding #Root.UnavailableText}" FontSize="11" TextWrapping="Wrap" Margin="19,0,0,0"
+                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                   IsVisible="{Binding #Root.UnavailableText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
         <StackPanel Spacing="4" Margin="19,2,0,0" IsVisible="{Binding #Root.IsExpanded}">
             <TextBlock Text="{Binding #Root.Hint}" FontSize="11" TextWrapping="Wrap"
                        Margin="0,0,0,2"

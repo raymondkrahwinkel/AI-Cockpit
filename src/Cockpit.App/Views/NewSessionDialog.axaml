@@ -374,12 +374,14 @@
                 </Grid>
 
                 <!-- Per-session MCP-server selection (#44): a checkbox per enabled registry server, defaulting to
-                     all checked (matching the pre-#44 behaviour). Hidden entirely when the registry has none. -->
-                <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasMcpServers}">
+                     all checked (matching the pre-#44 behaviour). Hidden when the registry has none and the
+                     selected project asks for none this machine lacks (AC-248). -->
+                <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowsMcpSection}">
                     <TextBlock Grid.Column="0" Text="MCP" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                     <controls:McpServerChecklist Grid.Column="1"
                                                  Servers="{Binding McpServers}"
+                                                 UnavailableServers="{Binding UnavailableMcpServerNames}"
                                                  TokenSummary="{Binding McpToolTokenSummary}"
                                                  ShowTokenSummary="{Binding HasMcpTokenSummary}"
                                                  RefreshCommand="{Binding RefreshMcpTokensCommand}"/>

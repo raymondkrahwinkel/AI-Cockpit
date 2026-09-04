@@ -230,6 +230,9 @@ internal static class Screenshotter
         // Description/ Logo/MCP overlay/the worktree switch stay local, each carrying its own "● This machine" badge
         // rather than no badge at all, since the project as a whole has a claim (HasFieldOwnership) (AC-604).
         ["project-editor-ownership"] = (_, _) => _ProjectEditorWithOwnership(),
+        // AC-248: the warning is the one thing on this screen that has to read while the checklist around it is
+        // locked, so it needs a scene where the overlay is both claimed and read-only.
+        ["project-editor-mcp-not-here"] = (_, _) => _ProjectEditorWithUnavailableMcpServer(),
         // AC-620, IL#9: the confirmation screen before a local project's first publish — the design-time sample already
         // carries a portable resource, a machine-scope one and a filled connection/target picker, so this scene draws
         // the same populated state the design-time previewer does rather than an empty shell (AC-699).
@@ -826,6 +829,28 @@ internal static class Screenshotter
         // Run on a pool thread rather than a bare .GetAwaiter().GetResult() on this (dispatcher-context-carrying)
         // thread: CreateAsync's own resource-diagnostics pass does a genuine Task.Run + ConfigureAwait(true), whose
         // continuation would otherwise be posted back to a headless dispatcher nothing is pumping — a deadlock
+        var viewModel = Task.Run(() => ProjectDialogViewModel.CreateAsync(
+            project, new _FakeSessionProfileStore(), new _FakeMcpServerCatalog(), fieldOwnership: fieldOwnership))
+            .GetAwaiter().GetResult();
+
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    // AC-248: a definition shared from a plugin naming servers this machine has none of — the catalog below is
+    // empty, which is exactly the colleague's-machine case the warning exists for.
+    private static ProjectDialog _ProjectEditorWithUnavailableMcpServer()
+    {
+        var project = new Project("proj-eve-workbench", "EVE Workbench")
+        {
+            McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["Playwright", "Depot — Work"] },
+        };
+
+        var fieldOwnership = new Dictionary<HostProjectField, ProjectFieldOwnership?>
+        {
+            [HostProjectField.McpOverlay] = new ProjectFieldOwnership("Depot — Work", IsEditable: false),
+        };
+
+        // See _ProjectEditorWithOwnership's own remarks on why CreateAsync runs on a pool thread here.
         var viewModel = Task.Run(() => ProjectDialogViewModel.CreateAsync(
             project, new _FakeSessionProfileStore(), new _FakeMcpServerCatalog(), fieldOwnership: fieldOwnership))
             .GetAwaiter().GetResult();
