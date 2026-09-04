@@ -197,19 +197,6 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             paneId: paneId,
             detailLines: detailLines);
 
-    // AC-179: kind create/delete has no ClusterRegistration to authorize against, so this always asks Dangerous,
-    // never remembered, with the literal kind argv as the operation. `scope` differs between create and delete so
-    // a create approval never doubles as a delete one.
-    public Task<GateResult> AuthorizeKindLifecycleAsync(string operation, string scope, string? paneId) =>
-        _RequestAsync(
-            title: "Kubernetes: kind cluster lifecycle",
-            operation: operation,
-            clusterLabel: "kind",
-            scope: scope,
-            risk: ConsentRisk.Dangerous,
-            allowRemember: false,
-            paneId: paneId);
-
     private async Task<GateResult> _RequestAsync(string title, string operation, string clusterLabel, string scope, ConsentRisk risk, bool allowRemember, string? paneId, IReadOnlyList<string>? detailLines = null)
     {
         var request = new ConsentRequest(

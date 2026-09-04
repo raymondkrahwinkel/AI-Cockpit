@@ -1,6 +1,6 @@
-using Cockpit.Plugin.Kubernetes.Cli;
+using Cockpit.Plugin.Kind.Cli;
 
-namespace Cockpit.Plugin.Kubernetes.Kind;
+namespace Cockpit.Plugin.Kind;
 
 // PATH-probe for `kind` (AC-179 criterion 2), mirroring LocalCiRuntime._DetectActAsync: same 5s deadline, same
 // "only a successful probe is cached" rule. `executableName`/`probeArguments` are a test seam only — production

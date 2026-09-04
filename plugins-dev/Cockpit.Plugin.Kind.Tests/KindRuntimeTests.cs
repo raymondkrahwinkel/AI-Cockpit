@@ -1,7 +1,6 @@
-using Cockpit.Plugin.Kubernetes.Cli;
-using Cockpit.Plugin.Kubernetes.Kind;
+using Cockpit.Plugin.Kind.Cli;
 
-namespace Cockpit.Plugin.Kubernetes.Tests;
+namespace Cockpit.Plugin.Kind.Tests;
 
 // Detection of the `kind` binary (AC-179 criterion 2) — a PATH-probe with a deadline, mirroring LocalCiRuntime's
 // act-detection. Real process, no fake runner needed: "kind is not installed" is exactly the not-started case

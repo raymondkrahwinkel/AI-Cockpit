@@ -46,7 +46,7 @@ public class HelmRollbackTests
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
 
         var connections = new ClusterConnectionFactory(settings);
-        return (new KubernetesMcpTools(settings, new ClusterAccessGate(host), connections, new PortForwardManager(), TestKindClusters.Unused(settings), host), asked);
+        return (new KubernetesMcpTools(settings, new ClusterAccessGate(host), connections, new PortForwardManager()), asked);
     }
 
     [Fact]

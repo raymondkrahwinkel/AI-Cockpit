@@ -1,8 +1,7 @@
-using Cockpit.Plugin.Kubernetes.Cli;
-using Cockpit.Plugin.Kubernetes.Kind;
-using Cockpit.Plugin.Kubernetes.Settings;
+using Cockpit.Plugin.Kind.Cli;
+using Cockpit.Plugin.Kind.Settings;
 
-namespace Cockpit.Plugin.Kubernetes.Tests;
+namespace Cockpit.Plugin.Kind.Tests;
 
 // KindClusterManager against a fake CliRunner (AC-179 criteria 1, 3-6, 10) — no real kind/docker needed; the real
 // end-to-end run lives in KindClusterLiveTests.
@@ -11,7 +10,7 @@ public class KindClusterManagerTests
     private const string OwnerPane = "pane-1";
 
     [Fact]
-    public async Task CreateAsync_OnSuccess_RegistersBothTheKindRecordAndAClusterRegistration()
+    public async Task CreateAsync_OnSuccess_RegistersTheKindRecord()
     {
         var (manager, settings, cli) = _Manager();
 
@@ -22,11 +21,6 @@ public class KindClusterManagerTests
         Assert.Equal("cockpit-ac179", record!.Name);
         Assert.Equal(OwnerPane, record.OwnerPaneId);
         Assert.Contains(settings.KindClusters, r => r.Name == "cockpit-ac179");
-
-        var registration = settings.Clusters.Single();
-        Assert.Equal("kind-cockpit-ac179", registration.Id);
-        Assert.Equal("kind-cockpit-ac179", registration.ContextName);
-        Assert.Equal(record.KubeconfigPath, registration.KubeconfigPath);
 
         var createCall = cli.Calls.Single(call => call.Arguments[0] == "create");
         Assert.Contains("cockpit-ac179", createCall.Arguments);
@@ -43,7 +37,6 @@ public class KindClusterManagerTests
         Assert.Null(record);
         Assert.Contains("was not found on PATH", error);
         Assert.Empty(settings.KindClusters);
-        Assert.Empty(settings.Clusters);
     }
 
     [Fact]
@@ -76,7 +69,7 @@ public class KindClusterManagerTests
     }
 
     [Fact]
-    public async Task DeleteAsync_RemovesTheRecordTheRegistrationAndTheKubeconfigFile()
+    public async Task DeleteAsync_RemovesTheRecordAndTheKubeconfigFile()
     {
         var (manager, settings, _) = _Manager();
         var (created, _) = await manager.CreateAsync("cockpit-ac179", OwnerPane, CancellationToken.None);
@@ -86,7 +79,6 @@ public class KindClusterManagerTests
 
         Assert.True(ok, error);
         Assert.Empty(settings.KindClusters);
-        Assert.Empty(settings.Clusters);
         Assert.False(File.Exists(created.KubeconfigPath));
     }
 
@@ -246,10 +238,10 @@ public class KindClusterManagerTests
         Assert.Contains(activity.Details, detail => detail.Label == "owner" && detail.Value == OwnerPane);
     }
 
-    private static (KindClusterManager Manager, KubernetesSettings Settings, FakeCliRunner Cli) _Manager()
+    private static (KindClusterManager Manager, KindSettings Settings, FakeCliRunner Cli) _Manager()
     {
         var storage = new FakePluginStorage();
-        var settings = new KubernetesSettings(storage);
+        var settings = new KindSettings(storage);
         var cli = new FakeCliRunner();
         var runtime = new KindRuntime(cli);
         var directory = Directory.CreateTempSubdirectory("ac179-kind-tests").FullName;

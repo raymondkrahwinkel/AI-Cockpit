@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugin.Kubernetes.Kind;
 using Cockpit.Plugin.Kubernetes.Model;
 
 namespace Cockpit.Plugin.Kubernetes.Settings;
@@ -50,20 +49,4 @@ internal sealed class KubernetesSettings(IPluginStorage storage)
 
     private static string _KubeconfigKey(string clusterId) => $"cluster.{clusterId}.kubeconfig";
     private static string _ArgoTokenKey(string clusterId) => $"cluster.{clusterId}.argoToken";
-
-    // AC-179: the kind-cluster registry, same non-secret list idiom as `Clusters` — a kind cluster's kubeconfig is
-    // a plain file path on disk, not a pasted secret, so it lives in the record itself rather than the secret layer.
-    public IReadOnlyList<KindClusterRecord> KindClusters
-    {
-        get => storage.Get<List<KindClusterRecord>>("kindClusters") ?? [];
-        set => storage.Set("kindClusters", value.ToList());
-    }
-
-    // The TTL backstop (AC-179 criterion 11), next to criterion 8's live-session sweep rather than instead of it.
-    // Four hours covers a normal working session without leaving a forgotten cluster's 632 MiB idle overnight.
-    public TimeSpan KindClusterMaxLifetime
-    {
-        get => TimeSpan.FromHours(storage.Get<double?>("kindClusterMaxLifetimeHours") ?? 4.0);
-        set => storage.Set("kindClusterMaxLifetimeHours", value.TotalHours);
-    }
 }

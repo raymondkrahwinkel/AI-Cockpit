@@ -1,10 +1,11 @@
 using System.ComponentModel;
 using System.Diagnostics;
 
-namespace Cockpit.Plugin.Kubernetes.Cli;
+namespace Cockpit.Plugin.Kind.Cli;
 
-// Runs a CliCommand as a real process (AC-179) — argv, both pipes read while running so a chatty command cannot
-// deadlock a pipe, plus the command's Environment layered onto the inherited one. Extracted from HelmRunner.
+// Runs a CliCommand as a real process (AC-179): argv, both pipes drained while it runs, Environment layered on.
+// Cli/ is a deliberate copy of the Kubernetes plugin's, not plugins-dev/_shared (AC-1079) — sharing the source
+// would tie both plugins' version bumps to each other forever.
 internal sealed class CliRunner : ICliRunner
 {
     public async Task<CliResult> RunAsync(CliCommand command, TimeSpan timeout, CancellationToken cancellationToken = default)

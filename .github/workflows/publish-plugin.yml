@@ -72,6 +72,7 @@ on:
           - github-pull-requests
           - git-status
           - kimi-provider
+          - kind
           - kubernetes
           - local-ci
           - prompt-library

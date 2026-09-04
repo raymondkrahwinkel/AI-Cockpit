@@ -1,13 +1,11 @@
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
-using Cockpit.Plugin.Kubernetes.Cluster;
-using Cockpit.Plugin.Kubernetes.Kind;
-using Cockpit.Plugin.Kubernetes.Mcp;
-using Cockpit.Plugin.Kubernetes.Security;
-using Cockpit.Plugin.Kubernetes.Settings;
+using Cockpit.Plugin.Kind.Mcp;
+using Cockpit.Plugin.Kind.Security;
+using Cockpit.Plugin.Kind.Settings;
 using NSubstitute;
 
-namespace Cockpit.Plugin.Kubernetes.Tests;
+namespace Cockpit.Plugin.Kind.Tests;
 
 // The three kind_* MCP tools (AC-179) against a fake CliRunner-backed KindClusterManager — proves the consent-gate
 // wiring and the transport-verified owner attribution, without a real kind binary.
@@ -100,19 +98,15 @@ public class KindMcpToolsTests
         await host.Received(1).RequestConsentAsync(Arg.Any<ConsentRequest>());
     }
 
-    private static (KubernetesMcpTools Tools, KubernetesSettings Settings, ICockpitHost Host) _Tools(ConsentOutcome outcome)
+    private static (KindMcpTools Tools, KindSettings Settings, ICockpitHost Host) _Tools(ConsentOutcome outcome)
     {
-        var storage = new FakePluginStorage();
-        var settings = new KubernetesSettings(storage);
+        var settings = new KindSettings(new FakePluginStorage());
         var host = Substitute.For<ICockpitHost>();
         host.RequestConsentAsync(Arg.Any<ConsentRequest>()).Returns(new ConsentDecision(outcome));
         host.CurrentMcpCallerPaneId.Returns(CallerPaneId);
-        var gate = new ClusterAccessGate(host);
         var cli = new FakeCliRunner();
-        var kindRuntime = new KindRuntime(cli);
         var directory = Directory.CreateTempSubdirectory("ac179-mcp-tests").FullName;
-        var kindClusters = new KindClusterManager(settings, cli, kindRuntime, "kind", directory);
-        var tools = new KubernetesMcpTools(settings, gate, new ClusterConnectionFactory(settings), new PortForwardManager(), kindClusters, host);
-        return (tools, settings, host);
+        var clusters = new KindClusterManager(settings, cli, new KindRuntime(cli), "kind", directory);
+        return (new KindMcpTools(new KindConsentGate(host), clusters, host), settings, host);
     }
 }

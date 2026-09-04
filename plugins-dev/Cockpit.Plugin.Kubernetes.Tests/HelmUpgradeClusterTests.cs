@@ -55,7 +55,7 @@ public class HelmUpgradeClusterTests
         var host = Substitute.For<ICockpitHost>();
         host.RequestConsentAsync(Arg.Any<ConsentRequest>()).Returns(new ConsentDecision(ConsentOutcome.Approved));
         var runner = new HelmRunner();
-        var tools = new KubernetesMcpTools(settings, new ClusterAccessGate(host), new ClusterConnectionFactory(settings), new PortForwardManager(), TestKindClusters.Unused(settings), host, runner);
+        var tools = new KubernetesMcpTools(settings, new ClusterAccessGate(host), new ClusterConnectionFactory(settings), new PortForwardManager(), runner);
 
         await _HelmAsync(runner, cluster, ["uninstall", Release, "--ignore-not-found"]);
         var installed = await _HelmAsync(runner, cluster, ["install", Release, chart, "--set", "mode=before"]);

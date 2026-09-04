@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests for the Kind plugin (AC-179, split out of the Kubernetes plugin's test project in AC-1079) — the
+       cluster registry and its three sweeps above all, tested against a fake CliRunner so no real kind binary or
+       container runtime is needed. Kept OUTSIDE Cockpit.slnx, alongside the plugin, like the other plugin test
+       projects. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ICockpitHost's contribution points reference Avalonia (AddSettings takes a Func&lt;Control&gt;) and
+         Material.Icons, so substituting it needs those types loadable — same set the other plugin test projects carry. -->
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cockpit.Plugin.Kind\Cockpit.Plugin.Kind.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -46,7 +46,7 @@ public class HelmUpgradeTests
         host.RequestConsentAsync(Arg.Do<ConsentRequest>(asked.Add)).Returns(new ConsentDecision(outcome));
 
         var runner = new RecordingRunner(result ?? HelmResult.Exited(1, string.Empty, "Error: UPGRADE FAILED: \"proof\" has no deployed releases"));
-        var tools = new KubernetesMcpTools(settings, new ClusterAccessGate(host), new ClusterConnectionFactory(settings), new PortForwardManager(), TestKindClusters.Unused(settings), host, runner);
+        var tools = new KubernetesMcpTools(settings, new ClusterAccessGate(host), new ClusterConnectionFactory(settings), new PortForwardManager(), runner);
         return (tools, runner, asked);
     }
 

@@ -1,6 +1,6 @@
-using Cockpit.Plugin.Kubernetes.Cli;
+using Cockpit.Plugin.Kind.Cli;
 
-namespace Cockpit.Plugin.Kubernetes.Kind;
+namespace Cockpit.Plugin.Kind;
 
 // Turns a failed kind run into something an agent can act on, mirroring Helm/HelmFailure.cs: kind has no
 // fine-grained exit codes for these cases either, so telling them apart means matching stderr text — best-effort by

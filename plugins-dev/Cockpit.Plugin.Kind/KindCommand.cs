@@ -1,6 +1,6 @@
-using Cockpit.Plugin.Kubernetes.Cli;
+using Cockpit.Plugin.Kind.Cli;
 
-namespace Cockpit.Plugin.Kubernetes.Kind;
+namespace Cockpit.Plugin.Kind;
 
 // Builds the three kind invocations this plugin makes (AC-179), argv only — never a shell string, since a cluster
 // name is agent-supplied. Unlike HelmCommand, no locked-down Environment: KIND_EXPERIMENTAL_PROVIDER (docker vs

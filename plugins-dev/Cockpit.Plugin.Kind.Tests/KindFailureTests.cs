@@ -1,7 +1,6 @@
-using Cockpit.Plugin.Kubernetes.Cli;
-using Cockpit.Plugin.Kubernetes.Kind;
+using Cockpit.Plugin.Kind.Cli;
 
-namespace Cockpit.Plugin.Kubernetes.Tests;
+namespace Cockpit.Plugin.Kind.Tests;
 
 // Turning a failed kind run into an agent-facing message (AC-179), mirroring HelmFailureTests' shape: best-effort
 // stderr string-matching, with the raw stderr always attached so a wrong guess never hides the real reason.

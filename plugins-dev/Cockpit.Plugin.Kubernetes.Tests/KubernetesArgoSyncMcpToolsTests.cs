@@ -41,7 +41,7 @@ public class KubernetesArgoSyncMcpToolsTests
 
         var gate = new ClusterAccessGate(host);
         var connections = new ClusterConnectionFactory(settings);
-        return (new KubernetesMcpTools(settings, gate, connections, new PortForwardManager(), TestKindClusters.Unused(settings), host), asked, settings, cluster);
+        return (new KubernetesMcpTools(settings, gate, connections, new PortForwardManager()), asked, settings, cluster);
     }
 
     [Fact]
