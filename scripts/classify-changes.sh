@@ -149,7 +149,7 @@ for entry in "${TEST_SUITES[@]}"; do
   printf '%s=%s\n' "$flag" "$run"
 done
 
-if [ "$src" = true ] || [ "$unresolved" = true ] || [ -n "${touched_projects[tests/Cockpit.TestSupport/Cockpit.TestSupport.csproj]:-}" ]; then
+if [ "$unresolved" = true ] || [ -n "${touched_projects[tests/Cockpit.TestSupport/Cockpit.TestSupport.csproj]:-}" ]; then
   plugins="$(plugin_names | json_array)"
 else
   plugins="$({
