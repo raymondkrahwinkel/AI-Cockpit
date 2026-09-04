@@ -45,6 +45,11 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         // that copy over PATH via host.ResolveManagedCliPath, same as codex/claude.
         host.AddManagedCli(HelmManagedCli.Descriptor);
 
+        // AC-1083: the Kind plugin registers the cluster it just created here, addressed by manifest id.
+        var registrations = new ClusterRegistrationIntents(settings);
+        host.RegisterIntentHandler(ClusterRegistrationIntents.RegisterAction, registrations.RegisterAsync);
+        host.RegisterIntentHandler(ClusterRegistrationIntents.UnregisterAction, registrations.UnregisterAsync);
+
         host.AddSettings(() => new KubernetesSettingsControl(host, settings));
         host.AddToolbarAction(new ToolbarAction("Kubernetes settings", MaterialIconKind.Kubernetes, () => host.ShowSettingsAsync()));
         _ = host.AddMcpEndpoint("cockpit-k8s", tools, isEnabled: () => settings.McpEnabled);

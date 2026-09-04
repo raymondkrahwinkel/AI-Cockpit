@@ -26,9 +26,11 @@ public class KindClusterLiveTests
         var userKubeconfigPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".kube", "config");
         var userKubeconfigBefore = File.Exists(userKubeconfigPath) ? File.ReadAllText(userKubeconfigPath) : null;
 
-        var (record, createError) = await manager.CreateAsync(ClusterName, "live-test-owner", CancellationToken.None);
-        Assert.Null(createError);
+        // No host, so nothing registers with the Kubernetes plugin — that half is proven on its side
+        // (KindClusterRegistrationLiveTests). Here the notice is expected, not a failure.
+        var (record, notice) = await manager.CreateAsync(ClusterName, "live-test-owner", CancellationToken.None);
         Assert.NotNull(record);
+        Assert.Contains("not registered", notice);
 
         try
         {

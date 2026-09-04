@@ -48,5 +48,13 @@ you made it.
 
 ## Reaching a cluster from the Kubernetes plugin {#kubernetes-plugin}
 
-`kind_create` returns the kubeconfig path and the context name it wrote. To use the cluster through the
-Kubernetes plugin's tools, add a cluster row there pointing at that path and context.
+With the Kubernetes plugin installed, a new cluster registers itself there under the name `kind-<name>` and is
+reachable through its tools straight away — no kubeconfig to copy. It starts with `default` as its only allowed
+namespace; widen that in the Kubernetes plugin's settings if you need more. Deleting the cluster removes the
+registration again.
+
+An existing registration under that name is never overwritten: `kind_create` says so in its answer and leaves
+yours alone.
+
+Without the Kubernetes plugin, everything else works the same — `kind_create` hands you the kubeconfig path and
+context name and says it did not register anything.

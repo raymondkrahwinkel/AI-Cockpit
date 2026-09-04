@@ -99,9 +99,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   configurable lifetime (default 4 hours), so a forgotten one never lingers. Needs the `kind` binary and Docker or
   Podman already on the machine; a missing one is reported, not guessed at. It was part of the Kubernetes plugin
   before this release: if you used those three tools, install Kind alongside it — they are gone from the
-  Kubernetes plugin, and a cluster you pinned there is yours to remove with `kind delete cluster`. `kind_create`
-  hands you the kubeconfig path and context name, which is what you add as a cluster row in the Kubernetes plugin
-  to reach it from there.
+  Kubernetes plugin, and a cluster you pinned there is yours to remove with `kind delete cluster`. With the
+  Kubernetes plugin installed, a new cluster still registers itself there on its own, so its tools reach it with
+  no kubeconfig to copy — and without that plugin nothing fails: `kind_create` hands you the kubeconfig path and
+  context name and says it did not register anything.
 - added: a project and a profile can now name the assistant a session runs as — Zyra, Aura, whoever you work
   with — as its own field instead of a sentence buried in the behaviour prompt. The project's answer wins where
   both name one, and a session started without a project still gets the profile's. It stays on this machine: it

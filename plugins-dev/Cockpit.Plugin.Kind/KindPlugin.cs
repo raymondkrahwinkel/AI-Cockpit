@@ -18,7 +18,7 @@ public sealed class KindPlugin : ICockpitPlugin
         Id: "kind",
         DisplayName: "Kind",
         Author: "Cockpit",
-        Description: "Disposable local kind (Kubernetes-in-Docker) clusters through an mcp__cockpit-kind__* server. kind_create spins one up, kind_list shows what this plugin made and kind_delete tears one down — never a cluster made outside the cockpit. Create and delete each ask the operator afresh, showing the literal kind command, and an approval is never remembered. A non-pinned cluster is torn down when its owning session closes, when the cockpit exits, or when its configurable lifetime runs out. Needs the kind binary and a container runtime (Docker or Podman) already on the machine.");
+        Description: "Disposable local kind (Kubernetes-in-Docker) clusters through an mcp__cockpit-kind__* server. kind_create spins one up, kind_list shows what this plugin made and kind_delete tears one down — never a cluster made outside the cockpit. Create and delete each ask the operator afresh, showing the literal kind command, and an approval is never remembered. A non-pinned cluster is torn down when its owning session closes, when the cockpit exits, or when its configurable lifetime runs out. With the Kubernetes plugin installed, a cluster registers itself there automatically. Needs the kind binary and a container runtime (Docker or Podman) already on the machine.");
 
     private KindClusterManager? _clusters;
 
@@ -35,7 +35,7 @@ public sealed class KindPlugin : ICockpitPlugin
         // deliver "it just works". PATH-probe only, mirroring ActRuntimeStatus's "say what to install" approach.
         var runner = new CliRunner();
         var kubeconfigDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit", "kubernetes-kind");
-        var clusters = new KindClusterManager(settings, runner, new KindRuntime(runner), "kind", kubeconfigDirectory);
+        var clusters = new KindClusterManager(settings, runner, new KindRuntime(runner), "kind", kubeconfigDirectory, host);
         _clusters = clusters;
 
         host.AddSettings(() => new KindSettingsControl(host, settings));

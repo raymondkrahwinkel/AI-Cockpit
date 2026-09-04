@@ -11,7 +11,7 @@ namespace Cockpit.Plugin.Kind.Mcp;
 internal sealed class KindMcpTools(KindConsentGate gate, KindClusterManager kindClusters, ICockpitHost host)
 {
     [McpServerTool(Name = "kind_create", ReadOnly = false, Destructive = false)]
-    [Description("Creates a disposable local kind (Kubernetes-in-Docker) cluster and returns the kubeconfig path and context name to reach it with. Needs the kind binary and a container runtime (Docker or Podman) on this machine — a missing one is reported, not guessed at. Can take from ~30 seconds (node image already local) to several minutes (first pull, ~1.3 GB). The cluster is torn down automatically when this session closes, the cockpit exits, or its TTL expires, unless the operator pins it — this is a throwaway test environment, not a place for anything that must persist.")]
+    [Description("Creates a disposable local kind (Kubernetes-in-Docker) cluster and returns the kubeconfig path and context name to reach it with. With the Kubernetes plugin installed it also registers there, so the cockpit-k8s tools reach it with no manual step; without that plugin the answer says so and you use the kubeconfig directly. Needs the kind binary and a container runtime (Docker or Podman) on this machine — a missing one is reported, not guessed at. Can take from ~30 seconds (node image already local) to several minutes (first pull, ~1.3 GB). The cluster is torn down automatically when this session closes, the cockpit exits, or its TTL expires, unless the operator pins it — this is a throwaway test environment, not a place for anything that must persist.")]
     public async Task<string> KindCreate(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
         [Description("A name for the cluster; becomes the kind cluster name and the kind-<name> kubeconfig context.")] string name,
@@ -59,7 +59,7 @@ internal sealed class KindMcpTools(KindConsentGate gate, KindClusterManager kind
         });
 
     [McpServerTool(Name = "kind_delete", ReadOnly = false, Destructive = true)]
-    [Description("Deletes a kind cluster this plugin created: its containers and its kubeconfig file. Refuses a name that is not in this plugin's own registry — a cluster made outside the cockpit is never touched. Asks for approval every time, separately from create; approving a create does not approve a later delete.")]
+    [Description("Deletes a kind cluster this plugin created: its containers, its kubeconfig file, and its Kubernetes-plugin registration if there is one. Refuses a name that is not in this plugin's own registry — a cluster made outside the cockpit is never touched. Asks for approval every time, separately from create; approving a create does not approve a later delete.")]
     public async Task<string> KindDelete(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
         [Description("The cluster name, as returned by kind_create or kind_list.")] string name,

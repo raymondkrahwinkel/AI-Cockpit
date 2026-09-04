@@ -1,5 +1,6 @@
 using Cockpit.Plugin.Kind.Cli;
 using Cockpit.Plugin.Kind.Settings;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.Plugin.Kind;
@@ -11,7 +12,8 @@ internal sealed class KindClusterManager(
     ICliRunner runner,
     KindRuntime kindRuntime,
     string kindExecutablePath,
-    string kubeconfigDirectory) : ISupervisedActivitySource
+    string kubeconfigDirectory,
+    ICockpitHost? host = null) : ISupervisedActivitySource
 {
     // Cold node-image pull measured at 1.35 GB (AC-179 grooming) — helm's 2-minute test deadline is too tight here.
     private static readonly TimeSpan CreateTimeout = TimeSpan.FromMinutes(10);
@@ -47,7 +49,7 @@ internal sealed class KindClusterManager(
         var record = new KindClusterRecord(name, ownerPaneId, kubeconfigPath, DateTimeOffset.UtcNow);
         settings.KindClusters = [.. settings.KindClusters, record];
         Changed?.Invoke();
-        return (record, null);
+        return (record, await KubernetesClusterGate.RegisterAsync(host, name, kubeconfigPath));
     }
 
     public async Task<IReadOnlyList<KindClusterListEntry>> ListAsync(CancellationToken cancellationToken)
@@ -81,6 +83,7 @@ internal sealed class KindClusterManager(
         }
 
         settings.KindClusters = settings.KindClusters.Where(candidate => !string.Equals(candidate.Name, name, StringComparison.Ordinal)).ToList();
+        await KubernetesClusterGate.UnregisterAsync(host, name);
         try
         {
             File.Delete(record.KubeconfigPath);
