@@ -6645,6 +6645,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        // AC-1080: the provider resuming its own conversation says nothing about the window, which starts empty —
+        // repaint from Cockpit's own log before the launch, or roll that log aside when this start is a fresh one.
+        // Only SDK panes record a transcript; a TTY pane has none to replay (AC-1091).
+        if (session is SessionViewModel recorded)
+        {
+            await recorded.PrepareRecordedTranscriptAsync(resume);
+        }
+
         if (await _StartSessionAsync(session, result) is not null)
         {
             session.RestoreOffer = null;

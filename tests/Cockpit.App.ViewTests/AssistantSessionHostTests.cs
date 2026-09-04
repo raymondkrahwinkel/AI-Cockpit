@@ -759,7 +759,7 @@ public class AssistantSessionHostTests
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
 
         var transcript = Substitute.For<ISessionTranscriptStore>();
-        transcript.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>>(_ =>
+        transcript.TryLoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>?>(_ =>
         [
             _Recorded("UserText", "fix the layout bug"),
             _Recorded("Divider", "Context was full — a new conversation starts here"),
@@ -786,7 +786,7 @@ public class AssistantSessionHostTests
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
 
         var transcript = Substitute.For<ISessionTranscriptStore>();
-        transcript.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>>(_ =>
+        transcript.TryLoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>?>(_ =>
         [
             _Recorded("SomeFutureKind", "from a newer build"),
             _Recorded("UserText", "still readable"),
@@ -862,7 +862,7 @@ public class AssistantSessionHostTests
          "answers":{"Which profile?":{"options":["All"]}}}
         """;
         var transcript = Substitute.For<ISessionTranscriptStore>();
-        transcript.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>>(_ =>
+        transcript.TryLoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>?>(_ =>
             [_Recorded("Question", "Which profile?", savedInputJson)]);
 
         var (_, session, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
@@ -920,7 +920,7 @@ public class AssistantSessionHostTests
         sessionState.TryLoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>?>(_ =>
             [_StateFor(AssistantSessionHost.AssistantPaneId, "conv-1")]);
         var transcript = Substitute.For<ISessionTranscriptStore>();
-        transcript.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>>(_ =>
+        transcript.TryLoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>?>(_ =>
             [_Recorded("UserText", "earlier message")]);
 
         var (host, first, _) = _StartedAssistantOn(SessionCapabilities.ClaudeCli, sessionState, transcript);
@@ -1402,7 +1402,7 @@ public class AssistantSessionHostTests
     private static ISessionTranscriptStore _EmptyTranscriptStore()
     {
         var store = Substitute.For<ISessionTranscriptStore>();
-        store.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>>([]);
+        store.TryLoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<IReadOnlyList<TranscriptSnapshotEntry>?>([]);
         return store;
     }
 

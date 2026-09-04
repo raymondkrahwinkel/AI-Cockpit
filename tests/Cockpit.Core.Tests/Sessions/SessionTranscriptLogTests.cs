@@ -34,7 +34,7 @@ public class SessionTranscriptLogTests : IDisposable
     {
         var store = CreateStore();
 
-        Assert.Empty(await store.LoadAsync(Pane));
+        Assert.Empty((await store.TryLoadAsync(Pane))!);
         Assert.False(File.Exists(store.LogPath(Pane)));
     }
 
@@ -54,7 +54,7 @@ public class SessionTranscriptLogTests : IDisposable
             await store.AppendAsync(Pane, row);
         }
 
-        Assert.Equal(rows, await store.LoadAsync(Pane));
+        Assert.Equal(rows, (await store.TryLoadAsync(Pane))!);
     }
 
     // THE ACCEPTANCE TEST for the shape: a row that changes after it was first recorded is one row on the way
@@ -68,7 +68,7 @@ public class SessionTranscriptLogTests : IDisposable
         await store.AppendAsync(Pane, Row("b", "UserText", "and then?"));
         await store.AppendAsync(Pane, Row("a", "AssistantText", "Looking at the layout now"));
 
-        var loaded = await store.LoadAsync(Pane);
+        var loaded = (await store.TryLoadAsync(Pane))!;
 
         Assert.Equal(2, loaded.Count);
         Assert.Equal("a", loaded[0].Id);
@@ -90,7 +90,7 @@ public class SessionTranscriptLogTests : IDisposable
         Assert.True(
             new FileInfo(store.LogPath(Pane)).Length > afterFirst,
             "a second version must be appended after the first, not replace the file");
-        Assert.Equal("first, corrected", Assert.Single(await store.LoadAsync(Pane)).Text);
+        Assert.Equal("first, corrected", Assert.Single((await store.TryLoadAsync(Pane))!).Text);
     }
 
     [Fact]
@@ -100,8 +100,8 @@ public class SessionTranscriptLogTests : IDisposable
         await store.AppendAsync("pane-a", Row("a", "UserText", "for a"));
         await store.AppendAsync("pane-b", Row("b", "UserText", "for b"));
 
-        Assert.Equal("for a", Assert.Single(await store.LoadAsync("pane-a")).Text);
-        Assert.Equal("for b", Assert.Single(await store.LoadAsync("pane-b")).Text);
+        Assert.Equal("for a", Assert.Single((await store.TryLoadAsync("pane-a"))!).Text);
+        Assert.Equal("for b", Assert.Single((await store.TryLoadAsync("pane-b"))!).Text);
     }
 
     // Everything the grooming asked the format to carry beyond AC-684's eight fields, in one trip: without these a
@@ -127,7 +127,7 @@ public class SessionTranscriptLogTests : IDisposable
 
         // Compared member by member rather than with record equality: `SubAgentRows` is a list, so `==` on the
         // record would pass on reference identity and quietly say nothing about what came back off disk.
-        var loaded = Assert.Single(await store.LoadAsync(Pane));
+        var loaded = Assert.Single((await store.TryLoadAsync(Pane))!);
         Assert.Equal(row with { SubAgentRows = null }, loaded with { SubAgentRows = null });
         Assert.Equal("reading the file", Assert.Single(loaded.SubAgentRows!).Text);
     }
@@ -146,7 +146,7 @@ public class SessionTranscriptLogTests : IDisposable
                 """{"Id":"b","Kind":"UserText","Text":"newer build","IsResultError":false,"Timestamp":"2026-08-30T12:00:01+00:00","Images":[{"MediaType":"image/png"}]}""",
             ]);
 
-        var loaded = await store.LoadAsync(Pane);
+        var loaded = (await store.TryLoadAsync(Pane))!;
 
         Assert.Equal(["older build", "newer build"], loaded.Select(entry => entry.Text));
     }
@@ -159,7 +159,7 @@ public class SessionTranscriptLogTests : IDisposable
         await File.AppendAllTextAsync(store.LogPath(Pane), "not json" + Environment.NewLine);
         await store.AppendAsync(Pane, Row("b", "UserText", "after"));
 
-        Assert.Equal(["before", "after"], (await store.LoadAsync(Pane)).Select(entry => entry.Text));
+        Assert.Equal(["before", "after"], (await store.TryLoadAsync(Pane))!.Select(entry => entry.Text));
     }
 
     // ── Rolling a log aside (AC-947, kept by AC-1090) ───────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ public class SessionTranscriptLogTests : IDisposable
         Assert.False(File.Exists(store.LogPath(Pane)));
         var archived = Assert.Single(Directory.GetFiles(_tempDir, $"{Pane}.previous-*.jsonl"));
         Assert.Contains("before the crash", await File.ReadAllTextAsync(archived), StringComparison.Ordinal);
-        Assert.Empty(await store.LoadAsync(Pane));
+        Assert.Empty((await store.TryLoadAsync(Pane))!);
     }
 
     [Fact]
@@ -197,8 +197,8 @@ public class SessionTranscriptLogTests : IDisposable
 
         await store.ArchiveAsync("pane-a");
 
-        Assert.Empty(await store.LoadAsync("pane-a"));
-        Assert.Equal("for b", Assert.Single(await store.LoadAsync("pane-b")).Text);
+        Assert.Empty((await store.TryLoadAsync("pane-a"))!);
+        Assert.Equal("for b", Assert.Single((await store.TryLoadAsync("pane-b"))!).Text);
     }
 
     [Fact]

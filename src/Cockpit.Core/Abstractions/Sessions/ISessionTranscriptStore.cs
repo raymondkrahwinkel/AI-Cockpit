@@ -21,9 +21,11 @@ public interface ISessionTranscriptStore
 
     /// <summary>
     /// The pane's rows as last recorded, in first-appearance order. Empty when nothing was ever recorded for this
-    /// pane or the log could not be read.
+    /// pane, and null when the log is there but could not be read — the same distinction
+    /// <see cref="ISessionStateStore.TryLoadAsync"/> draws (AC-513), so a repaint that silently shows nothing is
+    /// tellable from a pane that genuinely has no history.
     /// </summary>
-    Task<IReadOnlyList<TranscriptSnapshotEntry>> LoadAsync(string paneId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<TranscriptSnapshotEntry>?> TryLoadAsync(string paneId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Rolls this pane's log aside as a numbered "previous" generation (AC-947), for a launch that starts a new
