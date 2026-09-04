@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -14,8 +15,13 @@ internal static class McpInboxPiggyback
     public static CallToolResult Attach(CallToolResult result, IAgentTurnInboxDelivery? delivery, ILogger logger)
     {
         // No verified pane means no inbox to read: the shared app-lifetime key path, or the in-process tool loop.
-        // There is nobody to hand mail to and, as everywhere else on this line, nothing to guess from instead.
-        if (delivery is null || McpRequestContext.CurrentPaneId is not { } paneId)
+        // There is nobody to hand mail to, and nothing to guess from instead.
+
+        // AC-856: nor has the paired controller one — a cockpit on another machine, not a session here. Its
+        // reserved id is an authorization subject and never an addressee, and this route leaves the machine.
+        if (delivery is null
+            || McpRequestContext.CurrentPaneId is not { } paneId
+            || string.Equals(paneId, NodeCallerIdentity.PaneId, StringComparison.Ordinal))
         {
             return result;
         }
