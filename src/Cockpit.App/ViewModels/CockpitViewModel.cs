@@ -6817,6 +6817,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // notification would not merely be delayed but lost for good, on every session that ran one.
         if (e.PropertyName == nameof(SessionPanelViewModel.HasOutstandingBackgroundShells))
         {
+            // AC-1273: the same edge, read a second way — the moment from which a session that ended its turn to wait
+            // for that shell has nothing left to wait for. Unmeasured on the TTY route: every measurement behind this
+            // came from an SDK session, and the gap is not theirs alone. A shell starting disarms it again.
+            session.BackgroundShellsEndedUtc = session.HasOutstandingBackgroundShells
+                ? null
+                : DateTimeOffset.UtcNow;
+
             if (session.SessionStatus == SessionStatus.Done && !session.HasOutstandingBackgroundShells)
             {
                 NotifySessionFinished(session);
@@ -6862,6 +6869,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         foreach (var session in Sessions)
         {
+            _SweepStrandedBackgroundTask(session, now);
+
             if (!SessionIdleDecision.BecomesIdle(session.SessionStatus == SessionStatus.Done, session.LastActivityUtc, now, threshold))
             {
                 continue;
@@ -6875,6 +6884,68 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             _allSessionsIdleNotified = true;
             _ = _attentionNotifier?.NotifyAllSessionsIdleAsync();
+        }
+    }
+
+    // AC-1273: what the cockpit says to a session left standing after its background shell finished. It asks for the
+    // work to be picked up rather than only reporting a fact, because nothing else is going to reach that session —
+    // and it names the gap as the cockpit's own reading, so the session does not go looking for a mistake it made.
+    internal const string StrandedBackgroundTaskNotice =
+        "Your last background shell finished, and no completion notification followed it. That is a gap the cockpit "
+        + "has measured (AC-1273), not something you did wrong — but nothing else is going to tell you. Read that "
+        + "task's output yourself, and pick up whatever you said you would do once it was done.";
+
+    // AC-1273: says so when a session's background shell finished and nothing came of it. It rides the idle sweep's
+    // own tick rather than a timer of its own: what it looks for is a session that has done nothing for a while,
+    // which is exactly what that sweep already walks.
+    private void _SweepStrandedBackgroundTask(SessionPanelViewModel session, DateTimeOffset now)
+    {
+        if (session.BackgroundShellsEndedUtc is not { } endedAt)
+        {
+            return;
+        }
+
+        if (StrandedBackgroundTaskDecision.IsStranded(
+                session.SessionStatus is SessionStatus.Done or SessionStatus.Idle,
+                endedAt,
+                session.LastActivityUtc,
+                now,
+                StrandedBackgroundTaskDecision.DefaultGrace))
+        {
+            // Disarmed before the send, not after: one shell ending buys one notice, whatever becomes of it.
+            session.BackgroundShellsEndedUtc = null;
+            _ = _SendStrandedBackgroundTaskNoticeAsync(session);
+            return;
+        }
+
+        // It moved on by itself — the provider's notification landed after all, or the operator got there first.
+        // Disarmed rather than left standing, so what re-arms this is a later shell of its own and not a stale moment.
+        if (session.LastActivityUtc > endedAt)
+        {
+            session.BackgroundShellsEndedUtc = null;
+        }
+    }
+
+    // The poke itself, guarded the way a peer's urgent wake is (`WorkspaceAgentGateway._TryWake`): never over a
+    // question already standing in front of the operator, never at a pane that cannot take a prompt at all. Not
+    // awaited, for that path's own reason — an SDK send does not complete until the whole turn it starts does.
+    private async Task _SendStrandedBackgroundTaskNoticeAsync(SessionPanelViewModel session)
+    {
+        if (session.PendingConsent is not null || !session.CanTakeAPrompt)
+        {
+            return;
+        }
+
+        try
+        {
+            await session.SendPromptAsync(StrandedBackgroundTaskNotice);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(
+                exception,
+                "Session {Pane}: the notice about its finished background shell could not be sent.",
+                session.PaneId);
         }
     }
 
