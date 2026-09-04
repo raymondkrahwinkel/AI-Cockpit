@@ -6110,6 +6110,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // `TryStage` only checks fields and hands back the write, so a refusal here leaves nothing staged for that
         // row — the rows that did pass still get committed below.
         var pluginStaging = new PluginSettingsStaging();
+        var pluginLabels = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var row in PluginOptionsRows)
         {
             if (row.RawView is not IPluginSettingsView settingsView)
@@ -6117,9 +6118,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 continue;
             }
 
-            if (!pluginStaging.TryStage(settingsView, () => ((IPluginContributionSink)this).NotifySettingsSaved(row.PluginId), out var error))
+            var categoryTag = $"plugin:{row.PluginId}";
+            pluginLabels[categoryTag] = row.DisplayName;
+            if (!pluginStaging.TryStage(settingsView, categoryTag, () => ((IPluginContributionSink)this).NotifySettingsSaved(row.PluginId), out var error))
             {
-                failures.Add((row.DisplayName, error, $"plugin:{row.PluginId}"));
+                failures.Add((row.DisplayName, error, categoryTag));
             }
         }
 
@@ -6136,18 +6139,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             failures.Add(("MCP Servers", McpServers.StatusMessage, "mcp-servers"));
         }
 
-        if (failures.Count > 0)
-        {
-            PluginSettingsError = string.Join(" · ", failures.Select(failure => $"{failure.Label}: {failure.Reason}"));
-            OptionsApplyBlockedCategoryTag = failures[0].CategoryTag;
-            OptionsApplyBlocked = true;
-        }
-
         // AC-1108: Commit() below re-commits every plugin's settings, not only the tab opened — measured 51+
         // separate cockpit.json writes here on top of SaveAllSettingsAsync's thirteen; batched to one round-trip.
         await using (CockpitConfigWriteBatch.Begin())
         {
-            pluginStaging.Commit();
+            // AC-479: reported after the batch has run rather than before it, so a plugin that throws on its own
+            // write lands on the same list as one that refused — the others' writes have happened by then.
+            foreach (var (categoryTag, reason) in pluginStaging.Commit())
+            {
+                // TryGetValue, not the indexer: this runs while handling a plugin that already threw, and a
+                // staged write from outside the loop above would turn that into an unhandled one.
+                failures.Add((pluginLabels.TryGetValue(categoryTag, out var label) ? label : categoryTag, reason, categoryTag));
+            }
+
+            if (failures.Count > 0)
+            {
+                PluginSettingsError = string.Join(" · ", failures.Select(failure => $"{failure.Label}: {failure.Reason}"));
+                OptionsApplyBlockedCategoryTag = failures[0].CategoryTag;
+                OptionsApplyBlocked = true;
+            }
 
             // Left running when blocked: `_EndOptionsEdit` clears `PluginOptionsRows`, which is exactly the row the
             // operator still needs to fix and retry — ending the edit here would make a second Apply silently skip
