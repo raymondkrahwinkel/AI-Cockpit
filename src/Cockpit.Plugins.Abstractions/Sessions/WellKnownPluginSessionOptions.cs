@@ -38,6 +38,12 @@ public static class WellKnownPluginSessionOptions
     /// <remarks>
     /// Each driver applies it its own way (Claude/Codex CLI's <c>--append-system-prompt</c>, a leading system
     /// message for an OpenAI-compatible model). A provider that cannot inject a system prompt ignores it.
+    /// <para>
+    /// More than one thing rides this key (AC-147): the host also folds the delegation nudge onto it for a session
+    /// that mounted the orchestrator, appended rather than in place of whatever was already there. A driver must
+    /// therefore treat the value as one block of instructions to hand over whole, and never assume it is only the
+    /// briefing its own caller set.
+    /// </para>
     /// </remarks>
     public const string AppendSystemPrompt = "cockpit.append-system-prompt";
 
