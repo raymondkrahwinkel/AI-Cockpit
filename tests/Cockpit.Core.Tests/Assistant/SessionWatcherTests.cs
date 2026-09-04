@@ -43,7 +43,7 @@ public class SessionWatcherTests
         watcher.Probe = (_, since) =>
         {
             onProbe?.Invoke();
-            return pane.Gone
+            return Task.FromResult<WatchedPane?>(pane.Gone
                 ? null
                 : new WatchedPane(
                     "AC-640 worker",
@@ -52,7 +52,7 @@ public class SessionWatcherTests
                     pane.HasTranscript,
                     pane.Rows.Count,
                     [.. pane.Rows.Skip(since)],
-                    [.. pane.Rows.TakeLast(5)]);
+                    [.. pane.Rows.TakeLast(5)]));
         };
 
         return watcher;
@@ -68,12 +68,12 @@ public class SessionWatcherTests
     // Criterion 1: nothing armed, nothing spent. The probe is the only thing a tick can cost when the inbox is not
     // touched, and it is not called either.
     [Fact]
-    public void ATickOverNoArmedPanes_CostsNothing()
+    public async Task ATickOverNoArmedPanes_CostsNothing()
     {
         var probed = false;
         using var watcher = _Watcher(new FakePane(), onProbe: () => probed = true);
 
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
 
         Assert.False(probed);
         _inbox.DidNotReceiveWithAnyArgs().Deliver(default!, default!, default!, default!);
@@ -82,15 +82,15 @@ public class SessionWatcherTests
     // Criterion 2, and the cross-cutting requirement: one message, naming the pane, the event, and what the session
     // actually said — which is what turns "it stopped" into "it stopped and asked you something".
     [Fact]
-    public void APaneThatGoesFromBusyToIdle_IsReportedOnceWithItsLastLines()
+    public async Task APaneThatGoesFromBusyToIdle_IsReportedOnceWithItsLastLines()
     {
         var pane = new FakePane { Status = SessionStatus.Busy };
         using var watcher = _Watcher(pane);
-        Assert.True(watcher.Watch(Pane, [SessionWatchEvents.BusyToIdle], null, null).Ok);
+        Assert.True((await watcher.WatchAsync(Pane, [SessionWatchEvents.BusyToIdle], null, null)).Ok);
 
         pane.Rows.Add("Which base branch should I cut from?");
         pane.Status = SessionStatus.Idle;
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
 
         _Delivered(1, "busy-to-idle");
         _Delivered(1, Pane);
@@ -99,32 +99,32 @@ public class SessionWatcherTests
 
     // Criterion 3: a pane left sitting idle is not news every thirty seconds.
     [Fact]
-    public void APaneThatStaysIdle_IsNotReportedAgain()
+    public async Task APaneThatStaysIdle_IsNotReportedAgain()
     {
         var pane = new FakePane { Status = SessionStatus.Busy };
         using var watcher = _Watcher(pane);
-        watcher.Watch(Pane, [SessionWatchEvents.BusyToIdle], null, null);
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.BusyToIdle], null, null);
 
         pane.Status = SessionStatus.Done;
-        watcher.RunOnce();
-        watcher.RunOnce();
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
+        await watcher.RunOnceAsync();
+        await watcher.RunOnceAsync();
 
         _inbox.Received(1).Deliver(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
     }
 
     // Criterion 2: the one an agent can never report itself, because it cannot call a tool while it waits.
     [Fact]
-    public void APaneThatStopsOnAPermission_IsReported()
+    public async Task APaneThatStopsOnAPermission_IsReported()
     {
         var pane = new FakePane();
         using var watcher = _Watcher(pane);
-        watcher.Watch(Pane, [SessionWatchEvents.NeedsAttention], null, null);
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.NeedsAttention], null, null);
 
         pane.NeedsAttention = true;
         pane.Status = SessionStatus.NeedsAttention;
-        watcher.RunOnce();
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
+        await watcher.RunOnceAsync();
 
         _Delivered(1, "needs-attention");
     }
@@ -132,15 +132,15 @@ public class SessionWatcherTests
     // Criterion 4: gone is said once and the watch goes with the pane — a later tick over the same id is a no-op
     // rather than a second report, and there is no watch left to disarm.
     [Fact]
-    public void APaneThatDisappears_IsReportedOnceAndUnwatchesItself()
+    public async Task APaneThatDisappears_IsReportedOnceAndUnwatchesItself()
     {
         var pane = new FakePane();
         using var watcher = _Watcher(pane);
-        watcher.Watch(Pane, [SessionWatchEvents.Gone], null, null);
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.Gone], null, null);
 
         pane.Gone = true;
-        watcher.RunOnce();
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
+        await watcher.RunOnceAsync();
 
         _Delivered(1, "gone");
         Assert.False(watcher.Unwatch(Pane));
@@ -149,16 +149,16 @@ public class SessionWatcherTests
     // The other half of `gone`: a pane that said it had finished and was then closed is not a pane that fell over
     // quietly, and reporting it as one would be the watcher inventing a failure out of an ordinary tidy-up.
     [Fact]
-    public void APaneThatReportedFinishingAndIsThenClosed_IsNotReportedAsGone()
+    public async Task APaneThatReportedFinishingAndIsThenClosed_IsNotReportedAsGone()
     {
         var pane = new FakePane { Status = SessionStatus.Busy };
         using var watcher = _Watcher(pane);
-        watcher.Watch(Pane, [SessionWatchEvents.BusyToIdle, SessionWatchEvents.Gone], null, null);
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.BusyToIdle, SessionWatchEvents.Gone], null, null);
 
         pane.Status = SessionStatus.Done;
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
         pane.Gone = true;
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
 
         _Delivered(1, "busy-to-idle");
         _Delivered(0, "gone");
@@ -167,7 +167,7 @@ public class SessionWatcherTests
     // Criterion 5: disarmed means disarmed now, including out of the tick that is already running — which is what
     // unwatching from inside the probe proves.
     [Fact]
-    public void UnwatchingMidTick_StopsTheReportThatTickWasAbout()
+    public async Task UnwatchingMidTick_StopsTheReportThatTickWasAbout()
     {
         var pane = new FakePane { Status = SessionStatus.Busy };
         SessionWatcher? watcher = null;
@@ -176,9 +176,9 @@ public class SessionWatcherTests
         using (watcher)
         {
             pane.Status = SessionStatus.Busy;
-            watcher.Watch(Pane, [SessionWatchEvents.BusyToIdle], null, null);
+            await watcher.WatchAsync(Pane, [SessionWatchEvents.BusyToIdle], null, null);
             pane.Status = SessionStatus.Idle;
-            watcher.RunOnce();
+            await watcher.RunOnceAsync();
         }
 
         _inbox.DidNotReceiveWithAnyArgs().Deliver(default!, default!, default!, default!);
@@ -187,45 +187,45 @@ public class SessionWatcherTests
     // Criterion 6, all four refusals. Each one is refused at the call, not swallowed into a watch that then never
     // fires — a watch armed on nothing is worse than no watch, because it reads as coverage.
     [Fact]
-    public void ArmingWhatCannotBeWatched_IsRefused()
+    public async Task ArmingWhatCannotBeWatched_IsRefused()
     {
         var pane = new FakePane { HasTranscript = false };
         using var watcher = _Watcher(pane);
 
         pane.Gone = true;
-        Assert.False(watcher.Watch(Pane, [SessionWatchEvents.BusyToIdle], null, null).Ok);
+        Assert.False((await watcher.WatchAsync(Pane, [SessionWatchEvents.BusyToIdle], null, null)).Ok);
 
         pane.Gone = false;
-        Assert.False(watcher.Watch(Pane, [SessionWatchEvents.Stuck], null, null).Ok);
-        Assert.False(watcher.Watch(Pane, [SessionWatchEvents.Pattern], null, "error").Ok);
-        Assert.False(watcher.Watch(Pane, ["finished"], null, null).Ok);
-        Assert.False(watcher.Watch(Pane, [], null, null).Ok);
+        Assert.False((await watcher.WatchAsync(Pane, [SessionWatchEvents.Stuck], null, null)).Ok);
+        Assert.False((await watcher.WatchAsync(Pane, [SessionWatchEvents.Pattern], null, "error")).Ok);
+        Assert.False((await watcher.WatchAsync(Pane, ["finished"], null, null)).Ok);
+        Assert.False((await watcher.WatchAsync(Pane, [], null, null)).Ok);
 
         // And the same pane with a transcript takes the two that need one — so the refusals above are about the
         // transcript and not about the events being unimplemented.
         pane.HasTranscript = true;
-        Assert.True(watcher.Watch(Pane, [SessionWatchEvents.Stuck], null, null).Ok);
-        Assert.False(watcher.Watch(Pane, [SessionWatchEvents.Pattern], null, "(unclosed").Ok);
-        Assert.True(watcher.Watch(Pane, [SessionWatchEvents.Pattern], null, "err(or)?").Ok);
+        Assert.True((await watcher.WatchAsync(Pane, [SessionWatchEvents.Stuck], null, null)).Ok);
+        Assert.False((await watcher.WatchAsync(Pane, [SessionWatchEvents.Pattern], null, "(unclosed")).Ok);
+        Assert.True((await watcher.WatchAsync(Pane, [SessionWatchEvents.Pattern], null, "err(or)?")).Ok);
     }
 
     // Criterion 7: the safety net for a status field that is itself wrong. The status is held at Busy for the whole
     // test and nothing but the row count moves, so an implementation that consulted status could not pass this.
     [Fact]
-    public void APaneThatStopsWritingWhileStillClaimingToBeBusy_IsReportedStuck()
+    public async Task APaneThatStopsWritingWhileStillClaimingToBeBusy_IsReportedStuck()
     {
         var pane = new FakePane { Status = SessionStatus.Busy };
         pane.Rows.Add("working");
         using var watcher = _Watcher(pane);
-        watcher.Watch(Pane, [SessionWatchEvents.Stuck], afterMinutes: 10, null);
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.Stuck], afterMinutes: 10, null);
 
         _now = _now.AddMinutes(5);
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
         _Delivered(0, "stuck");
 
         _now = _now.AddMinutes(6);
-        watcher.RunOnce();
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
+        await watcher.RunOnceAsync();
 
         Assert.Equal(SessionStatus.Busy, pane.Status);
         _Delivered(1, "stuck");
@@ -234,21 +234,21 @@ public class SessionWatcherTests
     // Criterion 3 for `stuck`, the other way round: a pane that starts writing again has stopped being stuck, and is
     // news again if it stalls a second time.
     [Fact]
-    public void APaneThatStartsWritingAgain_CanBeReportedStuckASecondTime()
+    public async Task APaneThatStartsWritingAgain_CanBeReportedStuckASecondTime()
     {
         var pane = new FakePane();
         pane.Rows.Add("working");
         using var watcher = _Watcher(pane);
-        watcher.Watch(Pane, [SessionWatchEvents.Stuck], afterMinutes: 10, null);
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.Stuck], afterMinutes: 10, null);
 
         _now = _now.AddMinutes(11);
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
 
         pane.Rows.Add("still here");
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
 
         _now = _now.AddMinutes(11);
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
 
         _Delivered(2, "stuck");
     }
@@ -256,24 +256,65 @@ public class SessionWatcherTests
     // Criterion 8: matched on the rows that arrived after arming, never on the ones that were already there, and a
     // second distinct match is its own report rather than a repeat to be deduped.
     [Fact]
-    public void APatternMatches_OnlyRowsAddedAfterArming_AndEveryFreshOneReports()
+    public async Task APatternMatches_OnlyRowsAddedAfterArming_AndEveryFreshOneReports()
     {
         var pane = new FakePane();
         pane.Rows.Add("error: this one was already on screen");
         using var watcher = _Watcher(pane);
-        watcher.Watch(Pane, [SessionWatchEvents.Pattern], null, "error:");
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.Pattern], null, "error:");
 
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
         _Delivered(0, "pattern");
 
         pane.Rows.Add("error: the build fell over");
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
         _Delivered(1, "pattern");
         _Delivered(1, "the build fell over");
 
         pane.Rows.Add("error: and again");
-        watcher.RunOnce();
+        await watcher.RunOnceAsync();
         _Delivered(2, "pattern");
+    }
+
+    // AC-294: a TTY transcript is a file, and a file can go away — rotated, locked mid-write, or belonging to a
+    // session that just ended. It then reads back *short of what we already saw*, and turning that into "written
+    // nothing for ten minutes" would be a stall the watcher invented about a pane that may well be working.
+    [Fact]
+    public async Task APaneWhoseTranscriptShrinksAway_IsNotReportedStuck()
+    {
+        var pane = new FakePane { Status = SessionStatus.Busy };
+        pane.Rows.Add("working");
+        using var watcher = _Watcher(pane);
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.Stuck], afterMinutes: 10, null);
+
+        pane.Rows.Clear();
+        _now = _now.AddMinutes(11);
+        await watcher.RunOnceAsync();
+
+        // And still quiet a tick later: the row count is held at its high-water mark rather than followed down,
+        // so the lost record does not read as flat on the next look.
+        _now = _now.AddMinutes(11);
+        await watcher.RunOnceAsync();
+
+        _Delivered(0, "stuck");
+    }
+
+    // AC-294, the other side of that line and the case the event exists for: a session that came up and then never
+    // wrote a word sits flat at zero. It looks identical from the outside to one that finished — which is exactly
+    // why `stuck` counts rows instead of reading status — so this is the report worth having.
+    [Fact]
+    public async Task APaneThatNeverWritesAnything_IsStillReportedStuck()
+    {
+        var pane = new FakePane { Status = SessionStatus.Busy };
+        using var watcher = _Watcher(pane);
+
+        // Armed with nothing written yet: the pane has a transcript route, which is what arming asks about.
+        Assert.True((await watcher.WatchAsync(Pane, [SessionWatchEvents.Stuck], afterMinutes: 10, null)).Ok);
+
+        _now = _now.AddMinutes(11);
+        await watcher.RunOnceAsync();
+
+        _Delivered(1, "stuck");
     }
 
     // Asked of the container rather than of the class: an unregistered watcher resolves to null in `App.axaml.cs`,

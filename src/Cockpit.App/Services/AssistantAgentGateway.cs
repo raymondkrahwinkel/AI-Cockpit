@@ -637,7 +637,7 @@ internal sealed class AssistantAgentGateway(
         int? afterMinutes = null,
         string? pattern = null,
         CancellationToken cancellationToken = default) =>
-        _OnUiThreadAsync(() => Task.FromResult(watcher.Watch(paneId, events, afterMinutes, pattern)));
+        _OnUiThreadAsync(() => watcher.WatchAsync(paneId, events, afterMinutes, pattern));
 
     public Task<bool> UnwatchSessionAsync(string paneId, CancellationToken cancellationToken = default) =>
         _OnUiThreadAsync(() => Task.FromResult(watcher.Unwatch(paneId)));

@@ -633,6 +633,14 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     public SessionTranscriptSlice ReadTranscriptEntries(int count) =>
         _transcriptReader?.ReadEntries(_configuredProfile, StatusFile, count) ?? SessionTranscriptSlice.Empty;
 
+    // AC-294: whether this session has a record that can be read back at all — the two things
+    // `ReadTranscriptEntries` needs to name one. False for a provider with no reader (Codex tails activity but
+    // reads nothing back) and before the pty is up, which is what sets `StatusFile`.
+
+    // Asks the route, not the content: a session that has a record and has written nothing to it yet is exactly
+    // the one `stuck` exists for, so emptiness must not be the thing that refuses a watch on it.
+    public bool HasReadableTranscript => _transcriptReader is not null && StatusFile is not null;
+
     private void _OnStatusPollTick(object? sender, EventArgs e)
     {
         if (_statusTrackingStopped)

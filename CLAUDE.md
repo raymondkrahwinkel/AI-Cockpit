@@ -38,3 +38,30 @@ APIs kennen geen procesgrens — ze landen in het venster dat op dat moment focu
 machine van de operator over, ook als je ze op je eigen PID richt.
 
 Zie AC-1235.
+
+## SDK↔TTY: launch-time is gedeeld, turn-time niet
+
+Cockpit heeft twee routes naar dezelfde provider. Bij een SDK-sessie draait de cockpit de beurt zelf; bij
+een TTY-sessie draait de aanbieder zijn eigen TUI in de pane en bezit de cockpit precies één moment — de
+start — plus een bytestroom en, als de aanbieder een `IPluginTranscriptReader` levert, een transcript dat
+hij mag teruglezen.
+
+Beslisvraag bij elke feature die een sessieroute raakt:
+
+- **Raakt het de start?** Een launch-argument, een env-var, een bestand op schijf, een MCP-config, de
+  appended system prompt. Dan hoort het op **beide** routes, en één route overslaan is een gat — geen
+  follow-up-ticket waard maar meteen meenemen.
+- **Raakt het de beurt?** Een rij in het transcript, een turn-grens, ingrijpen halverwege. Dan is
+  SDK-only het **eindpunt**, niet een tussenstand. Er hoeft geen pariteit-ticket te komen, en er hoort
+  er ook geen te blijven staan.
+
+Wat daarmee permanent SDK-only is: het host-eigen transcript (schrijven, terugschilderen, trimmen), de
+leesniveaus, alles wat op turn-start of turn-end hangt, de lokale send-queue en elke mid-turn-interventie
+(model- of permissieswitch, een afbeelding overhandigen, een permissieprompt beantwoorden). Wat er
+daarentegen op beide routes hóórt te werken: de MCP-sets die een sessie krijgt, de statusline, het
+teruglezen van een transcript, tekst en Enter naar binnen duwen, en de delegatie-nudge.
+
+Een TTY-sessie heeft dus wél een transcript. "Geen transcript" is sinds AC-609 geen geldige reden meer
+om iets voor een TTY-pane te weigeren; "geen beurt die de host bezit" is dat wel.
+
+Zie AC-294.

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -127,12 +128,11 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
         // AC-927: what this session actually mounted, so the header names those servers rather than the checklist
         // it was launched from — which never holds the always-mounted and auto-mounted ones it also just got.
+        IReadOnlyList<string> mountedServerNames =
+            _hostToolset is { } toolset ? toolset.ConnectedServerNames : [.. mcpServers.Select(server => server.Name)];
         if (paneId is { Length: > 0 })
         {
-            mcpMounts?.Report(
-                paneId,
-                _hostToolset is { } toolset ? toolset.ConnectedServerNames : [.. mcpServers.Select(server => server.Name)],
-                _hostToolset?.ConnectionIssues);
+            mcpMounts?.Report(paneId, mountedServerNames, _hostToolset?.ConnectionIssues);
         }
 
         var contributed = sessionResources is null
@@ -142,7 +142,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // The host's typed permission-mode parameter (older than the plugin surface) folds into the options
         // map under the well-known key, but only when launch options carry none (see _MergePermissionMode) — else
         // a Claude session's launch-time "bypassPermissions" silently became "default".
-        var options = _StateAttendance(_MergePermissionMode(launchOptions, permissionMode));
+        var options = _WithDelegationNudge(
+            _StateAttendance(_MergePermissionMode(launchOptions, permissionMode)), mountedServerNames);
 
         // AC-190: resolved from the same effective options so Capabilities reports the real per-session
         // confinement, not the static registration vouch, once the isolation gate checks it post-start.
@@ -285,6 +286,29 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         {
             merged[WellKnownPluginSessionOptions.PermissionMode] = permissionMode;
         }
+
+        return merged;
+    }
+
+    // AC-147: the delegation nudge (#67) for a headless session that mounted the orchestrator. It rides the
+    // well-known appended-system-prompt option rather than a field of its own, since that option already reaches
+    // every plugin driver — so `IPluginSessionDriver` stays shut and no compiled plugin needs rebuilding.
+
+    // Gated on what was mounted, not what was selected: a server that failed to connect would otherwise leave this
+    // session told to call tools it has not got. Same fact the header is given above, so the two cannot disagree.
+    private static IReadOnlyDictionary<string, string>? _WithDelegationNudge(
+        IReadOnlyDictionary<string, string>? options, IReadOnlyList<string> mountedServerNames)
+    {
+        if (!mountedServerNames.Contains(DelegationMcp.ServerName, StringComparer.OrdinalIgnoreCase))
+        {
+            return options;
+        }
+
+        var merged = options is null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : new Dictionary<string, string>(options, StringComparer.Ordinal);
+        merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = DelegationSystemPrompt.AppendedTo(
+            options?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt));
 
         return merged;
     }
