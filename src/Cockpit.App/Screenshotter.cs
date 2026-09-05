@@ -1315,6 +1315,7 @@ internal static class Screenshotter
         cockpit.Projects.CardActions = new ViewModels.ProjectCardActions(
             cockpit.StartProjectSessionCommand,
             cockpit.NewSessionForProjectCommand,
+            cockpit.StartProjectJobCommand,
             cockpit.EditProjectCommand,
             cockpit.OpenProjectFolderCommand,
             cockpit.ShareProjectCommand,

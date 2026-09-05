@@ -97,6 +97,11 @@ public sealed record Project(string Id, string Name)
     // projects happen to be stored in.
     public DateTimeOffset? LastOpenedAt { get; init; }
 
+    // AC-491: the work this project offers to start, so a first session begins from a choice rather than an empty
+    // prompt box. Insertion order, and empty for a project that offers none — which behaves exactly as it did
+    // before this list existed.
+    public IReadOnlyList<ProjectJob> Jobs { get; init; } = [];
+
     // AC-1013: Whatever else belongs with this project, under operator-chosen labels (AC-295) — deliberately
     // not a field per kind of info, so a new kind never costs a model change. Empty for most projects.
     public IReadOnlyList<ProjectInfoField> AdditionalInfo { get; init; } = [];
@@ -125,7 +130,8 @@ public sealed record Project(string Id, string Name)
         builder.Append($"GitUrl = {GitUrl}, DefaultProfileLabel = {DefaultProfileLabel}, BehaviorPrompt = {BehaviorPrompt}, ");
         builder.Append($"IsolateInWorktreeByDefault = {IsolateInWorktreeByDefault}, McpOverlay = {McpOverlay}, Resources = {Resources}, ");
         builder.Append($"MemoryRef = {MemoryRef}, LogoPath = {LogoPath}, LastOpenedAt = {LastOpenedAt}, AdditionalInfo = {AdditionalInfo}, ");
-        builder.Append($"HasAdditionalInfo = {HasAdditionalInfo}, ProjectPassword = {(ProjectPassword is null ? null : ProjectInfoField.Mask)}, ");
+        builder.Append($"HasAdditionalInfo = {HasAdditionalInfo}, Jobs = {Jobs}, ");
+        builder.Append($"ProjectPassword = {(ProjectPassword is null ? null : ProjectInfoField.Mask)}, ");
         builder.Append($"Category = {Category}, Assistant = {Assistant}, PluginFields = {PluginFields}, SharedSourceName = {SharedSourceName} }}");
         return builder.ToString();
     }

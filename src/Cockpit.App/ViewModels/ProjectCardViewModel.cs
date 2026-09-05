@@ -21,6 +21,12 @@ public sealed partial class ProjectCardViewModel(
     // last checked — a visible nudge only, never an automatic overwrite of an unsaved local edit.
     public bool HasRemoteChanges { get; } = hasRemoteChanges;
 
+    // AC-491: the work this project offers, each paired with the project so one button can start it. Empty for a
+    // project that offers none, which is what keeps such a card exactly as it was.
+    public IReadOnlyList<ProjectJobChoice> Jobs { get; } = [.. project.Jobs.Select(job => new ProjectJobChoice(project, job))];
+
+    public bool HasJobs => Jobs.Count > 0;
+
     // AC-620: whether the launcher's own pill badge should show at all — never for "● This machine" (a local
     // project says nothing a launcher card needs to add), only for a bound one.
     public bool IsShared => OriginBadge.StartsWith('◆');

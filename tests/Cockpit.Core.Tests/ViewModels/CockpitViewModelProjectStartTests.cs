@@ -67,6 +67,42 @@ public class CockpitViewModelProjectStartTests
     }
 
     [Fact]
+    public async Task StartProjectJob_OpensTheDialogCarryingThatJobsOwnPrompt()
+    {
+        var dialogs = Substitute.For<ISessionDialogService>();
+        dialogs.ShowNewSessionDialogAsync(Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>(), Arg.Any<Project?>())
+            .Returns(Confirmed());
+        var vm = NewVm(dialogs);
+        var job = new ProjectJob("Process this month's invoices", "changes nothing · reports only");
+        var project = Project.Create("Invoices") with { Jobs = [job] };
+
+        await vm.StartProjectJobCommand.ExecuteAsync(new ProjectJobChoice(project, job));
+
+        // The prompt itself, not merely that a dialog opened on the project — the plain Start does that much too.
+        await dialogs.Received(1).ShowNewSessionDialogAsync(
+            Arg.Is<NewSessionPrefill?>(prefill => prefill!.InitialPrompt == job.Prompt),
+            Arg.Any<bool>(),
+            Arg.Is<Project?>(passed => passed == project));
+    }
+
+    [Fact]
+    public async Task NewSessionForProject_OnAProjectOfferingNoJobs_CarriesNoPrefillAtAll()
+    {
+        var dialogs = Substitute.For<ISessionDialogService>();
+        dialogs.ShowNewSessionDialogAsync(Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>(), Arg.Any<Project?>())
+            .Returns(Confirmed());
+        var vm = NewVm(dialogs);
+        var project = Project.Create("Cockpit");
+
+        await vm.NewSessionForProjectCommand.ExecuteAsync(project);
+
+        // AC-491 reaches the start path of every session, this one included: a project that offers no work must
+        // reach the dialog exactly as it did before jobs existed — nothing pre-filled, not even an empty prompt.
+        await dialogs.Received(1).ShowNewSessionDialogAsync(
+            null, Arg.Any<bool>(), Arg.Is<Project?>(passed => passed == project));
+    }
+
+    [Fact]
     public async Task EditProject_OpensTheEditorForThatProject()
     {
         var dialogs = Substitute.For<ISessionDialogService>();

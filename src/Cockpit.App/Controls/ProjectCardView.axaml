@@ -111,6 +111,27 @@
                        FontSize="11"
                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
 
+            <!-- AC-491: the work this project offers, so the first click is a choice rather than an empty prompt
+                 box. Each one says what it changes before it is pressed — the question this audience asks first,
+                 and answering it up front is what makes a first click possible at all. Above Start, which stays
+                 for typing your own. -->
+            <ItemsControl ItemsSource="{Binding Jobs}" IsVisible="{Binding HasJobs}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ProjectJobChoice">
+                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="10,7" Margin="0,0,0,4"
+                                Command="{Binding $parent[ItemsControl].((vm:ProjectCardViewModel)DataContext).Actions.StartJob}"
+                                CommandParameter="{Binding}">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{Binding Job.Prompt}" FontSize="12" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Job.BlastRadius}" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
             <!-- Start only promises a start when the project can actually deliver one. Without a profile it has
                  nothing to run on, and the card asks for the missing piece instead — quietly, and not on an Accent
                  button (AC-772 criterion 12): the two used to be equally loud, so "finish setting up" read as a

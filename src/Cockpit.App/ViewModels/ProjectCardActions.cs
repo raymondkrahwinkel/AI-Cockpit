@@ -8,6 +8,8 @@ namespace Cockpit.App.ViewModels;
 public sealed record ProjectCardActions(
     ICommand Start,
     ICommand StartWithOptions,
+    // AC-491: takes a `ProjectJobChoice`, not a project — the job's prompt is half of what it needs.
+    ICommand StartJob,
     ICommand Edit,
     ICommand OpenFolder,
     ICommand ToggleSharing,
