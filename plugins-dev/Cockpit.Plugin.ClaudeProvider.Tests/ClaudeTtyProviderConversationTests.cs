@@ -89,6 +89,58 @@ public class ClaudeTtyProviderConversationTests : IDisposable
         Assert.Equal([PluginConversationId.Known("session-a")], reported);
     }
 
+    // AC-1091: the failure this ticket exists for — two TTY sessions launched at the same instant under the
+    // same profile used to both go silent, because the scan saw two new files and could not tell them apart.
+    // Each session's statusline snapshot names its own transcript, so correlating through it resolves both.
+    [Fact]
+    public async Task WatchConversationIdAsync_CorrelatesEachSession_WhenTwoStartSimultaneouslyUnderTheSameProfile()
+    {
+        var projectDir = _CreateProjectDir();
+        var transcriptA = Path.Combine(projectDir, "session-a.jsonl");
+        var transcriptB = Path.Combine(projectDir, "session-b.jsonl");
+        File.WriteAllText(transcriptA, string.Empty);
+        File.WriteAllText(transcriptB, string.Empty);
+
+        var reportedA = new List<PluginConversationId>();
+        var reportedB = new List<PluginConversationId>();
+
+        await Task.WhenAll(
+            ClaudeTtyProvider.WatchConversationIdAsync(
+                _stateDirectory, NoBaseline, c => reportedA.Add(c), _WriteStatusFile(transcriptA),
+                pollInterval: FastPollInterval, timeout: TimeSpan.FromSeconds(2)),
+            ClaudeTtyProvider.WatchConversationIdAsync(
+                _stateDirectory, NoBaseline, c => reportedB.Add(c), _WriteStatusFile(transcriptB),
+                pollInterval: FastPollInterval, timeout: TimeSpan.FromSeconds(2)));
+
+        Assert.Equal([PluginConversationId.Known("session-a")], reportedA);
+        Assert.Equal([PluginConversationId.Known("session-b")], reportedB);
+    }
+
+    // The other side of the same fix: when correlation cannot resolve anything (no usable snapshot) and the
+    // scan is ambiguous, the watch must still stay silent instead of guessing the newest file.
+    [Fact]
+    public async Task WatchConversationIdAsync_ReportsNothing_WhenStatusFileNeverCorrelatesAndTranscriptsAreAmbiguous()
+    {
+        var projectDir = _CreateProjectDir();
+        File.WriteAllText(Path.Combine(projectDir, "session-a.jsonl"), string.Empty);
+        File.WriteAllText(Path.Combine(projectDir, "session-b.jsonl"), string.Empty);
+        var reported = new List<PluginConversationId>();
+        var neverWrittenStatusFile = Path.Combine(_stateDirectory, "never-written-status.json");
+
+        await ClaudeTtyProvider.WatchConversationIdAsync(
+            _stateDirectory, NoBaseline, c => reported.Add(c), neverWrittenStatusFile,
+            pollInterval: FastPollInterval, timeout: TimeSpan.FromSeconds(2));
+
+        Assert.Empty(reported);
+    }
+
+    private string _WriteStatusFile(string transcriptPath)
+    {
+        var statusFile = Path.Combine(_stateDirectory, $"{Guid.NewGuid():N}.json");
+        File.WriteAllText(statusFile, JsonSerializer.Serialize(new { transcript_path = transcriptPath }));
+        return statusFile;
+    }
+
     [Fact]
     public void BuildLaunch_WithNoReportConversationIdCallback_DoesNotThrow()
     {
