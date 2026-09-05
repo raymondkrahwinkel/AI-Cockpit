@@ -60,6 +60,8 @@ internal sealed class DepotMirrorPushEngine : IDepotMirrorPushEngine, ISingleton
             return DepotPushResult.Success([], [], [], []);
         }
 
+        // Measured 2026-09-05 against a disposable Depot project: a stale baseChecksum against an already-
+        // deleted path comes back conflict, not written — a Retained file (AC-281) can't be revived this way.
         var writeResult = await _client.WriteManyAsync(
             serverName, project,
             candidates.Select(c => new DepotWriteEntry(c.Path, c.Content, c.BaseChecksum)).ToList(),
