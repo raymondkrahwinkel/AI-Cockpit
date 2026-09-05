@@ -165,6 +165,8 @@ internal sealed class DepotMirrorMergeEngine : IDepotMirrorMergeEngine, ISinglet
         {
             ShadowSyncStorage.WriteWorkingFile(mirror.Path, path, mergeResult.StandardOutput);
             ShadowSyncStorage.WriteBaseFile(mirror.Path, path, remote.Content);
+            // Size/Mtime deliberately stay the pre-merge values, not the merged file's own — AC-282's push decides
+            // whether there is anything local to send by comparing the working file's stat against these.
             updatedIndex[path] = oldEntry with { BaseChecksum = remote.Checksum ?? string.Empty };
             return null;
         }
