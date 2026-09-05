@@ -135,6 +135,32 @@ public interface IAssistantAgentGateway
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The current values of the fields <see cref="UpdateProjectAsync"/> can change, for building a before/after
+    /// consent card ahead of the call — null when <paramref name="projectId"/> names no project.
+    /// </summary>
+    Task<AssistantProjectSnapshot?> GetProjectSnapshotAsync(string projectId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Changes named fields on an existing project (AC-1059) — the same field set <see cref="CreateProjectAsync"/>
+    /// accepts, nothing more. A null parameter leaves that field exactly as stored, the same "only the keys you
+    /// name change" contract <c>start_agent</c>'s <c>options</c> carries; an empty string clears a text field, and
+    /// <paramref name="pluginFields"/> upserts by key rather than replacing the whole map. An unknown
+    /// <paramref name="projectId"/> is refused rather than throwing.
+    /// </summary>
+    Task<AssistantProjectUpdateResult> UpdateProjectAsync(
+        string projectId,
+        string? name = null,
+        string? description = null,
+        string? sourceDirectory = null,
+        string? defaultProfileLabel = null,
+        string? behaviorPrompt = null,
+        bool? isolateInWorktreeByDefault = null,
+        IReadOnlyList<string>? enabledMcpServerNames = null,
+        string? category = null,
+        IReadOnlyDictionary<string, string>? pluginFields = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Puts a clarifying question to the operator as a card in the assistant's own chat window (AC-955): radio
     /// buttons (<paramref name="multiSelect"/> false) or checkboxes, plus an optional "Other, namely…" row. Returns
     /// as soon as shown — the card sits until the UI's <c>SubmitQuestionAnswersCommand</c> resolves it, which this cannot await.
@@ -195,6 +221,29 @@ public sealed record AssistantProjectCreateResult(bool Ok, string? ProjectId, st
     public static AssistantProjectCreateResult Created(string projectId, string name) => new(true, projectId, name, null);
 
     public static AssistantProjectCreateResult Refused(string error) => new(false, null, null, error);
+}
+
+// AC-1059: a project's current values, for the before/after consent card `update_project` raises ahead of
+// changing anything — the same field set `CreateProjectAsync` accepts, nothing a caller could not already set.
+public sealed record AssistantProjectSnapshot(
+    string Id,
+    string Name,
+    string? Description,
+    string? SourceDirectory,
+    string? DefaultProfileLabel,
+    string? BehaviorPrompt,
+    bool IsolateInWorktreeByDefault,
+    IReadOnlyList<string>? EnabledMcpServerNames,
+    string? Category,
+    IReadOnlyDictionary<string, string> PluginFields);
+
+// What came of changing an existing project (AC-1059). Same shape and same reason as `AssistantProjectCreateResult`
+// — a refusal is a sentence the assistant says, not an exception it fails on.
+public sealed record AssistantProjectUpdateResult(bool Ok, string? ProjectId, string? Name, string? Error)
+{
+    public static AssistantProjectUpdateResult Updated(string projectId, string name) => new(true, projectId, name, null);
+
+    public static AssistantProjectUpdateResult Refused(string error) => new(false, null, null, error);
 }
 
 // What came of raising a structured question card (AC-955). Same shape and same reason as `AgentStopResult` — a

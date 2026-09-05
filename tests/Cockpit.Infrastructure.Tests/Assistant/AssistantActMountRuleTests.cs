@@ -460,6 +460,29 @@ public sealed class AssistantActMountRuleTests : IDisposable
             return Task.FromResult(AssistantProjectCreateResult.Created("local-1", name));
         }
 
+        // Not logged to `Calls` — `UpdateProjectAsync` below is "the" call the mount-rule test counts per tool,
+        // the same way `list_projects`' own read gateway sits outside this one.
+        public Task<AssistantProjectSnapshot?> GetProjectSnapshotAsync(string projectId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<AssistantProjectSnapshot?>(new AssistantProjectSnapshot(
+                projectId, "Project", null, null, null, null, false, null, null, new Dictionary<string, string>()));
+
+        public Task<AssistantProjectUpdateResult> UpdateProjectAsync(
+            string projectId,
+            string? name = null,
+            string? description = null,
+            string? sourceDirectory = null,
+            string? defaultProfileLabel = null,
+            string? behaviorPrompt = null,
+            bool? isolateInWorktreeByDefault = null,
+            IReadOnlyList<string>? enabledMcpServerNames = null,
+            string? category = null,
+            IReadOnlyDictionary<string, string>? pluginFields = null,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"UpdateProjectAsync({projectId})");
+            return Task.FromResult(AssistantProjectUpdateResult.Updated(projectId, name ?? "Project"));
+        }
+
         public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
             string question, IReadOnlyList<(string Label, string? Description)> options, bool multiSelect, bool allowOther,
             string? header, CancellationToken cancellationToken = default)

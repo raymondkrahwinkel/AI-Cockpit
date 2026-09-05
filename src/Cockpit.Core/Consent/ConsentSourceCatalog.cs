@@ -59,6 +59,11 @@ public static class ConsentSourceCatalog
     // (a behaviour prompt among them), and an operator may trust one without the other.
     public const string AssistantProjectCreate = "Assistant project create";
 
+    // The assistant changing an existing project's fields (AC-1059) — its own label, not `AssistantProjectCreate`:
+    // that one writes a record nothing yet depends on, this one can change what a session already running there
+    // inherits on its next spawn, so an operator may trust one without the other.
+    public const string AssistantProjectUpdate = "Assistant project update";
+
     // The assistant opening a web address in the operator's browser (AC-587) — arbitrary egress, and its own
     // label for the same reason every other assistant source above has one: an operator who lets the assistant
     // leave notes or hand off a session unasked has not thereby agreed to it reaching out to any URL it names.
@@ -69,7 +74,7 @@ public static class ConsentSourceCatalog
     public static IReadOnlyList<string> HostSources { get; } =
     [
         TerminalMcp, DiagramMcp, WhiteboardMcp, WireframeMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
-        AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, AssistantProjectCreate, AssistantOpenUrl, Debug,
+        AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, AssistantProjectCreate, AssistantProjectUpdate, AssistantOpenUrl, Debug,
     ];
 
     // The bypass key: the host-stamped `pluginId` and the caller's own `label` under a `plugin:` prefix, or the

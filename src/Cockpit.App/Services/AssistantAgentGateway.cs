@@ -928,15 +928,9 @@ internal sealed class AssistantAgentGateway(
         // AC-799 review finding 3: validated by label against `list_profiles`, same rule `SpawnAsync` and
         // `BindSharedProjectAsync` hold `profile` to. Needed because `SelectedProfileLabel` carries no guard of
         // its own — normally a human can only pick from a bound combo box, a guarantee lost when set directly.
-        if (!string.IsNullOrWhiteSpace(defaultProfileLabel))
+        if (await _RefuseIfUnknownProfileLabelAsync(defaultProfileLabel, cancellationToken).ConfigureAwait(false) is { } unknownProfileError)
         {
-            var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
-            if (!known.Any(candidate => string.Equals(candidate.Label, defaultProfileLabel.Trim(), StringComparison.OrdinalIgnoreCase)))
-            {
-                var labels = known.Count == 0 ? "none are configured" : string.Join(", ", known.Select(candidate => $"'{candidate.Label}'"));
-                return AssistantProjectCreateResult.Refused(
-                    $"There is no profile called '{defaultProfileLabel}'. The profiles this cockpit knows are: {labels}.");
-            }
+            return AssistantProjectCreateResult.Refused(unknownProfileError);
         }
 
         var project = await _OnUiThreadAsync(async () =>
@@ -977,6 +971,167 @@ internal sealed class AssistantAgentGateway(
 
         var stored = await _OnUiThreadAsync(() => cockpit.Projects.AddNewProjectAsync(withDynamicFields)).ConfigureAwait(false);
         return AssistantProjectCreateResult.Created(stored.Id, stored.Name);
+    }
+
+    // AC-1059: read side of `UpdateProjectAsync`, so the MCP tool can build a before/after card without this
+    // gateway ever raising consent itself (that stays the caller's job, same split every other tool here keeps).
+    public Task<AssistantProjectSnapshot?> GetProjectSnapshotAsync(string projectId, CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(() =>
+        {
+            var project = cockpit.Projects.Projects.FirstOrDefault(candidate => candidate.Id == projectId);
+            return Task.FromResult(project is null
+                ? null
+                : new AssistantProjectSnapshot(
+                    project.Id,
+                    project.Name,
+                    project.Description,
+                    project.SourceDirectory,
+                    project.DefaultProfileLabel,
+                    project.BehaviorPrompt,
+                    project.IsolateInWorktreeByDefault,
+                    project.McpOverlay.EnabledServerNames,
+                    project.Category,
+                    project.PluginFields));
+        });
+
+    // AC-1059: patches only the named fields onto the stored project, never `ProjectDialogViewModel.ToProject()`'s
+    // full rebuild — the shape that silently dropped `Resources` (AC-483) and still drops `LastOpenedAt` today.
+    public async Task<AssistantProjectUpdateResult> UpdateProjectAsync(
+        string projectId,
+        string? name = null,
+        string? description = null,
+        string? sourceDirectory = null,
+        string? defaultProfileLabel = null,
+        string? behaviorPrompt = null,
+        bool? isolateInWorktreeByDefault = null,
+        IReadOnlyList<string>? enabledMcpServerNames = null,
+        string? category = null,
+        IReadOnlyDictionary<string, string>? pluginFields = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (name is not null && string.IsNullOrWhiteSpace(name))
+        {
+            return AssistantProjectUpdateResult.Refused("A project needs a name; leave `name` out to keep its current one.");
+        }
+
+        if (_RefuseUnlessValidOptionalDirectory(sourceDirectory) is { } directoryError)
+        {
+            return AssistantProjectUpdateResult.Refused(directoryError);
+        }
+
+        if (_RefuseUnknownPluginFieldKeys(pluginFields) is { } unknownFieldError)
+        {
+            return AssistantProjectUpdateResult.Refused(unknownFieldError);
+        }
+
+        if (await _RefuseIfUnknownProfileLabelAsync(defaultProfileLabel, cancellationToken).ConfigureAwait(false) is { } unknownProfileError)
+        {
+            return AssistantProjectUpdateResult.Refused(unknownProfileError);
+        }
+
+        var stored = await _OnUiThreadAsync(() =>
+            Task.FromResult(cockpit.Projects.Projects.FirstOrDefault(candidate => candidate.Id == projectId))).ConfigureAwait(false);
+        if (stored is null)
+        {
+            return AssistantProjectUpdateResult.Refused($"There is no project with id '{projectId}'. Call list_projects to see what exists.");
+        }
+
+        var updated = stored;
+
+        if (name is not null)
+        {
+            updated = updated with { Name = name.Trim() };
+        }
+
+        if (description is not null)
+        {
+            updated = updated with { Description = description.Length == 0 ? null : description };
+        }
+
+        // Only item 0 changes (AC-938: a project can carry more than one repository) — the rest of
+        // `SourceDirectories` is carried through untouched, the same restriction `CreateProjectAsync`'s own doc
+        // string states for the folder it sets.
+        if (sourceDirectory is not null)
+        {
+            var repositories = updated.SourceDirectories;
+            updated = updated with
+            {
+                SourceDirectories = sourceDirectory.Length == 0
+                    ? [.. repositories.Skip(1)]
+                    : [
+                        repositories.Count > 0 ? repositories[0] with { Path = sourceDirectory } : new ProjectRepository(sourceDirectory),
+                        .. repositories.Skip(1),
+                    ],
+            };
+        }
+
+        if (defaultProfileLabel is not null)
+        {
+            updated = updated with { DefaultProfileLabel = defaultProfileLabel.Length == 0 ? null : defaultProfileLabel.Trim() };
+        }
+
+        if (behaviorPrompt is not null)
+        {
+            updated = updated with { BehaviorPrompt = behaviorPrompt.Length == 0 ? null : behaviorPrompt };
+        }
+
+        if (isolateInWorktreeByDefault is { } isolate)
+        {
+            updated = updated with { IsolateInWorktreeByDefault = isolate };
+        }
+
+        // Same `[]`-means-"every server" collapse `CreateProjectAsync` applies (AC-799 review finding 1), so the
+        // two tools never disagree about what an explicit empty list means.
+        if (enabledMcpServerNames is not null)
+        {
+            updated = updated with
+            {
+                McpOverlay = updated.McpOverlay with { EnabledServerNames = enabledMcpServerNames.Count == 0 ? null : enabledMcpServerNames },
+            };
+        }
+
+        if (category is not null)
+        {
+            updated = updated with { Category = category.Length == 0 ? null : category };
+        }
+
+        // Upserts by key rather than replacing the whole map: naming one plugin field must not drop a sibling one
+        // the caller never mentioned — the same partial-update contract this whole method carries, one level deeper.
+        if (pluginFields is not null)
+        {
+            var merged = new Dictionary<string, string>(updated.PluginFields, StringComparer.Ordinal);
+            foreach (var (key, value) in pluginFields)
+            {
+                merged[key] = value;
+            }
+
+            updated = updated with { PluginFields = merged };
+        }
+
+        var result = await _OnUiThreadAsync(() => cockpit.Projects.UpdateStoredProjectAsync(updated)).ConfigureAwait(false);
+        return result is null
+            ? AssistantProjectUpdateResult.Refused($"There is no project with id '{projectId}'. Call list_projects to see what exists.")
+            : AssistantProjectUpdateResult.Updated(result.Id, result.Name);
+    }
+
+    // AC-799 finding 3 / AC-1059: shared by `CreateProjectAsync` and `UpdateProjectAsync` — a label matched
+    // against `list_profiles`, since neither view-model property carries a guard of its own. Null when
+    // `profileLabel` is blank: leaving it out, or clearing it, needs no profile to exist.
+    private async Task<string?> _RefuseIfUnknownProfileLabelAsync(string? profileLabel, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(profileLabel))
+        {
+            return null;
+        }
+
+        var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (known.Any(candidate => string.Equals(candidate.Label, profileLabel.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        var labels = known.Count == 0 ? "none are configured" : string.Join(", ", known.Select(candidate => $"'{candidate.Label}'"));
+        return $"There is no profile called '{profileLabel}'. The profiles this cockpit knows are: {labels}.";
     }
 
     // The same registry and per-source timeout `list_shared_projects` itself reads through
