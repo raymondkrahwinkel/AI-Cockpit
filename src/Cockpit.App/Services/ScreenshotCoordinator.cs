@@ -1,8 +1,11 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using Material.Icons;
 using Microsoft.Extensions.Logging;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
@@ -10,6 +13,7 @@ using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
+using Cockpit.Plugins.Abstractions.CompanionTools;
 
 namespace Cockpit.App.Services;
 
@@ -93,6 +97,45 @@ public sealed class ScreenshotCoordinator : ISingletonService
     // trip, and this coordinator is built in the same statement that wires the composer's button — so whoever
     // read it there has to come back and read it again.
     public Task SupportSettled => _capture.SupportSettled;
+
+    // AC-239: the companion window's contribution, through AC-238's first-party host — this coordinator's
+    // second consumer, alongside the global hotkey and the composer button. There is no panel of its own to
+    // name, so it takes the session in view, exactly as the hotkey does.
+    public CompanionToolRegistration CreateCompanionTool() =>
+        new("cockpit.screenshot", "Screenshot", _ => _CreateCompanionToolView())
+        {
+            IconKind = MaterialIconKind.Monitor,
+        };
+
+    // Never hidden on an unsupported platform (AC-238's ShowWhenDisabled reasoning): in the companion window,
+    // hidden and broken look the same, so this stays put and greys out with a reason instead.
+    private Control _CreateCompanionToolView()
+    {
+        var button = new Button
+        {
+            Content = CockpitIcons.Icon(MaterialIconKind.Monitor),
+            Padding = new Thickness(7, 6),
+        };
+        ToolTip.SetShowOnDisabled(button, true);
+        AutomationProperties.SetName(button, "Screenshot");
+        button.Click += (_, _) => _ = CaptureIntoSelectedSessionAsync();
+
+        void Refresh()
+        {
+            button.IsEnabled = IsSupported;
+            ToolTip.SetTip(button, IsSupported
+                ? "Take a screenshot into the active session"
+                : "Screen capture is not available on this platform.");
+        }
+
+        Refresh();
+
+        // Support settles after a D-Bus round trip on Linux (AC-326); this button can exist before that
+        // answers, same as the composer's own (`_RewireScreenshotsWhenSupportSettlesAsync`).
+        _ = SupportSettled.ContinueWith(_ => Dispatcher.UIThread.Post(Refresh), TaskScheduler.Default);
+
+        return button;
+    }
 
     // Runs the picker and puts the result on the session in view — the global hotkey's path, which has no
     // session of its own to name and so takes the selected one, exactly as push-to-talk does.
