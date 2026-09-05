@@ -4,13 +4,15 @@ namespace Cockpit.Plugin.GitHubActions.Tests;
 // and the browser-open URL guard — all without shelling out.
 public class CiWorkflowRunClientTests
 {
-    [Fact]
-    public void RunListArguments_QueriesTheBranchesLatestRunAsJson()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    public void RunListArguments_QueriesTheBranchesRecentRunsAsJson(int limit)
     {
         Assert.Equal(
-            ["run", "list", "--branch", "feature/AC-52", "--limit", "1",
-             "--json", "workflowName,headBranch,event,status,conclusion,createdAt,url"],
-            CiWorkflowRunClient.RunListArguments("feature/AC-52"));
+            ["run", "list", "--branch", "feature/AC-52", "--limit", limit.ToString(),
+             "--json", "workflowName,headBranch,event,status,conclusion,createdAt,updatedAt,url"],
+            CiWorkflowRunClient.RunListArguments("feature/AC-52", limit));
     }
 
     [Fact]
@@ -53,6 +55,26 @@ public class CiWorkflowRunClientTests
     public void ParseRuns_ToleratesEmptyOrInvalidJson(string json, bool _)
     {
         Assert.Empty(CiWorkflowRunClient.ParseRuns(json));
+    }
+
+    [Fact]
+    public void ParseRuns_DerivesDurationFromCreatedAndUpdatedAt()
+    {
+        const string json = """
+            [{ "workflowName": "CI", "headBranch": "main", "event": "push", "status": "completed",
+               "conclusion": "success", "createdAt": "2026-07-18T00:00:00Z", "updatedAt": "2026-07-18T00:03:30Z",
+               "url": "https://github.com/owner/repo/actions/runs/1" }]
+            """;
+
+        var run = Assert.Single(CiWorkflowRunClient.ParseRuns(json));
+
+        Assert.Equal(TimeSpan.FromMinutes(3.5), run.Duration);
+    }
+
+    [Fact]
+    public void Duration_IsUnknownWithoutBothTimestamps()
+    {
+        Assert.Null(new CiRun("CI", "main", "push", "in_progress", "", CreatedAt: null, "https://github.com/o/r/actions/runs/1").Duration);
     }
 
     [Theory]
