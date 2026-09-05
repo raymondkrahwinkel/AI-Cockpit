@@ -97,7 +97,7 @@ internal sealed class PluginStatusBarHost : StackPanel
 
     private static Control _BuildPanel(ISupervisedActivitySource source, Flyout flyout)
     {
-        var panel = new StackPanel { Spacing = 6, MinWidth = 300, Margin = new Thickness(4) };
+        var panel = new StackPanel { Spacing = 8, MinWidth = 300, Margin = new Thickness(8) };
         panel.Children.Add(new TextBlock { Text = source.Label, FontWeight = FontWeight.SemiBold });
 
         var activities = source.Snapshot();
@@ -120,7 +120,14 @@ internal sealed class PluginStatusBarHost : StackPanel
         info.Children.Add(new TextBlock { Text = activity.Title, FontSize = 12 });
         foreach (var detail in activity.Details)
         {
-            info.Children.Add(new TextBlock { Text = $"{detail.Label}: {detail.Value}", FontSize = 11, Opacity = 0.7 });
+            var detailText = new TextBlock
+            {
+                Text = $"{detail.Label}: {_Shorten(detail.Value)}",
+                FontSize = 11,
+                Opacity = 0.7,
+            };
+            ToolTip.SetTip(detailText, detail.Value);
+            info.Children.Add(detailText);
         }
 
         var kill = new Button { Content = "Kill", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
@@ -145,8 +152,14 @@ internal sealed class PluginStatusBarHost : StackPanel
         DockPanel.SetDock(kill, Dock.Right);
         row.Children.Add(kill);
         row.Children.Add(info);
-        return new Border { Padding = new Thickness(0, 4), Child = row };
+        return new Border { Padding = new Thickness(0, 6), Child = row };
     }
+
+    // A checkout path can run well past the flyout's width; a middle-ellipsis keeps both ends (drive/root and
+    // the final segment) legible, which is where a path's identifying part usually sits. The full value is
+    // one tooltip away; a naturally short value (a port, a pod name) just passes through untouched.
+    private static string _Shorten(string value, int maxLength = 40) =>
+        value.Length <= maxLength ? value : $"{value[..(maxLength / 2)]}…{value[^(maxLength / 2)..]}";
 
     private void _Clear()
     {
