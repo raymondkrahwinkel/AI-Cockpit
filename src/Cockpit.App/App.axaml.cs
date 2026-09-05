@@ -595,6 +595,18 @@ public partial class App : Application
                 $"Companion tool '{assistantCompanionTool.Id}' is already contributed by another plugin; this registration is ignored.");
         }
 
+        // AC-239: the second first-party companion tool through the same host — proof the seam AC-238 built
+        // carries more than one resident.
+        var screenshotCompanionTool = Program.Services.GetRequiredService<ScreenshotCoordinator>().CreateCompanionTool();
+        if (!firstPartyCompanionTools.AddCompanionTool(screenshotCompanionTool))
+        {
+            diagnostics.Record(
+                "first-party-companion-tools",
+                "Screenshot",
+                "companion-tool",
+                $"Companion tool '{screenshotCompanionTool.Id}' is already contributed by another plugin; this registration is ignored.");
+        }
+
         pluginManager.Initialize((discovered, plugin) => new CockpitHost(
             discovered.FolderId,
             discovered.Manifest.Name,
