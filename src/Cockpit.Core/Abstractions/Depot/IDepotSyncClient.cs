@@ -6,13 +6,15 @@ namespace Cockpit.Core.Abstractions.Depot;
 /// Talks to one Depot connection's memory-tree content contract (AC-280): list, batch-read, batch-write, move
 /// and delete. Reuses the connection Cockpit already has to Depot (<c>IMcpToolInvoker</c>, AC-243) rather than a
 /// new transport — no REST/Bearer surface is assumed here, since none is established for Depot's content API.
-/// This is transport only: the shadow index, pull/push cycle and merge live in later AC-278 tickets.
+/// This is transport only: the shadow index, pull/push cycle and merge live in later AC-278 tickets. Memory tree
+/// only — Depot's artifacts (binary files) never appear here; that is <c>list_artifacts</c>' own surface.
 /// </summary>
 public interface IDepotSyncClient
 {
     /// <summary>
     /// The full memory-tree listing for <paramref name="project"/>, paginating through every round Depot hands
-    /// back. Fails as a whole rather than returning a partial page set if any round does not succeed.
+    /// back. Fails as a whole rather than returning a partial page set if any round does not succeed. Markdown
+    /// files only, per Depot's own <c>list</c> contract — a project's artifacts are not included here.
     /// </summary>
     Task<DepotListResult> ListAllAsync(
         string serverName, string project, string? path = null, CancellationToken cancellationToken = default);
