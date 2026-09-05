@@ -9,7 +9,8 @@ namespace Cockpit.Infrastructure.Tests.Depot;
 /// One counter-example per AC-281 acceptance criterion 1-4: base bytes plus a full index entry (1), diffing on
 /// listing checksums with no leftover partial write (2), a failed round leaving its base/index pair untouched
 /// (3), and a both-sides-changed file confirmed only via Depot's version history (4). Criterion 5 holds by
-/// construction — <see cref="IDepotSyncClient"/> exposes no <c>restore_version</c> method to call.
+/// construction — <see cref="IDepotSyncClient"/> exposes no <c>restore_version</c> method to call. Plus one
+/// review fix: a file Depot no longer has is retained, not deleted, when its working copy has itself diverged.
 /// </summary>
 public sealed class DepotMirrorPullEngineTests : IDisposable
 {
@@ -138,6 +139,51 @@ public sealed class DepotMirrorPullEngineTests : IDisposable
         Assert.Equal("local-edit-unconfirmed", File.ReadAllText(Path.Combine(_mirrorPath, "unconfirmed.md")));
         Assert.Equal(oldEntry, ShadowSyncStorage.LoadIndex(_mirrorPath)!["confirmed.md"]);
         await client.DidNotReceiveWithAnyArgs().ReadManyAsync(default!, default!, default!);
+    }
+
+    [Fact]
+    public async Task PullAsync_ADivergedWorkingCopy_IsRetainedRatherThanDeleted_WhenDepotNoLongerHasTheFile()
+    {
+        Directory.CreateDirectory(_mirrorPath);
+
+        // Scenario A: Depot's listing no longer mentions this path at all.
+        File.WriteAllText(Path.Combine(_mirrorPath, "gone-from-listing.md"), "local edit, never pushed");
+        var goneEntry = new ShadowIndexEntry("gone-from-listing.md", "sha-old", 999, DateTimeOffset.UtcNow.AddDays(-1));
+
+        // Scenario B: Depot's listing still shows it as changed, but the operator edits the local copy in the
+        // window between the listing diff and read_many reporting it Missing.
+        File.WriteAllText(Path.Combine(_mirrorPath, "deleted-mid-read.md"), "not yet edited");
+        var midReadInfo = new FileInfo(Path.Combine(_mirrorPath, "deleted-mid-read.md"));
+        var midReadEntry = new ShadowIndexEntry("deleted-mid-read.md", "sha-old", midReadInfo.Length, midReadInfo.LastWriteTimeUtc);
+
+        ShadowSyncStorage.SaveIndex(_mirrorPath, new Dictionary<string, ShadowIndexEntry>
+        {
+            ["gone-from-listing.md"] = goneEntry,
+            ["deleted-mid-read.md"] = midReadEntry,
+        });
+
+        var client = Substitute.For<IDepotSyncClient>();
+        client.ListAllAsync(ServerName, Project, null, Arg.Any<CancellationToken>())
+            .Returns(DepotListResult.Success([new DepotFileEntry("deleted-mid-read.md", 1, DateTimeOffset.UtcNow, "sha-new")]));
+        client.ReadManyAsync(ServerName, Project, Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                File.WriteAllText(Path.Combine(_mirrorPath, "deleted-mid-read.md"), "edited during the race");
+                return DepotReadManyResult.Success([], ["deleted-mid-read.md"], []);
+            });
+        var engine = new DepotMirrorPullEngine(client);
+
+        var result = await engine.PullAsync(_Mirror(), ServerName, Project);
+
+        Assert.Equal(
+            new[] { "deleted-mid-read.md", "gone-from-listing.md" },
+            result.Retained.OrderBy(path => path, StringComparer.Ordinal));
+        Assert.Empty(result.Deleted);
+        Assert.Equal("local edit, never pushed", File.ReadAllText(Path.Combine(_mirrorPath, "gone-from-listing.md")));
+        Assert.Equal("edited during the race", File.ReadAllText(Path.Combine(_mirrorPath, "deleted-mid-read.md")));
+        var indexAfter = ShadowSyncStorage.LoadIndex(_mirrorPath)!;
+        Assert.Equal(goneEntry, indexAfter["gone-from-listing.md"]);
+        Assert.Equal(midReadEntry, indexAfter["deleted-mid-read.md"]);
     }
 
     private DepotMirror _Mirror() => new("depot.example.com", Project, _mirrorPath, DateTimeOffset.UtcNow);

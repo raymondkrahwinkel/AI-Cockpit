@@ -12,22 +12,24 @@ public enum DepotPullOutcome
     Failed,
 }
 
-// The outcome of one pull of a Depot mirror (AC-281). `Pulled` and `Deleted` are the paths whose local base and
-// index were actually updated this round; `Unreadable` are paths a batch read could not answer for and so were
-// left exactly as they were; `Diverged` are paths that need a later 3-way merge and were left untouched.
+// The outcome of one pull of a Depot mirror (AC-281). `Pulled`/`Deleted` actually changed on disk this round;
+// `Retained` are paths Depot no longer has whose working copy had itself diverged — kept rather than destroyed;
+// `Unreadable` couldn't be answered for; `Diverged` need a later 3-way merge.
 public sealed record DepotPullResult(
     DepotPullOutcome Outcome,
     IReadOnlyList<string> Pulled,
     IReadOnlyList<string> Deleted,
+    IReadOnlyList<string> Retained,
     IReadOnlyList<string> Unreadable,
     IReadOnlyList<DepotDivergedFile> Diverged,
     string? Error)
 {
     public static DepotPullResult Success(
-        IReadOnlyList<string> pulled, IReadOnlyList<string> deleted, IReadOnlyList<string> unreadable, IReadOnlyList<DepotDivergedFile> diverged) =>
-        new(DepotPullOutcome.Success, pulled, deleted, unreadable, diverged, null);
+        IReadOnlyList<string> pulled, IReadOnlyList<string> deleted, IReadOnlyList<string> retained,
+        IReadOnlyList<string> unreadable, IReadOnlyList<DepotDivergedFile> diverged) =>
+        new(DepotPullOutcome.Success, pulled, deleted, retained, unreadable, diverged, null);
 
-    public static DepotPullResult AuthorizationRequired { get; } = new(DepotPullOutcome.AuthorizationRequired, [], [], [], [], null);
+    public static DepotPullResult AuthorizationRequired { get; } = new(DepotPullOutcome.AuthorizationRequired, [], [], [], [], [], null);
 
-    public static DepotPullResult Failed(string error) => new(DepotPullOutcome.Failed, [], [], [], [], error);
+    public static DepotPullResult Failed(string error) => new(DepotPullOutcome.Failed, [], [], [], [], [], error);
 }

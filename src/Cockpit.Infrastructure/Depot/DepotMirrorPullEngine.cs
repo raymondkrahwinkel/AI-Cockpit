@@ -98,8 +98,18 @@ internal sealed class DepotMirrorPullEngine : IDepotMirrorPullEngine, ISingleton
         }
 
         var deleted = new List<string>();
+        var retained = new List<string>();
         foreach (var path in toDelete.Concat(readResult.Missing).Distinct(StringComparer.Ordinal))
         {
+            // Depot no longer has this file — but deleting is the hardest possible edit to a working copy that
+            // has itself changed since the synced base, exactly like the diverged-content branch above. Left
+            // untouched (base/index pair included) rather than destroying an edit with no way back.
+            if (index.TryGetValue(path, out var entry) && ShadowSyncStorage.HasWorkingFileDiverged(mirror.Path, entry))
+            {
+                retained.Add(path);
+                continue;
+            }
+
             ShadowSyncStorage.DeleteIfPresent(mirror.Path, path);
             updatedIndex.Remove(path);
             deleted.Add(path);
@@ -107,7 +117,7 @@ internal sealed class DepotMirrorPullEngine : IDepotMirrorPullEngine, ISingleton
 
         ShadowSyncStorage.SaveIndex(mirror.Path, updatedIndex);
 
-        return DepotPullResult.Success(pulled, deleted, readResult.Unreadable, diverged);
+        return DepotPullResult.Success(pulled, deleted, retained, readResult.Unreadable, diverged);
     }
 
     // Called once the listing checksum is already known to differ from the recorded base, so only Depot's
