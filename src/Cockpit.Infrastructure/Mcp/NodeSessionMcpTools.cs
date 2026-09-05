@@ -24,7 +24,7 @@ internal sealed class NodeSessionMcpTools(
     private const string NotTheController =
         "This tool belongs to the cockpit that is paired to this one as its controller. It is not available to a session on this machine.";
 
-    [McpServerTool(Name = "list_node_sessions")]
+    [McpServerTool(Name = "list_node_sessions", ReadOnly = true)]
     [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. IT IS NOT EVERYTHING RUNNING THERE: you see the sessions running under a profile that machine's operator has allowed you, and nothing else, so never report this as \"the node is idle\" — say what you can see. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean.")]
     public async Task<string> ListNodeSessionsAsync()
     {
@@ -56,7 +56,7 @@ internal sealed class NodeSessionMcpTools(
         }
     }
 
-    [McpServerTool(Name = "list_node_profiles")]
+    [McpServerTool(Name = "list_node_profiles", ReadOnly = true)]
     [Description("Lists the profiles this node's operator has allowed you to run here — never all of them. An empty list is the normal state of a fresh pairing and is not a fault: it means they have not ticked anything in Options → Security on that machine yet, and until they do, start_node_agent refuses everything. Say that rather than reporting the node as broken. WHAT YOU GET IS DELIBERATELY THIN: a label, a provider and the operator's own note. There is no model, no folder, no system prompt and no settings — a profile carries the node operator's own configuration and that is not yours to read.")]
     public async Task<string> ListNodeProfilesAsync()
     {
@@ -90,7 +90,7 @@ internal sealed class NodeSessionMcpTools(
         }
     }
 
-    [McpServerTool(Name = "list_node_projects")]
+    [McpServerTool(Name = "list_node_projects", ReadOnly = true)]
     [Description("Lists the projects this node's operator has allowed you to start work on here. Same as the profiles: empty is the ordinary state of a fresh pairing, not a failure. Take a project id from here and hand it to start_node_agent to have the session come up with that project's own folder, default profile and settings; an id that is not in this list is refused there.")]
     public async Task<string> ListNodeProjectsAsync()
     {
@@ -117,7 +117,7 @@ internal sealed class NodeSessionMcpTools(
         }
     }
 
-    [McpServerTool(Name = "start_node_agent")]
+    [McpServerTool(Name = "start_node_agent", ReadOnly = false, Destructive = false)]
     [Description("Starts an AI session on the node — on that machine, under that machine's own account, spending that machine's own budget. THIS IS NOT YOUR COCKPIT: you cannot see the session's screen, and the operator of this cockpit may not be sitting at the other one. Say plainly which machine you are starting something on before you do it, and read the node name back off the result. THE PROFILE MUST BE ONE list_node_profiles REPORTED: anything else is refused, because the node's operator ticked those and only those. THE SAME GOES FOR projectId — take it from list_node_projects or leave it out. YOU DO NOT PICK A DESK OR A FOLDER: the session lands on whatever desk that machine is showing and runs where its profile or project says, so there is nothing here to name and nothing for you to guess. IF YOU WANT TO HEAR HOW IT WENT, ASK FOR IT IN THE prompt — you have no inbox on that machine and it has none on yours, so a session there cannot notify you and you will not be told when it finishes. WHAT YOU START KEEPS RUNNING: closing this cockpit, losing the network or unpairing does not stop it — it goes on spending until somebody stops it, here with stop_node_agent or there by hand. Never describe this as borrowing the machine for a moment.")]
     public async Task<string> StartNodeAgentAsync(
         [Description("The profile to run under, exactly as list_node_profiles reports its label. Required — there is no default, and an unknown or unticked label is refused rather than swapped for something that would run.")] string profile,
@@ -191,7 +191,7 @@ internal sealed class NodeSessionMcpTools(
         }
     }
 
-    [McpServerTool(Name = "stop_node_agent")]
+    [McpServerTool(Name = "stop_node_agent", ReadOnly = false, Destructive = true)]
     [Description("Closes a session running on the node, named by its pane id from list_node_sessions. TAKE THE ID FROM THAT LIST AND FROM NOWHERE ELSE: a pane id off your own list_sessions names a session on this machine, and the two lists can hold the same names — read the id and the machine back to the operator before you use it. You can only stop what that list showed you, which is the work running under a profile you were allowed; anything else on that machine is not yours to end and is refused. A refusal is normal (a session that has already ended, one that is not an agent), so read the reason out and carry on. This ends the session for good on that machine; nobody there is asked first, because the operator here was given that authority when the two cockpits were paired.")]
     public async Task<string> StopNodeAgentAsync(
         [Description("The pane id of the session on the node, exactly as list_node_sessions reports it.")] string paneId)

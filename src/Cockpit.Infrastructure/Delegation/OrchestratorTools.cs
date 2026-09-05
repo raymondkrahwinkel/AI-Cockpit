@@ -21,7 +21,7 @@ internal sealed class OrchestratorTools
         _delegation = delegation;
     }
 
-    [McpServerTool(Name = "list_profiles")]
+    [McpServerTool(Name = "list_profiles", ReadOnly = true)]
     [Description("Lists the profiles you may delegate a task to, with what each one is meant for, how many tasks it will run at once, and the MCP servers a task delegated to it would get ('mcpServers'). Pass a subset of those as delegate_task's mcp_servers to narrow one task to fewer servers.")]
     public async Task<string> ListProfilesAsync(CancellationToken cancellationToken)
     {
@@ -29,7 +29,7 @@ internal sealed class OrchestratorTools
         return JsonSerializer.Serialize(targets, SerializerOptions);
     }
 
-    [McpServerTool(Name = "describe_profile")]
+    [McpServerTool(Name = "describe_profile", ReadOnly = false, Destructive = false)]
     [Description("Records what a profile turned out to be good for, so the next session starts where this one left off: its purpose, its capability tags, and the kinds of work it accepts. Use it after working with a profile — if a model reviewed a frontend diff well but lost the thread on architecture, say so here. Only these three descriptive fields can be set, and only on a profile that is already a delegation target: what a delegated session may actually do (its permission ceiling, the directories it may work in, how many tasks at once) is the operator's to decide, not yours. A field left out is left as it was.")]
     public async Task<string> DescribeProfileAsync(
         [Description("The label of the profile to describe, as returned by list_profiles.")] string profile,
@@ -49,14 +49,14 @@ internal sealed class OrchestratorTools
         }
     }
 
-    [McpServerTool(Name = "list_providers")]
+    [McpServerTool(Name = "list_providers", ReadOnly = true)]
     [Description("Lists the providers a session can run under: the local ones you can set up yourself with add_profile (Ollama, LM Studio) and every provider your installed plugins register. Each says whether it is addable with add_profile — the plugin ones are the operator's to create, since a plugin provider may carry a login. Use it before add_profile to pick a valid provider name and to see what is available instead of guessing.")]
     public string ListProviders()
     {
         return JsonSerializer.Serialize(_delegation.ListProviders(), SerializerOptions);
     }
 
-    [McpServerTool(Name = "add_profile")]
+    [McpServerTool(Name = "add_profile", ReadOnly = false, Destructive = false)]
     [Description("Adds a LOCAL-model profile (Ollama or LM Studio) so it is ready to use — to start a session under, or for the operator to enrol as a delegation target. Use it when you need a local model to work with and one is not set up yet, instead of editing the profiles file by hand. It is added but NOT enabled as a delegation target: what a delegated session may do (its permission ceiling, its directories, how many at once) is the operator's to set, so you cannot delegate to it until they turn it on in the cockpit's profile settings. Only local models can be added this way; Claude and other logged-in profiles are the operator's to create. The purpose and tags you give are kept as suggestions for when they enable it.")]
     public async Task<string> AddProfileAsync(
         [Description("A unique display label for the new profile.")] string label,
@@ -87,7 +87,7 @@ internal sealed class OrchestratorTools
         }
     }
 
-    [McpServerTool(Name = "delegate_task")]
+    [McpServerTool(Name = "delegate_task", ReadOnly = false, Destructive = false)]
     [Description("Hands a task to another profile, which runs it as a separate session. Returns a task id immediately; the task then runs in the background. A status of 'Queued' means the task is accepted and waiting for a free slot on that profile — it will start by itself, so poll get_task_status rather than delegating the same work again. IMPORTANT: a task runs READ-ONLY unless you pass requested_permission — telling it in the prompt not to change anything is not what stops it, and asking it to change something without that permission makes it fail. When it finishes, the task reports the paths the cockpit itself saw change in its working directory, not the ones the task chose to mention.")]
     public async Task<string> DelegateTaskAsync(
         [Description("The label of the profile to delegate to, as returned by list_profiles.")] string profile,
@@ -133,7 +133,7 @@ internal sealed class OrchestratorTools
         }
     }
 
-    [McpServerTool(Name = "get_task_status")]
+    [McpServerTool(Name = "get_task_status", ReadOnly = true)]
     [Description("Reports how a delegated task is doing, without pulling its output.")]
     public string GetTaskStatus(
         [Description("The task id returned by delegate_task.")] string task_id)
@@ -144,7 +144,7 @@ internal sealed class OrchestratorTools
             : JsonSerializer.Serialize(task, SerializerOptions);
     }
 
-    [McpServerTool(Name = "get_task_result")]
+    [McpServerTool(Name = "get_task_result", ReadOnly = true)]
     [Description("Returns a delegated task's answer once it has finished. The point of delegating is to keep that work out of your own context, so this gives you the reply, not the whole transcript — use get_task_output if you need to watch the steps.")]
     public string GetTaskResult(
         [Description("The task id returned by delegate_task.")] string task_id)
@@ -170,7 +170,7 @@ internal sealed class OrchestratorTools
             SerializerOptions);
     }
 
-    [McpServerTool(Name = "get_task_output")]
+    [McpServerTool(Name = "get_task_output", ReadOnly = true)]
     [Description("Returns the events a delegated task produced since a cursor, for watching progress. Pass the returned cursor next time to get only what is new.")]
     public string GetTaskOutput(
         [Description("The task id returned by delegate_task.")] string task_id,
@@ -188,7 +188,7 @@ internal sealed class OrchestratorTools
             SerializerOptions);
     }
 
-    [McpServerTool(Name = "send_followup")]
+    [McpServerTool(Name = "send_followup", ReadOnly = false, Destructive = false)]
     [Description("Sends another turn to a delegated task, continuing the same session — including one that has already answered. Poll get_task_status afterwards: the new turn is done when TurnCount has gone up.")]
     public async Task<string> SendFollowUpAsync(
         [Description("The task id returned by delegate_task.")] string task_id,
@@ -207,7 +207,7 @@ internal sealed class OrchestratorTools
         }
     }
 
-    [McpServerTool(Name = "stop_task")]
+    [McpServerTool(Name = "stop_task", ReadOnly = false, Destructive = true)]
     [Description("Stops a delegated task and tears its session down.")]
     public async Task<string> StopTaskAsync(
         [Description("The task id returned by delegate_task.")] string task_id)
@@ -218,7 +218,7 @@ internal sealed class OrchestratorTools
             : JsonSerializer.Serialize(task, SerializerOptions);
     }
 
-    [McpServerTool(Name = "list_tasks")]
+    [McpServerTool(Name = "list_tasks", ReadOnly = true)]
     [Description("Lists the delegated tasks this cockpit knows about, newest first.")]
     public string ListTasks(
         [Description("Only tasks in this state: Queued, Running, Completed, Failed or Stopped.")] string? status = null)

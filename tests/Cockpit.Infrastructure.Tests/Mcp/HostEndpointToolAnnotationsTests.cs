@@ -2,6 +2,9 @@ using System.Reflection;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Delegation;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Shell;
 using Cockpit.Infrastructure.Terminal;
@@ -11,12 +14,13 @@ using Cockpit.Infrastructure.Worktrees;
 namespace Cockpit.Infrastructure.Tests.Mcp;
 
 /// <summary>
-/// AC-1066: every <c>[McpServerTool]</c> on the six host-owned endpoints (<c>cockpit-session</c>,
-/// <c>cockpit-agents</c>, <c>cockpit-worktrees</c>, <c>cockpit-verify</c>, <c>cockpit-terminal</c>,
-/// <c>cockpit-shell</c>) must carry an explicit read-only or destructive hint. Without one, <see
-/// cref="DelegatedToolPermissionPolicy.Classify"/> reports <see cref="ToolPermissionClass.Unknown"/>, which is
-/// denied at every ceiling — including <c>bypassPermissions</c> — for a delegated session (AC-79). This test failed
-/// on all six before this ticket, since none of them carried an annotation at all.
+/// AC-1066 (extended by AC-1070's follow-up): every <c>[McpServerTool]</c> on a host-owned endpoint (<c>cockpit-session</c>,
+/// <c>cockpit-agents</c>, <c>cockpit-worktrees</c>, <c>cockpit-verify</c>, <c>cockpit-terminal</c>, <c>cockpit-shell</c>,
+/// <c>cockpit-assistant</c>, <c>cockpit-assistant-agents</c>, <c>cockpit-orchestrator</c>, <c>cockpit-node</c>) must
+/// carry an explicit read-only or destructive hint. Without one, <see cref="DelegatedToolPermissionPolicy.Classify"/>
+/// reports <see cref="ToolPermissionClass.Unknown"/>, which is denied at every ceiling — including
+/// <c>bypassPermissions</c> — for a delegated session (AC-79). This test failed on the first six before AC-1066, and
+/// on the remaining four types below before AC-1066's follow-up, since none of them carried an annotation at all.
 /// </summary>
 public class HostEndpointToolAnnotationsTests
 {
@@ -28,6 +32,10 @@ public class HostEndpointToolAnnotationsTests
         typeof(VerifyMcpTools),
         typeof(TerminalMcpTools),
         typeof(ShellMcpTools),
+        typeof(AssistantReadMcpTools),
+        typeof(AssistantAgentMcpTools),
+        typeof(OrchestratorTools),
+        typeof(NodeSessionMcpTools),
     ];
 
     public static IEnumerable<object[]> HostEndpointTools() =>
