@@ -93,7 +93,10 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         ISessionProfileStore profileStore,
         CancellationToken cancellationToken = default)
     {
-        var result = await source.PrepareBindingAsync(sharedProjectId, cancellationToken).ConfigureAwait(false);
+        // ConfigureAwait(true) throughout this method, deliberately: the loop below mutates Profiles, an
+        // ObservableCollection Avalonia binds to, so every await in between must keep resuming on the calling
+        // UI thread rather than drift onto whichever thread pool thread happens to finish first (AC-1117/AC-1119).
+        var result = await source.PrepareBindingAsync(sharedProjectId, cancellationToken).ConfigureAwait(true);
         if (!result.Succeeded || result.Binding is not { } binding)
         {
             return (null, result.Error is { Length: > 0 } error ? error : "Could not read this project's definition.");
@@ -101,7 +104,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
 
         var viewModel = new SharedProjectBindingDialogViewModel(sharedProjectId, sourceName, binding);
 
-        foreach (var profile in await profileStore.LoadAsync(cancellationToken).ConfigureAwait(false))
+        foreach (var profile in await profileStore.LoadAsync(cancellationToken).ConfigureAwait(true))
         {
             viewModel.Profiles.Add(profile.Label);
         }
