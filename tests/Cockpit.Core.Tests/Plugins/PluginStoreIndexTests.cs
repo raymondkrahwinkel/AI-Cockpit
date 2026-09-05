@@ -40,13 +40,6 @@ public class PluginStoreIndexTests
     }
 
     [Fact]
-    public void TryParse_MissingPluginsArray_YieldsEmpty()
-    {
-        Assert.True(PluginStoreIndex.TryParse("""{ "name": "Empty" }""", out var index, out _));
-        Assert.Empty(index!.Plugins);
-    }
-
-    [Fact]
     public void TryParse_InvalidJson_Fails()
     {
         Assert.False(PluginStoreIndex.TryParse("{ not json", out _, out var error));

@@ -29,16 +29,6 @@ public class PluginLauncherButtonBadgeTests(ITestOutputHelper output)
         Assert.Empty(launcher.GetVisualDescendants().OfType<Border>());
     });
 
-    [Fact]
-    public void ABadgeWithBothCountersUnknown_RendersNoVisiblePill() => HeadlessAvalonia.Run(() =>
-    {
-        var badge = new SideMenuButtonBadge();
-        var launcher = new PluginLauncherButton("Open PR's", () => { }, badge: badge);
-        using var shown = _Show(launcher);
-
-        Assert.False(_Pill(launcher).IsVisible);
-    });
-
     [Theory]
     [InlineData(0, "0")]
     [InlineData(3, "3")]

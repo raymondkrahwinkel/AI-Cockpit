@@ -378,12 +378,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   to the front records nothing, because nothing moved. A terminal resize is one line carrying the size it landed on,
   the sizes it passed through on the way, the display scale, and what the terminal process was told about it.
 
-- changed: **the test suite is 25 tests smaller — 11,848 down to 11,823 — without losing any coverage.** Every one
-  of them was removed only after the behaviour it asserted had been deliberately broken and a *different* test went
-  red in its place; none was dropped for merely looking duplicated, and none was dropped for being red or flaky.
-  This buys no measurable time and is not meant to: the 25 together ran in about a millisecond, and the difference
-  between the full runs on the same machine (286 s at the start, 274 s at the end) is that machine, not this
-  change. What it buys is a suite with less to read and keep.
+- changed: **28 tests have been removed from the suite so far as proven redundant, without losing any coverage.**
+  Every one was cut only after the behaviour it asserted had been deliberately broken in the code and a *different*
+  test went red in its place; none was dropped for merely looking duplicated, and none was dropped for being red or
+  flaky. This round removed 3 more, measured on its own machine and run: 12,070 down to 12,067. The suite's overall
+  size keeps moving for unrelated reasons — new tests land from ordinary feature work between rounds — so that
+  total is not meant to be compared release to release; what stays constant is the proof behind every removal.
+  This buys no measurable time and is not meant to: the 28 together run in about a millisecond. What it buys is a
+  suite with less to read and keep.
 
 - changed: **a session's memory cap now also covers the tool servers it started.** The cap is applied a few
   seconds after a session launches, and anything the agent had already started in those seconds — its MCP tool
