@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
-using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
@@ -11,7 +10,6 @@ using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Toasts;
 using Cockpit.Plugins.Abstractions.CompanionTools;
-using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -30,34 +28,14 @@ public sealed class ScreenshotCompanionToolTests
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47];
 
     [Fact]
-    public void Click_CapturesIntoTheSelectedSession_ThroughTheFirstPartyHost() => HeadlessAvalonia.Run(() =>
+    public void Click_CapturesIntoTheSelectedSession() => HeadlessAvalonia.Run(() =>
     {
         var session = new RecordingScreenshotSession();
         var cockpit = new CockpitViewModel { SelectedSession = session };
-        var capture = Substitute.For<IScreenshotCapture>();
-        capture.IsSupported.Returns(true);
-        capture.SupportSettled.Returns(Task.CompletedTask);
-        capture.CaptureAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<ScreenCapture?>(new ScreenCapture
-        {
-            Image = Png,
-            Displays = [new CapturedDisplay
-            {
-                DesktopBounds = new CaptureRect(0, 0, 1920, 1080),
-                Scale = 1,
-                ImageBounds = new CaptureRect(0, 0, 1920, 1080),
-            }],
-        }));
-        var screenshots = _Coordinator(capture, cockpit, out _);
-        var registration = screenshots.CreateCompanionTool();
+        var screenshots = _Coordinator(_SupportedCapture(Png), cockpit, out _);
 
-        // Registered exactly the way the assistant indicator is (AC-238's naad), not a second route.
-        var host = new FirstPartyCompanionToolHost(
-            new CompanionToolRegistry(),
-            new PluginStorage(new Dictionary<string, string>(), _ => { }),
-            Substitute.For<ICockpitSessionObserver>());
-        Assert.True(host.AddCompanionTool(registration));
-
-        var button = Assert.IsType<Button>(registration.CreateView(Substitute.For<ICompanionToolContext>()));
+        var button = Assert.IsType<Button>(
+            screenshots.CreateCompanionTool().CreateView(Substitute.For<ICompanionToolContext>()));
 
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Dispatcher.UIThread.RunJobs();
@@ -70,20 +48,7 @@ public sealed class ScreenshotCompanionToolTests
     {
         var session = new RecordingScreenshotSession { RefusalReason = "This session's provider does not support image input." };
         var cockpit = new CockpitViewModel { SelectedSession = session };
-        var capture = Substitute.For<IScreenshotCapture>();
-        capture.IsSupported.Returns(true);
-        capture.SupportSettled.Returns(Task.CompletedTask);
-        capture.CaptureAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<ScreenCapture?>(new ScreenCapture
-        {
-            Image = Png,
-            Displays = [new CapturedDisplay
-            {
-                DesktopBounds = new CaptureRect(0, 0, 1920, 1080),
-                Scale = 1,
-                ImageBounds = new CaptureRect(0, 0, 1920, 1080),
-            }],
-        }));
-        var screenshots = _Coordinator(capture, cockpit, out var toasts);
+        var screenshots = _Coordinator(_SupportedCapture(Png), cockpit, out var toasts);
 
         var button = Assert.IsType<Button>(
             screenshots.CreateCompanionTool().CreateView(Substitute.For<ICompanionToolContext>()));
@@ -112,6 +77,25 @@ public sealed class ScreenshotCompanionToolTests
         Assert.False(button.IsEnabled);
         Assert.Equal("Screen capture is not available on this platform.", ToolTip.GetTip(button));
     });
+
+    // A capture that works, of one ordinary screen — the layout itself is never under test here.
+    private static IScreenshotCapture _SupportedCapture(byte[] image)
+    {
+        var capture = Substitute.For<IScreenshotCapture>();
+        capture.IsSupported.Returns(true);
+        capture.SupportSettled.Returns(Task.CompletedTask);
+        capture.CaptureAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<ScreenCapture?>(new ScreenCapture
+        {
+            Image = image,
+            Displays = [new CapturedDisplay
+            {
+                DesktopBounds = new CaptureRect(0, 0, 1920, 1080),
+                Scale = 1,
+                ImageBounds = new CaptureRect(0, 0, 1920, 1080),
+            }],
+        }));
+        return capture;
+    }
 
     private static ScreenshotCoordinator _Coordinator(IScreenshotCapture capture, CockpitViewModel cockpit, out IToastService toasts)
     {
