@@ -40,6 +40,11 @@ internal static class CockpitConfigPath
     // build keeps its own (`CockpitBuild`) rather than cloning into the production cockpit's area.
     public static string ClonesRoot => Path.Combine(Root, "clones");
 
+    // Where local mirrors of Depot projects live (AC-278): a `depot-mirrors/` folder next to `cockpit.json`,
+    // one directory per mirror under an `instance-host/slug` slug. Under the app state root, so a development
+    // build keeps its own (`CockpitBuild`) rather than mirroring into the production cockpit's area.
+    public static string DepotMirrorsRoot => Path.Combine(Root, "depot-mirrors");
+
     // The voice assistant's own memory (AC-595): a markdown file next to `cockpit.json`, holding what the
     // operator told it to keep. Plain markdown on purpose — there is no UI for it, so opening it is the way to
     // prune it.

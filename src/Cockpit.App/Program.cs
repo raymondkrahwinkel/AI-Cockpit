@@ -9,6 +9,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core;
 using Cockpit.Core.Abstractions.Clones;
+using Cockpit.Core.Abstractions.Depot;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Abstractions.Worktrees;
@@ -182,6 +183,11 @@ sealed class Program
         // run so the reuse check and the list reflect what is on disk. Fire-and-forget, and it only drops registry
         // entries — a clone folder that still exists is never deleted, because it may hold uncommitted work.
         _ = Services.GetRequiredService<IRepositoryCloneManager>().ReconcileAsync();
+
+        // Reconcile the Depot-mirror registry too (AC-278): forget any mirror whose folder disappeared since last
+        // run. Fire-and-forget, and it only drops registry entries — a mirror folder that still exists is never
+        // deleted, because it may hold local work no later ticket has synced yet.
+        _ = Services.GetRequiredService<IDepotMirrorManager>().ReconcileAsync();
 
         // Log and handle recoverable dispatcher/render exceptions so one plugin surface cannot take down every
         // session and workspace. Fatal conditions still exit through their own paths.

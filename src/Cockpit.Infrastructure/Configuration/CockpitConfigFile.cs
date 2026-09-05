@@ -160,6 +160,14 @@ internal sealed class CockpitConfigFile
     // Clone settings (AC-90) — the operator's clones-root-location override; owned by the clone-settings store. Separate from the `Clones` registry above.
     public CloneSettingsEntry? CloneSettings { get; set; }
 
+    // Local mirrors of Depot projects (AC-278); owned by the Depot-mirror-registry store. The source of truth
+    // for reconciliation, so it outlives the process that created them.
+    public List<DepotMirrorEntry> DepotMirrors { get; set; } = [];
+
+    // Depot-mirror settings (AC-278) — the operator's mirrors-root-location override; owned by the
+    // Depot-mirror-settings store. Separate from the `DepotMirrors` registry above.
+    public DepotMirrorSettingsEntry? DepotMirrorSettings { get; set; }
+
     // The registered verify runners (AC-86) — the per-project command the visual verify loop may run; owned by the verify-runner-registry store. The agent triggers a runner but never supplies the command, so this list is also the boundary against arbitrary command execution.
     public List<VerifyRunnerEntry> VerifyRunners { get; set; } = [];
 
