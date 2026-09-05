@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 
 namespace Cockpit.App.Views;
@@ -7,6 +8,15 @@ namespace Cockpit.App.Views;
 // supplies its own view model instance, so this file never has to know which one it is in.
 public partial class AssistantIndicator : UserControl
 {
+    public static readonly StyledProperty<bool> ShowWhenDisabledProperty =
+        AvaloniaProperty.Register<AssistantIndicator, bool>(nameof(ShowWhenDisabled));
+
+    public bool ShowWhenDisabled
+    {
+        get => GetValue(ShowWhenDisabledProperty);
+        set => SetValue(ShowWhenDisabledProperty, value);
+    }
+
     public AssistantIndicator()
     {
         InitializeComponent();

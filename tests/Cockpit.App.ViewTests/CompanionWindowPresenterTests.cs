@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
+using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Layout;
 using Cockpit.Plugins.Abstractions.CompanionTools;
@@ -68,5 +69,68 @@ public class CompanionWindowPresenterTests
         presenter.Show();
 
         Assert.Contains(testToolView, presenter.Window!.GetVisualDescendants());
+    });
+
+    [Fact]
+    public void FirstPartyHost_RegistersWithPersistentStorageAndLiveSessionObserver()
+    {
+        var registry = new CompanionToolRegistry();
+        IReadOnlyDictionary<string, string>? persisted = null;
+        var sessions = Substitute.For<ICockpitSessionObserver>();
+        var host = new FirstPartyCompanionToolHost(
+            registry,
+            new PluginStorage(new Dictionary<string, string>(), data => persisted = data),
+            sessions);
+
+        Assert.True(host.AddCompanionTool(new CompanionToolRegistration("cockpit.test", "Test", _ => new Border())));
+
+        var context = registry.CreateContext("cockpit.test")!;
+        context.Storage.Set("value", "retained");
+
+        var resumedRegistry = new CompanionToolRegistry();
+        var resumedHost = new FirstPartyCompanionToolHost(
+            resumedRegistry,
+            new PluginStorage(persisted!, _ => { }),
+            sessions);
+        resumedHost.AddCompanionTool(new CompanionToolRegistration("cockpit.test", "Test", _ => new Border()));
+
+        var resumed = resumedRegistry.CreateContext("cockpit.test")!;
+        Assert.Same(sessions, resumed.SelectedSession);
+        Assert.Equal("retained", resumed.Storage.Get<string>("value"));
+    }
+
+    [Fact]
+    public void AssistantCompanionTool_UsesTheCoordinatorIndicator() => HeadlessAvalonia.Run(() =>
+    {
+        var (coordinator, _, _) = AssistantDockHostSwapTests.Build();
+
+        var view = Assert.IsType<AssistantIndicator>(
+            coordinator.CreateCompanionTool().CreateView(Substitute.For<ICompanionToolContext>()));
+
+        Assert.Same(coordinator.Indicator, view.DataContext);
+    });
+
+    [Fact]
+    public void CompanionWindow_ShowsUnavailableAssistantFromFirstPartyHost() => HeadlessAvalonia.Run(() =>
+    {
+        var registry = new CompanionToolRegistry();
+        var (coordinator, _, _) = AssistantDockHostSwapTests.Build();
+        coordinator.Indicator.IsFeatureEnabled = false;
+        coordinator.Indicator.UnavailableReason = "Assistant is disabled";
+        var host = new FirstPartyCompanionToolHost(
+            registry,
+            new PluginStorage(new Dictionary<string, string>(), _ => { }),
+            Substitute.For<ICockpitSessionObserver>());
+        host.AddCompanionTool(coordinator.CreateCompanionTool());
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(new LayoutSettings()));
+        layoutSettingsStore.SaveAsync(Arg.Any<LayoutSettings>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        var presenter = new CompanionWindowPresenter(registry, layoutSettingsStore);
+
+        presenter.Show();
+
+        var reason = presenter.Window!.GetVisualDescendants().OfType<TextBlock>()
+            .Single(text => text.Text == "Assistant is disabled");
+        Assert.True(reason.IsEffectivelyVisible);
     });
 }
