@@ -25,20 +25,26 @@
                                        WellBackground="{StaticResource CockpitSecondaryBgBrush}"/>
 
             <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="{Binding Project.Name}" FontSize="14" FontWeight="SemiBold"
+                <!-- A Grid, not a horizontal StackPanel, for the same reason the row below it is (AC-892): the name
+                     is the only part that may be any length, so it takes the star column and trims there instead of
+                     pushing the badge and icon by whatever width it happens to want. Same shape ProjectCardView
+                     already uses for this exact content. -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding Project.Name}" FontSize="14" FontWeight="SemiBold"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                    <Border Classes="sharedProjectBadge" IsVisible="{Binding IsShared}"
-                            VerticalAlignment="Center" MaxWidth="140">
-                        <TextBlock Text="{Binding OriginBadge}" TextTrimming="CharacterEllipsis"/>
-                    </Border>
-                    <!-- AC-894: DepotSyncWatcher found a checksum that moved since this project was last checked —
-                         a nudge to look, never an automatic overwrite of an unsaved local edit. -->
-                    <materialIcons:MaterialIcon Kind="CloudSync" Width="14" Height="14" VerticalAlignment="Center"
-                                                 Foreground="{StaticResource CockpitAccentBrush}"
-                                                 IsVisible="{Binding HasRemoteChanges}"
-                                                 ToolTip.Tip="Changed on Depot since it was last checked here"/>
-                </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0"
+                                VerticalAlignment="Center">
+                        <Border Classes="sharedProjectBadge" IsVisible="{Binding IsShared}" MaxWidth="140">
+                            <TextBlock Text="{Binding OriginBadge}" TextTrimming="CharacterEllipsis"/>
+                        </Border>
+                        <!-- AC-894: DepotSyncWatcher found a checksum that moved since this project was last checked
+                             — a nudge to look, never an automatic overwrite of an unsaved local edit. -->
+                        <materialIcons:MaterialIcon Kind="CloudSync" Width="14" Height="14" VerticalAlignment="Center"
+                                                     Foreground="{StaticResource CockpitAccentBrush}"
+                                                     IsVisible="{Binding HasRemoteChanges}"
+                                                     ToolTip.Tip="Changed on Depot since it was last checked here"/>
+                    </StackPanel>
+                </Grid>
                 <!-- Description and "last opened" on one line: a row has the width for it, and stacking them would
                      make every row two lines taller for no reading gain. Three TextBlocks rather than one with Runs
                      — a Run cannot be hidden, and the separator has to disappear along with an absent description. -->
