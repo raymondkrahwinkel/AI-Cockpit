@@ -22,25 +22,26 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         // render — in the .claude.json the CLI reads for this spawn (the profile dir for a non-default profile).
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(configJsonDirectory, workingDirectory);
 
-        // AC-408: the session id is derived as the new *.jsonl transcript that appears under this config dir
-        // after launch. Snapshotting first captures "known before this session" so the watch below only ever
-        // reports transcripts this session itself created.
+        var environmentOverlay = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var (statusFile, statusLineSettings) = ClaudeStatusLine.Install(configJsonDirectory, environmentOverlay);
+
+        // AC-408/AC-1091: the session id is the transcript from the CLI's own statusline snapshot,
+        // unambiguous per launch; falling back to the new *.jsonl since launch until that snapshot
+        // exists, so the fallback never reports another session's file.
         if (context.ReportConversationId is { } reportConversationId)
         {
             var stateDirectory = ClaudeConfigPaths.ResolveStateDirectory(
                 config.ConfigDir, Environment.GetEnvironmentVariable(ClaudeConfigPaths.EnvironmentVariable), userHome);
             var knownAtLaunch = new ClaudeTranscriptReader().SnapshotTranscripts(context.ConfigJson);
-            _ = WatchConversationIdAsync(stateDirectory, knownAtLaunch, reportConversationId);
+            _ = WatchConversationIdAsync(stateDirectory, knownAtLaunch, reportConversationId, statusFile);
         }
 
-        var environmentOverlay = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         if (ClaudeConfigPaths.ResolveSpawnOverride(config.ConfigDir, userHome) is { } configDirOverride)
         {
             environmentOverlay[ClaudeConfigPaths.EnvironmentVariable] = configDirOverride;
         }
 
         var mcpConfigPath = ClaudeMcpConfig.Write(context.McpServers);
-        var (statusFile, statusLineSettings) = ClaudeStatusLine.Install(configJsonDirectory, environmentOverlay);
 
         // The standing instructions the cockpit resolved for this session (a profile's identity, a project's
         // behaviour) alongside the orchestrator nudge: both are things the model should start knowing, and the
@@ -97,13 +98,14 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
     // CLI startup latency, short enough to close the cross-session window described below promptly.
     private static readonly TimeSpan WatchTimeout = TimeSpan.FromSeconds(10);
 
-    // One-shot scan for the "new file since launch", since the per-session folder name is undocumented and
-    // `--session-id` can't be forced; unbounded would misreport a later session's file as this one's id.
-    // If more than one new file appears in a poll, reporting nothing beats guessing the newest.
+    // Correlates via the CLI's own statusline snapshot first — unique per launch, so concurrent starts under
+    // the same profile never collide — then falls back to the "new file since launch" scan: the per-session
+    // folder name is undocumented, so more than one new file with no snapshot to disambiguate stays silent.
     internal static async Task WatchConversationIdAsync(
         string stateDirectory,
         IReadOnlySet<string> knownAtLaunch,
         Action<PluginConversationId> reportConversationId,
+        string? statusFile = null,
         TimeSpan? pollInterval = null,
         TimeSpan? timeout = null)
     {
@@ -113,6 +115,12 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         {
             while (DateTime.UtcNow < deadline)
             {
+                if (ClaudeTranscriptReader.TranscriptPathFrom(statusFile) is { } stated)
+                {
+                    reportConversationId(PluginConversationId.Known(Path.GetFileNameWithoutExtension(stated)));
+                    return;
+                }
+
                 var newTranscripts = ClaudeTranscriptReader.EnumerateTranscripts(stateDirectory).Where(path => !knownAtLaunch.Contains(path)).ToList();
                 if (newTranscripts.Count == 1)
                 {
