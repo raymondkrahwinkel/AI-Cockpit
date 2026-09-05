@@ -24,7 +24,7 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
     private static readonly JsonSerializerOptions Serializer = new() { WriteIndented = false };
     private static readonly JsonSerializerOptions Parser = new() { PropertyNameCaseInsensitive = true };
 
-    [McpServerTool(Name = ToolName)]
+    [McpServerTool(Name = ToolName, ReadOnly = false, Destructive = false)]
     [Description("Emit or revise the plan for this Autopilot run during planning. Pass the goal, a short run name, and the ordered steps as a JSON array; each step: {id, title, description, profile, model, brief, acceptance, hard, reviewGate, mcp, agents, issueId}. 'hard' true marks a required gate, false or omitted a skippable step. 'reviewGate' true marks the code-review/security-review pair (AC-434) — the run runs every step so marked concurrently instead of one after another and treats it as hard regardless of 'hard'. 'model' may be omitted when the profile pins its own model (a local profile). Call this whenever you (re)draft the plan so the operator sees the current plan; they approve it to start the autonomous run.")]
     public async Task<string> SetPlan(
         [Description("What the run is to achieve — one sentence.")] string goal,

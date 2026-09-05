@@ -12,7 +12,7 @@ namespace Cockpit.Plugin.Kubernetes.Mcp;
 // scope), and the approval shows the literal per-resource diff from Argo's own managed-resources API first.
 internal sealed partial class KubernetesMcpTools
 {
-    [McpServerTool(Name = "argo_sync")]
+    [McpServerTool(Name = "argo_sync", ReadOnly = false, Destructive = true)]
     [Description("Syncs an Argo CD Application: applies the changes needed to bring the cluster back in line with Git. Requires an Argo CD API token configured for this cluster in the plugin settings — without one there is no way to show what would change, and this refuses to ask for approval without a diff to show. The operator's approval shows the literal per-resource diff read from Argo's managed-resources API. Does not prune resources Git no longer has and does not force anything.")]
     public async Task<string> ArgoSync(
         [Description("The cluster label.")] string cluster,

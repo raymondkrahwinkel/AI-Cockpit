@@ -15,7 +15,7 @@ internal sealed class AutopilotCeoTools(ICockpitHost host, AutopilotRunManager m
 
     private static readonly JsonSerializerOptions Serializer = new() { WriteIndented = false };
 
-    [McpServerTool(Name = "autopilot_validate")]
+    [McpServerTool(Name = "autopilot_validate", ReadOnly = false, Destructive = false)]
     [Description("Report your validation verdict for the Autopilot step you were just asked to check. passed=true when the step's output meets its acceptance, false when it does not (the step is reworked, or fails once its attempts run out). Give a one-line reason. Only the run's CEO session validates.")]
     public string Validate(
         [Description("Whether the step's output meets its acceptance.")] bool passed,
@@ -30,7 +30,7 @@ internal sealed class AutopilotCeoTools(ICockpitHost host, AutopilotRunManager m
         return JsonSerializer.Serialize(new { ok = true, passed }, Serializer);
     }
 
-    [McpServerTool(Name = "autopilot_answer_worker")]
+    [McpServerTool(Name = "autopilot_answer_worker", ReadOnly = false, Destructive = false)]
     [Description("Answer a worker that consulted you mid-step (AC-201). Your answer is relayed into the worker's session as a turn — it reads it and carries on. Use this when you can settle the question yourself: a convention to follow, a reasonable default, a design call within the approved plan. You may inspect the working directory (Read/Grep) before you answer. Only the run's CEO session may, and only while a worker is actually waiting on your consult.")]
     public async Task<string> AnswerWorker(
         [Description("The answer relayed to the waiting worker as a turn in its session.")] string answer)
@@ -44,7 +44,7 @@ internal sealed class AutopilotCeoTools(ICockpitHost host, AutopilotRunManager m
         return JsonSerializer.Serialize(new { ok = true }, Serializer);
     }
 
-    [McpServerTool(Name = "autopilot_escalate_to_operator")]
+    [McpServerTool(Name = "autopilot_escalate_to_operator", ReadOnly = false, Destructive = false)]
     [Description("Escalate a worker's consult to the operator (AC-201) when it is genuinely their call — a truly irreversible or destructive choice, a missing credential, or a business preference you cannot make within the approved plan. The run pauses and the operator's answer is relayed back to the waiting worker (not to you), which then carries on. Prefer to answer the worker yourself with autopilot_answer_worker whenever you reasonably can; only escalate what really needs the operator. Only the run's CEO session may, and only while a worker is actually waiting on your consult.")]
     public string EscalateToOperator(
         [Description("The question to put to the operator, in one message.")] string question)
@@ -58,7 +58,7 @@ internal sealed class AutopilotCeoTools(ICockpitHost host, AutopilotRunManager m
         return JsonSerializer.Serialize(new { ok = true, status = "awaiting-operator" }, Serializer);
     }
 
-    [McpServerTool(Name = "autopilot_tracker_stage")]
+    [McpServerTool(Name = "autopilot_tracker_stage", ReadOnly = false, Destructive = true)]
     [Description("Move the tracker issue this run was triggered from to a stage — using the tracker's own stage name (e.g. \"In Progress\", \"Review\", \"Done\"). Only the run's CEO session may, and only for a run triggered from a tracker issue (a CEO-first run has no issue to move). Call it as the run reaches each stage.")]
     public async Task<string> TrackerStage(
         [Description("The stage to move the source issue to, in the tracker's own vocabulary.")] string stage)
@@ -72,7 +72,7 @@ internal sealed class AutopilotCeoTools(ICockpitHost host, AutopilotRunManager m
         return JsonSerializer.Serialize(new { ok = true, stage = stage.Trim() }, Serializer);
     }
 
-    [McpServerTool(Name = "autopilot_tracker_note")]
+    [McpServerTool(Name = "autopilot_tracker_note", ReadOnly = false, Destructive = true)]
     [Description("Post a comment on the tracker issue this run was triggered from — a status note or the run's evidence (what was done, the PR, the outcome). Only the run's CEO session may, and only for a run triggered from a tracker issue.")]
     public async Task<string> TrackerNote(
         [Description("The comment to post on the source issue.")] string note)

@@ -30,7 +30,7 @@ internal sealed class WorkflowMcpTools
         _host = host;
     }
 
-    [McpServerTool(Name = "list_workflows")]
+    [McpServerTool(Name = "list_workflows", ReadOnly = true)]
     [Description("Lists the saved cockpit workflows — the flows the operator drew and armed — with their id, name, whether they are active (auto-firing), and how many steps each has. Use it to see what is available before running or editing one.")]
     public string ListWorkflows() =>
         JsonSerializer.Serialize(
@@ -44,7 +44,7 @@ internal sealed class WorkflowMcpTools
             }),
             Serializer);
 
-    [McpServerTool(Name = "describe_workflow")]
+    [McpServerTool(Name = "describe_workflow", ReadOnly = true)]
     [Description("Returns a workflow's full structure: its steps (each with an index, id, type, name and parameters) and the connections between them (from-step index, output, to-step index). Read it before editing a flow, or to understand what one does.")]
     public string DescribeWorkflow(
         [Description("The workflow id, as returned by list_workflows.")] string id)
@@ -80,7 +80,7 @@ internal sealed class WorkflowMcpTools
             Serializer);
     }
 
-    [McpServerTool(Name = "list_workflow_step_types")]
+    [McpServerTool(Name = "list_workflow_step_types", ReadOnly = true)]
     [Description("Lists the step types a workflow can be built from — triggers, actions and decisions — each with its typeId, name, description, kind, the parameter names it takes and its output labels. Use it before create_workflow or update_workflow so you name valid typeIds and fill the right parameters.")]
     public string ListStepTypes() =>
         JsonSerializer.Serialize(
@@ -95,7 +95,7 @@ internal sealed class WorkflowMcpTools
             }),
             Serializer);
 
-    [McpServerTool(Name = "run_workflow")]
+    [McpServerTool(Name = "run_workflow", ReadOnly = false, Destructive = true)]
     [Description("Runs a workflow now, from its manual-start (▶) step, and waits for it to finish. Returns the run's id, status (Completed/Failed/…) and, on failure, why. Only an active (armed) flow can be run this way — a disarmed flow is refused; ask the operator to activate it. The flow also needs a manual trigger step to be runnable by hand; a purely event-triggered flow has nothing to start. The run also appears in the cockpit's workflow run history.")]
     public async Task<string> RunWorkflow(
         [Description("The workflow id, as returned by list_workflows.")] string id)
@@ -133,7 +133,7 @@ internal sealed class WorkflowMcpTools
             Serializer);
     }
 
-    [McpServerTool(Name = "set_workflow_active")]
+    [McpServerTool(Name = "set_workflow_active", ReadOnly = false, Destructive = false)]
     [Description("Arms or disarms a workflow: an active flow fires on its own when its trigger's event happens; an inactive one only runs when you run it by hand. Use it to turn an event-triggered flow on or off.")]
     public string SetWorkflowActive(
         [Description("The workflow id.")] string id,
@@ -157,7 +157,7 @@ internal sealed class WorkflowMcpTools
         return JsonSerializer.Serialize(new { ok = true, id, active }, Serializer);
     }
 
-    [McpServerTool(Name = "delete_workflow")]
+    [McpServerTool(Name = "delete_workflow", ReadOnly = false, Destructive = true)]
     [Description("Deletes a saved workflow. This cannot be undone from here.")]
     public string DeleteWorkflow(
         [Description("The workflow id.")] string id)
@@ -172,7 +172,7 @@ internal sealed class WorkflowMcpTools
         return JsonSerializer.Serialize(new { ok = true, id }, Serializer);
     }
 
-    [McpServerTool(Name = "create_workflow")]
+    [McpServerTool(Name = "create_workflow", ReadOnly = false, Destructive = false)]
     [Description("Creates a new workflow from steps and connections. steps_json is a JSON array of { typeId, name?, parameters? } (typeId from list_workflow_step_types; parameters is an object keyed by that type's parameter names). connections_json is a JSON array of { from, output?, to } using step INDICES into the steps array (output defaults to 0; for a decision step 0/1 are its branches). Include a manual-start step ('cockpit.manual') if you want to run it by hand. The flow is created disarmed (not active) so it never fires until the operator or set_workflow_active turns it on. Returns the new workflow id.")]
     public string CreateWorkflow(
         [Description("A name for the workflow.")] string name,
@@ -198,7 +198,7 @@ internal sealed class WorkflowMcpTools
         }
     }
 
-    [McpServerTool(Name = "update_workflow")]
+    [McpServerTool(Name = "update_workflow", ReadOnly = false, Destructive = true)]
     [Description("Replaces an existing workflow's steps and connections (and optionally its name), keeping its id and armed state. Same steps_json/connections_json shape as create_workflow — send the whole flow as you want it, not a delta. Read it first with describe_workflow. Returns the workflow id.")]
     public string UpdateWorkflow(
         [Description("The workflow id to replace.")] string id,

@@ -5,6 +5,9 @@
     <Project Path="src/Cockpit.Infrastructure/Cockpit.Infrastructure.csproj" />
     <Project Path="src/Cockpit.Plugins.Abstractions/Cockpit.Plugins.Abstractions.csproj" />
     <Project Path="tests/Cockpit.TestSupport/Cockpit.TestSupport.csproj" />
+    <!-- AC-1070: the cross-plugin McpServerTool annotation guard — spans every plugin this ticket touched, so
+         it cannot live in any single plugin's own .Tests project. -->
+    <Project Path="tests/Cockpit.PluginEndpointAnnotations.Tests/Cockpit.PluginEndpointAnnotations.Tests.csproj" />
     <Project Path="third_party/Exclr8.Terminal/Exclr8.Terminal.csproj" />
   </Folder>
   <Folder Name="/plugins-dev/">

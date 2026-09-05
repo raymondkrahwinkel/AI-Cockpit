@@ -24,7 +24,7 @@ internal sealed class LocalCiMcpTools(
     LocalCiSettings settings,
     IWorktreeManager? worktrees = null)
 {
-    [McpServerTool(Name = "run_local_checks")]
+    [McpServerTool(Name = "run_local_checks", ReadOnly = false, Destructive = true)]
     [Description(
         "Runs one of this project's GitHub workflow jobs in a container on this machine, using this session's own "
         + "checkout, and returns the verdict. The project is the calling session's — this tool takes no arbitrary "
@@ -109,7 +109,7 @@ internal sealed class LocalCiMcpTools(
         }
     }
 
-    [McpServerTool(Name = "local_check_status")]
+    [McpServerTool(Name = "local_check_status", ReadOnly = true)]
     [Description(
         "Reports what this project's workflow jobs are — which of them can run on this machine and, for each that "
         + "cannot, why — plus the last local run in that checkout and whether it was on the commit that is checked "

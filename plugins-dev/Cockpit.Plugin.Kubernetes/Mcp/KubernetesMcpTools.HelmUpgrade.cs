@@ -14,7 +14,7 @@ internal sealed partial class KubernetesMcpTools
 {
     private static readonly TimeSpan HelmRenderTimeout = TimeSpan.FromMinutes(5);
 
-    [McpServerTool(Name = "helm_upgrade")]
+    [McpServerTool(Name = "helm_upgrade", ReadOnly = false, Destructive = true)]
     [Description("""
         Upgrades an existing Helm release: helm renders the chart with `--dry-run=server` (nothing is written by that run), the rendered manifest is diffed against the manifest the release secret currently holds, and the operator approves that literal diff before anything is applied. Only a release that already exists can be upgraded — there is no helm_install and no helm_uninstall. `chart` is a local chart path or a reference helm can already resolve (an OCI ref, or a repo the machine has); this tool does not add repositories or log in to registries. Values given in `values` (YAML) are merged over the release's current values by default; set reuseValues to false to start from the chart's defaults instead, which drops anything the operator set earlier. Values are passed to helm on stdin, never written to a file. A cluster registered with a pasted kubeconfig is refused: the CLI needs a kubeconfig path.
 

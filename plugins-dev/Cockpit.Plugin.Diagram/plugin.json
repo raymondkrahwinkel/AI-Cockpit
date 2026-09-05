@@ -1,7 +1,7 @@
 {
   "id": "diagram",
   "name": "Diagram, Whiteboard & Wireframe",
-  "version": "0.47.17",
+  "version": "0.47.18",
   "entryAssembly": "Cockpit.Plugin.Diagram.dll",
   "entryType": "Cockpit.Plugin.Diagram.DiagramPlugin",
   "abstractionsVersion": 2,

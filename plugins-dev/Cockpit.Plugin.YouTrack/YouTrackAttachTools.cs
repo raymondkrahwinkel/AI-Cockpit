@@ -23,7 +23,7 @@ internal sealed class YouTrackAttachTools
         _settings = settings;
     }
 
-    [McpServerTool(Name = "attach_message_images_to_issue")]
+    [McpServerTool(Name = "attach_message_images_to_issue", ReadOnly = false, Destructive = true)]
     [Description("Attaches image(s) to a YouTrack issue: either the image(s) the operator sent with the current message, or one file named by `path` (AC-170) — pass `path` when the image is not a message attachment, e.g. a screenshot the operator just pasted into the terminal (written under an exclr8-terminal-paste temp folder rather than sent as a message) or an image file the agent itself produced in this session's working directory. `path` must resolve inside one of those two folders — anything else is refused — and must actually be an image (checked by content, not by its extension). Use this tool when you are not creating or updating the issue this turn; when you do create or update one, the cockpit attaches the message's images automatically and you need not call this for those. Pass the value of the COCKPIT_PANE_ID environment variable in this session as `session`, so the images attached are the ones your message carried and not another session's.")]
     public async Task<string> AttachMessageImagesToIssue(
         [Description("The YouTrack issue id to attach the current message's images to, e.g. \"AC-116\".")] string issueId,

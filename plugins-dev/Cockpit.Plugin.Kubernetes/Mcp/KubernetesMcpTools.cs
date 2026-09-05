@@ -39,7 +39,7 @@ internal sealed partial class KubernetesMcpTools(
     private const int MaxLogTailLines = 10_000;
     private const int ListPageLimit = 200;
 
-    [McpServerTool(Name = "list_clusters")]
+    [McpServerTool(Name = "list_clusters", ReadOnly = true)]
     [Description("Lists the Kubernetes clusters the operator registered, with each cluster's label, its allowed namespaces, and which extra capabilities (cluster-scoped resources, exec) are turned on for it. Reading or changing anything else goes through the other tools and asks the operator for consent. Start here to see what you can reach.")]
     public string ListClusters() =>
         McpText.Ok(new
@@ -55,7 +55,7 @@ internal sealed partial class KubernetesMcpTools(
             }),
         });
 
-    [McpServerTool(Name = "list_resources")]
+    [McpServerTool(Name = "list_resources", ReadOnly = true)]
     [Description("Lists resources of one kind. apiVersion is like \"v1\" (core) or \"apps/v1\"; plural is the resource plural, e.g. \"pods\", \"deployments\", \"services\", \"configmaps\". For a namespaced kind a namespace is required and one outside the cluster's allowed list asks the operator first; a genuinely cluster-scoped kind (nodes, namespaces, persistentvolumes) needs the cluster to allow cluster-scoped access. Returns each item's name, namespace and creation time. Large lists are capped at 200 items; when there are more, the result sets \"truncated\": true (narrow with labelSelector or a namespace).")]
     public async Task<string> ListResources(
         [Description("The cluster label, as returned by list_clusters.")] string cluster,
@@ -94,7 +94,7 @@ internal sealed partial class KubernetesMcpTools(
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "get_resource")]
+    [McpServerTool(Name = "get_resource", ReadOnly = true)]
     [Description("Reads one resource in full. apiVersion like \"v1\" or \"apps/v1\", plural like \"pods\"/\"deployments\". A namespaced kind needs its namespace (outside the allowed list asks first; a secret always asks); a cluster-scoped kind needs cluster-scoped access on. Returns the resource as JSON, with a \"helmManaged\" field added when the resource carries Helm's managed-by label — \"installed\": true with a release name/namespace when Helm itself installed it, \"installed\": false when it was only rendered by something else with that label set (e.g. Argo CD's `helm template`) — and an \"argoManaged\" field (the owning Application's name) added when the resource carries Argo CD's tracking-id annotation or instance label. When both are present, Argo CD owns the resource and Helm was at most its renderer.")]
     public async Task<string> GetResource(
         [Description("The cluster label.")] string cluster,
@@ -139,7 +139,7 @@ internal sealed partial class KubernetesMcpTools(
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "pod_logs")]
+    [McpServerTool(Name = "pod_logs", ReadOnly = true)]
     [Description("Reads the logs of a pod. Returns the last tailLines lines (default 200). A namespace outside the cluster's allowed list asks the operator first.")]
     public async Task<string> PodLogs(
         [Description("The cluster label.")] string cluster,
@@ -179,7 +179,7 @@ internal sealed partial class KubernetesMcpTools(
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "delete_resource")]
+    [McpServerTool(Name = "delete_resource", ReadOnly = false, Destructive = true)]
     [Description("Deletes one resource. This is a change, so it always asks the operator to approve — showing the literal resource — and is never remembered. apiVersion like \"v1\"/\"apps/v1\", plural like \"pods\"/\"deployments\".")]
     public async Task<string> DeleteResource(
         [Description("The cluster label.")] string cluster,
@@ -224,7 +224,7 @@ internal sealed partial class KubernetesMcpTools(
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "scale_resource")]
+    [McpServerTool(Name = "scale_resource", ReadOnly = false, Destructive = true)]
     [Description("Scales a deployment or statefulset to a replica count. A change, so it always asks the operator to approve and is never remembered. kind is \"deployments\" or \"statefulsets\".")]
     public async Task<string> ScaleResource(
         [Description("The cluster label.")] string cluster,
@@ -276,7 +276,7 @@ internal sealed partial class KubernetesMcpTools(
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "patch_resource")]
+    [McpServerTool(Name = "patch_resource", ReadOnly = false, Destructive = true)]
     [Description("Applies a JSON merge-patch to an existing resource — the way to change a field or two (an image, an env var, an annotation). patchJson is a JSON object with just the fields to change. A change, so it always asks the operator to approve and is never remembered. (To create a resource from scratch, do it from the terminal — this v1 patches existing resources only.)")]
     public async Task<string> PatchResource(
         [Description("The cluster label.")] string cluster,
@@ -319,7 +319,7 @@ internal sealed partial class KubernetesMcpTools(
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "exec")]
+    [McpServerTool(Name = "exec", ReadOnly = false, Destructive = true)]
     [Description("Runs a single, non-interactive command in a pod and returns its stdout, stderr and exit code. exec is off unless the operator turned it on for this cluster, and reaches past the namespace boundary, so it always asks afresh with the literal command shown, and is never remembered. The command runs as \"/bin/sh -c <command>\".")]
     public async Task<string> Exec(
         [Description("The cluster label.")] string cluster,
@@ -364,7 +364,7 @@ internal sealed partial class KubernetesMcpTools(
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "port_forward")]
+    [McpServerTool(Name = "port_forward", ReadOnly = false, Destructive = false)]
     [Description("Opens a port-forward tunnel from a local loopback port to a pod port. port-forward is off unless the operator turned it on for this cluster, and it reaches past the namespace boundary, so it always asks afresh with the literal target shown, and is never remembered. The tunnel appears in the status bar with a Kill button and auto-closes after 30 minutes. Returns the bound local address and a tunnel id.")]
     public async Task<string> PortForward(
         [Description("The cluster label.")] string cluster,

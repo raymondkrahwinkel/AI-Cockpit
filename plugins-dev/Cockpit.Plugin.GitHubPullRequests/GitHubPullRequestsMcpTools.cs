@@ -28,7 +28,7 @@ internal sealed class GitHubPullRequestsMcpTools
         _gh = gh;
     }
 
-    [McpServerTool(Name = "get_pr_status")]
+    [McpServerTool(Name = "get_pr_status", ReadOnly = true)]
     [Description("Returns a pull request's current status: title, url, checks (name/state/duration), mergeable (MERGEABLE/CONFLICTING/UNKNOWN) and review decision (APPROVED/CHANGES_REQUESTED/REVIEW_REQUIRED/null). Concurrent calls for the same PR within ~25s share one GitHub lookup instead of each hitting the API.")]
     public Task<string> GetPrStatus(
         [Description("Repository owner, e.g. 'acme'.")] string owner,

@@ -13,7 +13,7 @@ internal sealed partial class KubernetesMcpTools
 {
     private const string ArgoRefreshAnnotation = "argocd.argoproj.io/refresh";
 
-    [McpServerTool(Name = "argo_refresh")]
+    [McpServerTool(Name = "argo_refresh", ReadOnly = false, Destructive = false)]
     [Description("Asks Argo CD to re-read Git and refresh an Application's status now, instead of waiting for its normal poll interval. This sets a refresh annotation on the Application itself, which Argo CD removes once it has reconciled — no resource is rolled out, updated or deleted. Set hard to true to also bypass Argo's manifest cache (normal is enough for almost every case). The operator must approve.")]
     public async Task<string> ArgoRefresh(
         [Description("The cluster label.")] string cluster,
