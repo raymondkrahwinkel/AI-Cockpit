@@ -15,7 +15,7 @@ internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunManager m
 
     private static readonly JsonSerializerOptions Serializer = new() { WriteIndented = false };
 
-    [McpServerTool(Name = "autopilot_step_done")]
+    [McpServerTool(Name = "autopilot_step_done", ReadOnly = false, Destructive = false)]
     [Description("Signal that you have finished this Autopilot step. Pass a short summary of what you did and the result (a branch, a PR url, a review outcome) so the CEO can validate it against the step's acceptance. Call this exactly once, when the step's work is complete. Do not merge anything — a human does the final merge.")]
     public string StepDone(
         [Description("A short summary of what you did and the result, for the CEO to validate against the step's acceptance.")] string summary)
@@ -29,7 +29,7 @@ internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunManager m
         return JsonSerializer.Serialize(new { ok = true }, Serializer);
     }
 
-    [McpServerTool(Name = "autopilot_blocked")]
+    [McpServerTool(Name = "autopilot_blocked", ReadOnly = false, Destructive = false)]
     [Description("Consult your manager (the CEO) when you cannot proceed on your own judgement — this does NOT go straight to the operator. Prefer to keep going first: for an ordinary judgement call the brief did not spell out, make a documented, reasonable assumption in line with the goal and acceptance, follow the codebase's existing conventions, and note it in your autopilot_step_done summary — do not consult on it. But when you genuinely cannot decide with a reasonable assumption — a real ambiguity, a design call beyond the plan, a truly irreversible or destructive choice, a missing credential you cannot obtain, or progress being objectively impossible — call this to put your question to your manager. Your manager answers you (the reply is relayed to you as a turn in this same session, and you carry on from there) or, only if it is genuinely an operator decision, escalates it for you. Pass the question in one message.")]
     public async Task<string> Blocked(
         [Description("The question or blocker to put to your manager, in one message.")] string question)

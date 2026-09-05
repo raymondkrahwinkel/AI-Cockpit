@@ -23,7 +23,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
 
     private const string NoSuchSurface = "No such wireframe surface — call list_wireframes for the open surfaces and their ids.";
 
-    [McpServerTool(Name = "list_wireframes")]
+    [McpServerTool(Name = "list_wireframes", ReadOnly = true)]
     [Description("Lists the wireframe surfaces the operator has open that you could ask to use: each with a stable id, the name the operator sees, and whether you already hold read/edit on it. Reading or editing a surface needs the operator to approve it first (see read_wireframe / edit_wireframe); this list only names the surfaces so you can reference one. A surface can be coupled to you with neither capability yet — that is a real, valid state, not an error.")]
     public string ListWireframes(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session)
@@ -40,7 +40,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         return _Serialize(new { ok = true, wireframes });
     }
 
-    [McpServerTool(Name = "open_wireframe")]
+    [McpServerTool(Name = "open_wireframe", ReadOnly = false, Destructive = false)]
     [Description("Asks the operator to put a wireframe YOU wrote on their screen, so the two of you can go through it together — this is how you show a screen sketch nobody has open yet. The wireframe format is plain text: one component per line, nesting by indentation, no coordinates and no colours (see docs/wireframe-format.md). The operator gets an Approve/Deny prompt naming the wireframe and how big it is; on Approve a wireframe window opens beside the cockpit with your source in it, coupled to you. On Deny nothing opens at all. The coupling on its own grants nothing: reading the surface back, or editing it afterwards, still ask their own approval. Refused without asking if the source is not something the format can read.")]
     public async Task<string> OpenWireframe(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -84,7 +84,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         return _Serialize(new { ok = true, id = surfaceId, name = title, opened = true });
     }
 
-    [McpServerTool(Name = "read_wireframe")]
+    [McpServerTool(Name = "read_wireframe", ReadOnly = true)]
     [Description("Returns a wireframe surface's source — you name it by the id or name from list_wireframes. The first time you read a surface the operator gets an Approve/Deny prompt naming which wireframe and how big it is; only after Approve do you get its source, and it is the surface exactly as it stands now, including anything the operator put there before you connected. Reading does not let you edit — edit_wireframe asks for that separately. Alongside the raw source you get `components`: every component with the ID that add_component, set_component_text, remove_component and move_component take. An id is written in the source as `#name` and stays with its component for as long as it lives, so an id you read stays aimed at the same component even when the operator edits the screen around it — reading a surface is what gives its components ids, so the source comes back with them in it. A wireframe holds one or more screens: `screens` lists them in the order they stand in the source, and every entry in `components` says which screen it belongs to, so a component you name is never one of the same name on another screen. A component carrying `goto:` gets a `goto` field with the id of the screen it points at, so you can address that screen directly — null when the component carries no `goto:` at all, or when its title does not resolve to exactly one screen (see `problems` for why). A component carrying `note:` gets its text verbatim in a `note` field, null when it carries none — this is where a requirement the drawing itself cannot show lives, e.g. \"disabled until both fields are filled in\". `viewport` names the document-wide sheet size everything is measured against — desktop, tablet or mobile, with its pixel width/height — so you can judge how much room a layout actually has; a wireframe that declares none reads as desktop.")]
     public async Task<string> ReadWireframe(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -117,7 +117,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         });
     }
 
-    [McpServerTool(Name = "set_wireframe_viewport")]
+    [McpServerTool(Name = "set_wireframe_viewport", ReadOnly = false, Destructive = false)]
     [Description("Sets the wireframe's viewport — the document-wide sheet size the layout is measured against — to desktop (960×640, what a wireframe that declares none already renders at), tablet (768×1024) or mobile (390×844). Applies straight away, as one undoable step from the activity strip; the components themselves do not change, only the sheet size they are judged against. Needs the same one-off Approve as edit_wireframe. Choosing the viewport already in effect does nothing. Refused with a reason if `viewport` is not one of those three names.")]
     public Task<string> SetWireframeViewport(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -133,7 +133,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         return _ApplyAsync(session, wireframe, WireframeComponentEdit.SetViewport(Enum.Parse<WireframeViewport>(name, ignoreCase: true)), $"set the viewport to {name}");
     }
 
-    [McpServerTool(Name = "edit_wireframe")]
+    [McpServerTool(Name = "edit_wireframe", ReadOnly = false, Destructive = false)]
     [Description("Replaces a wireframe surface's whole source with `source` — the tool to reach for when you are writing or rewriting a screen, rather than changing one thing on one that is already there. It applies straight away; there is no accept step, so what you send is what the operator sees. Needs its own Approve, asked the first time you edit a surface (covering read too, in one prompt) or as a widening prompt if you were only reading it before. The operator's prompt shows how many lines change, computed from the actual edit — not from anything you write here. Refused if the source is not something the format can read, and the reply then says which lines are wrong. The operator can take the whole rewrite back from the activity strip, so it is one undoable step rather than an overwrite.")]
     public async Task<string> EditWireframe(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -162,7 +162,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         return _Reply(surface, result, extra: changeSummary);
     }
 
-    [McpServerTool(Name = "add_component")]
+    [McpServerTool(Name = "add_component", ReadOnly = false, Destructive = false)]
     [Description("Adds ONE component inside a container and applies it straight away — every other line of the wireframe is left exactly as it is, including anything the operator changed since you last read it. `parent` is the ID of a container, from read_wireframe's `components`: screen, row, column, group, header, footer, sidebar, main, card, modal, tabs, tab, nav, menu, breadcrumb, stepper, list, table or state. `type` is one of those, or a widget: item, label, button, input, textarea, search, select, checkbox, radio, toggle, slider, image, avatar, icon, badge, progress, pagination, divider, space. A `state` is the one exception: it may only be added with `parent` naming its own screen, and it needs a `replaces:#<id>` modifier naming the container in that screen whose content it stands in for while it is open — e.g. `type: \"state\", modifiers: \"replaces:#results\"` — see docs/wireframe-format.md. Needs the same one-off Approve as edit_wireframe. Refused with a reason if there is no component with that id, the parent is not a container, the keyword or a modifier is not one the format has, or the operator is editing that container right now — try again once they let go.")]
     public Task<string> AddComponent(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -175,7 +175,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         _ApplyAsync(session, wireframe, WireframeComponentEdit.Add(parent, type, text, modifiers, position),
             $"add {type.Trim().ToLowerInvariant()}{_Quoted(text)}");
 
-    [McpServerTool(Name = "add_screen")]
+    [McpServerTool(Name = "add_screen", ReadOnly = false, Destructive = false)]
     [Description("Adds ONE more screen to this wireframe and applies it straight away — a wireframe holds as many screens as the thing you are sketching has, and this is how you add the next one. The new screen carries only its title; fill it with add_component, naming the screen's own id from read_wireframe's `screens`. The operator sees it appear beside the others in the overview. Needs the same one-off Approve as edit_wireframe. Use remove_component to take a screen away again — the last remaining screen is refused, because a wireframe without one is nothing to look at.")]
     public Task<string> AddScreen(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -185,7 +185,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         _ApplyAsync(session, wireframe, WireframeComponentEdit.AddScreen(title, position),
             $"add a screen \"{_SingleLine(title)}\"");
 
-    [McpServerTool(Name = "set_component_text")]
+    [McpServerTool(Name = "set_component_text", ReadOnly = false, Destructive = false)]
     [Description("Changes ONE component's text — a button's caption, a field's label, a screen's title — and applies it straight away, leaving every other line alone. The component keeps all of its modifiers and its id. `component` is the ID from read_wireframe's `components`. Refused with a reason if there is no component with that id any more, or if the operator is editing it right now.")]
     public Task<string> SetComponentText(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -195,7 +195,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         _ApplyAsync(session, wireframe, WireframeComponentEdit.SetText(component, text),
             $"reword component #{_SingleLine(component)} to \"{_SingleLine(text)}\"");
 
-    [McpServerTool(Name = "remove_component")]
+    [McpServerTool(Name = "remove_component", ReadOnly = false, Destructive = false)]
     [Description("Removes ONE component and everything nested inside it — nothing else. `component` is the ID from read_wireframe's `components`; the reply says how many nested components went with it. A screen line removes that whole screen, unless it is the only screen this wireframe has left. Refused with a reason if there is no component with that id any more, if it is the last screen (that is the wireframe — use edit_wireframe), or if the operator is editing it right now.")]
     public Task<string> RemoveComponent(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -204,7 +204,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         _ApplyAsync(session, wireframe, WireframeComponentEdit.Remove(component),
             $"remove component #{_SingleLine(component)} and anything inside it");
 
-    [McpServerTool(Name = "move_component")]
+    [McpServerTool(Name = "move_component", ReadOnly = false, Destructive = false)]
     [Description("Moves ONE component, with everything nested inside it, into another container — the way to reorder a row's buttons or lift a field into a different group without rewriting the screen. Both `component` and `parent` are IDs from read_wireframe's `components`; the block is re-indented to fit where it lands. Refused with a reason if either id names no component any more, if the target is not a container or is inside the component itself, or if the operator is editing either of them right now.")]
     public Task<string> MoveComponent(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -215,7 +215,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         _ApplyAsync(session, wireframe, WireframeComponentEdit.Move(component, parent, position),
             $"move component #{_SingleLine(component)} into container #{_SingleLine(parent)}");
 
-    [McpServerTool(Name = "set_component_modifier")]
+    [McpServerTool(Name = "set_component_modifier", ReadOnly = false, Destructive = false)]
     [Description("Sets or clears ONE modifier on ONE component and applies it straight away, leaving everything else alone — the way to make a button primary, tick a checkbox, size a column, fill in a value, lay a flow to another screen, repoint a state, or attach a requirement the format cannot draw, without rebuilding the component. `modifier` is one of: primary, selected, checked, disabled, w, h, align, value, goto, note, replaces. For the four flags (primary/selected/checked/disabled) omit `value` to turn it on, or pass `clear: true` to take it off. For w/h (a flex ratio 1-6, never pixels), align (left/center/right), value (text for most components, 0-100 for slider/progress/pagination), goto (a screen's title, from read_wireframe's `screens`), note (a free-text requirement, e.g. \"disabled until both fields are filled in\") and replaces (a container's id, `state` only — which container in its own screen it stands in for) pass the new `value`, or `clear: true` to remove it. Refused with a reason if there is no component with that id any more, the modifier is not one this format has, it has no meaning on this component here (e.g. `w:` on something that is not a row/header/footer child), or the operator is editing it right now.")]
     public Task<string> SetComponentModifier(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -246,7 +246,7 @@ internal sealed class WireframeMcpTools(ICockpitHost host, IWireframeAccessRegis
         return _ApplyAsync(session, wireframe, edit, ask);
     }
 
-    [McpServerTool(Name = "change_component_type")]
+    [McpServerTool(Name = "change_component_type", ReadOnly = false, Destructive = false)]
     [Description("Changes what ONE component is — label into a button, input into a select — keeping its place, its text, its modifiers and its id; only the keyword changes. Applies straight away. `type` is any keyword the format has: screen, row, column, group, header, footer, sidebar, main, card, modal, tabs, tab, nav, menu, breadcrumb, stepper, list, table, item, label, button, input, textarea, search, select, checkbox, radio, toggle, slider, image, avatar, icon, badge, progress, pagination, divider, space. Refused with a reason if there is no component with that id any more, it is the screen line itself, the keyword is not one the format has, the new type cannot carry children and this component still has some (move or remove them first), or the operator is editing it right now.")]
     public Task<string> ChangeComponentType(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,

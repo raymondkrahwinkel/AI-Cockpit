@@ -13,7 +13,7 @@ internal sealed partial class KubernetesMcpTools
     private const string ArgoVersion = "v1alpha1";
     private const string ArgoApplicationPlural = "applications";
 
-    [McpServerTool(Name = "argo_apps")]
+    [McpServerTool(Name = "argo_apps", ReadOnly = true)]
     [Description("Lists Argo CD Applications in a namespace — usually \"argocd\", not the namespace they deploy to. Each entry: name, project, sync status, health, sourceType (Helm/Kustomize/Directory), the current revision (abbreviated) and how many of its resources are OutOfSync. Reads the Application CRD directly — no Argo token, no Argo API call.")]
     public async Task<string> ArgoApps(
         [Description("The cluster label.")] string cluster,
@@ -41,7 +41,7 @@ internal sealed partial class KubernetesMcpTools
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "argo_app")]
+    [McpServerTool(Name = "argo_app", ReadOnly = true)]
     [Description("Reads one Argo CD Application: its source (repo, path, targetRevision), destination, whether syncPolicy has auto-sync/selfHeal on, sync status, health, sourceType, and per resource kind/name/sync status/health. Reads the Application CRD directly — no Argo token, no Argo API call.")]
     public async Task<string> ArgoApp(
         [Description("The cluster label.")] string cluster,
@@ -70,7 +70,7 @@ internal sealed partial class KubernetesMcpTools
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "argo_history")]
+    [McpServerTool(Name = "argo_history", ReadOnly = true)]
     [Description("Lists the revisions Argo CD has deployed for an Application — commit revision, when, and who or what initiated it. Use this to find the commit to `git revert` to. `sync.revision` on the Application is only the last revision that was rolled out, not necessarily what is in Git right now (see argo_apps/argo_app). Reads the Application CRD directly.")]
     public async Task<string> ArgoHistory(
         [Description("The cluster label.")] string cluster,
@@ -99,7 +99,7 @@ internal sealed partial class KubernetesMcpTools
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "argo_last_sync")]
+    [McpServerTool(Name = "argo_last_sync", ReadOnly = true)]
     [Description("Reads what the last sync operation on an Argo CD Application did: phase, message, start/finish time, who initiated it, and per resource the literal line from Argo's own sync result. Reads the Application CRD directly — no Argo token, no Argo API call.")]
     public async Task<string> ArgoLastSync(
         [Description("The cluster label.")] string cluster,

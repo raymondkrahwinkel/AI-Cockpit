@@ -26,7 +26,7 @@ internal sealed class DockerMcpTools(
 {
     // ---- Reads -------------------------------------------------------------------------------------------------
 
-    [McpServerTool(Name = "daemon_info")]
+    [McpServerTool(Name = "daemon_info", ReadOnly = true)]
     [Description("Returns the Docker daemon's version and platform (server version, API version, OS, architecture). This is the first call that touches the daemon, so it asks the operator for consent once; after that, reads are free for the session. Start here to confirm the daemon is reachable.")]
     public async Task<string> DaemonInfo(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
@@ -61,7 +61,7 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    [McpServerTool(Name = "list_containers")]
+    [McpServerTool(Name = "list_containers", ReadOnly = true)]
     [Description("Lists containers (docker ps). By default includes stopped containers too; set all=false for only running ones. Returns each container's id, name, image, state, status and published ports. Touching the daemon asks for consent the first time in a session; after that this read is free.")]
     public async Task<string> ListContainers(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
@@ -108,7 +108,7 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    [McpServerTool(Name = "logs")]
+    [McpServerTool(Name = "logs", ReadOnly = true)]
     [Description("Returns the recent logs of a container (docker logs --tail), stdout and stderr separated. Set tail to how many lines from the end you want (default 200; 0 means all). Does not follow — it returns what is there now and completes. Touching the daemon asks for consent the first time in a session; after that this read is free.")]
     public async Task<string> Logs(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
@@ -137,7 +137,7 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    [McpServerTool(Name = "list_images")]
+    [McpServerTool(Name = "list_images", ReadOnly = true)]
     [Description("Lists the images available locally (docker images): each image's id, tags and size in bytes. Use this to see whether an image is already present before run_container (a missing image is why a run fails until you pull_image it). Touching the daemon asks for consent the first time in a session; after that this read is free.")]
     public async Task<string> ListImages(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
@@ -169,7 +169,7 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    [McpServerTool(Name = "inspect")]
+    [McpServerTool(Name = "inspect", ReadOnly = true)]
     [Description("Inspects a container (docker inspect): its state and exit code, health, environment variables, mounts and networks — the read you reach for to debug why a container is unhealthy or how it is wired. Touching the daemon asks for consent the first time in a session; after that this read is free.")]
     public async Task<string> Inspect(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
@@ -209,7 +209,7 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    [McpServerTool(Name = "stats")]
+    [McpServerTool(Name = "stats", ReadOnly = true)]
     [Description("Returns a one-shot resource sample for a container (docker stats --no-stream): CPU percent, memory usage and limit in bytes, network rx/tx and block read/write. A read behind the one-time daemon-connection consent.")]
     public async Task<string> Stats(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -248,7 +248,7 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    [McpServerTool(Name = "top")]
+    [McpServerTool(Name = "top", ReadOnly = true)]
     [Description("Lists the processes running inside a container (docker top): the column titles and a row per process. A read behind the one-time daemon-connection consent.")]
     public async Task<string> Top(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -276,7 +276,7 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    [McpServerTool(Name = "list_volumes")]
+    [McpServerTool(Name = "list_volumes", ReadOnly = true)]
     [Description("Lists local volumes (docker volume ls): name, driver and mountpoint. A read behind the one-time daemon-connection consent.")]
     public async Task<string> ListVolumes(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -308,7 +308,7 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    [McpServerTool(Name = "list_networks")]
+    [McpServerTool(Name = "list_networks", ReadOnly = true)]
     [Description("Lists networks (docker network ls): id, name, driver and scope — for inspecting connectivity between containers. A read behind the one-time daemon-connection consent.")]
     public async Task<string> ListNetworks(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -342,7 +342,7 @@ internal sealed class DockerMcpTools(
 
     // ---- Image pull (a change to local state, never destructive) -----------------------------------------------
 
-    [McpServerTool(Name = "pull_image")]
+    [McpServerTool(Name = "pull_image", ReadOnly = false, Destructive = false)]
     [Description("Pulls an image from its registry (docker pull), e.g. \"nginx:latest\" or \"ghcr.io/owner/app:1.2\". A bare name without a tag pulls :latest. This is what you run before run_container when the image is not available locally. A change to local state (not destructive), so it asks the operator afresh each time and is never remembered.")]
     public Task<string> PullImage(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -354,7 +354,7 @@ internal sealed class DockerMcpTools(
 
     // ---- Container mutations (always Dangerous, never remembered) ----------------------------------------------
 
-    [McpServerTool(Name = "start_container")]
+    [McpServerTool(Name = "start_container", ReadOnly = false, Destructive = true)]
     [Description("Starts a stopped container. This is a change, so it asks the operator afresh each time and is never remembered.")]
     public Task<string> StartContainer(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -364,7 +364,7 @@ internal sealed class DockerMcpTools(
             token => engine.StartContainerAsync(container, token),
             new { ok = true, started = container }, cancellationToken);
 
-    [McpServerTool(Name = "stop_container")]
+    [McpServerTool(Name = "stop_container", ReadOnly = false, Destructive = true)]
     [Description("Stops a running container. This is a change, so it asks the operator afresh each time and is never remembered.")]
     public Task<string> StopContainer(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -374,7 +374,7 @@ internal sealed class DockerMcpTools(
             token => engine.StopContainerAsync(container, token),
             new { ok = true, stopped = container }, cancellationToken);
 
-    [McpServerTool(Name = "restart_container")]
+    [McpServerTool(Name = "restart_container", ReadOnly = false, Destructive = true)]
     [Description("Restarts a container. This is a change, so it asks the operator afresh each time and is never remembered.")]
     public Task<string> RestartContainer(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -384,7 +384,7 @@ internal sealed class DockerMcpTools(
             token => engine.RestartContainerAsync(container, token),
             new { ok = true, restarted = container }, cancellationToken);
 
-    [McpServerTool(Name = "remove_container")]
+    [McpServerTool(Name = "remove_container", ReadOnly = false, Destructive = true)]
     [Description("Removes a container. Set force=true to remove one that is still running. This is a change, so it asks the operator afresh each time and is never remembered.")]
     public Task<string> RemoveContainer(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -397,7 +397,7 @@ internal sealed class DockerMcpTools(
 
     // ---- exec / run (arbitrary code — behind the exec capability) ----------------------------------------------
 
-    [McpServerTool(Name = "exec")]
+    [McpServerTool(Name = "exec", ReadOnly = false, Destructive = true)]
     [Description("Runs a single, non-interactive command inside a running container and returns its stdout, stderr and exit code. exec is off unless the operator turned it on, and always asks afresh with the literal command shown, never remembered. The command runs as \"/bin/sh -c <command>\".")]
     public async Task<string> Exec(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -428,7 +428,7 @@ internal sealed class DockerMcpTools(
         }
     }
 
-    [McpServerTool(Name = "run_container")]
+    [McpServerTool(Name = "run_container", ReadOnly = false, Destructive = true)]
     [Description("Creates and starts a new detached container (docker run -d) and returns its id. Because this runs arbitrary code, it is off unless the exec capability is on, and always asks afresh with the literal 'docker run' command line shown — so dangerous flags like --privileged or a bind mount (-v /:/host) are visible before you approve. Never remembered. The started container appears in the status bar with an operator-only Kill.")]
     public async Task<string> RunContainer(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -474,7 +474,7 @@ internal sealed class DockerMcpTools(
 
     // ---- Image tag / push -------------------------------------------------------------------------------------
 
-    [McpServerTool(Name = "tag")]
+    [McpServerTool(Name = "tag", ReadOnly = false, Destructive = false)]
     [Description("Tags an image under a new reference (docker tag), e.g. source \"myapp:latest\" as \"registry.example.com/myapp:1.2\". A change to local state (not destructive), so it asks the operator afresh each time and is never remembered.")]
     public Task<string> Tag(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -485,7 +485,7 @@ internal sealed class DockerMcpTools(
             token => engine.TagImageAsync(source, target, token),
             new { ok = true, tagged = target }, cancellationToken);
 
-    [McpServerTool(Name = "push")]
+    [McpServerTool(Name = "push", ReadOnly = false, Destructive = true)]
     [Description("Pushes an image to its registry (docker push), e.g. \"registry.example.com/myapp:1.2\". This publishes it outside your machine, so it always asks the operator afresh with the reference shown, and is never remembered. Runs through the docker CLI (registry auth).")]
     public async Task<string> Push(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -503,7 +503,7 @@ internal sealed class DockerMcpTools(
 
     // ---- Volumes ----------------------------------------------------------------------------------------------
 
-    [McpServerTool(Name = "remove_volume")]
+    [McpServerTool(Name = "remove_volume", ReadOnly = false, Destructive = true)]
     [Description("Removes a volume (docker volume rm). Set force=true to remove one still referenced. This deletes the volume's data, so it asks the operator afresh each time with the volume name shown, and is never remembered.")]
     public Task<string> RemoveVolume(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -514,7 +514,7 @@ internal sealed class DockerMcpTools(
             token => engine.RemoveVolumeAsync(volume, force, token),
             new { ok = true, removed = volume }, cancellationToken);
 
-    [McpServerTool(Name = "prune")]
+    [McpServerTool(Name = "prune", ReadOnly = false, Destructive = true)]
     [Description("Reclaims disk by pruning unused resources (docker prune). target is one of \"containers\" (stopped containers), \"images\" (dangling images), or \"volumes\" (volumes no container uses). This deletes things, so it asks the operator afresh each time with the target shown, and is never remembered. Returns the bytes reclaimed and what was removed.")]
     public async Task<string> Prune(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -549,7 +549,7 @@ internal sealed class DockerMcpTools(
 
     // ---- Build / cp (arbitrary code / container-fs writes — behind the exec capability) ------------------------
 
-    [McpServerTool(Name = "build_image")]
+    [McpServerTool(Name = "build_image", ReadOnly = false, Destructive = true)]
     [Description("Builds an image from a Dockerfile (docker build -t <tag> <context>). Because a build runs the Dockerfile's RUN steps — arbitrary code — this is off unless the exec capability is on, and always asks afresh with the literal command shown. Never remembered. Runs through the docker CLI.")]
     public async Task<string> BuildImage(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -577,7 +577,7 @@ internal sealed class DockerMcpTools(
         return await _RunDockerCliAsync(args, cancellationToken);
     }
 
-    [McpServerTool(Name = "cp")]
+    [McpServerTool(Name = "cp", ReadOnly = false, Destructive = true)]
     [Description("Copies files between the host and a container (docker cp). One of source/dest is \"container:/path\" and the other a host path. Because it reads or writes the container's filesystem, this is off unless the exec capability is on, and always asks afresh with the literal command shown. Never remembered. Runs through the docker CLI.")]
     public async Task<string> Cp(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -597,7 +597,7 @@ internal sealed class DockerMcpTools(
 
     // ---- Compose (docker compose CLI) --------------------------------------------------------------------------
 
-    [McpServerTool(Name = "compose_config")]
+    [McpServerTool(Name = "compose_config", ReadOnly = true)]
     [Description("Resolves and returns the fully-rendered Compose configuration for a project (docker compose config) — the safe way to see exactly what an 'up' would create before you run it. A read: needs only the one-time daemon-connection consent.")]
     public async Task<string> ComposeConfig(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -614,7 +614,7 @@ internal sealed class DockerMcpTools(
         return await _RunComposeAsync(directory, _ComposeArgs(file, "config"), cancellationToken);
     }
 
-    [McpServerTool(Name = "compose_logs")]
+    [McpServerTool(Name = "compose_logs", ReadOnly = true)]
     [Description("Returns the recent logs of a Compose project's services (docker compose logs), optionally filtered to specific services. Set tail to how many lines from the end (default 200; 0 means all). Does not follow — it returns what is there now and completes. A read: needs only the one-time daemon-connection consent.")]
     public async Task<string> ComposeLogs(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -635,7 +635,7 @@ internal sealed class DockerMcpTools(
         return await _RunComposeAsync(directory, args, cancellationToken);
     }
 
-    [McpServerTool(Name = "compose_up")]
+    [McpServerTool(Name = "compose_up", ReadOnly = false, Destructive = true)]
     [Description("Brings a Compose project up in the background (docker compose up -d). A change, so it asks the operator afresh with the literal command shown, and is never remembered. Use compose_config first to see what will be created.")]
     public Task<string> ComposeUp(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -649,7 +649,7 @@ internal sealed class DockerMcpTools(
         return _ComposeMutateAsync(directory, args, session, cancellationToken);
     }
 
-    [McpServerTool(Name = "compose_down")]
+    [McpServerTool(Name = "compose_down", ReadOnly = false, Destructive = true)]
     [Description("Stops and removes a Compose project's containers, networks and default volumes (docker compose down). A change, so it asks the operator afresh with the literal command shown, and is never remembered.")]
     public Task<string> ComposeDown(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -658,7 +658,7 @@ internal sealed class DockerMcpTools(
         CancellationToken cancellationToken = default) =>
         _ComposeMutateAsync(directory, _ComposeArgs(file, "down"), session, cancellationToken);
 
-    [McpServerTool(Name = "compose_build")]
+    [McpServerTool(Name = "compose_build", ReadOnly = false, Destructive = true)]
     [Description("Builds (or rebuilds) a Compose project's service images (docker compose build). A change, so it asks the operator afresh with the literal command shown, and is never remembered.")]
     public Task<string> ComposeBuild(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -672,7 +672,7 @@ internal sealed class DockerMcpTools(
         return _ComposeMutateAsync(directory, args, session, cancellationToken);
     }
 
-    [McpServerTool(Name = "compose_ps")]
+    [McpServerTool(Name = "compose_ps", ReadOnly = true)]
     [Description("Shows the status of a Compose project's services (docker compose ps): which are up, their state and ports. A read: needs only the one-time daemon-connection consent.")]
     public async Task<string> ComposePs(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -689,7 +689,7 @@ internal sealed class DockerMcpTools(
         return await _RunComposeAsync(directory, _ComposeArgs(file, "ps"), cancellationToken);
     }
 
-    [McpServerTool(Name = "compose_restart")]
+    [McpServerTool(Name = "compose_restart", ReadOnly = false, Destructive = true)]
     [Description("Restarts a Compose project's services, or specific ones (docker compose restart) — without recreating them, so it is quicker than down+up. A change, so it asks the operator afresh with the literal command shown, and is never remembered.")]
     public Task<string> ComposeRestart(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,

@@ -16,7 +16,7 @@ internal sealed partial class KubernetesMcpTools
     // many resources it left out rather than pushing the Approve button off the card.
     private const int MaxConsentDiffLength = 3_500;
 
-    [McpServerTool(Name = "helm_rollback")]
+    [McpServerTool(Name = "helm_rollback", ReadOnly = false, Destructive = true)]
     [Description("""
         Rolls a Helm release back to an earlier revision by applying the manifest that revision stored in its release secret — no helm binary, no chart, no repository. Call helm_history first to pick a revision. The operator must approve, and the approval shows the literal manifest diff (which resources are created, updated with the changed lines, and deleted), never just the release name.
 

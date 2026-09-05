@@ -24,7 +24,7 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
     private static readonly string[] Shapes =
         ["rectangle", "roundedrectangle", "ellipse", "diamond", "arrow", "column", "callout", "text", "stickynote"];
 
-    [McpServerTool(Name = "list_whiteboards")]
+    [McpServerTool(Name = "list_whiteboards", ReadOnly = true)]
     [Description("Lists the whiteboard surfaces the operator has open that you could ask to use: each with a stable id, the name the operator sees, and whether you already hold read/place on it. Reading a surface and putting something on it each need the operator to approve them first, separately (see read_whiteboard / place_on_whiteboard); this list only names the surfaces so you can reference one.")]
     public string ListWhiteboards(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session)
@@ -41,7 +41,7 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
         return _Serialize(new { ok = true, whiteboards });
     }
 
-    [McpServerTool(Name = "open_whiteboard")]
+    [McpServerTool(Name = "open_whiteboard", ReadOnly = false, Destructive = false)]
     [Description("Asks the operator to put a fresh whiteboard on their screen, so the two of you can work something out on it together — this is how you get a board when none is open, rather than waiting for the operator to make one. The operator gets an Approve/Deny prompt naming the board; on Approve a whiteboard window opens beside the cockpit, empty, coupled to you. On Deny nothing opens at all. The coupling on its own grants nothing: seeing the board (read_whiteboard) and putting anything on it (place_on_whiteboard) still ask their own approval.")]
     public async Task<string> OpenWhiteboard(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -73,7 +73,7 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
         return _Serialize(new { ok = true, id = surfaceId, name = title, opened = true });
     }
 
-    [McpServerTool(Name = "read_whiteboard")]
+    [McpServerTool(Name = "read_whiteboard", ReadOnly = true)]
     [Description("Returns a screenshot of a whiteboard surface — you name it by the id or name from list_whiteboards. This shares an IMAGE of the WHOLE board, scaled to fit — a render of what is drawn and placed on it, not a crop of whatever the operator happens to have in view, and not its shapes or strokes as data. It comes back as an image content block, not a base64 field in the JSON — your client should offer it to you as a picture. The first time you read a surface the operator gets an Approve/Deny prompt naming which whiteboard and that a screenshot is being shared. Reading does not let you put anything on the board — place_on_whiteboard asks for that separately.")]
     public async Task<CallToolResult> ReadWhiteboard(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -111,7 +111,7 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
         };
     }
 
-    [McpServerTool(Name = "place_on_whiteboard")]
+    [McpServerTool(Name = "place_on_whiteboard", ReadOnly = false, Destructive = false)]
     [Description("Puts ONE object on a whiteboard surface — a shape, a sticky note or a bare label — and leaves everything else on the board exactly as it is. There is no way to replace a board or to move, change or remove anything the operator drew or placed themselves; you only add. What you put down is drawn in the agent's crisp blue and badged as yours, so the operator can always see which marks are theirs and which are yours. Needs its own Approve, asked the first time you place something on a surface (covering reading it too, in one prompt) or as a widening prompt if you were only reading it before. Returns the new object's id, which erase_whiteboard_object takes to take it back.")]
     public async Task<string> PlaceOnWhiteboard(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,
@@ -158,7 +158,7 @@ internal sealed class WhiteboardMcpTools(ICockpitHost host, IWhiteboardAccessReg
         return _Serialize(new { ok = true, id = surface.SurfaceId, name = surface.Name, objectId, placed = ask });
     }
 
-    [McpServerTool(Name = "erase_whiteboard_object")]
+    [McpServerTool(Name = "erase_whiteboard_object", ReadOnly = false, Destructive = true)]
     [Description("Takes back one object YOU placed on a whiteboard, by the objectId place_on_whiteboard returned. It only reaches your own objects: anything the operator drew or placed themselves is refused, not removed — their board is theirs. Uses the same approval as place_on_whiteboard.")]
     public async Task<string> EraseWhiteboardObject(
         [Description("Your session id (COCKPIT_PANE_ID).")] string session,

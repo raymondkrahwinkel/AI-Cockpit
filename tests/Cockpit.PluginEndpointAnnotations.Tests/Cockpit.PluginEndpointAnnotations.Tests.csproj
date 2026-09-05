@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- AC-1070: this is the one guard that spans every plugins-dev/ MCP endpoint at once — no single plugin's own
+       .Tests project can express it, so it lives here instead, referencing every plugin whose tools this ticket
+       annotated. Each tool class is `internal` to its own plugin assembly; the test loads each assembly by name
+       and reflects over its types (Assembly.GetTypes() sees internal types too), so none of these references need
+       to expose a public type — the ProjectReference just has to put the dll on disk. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Autopilot\Cockpit.Plugin.Autopilot.csproj" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Diagram\Cockpit.Plugin.Diagram.csproj" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Docker\Cockpit.Plugin.Docker.csproj" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GitHubPullRequests\Cockpit.Plugin.GitHubPullRequests.csproj" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Kubernetes\Cockpit.Plugin.Kubernetes.csproj" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.LocalCi\Cockpit.Plugin.LocalCi.csproj" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Proxmox\Cockpit.Plugin.Proxmox.csproj" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Workflows\Cockpit.Plugin.Workflows.csproj" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.YouTrack\Cockpit.Plugin.YouTrack.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -12,7 +12,7 @@ namespace Cockpit.Plugin.Kubernetes.Mcp;
 // call is gated exactly like `get_resource` on a secret (`ClusterAccessGate.AuthorizeSensitiveNamespacedReadAsync`).
 internal sealed partial class KubernetesMcpTools
 {
-    [McpServerTool(Name = "helm_list")]
+    [McpServerTool(Name = "helm_list", ReadOnly = true)]
     [Description("Lists the current revision of every Helm release in a namespace, read straight from its `helm.sh/release.v1` secrets. Each entry: release name, revision, status, chart (name-version), appVersion and when it was last deployed. Reading a release secret is credential material, so it always asks the operator to approve, even inside an allowed namespace.")]
     public async Task<string> HelmList(
         [Description("The cluster label.")] string cluster,
@@ -53,7 +53,7 @@ internal sealed partial class KubernetesMcpTools
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "helm_status")]
+    [McpServerTool(Name = "helm_status", ReadOnly = true)]
     [Description("Reads one Helm release's status: chart, appVersion, when it was first/last deployed, and its notes. Defaults to the current revision; pass revision to inspect an older one. Always asks the operator to approve, even inside an allowed namespace.")]
     public Task<string> HelmStatus(
         [Description("The cluster label.")] string cluster,
@@ -67,7 +67,7 @@ internal sealed partial class KubernetesMcpTools
             found => McpText.Ok(new { ok = true, release = found.ToStatus() }),
             cancellationToken);
 
-    [McpServerTool(Name = "helm_history")]
+    [McpServerTool(Name = "helm_history", ReadOnly = true)]
     [Description("Lists every revision Helm has kept for a release — revision number, status (deployed/superseded/failed/...), chart version and appVersion — newest first. Always asks the operator to approve, even inside an allowed namespace.")]
     public async Task<string> HelmHistory(
         [Description("The cluster label.")] string cluster,
@@ -109,7 +109,7 @@ internal sealed partial class KubernetesMcpTools
         }, cancellationToken);
     }
 
-    [McpServerTool(Name = "helm_values")]
+    [McpServerTool(Name = "helm_values", ReadOnly = true)]
     [Description("Reads the values a Helm release was installed or upgraded with. Defaults to the current revision; pass revision to inspect an older one. Set includeChartDefaults to also return the chart's own default values. Always asks the operator to approve, even inside an allowed namespace.")]
     public Task<string> HelmValues(
         [Description("The cluster label.")] string cluster,
@@ -124,7 +124,7 @@ internal sealed partial class KubernetesMcpTools
             found => McpText.Ok(new { ok = true, release = found.ToValues(includeChartDefaults) }),
             cancellationToken);
 
-    [McpServerTool(Name = "helm_manifest")]
+    [McpServerTool(Name = "helm_manifest", ReadOnly = true)]
     [Description("Reads the full rendered manifest Helm applied for one revision of a release — every resource it created, as the literal YAML Helm generated. Defaults to the current revision; pass revision to inspect an older one. Always asks the operator to approve, even inside an allowed namespace.")]
     public Task<string> HelmManifest(
         [Description("The cluster label.")] string cluster,
