@@ -585,8 +585,15 @@ public partial class App : Application
             Program.Services.GetRequiredService<ICompanionToolRegistry>(),
             _CreateFirstPartyCompanionToolStorage(registrationStore),
             sessionObserver);
-        firstPartyCompanionTools.AddCompanionTool(
-            Program.Services.GetRequiredService<AssistantIndicatorCoordinator>().CreateCompanionTool());
+        var assistantCompanionTool = Program.Services.GetRequiredService<AssistantIndicatorCoordinator>().CreateCompanionTool();
+        if (!firstPartyCompanionTools.AddCompanionTool(assistantCompanionTool))
+        {
+            diagnostics.Record(
+                "first-party-companion-tools",
+                "Assistant",
+                "companion-tool",
+                $"Companion tool '{assistantCompanionTool.Id}' is already contributed by another plugin; this registration is ignored.");
+        }
 
         pluginManager.Initialize((discovered, plugin) => new CockpitHost(
             discovered.FolderId,
