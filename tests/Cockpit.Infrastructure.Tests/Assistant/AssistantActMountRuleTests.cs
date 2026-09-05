@@ -464,7 +464,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
         // the same way `list_projects`' own read gateway sits outside this one.
         public Task<AssistantProjectSnapshot?> GetProjectSnapshotAsync(string projectId, CancellationToken cancellationToken = default) =>
             Task.FromResult<AssistantProjectSnapshot?>(new AssistantProjectSnapshot(
-                projectId, "Project", null, null, null, null, false, null, null, new Dictionary<string, string>()));
+                projectId, "Project", null, null, null, null, false, null, null, new Dictionary<string, string>(), null, null));
 
         public Task<AssistantProjectUpdateResult> UpdateProjectAsync(
             string projectId,
@@ -477,6 +477,8 @@ public sealed class AssistantActMountRuleTests : IDisposable
             IReadOnlyList<string>? enabledMcpServerNames = null,
             string? category = null,
             IReadOnlyDictionary<string, string>? pluginFields = null,
+            string? gitUrl = null,
+            string? memoryRef = null,
             CancellationToken cancellationToken = default)
         {
             Calls.Add($"UpdateProjectAsync({projectId})");

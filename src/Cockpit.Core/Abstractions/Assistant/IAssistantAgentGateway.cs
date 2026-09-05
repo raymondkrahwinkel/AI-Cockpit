@@ -141,11 +141,11 @@ public interface IAssistantAgentGateway
     Task<AssistantProjectSnapshot?> GetProjectSnapshotAsync(string projectId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Changes named fields on an existing project (AC-1059) — the same field set <see cref="CreateProjectAsync"/>
-    /// accepts, nothing more. A null parameter leaves that field exactly as stored, the same "only the keys you
-    /// name change" contract <c>start_agent</c>'s <c>options</c> carries; an empty string clears a text field, and
-    /// <paramref name="pluginFields"/> upserts by key rather than replacing the whole map. An unknown
-    /// <paramref name="projectId"/> is refused rather than throwing.
+    /// Changes named fields on an existing project (AC-1059), plus <paramref name="gitUrl"/>/<paramref name="memoryRef"/>
+    /// which <see cref="CreateProjectAsync"/> cannot set at all. A null parameter leaves that field exactly as
+    /// stored, the same "only the keys you name change" contract <c>start_agent</c>'s <c>options</c> carries; an
+    /// empty string clears a text field, and <paramref name="pluginFields"/> upserts by key rather than replacing
+    /// the whole map. An unknown <paramref name="projectId"/> is refused rather than throwing.
     /// </summary>
     Task<AssistantProjectUpdateResult> UpdateProjectAsync(
         string projectId,
@@ -158,6 +158,8 @@ public interface IAssistantAgentGateway
         IReadOnlyList<string>? enabledMcpServerNames = null,
         string? category = null,
         IReadOnlyDictionary<string, string>? pluginFields = null,
+        string? gitUrl = null,
+        string? memoryRef = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -224,7 +226,8 @@ public sealed record AssistantProjectCreateResult(bool Ok, string? ProjectId, st
 }
 
 // AC-1059: a project's current values, for the before/after consent card `update_project` raises ahead of
-// changing anything — the same field set `CreateProjectAsync` accepts, nothing a caller could not already set.
+// changing anything — every field that tool can change, including GitUrl/MemoryRef, which `CreateProjectAsync`
+// itself still cannot set.
 public sealed record AssistantProjectSnapshot(
     string Id,
     string Name,
@@ -235,7 +238,9 @@ public sealed record AssistantProjectSnapshot(
     bool IsolateInWorktreeByDefault,
     IReadOnlyList<string>? EnabledMcpServerNames,
     string? Category,
-    IReadOnlyDictionary<string, string> PluginFields);
+    IReadOnlyDictionary<string, string> PluginFields,
+    string? GitUrl,
+    string? MemoryRef);
 
 // What came of changing an existing project (AC-1059). Same shape and same reason as `AssistantProjectCreateResult`
 // — a refusal is a sentence the assistant says, not an exception it fails on.

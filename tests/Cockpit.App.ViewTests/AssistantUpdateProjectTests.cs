@@ -39,7 +39,7 @@ public class AssistantUpdateProjectTests
     private const string ProfileLabel = "Zyra";
 
     [Fact]
-    public async Task NamingOneField_LeavesEveryOtherStoredFieldExactlyAsItWas()
+    public async Task NamingSomeFields_LeavesEveryOtherStoredFieldExactlyAsItWas()
     {
         var folder = Directory.CreateTempSubdirectory("ac1059-").FullName;
         try
@@ -48,22 +48,27 @@ public class AssistantUpdateProjectTests
             {
                 Description = "Client billing",
                 SourceDirectories = [new ProjectRepository(folder)],
+                GitUrl = "https://example.test/old.git",
                 DefaultProfileLabel = ProfileLabel,
                 BehaviorPrompt = "Write in Dutch.",
                 IsolateInWorktreeByDefault = true,
                 McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["depot"] },
                 Category = "Werk",
+                MemoryRef = "depot:old-memory",
                 PluginFields = new Dictionary<string, string> { ["youtrack.project"] = "AC" },
             };
             var (gateway, projects, _) = _Build(settings: ProjectSettings.Empty with { Projects = [existing] });
 
-            // Only `category` is named — every other field this call did not mention must survive by
-            // construction (starting from the stored record), not because this test happens to check it.
-            var result = await gateway.UpdateProjectAsync(existing.Id, category: "Klanten");
+            // `category`, `gitUrl` and `memoryRef` are named — every other field this call did not mention must
+            // survive by construction (starting from the stored record), not because this test happens to check it.
+            var result = await gateway.UpdateProjectAsync(
+                existing.Id, category: "Klanten", gitUrl: "https://example.test/new.git", memoryRef: "depot:new-memory");
 
             Assert.True(result.Ok, result.Error);
             var stored = Assert.Single(projects.Projects);
             Assert.Equal("Klanten", stored.Category);
+            Assert.Equal("https://example.test/new.git", stored.GitUrl);
+            Assert.Equal("depot:new-memory", stored.MemoryRef);
             Assert.Equal("Invoices", stored.Name);
             Assert.Equal("Client billing", stored.Description);
             Assert.Equal(folder, stored.SourceDirectory);

@@ -218,6 +218,8 @@ public sealed class AssistantMemoryBackupToolsConsentTests : IDisposable
             IReadOnlyList<string>? enabledMcpServerNames = null,
             string? category = null,
             IReadOnlyDictionary<string, string>? pluginFields = null,
+            string? gitUrl = null,
+            string? memoryRef = null,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

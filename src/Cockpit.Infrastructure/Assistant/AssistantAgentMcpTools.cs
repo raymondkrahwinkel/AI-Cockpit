@@ -608,17 +608,19 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "update_project")]
-    [Description("Changes one or more fields on an existing local project (AC-1059) — exactly the field set create_project can set, nothing more: name, description, folder, default profile, behaviour prompt, worktree isolation, MCP selection, category and plugin fields. Memory/resources, a logo, a git URL and the free-form \"additional info\" box are not settable here either, same as create_project — the operator still opens the dialog for those. NAME THE PROJECT BY ITS id FROM list_projects; AN UNKNOWN ID IS REFUSED rather than doing nothing quietly. ONLY WHAT YOU NAME CHANGES: leave a parameter out and that field is left exactly as stored — unlike create_project, where a missing field takes a default, here a missing field means untouched. TO CLEAR A TEXT FIELD (description, sourceDirectory, defaultProfileLabel, category, behaviorPrompt), PASS AN EMPTY STRING — null/leaving it out means \"leave this alone\", not \"clear it\". sourceDirectory, WHEN GIVEN AND NOT EMPTY, MUST BE A FULL PATH THAT ALREADY EXISTS, same rule create_project holds it to, and only ever touches the first repository a project declares (AC-938) — a second one is the project editor's own job. enabledMcpServerNames, WHEN GIVEN, REPLACES THE WHOLE SELECTION, not just named entries — an empty array means every offered server, the same collapse create_project applies; leave the parameter out entirely to keep the project's current selection untouched. pluginFields MERGES BY KEY rather than replacing the map, so naming one plugin's field never drops a different plugin's link. FOUR FIELDS DECIDE HOW EVERY SESSION ON THIS PROJECT RUNS FROM HERE ON, NOT MERELY HOW IT IS LABELLED — sourceDirectory, enabledMcpServerNames, isolateInWorktreeByDefault and behaviorPrompt — and a session already running there inherits none of this before its own next spawn, so say that rather than implying it takes effect mid-session. BY DEFAULT THE OPERATOR STILL HAS TO APPROVE IT: an Allow/Deny row shows every field you are changing with its stored value next to the one you are setting, and nothing is written until it is answered." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: an unknown project id, a blank name, a folder that is not there, or an unknown plugin field key — read the reason out and carry on. NAMING NO FIELD AT ALL IS REFUSED TOO, since there would be nothing to ask the operator about.")]
+    [Description("Changes one or more fields on an existing local project (AC-1059): name, description, folder, git URL, default profile, behaviour prompt, worktree isolation, MCP selection, category, memory link and plugin fields — everything create_project can set, plus gitUrl/memoryRef, which create_project itself still cannot. A logo and the free-form \"additional info\" box remain out of reach here too: a logo is a file, not a field, and additional info carries its own per-row secrecy flag that no parameter here represents — the operator still opens the dialog for either. NAME THE PROJECT BY ITS id FROM list_projects; AN UNKNOWN ID IS REFUSED rather than doing nothing quietly. ONLY WHAT YOU NAME CHANGES: leave a parameter out and that field is left exactly as stored — unlike create_project, where a missing field takes a default, here a missing field means untouched. TO CLEAR A TEXT FIELD (description, sourceDirectory, gitUrl, defaultProfileLabel, category, memoryRef, behaviorPrompt), PASS AN EMPTY STRING — null/leaving it out means \"leave this alone\", not \"clear it\". sourceDirectory, WHEN GIVEN AND NOT EMPTY, MUST BE A FULL PATH THAT ALREADY EXISTS, same rule create_project holds it to, and only ever touches the first repository a project declares (AC-938) — a second one is the project editor's own job. enabledMcpServerNames, WHEN GIVEN, REPLACES THE WHOLE SELECTION, not just named entries — an empty array means every offered server, the same collapse create_project applies; leave the parameter out entirely to keep the project's current selection untouched. pluginFields MERGES BY KEY rather than replacing the map, so naming one plugin's field never drops a different plugin's link. FOUR FIELDS DECIDE HOW EVERY SESSION ON THIS PROJECT RUNS FROM HERE ON, NOT MERELY HOW IT IS LABELLED — sourceDirectory, enabledMcpServerNames, isolateInWorktreeByDefault and behaviorPrompt — and a session already running there inherits none of this before its own next spawn, so say that rather than implying it takes effect mid-session. BY DEFAULT THE OPERATOR STILL HAS TO APPROVE IT: an Allow/Deny row shows every field you are changing with its stored value next to the one you are setting, and nothing is written until it is answered." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: an unknown project id, a blank name, a folder that is not there, or an unknown plugin field key — read the reason out and carry on. NAMING NO FIELD AT ALL IS REFUSED TOO, since there would be nothing to ask the operator about.")]
     public async Task<string> UpdateProjectAsync(
         [Description("The project's id, from list_projects. An id naming no project is refused rather than silently doing nothing.")] string projectId,
         [Description("A new display name. Left out, the current name stands.")] string? name = null,
         [Description("Free-text note on what this project is. Left out, unchanged. Pass an empty string to clear it.")] string? description = null,
         [Description("The folder its sessions start in — one of the four fields that decide how every session here runs from here on. Left out, unchanged. Give a full path that already exists, or an empty string to clear it back to an administrative project with no folder. Only ever touches the first repository this project declares (AC-938).")] string? sourceDirectory = null,
+        [Description("The git URL sourceDirectory was cloned from, shown beside the folder wherever the project is displayed. Left out, unchanged. An empty string clears it — this never clones or re-clones anything, it only records where the folder already there came from.")] string? gitUrl = null,
         [Description("The profile its sessions start under, by label exactly as the cockpit knows it. Left out, unchanged. An empty string clears it back to whatever a session here would otherwise use.")] string? defaultProfileLabel = null,
         [Description("Appended to every session's system prompt here, on top of whatever its profile already says — one of the four fields that decide how every session here runs from here on. Left out, unchanged. An empty string clears it.")] string? behaviorPrompt = null,
         [Description("Whether new sessions here isolate in their own git worktree by default — one of the four fields that decide how every session here runs from here on. Left out, unchanged.")] bool? isolateInWorktreeByDefault = null,
         [Description("Names of MCP servers this project's sessions start ticked — one of the four fields that decide how every session here runs from here on. Left out, the project's current selection is untouched. Given, replaces the whole selection; an empty array means every offered server, following the registry.")] string[]? enabledMcpServerNames = null,
         [Description("Which group this project sits under in the manager's list. Left out, unchanged. An empty string clears it back to \"Uncategorized\".")] string? category = null,
+        [Description("Where this project's memory lives — a Depot reference or a folder path, the same shape the project editor's own memory row takes. Left out, unchanged. An empty string clears it, so sessions here read and write no project memory.")] string? memoryRef = null,
         [Description("What this project is called elsewhere, keyed by the field a plugin registered — merged into the project's existing links by key, so naming one never drops a different plugin's. A key no installed plugin registered is refused.")] Dictionary<string, string>? pluginFields = null)
     {
         try
@@ -641,9 +643,19 @@ internal sealed class AssistantAgentMcpTools(
                 lineChecks.Add(("sourceDirectory", sourceDirectory));
             }
 
+            if (gitUrl is not null)
+            {
+                lineChecks.Add(("gitUrl", gitUrl));
+            }
+
             if (defaultProfileLabel is not null)
             {
                 lineChecks.Add(("defaultProfileLabel", defaultProfileLabel));
+            }
+
+            if (memoryRef is not null)
+            {
+                lineChecks.Add(("memoryRef", memoryRef));
             }
 
             foreach (var serverName in enabledMcpServerNames ?? [])
@@ -697,9 +709,9 @@ internal sealed class AssistantAgentMcpTools(
 
             var normalizedEnabledMcpServerNames = enabledMcpServerNames is { Length: 0 } ? null : enabledMcpServerNames;
 
-            if (name is null && normalizedDescription is null && sourceDirectory is null && defaultProfileLabel is null
-                && normalizedBehaviorPrompt is null && isolateInWorktreeByDefault is null && enabledMcpServerNames is null
-                && category is null && pluginFields is null)
+            if (name is null && normalizedDescription is null && sourceDirectory is null && gitUrl is null
+                && defaultProfileLabel is null && normalizedBehaviorPrompt is null && isolateInWorktreeByDefault is null
+                && enabledMcpServerNames is null && category is null && memoryRef is null && pluginFields is null)
             {
                 return _Serialize(new { ok = false, error = "Name at least one field to change — there would be nothing to ask the operator about." });
             }
@@ -737,6 +749,16 @@ internal sealed class AssistantAgentMcpTools(
             if (category is not null)
             {
                 AddDiffLine(otherLines, "category", snapshot.Category, category.Length == 0 ? null : category);
+            }
+
+            if (gitUrl is not null)
+            {
+                AddDiffLine(otherLines, "git URL", snapshot.GitUrl, gitUrl.Length == 0 ? null : gitUrl);
+            }
+
+            if (memoryRef is not null)
+            {
+                AddDiffLine(otherLines, "memory", snapshot.MemoryRef, memoryRef.Length == 0 ? null : memoryRef);
             }
 
             if (pluginFields is not null)
@@ -807,7 +829,9 @@ internal sealed class AssistantAgentMcpTools(
                 isolateInWorktreeByDefault,
                 normalizedEnabledMcpServerNames,
                 category,
-                pluginFields).ConfigureAwait(false);
+                pluginFields,
+                gitUrl,
+                memoryRef).ConfigureAwait(false);
 
             return result.Ok
                 ? _Serialize(new { ok = true, projectId = result.ProjectId, name = result.Name, approval = approval.Label })

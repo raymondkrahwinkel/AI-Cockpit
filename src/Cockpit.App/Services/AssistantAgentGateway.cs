@@ -991,7 +991,9 @@ internal sealed class AssistantAgentGateway(
                     project.IsolateInWorktreeByDefault,
                     project.McpOverlay.EnabledServerNames,
                     project.Category,
-                    project.PluginFields));
+                    project.PluginFields,
+                    project.GitUrl,
+                    project.MemoryRef));
         });
 
     // AC-1059: patches only the named fields onto the stored project, never `ProjectDialogViewModel.ToProject()`'s
@@ -1007,6 +1009,8 @@ internal sealed class AssistantAgentGateway(
         IReadOnlyList<string>? enabledMcpServerNames = null,
         string? category = null,
         IReadOnlyDictionary<string, string>? pluginFields = null,
+        string? gitUrl = null,
+        string? memoryRef = null,
         CancellationToken cancellationToken = default)
     {
         if (name is not null && string.IsNullOrWhiteSpace(name))
@@ -1093,6 +1097,18 @@ internal sealed class AssistantAgentGateway(
         if (category is not null)
         {
             updated = updated with { Category = category.Length == 0 ? null : category };
+        }
+
+        if (gitUrl is not null)
+        {
+            updated = updated with { GitUrl = gitUrl.Length == 0 ? null : gitUrl };
+        }
+
+        // `MemoryRef`'s own setter already treats a blank value as "remove every Memory row" (Project.cs), so an
+        // empty string clears it without a ternary here doing that same job twice.
+        if (memoryRef is not null)
+        {
+            updated = updated with { MemoryRef = memoryRef };
         }
 
         // Upserts by key rather than replacing the whole map: naming one plugin field must not drop a sibling one

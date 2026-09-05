@@ -35,7 +35,9 @@ public sealed class AssistantUpdateProjectConsentTests : IDisposable
             IsolateInWorktreeByDefault: false,
             EnabledMcpServerNames: ["depot"],
             "OldCategory",
-            new Dictionary<string, string> { ["youtrack.project"] = "AC" });
+            new Dictionary<string, string> { ["youtrack.project"] = "AC" },
+            GitUrl: "https://example.test/old.git",
+            MemoryRef: "depot:old-memory");
 
         await _Tools(_consent).UpdateProjectAsync(
             "proj-1",
@@ -45,12 +47,16 @@ public sealed class AssistantUpdateProjectConsentTests : IDisposable
             behaviorPrompt: "New prompt.",
             isolateInWorktreeByDefault: true,
             enabledMcpServerNames: ["youtrack"],
-            category: "NewCategory");
+            category: "NewCategory",
+            gitUrl: "https://example.test/new.git",
+            memoryRef: "depot:new-memory");
 
         var asked = Assert.Single(_consent.Asked);
         Assert.Contains("name: Invoices -> New name", asked.Action);
         Assert.Contains("description: Old description -> New description", asked.Action);
         Assert.Contains("category: OldCategory -> NewCategory", asked.Action);
+        Assert.Contains("git URL: https://example.test/old.git -> https://example.test/new.git", asked.Action);
+        Assert.Contains("memory: depot:old-memory -> depot:new-memory", asked.Action);
 
         // The four session-behaviour fields (AC-1059 criterion 4), grouped and called out rather than
         // interleaved with the ordinary ones above.
@@ -104,6 +110,8 @@ public sealed class AssistantUpdateProjectConsentTests : IDisposable
             IReadOnlyList<string>? enabledMcpServerNames = null,
             string? category = null,
             IReadOnlyDictionary<string, string>? pluginFields = null,
+            string? gitUrl = null,
+            string? memoryRef = null,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(AssistantProjectUpdateResult.Updated(projectId, name ?? Snapshot!.Name));
 
