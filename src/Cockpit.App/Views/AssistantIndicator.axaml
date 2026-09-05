@@ -6,7 +6,8 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="220"
              x:Class="Cockpit.App.Views.AssistantIndicator"
-             x:DataType="vm:AssistantIndicatorViewModel">
+             x:DataType="vm:AssistantIndicatorViewModel"
+             x:Name="Root">
 
     <Design.DataContext>
         <vm:AssistantIndicatorViewModel/>
@@ -17,9 +18,13 @@
          cockpit-assistant-indicator-2026-08-01.html: a rounded chip with a circular mic badge on the left and a
          two-line label on the right, whose badge alone (no chip chrome, no label) is what the sidebar rail
          keeps once it collapses. -->
-    <!-- Nothing at all while the feature is off: "off" means no chip, not a chip saying it is off. See
-         IsFeatureEnabled's own remarks for why that is a different thing from Unavailable. -->
-    <StackPanel Spacing="8" IsVisible="{Binding IsFeatureEnabled}">
+    <StackPanel Spacing="8">
+        <StackPanel.IsVisible>
+            <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                <Binding Path="IsFeatureEnabled"/>
+                <Binding Path="ShowWhenDisabled" ElementName="Root"/>
+            </MultiBinding>
+        </StackPanel.IsVisible>
 
         <!-- Rail form: shown once the sidebar collapses. Same ring, same classes, no label — see
              Theme.axaml's Border.assistantIndicatorRing remarks for why the colour/ring alone still answer

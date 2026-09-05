@@ -581,6 +581,13 @@ public partial class App : Application
         // contribution failure recorded here reaches both without a second source of truth to keep in sync.
         var diagnostics = Program.Services.GetRequiredService<PluginDiagnostics>();
 
+        var firstPartyCompanionTools = new FirstPartyCompanionToolHost(
+            Program.Services.GetRequiredService<ICompanionToolRegistry>(),
+            _CreateFirstPartyCompanionToolStorage(registrationStore),
+            sessionObserver);
+        firstPartyCompanionTools.AddCompanionTool(
+            Program.Services.GetRequiredService<AssistantIndicatorCoordinator>().CreateCompanionTool());
+
         pluginManager.Initialize((discovered, plugin) => new CockpitHost(
             discovered.FolderId,
             discovered.Manifest.Name,
@@ -636,6 +643,15 @@ public partial class App : Application
                 // rather than taking the app down over a name.
             }
         }
+    }
+
+    // First-party companion tools use their own durable storage slice; this is not a synthetic plugin.
+    private static PluginStorage _CreateFirstPartyCompanionToolStorage(IPluginRegistrationStore store)
+    {
+        const string ownerId = "first-party-companion-tools";
+        return new PluginStorage(
+            store.LoadDataAsync(ownerId).GetAwaiter().GetResult(),
+            data => _ = store.SaveDataAsync(ownerId, data));
     }
 
     // Seeds the plugin's storage from its saved slice and writes changes back through the store; the load

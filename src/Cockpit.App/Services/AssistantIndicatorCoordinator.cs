@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using Cockpit.App.Docking;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Plugins.Abstractions.CompanionTools;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
@@ -71,6 +72,12 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
     // The chip the sidebar binds to. One instance, fed from here.
     public AssistantIndicatorViewModel Indicator { get; } = new();
+
+    public CompanionToolRegistration CreateCompanionTool() =>
+        new("cockpit.assistant", "Assistant", _ => new AssistantIndicator { DataContext = Indicator, ShowWhenDisabled = true })
+        {
+            IconKind = MaterialIconKind.Creation,
+        };
 
     // Subscribes to everything that can change what the chip says, and to what the operator does to it.
     public void Start()
