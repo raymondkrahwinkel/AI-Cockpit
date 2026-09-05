@@ -24,6 +24,11 @@ public class NodeDiscoveryTests : IAsyncLifetime
     private readonly string _certificatePath = Path.Combine(Path.GetTempPath(), $"node-discovery-{Guid.NewGuid():N}.pfx");
     private readonly string _discoveryIdPath = Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt");
 
+    // AC-1075: the production port is one well-known value any other same-host process also binds (ReuseAddress
+    // on), so two responders both answer one query. A random port per instance is this test's own unique-temp-path.
+    // Range picked to exclude NodeDiscoveryProtocol.Port (52381) entirely, not just by chance.
+    private readonly int _port = Random.Shared.Next(53000, 65535);
+
     private NodeEndpointSettingsStore _store = null!;
     private NodeSelfSignedCertificate _certificate = null!;
     private NodePairingBroker _broker = null!;
@@ -48,7 +53,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
     {
         var visibility = new NodeVisibilityPolicy(_store, ownRanges);
         var responder = new NodeDiscoveryResponder(
-            _store, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback);
+            _store, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback, _port);
         await responder.StartAsync(CancellationToken.None);
         return responder;
     }
@@ -60,7 +65,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => [IPNetwork.Parse("127.0.0.0/8")]);
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback);
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback, _port);
             var results = await finder.FindAsync(TimeSpan.FromSeconds(3));
 
             var foundNode = Assert.Single(results);
@@ -79,6 +84,32 @@ public class NodeDiscoveryTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// AC-1075: before the port became a test seam, both the client and the responder always used the one
+    /// hardcoded <see cref="NodeDiscoveryProtocol.Port"/> — the same value any other same-host process (another
+    /// test run, a live Cockpit.App) also binds. Pins the fix at the seam itself: a query scoped to a different
+    /// port hears nothing from this node, and one scoped to its actual port still finds it.
+    /// </summary>
+    [Fact]
+    public async Task AQueryScopedToADifferentPort_DoesNotFindThisNode_ButItsOwnPortStillDoes()
+    {
+        var pairingHost = await _StartPairingHostAsync(() => [IPNetwork.Parse("127.0.0.0/8")]);
+        var responder = await _StartResponderAsync(pairingHost, () => [IPNetwork.Parse("127.0.0.0/8")]);
+        try
+        {
+            var wrongPortFinder = new NodeDiscoveryClient(IPAddress.Loopback, NodeDiscoveryProtocol.Port);
+            Assert.Empty(await wrongPortFinder.FindAsync(TimeSpan.FromMilliseconds(500)));
+
+            var rightPortFinder = new NodeDiscoveryClient(IPAddress.Loopback, _port);
+            Assert.Single(await rightPortFinder.FindAsync(TimeSpan.FromSeconds(3)));
+        }
+        finally
+        {
+            await responder.DisposeAsync();
+            await pairingHost.DisposeAsync();
+        }
+    }
+
     [Fact]
     public async Task ANodeOutsideTheOwnRange_WithAnEmptyWhitelist_AnswersNothing()
     {
@@ -88,7 +119,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => []);
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback);
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback, _port);
             var results = await finder.FindAsync(TimeSpan.FromMilliseconds(500));
 
             Assert.Empty(results);
@@ -110,7 +141,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => []);
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback);
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback, _port);
             var results = await finder.FindAsync(TimeSpan.FromSeconds(3));
 
             Assert.Single(results);
@@ -170,14 +201,14 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var visibility = new NodeVisibilityPolicy(offStore, () => [IPNetwork.Parse("127.0.0.0/8")]);
         var pairingHost = new NodePairingHost(offStore, _broker, _certificate, visibility, NullLoggerFactory.Instance);
         var responder = new NodeDiscoveryResponder(
-            offStore, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback);
+            offStore, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback, _port);
 
         await pairingHost.StartAsync(CancellationToken.None);
         await responder.StartAsync(CancellationToken.None);
 
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback);
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback, _port);
             var results = await finder.FindAsync(TimeSpan.FromMilliseconds(500));
 
             Assert.Empty(results);
@@ -201,7 +232,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         {
             using var raw = new UdpClient(0);
             raw.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, IPAddress.Loopback.GetAddressBytes());
-            var group = new IPEndPoint(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), NodeDiscoveryProtocol.Port);
+            var group = new IPEndPoint(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), _port);
             await raw.SendAsync(NodeDiscoveryProtocol.QueryMarker, group);
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
