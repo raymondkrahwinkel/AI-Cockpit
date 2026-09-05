@@ -69,6 +69,10 @@ internal sealed partial class ProjectEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<ProjectInfoFieldEntry>? AdditionalInfo { get; set; }
 
+    // AC-491: absent for a project that offers no work of its own, which is every project written before it could.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProjectJobEntry>? Jobs { get; set; }
+
     // AC-317: what plugins have this project linked to, by their own key — a plain map, so a key
     // belonging to an uninstalled plugin reads and writes back unchanged instead of being dropped.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -110,6 +114,9 @@ internal sealed partial class ProjectEntry
         Resources = project.Resources.Count == 0
             ? null
             : [.. project.Resources.Select(ProjectResourceEntry.FromDomain)],
+        Jobs = project.Jobs.Count == 0
+            ? null
+            : [.. project.Jobs.Select(ProjectJobEntry.FromDomain)],
         PluginFields = project.PluginFields.Count == 0
             ? null
             : project.PluginFields.ToDictionary(link => link.Key, link => link.Value, StringComparer.Ordinal),
@@ -142,6 +149,7 @@ internal sealed partial class ProjectEntry
             LogoPath = LogoPath,
             LastOpenedAt = LastOpenedAt,
             AdditionalInfo = AdditionalInfo is null ? [] : [.. AdditionalInfo.Select(entry => entry.ToDomain())],
+            Jobs = Jobs is null ? [] : [.. Jobs.Select(entry => entry.ToDomain())],
             // AC-483: a pre-Resources file's flat MemoryRef reads as one Memory row; a file with both trusts
             // Resources as the fuller, current answer. Present-but-empty is not absent: an explicit "Resources":
             // [] means a newer build already saved with none, and must not fall back to MemoryRef instead.

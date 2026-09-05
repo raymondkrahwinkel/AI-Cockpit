@@ -2741,6 +2741,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Projects.CardActions = new ProjectCardActions(
             StartProjectSessionCommand,
             NewSessionForProjectCommand,
+            StartProjectJobCommand,
             EditProjectCommand,
             OpenProjectFolderCommand,
             ShareProjectCommand,
@@ -5117,16 +5118,33 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Opens the New-session dialog on `project` (AC-164) — the "New session…" next to the quick
     // start, for when the operator wants to change something the project would otherwise decide.
     [RelayCommand]
-    private async Task NewSessionForProjectAsync(Project? project)
+    private Task NewSessionForProjectAsync(Project? project) => _NewSessionForProjectAsync(project, prompt: null);
+
+    // Starts one of the project's own jobs (AC-491) — the same dialog, seeded with the job's prompt.
+    [RelayCommand]
+    private Task StartProjectJobAsync(ProjectJobChoice? choice) =>
+        _NewSessionForProjectAsync(choice?.Project, choice?.Job.Prompt);
+
+    // The dialog on `project`, carrying `prompt` when a job was picked. The prompt is placed in the composer once
+    // the session exists, through the seam a plugin's prefill already uses — the operator reads it there and still
+    // decides when, or whether, to send it. Without a prompt this is the plain route, unchanged.
+    private async Task _NewSessionForProjectAsync(Project? project, string? prompt)
     {
         if (project is null || _dialogService is null)
         {
             return;
         }
 
-        if (await _dialogService.ShowNewSessionDialogAsync(project: project) is { } result)
+        var prefill = string.IsNullOrWhiteSpace(prompt) ? null : new NewSessionPrefill(InitialPrompt: prompt);
+        if (await _dialogService.ShowNewSessionDialogAsync(prefill, project: project) is not { } result)
         {
-            await _LaunchSessionFromResultAsync(result);
+            return;
+        }
+
+        var paneId = await _LaunchSessionFromResultAsync(result);
+        if (paneId is not null && prefill?.InitialPrompt is { } initialPrompt)
+        {
+            Sessions.FirstOrDefault(session => session.PaneId == paneId)?.InjectText(initialPrompt);
         }
     }
 

@@ -110,8 +110,8 @@
             <StackPanel Spacing="8">
                 <!-- AC-247: what SaveAsync's own write-back reported (a checksum conflict opens its own window
                      instead — see ConflictRequested's wiring in SessionDialogService — so this is only ever a
-                     permission refusal or an unclassified failure). Never shown for a project with no write-back
-                     context: SaveAsync's non-writeback path never touches SaveError at all. -->
+                     permission refusal or an unclassified failure), and AC-491's refusal of a job that does not
+                     say what it changes, which reaches any project. -->
                 <TextBlock Text="{Binding SaveError}" IsVisible="{Binding SaveError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                            TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
                 <Grid ColumnDefinitions="*,Auto">
@@ -235,6 +235,39 @@
                         <TextBlock Classes="FieldHint" Margin="0"
                                    Text="{Binding LogoSource, StringFormat='Logo: {0}'}" TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
+                </StackPanel>
+
+                <!-- AC-491: the work this project offers on its card, so someone who cannot write a prompt still has
+                     somewhere to start. Each job says what it touches before it is clicked, which is why both boxes
+                     are required: saving refuses a job that fills only one of them. -->
+                <StackPanel Spacing="14">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="SectionHeading" Text="Work this project offers"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                    </StackPanel>
+                    <TextBlock Classes="FieldHint" Margin="0"
+                               Text="Each row becomes a button on this project's card: pick one and the session opens with that text ready in the box, for you to read before you send it. Say beside it what it changes, writes or sends — that is what someone reads before they dare press it."/>
+                    <ItemsControl ItemsSource="{Binding Jobs}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProjectJobViewModel">
+                                <Grid ColumnDefinitions="6*,4*,Auto" ColumnSpacing="6" Margin="0,0,0,6">
+                                    <TextBox Grid.Column="0" Text="{Binding Prompt}" AcceptsReturn="True" TextWrapping="Wrap"
+                                             PlaceholderText="Process this month's invoices"/>
+                                    <TextBox Grid.Column="1" Text="{Binding BlastRadius}" TextWrapping="Wrap"
+                                             PlaceholderText="changes nothing · reports only"/>
+                                    <Button Grid.Column="2" Classes="Subtle" VerticalAlignment="Center"
+                                            ToolTip.Tip="Remove this job"
+                                            Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).RemoveJobCommand}"
+                                            CommandParameter="{Binding}">
+                                        <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Content="+ Add job" Classes="Subtle" HorizontalAlignment="Left"
+                            Foreground="{StaticResource CockpitAccentBrush}"
+                            Command="{Binding AddJobCommand}"/>
                 </StackPanel>
 
                 <!-- Rows the operator names themselves, because the cockpit cannot know which kinds of information a

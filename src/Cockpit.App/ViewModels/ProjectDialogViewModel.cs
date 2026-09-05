@@ -112,6 +112,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
         {
             AdditionalInfo.Add(new ProjectInfoFieldViewModel(field.Label, field.Value, field.IsSharedWithSessions, field.IsSecret));
         }
+
+        foreach (var job in project.Jobs)
+        {
+            Jobs.Add(new ProjectJobViewModel(job.Prompt, job.BlastRadius));
+        }
     }
 
     // A view model for `project`, or for a new project when it is null, with the profile picker
@@ -454,6 +459,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // cost them nothing: `ToProject` drops them.
     public ObservableCollection<ProjectInfoFieldViewModel> AdditionalInfo { get; } = [];
 
+    // The work this project offers (AC-491), in the order the operator put it in. A row left entirely empty is
+    // dropped by `ToProject`; a half-filled one is refused at save, the way a blank repository row is.
+    public ObservableCollection<ProjectJobViewModel> Jobs { get; } = [];
+
     // The project's resources (AC-483/485), in the order the operator put them in — a memory location, standing
     // instructions, something to look up.
     public ObservableCollection<ProjectResourceRowViewModel> ResourceRows { get; } = [];
@@ -553,6 +562,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
             [
                 .. AdditionalInfo.Select(field => field.ToDomain().Tidied()).Where(field => !field.IsBlank),
             ],
+            // AC-491: an untouched row is nothing to lose; a half-filled one never gets this far (see SaveAsync).
+            Jobs = [.. Jobs.Select(job => job.ToDomain()).Where(job => !job.IsBlank)],
             PluginFields = _LinkedProjectFields(),
             // AC-607: no dialog field edits this yet (out of scope for this ticket) — carried through unedited
             // rather than silently dropped on save, the same as any other field with no editing surface.
@@ -596,6 +607,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     [RelayCommand]
     private void AddInfoField() => AdditionalInfo.Add(new ProjectInfoFieldViewModel());
+
+    [RelayCommand]
+    private void AddJob() => Jobs.Add(new ProjectJobViewModel());
+
+    [RelayCommand]
+    private void RemoveJob(ProjectJobViewModel job) => Jobs.Remove(job);
 
     [RelayCommand]
     private void RemoveInfoField(ProjectInfoFieldViewModel field) => AdditionalInfo.Remove(field);
@@ -680,6 +697,15 @@ public partial class ProjectDialogViewModel : ViewModelBase
     private async Task SaveAsync()
     {
         SaveError = null;
+
+        // AC-491: a job that cannot say what it changes is refused, not saved quietly. That line is the only
+        // question this audience asks before their first click, so a job without one is worse than no job at all —
+        // it is a button whose blast radius the operator has to guess.
+        if (Jobs.Any(job => !job.ToDomain().IsBlank && (string.IsNullOrWhiteSpace(job.Prompt) || string.IsNullOrWhiteSpace(job.BlastRadius))))
+        {
+            SaveError = "Every job needs both what it does and a line saying what it changes, writes or sends. Fill both in, or remove the job.";
+            return;
+        }
 
         if (await _ValidateRepositoryRowsAsync().ConfigureAwait(true) is { } repositoryError)
         {
