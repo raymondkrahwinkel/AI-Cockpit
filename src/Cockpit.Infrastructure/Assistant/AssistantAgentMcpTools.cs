@@ -500,7 +500,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "create_project")]
-    [Description("Creates a brand-new local project — not one shared by a colleague, that is bind_shared_project — and returns its id. Exactly what \"New project\" on the Projects page does for the same answers: same name rule, same save — but not the dialog's full field set: this sets name, description, folder, default profile, behaviour prompt, worktree isolation, MCP selection, category and plugin fields, and nothing past those, so memory/resources, a logo, a git URL and the free-form \"additional info\" box still need the operator to open the dialog themselves. CALL list_shared_projects FIRST WHEN THE NAME MIGHT ALREADY BE SHARED: a name matching a project a connection already shares is refused rather than quietly duplicated next to it — bind_shared_project is very likely the door meant instead. ONLY name IS REQUIRED. Every other field is optional and, left out, the project simply has no opinion on it: no folder (an administrative project is a perfectly good project), every MCP server offered, no worktree isolation, no behaviour prompt. FOUR FIELDS DECIDE HOW EVERY SESSION ON THIS PROJECT RUNS, NOT MERELY HOW IT IS LABELLED — sourceDirectory, enabledMcpServerNames, isolateInWorktreeByDefault and behaviorPrompt — and that is what separates this tool from create_workspace, which only ever opens an empty tab: read these four back to the operator before you ask, because they are what start_agent will use on every session here afterwards, without asking again. sourceDirectory, WHEN GIVEN, MUST BE A FULL PATH THAT ALREADY EXISTS: this tool does not clone or create a folder, so ask the operator for one that is already checked out, or leave it out. pluginFields KEYS MUST BE ONES A PLUGIN REGISTERED (list_projects shows what an existing project is already linked under) — a made-up key is refused rather than stored where no plugin will ever read it. BY DEFAULT THE OPERATOR STILL HAS TO APPROVE IT: an Allow/Deny row appears in the cockpit's chat window showing the name and the four session-behaviour fields above, and nothing is written until it is answered." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: a blank name, a name already shared elsewhere, a folder that is not there, or an unknown plugin field key — read the reason out and carry on. THIS STARTS NOTHING: no session runs and no work begins, which is still a separate start_agent with its own approval. IT DOES NOT TAKE A PASSWORD OR A SHARED-SOURCE NAME — those belong to a project already bound to a shared definition (bind_shared_project), not a fresh local one.")]
+    [Description("Creates a brand-new local project — not one shared by a colleague, that is bind_shared_project — and returns its id. Exactly what \"New project\" on the Projects page does for the same answers: same name rule, same save — but not the dialog's full field set: this sets name, description, folder, default profile, behaviour prompt, worktree isolation, MCP selection, category and plugin fields, and nothing past those — call update_project afterwards for memory/resources or a git URL, which this tool cannot set either but that one can; only a logo and the free-form \"additional info\" box still need the operator to open the dialog themselves. CALL list_shared_projects FIRST WHEN THE NAME MIGHT ALREADY BE SHARED: a name matching a project a connection already shares is refused rather than quietly duplicated next to it — bind_shared_project is very likely the door meant instead. ONLY name IS REQUIRED. Every other field is optional and, left out, the project simply has no opinion on it: no folder (an administrative project is a perfectly good project), every MCP server offered, no worktree isolation, no behaviour prompt. FOUR FIELDS DECIDE HOW EVERY SESSION ON THIS PROJECT RUNS, NOT MERELY HOW IT IS LABELLED — sourceDirectory, enabledMcpServerNames, isolateInWorktreeByDefault and behaviorPrompt — and that is what separates this tool from create_workspace, which only ever opens an empty tab: read these four back to the operator before you ask, because they are what start_agent will use on every session here afterwards, without asking again. sourceDirectory, WHEN GIVEN, MUST BE A FULL PATH THAT ALREADY EXISTS: this tool does not clone or create a folder, so ask the operator for one that is already checked out, or leave it out. pluginFields KEYS MUST BE ONES A PLUGIN REGISTERED (list_projects shows what an existing project is already linked under) — a made-up key is refused rather than stored where no plugin will ever read it. BY DEFAULT THE OPERATOR STILL HAS TO APPROVE IT: an Allow/Deny row appears in the cockpit's chat window showing the name and the four session-behaviour fields above, and nothing is written until it is answered." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: a blank name, a name already shared elsewhere, a folder that is not there, or an unknown plugin field key — read the reason out and carry on. THIS STARTS NOTHING: no session runs and no work begins, which is still a separate start_agent with its own approval. IT DOES NOT TAKE A PASSWORD OR A SHARED-SOURCE NAME — those belong to a project already bound to a shared definition (bind_shared_project), not a fresh local one.")]
     public async Task<string> CreateProjectAsync(
         [Description("The project's display name. Required — the one thing every other surface shows it by. Free to collide with another local project's name, but refused if a connection already shares a project under this exact name; call list_shared_projects to check first if that seems likely.")] string name,
         [Description("Free-text note on what this project is, shown under its name in the launcher and the manager. Left out, none.")] string? description = null,
@@ -596,6 +596,242 @@ internal sealed class AssistantAgentMcpTools(
                 normalizedEnabledMcpServerNames,
                 category,
                 pluginFields).ConfigureAwait(false);
+
+            return result.Ok
+                ? _Serialize(new { ok = true, projectId = result.ProjectId, name = result.Name, approval = approval.Label })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "update_project")]
+    [Description("Changes one or more fields on an existing local project (AC-1059): name, description, folder, git URL, default profile, behaviour prompt, worktree isolation, MCP selection, category, memory link and plugin fields — everything create_project can set, plus gitUrl/memoryRef, which create_project itself still cannot. A logo and the free-form \"additional info\" box remain out of reach here too: a logo is a file, not a field, and additional info carries its own per-row secrecy flag that no parameter here represents — the operator still opens the dialog for either. NAME THE PROJECT BY ITS id FROM list_projects; AN UNKNOWN ID IS REFUSED rather than doing nothing quietly. ONLY WHAT YOU NAME CHANGES: leave a parameter out and that field is left exactly as stored — unlike create_project, where a missing field takes a default, here a missing field means untouched. TO CLEAR A TEXT FIELD (description, sourceDirectory, gitUrl, defaultProfileLabel, category, memoryRef, behaviorPrompt), PASS AN EMPTY STRING — null/leaving it out means \"leave this alone\", not \"clear it\". sourceDirectory, WHEN GIVEN AND NOT EMPTY, MUST BE A FULL PATH THAT ALREADY EXISTS, same rule create_project holds it to, and only ever touches the first repository a project declares (AC-938) — a second one is the project editor's own job. enabledMcpServerNames, WHEN GIVEN, REPLACES THE WHOLE SELECTION, not just named entries — an empty array means every offered server, the same collapse create_project applies; leave the parameter out entirely to keep the project's current selection untouched. pluginFields MERGES BY KEY rather than replacing the map, so naming one plugin's field never drops a different plugin's link. FOUR FIELDS DECIDE HOW EVERY SESSION ON THIS PROJECT RUNS FROM HERE ON, NOT MERELY HOW IT IS LABELLED — sourceDirectory, enabledMcpServerNames, isolateInWorktreeByDefault and behaviorPrompt — and a session already running there inherits none of this before its own next spawn, so say that rather than implying it takes effect mid-session. BY DEFAULT THE OPERATOR STILL HAS TO APPROVE IT: an Allow/Deny row shows every field you are changing with its stored value next to the one you are setting, and nothing is written until it is answered." + AskingCanBeSwitchedOff + " A REFUSAL IS NORMAL: an unknown project id, a blank name, a folder that is not there, or an unknown plugin field key — read the reason out and carry on. NAMING NO FIELD AT ALL IS REFUSED TOO, since there would be nothing to ask the operator about.")]
+    public async Task<string> UpdateProjectAsync(
+        [Description("The project's id, from list_projects. An id naming no project is refused rather than silently doing nothing.")] string projectId,
+        [Description("A new display name. Left out, the current name stands.")] string? name = null,
+        [Description("Free-text note on what this project is. Left out, unchanged. Pass an empty string to clear it.")] string? description = null,
+        [Description("The folder its sessions start in — one of the four fields that decide how every session here runs from here on. Left out, unchanged. Give a full path that already exists, or an empty string to clear it back to an administrative project with no folder. Only ever touches the first repository this project declares (AC-938).")] string? sourceDirectory = null,
+        [Description("The git URL sourceDirectory was cloned from, shown beside the folder wherever the project is displayed. Left out, unchanged. An empty string clears it — this never clones or re-clones anything, it only records where the folder already there came from.")] string? gitUrl = null,
+        [Description("The profile its sessions start under, by label exactly as the cockpit knows it. Left out, unchanged. An empty string clears it back to whatever a session here would otherwise use.")] string? defaultProfileLabel = null,
+        [Description("Appended to every session's system prompt here, on top of whatever its profile already says — one of the four fields that decide how every session here runs from here on. Left out, unchanged. An empty string clears it.")] string? behaviorPrompt = null,
+        [Description("Whether new sessions here isolate in their own git worktree by default — one of the four fields that decide how every session here runs from here on. Left out, unchanged.")] bool? isolateInWorktreeByDefault = null,
+        [Description("Names of MCP servers this project's sessions start ticked — one of the four fields that decide how every session here runs from here on. Left out, the project's current selection is untouched. Given, replaces the whole selection; an empty array means every offered server, following the registry.")] string[]? enabledMcpServerNames = null,
+        [Description("Which group this project sits under in the manager's list. Left out, unchanged. An empty string clears it back to \"Uncategorized\".")] string? category = null,
+        [Description("Where this project's memory lives — a Depot reference or a folder path, the same shape the project editor's own memory row takes. Left out, unchanged. An empty string clears it, so sessions here read and write no project memory.")] string? memoryRef = null,
+        [Description("What this project is called elsewhere, keyed by the field a plugin registered — merged into the project's existing links by key, so naming one never drops a different plugin's. A key no installed plugin registered is refused.")] Dictionary<string, string>? pluginFields = null)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            // Same reason `create_project` checks this: the card below renders labelled lines verbatim, so a
+            // newline in a single-line field would forge one nobody approved.
+            var lineChecks = new List<(string Name, string Value)>();
+            if (name is not null)
+            {
+                lineChecks.Add(("name", name));
+            }
+
+            if (sourceDirectory is not null)
+            {
+                lineChecks.Add(("sourceDirectory", sourceDirectory));
+            }
+
+            if (gitUrl is not null)
+            {
+                lineChecks.Add(("gitUrl", gitUrl));
+            }
+
+            if (defaultProfileLabel is not null)
+            {
+                lineChecks.Add(("defaultProfileLabel", defaultProfileLabel));
+            }
+
+            if (memoryRef is not null)
+            {
+                lineChecks.Add(("memoryRef", memoryRef));
+            }
+
+            foreach (var serverName in enabledMcpServerNames ?? [])
+            {
+                lineChecks.Add(("an entry in enabledMcpServerNames", serverName));
+            }
+
+            // Unlike create_project, pluginFields reaches the card below (its old/new values are shown), so a
+            // key or value here needs the same forgery check every other card-bound field already gets.
+            foreach (var (pluginFieldKey, pluginFieldValue) in pluginFields ?? [])
+            {
+                lineChecks.Add(("a pluginFields key", pluginFieldKey));
+                lineChecks.Add(("a pluginFields value", pluginFieldValue));
+            }
+
+            if (_RefuseIfNotOneLine([.. lineChecks]) is { } malformed)
+            {
+                return malformed;
+            }
+
+            // `null` means "not named" throughout this tool; normalising must not collapse a caller-supplied empty
+            // string into `null` too, or "clear this field" and "leave it alone" would become indistinguishable by
+            // the time the gateway sees them.
+            string? normalizedDescription = null;
+            if (description is not null)
+            {
+                normalizedDescription = AgentMessageContent.Normalize(description, out _);
+                if (normalizedDescription.Length > AgentMessageContent.MaxBodyLength)
+                {
+                    return _Serialize(new
+                    {
+                        ok = false,
+                        error = $"`description` is {normalizedDescription.Length} characters and the limit is {AgentMessageContent.MaxBodyLength}. Shorten it, or leave it out to keep it as stored.",
+                    });
+                }
+            }
+
+            string? normalizedBehaviorPrompt = null;
+            if (behaviorPrompt is not null)
+            {
+                normalizedBehaviorPrompt = AgentMessageContent.Normalize(behaviorPrompt, out _);
+                if (normalizedBehaviorPrompt.Length > AgentMessageContent.MaxBodyLength)
+                {
+                    return _Serialize(new
+                    {
+                        ok = false,
+                        error = $"`behaviorPrompt` is {normalizedBehaviorPrompt.Length} characters and the limit is {AgentMessageContent.MaxBodyLength}. Shorten it, or leave it out to keep it as stored.",
+                    });
+                }
+            }
+
+            var normalizedEnabledMcpServerNames = enabledMcpServerNames is { Length: 0 } ? null : enabledMcpServerNames;
+
+            if (name is null && normalizedDescription is null && sourceDirectory is null && gitUrl is null
+                && defaultProfileLabel is null && normalizedBehaviorPrompt is null && isolateInWorktreeByDefault is null
+                && enabledMcpServerNames is null && category is null && memoryRef is null && pluginFields is null)
+            {
+                return _Serialize(new { ok = false, error = "Name at least one field to change — there would be nothing to ask the operator about." });
+            }
+
+            var snapshot = await gateway.GetProjectSnapshotAsync(projectId).ConfigureAwait(false);
+            if (snapshot is null)
+            {
+                return _Serialize(new { ok = false, error = $"There is no project with id '{projectId}'. Call list_projects to see what exists." });
+            }
+
+            // Two groups on the card: ordinary fields, and the four that decide how every session here runs from
+            // here on (AC-1059 criterion 4) — kept visually apart rather than interleaved so the operator cannot
+            // miss which changes reach further than a label.
+            var otherLines = new List<string>();
+            var behaviorLines = new List<string>();
+
+            void AddDiffLine(List<string> into, string label, string? oldValue, string? newValue) =>
+                into.Add($"{label}: {oldValue ?? "(none)"} -> {newValue ?? "(none)"}");
+
+            if (name is not null)
+            {
+                AddDiffLine(otherLines, "name", snapshot.Name, name);
+            }
+
+            if (normalizedDescription is not null)
+            {
+                AddDiffLine(otherLines, "description", snapshot.Description, normalizedDescription.Length == 0 ? null : normalizedDescription);
+            }
+
+            if (defaultProfileLabel is not null)
+            {
+                AddDiffLine(otherLines, "default profile", snapshot.DefaultProfileLabel, defaultProfileLabel.Length == 0 ? null : defaultProfileLabel);
+            }
+
+            if (category is not null)
+            {
+                AddDiffLine(otherLines, "category", snapshot.Category, category.Length == 0 ? null : category);
+            }
+
+            if (gitUrl is not null)
+            {
+                AddDiffLine(otherLines, "git URL", snapshot.GitUrl, gitUrl.Length == 0 ? null : gitUrl);
+            }
+
+            if (memoryRef is not null)
+            {
+                AddDiffLine(otherLines, "memory", snapshot.MemoryRef, memoryRef.Length == 0 ? null : memoryRef);
+            }
+
+            if (pluginFields is not null)
+            {
+                foreach (var (key, value) in pluginFields)
+                {
+                    snapshot.PluginFields.TryGetValue(key, out var oldValue);
+                    AddDiffLine(otherLines, $"plugin field '{key}'", oldValue, value);
+                }
+            }
+
+            if (sourceDirectory is not null)
+            {
+                AddDiffLine(behaviorLines, "folder", snapshot.SourceDirectory, sourceDirectory.Length == 0 ? null : sourceDirectory);
+            }
+
+            if (enabledMcpServerNames is not null)
+            {
+                var oldNames = snapshot.EnabledMcpServerNames is { Count: > 0 } known ? string.Join(", ", known) : "(every server, following the registry)";
+                var newNames = normalizedEnabledMcpServerNames is { Length: > 0 } picked ? string.Join(", ", picked) : "(every server, following the registry)";
+                behaviorLines.Add($"MCP servers: {oldNames} -> {newNames}");
+            }
+
+            if (isolateInWorktreeByDefault is { } isolate)
+            {
+                behaviorLines.Add($"isolate in worktree by default: {snapshot.IsolateInWorktreeByDefault} -> {isolate}");
+            }
+
+            if (normalizedBehaviorPrompt is not null)
+            {
+                behaviorLines.Add(
+                    "behaviour prompt:\n"
+                    + $"  before: {(string.IsNullOrEmpty(snapshot.BehaviorPrompt) ? "(none)" : snapshot.BehaviorPrompt)}\n"
+                    + $"  after: {(normalizedBehaviorPrompt.Length == 0 ? "(none)" : normalizedBehaviorPrompt)}");
+            }
+
+            var action = $"Update project '{snapshot.Name}' (id {projectId})";
+            if (otherLines.Count > 0)
+            {
+                action += "\n" + string.Join("\n", otherLines);
+            }
+
+            if (behaviorLines.Count > 0)
+            {
+                action += "\n\nThis changes how every session on this project runs from here on:\n" + string.Join("\n", behaviorLines);
+            }
+
+            // LowRisk, like create_project: writes a record and starts nothing, a running session inherits none of
+            // it before its own next spawn.
+            var approval = await _ApprovedAsync(
+                "The assistant wants to change a project",
+                action,
+                ConsentSourceCatalog.AssistantProjectUpdate,
+                "assistant.update-project",
+                ConsentRisk.LowRisk).ConfigureAwait(false);
+            if (!approval.Ok)
+            {
+                return _Serialize(new { ok = false, error = approval.Error });
+            }
+
+            var result = await gateway.UpdateProjectAsync(
+                projectId,
+                name,
+                normalizedDescription,
+                sourceDirectory,
+                defaultProfileLabel,
+                normalizedBehaviorPrompt,
+                isolateInWorktreeByDefault,
+                normalizedEnabledMcpServerNames,
+                category,
+                pluginFields,
+                gitUrl,
+                memoryRef).ConfigureAwait(false);
 
             return result.Ok
                 ? _Serialize(new { ok = true, projectId = result.ProjectId, name = result.Name, approval = approval.Label })

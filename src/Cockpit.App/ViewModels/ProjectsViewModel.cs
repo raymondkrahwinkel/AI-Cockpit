@@ -179,6 +179,19 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         await _PersistAsync(_settings.WithUpdated(stored with { LastOpenedAt = openedAt }));
     }
 
+    // AC-1059: `update_project` without the dialog — same direct-patch shape `MarkOpenedAsync` uses above,
+    // since no `LogoPath` change ever comes through this door. Null when `updated.Id` names no stored project.
+    internal async Task<Project?> UpdateStoredProjectAsync(Project updated)
+    {
+        if (_settings.Projects.All(candidate => candidate.Id != updated.Id))
+        {
+            return null;
+        }
+
+        await _PersistAsync(_settings.WithUpdated(updated));
+        return updated;
+    }
+
     // A manager holding one sample project, for a headless render of a surface that shows projects — the
     // parameterless constructor is deliberately empty, and an empty list renders the "no projects yet" state
     // instead of the rows under test. Mirrors `TtyViewModel.DesignTerminal`.

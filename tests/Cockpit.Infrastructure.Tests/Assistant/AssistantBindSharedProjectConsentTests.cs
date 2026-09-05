@@ -194,6 +194,25 @@ public sealed class AssistantBindSharedProjectConsentTests : IDisposable
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<AssistantProjectSnapshot?> GetProjectSnapshotAsync(string projectId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<AssistantProjectUpdateResult> UpdateProjectAsync(
+            string projectId,
+            string? name = null,
+            string? description = null,
+            string? sourceDirectory = null,
+            string? defaultProfileLabel = null,
+            string? behaviorPrompt = null,
+            bool? isolateInWorktreeByDefault = null,
+            IReadOnlyList<string>? enabledMcpServerNames = null,
+            string? category = null,
+            IReadOnlyDictionary<string, string>? pluginFields = null,
+            string? gitUrl = null,
+            string? memoryRef = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
             string question, IReadOnlyList<(string Label, string? Description)> options, bool multiSelect, bool allowOther,
             string? header, CancellationToken cancellationToken = default) =>
