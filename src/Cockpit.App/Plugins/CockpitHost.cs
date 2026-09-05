@@ -18,6 +18,7 @@ using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.CompanionTools;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.ManagedCli;
@@ -190,6 +191,21 @@ internal sealed class CockpitHost(
                 registration.Id);
         }
     }
+
+    // This plugin's own storage and observe surface travel with the registration, the same way a widget's do: a
+    // tool's context is built long after load, and by then the tool id is the only thing linking it back here.
+    public void AddCompanionTool(CompanionToolRegistration registration)
+    {
+        if (!services.GetRequiredService<ICompanionToolRegistry>().Register(registration, storage, sessions))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                "Companion tool '{CompanionToolId}' is already contributed by another plugin; this registration is ignored",
+                registration.Id);
+        }
+    }
+
+    public IReadOnlyList<CompanionToolRegistration> CompanionTools =>
+        services.GetRequiredService<ICompanionToolRegistry>().Tools;
 
     // This plugin's own storage and observe surface travel with the registration, the same way a widget's do: a
     // workspace of this type builds its context long after load, and by then the type id is the only thing linking

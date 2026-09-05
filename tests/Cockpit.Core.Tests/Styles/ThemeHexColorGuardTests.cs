@@ -67,6 +67,10 @@ public partial class ThemeHexColorGuardTests
                 (1, "white hairline border at low alpha — colourless, not a theme colour"),
             [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#2E3b82f6")] =
                 (1, "2E-alpha echo of CockpitAccentColor for the listening-dot glow"),
+            [("src/Cockpit.App/Views/CompanionWindow.axaml", "#F01a1d24")] =
+                (1, "F0-alpha echo of CockpitPanelBgColor, same card background as VoiceOverlayWindow (AC-237)"),
+            [("src/Cockpit.App/Views/CompanionWindow.axaml", "#1AFFFFFF")] =
+                (1, "white hairline border at low alpha — colourless, same as VoiceOverlayWindow's own"),
             [("src/Cockpit.App/Views/ScreenshotSelectionWindow.axaml", "#99000000")] =
                 (4, "black screen-dim scrim outside the selection rectangle, not tied to any theme colour"),
             [("src/Cockpit.App/Controls/ConsentBanner.axaml", "#66000000")] =

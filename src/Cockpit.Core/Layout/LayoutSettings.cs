@@ -44,6 +44,10 @@ public sealed record LayoutSettings
     // separate field from `OpenDockPanelId`: the assistant can be docked while the rail itself is collapsed.
     public bool AssistantDocked { get; init; }
 
+    // Whether the companion window (AC-237) was left open, so it reopens on the next launch instead of
+    // requiring the tray toggle every time.
+    public bool CompanionWindowVisible { get; init; }
+
     public const double DefaultSidebarWidth = 180;
     public const double MinSidebarWidth = 180;
     public const double MaxSidebarWidth = 480;

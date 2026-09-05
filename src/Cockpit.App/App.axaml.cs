@@ -287,6 +287,10 @@ public partial class App : Application
         _mainWindow.Show();
         _SetUpTrayIcon();
 
+        // AC-237: resolved here, ahead of plugin phase 2 below, so its subscription to the tool registry's
+        // Changed event is already listening by the time a plugin registers a companion tool.
+        Program.Services.GetRequiredService<CompanionWindowPresenter>();
+
         // Render the default workspace immediately, then asynchronously load saved workspaces and their panes in
         // sequence because pane restore reads Workspaces.Settings (AC-410).
         _ = _RestoreCockpitAsync(cockpitViewModel);
@@ -385,6 +389,10 @@ public partial class App : Application
         // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
         // plugin the host built for it so it can register its Options tab / side-menu section.
         _InitializePlugins();
+
+        // AC-237: reopen the companion window if it was left open, now that plugins have had their chance to
+        // register a tool — the first paint this way already shows them instead of an empty card.
+        _ = Program.Services.GetRequiredService<CompanionWindowPresenter>().RestoreAsync();
 
         // Silent unless the operator is carrying a plugin this build has replaced, in which case they are told
         // and asked — rather than having it cleaned out of their plugins folder behind their back.
@@ -691,6 +699,12 @@ public partial class App : Application
     {
         var showItem = new NativeMenuItem($"Show {CockpitProduct.DisplayName}");
         showItem.Click += (_, _) => ShowMainWindow();
+
+        // AC-237: toggles rather than only shows, since the window's own header has no tray-independent way to
+        // reopen it once hidden — this is the DoD's "pops up/hides from the tray" both ways.
+        var companionItem = new NativeMenuItem("Show companion");
+        companionItem.Click += (_, _) => Program.Services.GetRequiredService<CompanionWindowPresenter>().Toggle();
+
         var quitItem = new NativeMenuItem("Quit");
         quitItem.Click += (_, _) => RequestQuit();
 
@@ -698,7 +712,7 @@ public partial class App : Application
         {
             Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/AppIcon.ico"))),
             ToolTipText = CockpitProduct.DisplayName,
-            Menu = new NativeMenu { Items = { showItem, quitItem } },
+            Menu = new NativeMenu { Items = { showItem, companionItem, quitItem } },
         };
         tray.Clicked += (_, _) => ShowMainWindow();
 
