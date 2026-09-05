@@ -108,10 +108,11 @@ internal sealed class CiStatusHeaderControl : UserControl
         IsVisible = true;
         (_icon.Kind, var brush) = CiRunPresentation.Appearance(run.State);
         _icon.Foreground = brush;
-        ToolTip.SetTip(_row, _Describe(run));
+        ToolTip.SetTip(_row, Describe(run));
     }
 
-    private static string _Describe(CiRun run)
+    // Internal so a test can pin the tooltip text a run produces without driving the async gh-backed load.
+    internal static string Describe(CiRun run)
     {
         var state = run.State switch
         {

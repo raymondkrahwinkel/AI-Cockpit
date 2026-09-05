@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Material.Icons;
 using Cockpit.Plugins.Abstractions;
@@ -39,6 +40,23 @@ public sealed class GitHubActionsPlugin : ICockpitPlugin
         host.AddSessionHeaderItem(session => new CiStatusHeaderControl(session));
 
         // AC-1065: the same status, as a list for a workspace given over to it — mirrors the pull-requests widget.
+        // WidgetRegistration.CreateConfigView postdates minHostVersion 0.1.0 (unlike the header item above), so this
+        // is behind the same older-host guard the dock-panel registrar below uses — an older host keeps the header
+        // and simply never gets the widget, rather than failing Initialize and losing both.
+        try
+        {
+            _RegisterWidget(host);
+        }
+        catch (Exception exception) when (exception is MissingMethodException or MissingMemberException or TypeLoadException)
+        {
+        }
+
+        // AC-1065: the same list, reachable as a dock-rail panel too, next to the header dot.
+        CiWorkflowRunsDockPanelRegistrar.Register(host);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void _RegisterWidget(ICockpitHost host) =>
         host.AddWidget(new WidgetRegistration("widgets.github-actions", "GitHub Actions", context => new CiWorkflowRunsWidget(context))
         {
             IconKind = MaterialIconKind.Cog,
@@ -47,10 +65,6 @@ public sealed class GitHubActionsPlugin : ICockpitPlugin
             DefaultRowSpan = 8,
             CreateConfigView = context => new CiWorkflowRunsWidgetSettingsView(context),
         });
-
-        // AC-1065: the same list, reachable as a dock-rail panel too, next to the header dot.
-        CiWorkflowRunsDockPanelRegistrar.Register(host);
-    }
 
     public void Dispose()
     {

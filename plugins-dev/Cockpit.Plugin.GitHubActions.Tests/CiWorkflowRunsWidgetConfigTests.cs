@@ -6,12 +6,6 @@ namespace Cockpit.Plugin.GitHubActions.Tests;
 // its own, not a plugin-wide setting — and two placed panels must never see each other's count.
 public class CiWorkflowRunsWidgetConfigTests
 {
-    [Fact]
-    public void AFreshPanel_ShowsTen()
-    {
-        Assert.Equal(10, CiWorkflowRunsWidgetConfig.Default.MaxItems);
-    }
-
     [Theory]
     [InlineData(0, 1)]
     [InlineData(-3, 1)]

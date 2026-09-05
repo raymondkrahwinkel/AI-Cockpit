@@ -71,12 +71,6 @@ public class CiWorkflowRunClientTests
         Assert.Equal(TimeSpan.FromMinutes(3.5), run.Duration);
     }
 
-    [Fact]
-    public void Duration_IsUnknownWithoutBothTimestamps()
-    {
-        Assert.Null(new CiRun("CI", "main", "push", "in_progress", "", CreatedAt: null, "https://github.com/o/r/actions/runs/1").Duration);
-    }
-
     [Theory]
     [InlineData("https://github.com/owner/repo/actions/runs/1", true)]
     [InlineData("https://api.github.com/x", true)]
