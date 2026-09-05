@@ -55,6 +55,35 @@ internal static class ShadowSyncStorage
     public static void WriteBaseFile(string mirrorPath, string relativePath, string content) =>
         _WriteAtomically(ResolveSafePath(BaseRoot(mirrorPath), relativePath), content);
 
+    // The base copy for `relativePath`, or null if there isn't one yet (a file never pulled — created locally).
+    public static string? ReadBaseFileIfPresent(string mirrorPath, string relativePath)
+    {
+        var fullPath = ResolveSafePath(BaseRoot(mirrorPath), relativePath);
+        return File.Exists(fullPath) ? File.ReadAllText(fullPath) : null;
+    }
+
+    // Every file under the mirror's working tree (AC-282) — `.cockpit-sync/` itself excluded, since that is shadow
+    // state, not mirrored content. Relative paths use '/' throughout, matching Depot's own path convention.
+    public static IEnumerable<string> EnumerateWorkingFiles(string mirrorPath)
+    {
+        if (!Directory.Exists(mirrorPath))
+        {
+            yield break;
+        }
+
+        var root = Path.GetFullPath(mirrorPath);
+        var syncRoot = SyncRoot(mirrorPath) + Path.DirectorySeparatorChar;
+        foreach (var fullPath in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+        {
+            if (fullPath.StartsWith(syncRoot, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            yield return Path.GetRelativePath(root, fullPath).Replace(Path.DirectorySeparatorChar, '/');
+        }
+    }
+
     // Whether the working file at `relativePath` still has the size/mtime the index recorded when it was last
     // pulled — a stat check, not a re-hash, and the same one git and rsync use to spot a touched file cheaply.
     // A missing working file counts as diverged too: its state ("gone") is not the state the index recorded.
