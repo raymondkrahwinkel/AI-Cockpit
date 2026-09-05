@@ -1,12 +1,13 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubActions;
 
-// Reads the latest GitHub Actions run for the branch a repository is on, via the local GitHub CLI
-// (`gh run list --branch &lt;branch&gt; --limit 1 --json …`) run in that repo's working directory — reusing the
+// Reads recent GitHub Actions runs for the branch a repository is on, via the local GitHub CLI
+// (`gh run list --branch &lt;branch&gt; --limit &lt;n&gt; --json …`) run in that repo's working directory — reusing the
 // user's existing `gh` login, no token to paste. The branch comes from `git rev-parse` in the same
-// directory. Fails soft: no gh, no login, no repo, a detached HEAD, or no runs yet all yield `null`
+// directory. Fails soft: no gh, no login, no repo, a detached HEAD, or no runs yet all yield nothing
 // rather than an error, so a session that has no CI simply shows nothing.
 internal sealed class CiWorkflowRunClient
 {
@@ -16,34 +17,54 @@ internal sealed class CiWorkflowRunClient
         && uri.Scheme == Uri.UriSchemeHttps
         && (uri.Host == "github.com" || uri.Host.EndsWith(".github.com", StringComparison.Ordinal));
 
-    // The gh arguments for the latest run on a branch. Internal so a test can assert them without shelling out.
-    internal static string[] RunListArguments(string branch) =>
+    // Opens a run's URL in the OS's default browser handler (never a shell string), shared by the header dot and
+    // the dock panel's rows. Best effort: a non-GitHub url or a machine with no handler does nothing.
+    public static void OpenRunInBrowser(string? url)
+    {
+        if (url is not { Length: > 0 } || !IsGitHubRunUrl(url))
+        {
+            return;
+        }
+
+        try
+        {
+            using var _ = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            // Opening a browser is a convenience — a machine without a handler just does nothing.
+        }
+    }
+
+    // The gh arguments for the branch's most recent runs. Internal so a test can assert them without shelling out.
+    // AC-1065: `updatedAt` joined createdAt so the dock panel can show a run's duration — the same call, one more
+    // field, not a second API round trip.
+    internal static string[] RunListArguments(string branch, int limit) =>
     [
-        "run", "list", "--branch", branch, "--limit", "1",
-        "--json", "workflowName,headBranch,event,status,conclusion,createdAt,url",
+        "run", "list", "--branch", branch, "--limit", limit.ToString(CultureInfo.InvariantCulture),
+        "--json", "workflowName,headBranch,event,status,conclusion,createdAt,updatedAt,url",
     ];
 
-    public async Task<CiRun?> GetLatestRunAsync(string workingDirectory, CancellationToken cancellationToken)
+    public async Task<CiRun?> GetLatestRunAsync(string workingDirectory, CancellationToken cancellationToken) =>
+        (await GetRecentRunsAsync(workingDirectory, 1, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+
+    // AC-1065: the same fetch as GetLatestRunAsync, for the dock panel's list rather than the header's single dot.
+    public async Task<IReadOnlyList<CiRun>> GetRecentRunsAsync(string workingDirectory, int limit, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
         {
-            return null;
+            return [];
         }
 
         var branch = await _CurrentBranchAsync(workingDirectory, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrEmpty(branch) || string.Equals(branch, "HEAD", StringComparison.Ordinal))
         {
             // No branch (not a repo) or a detached HEAD — nothing per-branch to show.
-            return null;
+            return [];
         }
 
-        var (exitCode, stdout, _) = await _RunAsync("gh", RunListArguments(branch), workingDirectory, cancellationToken).ConfigureAwait(false);
-        if (exitCode != 0)
-        {
-            return null;
-        }
-
-        return ParseRuns(stdout).FirstOrDefault();
+        var (exitCode, stdout, _) = await _RunAsync("gh", RunListArguments(branch, limit), workingDirectory, cancellationToken).ConfigureAwait(false);
+        return exitCode != 0 ? [] : ParseRuns(stdout);
     }
 
     // Parses `gh run list --json …` output. Internal so a test can feed it a fixture.
@@ -65,20 +86,15 @@ internal sealed class CiWorkflowRunClient
 
             foreach (var element in document.RootElement.EnumerateArray())
             {
-                var createdAt = element.TryGetProperty("createdAt", out var created)
-                    && created.ValueKind == JsonValueKind.String
-                    && DateTimeOffset.TryParse(created.GetString(), out var parsed)
-                        ? parsed
-                        : (DateTimeOffset?)null;
-
                 runs.Add(new CiRun(
                     _String(element, "workflowName"),
                     _String(element, "headBranch"),
                     _String(element, "event"),
                     _String(element, "status"),
                     _String(element, "conclusion"),
-                    createdAt,
-                    _String(element, "url")));
+                    _DateTimeOffset(element, "createdAt"),
+                    _String(element, "url"),
+                    _DateTimeOffset(element, "updatedAt")));
             }
         }
         catch (JsonException)
@@ -93,6 +109,13 @@ internal sealed class CiWorkflowRunClient
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? string.Empty
             : string.Empty;
+
+    private static DateTimeOffset? _DateTimeOffset(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(value.GetString(), out var parsed)
+                ? parsed
+                : null;
 
     private static async Task<string?> _CurrentBranchAsync(string workingDirectory, CancellationToken cancellationToken)
     {

@@ -1,10 +1,7 @@
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
-using Avalonia.Media;
 using Avalonia.Threading;
-using Material.Icons;
 using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -109,22 +106,13 @@ internal sealed class CiStatusHeaderControl : UserControl
         }
 
         IsVisible = true;
-        (_icon.Kind, var brush) = _Appearance(run.State);
+        (_icon.Kind, var brush) = CiRunPresentation.Appearance(run.State);
         _icon.Foreground = brush;
-        ToolTip.SetTip(_row, _Describe(run));
+        ToolTip.SetTip(_row, Describe(run));
     }
 
-    private static (MaterialIconKind Kind, IBrush Brush) _Appearance(CiRunState state) => state switch
-    {
-        CiRunState.Passed => (MaterialIconKind.CheckCircleOutline, _Brush("CockpitStatusDoneBrush", "#5AA576")),
-        CiRunState.Failed => (MaterialIconKind.CloseCircleOutline, _Brush("CockpitStatusErrorBrush", "#D64545")),
-        CiRunState.Running => (MaterialIconKind.ProgressClock, _Brush("CockpitStatusWaitingBrush", "#E0A33E")),
-        // Fallback only fires with no Application (designer/headless) — a plugin always runs inside the host, so
-        // this never changes what a user sees.
-        _ => (MaterialIconKind.MinusCircleOutline, _Brush("CockpitTextFaintBrush", "#656c78")),
-    };
-
-    private static string _Describe(CiRun run)
+    // Internal so a test can pin the tooltip text a run produces without driving the async gh-backed load.
+    internal static string Describe(CiRun run)
     {
         var state = run.State switch
         {
@@ -133,50 +121,10 @@ internal sealed class CiStatusHeaderControl : UserControl
             CiRunState.Running => "running",
             _ => string.IsNullOrEmpty(run.Conclusion) ? "unknown" : run.Conclusion,
         };
-        var when = run.CreatedAt is { } at ? $" · {_Ago(at)}" : string.Empty;
+        var when = run.CreatedAt is { } at ? $" · {CiRunPresentation.Ago(at)}" : string.Empty;
         var workflow = string.IsNullOrEmpty(run.WorkflowName) ? "workflow" : run.WorkflowName;
         return $"CI: {workflow} on '{run.Branch}' — {state} ({run.Event}){when}\n\nClick to open the run on GitHub.";
     }
 
-    private static string _Ago(DateTimeOffset at)
-    {
-        var span = DateTimeOffset.UtcNow - at;
-        if (span < TimeSpan.Zero)
-        {
-            span = TimeSpan.Zero;
-        }
-
-        return span.TotalMinutes < 1 ? "just now"
-            : span.TotalHours < 1 ? $"{(int)span.TotalMinutes}m ago"
-            : span.TotalDays < 1 ? $"{(int)span.TotalHours}h ago"
-            : $"{(int)span.TotalDays}d ago";
-    }
-
-    private void _OpenRun()
-    {
-        if (_current is not { Url: { Length: > 0 } url } || !CiWorkflowRunClient.IsGitHubRunUrl(url))
-        {
-            return;
-        }
-
-        try
-        {
-            // UseShellExecute hands the URL to the OS's default handler (never a shell string), the standard way to
-            // open a link cross-platform; the URL is validated to be an https github.com link first.
-            using var _ = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception)
-        {
-            // Opening a browser is a convenience — a machine without a handler just does nothing.
-        }
-    }
-
-    // The host's theme brush, resolved at call time so a repaint of the token is followed rather than frozen. The
-    // fallback hex is only reached with no `Application` (designer, headless test) and is held equal to
-    // the token it stands in for by the repository's theme guard — a fallback that quietly disagrees is worse than
-    // none, because it is the value nobody looks at.
-    private static IBrush _Brush(string key, string fallbackHex) =>
-        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
-            ? brush
-            : new SolidColorBrush(Color.Parse(fallbackHex));
+    private void _OpenRun() => CiWorkflowRunClient.OpenRunInBrowser(_current?.Url);
 }
