@@ -39,10 +39,9 @@ public sealed class GitHubActionsPlugin : ICockpitPlugin
         // the same reasoning the git-status badge follows.
         host.AddSessionHeaderItem(session => new CiStatusHeaderControl(session));
 
-        // AC-1065: the same status, as a list for a workspace given over to it — mirrors the pull-requests widget.
-        // WidgetRegistration.CreateConfigView postdates minHostVersion 0.1.0 (unlike the header item above), so this
-        // is behind the same older-host guard the dock-panel registrar below uses — an older host keeps the header
-        // and simply never gets the widget, rather than failing Initialize and losing both.
+        // AC-1065: the same status, as a list for a workspace given over to it. CreateConfigView postdates 0.1.0, so
+        // this is behind the same older-host guard the dock-panel registrar below uses — an old host keeps the
+        // header and just never gets the widget, rather than failing Initialize and losing both.
         try
         {
             _RegisterWidget(host);
