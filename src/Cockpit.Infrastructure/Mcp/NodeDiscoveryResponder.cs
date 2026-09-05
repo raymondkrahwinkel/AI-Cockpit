@@ -20,10 +20,16 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
     private readonly NodePairingHost _pairingHost;
     private readonly ILogger<NodeDiscoveryResponder> _logger;
     private readonly IPAddress? _localMulticastInterface;
+    private readonly int _port;
 
     private UdpClient? _client;
     private CancellationTokenSource? _loopCancellation;
     private Task? _loop;
+
+    // The port actually bound — equal to `_port` unless that was 0, in which case this is what the OS assigned.
+    // Test seam (AC-1075): a test passes 0 and reads this back, the same OS-guaranteed-unique-port idiom as
+    // `NodePairingHost.BoundPort`, rather than picking a port itself and hoping nothing else already holds it.
+    internal int? BoundPort { get; private set; }
 
     public NodeDiscoveryResponder(
         INodeEndpointSettingsStore settings,
@@ -35,16 +41,17 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
     {
     }
 
-    // Test seam: join the multicast group on one specific local interface instead of every interface (the
-    // production default), so a same-host test can force delivery over loopback regardless of what real network
-    // interfaces the machine running the test happens to have.
+    // Test seam: join the multicast group on one specific local interface, forcing delivery over loopback.
+    // `port` (AC-1075) is a second seam: the production port is one shared value any other same-host process
+    // also binds, so a test needs its own to avoid cross-talk with one of those.
     internal NodeDiscoveryResponder(
         INodeEndpointSettingsStore settings,
         INodeVisibilityPolicy visibility,
         NodeDiscoveryId discoveryId,
         NodePairingHost pairingHost,
         ILoggerFactory loggerFactory,
-        IPAddress? localMulticastInterface)
+        IPAddress? localMulticastInterface,
+        int? port = null)
     {
         _settings = settings;
         _visibility = visibility;
@@ -52,6 +59,7 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
         _pairingHost = pairingHost;
         _logger = loggerFactory.CreateLogger<NodeDiscoveryResponder>();
         _localMulticastInterface = localMulticastInterface;
+        _port = port ?? NodeDiscoveryProtocol.Port;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -66,7 +74,8 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
         {
             var client = new UdpClient();
             client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            client.Client.Bind(new IPEndPoint(IPAddress.Any, NodeDiscoveryProtocol.Port));
+            client.Client.Bind(new IPEndPoint(IPAddress.Any, _port));
+            BoundPort = ((IPEndPoint)client.Client.LocalEndPoint!).Port;
 
             var group = IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup);
             if (_localMulticastInterface is { } localInterface)

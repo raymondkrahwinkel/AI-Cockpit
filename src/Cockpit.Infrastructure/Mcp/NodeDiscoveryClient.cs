@@ -13,17 +13,20 @@ namespace Cockpit.Infrastructure.Mcp;
 internal sealed class NodeDiscoveryClient : INodeDiscoveryClient, ISingletonService
 {
     private readonly IPAddress? _localMulticastInterface;
+    private readonly int _port;
 
     public NodeDiscoveryClient()
         : this(localMulticastInterface: null)
     {
     }
 
-    // Test seam: send out one specific local interface instead of letting the OS pick, so a same-host test can
-    // force the query — and the reply it provokes — over loopback regardless of the machine's real interfaces.
-    internal NodeDiscoveryClient(IPAddress? localMulticastInterface)
+    // Test seam: send out one specific local interface instead of letting the OS pick, forcing the query over
+    // loopback. `port` (AC-1075) is a second seam: the production port is one shared value any other same-host
+    // process also binds, so a test needs its own to avoid cross-talk with one of those.
+    internal NodeDiscoveryClient(IPAddress? localMulticastInterface, int? port = null)
     {
         _localMulticastInterface = localMulticastInterface;
+        _port = port ?? NodeDiscoveryProtocol.Port;
     }
 
     public async Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
@@ -38,7 +41,7 @@ internal sealed class NodeDiscoveryClient : INodeDiscoveryClient, ISingletonServ
             client.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, localInterface.GetAddressBytes());
         }
 
-        var group = new IPEndPoint(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), NodeDiscoveryProtocol.Port);
+        var group = new IPEndPoint(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), _port);
         await client.SendAsync(NodeDiscoveryProtocol.QueryMarker, group, cancellationToken).ConfigureAwait(false);
 
         using var timeoutCancellation = new CancellationTokenSource(timeout);
