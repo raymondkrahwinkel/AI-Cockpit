@@ -135,6 +135,12 @@
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\Cockpit.Plugin.ExampleWorkspace.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
+    <!-- The example companion tool (AC-240): bundled so the plugin-owned companion-window mini-tool is there out
+         of the box, and it exercises the companion-tool SDK — a plugin drawing an icon and handling a click in
+         the companion window — from a real plugin, the way ExampleWorkspace exercises the workspace-type SDK. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\Cockpit.Plugin.ExampleCompanionTool.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
     <!-- Autopilot (AC-94, skeleton AC-149): bundled so its workspace and settings are there out of the box; it
          registers a plugin workspace type through the AC-122 SDK. The run flow lands in later sub-tickets. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Autopilot\Cockpit.Plugin.Autopilot.csproj"
@@ -216,6 +222,16 @@
         <LogicalName>bundled-plugins/example-workspace/plugin.json</LogicalName>
       </EmbeddedResource>
 
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleCompanionTool.dll">
+        <LogicalName>bundled-plugins/example-companion-tool/Cockpit.Plugin.ExampleCompanionTool.dll</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleCompanionTool.deps.json">
+        <LogicalName>bundled-plugins/example-companion-tool/Cockpit.Plugin.ExampleCompanionTool.deps.json</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\plugin.json">
+        <LogicalName>bundled-plugins/example-companion-tool/plugin.json</LogicalName>
+      </EmbeddedResource>
+
       <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.dll">
         <LogicalName>bundled-plugins/autopilot/Cockpit.Plugin.Autopilot.dll</LogicalName>
       </EmbeddedResource>
@@ -265,6 +281,9 @@
       <ExampleWorkspaceFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.dll;
                                      $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.deps.json;
                                      $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\plugin.json" />
+      <ExampleCompanionToolFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleCompanionTool.dll;
+                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleCompanionTool.deps.json;
+                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\plugin.json" />
       <AutopilotFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.dll;
                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.deps.json;
                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\plugin.json" />
@@ -280,6 +299,7 @@
     <Copy SourceFiles="@(ClockFiles)" DestinationFolder="$(OutDir)bundled-plugins\clock" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(UsageTrendFiles)" DestinationFolder="$(OutDir)bundled-plugins\usage-trend" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ExampleWorkspaceFiles)" DestinationFolder="$(OutDir)bundled-plugins\example-workspace" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ExampleCompanionToolFiles)" DestinationFolder="$(OutDir)bundled-plugins\example-companion-tool" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(AutopilotFiles)" DestinationFolder="$(OutDir)bundled-plugins\autopilot" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(FanOutFiles)" DestinationFolder="$(OutDir)bundled-plugins\fan-out" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ClaudeProviderFiles)" DestinationFolder="$(OutDir)bundled-plugins\claude-provider" SkipUnchangedFiles="true" />
@@ -297,6 +317,8 @@
     <!-- The example workspace and Autopilot were copied beside the exe but never into a publish: a publish that is
          not single-file shipped a cockpit without them, since only EmbedBundledPlugins covers that route. -->
     <Copy SourceFiles="@(ExampleWorkspaceFiles)" DestinationFolder="$(PublishDir)bundled-plugins\example-workspace"
+          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <Copy SourceFiles="@(ExampleCompanionToolFiles)" DestinationFolder="$(PublishDir)bundled-plugins\example-companion-tool"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <Copy SourceFiles="@(AutopilotFiles)" DestinationFolder="$(PublishDir)bundled-plugins\autopilot"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />

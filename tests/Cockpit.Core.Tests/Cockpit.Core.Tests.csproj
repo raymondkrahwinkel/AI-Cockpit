@@ -67,6 +67,11 @@
     <!-- Same pattern for the GitHub Pull Requests plugin (#41), mirroring the Issues plugin. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GitHubPullRequests\Cockpit.Plugin.GitHubPullRequests.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- Same pattern for the example companion-tool plugin (AC-240) — the counter-proof for
+         `ICockpitHost.AddCompanionTool`, so the loader integration test can load its real assembly and prove
+         it actually registers a tool, not merely that the registry already carries someone else's. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.ExampleCompanionTool\Cockpit.Plugin.ExampleCompanionTool.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
     <!-- Same pattern for the YouTrack plugin (#42) — HTTP-only (no CLI), mirroring the Pull Requests plugin. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.YouTrack\Cockpit.Plugin.YouTrack.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
