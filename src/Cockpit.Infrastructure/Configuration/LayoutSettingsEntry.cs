@@ -25,6 +25,8 @@ internal sealed class LayoutSettingsEntry
 
     public bool AssistantDocked { get; set; }
 
+    public bool CompanionWindowVisible { get; set; }
+
     public static LayoutSettingsEntry FromDomain(LayoutSettings settings) => new()
     {
         SingleSessionLayout = settings.SingleSessionLayout,
@@ -37,6 +39,7 @@ internal sealed class LayoutSettingsEntry
         DockRailWidth = settings.DockRailWidth,
         OpenDockPanelId = settings.OpenDockPanelId,
         AssistantDocked = settings.AssistantDocked,
+        CompanionWindowVisible = settings.CompanionWindowVisible,
     };
 
     public LayoutSettings ToDomain() => new()
@@ -51,5 +54,6 @@ internal sealed class LayoutSettingsEntry
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
         AssistantDocked = AssistantDocked,
+        CompanionWindowVisible = CompanionWindowVisible,
     };
 }

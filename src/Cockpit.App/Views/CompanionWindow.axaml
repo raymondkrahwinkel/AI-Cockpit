@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        x:Class="Cockpit.App.Views.CompanionWindow"
+        WindowDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="Manual"
+        MinWidth="220">
+    <!-- AC-237: chrome copied from VoiceOverlayWindow (no decorations, always on top, rounded translucent card),
+         but this window is interactive and draggable — see CompanionWindow.axaml.cs for why it skips the
+         overlay's X11 click-through input shape. -->
+    <Border Background="#F01a1d24" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="16">
+        <StackPanel>
+            <!-- The drag handle and the window's own way out (its own Close), so hiding it never depends solely
+                 on remembering the tray icon. -->
+            <Grid x:Name="HeaderBar" Background="Transparent" ColumnDefinitions="*,Auto" Margin="12,10,8,0">
+                <TextBlock Grid.Column="0" Text="Companion" FontSize="12" FontWeight="Medium"
+                           VerticalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <Button x:Name="CloseButton" Grid.Column="1" Classes="Subtle Compact" VerticalAlignment="Center"
+                        ToolTip.Tip="Hide companion">
+                    <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                </Button>
+            </Grid>
+            <ItemsControl x:Name="ToolsHost" Margin="12,8,12,12"/>
+        </StackPanel>
+    </Border>
+</Window>
