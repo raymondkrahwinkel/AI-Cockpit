@@ -173,6 +173,8 @@ public interface ICockpitHost
     void AddSessionProvider(SessionProviderRegistration registration); // default no-op
     void AddWidget(WidgetRegistration registration);             // default no-op
     IReadOnlyList<WidgetRegistration> Widgets { get; }           // default []
+    void AddCompanionTool(CompanionToolRegistration registration); // default no-op
+    IReadOnlyList<CompanionToolRegistration> CompanionTools { get; } // default []
     void AddWorkspaceType(WorkspaceTypeRegistration registration);   // default no-op
     IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; } // default []
     Task AddMcpServer(McpServerContribution contribution);       // default no-op, returns Task.CompletedTask
@@ -380,6 +382,66 @@ public interface IWidgetContext
   so a widget can follow the active session's working directory or output without the core knowing what it is.
 - `RefreshRequested` — raised when the host asks this instance to refresh, including after its settings are
   saved. A widget polling on its own timer can ignore it; one showing a snapshot should re-read.
+
+### `void AddCompanionTool(CompanionToolRegistration registration)` {#void-addcompaniontoolcompaniontoolregistration-registration}
+Registers a mini-tool in the pop-out **companion window** — an icon, a title and a control your own factory
+builds, one level below a widget: where `AddWidget` fills a Dashboard cell, this fills a slot in a window
+docked outside any workspace. See [`CompanionToolRegistration`](#companiontoolregistration) and
+[`ICompanionToolContext`](#icompaniontoolcontext).
+- **Parameter** `registration` — the tool's id, title, view factory, and optional icon/tooltip.
+- Default no-op, so existing `ICockpitHost` implementations (test fakes, older plugin builds) keep compiling
+  untouched — only the app's own host renders it.
+```csharp
+host.AddCompanionTool(new CompanionToolRegistration(
+    "my-plugin.hello", "My Tool", context => new MyToolView(context))
+{
+    IconKind = MaterialIconKind.HandWave,
+    Tooltip = "My tool",
+});
+```
+
+### `IReadOnlyList<CompanionToolRegistration> CompanionTools { get; }` {#ireadonlylistcompaniontoolregistration-companiontools--get}
+Every companion tool all plugins have contributed — what the companion window reads. A plugin not building
+that window has no reason to touch it. Default empty.
+
+### `CompanionToolRegistration` {#companiontoolregistration}
+In `Cockpit.Plugins.Abstractions.CompanionTools`.
+```csharp
+public sealed record CompanionToolRegistration(string Id, string Title, Func<ICompanionToolContext, Control> CreateView)
+{
+    public string Tooltip { get; init; } = string.Empty;
+    public string Icon { get; init; } = string.Empty;
+    public MaterialIconKind? IconKind { get; init; }
+}
+```
+- `Id` — stable, unique id for the tool, namespaced by your plugin (`"system-monitor.usage"`). Treat it as an
+  API surface: changing it orphans anything that referenced the old id. Unique across installed plugins too:
+  the first to claim an id keeps it, and a later claim is refused and logged rather than listed beside it.
+- `CreateView` — builds the tool's control on the UI thread, handed its own `ICompanionToolContext`. Called
+  once; a tool needing periodic updates owns its timer or listens to `RefreshRequested`.
+- `Icon` / `IconKind` — a glyph or bundled vector icon for the tool's compact icon action; `IconKind` wins over
+  `Icon` when set. Defaults: empty string / none.
+- `Tooltip` — hover text for the icon action. Empty by default.
+
+### `ICompanionToolContext` {#icompaniontoolcontext}
+Handed to a companion tool's view factory — everything one tool needs and nothing it does not, the same role
+[`IWidgetContext`](#iwidgetcontext) plays for a placed widget instance.
+```csharp
+public interface ICompanionToolContext
+{
+    ICockpitSessionObserver SelectedSession { get; } // same read/observe surface as host.Sessions
+    IPluginStorage Storage { get; }                  // scoped to this tool's own id
+    event EventHandler RefreshRequested;             // the host asking this tool to refresh
+}
+```
+- `SelectedSession` — the same selection-following surface as
+  [`ICockpitSessionObserver`](#the-sessions-namespace--provider-plugins): the active session's working
+  directory and its output stream, so a tool can follow what the cockpit is doing without the core knowing
+  what the tool shows.
+- `Storage` — per-tool, scoped to this tool's id rather than the whole plugin, so its state survives a restart
+  and never collides with a sibling tool's.
+- `RefreshRequested` — raised when the host asks this tool to refresh. A tool polling on its own timer can
+  ignore it; one showing a snapshot should re-read.
 
 ### `void AddWorkspaceType(WorkspaceTypeRegistration registration)` {#void-addworkspacetypeworkspacetyperegistration-registration}
 Registers a **full-surface workspace type** — the workspace equivalent of `AddWidget`, one level up. Where a

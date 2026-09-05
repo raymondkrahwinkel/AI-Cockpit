@@ -203,6 +203,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
 | Dashboard widget | `host.AddWidget(registration)` | Registers a widget type; it appears in a **Dashboard** workspace's "Add widget" gallery, and each placed instance gets its own view, config and storage. See [Widget plugins](#widget-plugins--a-pane-on-a-dashboard-workspace). |
 | Dock panel | `host.AddDockPanel(registration)` | Registers a panel for the right-hand **dock rail**; it appears as a tab, and opening it builds the registration's own view. No per-instance context — build your own from `host.Storage`/`host.Sessions` if you need one. |
+| Companion tool | `host.AddCompanionTool(registration)` | Registers a mini-tool in the pop-out **companion window** — an icon, a title and a control your own factory builds, handed that tool's own [`ICompanionToolContext`](#companion-tool-plugins--a-mini-tool-in-the-pop-out-window) (storage, the session-observe surface, a refresh signal). See [Companion tool plugins](#companion-tool-plugins--a-mini-tool-in-the-pop-out-window). |
 | Full-surface workspace | `host.AddWorkspaceType(registration)` | Registers a **workspace type** your plugin draws entirely — it appears in the tab strip's **"+"** menu beside Sessions and Dashboard, and its body can even embed a live host session. See [Workspace plugins](#workspace-plugins--a-whole-workspace-surface). |
 | MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
 | Project field | `host.AddProjectField(registration)` | Adds a field to the **project editor** (AC-317) — "which YouTrack project is this", "which repository" — so a project carries the identifier you resolve, picked from a list you supply. Read it back with `host.GetProjectFieldValueAsync(key)`. See [Project fields](#project-fields--link-a-project-to-your-side-of-the-world). |
@@ -250,6 +251,7 @@ public interface ICockpitHost
     void AddSessionProvider(SessionProviderRegistration registration); // register a new session provider (#45)
     void AddWidget(WidgetRegistration registration);            // a widget type for Dashboard workspaces
     void AddDockPanel(DockPanelRegistration registration);      // a panel for the right-hand dock rail
+    void AddCompanionTool(CompanionToolRegistration registration); // a mini-tool in the pop-out companion window
     void AddWorkspaceType(WorkspaceTypeRegistration registration); // a whole workspace surface the plugin draws
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state
@@ -624,6 +626,56 @@ dialogs and the theme are already yours — the body factory is a closure create
 captured the `ICockpitHost`, and the theme is app resources any control binds with `DynamicResource` — so they
 are not repeated on the context. `EmbeddedSessionRequest` takes a `ProfileId` (matched by the profile's Label;
 null starts the first configured profile) and an optional `WorkingDirectory`.
+
+## Companion tool plugins — a mini-tool in the pop-out window {#companion-tool-plugins--a-mini-tool-in-the-pop-out-window}
+
+A plugin can put a small tool in the cockpit's pop-out **companion window** — an icon, a title and whatever
+control your own factory builds under them. Register one with `host.AddCompanionTool(...)` and it shows up the
+moment the window is open, or the next time it opens if it is not. Like a widget or a workspace type, it ships
+inside an ordinary plugin — no separate package, no second installer. The worked reference is
+[`plugins-dev/Cockpit.Plugin.ExampleCompanionTool`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/plugins-dev/Cockpit.Plugin.ExampleCompanionTool),
+which draws an icon and reacts to a click — proof of the surface end to end from outside the host, the way
+`Cockpit.Plugin.Clock` proves the widget SDK. A live status is deliberately not part of the example: it would
+need a data source of its own, and the built-in assistant tool already shows one.
+
+```csharp
+public void Initialize(ICockpitHost host)
+{
+    host.AddCompanionTool(new CompanionToolRegistration(
+        "my-plugin.hello", "My Tool", context => new MyToolView(context))
+    {
+        IconKind = MaterialIconKind.HandWave, // or Icon = "👋" for the emoji fallback
+        Tooltip = "My tool",
+    });
+}
+```
+
+| Member | Meaning |
+|---|---|
+| `Id` | Stable, unique id for the tool, namespaced by your plugin (`"system-monitor.usage"`). Treat it as an API surface: changing it orphans anything that referenced the old id. Unique across installed plugins: the first to claim it keeps it, a later claim is refused and logged rather than listed beside it. |
+| `Title` | Shown as the tool's panel header in the companion window. |
+| `CreateView` | Builds the tool's control on the UI thread, handed its own `ICompanionToolContext`. Called once; a tool needing periodic updates owns its timer or listens to `RefreshRequested`. |
+| `Icon` / `IconKind` | A glyph or bundled vector icon for the tool's compact icon action; `IconKind` wins when set. Defaults: empty / none. |
+| `Tooltip` | Hover text for the icon action. Empty by default. |
+
+### What a tool may reach {#what-a-tool-may-reach}
+
+`ICompanionToolContext` is handed to your view factory — everything one tool needs and nothing it does not, the
+same role `IWidgetContext` plays for a placed widget:
+
+```csharp
+public interface ICompanionToolContext
+{
+    ICockpitSessionObserver SelectedSession { get; } // the active session's working directory and output stream
+    IPluginStorage Storage { get; }                  // per-tool persistence, scoped to your tool's own id
+    event EventHandler RefreshRequested;              // the host asking this tool to refresh
+}
+```
+
+`Storage` is the same `IPluginStorage` you know elsewhere, scoped to this tool so it survives a restart and never
+collides with a sibling tool's state. `SelectedSession` is the same read/observe surface `host.Sessions` gives
+you — the selection-following view over what the cockpit is doing — so a tool can follow the active session
+without the core knowing what the tool does with that.
 
 ## Session header items — status that belongs to one session {#session-header-items--status-that-belongs-to-one-session}
 
@@ -1442,21 +1494,34 @@ store, or open a PR against it to list your plugin alongside the official ones.
 
 ## Plugins that ship with the app {#plugins-that-ship-with-the-app}
 
-Three plugins are **bundled**: they are built with the cockpit, copied into its `bundled-plugins/` output, and
-installed into the operator's plugins directory on startup — enabled, and without the consent dialog (it asks
-whether you trust third-party code, and these came out of the very build that is asking).
+Nine plugins are **bundled**: transcript search, git status, Claude Code, the clock, usage trend, the example
+workspace, the example companion tool, Autopilot and Fan-out. They are built with the cockpit, copied into its
+`bundled-plugins/` output, and installed into the operator's plugins directory on startup — enabled, and without
+the consent dialog (it asks whether you trust third-party code, and these came out of the very build that is
+asking).
 
-Two of them exist because they *used* to be core features. Transcript search parses Claude's own JSONL format,
-and git status describes the repo one session works in; neither belongs in a core that drives several providers.
-Making them plugins kept the core honest, and bundling them means an operator does not have to know they exist to
-have what they always had.
+Three of them exist because they *used* to be core features. Transcript search parses Claude's own JSONL format,
+git status describes the repo one session works in, and Claude Code itself is now a provider plugin (Fase 4)
+rather than a hardcoded one; none of that belongs in a core that drives several providers. Making them plugins
+kept the core honest, and bundling them means an operator does not have to know they exist to have what they
+always had.
 
 The **clock** is bundled for a different reason: a Dashboard workspace with nothing to put on it is a worse first
-impression than one that already has a clock. That is also the whole argument for where the line sits — the
+impression than one that already has a clock. **Usage trend** rides along beside it for the same reason — the
+ctx/5h/wk trend is there out of the box too. That is also the whole argument for where the line sits — the
 system monitor is *not* bundled, because a CPU meter nobody asked for is not the price of a working dashboard.
-Both are in the [official store](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins) as well, the same way
-git status and transcript search are: bundling decides what you get without asking, the store decides what you
-can update, remove and put back on its own.
+Clock and system monitor are both in the [official store](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins)
+as well, the same way git status and transcript search are: bundling decides what you get without asking, the
+store decides what you can update, remove and put back on its own.
+
+The **example workspace** and the **example companion tool** are bundled for a third reason entirely: they exist
+to prove their own SDK extension points end to end from outside the host, not because an operator asked for them
+— see [Workspace plugins](#workspace-plugins--a-whole-workspace-surface) and
+[Companion tool plugins](#companion-tool-plugins--a-mini-tool-in-the-pop-out-window).
+
+**Autopilot** and **Fan-out** are bundled because they are first-class features of the cockpit itself — the
+issue-to-PR pipeline and running several agents on one task at once — not something bundling merely defaults on,
+the way the clock is.
 
 Bundling never overrides the operator: a plugin they disable stays disabled and untouched on disk, and a version
 they updated past ours from the store is not rolled back — only a newer bundled version replaces an older

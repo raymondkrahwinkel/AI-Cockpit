@@ -1,0 +1,11 @@
+{
+  "id": "example-companion-tool",
+  "name": "Example Companion Tool",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.ExampleCompanionTool.dll",
+  "entryType": "Cockpit.Plugin.ExampleCompanionTool.ExampleCompanionToolPlugin",
+  "abstractionsVersion": 2,
+  "minHostVersion": "0.30.0",
+  "description": "A companion-window mini-tool a plugin contributes end to end, with an icon and a click action (AC-240).",
+  "author": "Cockpit"
+}
