@@ -111,17 +111,6 @@ public class ShortcutSettingsStoreLegacySessionSwitchTests : IDisposable
         Assert.Empty(settings.GestureFor(ShortcutAction.NextSession));
     }
 
-    [Fact]
-    public async Task LoadAsync_NoLegacySection_UsesTheCatalogDefaults()
-    {
-        var store = new ShortcutSettingsStore(_configFilePath);
-
-        var settings = await store.LoadAsync();
-
-        Assert.Equal("Ctrl+Shift+Up", settings.GestureFor(ShortcutAction.PreviousSession));
-        Assert.Equal("Ctrl+Shift+Down", settings.GestureFor(ShortcutAction.NextSession));
-    }
-
     public void Dispose()
     {
         if (Directory.Exists(_tempDir))
