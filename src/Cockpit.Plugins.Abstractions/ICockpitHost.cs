@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.CompanionTools;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.ManagedCli;
@@ -668,6 +669,22 @@ public interface ICockpitHost
     /// Default empty.
     /// </summary>
     IReadOnlyList<WidgetRegistration> Widgets => [];
+
+    /// <summary>
+    /// Registers a companion-window mini-tool (see <see cref="CompanionToolRegistration"/>): it becomes available
+    /// in the cockpit's pop-out companion window, and is built by the registration's own view factory.
+    /// </summary>
+    /// <remarks>
+    /// Default no-op so existing implementations keep compiling untouched — only the app's own host renders it.
+    /// </remarks>
+    void AddCompanionTool(CompanionToolRegistration registration)
+    {
+    }
+
+    /// <summary>
+    /// The companion tools every plugin has contributed — what the companion window reads. Default empty.
+    /// </summary>
+    IReadOnlyList<CompanionToolRegistration> CompanionTools => [];
 
     /// <summary>
     /// Registers a full-surface workspace type (see <see cref="WorkspaceTypeRegistration"/>) — the plugin owns

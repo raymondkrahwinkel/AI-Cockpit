@@ -65,7 +65,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.settings` | Its own settings screen | Ambient | 0.3.0 | — | `ICockpitHost.AddSettings`, `ICockpitHost.ShowSettingsAsync`, `ICockpitHost.HasSettings`, `ICockpitHost.OnSettingsSaved` |
 | `ui.side-menu` | A button in the left menu | Ambient | 0.3.0 | — | `ICockpitHost.AddSideMenuButton`, `ICockpitHost.AddSideMenuSection`, `ICockpitHost.AddSideMenuButtonWithBadge` |
 | `ui.commands` | Toolbar buttons and keyboard shortcuts | Ambient | 0.3.0 | — | `ICockpitHost.AddToolbarAction`, `ICockpitHost.AddShortcut` |
-| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitHost.AddWidget`, `ICockpitHost.Widgets`, `ICockpitHost.AddDockPanel` |
+| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitHost.AddWidget`, `ICockpitHost.Widgets`, `ICockpitHost.AddDockPanel`, `ICockpitHost.AddCompanionTool`, `ICockpitHost.CompanionTools` |
 | `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitHost.AddSessionHeaderItem`, `ICockpitHost.AddSessionBanner`, `ICockpitHost.AddSessionHeaderAction`, `ICockpitHost.AddConversationPicker` |
 | `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
 | `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitActions.ConfirmAsync` |
