@@ -79,11 +79,51 @@ cp "$appdir/usr/share/applications/ai-cockpit.desktop" "$appdir/ai-cockpit.deskt
 
 # AppRun is what runs when the AppImage is double-clicked. It has to resolve its own location: the mount point is
 # different on every launch, and a hardcoded path would be a path that does not exist.
+#
+# It copies usr/ into a versioned cache directory and execs from there instead of from the mount (AC-1116): once
+# the process has mapped libcoreclr.so from the cache, a squashfuse mount that later dies (observed for 3 of 6
+# mounts on this machine — AC-1114) can no longer SIGBUS it. Only the version just written is kept — one AppImage
+# release is 232 MB in the cache, and nothing here is asked to manage more than "current". If the copy or the exec
+# from cache fails for any reason, it falls back to running straight from the mount, i.e. today's behaviour.
+printf '%s' "$version" > "$appdir/VERSION"
 cat > "$appdir/AppRun" <<'APPRUN'
 #!/usr/bin/env bash
 here="$(dirname "$(readlink -f "$0")")"
-export PATH="$here/usr/bin:$PATH"
-exec "$here/usr/bin/Cockpit.App" "$@"
+
+run_from_mount() {
+    export PATH="$here/usr/bin:$PATH"
+    exec "$here/usr/bin/Cockpit.App" "$@"
+}
+
+version="$(cat "$here/VERSION" 2>/dev/null || true)"
+[ -n "$version" ] || run_from_mount "$@"
+
+cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/Cockpit"
+cache_dir="$cache_root/$version"
+app="$cache_dir/usr/bin/Cockpit.App"
+
+if [ ! -x "$app" ]; then
+    tmp_dir="$cache_root/.tmp.$$"
+    # rm -rf "$cache_dir" first: a half-written cache_dir from an interrupted run would otherwise make mv -T
+    # fail forever, and every later start would silently fall back to the mount without ever healing.
+    if rm -rf "$tmp_dir" "$cache_dir" && mkdir -p "$tmp_dir" && cp -r "$here/usr" "$tmp_dir/usr" && mv -T "$tmp_dir" "$cache_dir"; then
+        # Reached only after a successful mv, so cache_dir already exists here — the glob below always
+        # matches at least one directory and never falls through to its own unexpanded literal.
+        for old in "$cache_root"/*/; do
+            old="${old%/}"
+            [ "$old" = "$cache_dir" ] || rm -rf "$old"
+        done
+    else
+        rm -rf "$tmp_dir"
+    fi
+fi
+
+if [ -x "$app" ]; then
+    export PATH="$cache_dir/usr/bin:$PATH"
+    exec "$app" "$@"
+fi
+
+run_from_mount "$@"
 APPRUN
 chmod +x "$appdir/AppRun"
 
