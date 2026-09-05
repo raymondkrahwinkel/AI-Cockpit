@@ -381,7 +381,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - changed: **28 tests have been removed from the suite so far as proven redundant, without losing any coverage.**
   Every one was cut only after the behaviour it asserted had been deliberately broken in the code and a *different*
   test went red in its place; none was dropped for merely looking duplicated, and none was dropped for being red or
-  flaky. This round removed 3 more, measured on its own machine and run: 11,940 down to 11,937. The suite's overall
+  flaky. This round removed 3 more, measured on its own machine and run: 12,070 down to 12,067. The suite's overall
   size keeps moving for unrelated reasons — new tests land from ordinary feature work between rounds — so that
   total is not meant to be compared release to release; what stays constant is the proof behind every removal.
   This buys no measurable time and is not meant to: the 28 together run in about a millisecond. What it buys is a
