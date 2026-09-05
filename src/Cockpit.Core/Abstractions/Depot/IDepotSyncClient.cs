@@ -3,11 +3,11 @@ using Cockpit.Core.Depot;
 namespace Cockpit.Core.Abstractions.Depot;
 
 /// <summary>
-/// Talks to one Depot connection's memory-tree content contract (AC-280): list, batch-read, batch-write, move
-/// and delete. Reuses the connection Cockpit already has to Depot (<c>IMcpToolInvoker</c>, AC-243) rather than a
-/// new transport — no REST/Bearer surface is assumed here, since none is established for Depot's content API.
-/// This is transport only: the shadow index, pull/push cycle and merge live in later AC-278 tickets. Memory tree
-/// only — Depot's artifacts (binary files) never appear here; that is <c>list_artifacts</c>' own surface.
+/// Talks to one Depot connection's memory-tree content contract (AC-280): list, batch-read, batch-write, move,
+/// delete and (AC-281) version-history metadata. Reuses the connection Cockpit already has to Depot
+/// (<c>IMcpToolInvoker</c>, AC-243) rather than a new transport. Transport only — the shadow index, pull/push
+/// cycle and merge live in later AC-278 tickets. Memory tree only, never Depot's artifacts (<c>list_artifacts</c>'
+/// own surface).
 /// </summary>
 public interface IDepotSyncClient
 {
@@ -41,4 +41,12 @@ public interface IDepotSyncClient
     Task<DepotMutationResult> DeleteAsync(
         string serverName, string project, string path, string? baseChecksum,
         bool hard = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists <paramref name="path"/>'s prior overwrite versions (metadata only — no bytes). AC-281's only use for
+    /// this: confirming a local shadow base still matches a checksum Depot once had for this path, once the
+    /// current listing has already moved past it.
+    /// </summary>
+    Task<DepotListVersionsResult> ListVersionsAsync(
+        string serverName, string project, string path, CancellationToken cancellationToken = default);
 }

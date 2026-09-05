@@ -242,6 +242,41 @@ internal sealed class DepotSyncClient : IDepotSyncClient, ISingletonService
         return _ToMutationResult(result);
     }
 
+    public async Task<DepotListVersionsResult> ListVersionsAsync(
+        string serverName, string project, string path, CancellationToken cancellationToken = default)
+    {
+        var arguments = new Dictionary<string, object?> { ["project"] = project, ["path"] = path };
+
+        var result = await _InvokeWithRetryAsync(serverName, "list_versions", arguments, cancellationToken).ConfigureAwait(false);
+        switch (result.Outcome)
+        {
+            case McpToolInvocationOutcome.AuthorizationRequired:
+                return DepotListVersionsResult.AuthorizationRequired;
+            case McpToolInvocationOutcome.Failed:
+                return DepotListVersionsResult.Failed(result.Error ?? "Depot did not return this file's version history.");
+        }
+
+        _ListVersionsEnvelope? envelope;
+        try
+        {
+            envelope = JsonSerializer.Deserialize<_ListVersionsEnvelope>(result.Content ?? string.Empty, _SerializerOptions);
+        }
+        catch (JsonException exception)
+        {
+            return DepotListVersionsResult.Failed($"Couldn't read Depot's version history: {exception.Message}");
+        }
+
+        if (envelope?.Versions is not { } versions)
+        {
+            return DepotListVersionsResult.Failed("Depot's version history came back in an unexpected shape.");
+        }
+
+        return DepotListVersionsResult.Success(versions
+            .Where(entry => entry.VersionId is { Length: > 0 })
+            .Select(entry => new DepotFileVersion(entry.VersionId!, entry.CreatedAt, entry.Size, entry.Checksum))
+            .ToList());
+    }
+
     private static DepotMutationResult _ToMutationResult(McpToolInvocationResult result) => result.Outcome switch
     {
         McpToolInvocationOutcome.Success => DepotMutationResult.Success,
@@ -334,5 +369,18 @@ internal sealed class DepotSyncClient : IDepotSyncClient, ISingletonService
         public string? Status { get; set; }
         public string? Checksum { get; set; }
         public string? Message { get; set; }
+    }
+
+    private sealed class _ListVersionsEnvelope
+    {
+        public List<_ListVersionsEntry>? Versions { get; set; }
+    }
+
+    private sealed class _ListVersionsEntry
+    {
+        public string? VersionId { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public long Size { get; set; }
+        public string? Checksum { get; set; }
     }
 }
