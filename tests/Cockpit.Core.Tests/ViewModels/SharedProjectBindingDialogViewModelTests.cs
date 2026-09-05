@@ -40,6 +40,57 @@ public class SharedProjectBindingDialogViewModelTests
         return source;
     }
 
+    // True only while a Posted delegate is running — the only way to tell "resumed via the captured context"
+    // (ConfigureAwait(true)) apart from "resumed inline on the thread pool" (false) without real thread identity.
+    private sealed class _RecordingSyncContext : SynchronizationContext
+    {
+        internal bool InsidePost { get; private set; }
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            InsidePost = true;
+            try
+            {
+                d(state);
+            }
+            finally
+            {
+                InsidePost = false;
+            }
+        }
+    }
+
+    // AC-1117/AC-1119: the continuation of profileStore.LoadAsync mutates Profiles, an ObservableCollection
+    // Avalonia binds to, so it must resume on the context CreateAsync was called on, not the thread pool. The
+    // fake below awaits a real Task.Delay — NSubstitute's default synchronous completion would hide this bug.
+    [Fact]
+    public async Task CreateAsync_ProfileStoreLoadCompletesAsynchronously_ResumesTheProfilesMutationOnTheCallingContext()
+    {
+        var source = _SourceReturning(SharedProjectBindingResult.Success(new SharedProjectBinding("Migratie-2026")));
+        var store = Substitute.For<ISessionProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(async _ =>
+        {
+            await Task.Delay(20).ConfigureAwait(false);
+            return (IReadOnlyList<SessionProfile>)[new SessionProfile("Zyra", new ClaudeConfig("/home/someone/.claude"))];
+        });
+
+        var previous = SynchronizationContext.Current;
+        var context = new _RecordingSyncContext();
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            var task = SharedProjectBindingDialogViewModel.CreateAsync(_SharedProject, "Work", source, store);
+            var tcs = new TaskCompletionSource<bool>();
+            _ = task.ContinueWith(_ => tcs.TrySetResult(context.InsidePost), TaskContinuationOptions.ExecuteSynchronously);
+
+            Assert.True(await tcs.Task);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
     [Fact]
     public async Task CreateAsync_TheReadFails_ReturnsNoViewModelAndTheError()
     {

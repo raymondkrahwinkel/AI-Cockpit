@@ -241,7 +241,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
         // Awaited directly here (AC-485 review, MUST-FIX 2), not merely scheduled: the dialog must open with every
         // row's diagnostics already answered, the same as before that review moved the actual check off the UI thread.
         viewModel._RefreshResourceDiagnostics(immediately: true);
-        await viewModel.ResourceDiagnosticsRefreshCompleted.ConfigureAwait(false);
+        // ConfigureAwait(true): everything from here to the end of this method keeps adding to ObservableCollections
+        // this dialog binds to (Profiles, McpServers, …), so the continuation must stay on the calling UI thread
+        // rather than resume on whichever thread pool thread the diagnostics happened to finish on (AC-1117/AC-1119).
+        await viewModel.ResourceDiagnosticsRefreshCompleted.ConfigureAwait(true);
 
         // A link under a key no installed plugin claims — the plugin was removed, or is simply not on this machine —
         // is carried through rather than dropped on save, the way a disabled server name with no row is. Uninstalling
@@ -251,7 +254,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
             .ToDictionary(link => link.Key, link => link.Value, StringComparer.Ordinal)
             ?? [];
 
-        foreach (var profile in await profileStore.LoadAsync(cancellationToken).ConfigureAwait(false))
+        foreach (var profile in await profileStore.LoadAsync(cancellationToken).ConfigureAwait(true))
         {
             viewModel.Profiles.Add(profile.Label);
         }
@@ -262,7 +265,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         // AC-766: scoped to this project rather than the project-agnostic GetServersAsync() — the checklist is where a
         // project-linked server (Depot, say) finally gets a row of its own, ticked by default, instead of being
         // invisible here no matter how the operator configured it.
-        var servers = await mcpServerCatalog.GetServersForProjectAsync(project?.Id, cancellationToken).ConfigureAwait(false);
+        var servers = await mcpServerCatalog.GetServersForProjectAsync(project?.Id, cancellationToken).ConfigureAwait(true);
         var overlay = project?.McpOverlay ?? ProjectMcpOverlay.None;
         var offered = McpServerRegistryFilter.OfferedToOperator(servers);
 
