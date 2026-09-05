@@ -24,11 +24,6 @@ public class NodeDiscoveryTests : IAsyncLifetime
     private readonly string _certificatePath = Path.Combine(Path.GetTempPath(), $"node-discovery-{Guid.NewGuid():N}.pfx");
     private readonly string _discoveryIdPath = Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt");
 
-    // AC-1075: the production port is one well-known value any other same-host process also binds (ReuseAddress
-    // on), so two responders both answer one query. A random port per instance is this test's own unique-temp-path.
-    // Range picked to exclude NodeDiscoveryProtocol.Port (52381) entirely, not just by chance.
-    private readonly int _port = Random.Shared.Next(53000, 65535);
-
     private NodeEndpointSettingsStore _store = null!;
     private NodeSelfSignedCertificate _certificate = null!;
     private NodePairingBroker _broker = null!;
@@ -52,10 +47,20 @@ public class NodeDiscoveryTests : IAsyncLifetime
     private async Task<NodeDiscoveryResponder> _StartResponderAsync(NodePairingHost pairingHost, Func<IEnumerable<IPNetwork>> ownRanges)
     {
         var visibility = new NodeVisibilityPolicy(_store, ownRanges);
+        // Port 0: the OS picks one nobody else already holds, read back below via BoundPort — the same
+        // collision-free idiom NodePairingHost.BoundPort already uses, rather than this test guessing a number.
         var responder = new NodeDiscoveryResponder(
-            _store, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback, _port);
+            _store, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback, port: 0);
         await responder.StartAsync(CancellationToken.None);
         return responder;
+    }
+
+    // Nothing is bound here (used only where no responder started, or a responder's own port must be avoided) —
+    // reserving and releasing an OS-assigned port is the same free-of-collisions idiom as `_StartResponderAsync`.
+    private static int _ReserveEphemeralPort()
+    {
+        using var socket = new UdpClient(0);
+        return ((IPEndPoint)socket.Client.LocalEndPoint!).Port;
     }
 
     [Fact]
@@ -65,7 +70,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => [IPNetwork.Parse("127.0.0.0/8")]);
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback, _port);
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback, responder.BoundPort!.Value);
             var results = await finder.FindAsync(TimeSpan.FromSeconds(3));
 
             var foundNode = Assert.Single(results);
@@ -88,7 +93,9 @@ public class NodeDiscoveryTests : IAsyncLifetime
     /// AC-1075: before the port became a test seam, both the client and the responder always used the one
     /// hardcoded <see cref="NodeDiscoveryProtocol.Port"/> — the same value any other same-host process (another
     /// test run, a live Cockpit.App) also binds. Pins the fix at the seam itself: a query scoped to a different
-    /// port hears nothing from this node, and one scoped to its actual port still finds it.
+    /// port hears nothing from this node, and one scoped to its actual port still finds it. Deliberately does not
+    /// query <see cref="NodeDiscoveryProtocol.Port"/> itself as the "different" port — a live Cockpit.App with
+    /// node discovery on binds exactly that one, and this test must not depend on it staying silent.
     /// </summary>
     [Fact]
     public async Task AQueryScopedToADifferentPort_DoesNotFindThisNode_ButItsOwnPortStillDoes()
@@ -97,10 +104,10 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => [IPNetwork.Parse("127.0.0.0/8")]);
         try
         {
-            var wrongPortFinder = new NodeDiscoveryClient(IPAddress.Loopback, NodeDiscoveryProtocol.Port);
+            var wrongPortFinder = new NodeDiscoveryClient(IPAddress.Loopback, _ReserveEphemeralPort());
             Assert.Empty(await wrongPortFinder.FindAsync(TimeSpan.FromMilliseconds(500)));
 
-            var rightPortFinder = new NodeDiscoveryClient(IPAddress.Loopback, _port);
+            var rightPortFinder = new NodeDiscoveryClient(IPAddress.Loopback, responder.BoundPort!.Value);
             Assert.Single(await rightPortFinder.FindAsync(TimeSpan.FromSeconds(3)));
         }
         finally
@@ -119,7 +126,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => []);
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback, _port);
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback, responder.BoundPort!.Value);
             var results = await finder.FindAsync(TimeSpan.FromMilliseconds(500));
 
             Assert.Empty(results);
@@ -141,7 +148,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => []);
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback, _port);
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback, responder.BoundPort!.Value);
             var results = await finder.FindAsync(TimeSpan.FromSeconds(3));
 
             Assert.Single(results);
@@ -201,14 +208,16 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var visibility = new NodeVisibilityPolicy(offStore, () => [IPNetwork.Parse("127.0.0.0/8")]);
         var pairingHost = new NodePairingHost(offStore, _broker, _certificate, visibility, NullLoggerFactory.Instance);
         var responder = new NodeDiscoveryResponder(
-            offStore, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback, _port);
+            offStore, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback, port: 0);
 
         await pairingHost.StartAsync(CancellationToken.None);
         await responder.StartAsync(CancellationToken.None);
 
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback, _port);
+            // The switch is off, so StartAsync returned before binding — BoundPort is null. Any port nobody
+            // holds proves the same "answers nothing" point; there is no responder port to scope this to.
+            var finder = new NodeDiscoveryClient(IPAddress.Loopback, _ReserveEphemeralPort());
             var results = await finder.FindAsync(TimeSpan.FromMilliseconds(500));
 
             Assert.Empty(results);
@@ -232,7 +241,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         {
             using var raw = new UdpClient(0);
             raw.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, IPAddress.Loopback.GetAddressBytes());
-            var group = new IPEndPoint(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), _port);
+            var group = new IPEndPoint(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), responder.BoundPort!.Value);
             await raw.SendAsync(NodeDiscoveryProtocol.QueryMarker, group);
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));

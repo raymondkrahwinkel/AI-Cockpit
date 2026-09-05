@@ -26,6 +26,11 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
     private CancellationTokenSource? _loopCancellation;
     private Task? _loop;
 
+    // The port actually bound — equal to `_port` unless that was 0, in which case this is what the OS assigned.
+    // Test seam (AC-1075): a test passes 0 and reads this back, the same OS-guaranteed-unique-port idiom as
+    // `NodePairingHost.BoundPort`, rather than picking a port itself and hoping nothing else already holds it.
+    internal int? BoundPort { get; private set; }
+
     public NodeDiscoveryResponder(
         INodeEndpointSettingsStore settings,
         INodeVisibilityPolicy visibility,
@@ -70,6 +75,7 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
             var client = new UdpClient();
             client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             client.Client.Bind(new IPEndPoint(IPAddress.Any, _port));
+            BoundPort = ((IPEndPoint)client.Client.LocalEndPoint!).Port;
 
             var group = IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup);
             if (_localMulticastInterface is { } localInterface)
