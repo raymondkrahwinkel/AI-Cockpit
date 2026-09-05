@@ -33,19 +33,21 @@ public class FirstRunWizardDependencyInjectionTests
         return services.BuildServiceProvider();
     }
 
+    // Awaited rather than plain `using`: AC-585's assistant step reaches `OrchestratorMcpServer` (IAsyncDisposable-
+    // only) via `ISessionDialogService`, the same failure mode the test below already works around.
     [Fact]
-    public void TheContainer_ResolvesTheWizardAndItsStateStore()
+    public async Task TheContainer_ResolvesTheWizardAndItsStateStore()
     {
-        using var provider = BuildProvider();
+        await using var provider = BuildProvider();
 
         Assert.NotNull(provider.GetService<IFirstRunWizard>());
         Assert.NotNull(provider.GetService<IFirstRunWizardStateStore>());
     }
 
     [Fact]
-    public void TheContainer_HasAtLeastTheWelcomeStepRegistered()
+    public async Task TheContainer_HasAtLeastTheWelcomeStepRegistered()
     {
-        using var provider = BuildProvider();
+        await using var provider = BuildProvider();
 
         var steps = provider.GetServices<IFirstRunWizardStep>().ToList();
 
@@ -58,9 +60,9 @@ public class FirstRunWizardDependencyInjectionTests
     /// absent from the wizard with nothing failing anywhere else.
     /// </summary>
     [Fact]
-    public void TheContainer_ResolvesTheWorkKindStep_WithoutTheShellKnowingAboutIt()
+    public async Task TheContainer_ResolvesTheWorkKindStep_WithoutTheShellKnowingAboutIt()
     {
-        using var provider = BuildProvider();
+        await using var provider = BuildProvider();
 
         var steps = provider.GetServices<IFirstRunWizardStep>().ToList();
 
@@ -74,9 +76,9 @@ public class FirstRunWizardDependencyInjectionTests
     /// question a backup would already have answered.
     /// </summary>
     [Fact]
-    public void TheContainer_ResolvesTheRestoreStep_BetweenTheWelcomeAndTheFirstQuestion()
+    public async Task TheContainer_ResolvesTheRestoreStep_BetweenTheWelcomeAndTheFirstQuestion()
     {
-        using var provider = BuildProvider();
+        await using var provider = BuildProvider();
 
         var steps = provider.GetServices<IFirstRunWizardStep>().OrderBy(step => step.Order).ToList();
 
