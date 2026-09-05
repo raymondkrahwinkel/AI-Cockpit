@@ -45,10 +45,10 @@ public static class CapabilityCatalog
         new(
             "ui.panels",
             "Panels on the dashboard and the dock rail",
-            "Adds the plugin's own widgets to the dashboard and panels to the right-hand dock rail, and reads what is registered there.",
+            "Adds the plugin's own widgets to the dashboard, panels to the right-hand dock rail, and mini-tools to the companion window, and reads what is registered there.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitHost.AddWidget", "ICockpitHost.Widgets", "ICockpitHost.AddDockPanel"],
+            ["ICockpitHost.AddWidget", "ICockpitHost.Widgets", "ICockpitHost.AddDockPanel", "ICockpitHost.AddCompanionTool", "ICockpitHost.CompanionTools"],
             []),
 
         new(

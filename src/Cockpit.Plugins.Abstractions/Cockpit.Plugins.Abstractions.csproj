@@ -412,7 +412,13 @@
          interface methods forwarding to their category-less overload, so an existing plugin binary keeps
          compiling and keeps landing in the default PLUGINS group untouched. Additions only — a minor; major and
          abstractionsVersion stay put. -->
-    <Version>1.59.0</Version>
+    <!-- 1.60.0 (AC-236): added the companion-tool contribution point — CompanionToolRegistration and
+         ICompanionToolContext (CompanionTools namespace) plus ICockpitHost.AddCompanionTool/CompanionTools
+         (both default-implemented: no-op / empty), so a plugin can contribute a mini-tool to the cockpit's
+         pop-out companion window (AC-235), the same shape as AddWidget/Widgets. Existing implementations keep
+         compiling untouched. Additions only — a minor; major and abstractionsVersion stay 2. No in-repo plugin
+         calls this yet — the companion window itself (AC-237) is a later ticket in the same epic. -->
+    <Version>1.60.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
