@@ -438,10 +438,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ### Fixed
 
 - fixed: turning on "Accept MCP connections from another Cockpit on this network" now says, right under the tick
-  box, that Cockpit has to be restarted before it starts listening. Until then the pairing address and the address
-  below it were simply blank, with the only mention of a restart standing two steps further down the page, next to
-  discovering other cockpits — so the step that needed it went unexplained. The two address fields now stay hidden
-  until there is an address to copy, and the line explaining why takes their place.
+  box, that the change has to be applied and Cockpit restarted before it starts listening — in that order. Until
+  then the pairing address and the address below it were simply blank, with the only mention of a restart standing
+  two steps further down the page, next to discovering other cockpits — so the step that needed it went
+  unexplained. The two address fields now stay hidden until there is an address to copy, and the line explaining
+  why takes their place.
 
 - fixed: a paired node now survives being restarted. Its network ports were picked afresh by the operating system
   every launch, while the cockpit that paired with it kept calling the address it was given at pairing time — so
