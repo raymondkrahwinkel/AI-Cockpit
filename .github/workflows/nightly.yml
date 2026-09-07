@@ -135,10 +135,12 @@ jobs:
                   errors.append(f"{project}: no passing tests")
 
               coverage = "N/A"
-              # The trx logger copies the collector's attachment into a directory named after the trx itself, so
-              # this pairs a run with its own report exactly. Matching on package name instead broke as soon as
-              # one test project referenced several plugins: its report carries their packages too (AC-1070).
-              reports = list(trx.with_suffix("").rglob("coverage.cobertura.xml"))
+              # vstest names the attachment directory after the run — host and start time — while the trx adds
+              # the framework and a [n] when two runs share a second, so pair them on the directory that both
+              # prefixes this trx's name and holds the report the trx itself points at.
+              runs = [d for d in trx.parent.iterdir() if d.is_dir() and trx.stem.startswith(d.name)]
+              hrefs = [a.get("href", "") for a in tree.findall(".//{*}A")]
+              reports = [d / "In" / h for d in runs for h in hrefs if (d / "In" / h).exists()]
               if len(reports) == 1:
                   report = reports[0]
                   coverage = f'{float(ET.parse(report).getroot().get("line-rate", 0)):.1%}'
