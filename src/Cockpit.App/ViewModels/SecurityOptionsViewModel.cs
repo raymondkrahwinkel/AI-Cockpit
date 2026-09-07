@@ -83,9 +83,14 @@ public sealed partial class SecurityOptionsViewModel(
     private string _nodeEndpointSharedSecret = "";
 
     // What the operator reads off to type into a second Cockpit — one line per mounted endpoint's live node URL,
-    // or an explanatory placeholder while there is nothing to show yet (see _ResolveNodeEndpointAddressText).
+    // empty while no listener is running (see _ResolveNodeEndpointAddressText).
     [ObservableProperty]
     private string _nodeEndpointAddressText = "";
+
+    // The switch is on but no listener answers yet: both address fields have nothing to show, and this is what says
+    // why. Set alongside the address text so the two can never disagree.
+    [ObservableProperty]
+    private bool _nodeEndpointNeedsRestart;
 
     // AC-793: CIDR ranges allowed to see this node from outside its own local network — comma-separated, so no
     // new list-editing control is needed for what is, in practice, an occasional one-or-two-entry setting. Empty
@@ -252,7 +257,7 @@ public sealed partial class SecurityOptionsViewModel(
             AllowedDiscoveryRangesText = string.Join(", ", node.AllowedDiscoveryRanges);
             _loadingNodeEndpoint = false;
             NodeEndpointSharedSecret = node.SharedSecret;
-            NodeEndpointAddressText = _ResolveNodeEndpointAddressText(node.Enabled);
+            _ApplyNodeEndpointAddresses(node.Enabled);
         }
 
         // AC-792: subscribe once, not per refresh — this tab is rebuilt every time the dialog opens, and a
@@ -439,7 +444,7 @@ public sealed partial class SecurityOptionsViewModel(
     // Node binding off: normally nothing to show.
     private string _ResolveNodeEndpointAddressText(bool enabled)
     {
-        var addresses = mcpEndpointHosts?.SelectMany(host => host.GetNodeAddresses()).ToList() ?? [];
+        var addresses = _NodeAddresses();
 
         if (!enabled)
         {
@@ -449,9 +454,20 @@ public sealed partial class SecurityOptionsViewModel(
                 : "";
         }
 
-        return addresses.Count > 0
-            ? string.Join(Environment.NewLine, addresses.Select(address => $"{address.ServerName}: {address.Url}"))
-            : "No address yet — restart Cockpit for this to take effect, or check that this machine has a network connection.";
+        // Empty rather than an explanation: with no listener the address fields are hidden and
+        // `NodeEndpointNeedsRestart` says why, next to the switch that caused it.
+        return string.Join(Environment.NewLine, addresses.Select(address => $"{address.ServerName}: {address.Url}"));
+    }
+
+    private List<NodeEndpointAddress> _NodeAddresses() =>
+        mcpEndpointHosts?.SelectMany(host => host.GetNodeAddresses()).ToList() ?? [];
+
+    // The only place these two are written: the switch reads from disk, from a staged edit and from Apply, and all
+    // three have to leave the same answer behind.
+    private void _ApplyNodeEndpointAddresses(bool enabled)
+    {
+        NodeEndpointAddressText = _ResolveNodeEndpointAddressText(enabled);
+        NodeEndpointNeedsRestart = enabled && _NodeAddresses().Count == 0;
     }
 
     // Writes the three staged toggles in one pass, for the Options dialog's Apply (AC-999). Everything else on
@@ -494,7 +510,7 @@ public sealed partial class SecurityOptionsViewModel(
                 : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
             NodeEndpointSharedSecret = sharedSecret;
-            NodeEndpointAddressText = _ResolveNodeEndpointAddressText(NodeEndpointEnabled);
+            _ApplyNodeEndpointAddresses(NodeEndpointEnabled);
 
             await nodeEndpointSettings.SaveAsync(current with
             {
@@ -564,6 +580,10 @@ public sealed partial class SecurityOptionsViewModel(
     // reconfigured at the next launch (CockpitMcpEndpointHost.MountAsync) — so this only persists (AC-790).
     async partial void OnNodeEndpointEnabledChanged(bool value)
     {
+        // Display, not persistence, so it runs before the guards below: while the Options dialog stages this toggle
+        // (SuspendPersistence, AC-999) the operator would otherwise tick the box and be told nothing at all.
+        _ApplyNodeEndpointAddresses(value);
+
         if (_loadingNodeEndpoint || SuspendPersistence || nodeEndpointSettings is null)
         {
             return;
@@ -577,7 +597,6 @@ public sealed partial class SecurityOptionsViewModel(
             : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
         NodeEndpointSharedSecret = sharedSecret;
-        NodeEndpointAddressText = _ResolveNodeEndpointAddressText(value);
 
         await nodeEndpointSettings.SaveAsync(current with { Enabled = value, SharedSecret = sharedSecret }).ConfigureAwait(true);
     }
