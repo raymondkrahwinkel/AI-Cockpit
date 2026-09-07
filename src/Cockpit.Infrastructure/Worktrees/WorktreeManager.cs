@@ -24,6 +24,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
     private readonly object _leaseGate = new();
 
     public event Action<WorktreeSourceRefresh>? SourceRefreshed;
+    public event Action? WorktreesChanged;
 
     public WorktreeManager(IWorktreeRegistry registry, IWorktreeSettingsStore settings, ILogger<WorktreeManager>? logger = null, IDockerCli? dockerCli = null)
     {
@@ -166,6 +167,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                 IsAgentCreated = isAgentCreated,
             };
             await _registry.AddAsync(record, cancellationToken).ConfigureAwait(false);
+            _RaiseWorktreesChanged();
 
             // Carried on the returned record, not persisted: the caller that started this session is the one that tells
             // the operator where it forked from, and after that the answer is history.
@@ -532,6 +534,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
         await _registry.RemoveAsync(record.Path, cancellationToken).ConfigureAwait(false);
         _TryRemoveIfEmpty(record.Path);
         _TryRemoveIfEmpty(Path.GetDirectoryName(record.Path));
+        _RaiseWorktreesChanged();
 
         return dockerNotice is null
             ? notice
@@ -818,6 +821,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                 await _registry.AddAsync(result, cancellationToken).ConfigureAwait(false);
             }
 
+            _RaiseWorktreesChanged();
             return result;
         }
         catch
@@ -852,9 +856,16 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
             }
 
             var transferred = await _registry.TransferAsync(existing.Path, expectedSessionId, targetSessionId, cancellationToken).ConfigureAwait(false);
-            if (transferred is null && !leaseWasHeld)
+            if (transferred is null)
             {
-                _ReleaseLease(leasePath);
+                if (!leaseWasHeld)
+                {
+                    _ReleaseLease(leasePath);
+                }
+            }
+            else
+            {
+                _RaiseWorktreesChanged();
             }
 
             return transferred;
@@ -1204,6 +1215,19 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
 
         var slug = builder.ToString().Trim('-');
         return slug.Length > SlugLength ? slug[..SlugLength].Trim('-') : slug;
+    }
+
+    // Best-effort like SourceRefreshed above: a listener (the status-bar counter) that throws must not turn an
+    // already-successful mutation into a reported failure.
+    private void _RaiseWorktreesChanged()
+    {
+        try
+        {
+            WorktreesChanged?.Invoke();
+        }
+        catch (Exception)
+        {
+        }
     }
 
     private static bool _IsInside(string candidate, string parent)
