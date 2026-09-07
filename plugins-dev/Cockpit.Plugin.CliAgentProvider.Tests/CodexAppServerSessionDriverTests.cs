@@ -325,10 +325,8 @@ public class CodexAppServerSessionDriverTests
         await driver.SendUserMessageAsync("run ls");
         await _WaitForRequestIdAsync(fake, "turn/start");
         await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
-        // Notifications and server requests are drained by two independent pumps (#45/#943): waiting only for the
-        // approval event does not prove turn/started already ran on the notification pump, so _currentTurnId could
-        // still be unset when InterruptAsync reads it. Force it through the notification pump first, same as the
-        // sibling test below.
+        // AC-1282: notifications and server requests drain on two independent pumps, so waiting for the approval
+        // event alone does not prove turn/started already ran; force it through the notification pump first.
         await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"delta":".","itemId":"i1","threadId":"thread-1","turnId":"turn-1"}}""");
         await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
         await fake.PushStdoutAsync("""{"id":55,"method":"item/commandExecution/requestApproval","params":{"itemId":"cmd-1","command":"ls -la","threadId":"thread-1","turnId":"turn-1"}}""");
