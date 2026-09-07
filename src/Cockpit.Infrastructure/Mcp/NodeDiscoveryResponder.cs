@@ -84,7 +84,7 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
             }
             else
             {
-                client.JoinMulticastGroup(group);
+                _JoinEveryRealInterface(client, group);
             }
 
             _client = client;
@@ -99,6 +99,34 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
             // group join — is still a working cockpit. It just cannot be found on the network this run, which the
             // Security tab's "found nothing" is indistinguishable from anyway.
             _logger.LogWarning(ex, "Could not start node discovery.");
+        }
+    }
+
+    // AC-1284: join per interface rather than letting the kernel pick one off the routing table — on a machine
+    // with wired, Wi-Fi and bridges that was a guess and every other NIC stayed deaf. Same interface set
+    // `NodeVisibilityPolicy` calls "own range", so who can be heard and who is allowed to answer cannot disagree.
+    private void _JoinEveryRealInterface(UdpClient client, IPAddress group)
+    {
+        var joined = 0;
+        foreach (var candidate in NodeReachableAddress.RealUnicastAddresses())
+        {
+            try
+            {
+                client.JoinMulticastGroup(group, candidate.Address.Address);
+                joined++;
+            }
+            catch (SocketException ex)
+            {
+                // One NIC refusing the group — gone mid-enumeration, or no multicast on it — must not cost the rest.
+                _logger.LogDebug(ex, "Could not join the discovery group on {Interface}.", candidate.Address.Address);
+            }
+        }
+
+        if (joined == 0)
+        {
+            // No real LAN interface at all: fall back to the kernel's own choice so a loopback-only machine, which
+            // is what a same-host pairing runs on, is still findable.
+            client.JoinMulticastGroup(group);
         }
     }
 

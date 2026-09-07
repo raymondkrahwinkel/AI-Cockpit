@@ -36,13 +36,17 @@ internal sealed class NodeDiscoveryClient : INodeDiscoveryClient, ISingletonServ
         using var client = new UdpClient(0);
         client.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 1);
 
+        var group = new IPEndPoint(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), _port);
+
         if (_localMulticastInterface is { } localInterface)
         {
             client.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, localInterface.GetAddressBytes());
+            await client.SendAsync(NodeDiscoveryProtocol.QueryMarker, group, cancellationToken).ConfigureAwait(false);
         }
-
-        var group = new IPEndPoint(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), _port);
-        await client.SendAsync(NodeDiscoveryProtocol.QueryMarker, group, cancellationToken).ConfigureAwait(false);
+        else
+        {
+            await _QueryEveryRealInterfaceAsync(client, group, cancellationToken).ConfigureAwait(false);
+        }
 
         using var timeoutCancellation = new CancellationTokenSource(timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellation.Token);
@@ -83,6 +87,35 @@ internal sealed class NodeDiscoveryClient : INodeDiscoveryClient, ISingletonServ
         }
 
         return [.. found.Values];
+    }
+
+    // AC-1284: the query's half of the same fix `NodeDiscoveryResponder._JoinEveryRealInterface` makes — one send
+    // per real interface instead of letting the routing table choose one, so a node on the Wi-Fi is found by a
+    // controller whose default route is the cable. Replies come back unicast, so one receiving socket still does.
+    private static async Task _QueryEveryRealInterfaceAsync(UdpClient client, IPEndPoint group, CancellationToken cancellationToken)
+    {
+        var sent = 0;
+        foreach (var candidate in NodeReachableAddress.RealUnicastAddresses())
+        {
+            try
+            {
+                client.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, candidate.Address.Address.GetAddressBytes());
+                await client.SendAsync(NodeDiscoveryProtocol.QueryMarker, group, cancellationToken).ConfigureAwait(false);
+                sent++;
+            }
+            catch (SocketException)
+            {
+                // Same posture as the responder's join: one unusable NIC costs its own query, not the others'.
+            }
+        }
+
+        if (sent == 0)
+        {
+            // No real LAN interface, or none of them took the query — the kernel's own choice is all that is left,
+            // and on a loopback-only machine it is also the right one.
+            client.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, IPAddress.Any.GetAddressBytes());
+            await client.SendAsync(NodeDiscoveryProtocol.QueryMarker, group, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static NodeDiscoveryAnnounce? _TryParse(byte[] buffer)

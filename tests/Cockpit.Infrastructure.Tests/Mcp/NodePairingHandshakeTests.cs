@@ -35,7 +35,8 @@ public class NodePairingHandshakeTests : IAsyncLifetime
 
         // The node's master switch is on — the host binds nothing while it is off, which is itself the AC-791
         // posture and is covered by `Start_WhileTheSwitchIsOff_BindsNothing` below.
-        await _store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "" });
+        // Port 0, not the fixed production one (AC-1284): a Cockpit running here already holds that number.
+        await _store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "", Port = 0 });
 
         _certificate = new NodeSelfSignedCertificate(_certificatePath);
         // The default policy's own-range set includes loopback (AC-793) — exactly how every test here reaches

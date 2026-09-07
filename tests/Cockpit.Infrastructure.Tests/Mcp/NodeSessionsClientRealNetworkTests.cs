@@ -122,6 +122,109 @@ public sealed class NodeSessionsClientRealNetworkTests
         }
     }
 
+    /// <summary>
+    /// AC-1284: the moved node. The registry row a controller stored is a copy of where the node was at pairing
+    /// time and nothing ever refreshed it, so the client re-resolves through discovery once before giving up and
+    /// writes the address it proved back into the row. Both halves are asserted, because a re-resolve that works
+    /// but does not remember pays the discovery window again on every poll.
+    /// </summary>
+    [Fact]
+    public async Task ReadAsync_ANodeThatMoved_IsReachedThroughDiscovery_AndItsRegistryRowFollows()
+    {
+        var certificatePath = _TempCertificatePath();
+        try
+        {
+            using var certificate = new NodeSelfSignedCertificate(certificatePath);
+            var sharedSecret = new NodeSharedSecret();
+            sharedSecret.Set("the-shared-secret");
+            var read = new NodeSessionMcpToolsTests.RecordingReadGateway();
+            read.Sessions.Add(new AssistantSessionRow("pane-a", "the sweep", AllowedProfile, "running", null, null));
+            var pairing = new NodeSessionMcpToolsTests.StubPairing();
+            pairing.Profiles.Add(AllowedProfile);
+
+            await using var host = await _StartNodeHostAsync(certificate, sharedSecret, read, pairing);
+
+            // The row points somewhere nothing listens — the state a node that restarted on another port leaves
+            // behind. Port 1 is refused immediately, so this is the moved node and not a slow one.
+            var store = new _MutableStore(_RowFor("https://127.0.0.1:1/mcp", certificate.Fingerprint, sharedSecret.Value!));
+            var discovery = new _FoundAt($"127.0.0.1:{new Uri(host.Url).Port - NodeEndpointSettings.McpPortOffset}");
+            var client = new NodeSessionsClient(store, discovery, NullLogger<NodeSessionsClient>.Instance);
+
+            var snapshot = await client.ReadAsync(NodeName);
+
+            Assert.Null(snapshot.Error);
+            Assert.Equal("pane-a", Assert.Single(snapshot.Sessions).PaneId);
+            Assert.Equal(host.Url, Assert.Single(store.Servers).Url);
+        }
+        finally
+        {
+            File.Delete(certificatePath);
+        }
+    }
+
+    /// <summary>
+    /// The same move, on a row with no certificate pin — a node paired by hand rather than through the handshake.
+    /// Without a pin there is nothing that says which machine answered, so the client declines to rewrite the row
+    /// and reports the original failure instead of adopting whichever cockpit on the segment replied first.
+    /// </summary>
+    [Fact]
+    public async Task ReadAsync_AMovedNodeOnARowWithoutAPin_IsNotAdopted()
+    {
+        var certificatePath = _TempCertificatePath();
+        try
+        {
+            using var certificate = new NodeSelfSignedCertificate(certificatePath);
+            var sharedSecret = new NodeSharedSecret();
+            sharedSecret.Set("the-shared-secret");
+            var pairing = new NodeSessionMcpToolsTests.StubPairing { AllowEverything = true };
+
+            await using var host = await _StartNodeHostAsync(certificate, sharedSecret, new NodeSessionMcpToolsTests.RecordingReadGateway(), pairing);
+
+            var store = new _MutableStore(_RowFor("https://127.0.0.1:1/mcp", pinnedFingerprint: "", sharedSecret.Value!));
+            var discovery = new _FoundAt($"127.0.0.1:{new Uri(host.Url).Port - NodeEndpointSettings.McpPortOffset}");
+            var client = new NodeSessionsClient(store, discovery, NullLogger<NodeSessionsClient>.Instance);
+
+            var snapshot = await client.ReadAsync(NodeName);
+
+            Assert.NotNull(snapshot.Error);
+            Assert.Equal("https://127.0.0.1:1/mcp", Assert.Single(store.Servers).Url);
+        }
+        finally
+        {
+            File.Delete(certificatePath);
+        }
+    }
+
+    private static McpServerConfig _RowFor(string url, string pinnedFingerprint, string sharedSecret) => new()
+    {
+        Name = NodeServerName.For(NodeName, NodeServerName.SessionsServerName),
+        Transport = McpTransport.Http,
+        Url = url,
+        Auth = McpServerAuth.ApiKey,
+        ApiKey = sharedSecret,
+        PinnedCertificateFingerprint = pinnedFingerprint,
+    };
+
+    private sealed class _FoundAt(string address) : INodeDiscoveryClient
+    {
+        public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<NodeDiscoveryFound>>([new NodeDiscoveryFound(address, "the-node")]);
+    }
+
+    private sealed class _MutableStore(McpServerConfig server) : IMcpServerStore
+    {
+        public IReadOnlyList<McpServerConfig> Servers { get; private set; } = [server];
+
+        public Task<IReadOnlyList<McpServerConfig>> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Servers);
+
+        public Task SaveAsync(IReadOnlyList<McpServerConfig> servers, CancellationToken cancellationToken = default)
+        {
+            Servers = servers;
+            return Task.CompletedTask;
+        }
+    }
+
     private static string _TempCertificatePath() =>
         Path.Combine(Path.GetTempPath(), $"node-sessions-real-{Guid.NewGuid():N}.pfx");
 
@@ -136,7 +239,16 @@ public sealed class NodeSessionsClientRealNetworkTests
                 ApiKey = sharedSecret,
                 PinnedCertificateFingerprint = pinnedFingerprint,
             }),
+            // AC-1284's re-resolve asks discovery where a node that stopped answering went. Nothing here has moved,
+            // so a finder that reports an empty segment keeps these tests about the transport and not about UDP.
+            new _NoNodesFound(),
             NullLogger<NodeSessionsClient>.Instance);
+
+    private sealed class _NoNodesFound : INodeDiscoveryClient
+    {
+        public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<NodeDiscoveryFound>>([]);
+    }
 
     // The real Kestrel wiring `CockpitMcpEndpointHost`/`NodePairingHost` use for their node listener: an HTTPS
     // loopback port with the node's self-signed certificate, `NodeSessionMcpTools` behind `McpAuthMiddleware`

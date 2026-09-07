@@ -767,11 +767,11 @@ public sealed partial class SecurityOptionsViewModel(
                 FoundNodes.Add(node);
             }
 
-            // An empty result is not an error — the switch could be off on every other cockpit on this segment,
-            // or this one's own whitelist/range is what is keeping them out — so this reads as guidance rather
-            // than a failure.
+            // An empty result is not an error — so this reads as guidance rather than a failure. AC-1284: the
+            // restart leads, because the node switch alone changes nothing until then, and the operator who has
+            // just ticked it is the likeliest reader of this line.
             DiscoveryStatus = found.Count == 0
-                ? "Nothing answered. Check the other cockpit's node switch is on, and that it is on this network's own range or your whitelist."
+                ? "Nothing answered. A cockpit only becomes findable after it is restarted with its node switch on — turn the switch on there and restart it. If it already was, check that it is on this network's own range or in your whitelist."
                 : "";
         }
         catch (Exception ex) when (ex is SocketException or ObjectDisposedException)

@@ -31,12 +31,16 @@ public class NodeEndpointSettingsStoreTests : IDisposable
         {
             Enabled = true,
             SharedSecret = "test-secret-value",
+            // AC-1284: 0 rather than a plausible port number, because 0 is the value the on-disk shape lost
+            // silently — a Port that never round-tripped read back as the default and bound that instead.
+            Port = 0,
             AllowedDiscoveryRanges = ["203.0.113.0/24", "198.51.100.0/24"],
         });
 
         var reloaded = await new NodeEndpointSettingsStore(_path).LoadAsync();
         Assert.True(reloaded.Enabled);
         Assert.Equal("test-secret-value", reloaded.SharedSecret);
+        Assert.Equal(0, reloaded.Port);
         Assert.Equal(["203.0.113.0/24", "198.51.100.0/24"], reloaded.AllowedDiscoveryRanges);
     }
 
