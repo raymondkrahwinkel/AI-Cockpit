@@ -113,13 +113,16 @@ jobs:
           root = pathlib.Path("TestResults")
           rows = []
           errors = []
-          expected_names = {
-              "Cockpit.Core.Tests",
-              "Cockpit.Infrastructure.Tests",
-              "Cockpit.App.ViewTests",
-          }
+          # Every test project on disk rather than a list to keep in step by hand: a project that exists but is
+          # wired into no solution runs nowhere, and that silent gap is what this set is here to catch.
+          expected_names = {path.stem for path in pathlib.Path("tests").glob("Cockpit.*Tests/*.csproj")}
           expected_names.update(path.stem for path in pathlib.Path("plugins-dev").glob("Cockpit.Plugin.*.Tests/*.csproj"))
           expected = {name.casefold(): name for name in expected_names}
+          production = {
+              path.stem.casefold()
+              for root in ("src", "plugins-dev")
+              for path in pathlib.Path(root).glob("*/*.csproj")
+          }
           for trx in sorted(root.rglob("*.trx")):
               tree = ET.parse(trx)
               units = tree.findall(".//{*}UnitTest")
@@ -137,19 +140,23 @@ jobs:
                   errors.append(f"{project}: no passing tests")
 
               coverage = "N/A"
-              reports = list(trx.parent.glob("*/coverage.cobertura.xml"))
-              if trx.parent.name == "Plugins":
-                  production = project.removesuffix(".Tests").casefold()
-                  reports = [
-                      report for report in reports
-                      if production in {
-                          package.get("name", "").casefold()
-                          for package in ET.parse(report).findall(".//{*}package")
-                      }
-                  ]
+              # vstest names the attachment directory after the run — host and start time — while the trx adds
+              # the framework and a [n] when two runs share a second, so pair them on the directory that both
+              # prefixes this trx's name and holds the report the trx itself points at.
+              runs = [d for d in trx.parent.iterdir() if d.is_dir() and trx.stem.startswith(d.name)]
+              hrefs = [a.get("href", "") for a in tree.findall(".//{*}A")]
+              reports = [d / "In" / h for d in runs for h in hrefs if (d / "In" / h).exists()]
               if len(reports) == 1:
-                  report = reports[0]
-                  coverage = f'{float(ET.parse(report).getroot().get("line-rate", 0)):.1%}'
+                  report = ET.parse(reports[0])
+                  coverage = f'{float(report.getroot().get("line-rate", 0)):.1%}'
+
+                  # Pairing says which report belongs to this run; this says the report still measures the run's
+                  # own subject, so a project that quietly stopped instrumenting its plugin cannot report green.
+                  # Skipped where there is no such subject: ViewTests and the cross-plugin annotation guard.
+                  subject = project.removesuffix(".Tests")
+                  packages = {package.get("name", "").casefold() for package in report.findall(".//{*}package")}
+                  if subject.casefold() in production and subject.casefold() not in packages:
+                      errors.append(f"{project}: coverage report does not cover {subject}")
               if coverage == "N/A":
                   errors.append(f"{project}: missing coverage report")
               rows.append((project, passed, failed, skipped, coverage))
