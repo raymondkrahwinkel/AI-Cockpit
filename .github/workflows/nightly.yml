@@ -118,6 +118,11 @@ jobs:
           expected_names = {path.stem for path in pathlib.Path("tests").glob("Cockpit.*Tests/*.csproj")}
           expected_names.update(path.stem for path in pathlib.Path("plugins-dev").glob("Cockpit.Plugin.*.Tests/*.csproj"))
           expected = {name.casefold(): name for name in expected_names}
+          production = {
+              path.stem.casefold()
+              for root in ("src", "plugins-dev")
+              for path in pathlib.Path(root).glob("*/*.csproj")
+          }
           for trx in sorted(root.rglob("*.trx")):
               tree = ET.parse(trx)
               units = tree.findall(".//{*}UnitTest")
@@ -142,8 +147,16 @@ jobs:
               hrefs = [a.get("href", "") for a in tree.findall(".//{*}A")]
               reports = [d / "In" / h for d in runs for h in hrefs if (d / "In" / h).exists()]
               if len(reports) == 1:
-                  report = reports[0]
-                  coverage = f'{float(ET.parse(report).getroot().get("line-rate", 0)):.1%}'
+                  report = ET.parse(reports[0])
+                  coverage = f'{float(report.getroot().get("line-rate", 0)):.1%}'
+
+                  # Pairing says which report belongs to this run; this says the report still measures the run's
+                  # own subject, so a project that quietly stopped instrumenting its plugin cannot report green.
+                  # Skipped where there is no such subject: ViewTests and the cross-plugin annotation guard.
+                  subject = project.removesuffix(".Tests")
+                  packages = {package.get("name", "").casefold() for package in report.findall(".//{*}package")}
+                  if subject.casefold() in production and subject.casefold() not in packages:
+                      errors.append(f"{project}: coverage report does not cover {subject}")
               if coverage == "N/A":
                   errors.append(f"{project}: missing coverage report")
               rows.append((project, passed, failed, skipped, coverage))
