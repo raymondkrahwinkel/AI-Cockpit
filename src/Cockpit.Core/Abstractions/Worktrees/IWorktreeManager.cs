@@ -17,6 +17,13 @@ public interface IWorktreeManager
     event Action<WorktreeSourceRefresh>? SourceRefreshed;
 
     /// <summary>
+    /// Raised whenever the managed collection itself changes — a worktree created, removed, reattached, or
+    /// transferred — so a listener like the status-bar counter can refresh without polling. Carries no payload;
+    /// callers that need details already have <see cref="ListAsync"/> or <see cref="GetStatusesAsync"/>.
+    /// </summary>
+    event Action? WorktreesChanged;
+
+    /// <summary>
     /// Reports the git repository behind <paramref name="directory"/>, or <c>null</c> when it is not inside one (or
     /// has no commit to branch from) — the signal the New-session dialog uses to offer or grey out isolation,
     /// rather than failing at spawn time.

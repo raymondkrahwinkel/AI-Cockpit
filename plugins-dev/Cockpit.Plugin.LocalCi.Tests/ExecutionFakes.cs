@@ -13,6 +13,8 @@ internal sealed class FakeWorktreeManager : IWorktreeManager
 
     public event Action<WorktreeSourceRefresh>? SourceRefreshed { add { } remove { } }
 
+    public event Action? WorktreesChanged { add { } remove { } }
+
     public Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<WorktreeRecord>>(Records);
 

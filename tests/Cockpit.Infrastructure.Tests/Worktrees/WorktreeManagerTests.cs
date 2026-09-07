@@ -1542,6 +1542,60 @@ public sealed class WorktreeManagerTests : IDisposable
         Assert.Null(refresh.Notice);
     }
 
+    [Theory]
+    [MemberData(nameof(WorktreesChangedMutations))]
+    public async Task Mutation_RaisesWorktreesChanged(
+        Func<IWorktreeManager, string, string, Task<WorktreeRecord?>> arrange,
+        Func<IWorktreeManager, string, WorktreeRecord?, string, Task> act)
+    {
+        // Arranged (and any WorktreesChanged it fires) happens before subscribing, so only the mutation under
+        // test — not its setup — is what makes this pass.
+        var arranged = await arrange(_manager, _repo, _sessionId);
+
+        var raised = 0;
+        _manager.WorktreesChanged += () => raised++;
+        await act(_manager, _repo, arranged, _sessionId);
+
+        Assert.True(raised > 0);
+    }
+
+    public static IEnumerable<object[]> WorktreesChangedMutations()
+    {
+        yield return new object[]
+        {
+            (Func<IWorktreeManager, string, string, Task<WorktreeRecord?>>)((_, _, _) => Task.FromResult<WorktreeRecord?>(null)),
+            (Func<IWorktreeManager, string, WorktreeRecord?, string, Task>)(async (manager, repo, _, sessionId) =>
+                await manager.CreateAsync(sessionId, "wt-create", repo)),
+        };
+        yield return new object[]
+        {
+            (Func<IWorktreeManager, string, string, Task<WorktreeRecord?>>)(async (manager, repo, sessionId) =>
+                await manager.CreateAsync(sessionId, "wt-remove", repo)),
+            (Func<IWorktreeManager, string, WorktreeRecord?, string, Task>)(async (manager, _, record, _) =>
+                await manager.RemoveAsync(record!)),
+        };
+        yield return new object[]
+        {
+            // Reattach admits a new writer only once the old one let go — the same release/reattach sequence
+            // ReleaseOwnershipAsync_CaseVariantRecordPath_ReleasesTheLease already exercises above.
+            (Func<IWorktreeManager, string, string, Task<WorktreeRecord?>>)(async (manager, repo, sessionId) =>
+            {
+                var created = await manager.CreateAsync(sessionId, "wt-reattach", repo);
+                await manager.ReleaseOwnershipAsync(created.Path);
+                return created;
+            }),
+            (Func<IWorktreeManager, string, WorktreeRecord?, string, Task>)(async (manager, _, record, _) =>
+                await manager.ReattachAsync(record!.Path, Guid.NewGuid().ToString("N"))),
+        };
+        yield return new object[]
+        {
+            (Func<IWorktreeManager, string, string, Task<WorktreeRecord?>>)(async (manager, repo, sessionId) =>
+                await manager.CreateAsync(sessionId, "wt-transfer", repo)),
+            (Func<IWorktreeManager, string, WorktreeRecord?, string, Task>)(async (manager, _, record, sessionId) =>
+                await manager.TransferAsync(record!.Path, sessionId, Guid.NewGuid().ToString("N"))),
+        };
+    }
+
     private static async Task<WorktreeRecord?> _TryReattachAsync(WorktreeManager manager, string path, string paneId)
     {
         try

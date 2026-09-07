@@ -2727,6 +2727,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (worktreeManager is not null)
         {
             worktreeManager.SourceRefreshed += _ToastWorktreeSource;
+            // The MCP worktree tools (create/remove/reattach/transfer) mutate the manager directly, bypassing the
+            // four UI actions that used to be the only places the status-bar counter got refreshed.
+            worktreeManager.WorktreesChanged += _OnWorktreesChanged;
         }
         _terminals = terminals;
         _diagrams = diagrams;
@@ -8314,6 +8317,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _OnUiThread(() => ToastHost.Add(notice, severity, null, null));
     }
 
+    // Driven by the manager's event so the status-bar counter also catches mutations that never go through this
+    // view model — the MCP worktree tools act on IWorktreeManager directly. Marshalled for the same reason as
+    // _ToastWorktreeSource above: this can be reached off the UI thread.
+    private void _OnWorktreesChanged() => _OnUiThread(() => _ = Worktrees.RefreshCountAsync());
+
     // The permission mode an embedded run starts in: the request's named mode (matched case-insensitively), else the
     // app default ("ask"). A named mode that is not recognised falls back to the default rather than failing the start.
     private static PermissionModeOption _ResolveEmbeddedPermissionMode(EmbeddedSessionRequest request) =>
@@ -8461,6 +8469,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (_worktreeManager is not null)
         {
             _worktreeManager.SourceRefreshed -= _ToastWorktreeSource;
+            _worktreeManager.WorktreesChanged -= _OnWorktreesChanged;
         }
 
         var panes = Sessions.ToList();
