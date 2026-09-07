@@ -93,6 +93,29 @@ public class SecurityOptionsViewModelTests
         Assert.NotEqual("granted-by-pairing", saved.SharedSecret);
     }
 
+    [Theory]
+    // The staged row is the reported case: the Options dialog holds this toggle with SuspendPersistence, so the
+    // change handler returned before it ever recomputed what the two address fields say.
+    [InlineData(true, "", true)]
+    [InlineData(false, "", true)]
+    [InlineData(true, "https://192.168.1.20:7401/mcp", false)]
+    public async Task TurningTheNodeSwitchOn_SaysARestartIsNeeded_UntilAListenerAnswers(
+        bool staged, string liveAddress, bool expectedNeedsRestart)
+    {
+        var store = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = false, SharedSecret = "kept" });
+        var vm = new SecurityOptionsViewModel(
+            new FakeProtection(),
+            nodeEndpointSettings: store,
+            mcpEndpointHosts: [new FakeNodeAddressHost(liveAddress)]);
+        await vm.RefreshAsync();
+        vm.SuspendPersistence = staged;
+
+        vm.NodeEndpointEnabled = true;
+        await Task.Yield();
+
+        Assert.Equal(expectedNeedsRestart, vm.NodeEndpointNeedsRestart);
+    }
+
     [Fact]
     public async Task CompletingAPairing_WritesPinnedLocalOnlyRowsAndReplacesAnEarlierPairingsRows()
     {
@@ -304,6 +327,14 @@ public class SecurityOptionsViewModelTests
             _servers = value;
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class FakeNodeAddressHost(string url) : ICockpitInternalMcpProvider
+    {
+        public IReadOnlyList<McpServerConfig> GetServers() => [];
+
+        public IReadOnlyList<NodeEndpointAddress> GetNodeAddresses() =>
+            new[] { new NodeEndpointAddress("cockpit-agents", url) }.Where(a => a.Url.Length > 0).ToList();
     }
 
     private sealed class FakeNodeEndpointSettingsStore(NodeEndpointSettings settings) : INodeEndpointSettingsStore

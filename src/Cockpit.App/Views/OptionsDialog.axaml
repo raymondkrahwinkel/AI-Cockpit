@@ -1955,10 +1955,15 @@
                         <CheckBox Content="Accept MCP connections from another Cockpit on this network"
                                   IsChecked="{Binding Security.NodeEndpointEnabled}"/>
                         <StackPanel Spacing="4" Margin="24,4,0,0" IsVisible="{Binding Security.NodeEndpointEnabled}">
-                            <TextBlock Text="Pairing address — type this into the other Cockpit" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            <TextBox Text="{Binding Security.NodePairingAddress}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
-                            <TextBlock Text="Address" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                            <TextBox Text="{Binding Security.NodeEndpointAddressText}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
+                            <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                                       IsVisible="{Binding Security.NodeEndpointNeedsRestart}"
+                                       Text="Not listening yet — apply this first, then restart Cockpit before it starts listening. The addresses to type into the other Cockpit appear here after that restart; if they stay away, check that this machine has a network connection."/>
+                            <StackPanel Spacing="4" IsVisible="{Binding !Security.NodeEndpointNeedsRestart}">
+                                <TextBlock Text="Pairing address — type this into the other Cockpit" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox Text="{Binding Security.NodePairingAddress}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
+                                <TextBlock Text="Address" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                                <TextBox Text="{Binding Security.NodeEndpointAddressText}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
+                            </StackPanel>
                             <TextBlock Text="Shared key" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                             <TextBox Text="{Binding Security.NodeEndpointSharedSecret}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
 
