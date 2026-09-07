@@ -136,7 +136,16 @@ public sealed class NodeSessionsClientRealNetworkTests
                 ApiKey = sharedSecret,
                 PinnedCertificateFingerprint = pinnedFingerprint,
             }),
+            // AC-1284's re-resolve asks discovery where a node that stopped answering went. Nothing here has moved,
+            // so a finder that reports an empty segment keeps these tests about the transport and not about UDP.
+            new _NoNodesFound(),
             NullLogger<NodeSessionsClient>.Instance);
+
+    private sealed class _NoNodesFound : INodeDiscoveryClient
+    {
+        public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<NodeDiscoveryFound>>([]);
+    }
 
     // The real Kestrel wiring `CockpitMcpEndpointHost`/`NodePairingHost` use for their node listener: an HTTPS
     // loopback port with the node's self-signed certificate, `NodeSessionMcpTools` behind `McpAuthMiddleware`

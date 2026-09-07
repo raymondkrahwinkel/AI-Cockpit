@@ -184,6 +184,11 @@ public class SecurityOptionsViewModelTests
 
         Assert.Empty(vm.FoundNodes);
         Assert.NotEqual("", vm.DiscoveryStatus);
+
+        // AC-1284: the node switch changes nothing until that cockpit is restarted, and this line used to point at
+        // the switch and the network without saying so — an operator who had just ticked it read it as "check the
+        // network" and lost an afternoon. Naming the restart is the whole point of the sentence.
+        Assert.Contains("restart", vm.DiscoveryStatus, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

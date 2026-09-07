@@ -437,6 +437,22 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a paired node now survives being restarted. Its network ports were picked afresh by the operating system
+  every launch, while the cockpit that paired with it kept calling the address it was given at pairing time — so
+  the first restart of a node broke the coupling for good and the only way back was to pair again. Both listeners
+  now sit on a fixed port, 52382 and the one above it, which you can change under `nodeEndpoint.port` in
+  `cockpit.json` and which is also what you open on a firewall or publish from a container. Should a node move
+  anyway, the controller looks it up on the network again, proves it is the same machine by the certificate it
+  pinned, and quietly updates the address it had stored.
+
+- fixed: a cockpit is now found on every network it is connected to, not just the one its machine happens to route
+  through. Discovery joined the group on a single interface the kernel chose, so a node on the Wi-Fi stayed
+  invisible to a cockpit reaching it over the cable, and the other way round.
+
+- fixed: "Discover" now says what actually has to happen when nothing answers. The node switch only takes effect
+  once that cockpit has been restarted, and the message pointed at the switch and the network without mentioning
+  it — so the most common reason for an empty list was the one thing it did not name.
+
 - fixed: closing one window beside the cockpit no longer takes the others with it. A window opened while another
   one was in front was attached to that window rather than to the cockpit, and closing the one in front closed
   everything hanging off it — two diagrams open, close either, and both disappeared. The second one was not just

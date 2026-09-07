@@ -61,8 +61,10 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
         {
             var builder = WebApplication.CreateSlimBuilder();
             builder.Services.AddSingleton(_loggerFactory);
+            // AC-1284: the configured port, not 0 — a controller stores this address and never hears about a new
+            // one, so an OS-assigned port made the node's first restart break the pairing permanently.
             builder.WebHost.ConfigureKestrel(options =>
-                options.Listen(System.Net.IPAddress.Any, 0, listenOptions => listenOptions.UseHttps(_certificate.Value)));
+                options.Listen(System.Net.IPAddress.Any, settings.Port, listenOptions => listenOptions.UseHttps(_certificate.Value)));
 
             var app = builder.Build();
             _MapRoutes(app);

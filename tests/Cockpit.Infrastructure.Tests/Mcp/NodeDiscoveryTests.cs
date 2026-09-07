@@ -31,7 +31,9 @@ public class NodeDiscoveryTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _store = new NodeEndpointSettingsStore(_configPath);
-        await _store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "" });
+        // Port 0: an OS-assigned port nobody else holds. Production fixes the port (AC-1284) so a controller's stored
+        // address survives a restart; a test binding that one number would collide with a Cockpit running here.
+        await _store.SaveAsync(new NodeEndpointSettings { Enabled = true, SharedSecret = "", Port = 0 });
         _certificate = new NodeSelfSignedCertificate(_certificatePath);
         _broker = new NodePairingBroker(_store, _certificate, new NodeSharedSecret(), []);
     }

@@ -11,6 +11,11 @@ internal sealed class NodeEndpointSettingsEntry
     public bool Enabled { get; set; }
     public string? SharedSecret { get; set; }
 
+    // AC-1284: the pairing listener's port, and one above it the node's MCP listener. Null for every config
+    // written before this existed, which reads back as `NodeEndpointSettings.DefaultPort` — nothing to migrate,
+    // and a node that was paired on an OS-assigned port needs pairing again either way.
+    public int? Port { get; set; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public NodePairingEntry? Pairing { get; set; }
 
@@ -24,6 +29,7 @@ internal sealed class NodeEndpointSettingsEntry
     {
         Enabled = settings.Enabled,
         SharedSecret = settings.SharedSecret,
+        Port = settings.Port,
         Pairing = settings.Pairing is null ? null : NodePairingEntry.FromDomain(settings.Pairing),
         AllowedDiscoveryRanges = settings.AllowedDiscoveryRanges.Count == 0 ? null : [.. settings.AllowedDiscoveryRanges],
     };
@@ -32,6 +38,7 @@ internal sealed class NodeEndpointSettingsEntry
     {
         Enabled = Enabled,
         SharedSecret = SharedSecret ?? "",
+        Port = Port ?? NodeEndpointSettings.DefaultPort,
         Pairing = Pairing?.ToDomain(),
         AllowedDiscoveryRanges = AllowedDiscoveryRanges ?? [],
     };

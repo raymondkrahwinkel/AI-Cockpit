@@ -182,7 +182,11 @@ internal sealed class CockpitMcpEndpointHost
                 {
                     // A second, network-reachable listener next to the loopback one (AC-790), guarded by the persistent
                     // shared secret rather than this run's ephemeral McpAuthKey — see McpAuthMiddleware.Require below.
-                    options.Listen(System.Net.IPAddress.Any, 0, listenOptions => listenOptions.UseHttps(_nodeCertificate.Value));
+                    // AC-1284: on the configured port, so the URL a controller stored survives this node restarting.
+
+                    // ponytail: one fixed port for every NodeOnly endpoint — a second one would collide and lose its
+                    // network listener. Give them an offset each if a second NodeOnly endpoint ever mounts.
+                    options.Listen(System.Net.IPAddress.Any, nodeSettings.McpPort, listenOptions => listenOptions.UseHttps(_nodeCertificate.Value));
                 }
             });
 
