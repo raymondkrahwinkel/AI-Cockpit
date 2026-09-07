@@ -43,6 +43,8 @@
     <Project Path="plugins-dev/Cockpit.Plugin.GrokProvider.Tests/Cockpit.Plugin.GrokProvider.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.KimiProvider/Cockpit.Plugin.KimiProvider.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.KimiProvider.Tests/Cockpit.Plugin.KimiProvider.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Kind/Cockpit.Plugin.Kind.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Kind.Tests/Cockpit.Plugin.Kind.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Kubernetes/Cockpit.Plugin.Kubernetes.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Kubernetes.Tests/Cockpit.Plugin.Kubernetes.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.LocalCi/Cockpit.Plugin.LocalCi.csproj" />

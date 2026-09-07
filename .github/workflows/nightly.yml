@@ -113,11 +113,9 @@ jobs:
           root = pathlib.Path("TestResults")
           rows = []
           errors = []
-          expected_names = {
-              "Cockpit.Core.Tests",
-              "Cockpit.Infrastructure.Tests",
-              "Cockpit.App.ViewTests",
-          }
+          # Every test project on disk rather than a list to keep in step by hand: a project that exists but is
+          # wired into no solution runs nowhere, and that silent gap is what this set is here to catch.
+          expected_names = {path.stem for path in pathlib.Path("tests").glob("Cockpit.*Tests/*.csproj")}
           expected_names.update(path.stem for path in pathlib.Path("plugins-dev").glob("Cockpit.Plugin.*.Tests/*.csproj"))
           expected = {name.casefold(): name for name in expected_names}
           for trx in sorted(root.rglob("*.trx")):
@@ -137,16 +135,10 @@ jobs:
                   errors.append(f"{project}: no passing tests")
 
               coverage = "N/A"
-              reports = list(trx.parent.glob("*/coverage.cobertura.xml"))
-              if trx.parent.name == "Plugins":
-                  production = project.removesuffix(".Tests").casefold()
-                  reports = [
-                      report for report in reports
-                      if production in {
-                          package.get("name", "").casefold()
-                          for package in ET.parse(report).findall(".//{*}package")
-                      }
-                  ]
+              # The trx logger copies the collector's attachment into a directory named after the trx itself, so
+              # this pairs a run with its own report exactly. Matching on package name instead broke as soon as
+              # one test project referenced several plugins: its report carries their packages too (AC-1070).
+              reports = list(trx.with_suffix("").rglob("coverage.cobertura.xml"))
               if len(reports) == 1:
                   report = reports[0]
                   coverage = f'{float(ET.parse(report).getroot().get("line-rate", 0)):.1%}'
