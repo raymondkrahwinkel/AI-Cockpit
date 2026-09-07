@@ -12,8 +12,8 @@ internal sealed class NodeEndpointSettingsEntry
     public string? SharedSecret { get; set; }
 
     // AC-1284: the pairing listener's port, and one above it the node's MCP listener. Null for every config
-    // written before this existed, which reads back as `NodeEndpointSettings.DefaultPort` — nothing to migrate,
-    // and a node that was paired on an OS-assigned port needs pairing again either way.
+    // written before this existed, and a hand-edited value outside the usable range, both read back as
+    // `NodeEndpointSettings.DefaultPort` — nothing to migrate, and nothing Kestrel will refuse.
     public int? Port { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -38,7 +38,7 @@ internal sealed class NodeEndpointSettingsEntry
     {
         Enabled = Enabled,
         SharedSecret = SharedSecret ?? "",
-        Port = Port ?? NodeEndpointSettings.DefaultPort,
+        Port = Port is { } port && NodeEndpointSettings.IsUsablePort(port) ? port : NodeEndpointSettings.DefaultPort,
         Pairing = Pairing?.ToDomain(),
         AllowedDiscoveryRanges = AllowedDiscoveryRanges ?? [],
     };

@@ -24,6 +24,9 @@ internal sealed class NodeSessionsClient(
 
     // AC-1284: the listening window for the one re-resolve below. Shorter than the Security tab's own discover,
     // because this one runs behind a 20s poll and costs its whole length every time the node is simply off.
+
+    // ponytail: no backoff — a node left switched off draws one multicast query every 20s forever. Back off after
+    // a few fruitless re-resolves if that ever shows up on a network.
     private static readonly TimeSpan RediscoverWindow = TimeSpan.FromSeconds(2);
 
     public async Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default)
@@ -160,7 +163,7 @@ internal sealed class NodeSessionsClient(
             // AC-1284: the stored URL is a copy of where the node stood when it was paired, and nothing else in
             // this codebase ever refreshes it. One re-resolve before giving up, so a node that moved does not need
             // the operator to pair again.
-            var moved = await _ReResolveAsync(server, cancellationToken).ConfigureAwait(false);
+            var moved = await _TryReResolveAsync(server, cancellationToken).ConfigureAwait(false);
             if (moved is null)
             {
                 throw;
@@ -170,11 +173,34 @@ internal sealed class NodeSessionsClient(
         }
     }
 
+    // The re-resolve is an extra chance, never a new failure: an unreachable network makes discovery itself throw,
+    // and letting that out would replace the connect failure `Classify` turns into the operator's sentence with a
+    // socket error about UDP. Whatever goes wrong here, the caller rethrows what it already had.
+    private async Task<McpClient?> _TryReResolveAsync(McpServerConfig server, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _ReResolveAsync(server, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogDebug(exception, "Could not look up where node {Node} moved to.", server.Name);
+            return null;
+        }
+    }
+
     // Asks discovery where this node is now and proves identity with the pin the registry row already carries —
     // the only thing that says "this is the machine I paired with" without a second handshake. Null when nothing
     // on the segment answers as this node, which is also the case whenever it is genuinely off.
     private async Task<McpClient?> _ReResolveAsync(McpServerConfig server, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrEmpty(server.PinnedCertificateFingerprint))
+        {
+            // Without a pin `NodeCertificatePin.TransportFor` hands back an ordinary transport, and then this would
+            // rewrite the row to whichever node on the segment answered. No identity, no rewrite.
+            return null;
+        }
+
         var found = await discovery.FindAsync(RediscoverWindow, cancellationToken).ConfigureAwait(false);
 
         foreach (var node in found)
@@ -187,8 +213,7 @@ internal sealed class NodeSessionsClient(
             try
             {
                 var client = await _OpenAsync(server with { Url = candidate }, cancellationToken).ConfigureAwait(false);
-                await _StoreUrlAsync(server, candidate, cancellationToken).ConfigureAwait(false);
-                logger.LogInformation("Node {Node} moved to {Url}; its registry row now points there.", server.Name, candidate);
+                await _RememberUrlAsync(server, candidate, cancellationToken).ConfigureAwait(false);
                 return client;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
@@ -214,12 +239,21 @@ internal sealed class NodeSessionsClient(
 
     // Rewrites only this node's row, matched by the name `_ConnectAsync` looked it up under, and re-reads the list
     // first: the poll behind this can be minutes old and must not write back a registry it no longer describes.
-    private async Task _StoreUrlAsync(McpServerConfig server, string url, CancellationToken cancellationToken)
+    // A write that fails costs the memory, never the connection — the next call simply re-resolves again.
+    private async Task _RememberUrlAsync(McpServerConfig server, string url, CancellationToken cancellationToken)
     {
-        var known = await servers.LoadAsync(cancellationToken).ConfigureAwait(false);
-        await servers.SaveAsync(
-            [.. known.Select(row => string.Equals(row.Name, server.Name, StringComparison.Ordinal) ? row with { Url = url } : row)],
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var known = await servers.LoadAsync(cancellationToken).ConfigureAwait(false);
+            await servers.SaveAsync(
+                [.. known.Select(row => string.Equals(row.Name, server.Name, StringComparison.Ordinal) ? row with { Url = url } : row)],
+                cancellationToken).ConfigureAwait(false);
+            logger.LogInformation("Node {Node} moved to {Url}; its registry row now points there.", server.Name, url);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Node {Node} answers at {Url} but its registry row could not be updated.", server.Name, url);
+        }
     }
 
     private static async Task<McpClient> _OpenAsync(McpServerConfig server, CancellationToken cancellationToken)
