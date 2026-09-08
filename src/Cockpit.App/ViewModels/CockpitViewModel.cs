@@ -4109,11 +4109,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Defer writing until stored update settings are read, or an uninitialized channel would erase the operator's
     // earlier choice. InitialiseUpdatesAsync saves once both halves are known.
-    private void _SaveUpdateSettings()
+
+    // AC-1287: `flushStaged` says the staging is being committed right now. Apply and Close could rely on
+    // `_EndOptionsEdit` having dropped the flag first; an Apply that keeps the dialog open cannot.
+    private void _SaveUpdateSettings(bool flushStaged = false)
     {
         // AC-999: while the Options dialog is open this is one of the settings held back until Apply, which
         // flushes it by calling here again once the flag is down.
-        if (_optionsStaged || _updateSettingsStore is not { } store)
+        if ((_optionsStaged && !flushStaged) || _updateSettingsStore is not { } store)
         {
             return;
         }
@@ -6219,7 +6222,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await SaveAllSettingsAsync();
         }
 
-        _SaveUpdateSettings();
+        // Not blocked, so this Apply is committing: on the closing path the flag is already down and this changes
+        // nothing, and a blocked Apply still writes no update settings, exactly as before.
+        _SaveUpdateSettings(flushStaged: !OptionsApplyBlocked);
 
         if (_delegationMcpToggle is { } toggle)
         {
