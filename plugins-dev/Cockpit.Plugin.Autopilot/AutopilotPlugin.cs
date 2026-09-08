@@ -37,7 +37,8 @@ public sealed class AutopilotPlugin : ICockpitPlugin
 
         // The history of settled runs (persistent): a run that finishes leaves the live surface, so
         // it is recorded here to be shown in the history section rather than vanishing.
-        var history = new AutopilotRunHistory(host.Storage);
+        host.Storage.Remove("runHistory");
+        var history = new AutopilotRunHistory(host.Cache);
 
         // The template store (AC-189): the operator's own templates and their edits of the plugin/builtin ones,
         // persisted like the queue and history above. List() merges the in-memory plugin registrations with the

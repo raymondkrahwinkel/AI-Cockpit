@@ -9,10 +9,10 @@ internal sealed class AutopilotRunHistory
 {
     private const string StorageKey = "runHistory";
     private const int MaxEntries = 50;
-    private readonly IPluginStorage _storage;
+    private readonly IPluginCache _storage;
     private readonly List<AutopilotRunRecord> _records;
 
-    public AutopilotRunHistory(IPluginStorage storage)
+    public AutopilotRunHistory(IPluginCache storage)
     {
         _storage = storage;
         _records = storage.Get<List<AutopilotRunRecord>>(StorageKey) ?? [];
