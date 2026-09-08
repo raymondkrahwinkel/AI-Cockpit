@@ -9,9 +9,11 @@ exactly that: audience must survive a republish the same way category/homepage a
     scripts/store-index-upsert.test.py
 """
 import importlib.util
+import io
 import json
 import sys
 import tempfile
+from contextlib import redirect_stderr
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -116,6 +118,63 @@ with tempfile.TemporaryDirectory() as td:
     published = json.loads(index_path.read_text())["plugins"][0]
     check("a plugin without audience republishes fine", rc, upsert.EXIT_OK)
     check("a plugin without audience does not have one invented", "audience" in published, False)
+
+# --- AC-1289 field-loss guard: one table, run through main(), covering both the real failure shape
+# (a field build_entry() does not know about gets dropped) and the pass-through (nothing is lost) ---
+
+FIELD_LOSS_CASES = [
+    {
+        "name": "a field build_entry() has no case for is dropped -> the run fails naming it",
+        "existing_extra": {"spotlight": True},
+        "expect_rc": upsert.EXIT_ERROR,
+        "expect_in_stderr": "spotlight",
+    },
+    {
+        "name": "a publish that loses nothing proceeds",
+        "existing_extra": {},
+        "expect_rc": upsert.EXIT_OK,
+        "expect_in_stderr": None,
+    },
+]
+
+for case in FIELD_LOSS_CASES:
+    with tempfile.TemporaryDirectory() as td:
+        index_path = Path(td) / "index.json"
+        entry = {
+            "id": "widget",
+            "name": "Widget",
+            "author": "someone",
+            "latestVersion": "1.0.0",
+            "versions": [{"version": "1.0.0", "path": "widget/widget-1.0.0.zip"}],
+        }
+        entry.update(case["existing_extra"])
+        index_path.write_text(json.dumps({"plugins": [entry]}))
+
+        old_argv = sys.argv
+        sys.argv = [
+            "store-index-upsert.py",
+            "--index", str(index_path),
+            "--id", "widget",
+            "--name", "Widget",
+            "--author", "someone",
+            "--version", "1.0.1",
+            "--path", "widget/widget-1.0.1.zip",
+            "--published", "2026-09-08",
+        ]
+        stderr = io.StringIO()
+        try:
+            with redirect_stderr(stderr):
+                rc = upsert.main()
+        finally:
+            sys.argv = old_argv
+
+        name = case["name"]
+        if rc != case["expect_rc"]:
+            failures.append(f"{name}: expected rc={case['expect_rc']}, got {rc} (stderr: {stderr.getvalue()!r})")
+        elif case["expect_in_stderr"] and case["expect_in_stderr"] not in stderr.getvalue():
+            failures.append(f"{name}: expected {case['expect_in_stderr']!r} in stderr, got {stderr.getvalue()!r}")
+        else:
+            print(f"ok: {name}")
 
 if failures:
     print(f"\n{len(failures)} test(s) failed:", file=sys.stderr)

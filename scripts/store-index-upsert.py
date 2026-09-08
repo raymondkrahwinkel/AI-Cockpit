@@ -32,6 +32,15 @@ EXIT_ERROR = 1
 EXIT_ALREADY_PRESENT = 3
 
 
+# AC-1289: fields a publish legitimately recomputes from this run's own arguments, so their being
+# different from the existing entry is expected rather than a build_entry() field the whitelist forgot.
+#   * versions/latestVersion — rebuilt every run from this run's version plus whatever was already there.
+#   * published — only advances when this publish is the newest version (see the comment where it is
+#     set below); an older back-publish leaves it alone, but it is still recomputed, never carried
+#     over untouched, so it does not belong in a "did build_entry() forget this" comparison either.
+FIELDS_SET_PER_PUBLISH = frozenset({"versions", "latestVersion", "published"})
+
+
 def version_key(v: str) -> tuple[int, ...]:
     """Sort key from the leading numeric dotted part of a version (prerelease suffix ignored).
 
@@ -118,6 +127,26 @@ def build_entry(existing: OrderedDict | None, store_meta: dict, args) -> Ordered
     return entry
 
 
+def field_loss_error(existing: OrderedDict, entry: OrderedDict, plugin_id: str) -> str | None:
+    """None if `entry` kept every field `existing` had, else an error naming what to do about it.
+
+    This is the AC-1289 guard: build_entry()'s field list is a whitelist a human edits by hand, and a
+    human forgot `audience` for two weeks before anyone noticed the wizard had gone quiet. Comparing
+    the two field sets on every publish turns the next forgotten field into this run's failure instead
+    of something the operator notices weeks later.
+    """
+    lost = sorted(key for key in existing if key not in FIELDS_SET_PER_PUBLISH and key not in entry)
+    if not lost:
+        return None
+    noun = "field" if len(lost) == 1 else "fields"
+    names = ", ".join(repr(key) for key in lost)
+    return (
+        f"error: publishing {plugin_id} would drop {noun} {names} that the existing index entry had — "
+        f"add {'it' if len(lost) == 1 else 'them'} to build_entry() or to the list of fields that may "
+        f"legitimately disappear on every publish."
+    )
+
+
 def build_version(args) -> OrderedDict:
     version: OrderedDict = OrderedDict()
     version["version"] = args.version
@@ -200,6 +229,12 @@ def main() -> int:
 
     entry["latestVersion"] = latest
     entry["versions"] = versions
+
+    if existing is not None:
+        loss = field_loss_error(existing, entry, args.id)
+        if loss is not None:
+            print(loss, file=sys.stderr)
+            return EXIT_ERROR
 
     if existing_index is not None:
         plugins[existing_index] = entry
