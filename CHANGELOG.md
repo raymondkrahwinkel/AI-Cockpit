@@ -437,6 +437,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the store's publish pipeline no longer drops a plugin's curated work-kind tag every time it republishes,
+  which is why the first-run wizard's work-kind step had quietly gone back to showing every plugin unchecked
+  with no recommendation. The generator now keeps that field the same way it already kept category, homepage and
+  the others — from the plugin's own store.json if it sets one, otherwise from what the index already had.
+
 - fixed: a Cockpit that cannot open its node port now says so on the Nodes tab, naming the port and that something
   else already holds it — a second Cockpit on the same machine is the usual reason. Before this the failure left
   nothing but a line in the log: the address field stayed empty, the page advised a restart, and restarting ran

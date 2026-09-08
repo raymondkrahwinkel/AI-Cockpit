@@ -27,6 +27,7 @@ public class RealWorkflowsTests
             [
                 "changes", "build", "plugins", "plugin-versions",
                 "xmldoc-scope", "comment-length", "duplicate-test-bodies", "descendant-selector-scope",
+                "store-index-upsert",
             ],
             verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));
     }

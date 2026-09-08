@@ -258,3 +258,15 @@ jobs:
 
       - name: Guard's own tests
         run: python3 scripts/check-descendant-selector-scope.test.py
+
+  # AC-1289: the publish pipeline's only test for the field it silently dropped for two weeks. Nothing here
+  # runs store-index-upsert.py repo-wide the way the other guards do -- it is a per-publish CLI, not a scan --
+  # so this job is just its own tests, same as the others carry alongside their scan.
+  store-index-upsert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Guard's own tests
+        run: python3 scripts/store-index-upsert.test.py
