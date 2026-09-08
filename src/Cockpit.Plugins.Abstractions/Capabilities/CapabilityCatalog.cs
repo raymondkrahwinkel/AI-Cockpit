@@ -106,6 +106,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "storage.cache",
+            "Its own cache",
+            "Reads and writes what the plugin can fetch or compute again, in a file of its own. Not the settings, not carried by a backup, and no place for a credential.",
+            CapabilityRisk.Ambient,
+            "0.30.0",
+            ["IPluginCache.Get", "IPluginCache.Set"],
+            []),
+
+        new(
             "workspaces.types",
             "Its own kind of workspace",
             "Registers a workspace type the operator can open, and reads the types other plugins registered.",

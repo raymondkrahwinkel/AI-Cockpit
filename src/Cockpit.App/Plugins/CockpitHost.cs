@@ -55,13 +55,20 @@ internal sealed class CockpitHost(
     ICockpitSessionObserver sessions,
     PluginDiagnostics diagnostics,
     IReadOnlyList<string>? declaredSecretKeys = null,
-    Type? ownPluginType = null) : ICockpitHost
+    Type? ownPluginType = null,
+    IPluginCache? cache = null) : ICockpitHost
 {
+    // Without a cache file behind it — a test host — the plugin still gets a cache, one that lives as long as
+    // this host does. `Cache` is never null (AC-1294).
+    private readonly IPluginCache _cache = cache ?? new InMemoryPluginCache();
+
     public IServiceProvider Services => services;
 
     public ICockpitActions Actions => actions;
 
     public IPluginStorage Storage => storage;
+
+    public IPluginCache Cache => _cache;
 
     public ICockpitSessionObserver Sessions => sessions;
 

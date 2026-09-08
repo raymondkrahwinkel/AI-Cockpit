@@ -11,12 +11,14 @@ namespace Cockpit.Core.Tests.Plugins;
 /// </summary>
 public class CapabilityCatalogTests
 {
-    private static readonly Type[] _Surface = [typeof(ICockpitHost), typeof(ICockpitActions), typeof(IPluginStorage)];
+    private static readonly Type[] _Surface =
+        [typeof(ICockpitHost), typeof(ICockpitActions), typeof(IPluginStorage), typeof(IPluginCache)];
 
-    // The two members that are doors rather than contribution points: they hand back an interface whose own
+    // The members that are doors rather than contribution points: they hand back an interface whose own
     // members are catalogued individually, and reaching them does nothing on its own. ICockpitHost.Services is
     // deliberately NOT here — resolving the host's internals is the one accessor that is itself a capability.
-    private static readonly HashSet<string> _Doors = ["ICockpitHost.Actions", "ICockpitHost.Storage"];
+    private static readonly HashSet<string> _Doors =
+        ["ICockpitHost.Actions", "ICockpitHost.Storage", "ICockpitHost.Cache"];
 
     [Fact]
     public void EveryContributionPointIsInACapability()

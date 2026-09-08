@@ -43,6 +43,9 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
         root.Write("project-logos/acme.png", "not really a png");
         root.Write("plugins/youtrack/plugin.json", """{"id":"youtrack","version":"1.4.0"}""");
         root.Write("plugins/youtrack/Cockpit.Plugins.YouTrack.dll", "megabytes, in real life");
+        // AC-1294: the plugin cache. Out of the archive because it is not on the list, which is the only thing
+        // keeping it out — put its name on `BackupContents.Included` and this test goes red.
+        root.Write("plugin-cache.json", "what every plugin can fetch again");
         root.Write("worktree-leases/cockpit.lease", "held by a process that is not running any more");
         root.Write("claude-provider/statusline-relay.ps1", "written by the plugin, rewritten at its next start");
         root.Write("statusline/dead-session.json", "swept by the plugin at its next start");

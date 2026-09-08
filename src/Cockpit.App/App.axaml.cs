@@ -542,6 +542,10 @@ public partial class App : Application
         var secretFieldStore = Program.Services.GetRequiredService<IPluginSecretFieldStore>();
         var dialogHost = Program.Services.GetRequiredService<IPluginDialogHost>();
 
+        // One store for every plugin's cache, read once here (AC-1294): what a plugin can rebuild stays out of
+        // `cockpit.json`, where a settings restore would have replaced it with the source machine's copy.
+        var pluginCache = PluginCacheStore.ForStateRoot();
+
         // Register plugin-declared secret key names before reading settings, or ciphertext could reach a plugin
         // and remain in a backup labelled credential-free. The names themselves require no key.
         var declared = secretFieldStore.LoadAsync().GetAwaiter().GetResult()
@@ -624,7 +628,8 @@ public partial class App : Application
             // AC-499: this plugin's own runtime type, so the host can tell its own IPluginMcpProvider registration
             // apart from every other plugin's when it resolves a tool call's caller-scoped fallback — see
             // CockpitHost's own parameter doc.
-            plugin.GetType()));
+            plugin.GetType(),
+            pluginCache.CreateFor(discovered.FolderId)));
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
         // operator "a flow somebody already drew" is one kind of thing, whether it came with a plugin or from a store.
