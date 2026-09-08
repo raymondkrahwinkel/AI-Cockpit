@@ -21,6 +21,7 @@ public sealed class SingleInstanceClaimAcrossProcessesTests
 {
     private const int ClaimTaken = 0;
     private const int ClaimRefused = 3;
+    private const string StagedUpdateMarker = "apply-update-on-next-start";
 
     // The probe is a build dependency of this project, so it was built in this configuration as well. Picking the
     // matching one keeps a leftover build of the other configuration — carrying its own older copy of
@@ -72,12 +73,42 @@ public sealed class SingleInstanceClaimAcrossProcessesTests
         }
     }
 
+    [Fact]
+    public void StagedUpdate_InASecondProcessWhileThisCockpitHoldsTheClaim_LeavesTheRequestForACleanStart()
+    {
+        var probe = _LocateProbe();
+        var stateRoot = Directory.CreateTempSubdirectory("cockpit-staged-update");
+
+        try
+        {
+            var marker = Path.Combine(stateRoot.FullName, StagedUpdateMarker);
+            File.WriteAllText(marker, string.Empty);
+            using var thisCockpit = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, SingleInstanceGuard.ClaimNameFor(stateRoot.FullName));
+            Assert.NotNull(thisCockpit);
+
+            using var restartingCockpit = _RunProbe(probe, stateRoot.FullName, "--stage-update");
+
+            Assert.NotEqual(Environment.ProcessId, restartingCockpit.Id);
+            Assert.Equal(4, restartingCockpit.ExitCode);
+            Assert.True(File.Exists(marker));
+        }
+        finally
+        {
+            stateRoot.Delete(recursive: true);
+        }
+    }
+
     /// <summary>A second cockpit, pointed at <paramref name="stateRoot"/> and run to completion.</summary>
-    private static Process _RunProbe(string probe, string stateRoot)
+    private static Process _RunProbe(string probe, string stateRoot, params string[] arguments)
     {
         var startInfo = new ProcessStartInfo("dotnet") { UseShellExecute = false };
         startInfo.ArgumentList.Add("exec");
         startInfo.ArgumentList.Add(probe);
+
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
 
         // The only input the probe gets: it resolves the state root and the claim itself, through the same public
         // path a real launch takes. Handing it a claim name would move the derivation back into this process.

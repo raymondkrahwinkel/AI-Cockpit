@@ -179,6 +179,28 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
         _pendingManager.ApplyUpdatesAndRestart(_pendingRelease);
     }
 
+    public bool BeginStagedUpdateAndRestart()
+    {
+        if (_pendingManager is null || _pendingRelease is null || !UpdateOnNextStart.TakeRequest())
+        {
+            return false;
+        }
+
+        try
+        {
+            // ponytail: updater force-stops us after 60 seconds; keep teardown within that ceiling.
+            _pendingManager.WaitExitThenApplyUpdates(_pendingRelease, silent: false, restart: true, restartArgs: []);
+
+            return true;
+        }
+        catch
+        {
+            UpdateOnNextStart.Request();
+
+            throw;
+        }
+    }
+
     // AC-738: recorded for the next launch, not handed to Velopack now. `WaitExitThenApplyUpdates` does not mean
     // "next start" — it starts Update.exe immediately, waits sixty seconds for this process and then kills it,
     // silently. The package stays where Velopack put it; `Program.Main` applies it at the next launch.

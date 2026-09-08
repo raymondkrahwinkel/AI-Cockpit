@@ -1,4 +1,5 @@
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Core.Updates;
 
 namespace Cockpit.SingleInstanceProbe;
 
@@ -10,9 +11,17 @@ internal static class Program
     // Distinct from the runtime's own failure codes, so a probe that crashed cannot be read as one that stood down.
     private const int ClaimTaken = 0;
     private const int ClaimRefused = 3;
+    private const int StagedUpdateDeferred = 4;
 
-    private static int Main()
+    private static int Main(string[] args)
     {
+        if (args.Contains("--stage-update"))
+        {
+            return SingleInstanceGuard.IsHeldByAnotherCockpit() || !UpdateOnNextStart.TakeRequest()
+                ? StagedUpdateDeferred
+                : ClaimTaken;
+        }
+
         using var guard = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false);
 
         return guard is null ? ClaimRefused : ClaimTaken;
