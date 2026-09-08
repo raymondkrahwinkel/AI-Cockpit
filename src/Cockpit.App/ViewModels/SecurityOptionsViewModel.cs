@@ -362,7 +362,15 @@ public sealed partial class SecurityOptionsViewModel(
             await nodePairing.EnsureLoadedAsync().ConfigureAwait(true);
         }
 
-        NodePairingAddress = nodePairingEndpoint?.Address ?? "";
+        // The MCP listener owns the shared message when both ports are unavailable.
+        var pairingAddress = nodePairingEndpoint?.Address;
+        var mcpListenerError = mcpEndpointHosts?.Select(host => host.NodeListenerError).FirstOrDefault(error => error is not null);
+        var pairingError = nodePairingEndpoint?.Error;
+        NodePairingAddress = pairingAddress ?? "";
+        if (pairingAddress is null && mcpListenerError is null)
+        {
+            NodePairingAddress = pairingError ?? "";
+        }
         _ReadPairingState();
         await _LoadScopeRowsAsync().ConfigureAwait(true);
         await _LoadPairedNodesAsync().ConfigureAwait(true);
