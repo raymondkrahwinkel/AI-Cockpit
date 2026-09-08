@@ -8,7 +8,7 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 public class AutopilotRunHistoryCompatibilityTests
 {
     // An in-memory `IPluginStorage` that round-trips through JSON, the way the host's real storage does.
-    private sealed class FakeStorage : IPluginStorage
+    private sealed class FakeStorage : IPluginStorage, IPluginCache
     {
         private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);
 

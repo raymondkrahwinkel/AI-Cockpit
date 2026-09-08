@@ -8,7 +8,7 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 // the instance it was opened on, whatever else the history holds by then.
 public class AutopilotRunHistoryReplaceTests
 {
-    private sealed class FakeStorage : IPluginStorage
+    private sealed class FakeStorage : IPluginStorage, IPluginCache
     {
         private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);
 

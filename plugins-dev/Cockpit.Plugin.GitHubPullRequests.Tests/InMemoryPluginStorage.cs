@@ -5,7 +5,7 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 // An in-memory `IPluginStorage` that keeps the host's JSON round-trip semantics.
-internal sealed class InMemoryPluginStorage : IPluginStorage
+internal sealed class InMemoryPluginStorage : IPluginStorage, IPluginCache
 {
     private readonly ConcurrentDictionary<string, string> _store = new(StringComparer.Ordinal);
 
