@@ -44,6 +44,14 @@ internal sealed class SessionTranscriptReader(
             slice.TotalEntries);
     }
 
+    // AC-1088: the full text of one clamped tool result, asked of whichever provider wrote the transcript. No
+    // reader — a provider that records nothing — is the same answer as no transcript: null, and the caller says so.
+    public string? ReadToolResult(SessionProfile? profile, string? sessionId, string toolUseId)
+    {
+        var (reader, configJson) = _ResolveReader(profile);
+        return reader?.ReadToolResult(configJson, sessionId, toolUseId);
+    }
+
     // The plugin's coarse row kind under the host's own transcript name, so a TTY row and an SDK row of the same
     // sort read identically to whoever is looking at them. Spelled out rather than `ToString()`-ed: the two
     // vocabularies agreeing today is a coincidence worth being able to break.

@@ -248,6 +248,79 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         }
     }
 
+    // AC-1088: one call's result in full, out of the transcript the CLI writes for this session anyway. Found by
+    // session id rather than by the statusline snapshot: an SDK session installs no such relay, and the id the
+    // CLI reports on its own events is exactly what it names the file.
+    public string? ReadToolResult(string configJson, string? sessionId, string toolUseId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(toolUseId))
+        {
+            return null;
+        }
+
+        try
+        {
+            var transcript = EnumerateTranscripts(_ResolveStateDirectory(configJson)).FirstOrDefault(
+                path => string.Equals(Path.GetFileNameWithoutExtension(path), sessionId, StringComparison.OrdinalIgnoreCase));
+            if (transcript is null)
+            {
+                return null;
+            }
+
+            // ReadWrite share: for a live session the CLI still has this file open and is appending to it.
+            using var stream = new FileStream(transcript, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(stream);
+            while (reader.ReadLine() is { } line)
+            {
+                // A transcript runs to tens of megabytes; only the lines naming this call are worth parsing.
+                if (line.Contains(toolUseId, StringComparison.Ordinal) && _ToolResultIn(line, toolUseId) is { } content)
+                {
+                    return content;
+                }
+            }
+
+            return null;
+        }
+        catch (Exception)
+        {
+            // Cleaned up, rotated away, mid-write, or a path from another machine — all of them mean the same
+            // thing to the caller, and none of them is worth taking a read surface down for.
+            return null;
+        }
+    }
+
+    // The `tool_result` block for `toolUseId` on one transcript line, or null when this line carries none.
+    private static string? _ToolResultIn(string line, string toolUseId)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(line);
+            if (!document.RootElement.TryGetProperty("message", out var message)
+                || message.ValueKind != JsonValueKind.Object
+                || !message.TryGetProperty("content", out var content)
+                || content.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            foreach (var block in content.EnumerateArray())
+            {
+                if (block.ValueKind == JsonValueKind.Object
+                    && _Text(block, "type") == "tool_result"
+                    && _Text(block, "tool_use_id") == toolUseId)
+                {
+                    return _ResultText(block);
+                }
+            }
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     // <summary>One row being assembled: a record would do, except a tool call learns its result a line later.</summary>
     private sealed class _Row
     {

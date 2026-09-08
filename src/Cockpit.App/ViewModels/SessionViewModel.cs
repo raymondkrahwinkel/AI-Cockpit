@@ -66,6 +66,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-713: the profile this session started under — what an auth error or the poll timer below check against.
     private SessionProfile? _profile;
 
+    // AC-1088: reads a clamped tool result back in full from the provider's own transcript. Null in tests and
+    // wherever the host was built without one — the row then says the full result is unavailable, which it is.
+    private readonly ISessionTranscriptReader? _transcriptReader;
+
+    // The session id the CLI reports on its events, which is what it names its transcript file.
+    private string? _cliSessionId;
+
     // AC-713: polls `_loginChecker.IsLoggedIn(_profile)` for the auth-expiry bar, since the SDK route has no TTY pane to show a login prompt in on its own.
     private DispatcherTimer? _loginPollTimer;
 
@@ -400,8 +407,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             InputJson = inputJson,
         };
 
+    // AC-1088: one clamped result in full, from the transcript the CLI writes anyway. Null whenever it cannot be
+    // had — no reader, no session id yet, or a transcript that has been cleaned up or came from another machine.
+    // Called off the UI thread; it reads a file and must stay as cheap to fail as it is to succeed.
+    internal string? ReadFullToolResult(string toolUseId) =>
+        _transcriptReader?.ReadToolResult(_profile, _cliSessionId, toolUseId);
+
+    // AC-1088 carries the call id onto the orphan row too: its output is clamped like any other, and without the
+    // id there is no way to find the whole of it back in the CLI's transcript.
     private static TranscriptEntryViewModel _ToolResultRow(ToolResult toolResult) =>
-        new(TranscriptEntryKind.ToolResult, toolResult.Content) { IsResultError = toolResult.IsError };
+        new(TranscriptEntryKind.ToolResult, toolResult.Content)
+        {
+            IsResultError = toolResult.IsError,
+            ToolUseId = toolResult.ToolUseId,
+        };
 
     // AC-996: the row a permission asks about, when no tool-use event ever brought one. Top-level even for a
     // sub-agent's call: a row nested under a collapsed anchor is exactly the kind the operator cannot reach, and
@@ -1454,9 +1473,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IProfileLoginStarter? loginStarter = null,
         IMentionFileSource? mentionFileSource = null,
         ISharedUsageCache? sharedUsageCache = null,
+        ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null)
         : base(usageHistory)
     {
+        _transcriptReader = transcriptReader;
         _eventQueue = new SessionEventQueue(Apply);
         _sessionManager = sessionManager;
         _turnInboxDelivery = turnInboxDelivery;
@@ -2585,6 +2606,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             ToolActivity?.Invoke();
         }
+
+        // AC-1088: the CLI names its own transcript after this id, so it is what finds a clamped result back.
+        // Taken off whichever event reports it rather than off `SessionInitialized` alone — a resumed session
+        // carries it from its first event, and a `/clear` gives the conversation a new one mid-session.
+        _cliSessionId = evt.SessionId ?? _cliSessionId;
 
         switch (evt)
         {

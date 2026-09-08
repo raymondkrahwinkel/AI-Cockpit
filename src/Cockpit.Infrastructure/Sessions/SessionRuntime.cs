@@ -354,7 +354,7 @@ internal sealed class SessionRuntime : ISessionRuntime
 
         lock (_eventsLock)
         {
-            _events.Add(evt);
+            _events.Add(_Clamped(evt));
             if (_events.Count > MaxLoggedEvents)
             {
                 _events.RemoveAt(0);
@@ -362,4 +362,20 @@ internal sealed class SessionRuntime : ISessionRuntime
             }
         }
     }
+
+    // AC-1088: the log's own cap was on the number of events, which says nothing about their size — twenty 5 MB
+    // results are five thousand events short of it and still cost a gigabyte. Clamped on the way into the log
+    // only: the live subscriber on `EventAppended` still gets the event whole, and caps it where it keeps it.
+    private static SessionEvent _Clamped(SessionEvent evt) => evt switch
+    {
+        ToolResult result when ToolOutputBudget.Exceeds(result.Content) =>
+            result with { Content = ToolOutputBudget.Clamp(result.Content) },
+        ToolUseRequested toolUse when ToolOutputBudget.Exceeds(toolUse.InputJson) =>
+            toolUse with { InputJson = ToolOutputBudget.Clamp(toolUse.InputJson) },
+        PermissionRequested permission when ToolOutputBudget.Exceeds(permission.InputJson) =>
+            permission with { InputJson = ToolOutputBudget.Clamp(permission.InputJson) },
+        UnknownEvent unknown when ToolOutputBudget.Exceeds(unknown.RawJson) =>
+            unknown with { RawJson = ToolOutputBudget.Clamp(unknown.RawJson) },
+        _ => evt,
+    };
 }

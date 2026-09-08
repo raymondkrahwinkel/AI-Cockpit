@@ -31,6 +31,16 @@ public interface ISessionTranscriptReader
     /// answers for one at all. Empty when nothing is recorded, untraceable, or nothing was written yet.
     /// </summary>
     SessionTranscriptSlice ReadEntries(SessionProfile? profile, string? statusFile, int count);
+
+    /// <summary>
+    /// One tool call's result in full, out of the provider's own transcript for <paramref name="sessionId"/>
+    /// (AC-1088) — what the host offers after keeping only the head and tail of a large one.
+    /// </summary>
+    /// <remarks>
+    /// Null when it cannot be had: a transcript cleaned up, a session from another machine, a stale path, or a
+    /// provider that records nothing. The caller is expected to say so plainly and leave the clamped result standing.
+    /// </remarks>
+    string? ReadToolResult(SessionProfile? profile, string? sessionId, string toolUseId);
 }
 
 // AC-1013: A TTY session's transcript as read back on demand (AC-609) — the last rows asked for (Entries,

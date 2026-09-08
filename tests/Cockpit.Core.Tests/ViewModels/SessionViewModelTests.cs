@@ -1128,7 +1128,7 @@ public class SessionViewModelTests
     public void Apply_OrphanedToolResult_RetainsTheIncomingContentInstance()
     {
         var vm = NewVm();
-        var content = new string('x', 5 * 1024 * 1024);
+        var content = new string('x', ToolOutputBudget.MaxChars);
 
         vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_orphan", Content = content, IsError = false });
 
@@ -1136,11 +1136,27 @@ public class SessionViewModelTests
         Assert.Same(content, row.Text);
     }
 
+    // AC-1088 draws the line this test's guarantee stops at: under the cap the content is still passed through
+    // untouched, over it the row deliberately holds something smaller instead of the whole of it.
+    [Fact]
+    public void Apply_OrphanedToolResultOverTheCap_HoldsAClampedCopyInsteadOfTheWholeContent()
+    {
+        var vm = NewVm();
+        var content = new string('x', 5 * 1024 * 1024);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_orphan", Content = content, IsError = false });
+
+        var row = Assert.Single(vm.Transcript);
+        Assert.NotSame(content, row.Text);
+        Assert.True(row.Text.Length < content.Length / 50);
+        Assert.True(row.IsTruncated);
+    }
+
     [Fact]
     public void Apply_OrphanedSubAgentToolResult_RetainsTheIncomingContentInstance()
     {
         var vm = NewVm();
-        var content = new string('x', 5 * 1024 * 1024);
+        var content = new string('x', ToolOutputBudget.MaxChars);
         vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "task-1", ToolName = "Task", InputJson = "{}" });
 
         vm.Apply(new ToolResult

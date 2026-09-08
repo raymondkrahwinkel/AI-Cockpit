@@ -10,6 +10,26 @@
              x:Class="Cockpit.App.Controls.TranscriptRowView"
              x:DataType="vm:TranscriptEntryViewModel">
 
+    <UserControl.Resources>
+        <!-- AC-1088: what a clamped tool output says for itself — the real size, and the offer to read the whole
+             thing back out of the CLI's own transcript. Defined once and used at all four places a result renders
+             (top-level and sub-agent, coupled to its call and standalone), so they cannot drift apart.
+             The transcript belongs to the CLI, so the offer can come back empty: that answer lands under the
+             button as a plain remark and the clamped result stays exactly as it was. -->
+        <DataTemplate x:Key="ClampedOutputFooter" DataType="vm:TranscriptEntryViewModel">
+            <StackPanel Spacing="2" Margin="0,2,0,0">
+                <TextBlock Text="{Binding TruncationNotice}" FontSize="10.5" TextWrapping="Wrap"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                <Button Content="Show full result" Classes="Subtle Compact" HorizontalAlignment="Left"
+                        Command="{Binding LoadFullResultCommand}"
+                        ToolTip.Tip="Reads the whole result back from the CLI's own session transcript"/>
+                <TextBlock Text="{Binding FullResultNotice}" FontSize="10.5" TextWrapping="Wrap"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           IsVisible="{Binding FullResultNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <!-- AC-722: one transcript row, shared by SessionView and AssistantChatWindow so a feature added to the
          row (AC-715's question card) reaches both. AC-990: whatever the row needs from the session it reaches
          through its own `TranscriptEntryViewModel.Session`, never up the tree — a virtualised row is built before
@@ -509,6 +529,8 @@
                                              Classes="toolBody"
                                              Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                              IsVisible="{Binding !ResultIsCodeLike}"/>
+                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ClampedOutputFooter}"
+                                        IsVisible="{Binding IsTruncated}"/>
                     </StackPanel>
                 </StackPanel>
                 </StackPanel>
@@ -577,6 +599,8 @@
                                             <SelectableTextBlock Text="{Binding ResultDisplayText}" TextWrapping="Wrap"
                                                                  Classes="toolBody" Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                                                  IsVisible="{Binding HasResult}"/>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ClampedOutputFooter}"
+                                                            IsVisible="{Binding IsTruncated}"/>
                                         </StackPanel>
                                         <!-- Lazy via PermissionBranch, like the row-level consent panel below: a
                                              consent Button bound to the session's long-lived command pins the whole
@@ -610,6 +634,8 @@
                                                        Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                             <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="toolBody"
                                                                  Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ClampedOutputFooter}"
+                                                            IsVisible="{Binding IsTruncated}"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
@@ -637,6 +663,8 @@
                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                Classes="toolBody"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ClampedOutputFooter}"
+                                    IsVisible="{Binding IsTruncated}"/>
                 </StackPanel>
             </StackPanel>
 
