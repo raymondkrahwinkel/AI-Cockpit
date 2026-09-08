@@ -251,6 +251,57 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // button hands the operator the same formatted text they see.
     public string ResultDisplayText => _FormatResult(ResultText);
 
+    // --- Clamped output (AC-1088) -------------------------------------------------------------------------------
+
+    // What the output measured before the cap, in characters; 0 on a row that fitted. The host keeps head and
+    // tail only, so this is the one place the real size survives.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTruncated))]
+    [NotifyPropertyChangedFor(nameof(TruncationNotice))]
+    private int _truncatedFromChars;
+
+    public bool IsTruncated => TruncatedFromChars > 0;
+
+    public string TruncationNotice => IsTruncated
+        ? $"Truncated — keeping {ToolOutputBudget.MaxChars:N0} of {TruncatedFromChars:N0} characters."
+        : string.Empty;
+
+    // Why the full result could not be shown, once it has been asked for and the transcript could not give it
+    // (AC-1088). The clamped result stays exactly as it was: this is a remark next to it, not a failure of the row.
+    [ObservableProperty]
+    private string? _fullResultNotice;
+
+    // Reads the whole output back out of the CLI's own transcript. That file belongs to the CLI, not to Cockpit,
+    // so this is an attempt: it can have been cleaned up, come from another machine, or no longer be where it was.
+    [RelayCommand]
+    private async Task LoadFullResultAsync()
+    {
+        FullResultNotice = null;
+
+        var session = Session;
+        var toolUseId = ToolUseId;
+        var full = session is null || string.IsNullOrEmpty(toolUseId)
+            ? null
+            : await Task.Run(() => session.ReadFullToolResult(toolUseId));
+
+        if (full is null)
+        {
+            FullResultNotice = "The full result is no longer available — the CLI's transcript for this session no longer holds it.";
+            return;
+        }
+
+        if (HasResult)
+        {
+            ResultText = full;
+        }
+        else
+        {
+            Text = full;
+        }
+
+        TruncatedFromChars = 0;
+    }
+
     // True when the result reads as structured/code (JSON, multi-line, or long) and so should render
     // in a monospace code box with a copy button rather than as a wrapped paragraph (T6).
     public bool ResultIsCodeLike
@@ -548,8 +599,15 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // Tool name for a tool-use row; used to build the always-allow rule label.
     public string? ToolName { get; init; }
 
-    // The proposed tool input as raw JSON; needed to build an exact-scope always-allow rule.
-    public string? InputJson { get; init; }
+    // The proposed tool input as raw JSON; needed to build an exact-scope always-allow rule. Clamped on the way
+    // in (AC-1088): a `Write` carries the whole file it is about to write, and this row outlives the turn.
+    public string? InputJson
+    {
+        get => _inputJson;
+        init => _inputJson = value is null ? null : ToolOutputBudget.Clamp(value);
+    }
+
+    private readonly string? _inputJson;
 
     // AC-990: the session this row belongs to, stamped on when it joins the transcript. The row view reads it
     // from here instead of walking up to its host, which cannot answer while a row is being realised.
@@ -570,21 +628,42 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     internal TranscriptEntryViewModel(TranscriptEntryKind kind, string text, DateTimeOffset timestamp)
     {
         Kind = kind;
-        _text = text;
+
+        // A standalone tool-result row carries its output as its own text, so the cap and the offer to read the
+        // whole thing back belong here too — not only on a result coupled to its call (AC-1088).
+        _text = ToolOutputBudget.Clamp(text);
+        _fullTextChars = text.Length;
+        if (kind == TranscriptEntryKind.ToolResult && text.Length > _text.Length)
+        {
+            _truncatedFromChars = text.Length;
+        }
+
         Timestamp = timestamp;
     }
 
+    // How much text this row has really been given, which after the first clamp is no longer `Text.Length`.
+    private int _fullTextChars;
+
     public void AppendText(string delta)
     {
-        Text += delta;
+        // Streamed text arrives delta by delta, so the cap has to hold on the running total. Re-clamping an
+        // already-clamped value drops the old marker along with the middle it sat in, leaving exactly one — and
+        // the count carried here keeps that marker naming the whole, not just what survived the last clamp.
+        _fullTextChars += delta.Length;
+        Text = ToolOutputBudget.Clamp(Text + delta, _fullTextChars);
     }
 
     // Couples a tool result to this tool-use row (L14), matched on tool_use_id in the session view model.
     public void SetResult(string content, bool isError)
     {
         IsResultError = isError;
+
+        // Read off the full content before it is clamped: the hand-off line naming the task id can sit anywhere in it.
         BackgroundTaskId = _BackgroundTaskId(content);
-        ResultText = content;
+
+        var clamped = ToolOutputBudget.Clamp(content);
+        TruncatedFromChars = content.Length > clamped.Length ? content.Length : 0;
+        ResultText = clamped;
         OnPropertyChanged(nameof(IsBackgroundTool));
     }
 

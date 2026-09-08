@@ -65,4 +65,17 @@ public interface IPluginTranscriptReader
     /// with no status snapshot or an already-compiled plugin.
     /// </remarks>
     PluginTranscriptSlice ReadEntries(string? statusFile, int count) => PluginTranscriptSlice.Empty;
+
+    /// <summary>
+    /// One tool call's result in full, read back out of the provider's own transcript for the session
+    /// <paramref name="sessionId"/> names (AC-1088). The host keeps only the head and tail of a large result, and
+    /// this is how it offers the whole thing again without keeping a second copy of every conversation itself.
+    /// </summary>
+    /// <remarks>
+    /// Null whenever the answer cannot be given: the transcript was cleaned up, the session came from another
+    /// machine, the path no longer holds, the provider records no transcript, or the call is simply not in it.
+    /// That is an ordinary outcome and not a failure — the transcript belongs to the CLI, not to the host, so
+    /// "the full result" is an attempt and never a promise. It must not throw for any of those.
+    /// </remarks>
+    string? ReadToolResult(string configJson, string? sessionId, string toolUseId) => null;
 }
