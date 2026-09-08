@@ -30,7 +30,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
     public void Initialize(ICockpitHost host)
     {
         var store = new WorkflowStore(host.Storage);
-        host.Storage.Remove("runs");
+        Engine.RunStore.Migrate(host.Storage, host.Cache);
         var runs = new Engine.RunStore(host.Cache);
 
         // The triggers that fire by themselves. Started here rather than when the editor opens: a flow that only runs

@@ -15,6 +15,7 @@ public interface IPluginStorage
     void Set<T>(string key, T value);
 
     /// <summary>Removes a value that is no longer part of this plugin's settings.</summary>
+    /// <remarks>Old hosts use this default no-op; a migration may leave its legacy value there on those hosts.</remarks>
     void Remove(string key)
     {
     }

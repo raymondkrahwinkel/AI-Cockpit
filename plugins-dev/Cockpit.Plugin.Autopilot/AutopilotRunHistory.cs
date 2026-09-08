@@ -18,6 +18,16 @@ internal sealed class AutopilotRunHistory
         _records = storage.Get<List<AutopilotRunRecord>>(StorageKey) ?? [];
     }
 
+    internal static void Migrate(IPluginStorage legacyStorage, IPluginCache cache)
+    {
+        if (cache.Get<List<AutopilotRunRecord>>(StorageKey) is null && legacyStorage.Get<List<AutopilotRunRecord>>(StorageKey) is { } records)
+        {
+            cache.Set(StorageKey, records);
+        }
+
+        legacyStorage.Remove(StorageKey);
+    }
+
     // Raised when a run is recorded or history is cleared, so the surface re-renders its history section.
     public event Action? Changed;
 

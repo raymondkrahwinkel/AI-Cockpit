@@ -29,6 +29,11 @@ internal sealed class UsageTrendWidget : UserControl
     {
         _context = context;
         _cache = cache;
+        if (_cache.Get<List<UsageTrendSample>>(_CacheKey) is null && _context.Storage.Get<List<UsageTrendSample>>(HistoryKey) is { } history)
+        {
+            _cache.Set(_CacheKey, history);
+        }
+
         _context.Storage.Remove(HistoryKey);
 
         // What survived a restart, with anything past retention shed before it is ever charted.

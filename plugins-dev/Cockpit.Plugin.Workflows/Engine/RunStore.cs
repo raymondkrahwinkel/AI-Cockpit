@@ -19,6 +19,16 @@ internal sealed class RunStore(IPluginCache storage)
         Converters = { new JsonStringEnumConverter() },
     };
 
+    internal static void Migrate(IPluginStorage legacyStorage, IPluginCache cache)
+    {
+        if (cache.Get<string>(Key) is null && legacyStorage.Get<string>(Key) is { } runs)
+        {
+            cache.Set(Key, runs);
+        }
+
+        legacyStorage.Remove(Key);
+    }
+
     public IReadOnlyList<WorkflowRun> Load()
     {
         try
