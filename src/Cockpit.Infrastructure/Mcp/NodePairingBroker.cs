@@ -30,6 +30,10 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
     private NodePairing? _pairing;
     private bool _loaded;
 
+    // AC-1291: expiry is the one way a pending offer ends without anybody acting, so it is also the one way
+    // `Changed` never fired — leaving a banner (and the Nodes page's Confirm button) offering a pairing that is gone.
+    private ITimer? _expiryAlarm;
+
     public NodePairingBroker(
         INodeEndpointSettingsStore settings,
         NodeSelfSignedCertificate certificate,
@@ -119,6 +123,8 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
             };
 
             _pending = pending;
+            _expiryAlarm?.Dispose();
+            _expiryAlarm = _time.CreateTimer(_ => _RaiseChanged(), null, Lifetime, Timeout.InfiniteTimeSpan);
             _RaiseChanged();
 
             return new NodePairingOffer(pending.PairingId, pending.ClaimToken, pending.Nonce, Environment.MachineName, pending.ExpiresAtUtc);

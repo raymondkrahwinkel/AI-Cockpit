@@ -392,14 +392,62 @@ public class NodePairingBrokerTests : IDisposable
         Assert.False(broker.IsProjectAllowed("proj-1"));
     }
 
+    /// <summary>
+    /// AC-1291 criterion 3: an offer nobody answered goes away on its own, and every screen showing it has to be
+    /// told. Expiry is the one ending that no caller drives, so it was also the one that raised nothing.
+    /// </summary>
+    [Fact]
+    public async Task PendingOffer_WhenItExpires_RaisesChangedSoTheScreensShowingItCanCatchUp()
+    {
+        var broker = _Broker();
+        await broker.RequestAsync("desk", "192.168.1.5");
+
+        var changes = 0;
+        broker.Changed += (_, _) => changes++;
+
+        _time.Advance(NodePairingBroker.Lifetime + TimeSpan.FromSeconds(1));
+
+        Assert.Equal(1, changes);
+        Assert.Null(broker.Pending);
+    }
+
     // xunit's own FakeTimeProvider lives in a package this project does not take; a settable clock is four lines.
     private sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider
     {
+        private readonly List<(DateTimeOffset Due, TimerCallback Callback, object? State)> _alarms = [];
         private DateTimeOffset _now = now;
 
         public override DateTimeOffset GetUtcNow() => _now;
 
-        public void Advance(TimeSpan by) => _now += by;
+        // The base class's timers run on the real clock, which would leave the expiry event (AC-1291) only
+        // provable by waiting two minutes.
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            _alarms.Add((_now + dueTime, callback, state));
+
+            return new _InertTimer();
+        }
+
+        public void Advance(TimeSpan by)
+        {
+            _now += by;
+            foreach (var alarm in _alarms.Where(alarm => alarm.Due <= _now).ToList())
+            {
+                _alarms.Remove(alarm);
+                alarm.Callback(alarm.State);
+            }
+        }
+
+        private sealed class _InertTimer : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+
+            public void Dispose()
+            {
+            }
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 
     public void Dispose()
