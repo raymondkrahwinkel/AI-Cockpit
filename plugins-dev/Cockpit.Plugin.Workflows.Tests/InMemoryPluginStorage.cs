@@ -11,4 +11,6 @@ internal sealed class InMemoryPluginStorage : IPluginStorage, IPluginCache
     public T? Get<T>(string key) => _values.TryGetValue(key, out var value) ? JsonSerializer.Deserialize<T>(value) : default;
 
     public void Set<T>(string key, T value) => _values[key] = JsonSerializer.Serialize(value);
+
+    public void Remove(string key) => _values.Remove(key);
 }
