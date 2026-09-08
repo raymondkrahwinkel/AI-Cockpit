@@ -1597,6 +1597,12 @@
                         <TextBlock Text="Encryption, screen lock, terminal access, and the assistant's consent bypass." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
+                        <!-- AC-1286: a setting that could not be written says so here, and goes away again the
+                             moment a write succeeds. Shown on both tabs that own one of these settings. -->
+                        <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                                   IsVisible="{Binding Security.PersistError.Length}"
+                                   Text="{Binding Security.PersistError}"/>
+
                         <TextBlock Classes="optionsSectionHeader" Text="1. ENCRYPTION"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Encrypt your credentials" FontWeight="SemiBold"/>
@@ -1945,6 +1951,10 @@
                         </StackPanel>
                         <TextBlock Text="Pair with another Cockpit to share MCP access, and run sessions on its machine." Classes="optionsHint"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                                   IsVisible="{Binding Security.PersistError.Length}"
+                                   Text="{Binding Security.PersistError}"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. ACCEPT CONNECTIONS FROM A SECOND COCKPIT"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">

@@ -442,6 +442,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   with no recommendation. The generator now keeps that field the same way it already kept category, homepage and
   the others — from the plugin's own store.json if it sets one, otherwise from what the index already had.
 
+- fixed: a security setting you save now really is saved. A background refresh landing while Options was open — a
+  plugin declaring its credential fields, or any credential written in the clear — put the value from disk back over
+  the box you had just ticked, and applying then wrote that old value out again; the tick survives that now, while
+  Cancel still puts everything back the way it found it. Two node settings changed one after the other also used to
+  overwrite each other, and the second one won regardless of what you did first. And a setting that cannot be
+  written at all — an unreadable configuration file, a full disk — says so on the page it belongs to instead of
+  disappearing into the log, with Apply staying open so the failure cannot pass for a save. The line clears itself
+  as soon as a write succeeds.
+
 - fixed: a Cockpit that cannot open its node port now says so on the Nodes tab, naming the port and that something
   else already holds it — a second Cockpit on the same machine is the usual reason. Before this the failure left
   nothing but a line in the log: the address field stayed empty, the page advised a restart, and restarting ran

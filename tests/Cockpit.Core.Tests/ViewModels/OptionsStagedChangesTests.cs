@@ -283,7 +283,10 @@ public class OptionsStagedChangesTests
         };
 
         security.LockWithOperatingSystem = false;
-        await security.RefreshAsync();
+
+        // AC-1286: Cancel's own re-seed, the one refresh that may overwrite a staged value — every other one
+        // leaves it alone now, and the theory in SecurityOptionsViewModelTests holds that side.
+        await security.RefreshAsync(reseedStagedValues: true);
 
         Assert.True(security.LockWithOperatingSystem);
         await screenLock.DidNotReceive().SaveAsync(Arg.Any<ScreenLockSettings>());
