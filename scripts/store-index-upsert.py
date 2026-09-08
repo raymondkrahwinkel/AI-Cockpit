@@ -9,8 +9,8 @@ nothing else, so the publish workflow can open a reviewable PR instead of a pers
 Source-of-truth split (the "metadata gap" the design settled on):
   * Mechanical + identity fields come from the plugin's own plugin.json — id, name, description,
     author, version, abstractionsVersion, minHostVersion. These are what the app enforces.
-  * Editorial fields the manifest does not carry — category, icon, homepage, repository, featured —
-    are taken from an optional store.json beside plugin.json, else preserved from the existing index
+  * Editorial fields the manifest does not carry — category, icon, homepage, repository, featured,
+    audience — are taken from an optional store.json beside plugin.json, else preserved from the existing index
     entry, else left unset for a human to fill in the PR. A brand-new plugin with neither is listed
     with just its identity; the reviewer adds the polish.
 
@@ -85,6 +85,12 @@ def build_entry(existing: OrderedDict | None, store_meta: dict, args) -> Ordered
     category = first_present(store_meta.get("category"), existing.get("category"))
     if category is not None:
         entry["category"] = category
+
+    # AC-1289: a curator-assigned work-kind tag (AC-511) a plugin author cannot set for themselves.
+    # store.json never carries it, so this is really just "preserve what the index already has".
+    audience = first_present(store_meta.get("audience"), existing.get("audience"))
+    if audience is not None:
+        entry["audience"] = audience
 
     icon = first_present(store_meta.get("icon"), existing.get("icon"))
     if icon is not None:
