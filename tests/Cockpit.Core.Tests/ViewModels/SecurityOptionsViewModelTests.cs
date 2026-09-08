@@ -2,6 +2,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Secrets;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -283,6 +284,26 @@ public class SecurityOptionsViewModelTests
     }
 
     /// <summary>
+    /// Apply writes in two steps — the security stores, then the node section. Clearing the line on any success let
+    /// the second step erase the first one's failure, so Apply closed over a setting that was never written with
+    /// nothing on screen: the reported bug, surviving inside its own fix.
+    /// </summary>
+    [Fact]
+    public async Task AFailedWriteIsNotErased_ByALaterStepOfTheSameApplyThatSucceeded()
+    {
+        var vm = new SecurityOptionsViewModel(
+            new FakeProtection(),
+            new FailableScreenLockSettingsStore { Fails = true },
+            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = false, SharedSecret = "kept" }));
+        await vm.RefreshAsync();
+
+        await vm.SaveStagedAsync();
+
+        Assert.Contains("the screen lock is not having it", vm.PersistError, StringComparison.Ordinal);
+        Assert.Equal("security", vm.PersistErrorCategoryTag);
+    }
+
+    /// <summary>
     /// AC-1286: a write that fails used to end on the dispatcher as an unobserved exception from an
     /// <c>async partial void</c> handler — measured as "the caller saw nothing". The operator now reads what did not
     /// get saved, and the positive control in the same run is the line going away once a write succeeds.
@@ -434,6 +455,17 @@ public class SecurityOptionsViewModelTests
             await Task.Delay(delay, cancellationToken);
             _settings = value;
         }
+    }
+
+    private sealed class FailableScreenLockSettingsStore : IScreenLockSettingsStore
+    {
+        public bool Fails { get; set; }
+
+        public Task<ScreenLockSettings> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ScreenLockSettings());
+
+        public Task SaveAsync(ScreenLockSettings settings, CancellationToken cancellationToken = default) =>
+            Fails ? throw new InvalidOperationException("the screen lock is not having it") : Task.CompletedTask;
     }
 
     private sealed class FailableNodeEndpointSettingsStore : INodeEndpointSettingsStore

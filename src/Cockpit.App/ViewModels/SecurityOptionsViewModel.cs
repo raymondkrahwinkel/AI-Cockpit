@@ -57,6 +57,9 @@ public sealed partial class SecurityOptionsViewModel(
     // The writes this tab has in flight, chained end to end. A chain rather than a lock: these all read-modify-write
     // the same section of cockpit.json, and a gate held across an await that needs the UI thread is how the dialog
     // would deadlock instead of merely losing an update. Nothing here ever waits synchronously.
+
+    // Chained from the UI thread only — every caller is a bound property's handler or Apply. Two threads chaining
+    // at once would read the same predecessor and run side by side, which is the update loss this exists to stop.
     private Task _persist = Task.CompletedTask;
 
     // Everything this tab still has to write, as one task to wait on. Apply follows it implicitly by going through
@@ -81,8 +84,15 @@ public sealed partial class SecurityOptionsViewModel(
         try
         {
             await write().ConfigureAwait(true);
-            PersistError = "";
-            PersistErrorCategoryTag = null;
+
+            // Only this tag's own failure is cleared. Apply writes in two steps, and clearing unconditionally let
+            // the second step's success erase the first step's failure — Apply then closed over an unwritten
+            // setting with nothing on screen, which is the very thing this reports.
+            if (PersistErrorCategoryTag is null || PersistErrorCategoryTag == categoryTag)
+            {
+                PersistError = "";
+                PersistErrorCategoryTag = null;
+            }
         }
         catch (Exception exception)
         {
@@ -259,6 +269,14 @@ public sealed partial class SecurityOptionsViewModel(
     public async Task RefreshAsync(bool reseedStagedValues = false)
     {
         var seedStaged = !SuspendPersistence || reseedStagedValues;
+        if (reseedStagedValues)
+        {
+            // Cancel put every value back to what is on disk, so a failure to write one of them describes a choice
+            // that no longer exists.
+            PersistError = "";
+            PersistErrorCategoryTag = null;
+        }
+
         var status = await protection.GetStatusAsync().ConfigureAwait(true);
         IsEncrypted = status.Enabled;
         ShowUnprotectedBanner = status.ShouldWarnUnprotected;
@@ -306,9 +324,9 @@ public sealed partial class SecurityOptionsViewModel(
         // AC-790: same "absent in design-time/unit-test graph" shape as terminal access above.
         if (nodeEndpointSettings is not null)
         {
-            var node = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
             if (seedStaged)
             {
+                var node = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
                 _loadingNodeEndpoint = true;
                 NodeEndpointEnabled = node.Enabled;
                 AllowedDiscoveryRangesText = string.Join(", ", node.AllowedDiscoveryRanges);
@@ -499,7 +517,11 @@ public sealed partial class SecurityOptionsViewModel(
 
         var allowedProfiles = ScopedProfiles.Where(row => row.IsAllowed).Select(row => row.Key).ToList();
         var allowedProjects = ScopedProjects.Where(row => row.IsAllowed).Select(row => row.Key).ToList();
-        return nodePairing.SetScopeAsync(allowedProfiles, allowedProjects);
+
+        // AC-1286: through the same chain as every other write on this tab. It is an operator's choice like the
+        // rest, so it may not be a detached task whose failure nobody ever sees.
+        return _PersistAsync("what this controller may use here", "nodes", () =>
+            nodePairing.SetScopeAsync(allowedProfiles, allowedProjects));
     }
 
     // Node binding off: normally nothing to show.
