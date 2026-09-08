@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Cockpit.Core.Backup;
@@ -23,40 +24,92 @@ public static class RestorePathPortability
     // Every string in the tree is offered rather than a list of the fields that hold paths: a value starting with the
     // backup machine's own config root is a path into it whoever wrote it — the logos, the worktree and clone
     // registries, whatever a plugin stored there — and a list of field names is a list that goes stale.
-    private static void _RebaseUnder(JsonNode? node, string sourceRoot, string targetRoot)
+    private static bool _RebaseUnder(JsonNode? node, string sourceRoot, string targetRoot)
     {
         switch (node)
         {
             case JsonObject settings:
+                var changed = false;
+
                 // The keys are taken first: assigning into a JsonObject while enumerating it throws.
                 foreach (var name in settings.Select(property => property.Key).ToList())
                 {
                     if (_RebasedOrNull(settings[name], sourceRoot, targetRoot) is { } rebased)
                     {
                         settings[name] = rebased;
+                        changed = true;
                     }
                     else
                     {
-                        _RebaseUnder(settings[name], sourceRoot, targetRoot);
+                        changed |= _RebaseUnder(settings[name], sourceRoot, targetRoot);
+
+                        if (settings[name] is JsonValue text
+                            && text.TryGetValue<string>(out var raw)
+                            && _Embedded(raw, sourceRoot) is { } embedded
+                            && _RebaseUnder(embedded, sourceRoot, targetRoot))
+                        {
+                            settings[name] = embedded.ToJsonString();
+                            changed = true;
+                        }
                     }
                 }
 
-                break;
+                return changed;
 
             case JsonArray array:
+                var arrayChanged = false;
+
                 for (var index = 0; index < array.Count; index++)
                 {
                     if (_RebasedOrNull(array[index], sourceRoot, targetRoot) is { } rebased)
                     {
                         array[index] = rebased;
+                        arrayChanged = true;
                     }
                     else
                     {
-                        _RebaseUnder(array[index], sourceRoot, targetRoot);
+                        arrayChanged |= _RebaseUnder(array[index], sourceRoot, targetRoot);
+
+                        if (array[index] is JsonValue text
+                            && text.TryGetValue<string>(out var raw)
+                            && _Embedded(raw, sourceRoot) is { } embedded
+                            && _RebaseUnder(embedded, sourceRoot, targetRoot))
+                        {
+                            array[index] = embedded.ToJsonString();
+                            arrayChanged = true;
+                        }
                     }
                 }
 
-                break;
+                return arrayChanged;
+        }
+
+        return false;
+    }
+
+    // Mirrors SecretJsonWalker.Embedded, but filters on the source root rather than secret field names.
+    private static JsonNode? _Embedded(string value, string sourceRoot)
+    {
+        var trimmed = value.AsSpan().Trim();
+        if (trimmed.Length < 2 || (trimmed[0] != '{' && trimmed[0] != '['))
+        {
+            return null;
+        }
+
+        if (value.IndexOf(sourceRoot, StringComparison.OrdinalIgnoreCase) < 0
+            && value.IndexOf(sourceRoot.Replace("\\", "\\\\"), StringComparison.OrdinalIgnoreCase) < 0
+            && value.IndexOf(sourceRoot.Replace("\\", "\\\\\\\\"), StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonNode.Parse(value);
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 
