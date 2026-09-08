@@ -3,6 +3,11 @@ namespace Cockpit.Plugins.Abstractions;
 /// <summary>
 /// Per-plugin key/value storage, persisted in a plugin-scoped section of the host's <c>cockpit.json</c>. Values are serialized as JSON.
 /// </summary>
+/// <remarks>
+/// Settings belong here — what the operator chose, and what only they can say again. A cache does not: use
+/// <see cref="IPluginCache"/> for anything the plugin could rebuild. A restore replaces a plugin's whole slice
+/// of <c>cockpit.json</c> at once, so a cache kept here is the source machine's cache after one (AC-1115).
+/// </remarks>
 public interface IPluginStorage
 {
     T? Get<T>(string key);

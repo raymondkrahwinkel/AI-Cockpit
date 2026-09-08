@@ -33,6 +33,18 @@ public interface ICockpitHost
     IPluginStorage Storage { get; }
 
     /// <summary>
+    /// Where what the plugin can rebuild goes: fetched data, run history, anything it would refetch rather than
+    /// miss (AC-1294). Its own file, outside the settings and outside a backup — see <see cref="IPluginCache"/>
+    /// for why it has no <c>SetSecret</c>.
+    /// </summary>
+    /// <remarks>
+    /// A default implementation, so this is an addition to the contract rather than a break of it: a host
+    /// implementation that predates it — a plugin's test double, say — keeps compiling and gets a cache that
+    /// lives as long as the process does.
+    /// </remarks>
+    IPluginCache Cache => InMemoryPluginCache.Shared;
+
+    /// <summary>
     /// Registers the plugin's settings view, opened from the gear next to the plugin in the plugin manager. Call at most once.
     /// </summary>
     void AddSettings(Func<Control> createView);

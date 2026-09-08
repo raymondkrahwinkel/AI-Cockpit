@@ -72,6 +72,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.host-views` | Host-rendered read-only views | Ambient | 0.7.0 | — | `ICockpitHost.CreateMarkdownView`, `ICockpitHost.CreateHelpHint`, `ICockpitHost.OpenHelp`, `ICockpitHost.HasHelp` |
 | `consent.request` | Asking the operator to approve an action | Ambient | 0.3.0 | — | `ICockpitHost.RequestConsentAsync` |
 | `storage.settings` | Its own settings storage | Ambient | 0.3.0 | — | `IPluginStorage.Get`, `IPluginStorage.Set` |
+| `storage.cache` | Its own cache | Ambient | 0.30.0 | — | `IPluginCache.Get`, `IPluginCache.Set` |
 | `workspaces.types` | Its own kind of workspace | Ambient | 0.3.0 | — | `ICockpitHost.AddWorkspaceType`, `ICockpitHost.WorkspaceTypes`, `ICockpitHost.OpenWorkspaceAsync` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitActions.SetClipboardTextAsync` |
@@ -159,6 +160,7 @@ public interface ICockpitHost
     IServiceProvider Services { get; }
     ICockpitActions Actions { get; }
     IPluginStorage Storage { get; }
+    IPluginCache Cache { get; }                                                 // default in-memory
     void AddSettings(Func<Control> createView);
     void AddSettings(Func<Control> createView, string category);                  // default forwards above
     void AddSideMenuButton(string title, Action onInvoke);
@@ -217,7 +219,11 @@ reaching into host internals.
 Actions on the cockpit/session — see [`ICockpitActions`](#icockpitactions).
 
 ### `IPluginStorage Storage { get; }` {#ipluginstorage-storage--get}
-Your per-plugin key/value store — see [`IPluginStorage`](#ipluginstorage).
+Your per-plugin key/value store — see [`IPluginStorage`](#ipluginstorage). For settings; for anything you can
+fetch or compute again, use `Cache`.
+
+### `IPluginCache Cache { get; }` {#iplugincache-cache--get}
+Your per-plugin cache, in a file of its own — see [`IPluginCache`](#iplugincache).
 
 ### `void AddSettings(Func<Control> createView)` {#void-addsettingsfunccontrol-createview}
 Registers your **settings view**, opened from the **gear** next to your plugin in the Plugins manager (there
@@ -1160,6 +1166,10 @@ True when a session is selected (so `InjectIntoActiveSessionAsync` will land). C
 Per-plugin key/value storage, persisted in a plugin-scoped slice of the host's `cockpit.json`. Values are
 JSON-serialized.
 
+**Settings only.** A restore replaces your whole slice of `cockpit.json` at once, so a cache kept here comes
+back as the *source* machine's cache. Put anything you can fetch or compute again in
+[`IPluginCache`](#iplugincache).
+
 ```csharp
 public interface IPluginStorage
 {
@@ -1211,6 +1221,34 @@ declared — sits in the clear in a config the operator believes is encrypted.
 **What this does not do:** it protects the file, not a running cockpit. Your plugin runs inside the host process
 with the operator's full rights, and so does every other plugin they installed. The boundary is the install, not
 the runtime.
+
+---
+
+## `IPluginCache` {#iplugincache}
+
+Per-plugin key/value **cache**: the same `Get`/`Set` as [`IPluginStorage`](#ipluginstorage), in the host's own
+`plugin-cache.json` instead of the settings. Use it for what you can fetch or compute again — an API response,
+run history, somebody else's state.
+
+```csharp
+public interface IPluginCache
+{
+    T? Get<T>(string key);
+    void Set<T>(string key, T value);
+}
+```
+
+```csharp
+host.Cache.Set("pull-requests", fetched);
+var cached = host.Cache.Get<PullRequest[]>("pull-requests") ?? [];
+```
+
+- **Not in a backup, and not in a restore.** That is the point: a settings restore no longer writes another
+  machine's cache over this one's. Assume the file can be gone at any time — an unreadable one is dropped at
+  startup and rebuilt.
+- **No `SetSecret`/`GetSecret`, deliberately.** The cache file has neither the encryption at rest nor the
+  backup scrubbing a declared secret gets. A credential belongs in
+  [`IPluginStorage.SetSecret`](#void-setsecretstring-key-string-value--string-getsecretstring-key).
 
 ---
 
