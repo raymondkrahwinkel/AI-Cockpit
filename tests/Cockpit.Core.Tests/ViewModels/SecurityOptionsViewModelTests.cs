@@ -96,24 +96,27 @@ public class SecurityOptionsViewModelTests
     [Theory]
     // The staged row is the reported case: the Options dialog holds this toggle with SuspendPersistence, so the
     // change handler returned before it ever recomputed what the two address fields say.
-    [InlineData(true, "", true)]
-    [InlineData(false, "", true)]
-    [InlineData(true, "https://192.168.1.20:7401/mcp", false)]
-    public async Task TurningTheNodeSwitchOn_SaysARestartIsNeeded_UntilAListenerAnswers(
-        bool staged, string liveAddress, bool expectedNeedsRestart)
+    [InlineData(true, "", null, true, "restart Cockpit")]
+    [InlineData(false, "", null, true, "restart Cockpit")]
+    [InlineData(true, "https://192.168.1.20:7401/mcp", null, false, "")]
+    // AC-1288: the host knows the port is taken, and then a restart is exactly what does not help.
+    [InlineData(true, "", "Not listening on the network: port 20383 is already in use", true, "already in use")]
+    public async Task TurningTheNodeSwitchOn_SaysWhyNoListenerAnswers(
+        bool staged, string liveAddress, string? listenerError, bool expectedHasNoListener, string expectedText)
     {
         var store = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = false, SharedSecret = "kept" });
         var vm = new SecurityOptionsViewModel(
             new FakeProtection(),
             nodeEndpointSettings: store,
-            mcpEndpointHosts: [new FakeNodeAddressHost(liveAddress)]);
+            mcpEndpointHosts: [new FakeNodeAddressHost(liveAddress, listenerError)]);
         await vm.RefreshAsync();
         vm.SuspendPersistence = staged;
 
         vm.NodeEndpointEnabled = true;
         await Task.Yield();
 
-        Assert.Equal(expectedNeedsRestart, vm.NodeEndpointNeedsRestart);
+        Assert.Equal(expectedHasNoListener, vm.NodeEndpointHasNoListener);
+        Assert.Contains(expectedText, vm.NodeEndpointNoListenerText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -329,12 +332,14 @@ public class SecurityOptionsViewModelTests
         }
     }
 
-    private sealed class FakeNodeAddressHost(string url) : ICockpitInternalMcpProvider
+    private sealed class FakeNodeAddressHost(string url, string? listenerError = null) : ICockpitInternalMcpProvider
     {
         public IReadOnlyList<McpServerConfig> GetServers() => [];
 
         public IReadOnlyList<NodeEndpointAddress> GetNodeAddresses() =>
             new[] { new NodeEndpointAddress("cockpit-agents", url) }.Where(a => a.Url.Length > 0).ToList();
+
+        public string? NodeListenerError { get; } = listenerError;
     }
 
     private sealed class FakeNodeEndpointSettingsStore(NodeEndpointSettings settings) : INodeEndpointSettingsStore

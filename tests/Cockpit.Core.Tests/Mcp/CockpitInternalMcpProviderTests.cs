@@ -85,8 +85,10 @@ public class CockpitInternalMcpProviderTests
             services: services ?? new ServiceCollection().BuildServiceProvider(),
             authKey: new McpAuthKey(),
             keyring: new SessionMcpKeyring(),
+            // Port 0 rather than the shipped default: these bind for real, and a cockpit running as a node on this
+            // machine already holds that number — the whole of AC-1284 is that it does not move (AC-1288).
             nodeEndpointSettings: new FakeNodeEndpointSettingsStore(
-                nodeEnabled ? new NodeEndpointSettings { Enabled = true, SharedSecret = NodeSecret } : null),
+                nodeEnabled ? new NodeEndpointSettings { Enabled = true, SharedSecret = NodeSecret, Port = 0 } : null),
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
             mounts: new SessionMcpMounts(),
