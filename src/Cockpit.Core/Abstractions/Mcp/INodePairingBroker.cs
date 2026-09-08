@@ -63,8 +63,9 @@ public interface INodePairingBroker
 
     /// <summary>
     /// True if the current pairing may use the profile named <paramref name="profileLabel"/> (AC-794). False when
-    /// there is no pairing at all, and false for a profile the operator never ticked — a fresh or just-revoked
-    /// pairing grants nothing, there is no implicit "everything until narrowed".
+    /// there is no pairing at all: an unpaired or just-revoked node grants nothing. Within a pairing, true for a
+    /// profile the operator ticked, and true for every profile while <c>NodePairing.AllowAllProfiles</c> is set —
+    /// the stand a fresh pairing starts on (AC-1292), so a profile made later is reachable without re-ticking.
     /// </summary>
     bool IsProfileAllowed(string profileLabel);
 
@@ -76,7 +77,13 @@ public interface INodePairingBroker
     /// <summary>
     /// Replaces which profiles and projects the current pairing may use. A no-op while unpaired. Takes effect on
     /// the running listener at once, the same as <see cref="ConfirmAsync"/> and <see cref="UnpairAsync"/>: a scope
-    /// narrowed here must stop covering the next call, not the next restart.
+    /// narrowed here must stop covering the next call, not the next restart. The id lists are stored even while
+    /// the matching "all" flag is on, so turning that flag off restores the operator's own selection (AC-1292).
     /// </summary>
-    Task SetScopeAsync(IReadOnlyList<string> allowedProfileLabels, IReadOnlyList<string> allowedProjectIds, CancellationToken cancellationToken = default);
+    Task SetScopeAsync(
+        IReadOnlyList<string> allowedProfileLabels,
+        IReadOnlyList<string> allowedProjectIds,
+        bool allowAllProfiles,
+        bool allowAllProjects,
+        CancellationToken cancellationToken = default);
 }

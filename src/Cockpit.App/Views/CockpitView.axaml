@@ -1572,6 +1572,19 @@
                                    Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12"/>
                     </DockPanel>
                 </Border>
+
+                <!-- Incoming-pairing banner (AC-1291): the offer lives two minutes and showed up nowhere unless the
+                     Nodes page happened to be open. No dismiss button — see the view model. -->
+                <Border IsVisible="{Binding HasIncomingPairing}"
+                        Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
+                        BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Review it" Margin="8,0,0,0"
+                                Command="{Binding ShowIncomingPairingCommand}"/>
+                        <TextBlock Text="{Binding IncomingPairingBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12"/>
+                    </DockPanel>
+                </Border>
             </StackPanel>
         </Grid>
 

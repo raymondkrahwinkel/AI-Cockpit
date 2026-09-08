@@ -44,6 +44,40 @@ public class NodeEndpointSettingsStoreTests : IDisposable
         Assert.Equal(["203.0.113.0/24", "198.51.100.0/24"], reloaded.AllowedDiscoveryRanges);
     }
 
+    /// <summary>
+    /// AC-1292 criterion 4: a pairing written before the "all" flags existed says nothing about them, and that
+    /// silence must read as the reach it already had. Reading an absent flag as the new default would hand every
+    /// coupling made under AC-794 the whole cockpit at the next launch.
+    /// </summary>
+    [Fact]
+    public async Task Load_PairingWrittenBeforeTheAllFlagsExisted_KeepsExactlyItsListedReach()
+    {
+        await File.WriteAllTextAsync(
+            _path,
+            """
+            {
+              "NodeEndpoint": {
+                "Enabled": true,
+                "SharedSecret": "minted-before-this-change",
+                "Pairing": {
+                  "ControllerName": "desk",
+                  "ControllerAddress": "192.168.1.5",
+                  "PairedAtUtc": "2026-08-15T12:00:00+00:00",
+                  "AllowedProfileLabels": [ "default" ],
+                  "AllowedProjectIds": [ "proj-1" ]
+                }
+              }
+            }
+            """);
+
+        var pairing = (await new NodeEndpointSettingsStore(_path).LoadAsync()).Pairing!;
+
+        Assert.False(pairing.AllowAllProfiles);
+        Assert.False(pairing.AllowAllProjects);
+        Assert.Equal(["default"], pairing.AllowedProfileLabels);
+        Assert.Equal(["proj-1"], pairing.AllowedProjectIds);
+    }
+
     public void Dispose()
     {
         foreach (var file in Directory.EnumerateFiles(Path.GetDirectoryName(_path)!, Path.GetFileName(_path) + "*"))

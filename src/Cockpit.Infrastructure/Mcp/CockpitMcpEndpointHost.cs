@@ -303,14 +303,14 @@ internal sealed class CockpitMcpEndpointHost
     // than captured at mount time, so a master switch flipped off or a pairing narrowed applies to the next call.
     private async ValueTask<bool> _AuthorizeAsync(string? paneId, string serverName, Func<bool> isEnabled, bool nodeOnly)
     {
-        var nodeScopeGranted = paneId == NodeCallerIdentity.PaneId && await _NodeScopeGrantedAsync().ConfigureAwait(false);
+        var nodeScopeGranted = paneId == NodeCallerIdentity.PaneId && await NodeScopeGrantedAsync().ConfigureAwait(false);
         return McpEndpointAuthorization.Allows(paneId, serverName, isEnabled(), nodeScopeGranted, nodeOnly, _mounts);
     }
 
-    // AC-794: a pairing grants nothing until the operator ticks a profile or a project, so an empty scope reaches
-    // no endpoint. Resolved from the service provider rather than injected — the broker asks this host for its
-    // node addresses, and taking it as a constructor dependency closes that cycle.
-    private async ValueTask<bool> _NodeScopeGrantedAsync()
+    // AC-794: an empty scope reaches no endpoint. Resolved from the service provider rather than injected — the
+    // broker asks this host for its node addresses, and a constructor dependency closes that cycle. Internal so
+    // the rule can be read back without an HTTPS round trip.
+    internal async ValueTask<bool> NodeScopeGrantedAsync()
     {
         if (_services.GetService<INodePairingBroker>() is not { } broker)
         {
@@ -318,8 +318,14 @@ internal sealed class CockpitMcpEndpointHost
         }
 
         await broker.EnsureLoadedAsync().ConfigureAwait(false);
+
+        // AC-1292: an "all" flag is a granted scope too — without it a pairing that grants everything and ticks
+        // nothing would be refused at the door before any endpoint got to answer for itself.
         return broker.Pairing is { } pairing
-            && (pairing.AllowedProfileLabels.Count > 0 || pairing.AllowedProjectIds.Count > 0);
+            && (pairing.AllowAllProfiles
+                || pairing.AllowAllProjects
+                || pairing.AllowedProfileLabels.Count > 0
+                || pairing.AllowedProjectIds.Count > 0);
     }
 
     // AC-1288: see MountAsync. Set while the mount gate is held, read from the UI thread — a reference

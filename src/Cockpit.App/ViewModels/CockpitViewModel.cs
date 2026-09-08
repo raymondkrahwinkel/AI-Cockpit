@@ -133,6 +133,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAppRestartService? _appRestart;
     private readonly IUpdateService? _updates;
     private readonly IUpdateSettingsStore? _updateSettingsStore;
+    // AC-1291: the source the incoming-pairing banner reads back, subscribed to from the constructor.
+    private readonly INodePairingBroker? _nodePairingBroker;
     // A static singleton, so the subscription is unwired in DisposeAsync — a view model that outlived its window would
     // otherwise be kept alive by it, and refresh a dead Security tab (AC-41).
     private readonly ISecretKeyHolder _secretKeyHolder = SecretKeyHolder.Shared;
@@ -497,6 +499,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _hasPendingApprovals;
 
+    // AC-1291: a pairing request from another cockpit, shown here rather than only on the Nodes page — the offer
+    // lives two minutes, and nothing else on screen said it had arrived. Not dismissible: an offer the operator
+    // clicked away still refuses every retry from the other machine with a 409 nobody can see.
+    [ObservableProperty]
+    private string _incomingPairingBanner = string.Empty;
+
+    // True while a pairing offer is still waiting for an answer.
+    [ObservableProperty]
+    private bool _hasIncomingPairing;
+
     // Keep the safe-mode banner visible for the whole plugin-free run; restarting exits safe mode (AC-478).
     public bool IsSafeMode => _safeMode;
 
@@ -571,6 +583,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [RelayCommand]
     private void DismissPendingApprovals() => HasPendingApprovals = false;
+
+    // AC-1291: reads the broker rather than tracking it, the same way the Nodes page does — an offer that expired
+    // while nobody looked reads as gone here for exactly the reason the claim would refuse it.
+    internal void RefreshIncomingPairing()
+    {
+        var pending = _nodePairingBroker?.Pending;
+        HasIncomingPairing = pending is not null;
+        IncomingPairingBanner = pending is null
+            ? string.Empty
+            : $"\"{pending.ControllerName}\" at {pending.ControllerAddress} is asking to pair with this cockpit.";
+    }
+
+    [RelayCommand]
+    private Task ShowIncomingPairing() => _ShowOptionsAsync("nodes");
 
     void IPluginContributionSink.AddPluginSideSection(string pluginId, string title, Func<Control> createView) =>
         _OnUiThread(() => PluginSideSections.Add(new PluginSideSection(pluginId, title, createView)));
@@ -2683,6 +2709,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             projectStore,
             nodeSessionsClient);
         _ = Security.RefreshAsync();
+
+        // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with
+        // it closed nothing was listening at all, so a pairing request reached no screen.
+        _nodePairingBroker = nodePairingBroker;
+        if (nodePairingBroker is not null)
+        {
+            nodePairingBroker.Changed += (_, _) => _OnUiThread(RefreshIncomingPairing);
+        }
 
         // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,
         // where the page renders its defaults rather than the dialog failing to open.

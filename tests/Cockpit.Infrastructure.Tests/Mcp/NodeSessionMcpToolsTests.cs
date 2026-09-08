@@ -281,8 +281,12 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
         public Task EnsureLoadedAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task SetScopeAsync(IReadOnlyList<string> allowedProfileLabels, IReadOnlyList<string> allowedProjectIds, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+        public Task SetScopeAsync(
+            IReadOnlyList<string> allowedProfileLabels,
+            IReadOnlyList<string> allowedProjectIds,
+            bool allowAllProfiles,
+            bool allowAllProjects,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     internal sealed class StubProfileStore : ISessionProfileStore
