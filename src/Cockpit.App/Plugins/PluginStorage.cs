@@ -56,6 +56,23 @@ public sealed class PluginStorage : IPluginStorage
         _persist(snapshot);
     }
 
+    public void Remove(string key)
+    {
+        Dictionary<string, string>? snapshot = null;
+        lock (_lock)
+        {
+            if (_values.Remove(key))
+            {
+                snapshot = new Dictionary<string, string>(_values);
+            }
+        }
+
+        if (snapshot is not null)
+        {
+            _persist(snapshot);
+        }
+    }
+
     // Stores a credential. The key is remembered as one — persisted, so the next start knows to decrypt it before
     // handing it back rather than giving the plugin ciphertext, and so a backup that claims to carry no
     // credentials empties it too. Then it is written like any other value.

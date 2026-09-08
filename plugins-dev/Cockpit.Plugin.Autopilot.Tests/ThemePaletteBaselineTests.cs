@@ -105,7 +105,7 @@ public class ThemePaletteBaselineTests
     }
 
     // An in-memory `IPluginStorage` that round-trips through the object itself, like the settings-sections test's own fake.
-    private sealed class FakeStorage : IPluginStorage
+    private sealed class FakeStorage : IPluginStorage, IPluginCache
     {
         private readonly Dictionary<string, object?> _data = new(StringComparer.Ordinal);
 

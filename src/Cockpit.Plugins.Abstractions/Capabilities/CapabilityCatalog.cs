@@ -102,7 +102,7 @@ public static class CapabilityCatalog
             "Reads and writes the plugin's own key/value section of the cockpit's configuration. No other plugin's section is reachable.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["IPluginStorage.Get", "IPluginStorage.Set"],
+            ["IPluginStorage.Get", "IPluginStorage.Set", "IPluginStorage.Remove"],
             []),
 
         new(

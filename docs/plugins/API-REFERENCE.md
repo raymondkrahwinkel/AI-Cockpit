@@ -71,7 +71,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitActions.ConfirmAsync` |
 | `ui.host-views` | Host-rendered read-only views | Ambient | 0.7.0 | — | `ICockpitHost.CreateMarkdownView`, `ICockpitHost.CreateHelpHint`, `ICockpitHost.OpenHelp`, `ICockpitHost.HasHelp` |
 | `consent.request` | Asking the operator to approve an action | Ambient | 0.3.0 | — | `ICockpitHost.RequestConsentAsync` |
-| `storage.settings` | Its own settings storage | Ambient | 0.3.0 | — | `IPluginStorage.Get`, `IPluginStorage.Set` |
+| `storage.settings` | Its own settings storage | Ambient | 0.3.0 | — | `IPluginStorage.Get`, `IPluginStorage.Set`, `IPluginStorage.Remove` |
 | `storage.cache` | Its own cache | Ambient | 0.30.0 | — | `IPluginCache.Get`, `IPluginCache.Set` |
 | `workspaces.types` | Its own kind of workspace | Ambient | 0.3.0 | — | `ICockpitHost.AddWorkspaceType`, `ICockpitHost.WorkspaceTypes`, `ICockpitHost.OpenWorkspaceAsync` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |

@@ -11,6 +11,8 @@ public sealed class WidgetInstanceStorage(IPluginStorage inner, string instanceI
 
     public void Set<T>(string key, T value) => inner.Set(_Scope(key), value);
 
+    public void Remove(string key) => inner.Remove(_Scope(key));
+
     public void SetSecret(string key, string value) => inner.SetSecret(_Scope(key), value);
 
     public string? GetSecret(string key) => inner.GetSecret(_Scope(key));

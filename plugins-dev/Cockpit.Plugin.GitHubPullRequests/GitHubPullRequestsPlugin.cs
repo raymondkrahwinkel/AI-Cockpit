@@ -49,6 +49,8 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         host.AddSessionBanner(session => new SessionPullRequestBannerControl(session));
 
         var settings = new GitHubPullRequestsSettings(host.Storage);
+        host.Storage.Remove("refreshSourceSnapshot");
+        host.Storage.Remove("cachedPullRequests");
 
         // AC-818: get_pr_status over MCP — checks/mergeable/reviews/title for one PR, cached briefly so several
         // sessions waiting on the same PR share one `gh` call. Reuses this plugin's own gh-CLI client, not a

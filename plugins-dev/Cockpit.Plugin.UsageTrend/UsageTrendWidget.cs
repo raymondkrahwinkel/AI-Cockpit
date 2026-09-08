@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.UsageTrend;
@@ -16,14 +17,24 @@ internal sealed class UsageTrendWidget : UserControl
     // The storage key this instance keeps its sampled history under, within its own slice.
     internal const string HistoryKey = "history";
 
+    private string _CacheKey => $"widget:{_context.InstanceId}:{HistoryKey}";
+
     private readonly IWidgetContext _context;
+    private readonly IPluginCache _cache;
     private readonly StackPanel _profiles = new() { Spacing = 12 };
 
     private IReadOnlyList<UsageTrendSample> _history;
 
-    public UsageTrendWidget(IWidgetContext context)
+    public UsageTrendWidget(IWidgetContext context, IPluginCache cache)
     {
         _context = context;
+        _cache = cache;
+        if (_cache.Get<List<UsageTrendSample>>(_CacheKey) is null && _context.Storage.Get<List<UsageTrendSample>>(HistoryKey) is { } history)
+        {
+            _cache.Set(_CacheKey, history);
+        }
+
+        _context.Storage.Remove(HistoryKey);
 
         // What survived a restart, with anything past retention shed before it is ever charted.
         _history = _LoadHistory();
@@ -90,7 +101,7 @@ internal sealed class UsageTrendWidget : UserControl
     {
         try
         {
-            var stored = _context.Storage.Get<List<UsageTrendSample>>(HistoryKey) ?? [];
+            var stored = _cache.Get<List<UsageTrendSample>>(_CacheKey) ?? [];
             return UsageTrendHistory.Prune(stored, DateTimeOffset.UtcNow);
         }
         catch (Exception)
@@ -115,7 +126,7 @@ internal sealed class UsageTrendWidget : UserControl
         }
 
         _history = updated;
-        _context.Storage.Set(HistoryKey, _history);
+        _cache.Set(_CacheKey, _history);
         _Render();
     }
 
