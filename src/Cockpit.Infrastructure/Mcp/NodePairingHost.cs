@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
@@ -44,6 +45,8 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
     }
 
     public string? Address { get; private set; }
+
+    public string? Error { get; private set; }
 
     // The port Kestrel actually bound, kept apart from Address ("is this listening" vs. "what does the operator
     // type") — a machine with no LAN interface has the first without the second. Also the test seam for real TLS.
@@ -94,8 +97,19 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
         {
             // A cockpit that cannot open its pairing port is still a working cockpit — it just cannot be paired
             // with this run, which the Security tab says by having no address to show.
+            Error = _ErrorFor(settings.Port, ex);
             _logger.LogWarning(ex, "Could not start the node pairing endpoint.");
         }
+    }
+
+    private static string _ErrorFor(int port, Exception exception)
+    {
+        var socketException = exception.GetBaseException() as SocketException;
+        var reason = socketException?.SocketErrorCode == SocketError.AddressAlreadyInUse
+            ? $"port {port} is already in use, most likely by another Cockpit on this machine"
+            : $"port {port} could not be opened ({exception.GetBaseException().Message.TrimEnd('.')})";
+
+        return $"Not listening for pairing: {reason}. Change NodeEndpoint.Port in cockpit.json and restart.";
     }
 
     private void _MapRoutes(WebApplication app)

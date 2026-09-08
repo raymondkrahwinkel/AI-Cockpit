@@ -8,4 +8,6 @@ namespace Cockpit.Core.Abstractions.Mcp;
 public interface INodePairingEndpoint
 {
     string? Address { get; }
+
+    string? Error => null;
 }
