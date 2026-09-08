@@ -4109,11 +4109,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Defer writing until stored update settings are read, or an uninitialized channel would erase the operator's
     // earlier choice. InitialiseUpdatesAsync saves once both halves are known.
-    private void _SaveUpdateSettings()
+
+    // AC-1287: `flushStaged` says the staging is being committed right now. Apply and Close could rely on
+    // `_EndOptionsEdit` having dropped the flag first; an Apply that keeps the dialog open cannot.
+    private void _SaveUpdateSettings(bool flushStaged = false)
     {
         // AC-999: while the Options dialog is open this is one of the settings held back until Apply, which
         // flushes it by calling here again once the flag is down.
-        if (_optionsStaged || _updateSettingsStore is not { } store)
+        if ((_optionsStaged && !flushStaged) || _updateSettingsStore is not { } store)
         {
             return;
         }
@@ -6122,7 +6125,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // they never been staged. AC-1082: used to stop at the first section that refused, blocking every other
     // category too — now every section is attempted, what validates commits, refusers are reported together.
     [RelayCommand]
-    private async Task ApplyOptionsAsync()
+    private Task ApplyOptionsAsync() => _ApplyOptionsAsync(endEdit: true);
+
+    // AC-1287: the same write, without the close. The staging cannot simply end here — the dialog stays open, and
+    // the next change would then persist on the spot instead of being staged — so it starts over below from what
+    // this click has just applied.
+    [RelayCommand]
+    private Task ApplyOptionsAndStayAsync() => _ApplyOptionsAsync(endEdit: false);
+
+    private async Task _ApplyOptionsAsync(bool endEdit)
     {
         OptionsApplyBlocked = false;
         OptionsSectionErrors = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -6202,8 +6213,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             // Left running when blocked: `_EndOptionsEdit` clears `PluginOptionsRows`, which is exactly the row the
             // operator still needs to fix and retry — ending the edit here would make a second Apply silently skip
-            // it instead of validating it again.
-            if (!OptionsApplyBlocked)
+            // it instead of validating it again. AC-1287: an Apply that keeps the dialog open leaves it running too.
+            if (!OptionsApplyBlocked && endEdit)
             {
                 _EndOptionsEdit();
             }
@@ -6211,7 +6222,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await SaveAllSettingsAsync();
         }
 
-        _SaveUpdateSettings();
+        // Not blocked, so this Apply is committing: on the closing path the flag is already down and this changes
+        // nothing, and a blocked Apply still writes no update settings, exactly as before.
+        _SaveUpdateSettings(flushStaged: !OptionsApplyBlocked);
 
         if (_delegationMcpToggle is { } toggle)
         {
@@ -6228,6 +6241,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _RebaselineFingerprintAfterBlockedApply(failures);
+
+        // AC-1287: taken after every write above, so the baseline is the state the operator just applied and the
+        // footer stops calling it unsaved. A blocked Apply keeps its own baseline — the refusal is what
+        // `_RebaselineFingerprintAfterBlockedApply` already decided about.
+        if (!endEdit && !OptionsApplyBlocked)
+        {
+            _updateChoicesAtOpen =
+                (_startupChoiceMade, _channelChoiceMade, _chosenChannel, CheckForUpdatesOnStartup, IncludeNightlyBuilds);
+            _optionsFingerprintAtOpen = OptionsStaging.Fingerprint(this);
+            RefreshPendingOptionChanges();
+        }
     }
 
     // The refusers whose staged values the fingerprint covers, so the only ones that may leave it dirty below.

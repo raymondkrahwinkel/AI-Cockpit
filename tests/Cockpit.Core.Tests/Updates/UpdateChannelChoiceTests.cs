@@ -140,6 +140,25 @@ public class UpdateChannelChoiceTests : IDisposable
     }
 
     /// <summary>
+    /// AC-1287: the update settings are staged like the rest, and the closing Apply only ever wrote them because
+    /// ending the edit dropped the staging flag first. An Apply that keeps the dialog open has no such moment, so
+    /// this section was the one thing it silently left unwritten.
+    /// </summary>
+    [Fact]
+    public async Task ApplyingWithoutClosingTheDialog_WritesTheUpdateSettingsToo()
+    {
+        var store = Store(new UpdateSettings());
+        var vm = UpdateTestCockpit.Build(Updates("0.8.0"), store);
+        await vm.InitialiseUpdatesAsync();
+
+        vm.BeginOptionsEdit();
+        vm.CheckForUpdatesOnStartup = false;
+        await vm.ApplyOptionsAndStayCommand.ExecuteAsync(null);
+
+        await store.Received().SaveAsync(Arg.Is<UpdateSettings>(settings => !settings.CheckOnStartup), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// Reading the settings must not look like using them. This is the shape the old code had — the control was filled
     /// from disk and the fill wrote straight back — which is how every installation ended up with a stored channel
     /// nobody had picked.

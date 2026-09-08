@@ -108,6 +108,19 @@ public partial class OptionsDialog : Window
         }
     }
 
+    // AC-1287: the same click as its neighbour up to the close — including the refusal path below, so a blocked
+    // Apply reports itself the same way whichever button asked for it.
+    private async void OnApply(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        await cockpit.ApplyOptionsAndStayCommand.ExecuteAsync(null);
+        _ReportApplyRefusal(cockpit);
+    }
+
     private async void OnApplyAndClose(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not CockpitViewModel cockpit)
@@ -122,21 +135,33 @@ public partial class OptionsDialog : Window
         // AC-1082: a rejected profile or plugin row only holds back its own section now, not the rest of the
         // dialog. Stay open with the error visible, and jump the sidebar to whichever refused — the operator
         // may be looking at a different category entirely.
-        if (cockpit.OptionsApplyBlocked)
+        if (_ReportApplyRefusal(cockpit))
         {
-            // Jump first, then paint: selecting the category is what builds a plugin page that has never been
-            // opened, and only a built page has a label to write the reason into (AC-1084).
-            if (cockpit.OptionsApplyBlockedCategoryTag is { } tag)
-            {
-                SelectCategory(tag);
-            }
-
-            _ShowPluginSectionErrors(cockpit);
             return;
         }
 
         _closeSettled = true;
         Close();
+    }
+
+    // Whether the Apply was blocked, having put the refusal in front of the operator when it was. Jump first,
+    // then paint: selecting the category is what builds a plugin page that has never been opened, and only a
+    // built page has a label to write the reason into (AC-1084).
+    private bool _ReportApplyRefusal(CockpitViewModel cockpit)
+    {
+        if (!cockpit.OptionsApplyBlocked)
+        {
+            return false;
+        }
+
+        if (cockpit.OptionsApplyBlockedCategoryTag is { } tag)
+        {
+            SelectCategory(tag);
+        }
+
+        _ShowPluginSectionErrors(cockpit);
+
+        return true;
     }
 
     private const string _DefaultPluginCategory = "PLUGINS";

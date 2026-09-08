@@ -23,8 +23,8 @@
     <DockPanel>
 
         <!-- Footer (AC-999): the dialog is a transaction now. Restore Defaults fills the buffer, Cancel throws it
-             away, Apply and Close is the only thing that writes. The old "Saved" label is gone with the old Save
-             button — under a staged model it could only ever appear on the click that closes the window. -->
+             away, and only Apply writes — with or without closing (AC-1287). The old "Saved" label is gone with the
+             old Save button — under a staged model it could only ever appear on the click that closes the window. -->
         <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <!-- AC-1082 gave the refusal its own column here, apart from "Unsaved changes", because the two used to
@@ -33,7 +33,7 @@
                  AC-1078 criterion 3 is about. Each section states its own reason now — Profiles and MCP Servers in
                  their `StatusMessage` below, plugins on their own page — and the sidebar still jumps to the first
                  one that refused, so a blocked Apply is never silent. -->
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                 <Button Grid.Column="0" Content="Restore Options Defaults…" Click="OnRestoreDefaults"
                         ToolTip.Tip="Restores Options settings in every category. Profiles, MCP servers, and plugin settings are unchanged."/>
                 <TextBlock Grid.Column="1" Text="Unsaved changes" HorizontalAlignment="Right"
@@ -42,7 +42,10 @@
                            Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
                 <!-- IsCancel, so Escape is a Cancel rather than the nothing it used to be. -->
                 <Button Grid.Column="2" Content="Cancel" Click="OnCancel" IsCancel="True" Margin="0,0,8,0"/>
-                <Button Grid.Column="3" Content="Apply and Close" Classes="Accent" Click="OnApplyAndClose"/>
+                <!-- AC-1287: the same write as its neighbour, minus the close, for settings you want to try before
+                     moving on to the next category. -->
+                <Button Grid.Column="3" Content="Apply" Click="OnApply" Margin="0,0,8,0"/>
+                <Button Grid.Column="4" Content="Apply and Close" Classes="Accent" Click="OnApplyAndClose"/>
             </Grid>
         </Border>
 
