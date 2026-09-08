@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the diagnostics line now reports wall-clock age beside running time. A laptop that has been asleep
+  freezes the running-time counter but not the calendar, so a log spanning a night used to read as if the
+  cockpit had only run for a few minutes — and any "per hour" figure read off it was wrong by that ratio.
+  Both numbers are on the line now, and where they differ, that difference is the time the machine slept.
+
 - added: an "Apply" button next to "Apply and Close" in Options. It writes exactly what its neighbour writes and
   leaves the window open, so a setting can be applied and tried before moving on to the next category. The page
   stays a staged one afterwards — the next change is held until you apply again, the same as in a freshly opened

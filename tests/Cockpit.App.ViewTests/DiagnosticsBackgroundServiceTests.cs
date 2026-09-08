@@ -77,6 +77,41 @@ public class DiagnosticsBackgroundServiceTests
         Assert.Contains("layout=focus+rail", line);
     }
 
+    // AC-1290: a suspended machine freezes the Stopwatch but not the calendar. Without `wall=` the line claims a
+    // 15-minute process where 15 hours of log went by, and every rate read off that span is wrong by the ratio.
+    [Fact]
+    public void WriteSnapshot_ReportsWallClockAgeBesideTheStopwatchUptime()
+    {
+        var logger = new _CapturingLogger();
+        var startedAt = new DateTimeOffset(2026, 9, 7, 14, 32, 0, TimeSpan.Zero);
+        var now = startedAt;
+        var service = new DiagnosticsBackgroundService(logger, utcNow: () => now);
+
+        // The machine sleeps: the calendar moves fifteen hours, the Stopwatch barely moves at all.
+        now = startedAt.AddHours(15).AddMinutes(15);
+        service.WriteSnapshot(new DiagnosticsBackgroundService.CpuSampler(), renderClockStalled: false);
+
+        var line = Assert.Single(logger.Messages);
+        Assert.Contains("wall=15h15m", line);
+        Assert.Contains("uptime=0m", line);
+    }
+
+    // AC-1290: an NTP step backwards must not print a negative age — the field would read as a corrupt line
+    // rather than as a clock that moved.
+    [Fact]
+    public void WriteSnapshot_FloorsWallClockAgeWhenTheSystemClockStepsBackwards()
+    {
+        var logger = new _CapturingLogger();
+        var startedAt = new DateTimeOffset(2026, 9, 7, 14, 32, 0, TimeSpan.Zero);
+        var now = startedAt;
+        var service = new DiagnosticsBackgroundService(logger, utcNow: () => now);
+
+        now = startedAt.AddHours(-1);
+        service.WriteSnapshot(new DiagnosticsBackgroundService.CpuSampler(), renderClockStalled: false);
+
+        Assert.Contains("wall=0m", Assert.Single(logger.Messages));
+    }
+
     // E: `live=` renamed off the diag line — it was never a retention measurement (do not re-derive that it is).
     [Fact]
     public void WriteSnapshot_NoLongerNamesTheHeapFieldLive()
