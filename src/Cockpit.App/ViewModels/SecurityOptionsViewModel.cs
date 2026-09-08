@@ -11,6 +11,7 @@ using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Shell;
 using Cockpit.Core.Terminal;
@@ -436,6 +437,26 @@ public sealed partial class SecurityOptionsViewModel(
             : $"Paired with \"{pairing.ControllerName}\" ({pairing.ControllerAddress}) since {pairing.PairedAtUtc.ToLocalTime():g}.";
     }
 
+    // AC-1292: "every profile, including ones made later" against "only the ones ticked below". The two kinds are
+    // independent — all projects with a narrow profile list is a real answer.
+    [ObservableProperty]
+    private bool _allowAllProfiles;
+
+    [ObservableProperty]
+    private bool _allowAllProjects;
+
+    partial void OnAllowAllProfilesChanged(bool value) => _PersistScopeIfEdited();
+
+    partial void OnAllowAllProjectsChanged(bool value) => _PersistScopeIfEdited();
+
+    private void _PersistScopeIfEdited()
+    {
+        if (!_loadingScope)
+        {
+            _ = _PersistScopeAsync();
+        }
+    }
+
     // AC-794: rebuilds both checklists from the current pairing and the profile/project stores, and seeds each row's
     // IsAllowed from NodePairing.AllowedProfileLabels/AllowedProjectIds.
     private async Task _LoadScopeRowsAsync()
@@ -453,6 +474,8 @@ public sealed partial class SecurityOptionsViewModel(
         var allowedProjects = nodePairing?.Pairing?.AllowedProjectIds ?? [];
 
         _loadingScope = true;
+        AllowAllProfiles = nodePairing?.Pairing?.AllowAllProfiles ?? false;
+        AllowAllProjects = nodePairing?.Pairing?.AllowAllProjects ?? false;
         try
         {
             // Neither load depends on the other — run them side by side rather than paying their latency twice.
@@ -462,7 +485,7 @@ public sealed partial class SecurityOptionsViewModel(
 
             foreach (var profile in profilesTask.Result)
             {
-                var row = new NodeScopeRowViewModel(profile.Label, profile.Label)
+                var row = new NodeScopeRowViewModel(profile.Label, profile.Label, UnsupervisedProfile.SkipsApprovals(profile.Defaults))
                 {
                     IsAllowed = allowedProfiles.Contains(profile.Label, StringComparer.Ordinal),
                 };
@@ -515,13 +538,15 @@ public sealed partial class SecurityOptionsViewModel(
             return Task.CompletedTask;
         }
 
+        // Written even while the matching "all" flag is on: the ticks stay the operator's own selection, ready for
+        // the moment they switch back to "only these" (AC-1292).
         var allowedProfiles = ScopedProfiles.Where(row => row.IsAllowed).Select(row => row.Key).ToList();
         var allowedProjects = ScopedProjects.Where(row => row.IsAllowed).Select(row => row.Key).ToList();
 
         // AC-1286: through the same chain as every other write on this tab. It is an operator's choice like the
         // rest, so it may not be a detached task whose failure nobody ever sees.
         return _PersistAsync("what this controller may use here", "nodes", () =>
-            nodePairing.SetScopeAsync(allowedProfiles, allowedProjects));
+            nodePairing.SetScopeAsync(allowedProfiles, allowedProjects, AllowAllProfiles, AllowAllProjects));
     }
 
     // Node binding off: normally nothing to show.

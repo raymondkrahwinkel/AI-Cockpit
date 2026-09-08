@@ -1997,13 +1997,21 @@
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,8,0,0">
                                         <TextBlock Text="What this controller may use here" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                         <materialIcons:MaterialIcon Classes="hint"
-                                            ToolTip.Tip="Nothing, until you tick a profile or project below — a fresh pairing starts able to reach none of them, and unticking one here takes effect immediately, without unpairing."/>
+                                            ToolTip.Tip="A fresh pairing starts able to reach every profile and every project, including ones you make later. Switch either kind to &quot;only these&quot; and it reaches nothing but what you tick below. Both take effect immediately, without unpairing."/>
                                     </StackPanel>
                                     <TextBlock Text="Profiles" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                                    <ItemsControl ItemsSource="{Binding Security.ScopedProfiles}">
+                                    <CheckBox Content="All profiles, including ones made later" IsChecked="{Binding Security.AllowAllProfiles}"/>
+                                    <!-- Disabled, not hidden: with "all" on, the ticks mean nothing but the list still says what is there. -->
+                                    <ItemsControl ItemsSource="{Binding Security.ScopedProfiles}" IsEnabled="{Binding !Security.AllowAllProfiles}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <CheckBox Content="{Binding Label}" IsChecked="{Binding IsAllowed}"/>
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsAllowed}"/>
+                                                    <!-- AC-1292: what this profile explicitly sets, not what its provider does by default. -->
+                                                    <TextBlock Text="skips approvals" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
+                                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                               IsVisible="{Binding SkipsApprovals}"/>
+                                                </StackPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -2012,7 +2020,8 @@
                                                IsVisible="{Binding !Security.ScopedProfiles.Count}"/>
 
                                     <TextBlock Text="Projects" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                                    <ItemsControl ItemsSource="{Binding Security.ScopedProjects}">
+                                    <CheckBox Content="All projects, including ones made later" IsChecked="{Binding Security.AllowAllProjects}"/>
+                                    <ItemsControl ItemsSource="{Binding Security.ScopedProjects}" IsEnabled="{Binding !Security.AllowAllProjects}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
                                                 <CheckBox Content="{Binding Label}" IsChecked="{Binding IsAllowed}"/>

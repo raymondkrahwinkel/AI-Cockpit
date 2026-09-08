@@ -146,11 +146,15 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
 
             pending.Confirmed = true;
             confirmed = pending;
+            // AC-1292: a confirmed coupling starts able to reach everything, deliberately reversing AC-794's
+            // empty default. The confirmation is still where the access comes from; this is only what it covers.
             pairing = new NodePairing
             {
                 ControllerName = pending.ControllerName,
                 ControllerAddress = pending.ControllerAddress,
                 PairedAtUtc = _time.GetUtcNow(),
+                AllowAllProfiles = true,
+                AllowAllProjects = true,
             };
         }
 
@@ -270,13 +274,14 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
         _RaiseChanged();
     }
 
-    // AC-794: read straight off `_pairing`, already the live copy every mutation updates in the same act it
-    // writes to disk — no pairing means no scope, not "everything", same posture as NodeSharedSecret.Value null.
+    // AC-794: read straight off `_pairing`, already the live copy every mutation updates in the same act it writes
+    // to disk — no pairing means no scope. AC-1292: inside a pairing, the flag answers for what a list cannot.
     public bool IsProfileAllowed(string profileLabel)
     {
         lock (_gate)
         {
-            return _pairing is { } pairing && pairing.AllowedProfileLabels.Contains(profileLabel, StringComparer.Ordinal);
+            return _pairing is { } pairing
+                && (pairing.AllowAllProfiles || pairing.AllowedProfileLabels.Contains(profileLabel, StringComparer.Ordinal));
         }
     }
 
@@ -284,11 +289,17 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
     {
         lock (_gate)
         {
-            return _pairing is { } pairing && pairing.AllowedProjectIds.Contains(projectId, StringComparer.Ordinal);
+            return _pairing is { } pairing
+                && (pairing.AllowAllProjects || pairing.AllowedProjectIds.Contains(projectId, StringComparer.Ordinal));
         }
     }
 
-    public async Task SetScopeAsync(IReadOnlyList<string> allowedProfileLabels, IReadOnlyList<string> allowedProjectIds, CancellationToken cancellationToken = default)
+    public async Task SetScopeAsync(
+        IReadOnlyList<string> allowedProfileLabels,
+        IReadOnlyList<string> allowedProjectIds,
+        bool allowAllProfiles,
+        bool allowAllProjects,
+        CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
 
@@ -306,7 +317,15 @@ internal sealed class NodePairingBroker : INodePairingBroker, ISingletonService
                     return;
                 }
 
-                updated = pairing with { AllowedProfileLabels = allowedProfileLabels, AllowedProjectIds = allowedProjectIds };
+                // The id lists are kept even while a flag is on, so switching back to "only these" restores the
+                // selection the operator had rather than an empty one (AC-1292).
+                updated = pairing with
+                {
+                    AllowedProfileLabels = allowedProfileLabels,
+                    AllowedProjectIds = allowedProjectIds,
+                    AllowAllProfiles = allowAllProfiles,
+                    AllowAllProjects = allowAllProjects,
+                };
             }
 
             // Disk before memory, the same order `ConfirmAsync`/`UnpairAsync` write in: a crash between the two

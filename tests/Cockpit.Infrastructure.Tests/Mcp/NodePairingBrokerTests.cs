@@ -270,18 +270,26 @@ public class NodePairingBrokerTests : IDisposable
         Assert.False(broker.IsProjectAllowed("proj-1"));
     }
 
+    /// <summary>
+    /// AC-1292 criteria 1 and 2, and a deliberate reversal of AC-794's own criterion 2: confirming is still where
+    /// the access comes from, but what it covers is now everything — including the profile and the project that do
+    /// not exist yet, which a literal id list could never reach.
+    /// </summary>
     [Fact]
-    public async Task IsProfileAllowed_OnAFreshPairing_IsFalseUntilTheOperatorGrantsSomething()
+    public async Task IsProfileAllowed_OnAFreshPairing_CoversEverything_IncludingWhatIsMadeAfterwards()
     {
         var broker = _Broker();
         var offer = await broker.RequestAsync("desk", "192.168.1.5");
         await broker.ConfirmAsync(offer.PairingId);
         await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
 
-        // Criterion 2: a coupling grants nothing until the operator ticks something, even though it is now a real,
-        // authenticated pairing that could reach a node-facing tool.
-        Assert.False(broker.IsProfileAllowed("default"));
-        Assert.False(broker.IsProjectAllowed("proj-1"));
+        Assert.True(broker.IsProfileAllowed("default"));
+        Assert.True(broker.IsProjectAllowed("proj-1"));
+
+        // Nothing was ticked, so a name nobody has ever seen is reached on the same footing — which is exactly the
+        // "created after the pairing" case.
+        Assert.True(broker.IsProfileAllowed("a-profile-made-tomorrow"));
+        Assert.True(broker.IsProjectAllowed("a-project-made-tomorrow"));
     }
 
     [Fact]
@@ -292,7 +300,7 @@ public class NodePairingBrokerTests : IDisposable
         await broker.ConfirmAsync(offer.PairingId);
         await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
 
-        await broker.SetScopeAsync(["default"], ["proj-1"]);
+        await broker.SetScopeAsync(["default"], ["proj-1"], false, false);
 
         Assert.True(broker.IsProfileAllowed("default"));
         Assert.True(broker.IsProjectAllowed("proj-1"));
@@ -300,6 +308,25 @@ public class NodePairingBrokerTests : IDisposable
         // was never ticked stays refused.
         Assert.False(broker.IsProfileAllowed("work"));
         Assert.False(broker.IsProjectAllowed("proj-2"));
+    }
+
+    /// <summary>
+    /// AC-1292 criterion 3: the narrow stand still does exactly what it did, and the two kinds are separate
+    /// questions — every project with a two-name profile list is an answer the operator is allowed to give.
+    /// </summary>
+    [Fact]
+    public async Task SetScope_AllProjectsBesideANarrowProfileList_KeepsTheTwoKindsApart()
+    {
+        var broker = _Broker();
+        var offer = await broker.RequestAsync("desk", "192.168.1.5");
+        await broker.ConfirmAsync(offer.PairingId);
+        await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
+
+        await broker.SetScopeAsync(["default", "work"], [], allowAllProfiles: false, allowAllProjects: true);
+
+        Assert.True(broker.IsProfileAllowed("default"));
+        Assert.False(broker.IsProfileAllowed("olaf"));
+        Assert.True(broker.IsProjectAllowed("a-project-made-tomorrow"));
     }
 
     [Fact]
@@ -310,7 +337,7 @@ public class NodePairingBrokerTests : IDisposable
         var offer = await broker.RequestAsync("desk", "192.168.1.5");
         await broker.ConfirmAsync(offer.PairingId);
         await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-        await broker.SetScopeAsync(["default"], ["proj-1"]);
+        await broker.SetScopeAsync(["default"], ["proj-1"], false, false);
 
         var afterRestart = _Broker(new NodeEndpointSettingsStore(_configPath));
         await afterRestart.EnsureLoadedAsync();
@@ -325,7 +352,7 @@ public class NodePairingBrokerTests : IDisposable
         var store = _Store();
         var broker = _Broker(store);
 
-        await broker.SetScopeAsync(["default"], ["proj-1"]);
+        await broker.SetScopeAsync(["default"], ["proj-1"], false, false);
 
         Assert.False(broker.IsProfileAllowed("default"));
         Assert.Null((await store.LoadAsync()).Pairing);
@@ -340,10 +367,10 @@ public class NodePairingBrokerTests : IDisposable
         var offer = await broker.RequestAsync("desk", "192.168.1.5");
         await broker.ConfirmAsync(offer.PairingId);
         await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-        await broker.SetScopeAsync(["default", "work"], ["proj-1"]);
+        await broker.SetScopeAsync(["default", "work"], ["proj-1"], false, false);
         Assert.True(broker.IsProfileAllowed("work"));
 
-        await broker.SetScopeAsync(["default"], ["proj-1"]);
+        await broker.SetScopeAsync(["default"], ["proj-1"], false, false);
 
         Assert.False(broker.IsProfileAllowed("work"));
         Assert.True(broker.IsProfileAllowed("default"));
@@ -365,8 +392,8 @@ public class NodePairingBrokerTests : IDisposable
         await broker.ConfirmAsync(offer.PairingId);
         await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
 
-        var first = broker.SetScopeAsync(["default"], []);
-        var second = broker.SetScopeAsync(["default", "work"], ["proj-1"]);
+        var first = broker.SetScopeAsync(["default"], [], false, false);
+        var second = broker.SetScopeAsync(["default", "work"], ["proj-1"], false, false);
         await Task.WhenAll(first, second);
 
         Assert.True(broker.IsProfileAllowed("work"));
@@ -377,13 +404,13 @@ public class NodePairingBrokerTests : IDisposable
     }
 
     [Fact]
-    public async Task Unpair_ClearsTheScopeGrant_SoARePairingStartsAtNothingAgain()
+    public async Task Unpair_ClearsTheScopeGrant_SoNothingIsReachableWithoutAPairing()
     {
         var broker = _Broker();
         var offer = await broker.RequestAsync("desk", "192.168.1.5");
         await broker.ConfirmAsync(offer.PairingId);
         await broker.ClaimAsync(offer.PairingId, offer.ClaimToken);
-        await broker.SetScopeAsync(["default"], ["proj-1"]);
+        await broker.SetScopeAsync(["default"], ["proj-1"], false, false);
         Assert.True(broker.IsProfileAllowed("default"));
 
         await broker.UnpairAsync();

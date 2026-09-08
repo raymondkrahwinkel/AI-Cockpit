@@ -60,6 +60,14 @@ internal sealed class NodePairingEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? AllowedProjectIds { get; set; }
 
+    // AC-1292: nullable, and null reads as false — a pairing written before these existed says nothing about them,
+    // and that silence must not widen it. Only an explicit `true` on disk grants "everything of this kind".
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AllowAllProfiles { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AllowAllProjects { get; set; }
+
     public static NodePairingEntry FromDomain(NodePairing pairing) => new()
     {
         ControllerName = pairing.ControllerName,
@@ -67,6 +75,8 @@ internal sealed class NodePairingEntry
         PairedAtUtc = pairing.PairedAtUtc,
         AllowedProfileLabels = pairing.AllowedProfileLabels.Count == 0 ? null : [.. pairing.AllowedProfileLabels],
         AllowedProjectIds = pairing.AllowedProjectIds.Count == 0 ? null : [.. pairing.AllowedProjectIds],
+        AllowAllProfiles = pairing.AllowAllProfiles ? true : null,
+        AllowAllProjects = pairing.AllowAllProjects ? true : null,
     };
 
     public NodePairing ToDomain() => new()
@@ -76,5 +86,7 @@ internal sealed class NodePairingEntry
         PairedAtUtc = PairedAtUtc,
         AllowedProfileLabels = AllowedProfileLabels ?? [],
         AllowedProjectIds = AllowedProjectIds ?? [],
+        AllowAllProfiles = AllowAllProfiles ?? false,
+        AllowAllProjects = AllowAllProjects ?? false,
     };
 }

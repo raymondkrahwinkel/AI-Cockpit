@@ -1,8 +1,13 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Secrets;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -372,6 +377,53 @@ public class SecurityOptionsViewModelTests
 
         Assert.True(condition(), "Condition did not become true.");
     }
+
+    /// <summary>
+    /// AC-1292 criterion 5. Providers share no shape: reading only Claude's <c>permission-mode</c> would leave the
+    /// Codex profile — the one this label exists for — silently unlabelled beside a pairing that reaches it.
+    /// </summary>
+    [Fact]
+    public async Task ScopeRows_LabelEveryProfileThatSkipsItsApprovals_WhateverProviderShapeItUses()
+    {
+        var pairing = Substitute.For<INodePairingBroker>();
+        pairing.Pairing.Returns(new NodePairing
+        {
+            ControllerName = "desk",
+            ControllerAddress = "192.168.1.5",
+            PairedAtUtc = DateTimeOffset.UnixEpoch,
+            AllowAllProfiles = true,
+        });
+
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync().Returns<IReadOnlyList<SessionProfile>>(
+        [
+            _Profile("claude-bypass", new Dictionary<string, string> { ["permission-mode"] = "bypassPermissions" }),
+            _Profile("codex-danger", new Dictionary<string, string> { ["sandbox"] = "danger-full-access" }),
+            _Profile("codex-guarded", new Dictionary<string, string> { ["sandbox"] = "read-only" }),
+            _Profile("local-model", optionDefaults: null),
+        ]);
+
+        var projects = Substitute.For<IProjectStore>();
+        projects.LoadAsync().Returns(ProjectSettings.Empty);
+
+        var vm = new SecurityOptionsViewModel(
+            new FakeProtection(), nodePairing: pairing, sessionProfileStore: profiles, projectStore: projects);
+        await vm.RefreshAsync();
+
+        Assert.True(vm.ScopedProfiles.Single(row => row.Key == "claude-bypass").SkipsApprovals);
+        Assert.True(vm.ScopedProfiles.Single(row => row.Key == "codex-danger").SkipsApprovals);
+        Assert.False(vm.ScopedProfiles.Single(row => row.Key == "codex-guarded").SkipsApprovals);
+
+        // No OptionDefaults at all means the profile sets nothing — what its provider does by default is not
+        // visible from here, so the row stays unlabelled rather than guessing.
+        Assert.False(vm.ScopedProfiles.Single(row => row.Key == "local-model").SkipsApprovals);
+    }
+
+    private static SessionProfile _Profile(string label, IReadOnlyDictionary<string, string>? optionDefaults) =>
+        new(label, new PluginProviderConfig("a-provider", "{}"))
+        {
+            Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty) { OptionDefaults = optionDefaults },
+        };
 
     private sealed class SequencedNodeSessions : INodeSessionsClient
     {

@@ -15,11 +15,14 @@ public sealed record NodePairing
 
     public required DateTimeOffset PairedAtUtc { get; init; }
 
-    // AC-794: profiles/projects this pairing may use, empty by default until the operator opts in. No wildcard
-    // is possible by construction, so nothing can silently widen an existing pairing. Read by
-    // `NodePairingBroker.IsProfileAllowed`/`IsProjectAllowed`.
+    // AC-794: profiles/projects this pairing may use. Read by `NodePairingBroker.IsProfileAllowed`/`IsProjectAllowed`.
     public IReadOnlyList<string> AllowedProfileLabels { get; init; } = [];
     public IReadOnlyList<string> AllowedProjectIds { get; init; } = [];
+
+    // AC-1292: everything of this kind, including what does not exist yet — which an id list cannot express.
+    // Default false so a pre-AC-1292 config keeps the reach its lists give it; `ConfirmAsync` starts them on.
+    public bool AllowAllProfiles { get; init; }
+    public bool AllowAllProjects { get; init; }
 }
 
 // AC-792: a pairing this node has taken on and is still waiting for the operator to answer. Never persisted —

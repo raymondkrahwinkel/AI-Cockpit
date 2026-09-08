@@ -90,6 +90,10 @@ internal static class OptionsStaging
         "BackupIncludesCredentials",
         "BackupIncludesProfiles",
         "Security.PairWithNodeAddress",
+        // AC-1292: written straight through to the pairing, like the scope ticks beside them — the controller's
+        // reach must narrow on the spot, not at the next Apply, and Cancel does not put it back.
+        "Security.AllowAllProfiles",
+        "Security.AllowAllProjects",
     ];
 
     // The handlers in `OptionsDialog.axaml.cs` that act on the spot and are not undone by Cancel (AC-999 §6).

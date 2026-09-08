@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
@@ -30,7 +29,7 @@ public class IncomingPairingBannerTests
 {
     /// <summary>Criterion 1: the Options window is never opened here, and the request still lands on screen.</summary>
     [Fact]
-    public void IncomingRequest_WithTheOptionsWindowClosed_ShowsTheBannerNamingTheCaller()
+    public void IncomingRequest_WithTheOptionsWindowClosed_ShowsTheBannerNamingTheCaller() => HeadlessAvalonia.Run(() =>
     {
         var broker = new FakePairingBroker();
         var vm = _NewVm(broker, Substitute.For<ISessionDialogService>());
@@ -43,19 +42,18 @@ public class IncomingPairingBannerTests
             Code = "123456",
             ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(2),
         });
-        Dispatcher.UIThread.RunJobs();
 
         Assert.True(vm.HasIncomingPairing);
         Assert.Contains("laptop", vm.IncomingPairingBanner);
         Assert.Contains("192.168.1.240", vm.IncomingPairingBanner);
-    }
+    });
 
     /// <summary>
     /// Criterion 2: the button lands on the page the code is actually on. The bindings carry a "Security." prefix
     /// because they come off <c>SecurityOptionsViewModel</c>, but the sidebar page is Nodes.
     /// </summary>
     [Fact]
-    public async Task ReviewButton_OpensOptionsOnTheNodesPage()
+    public Task ReviewButton_OpensOptionsOnTheNodesPage() => HeadlessAvalonia.RunAsync(async () =>
     {
         var dialogs = Substitute.For<ISessionDialogService>();
         var vm = _NewVm(new FakePairingBroker(), dialogs);
@@ -63,7 +61,7 @@ public class IncomingPairingBannerTests
         await vm.ShowIncomingPairingCommand.ExecuteAsync(null);
 
         await dialogs.Received(1).ShowOptionsDialogAsync(vm, "nodes");
-    }
+    });
 
     private static CockpitViewModel _NewVm(INodePairingBroker broker, ISessionDialogService dialogService)
     {
@@ -130,7 +128,11 @@ public class IncomingPairingBannerTests
 
         public bool IsProjectAllowed(string projectId) => false;
 
-        public Task SetScopeAsync(IReadOnlyList<string> allowedProfileLabels, IReadOnlyList<string> allowedProjectIds, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+        public Task SetScopeAsync(
+            IReadOnlyList<string> allowedProfileLabels,
+            IReadOnlyList<string> allowedProjectIds,
+            bool allowAllProfiles,
+            bool allowAllProjects,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

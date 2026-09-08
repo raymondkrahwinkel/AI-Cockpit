@@ -49,8 +49,8 @@ public class CockpitInternalMcpProviderTests
 
     // AC-1148: the services a node-reachable endpoint resolves its pairing scope from. A scoped pairing is the
     // normal state of a coupling the operator has actually ticked something for (AC-794); an empty one grants
-    // nothing, which is what a fresh pairing looks like.
-    private static IServiceProvider _ServicesWithPairing(bool scoped)
+    // nothing, which is what an operator who narrowed the scope to nothing looks like.
+    private static IServiceProvider _ServicesWithPairing(bool scoped, bool allowAllProfiles = false)
     {
         var broker = Substitute.For<INodePairingBroker>();
         broker.Pairing.Returns(new NodePairing
@@ -59,11 +59,29 @@ public class CockpitInternalMcpProviderTests
             ControllerAddress = "10.0.0.2",
             PairedAtUtc = DateTimeOffset.UnixEpoch,
             AllowedProfileLabels = scoped ? ["default"] : [],
+            AllowAllProfiles = allowAllProfiles,
         });
 
         var services = new ServiceCollection();
         services.AddSingleton(broker);
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// AC-1292: the door counts an "all" flag as a granted scope. Without this, a pairing that reaches every
+    /// profile but ticks none of them by name would be turned away here before any endpoint got to answer —
+    /// which is the state every fresh pairing is now in.
+    /// </summary>
+    [Fact]
+    public async Task NodeScope_GrantedByTheAllFlagAlone_IsAScopeTheDoorAccepts()
+    {
+        await using var noneAtAll = await _StartedHostAsync(nodeEnabled: false, services: _ServicesWithPairing(scoped: false));
+        Assert.False(await noneAtAll.NodeScopeGrantedAsync());
+
+        await using var flagOnly = await _StartedHostAsync(
+            nodeEnabled: false,
+            services: _ServicesWithPairing(scoped: false, allowAllProfiles: true));
+        Assert.True(await flagOnly.NodeScopeGrantedAsync());
     }
 
     // AC-792 made the node's TLS identity a file that outlives the process. These tests must never touch the real
