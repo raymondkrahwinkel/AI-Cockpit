@@ -85,7 +85,7 @@ internal sealed class PullRequestRefreshSource : IDisposable
             new(pullRequest.Number, pullRequest.Title, pullRequest.Url, pullRequest.Repository, pullRequest.Author, pullRequest.UpdatedAt);
     }
 
-    private readonly IPluginStorage _storage;
+    private readonly IPluginCache _storage;
     private readonly Func<bool, CancellationToken, Task<PullRequestFeedResult>> _load;
     private readonly Timer _timer;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
@@ -96,7 +96,7 @@ internal sealed class PullRequestRefreshSource : IDisposable
     public event EventHandler<PullRequestFeedSnapshot>? Updated;
 
     public PullRequestRefreshSource(ICockpitHost host, GitHubPullRequestsSettings settings)
-        : this(host.Storage, (forceRefresh, cancellationToken) => new PullRequestFeed().LoadAsync(settings, forceRefresh, cancellationToken), PollInterval)
+        : this(host.Cache, (forceRefresh, cancellationToken) => new PullRequestFeed().LoadAsync(settings, forceRefresh, cancellationToken), PollInterval)
     {
         // A settings change (owner, watched repos, the CLI toggle) can change what the next fetch should even ask
         // for — reload once, here, rather than every subscribed view repeating the same reload for itself.
@@ -104,7 +104,7 @@ internal sealed class PullRequestRefreshSource : IDisposable
     }
 
     // The seam a test drives directly: a fake load function (no `gh`, no network) and a storage double, so the polling/persistence/staleness behaviour is provable without shelling out.
-    internal PullRequestRefreshSource(IPluginStorage storage, Func<bool, CancellationToken, Task<PullRequestFeedResult>> load, TimeSpan pollInterval)
+    internal PullRequestRefreshSource(IPluginCache storage, Func<bool, CancellationToken, Task<PullRequestFeedResult>> load, TimeSpan pollInterval)
     {
         _storage = storage;
         _load = load;
