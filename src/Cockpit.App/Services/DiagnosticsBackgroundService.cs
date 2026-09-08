@@ -123,16 +123,25 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // alarmAfter is -- a test of the cut would otherwise have to hold a thread for half a minute.
     private readonly TimeSpan _dirtySampleInterval;
 
+    // AC-1290: `_clock` is a Stopwatch, which does not advance while the machine is suspended — on a reported
+    // macOS log it moved 18 minutes across 15 wall-clock hours. Wall time is read separately so the diag line
+    // can say both. Injectable for the same reason the probes above are.
+    private readonly Func<DateTimeOffset> _utcNow;
+    private readonly DateTimeOffset _startedAtUtc;
+
     public DiagnosticsBackgroundService(
         ILogger<DiagnosticsBackgroundService> logger,
         Func<long>? heapBytesProbe = null,
         TimeSpan? alarmAfter = null,
-        TimeSpan? dirtySampleInterval = null)
+        TimeSpan? dirtySampleInterval = null,
+        Func<DateTimeOffset>? utcNow = null)
     {
         _logger = logger;
         _heapBytesProbe = heapBytesProbe ?? (() => GC.GetGCMemoryInfo().HeapSizeBytes);
         _alarmAfter = alarmAfter ?? RenderClockHeartbeat.StallAfter;
         _dirtySampleInterval = dirtySampleInterval ?? DirtySampleInterval;
+        _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+        _startedAtUtc = _utcNow();
     }
 
     // Wired once from App.axaml.cs: the three fields the diag line cannot compute on its own (AC-1125 D).
@@ -559,7 +568,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         _logger.LogInformation(
             "diag rss={Rss} peak={Peak} virt={Virt} priv={Priv} heap={Heap} managed={Managed} gen={Gen} alloc={Alloc} " +
             "gc={Gen0}/{Gen1}/{Gen2} gcpause={GcPause:0.0}% handles={Handles} threads={Threads} tp={Pending}/{ThreadPoolCount} " +
-            "cpu={Cpu} rclock={RenderClock} uptime={Uptime} sessions={Sessions} layout={Layout}",
+            "cpu={Cpu} rclock={RenderClock} uptime={Uptime} wall={Wall} sessions={Sessions} layout={Layout}",
             _Compact(memory.ResidentBytes),
             _Compact(memory.PeakResidentBytes),
             _Compact(memory.VirtualBytes),
@@ -579,6 +588,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             CpuText(cpu.PercentSinceLastCall()),
             _RenderClockText(renderClockStalled),
             _UptimeText(_clock.Elapsed),
+            _WallText(),
             openSessions,
             layoutStand);
     }
@@ -733,6 +743,14 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // AC-1125 D: minutes are unreadable at "154 GB after 10653 minutes" — one compact token, no internal space.
     private static string _UptimeText(TimeSpan uptime) =>
         uptime.TotalHours >= 1 ? $"{(int)uptime.TotalHours}h{uptime.Minutes}m" : $"{(int)uptime.TotalMinutes}m";
+
+    // AC-1290: `uptime` alone reads as minutes across a log spanning a night, and every rate taken off that span
+    // is then wrong by the sleep ratio. A backwards clock step is floored rather than printed as a negative age.
+    private string _WallText()
+    {
+        var elapsed = _utcNow() - _startedAtUtc;
+        return _UptimeText(elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed);
+    }
 
     // Same idiom as plugins-dev/Cockpit.Plugin.SystemMonitor/SystemUsage.CpuPercent, duplicated because
     // plugins-dev sits outside Cockpit.slnx. AC-1125 F: one instance per caller now — a shared instance let
