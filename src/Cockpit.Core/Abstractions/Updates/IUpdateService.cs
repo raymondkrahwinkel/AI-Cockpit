@@ -34,6 +34,12 @@ public interface IUpdateService
     void ApplyDownloadedUpdateAndRestart();
 
     /// <summary>
+    /// Starts the updater for an operator-requested next-start update and leaves the caller to exit cleanly. Returns
+    /// false when this process does not own the downloaded update or there is no pending request.
+    /// </summary>
+    bool BeginStagedUpdateAndRestart();
+
+    /// <summary>
     /// Asks for the build fetched by the most recent successful <see cref="DownloadAsync"/> to be applied the next
     /// time the cockpit starts, leaving the session running now completely untouched (AC-388, AC-738).
     /// </summary>

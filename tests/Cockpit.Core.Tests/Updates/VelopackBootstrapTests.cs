@@ -99,6 +99,8 @@ public class VelopackBootstrapTests
     [Theory]
     [InlineData("HeadlessCalibration.IsRequested(args)")]
     [InlineData("HeadlessDictation.IsRequested(args)")]
+    [InlineData("Screenshotter.IsRequested(args)")]
+    [InlineData("Environment.GetEnvironmentVariable(\"VELOPACK_RESTART\")")]
     [InlineData("SingleInstanceGuard.IsHeldByAnotherCockpit()")]
     public void TheStagedUpdateDecision_RulesOutALaunchThatCannotApply_BeforeTakingTheRequest(string check)
     {

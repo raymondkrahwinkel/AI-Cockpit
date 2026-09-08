@@ -266,6 +266,8 @@ sealed class Program
     private static bool _AppliesAStagedUpdate(string[] args) =>
         !Cockpit.Infrastructure.Voice.HeadlessCalibration.IsRequested(args)
         && !Cockpit.Infrastructure.Voice.HeadlessDictation.IsRequested(args)
+        && !Screenshotter.IsRequested(args)
+        && !string.Equals(Environment.GetEnvironmentVariable("VELOPACK_RESTART"), "true", StringComparison.OrdinalIgnoreCase)
         && !SingleInstanceGuard.IsHeldByAnotherCockpit()
         && UpdateOnNextStart.TakeRequest();
 

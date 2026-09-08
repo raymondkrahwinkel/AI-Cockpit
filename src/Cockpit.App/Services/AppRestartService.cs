@@ -2,6 +2,8 @@ using System.Diagnostics;
 using Avalonia;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Updates;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Services;
 
@@ -15,22 +17,63 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
     // it still held and refusing to start with the "already running" notice.
     internal const string RestartArgument = "--restarting";
 
+    private readonly Func<bool> _startStagedUpdateAndRestart;
+    private readonly Action<Exception> _logStagedUpdateFailure;
     private readonly Action _launchNewInstance;
     private readonly Action _shutDownCurrentInstance;
 
-    public AppRestartService()
-        : this(_LaunchNewInstance, _ShutDownCurrentInstance)
+    public AppRestartService(IUpdateService updates, ILogger<AppRestartService> logger)
+        : this(
+            updates.BeginStagedUpdateAndRestart,
+            exception => logger.LogWarning(exception, "Could not start the staged update; restarting normally."),
+            _LaunchNewInstance,
+            _ShutDownCurrentInstance)
     {
     }
 
     internal AppRestartService(Action launchNewInstance, Action shutDownCurrentInstance)
+        : this(static () => false, static _ => { }, launchNewInstance, shutDownCurrentInstance)
     {
+    }
+
+    internal AppRestartService(
+        Func<bool> startStagedUpdateAndRestart,
+        Action launchNewInstance,
+        Action shutDownCurrentInstance,
+        Action<Exception>? logStagedUpdateFailure = null)
+        : this(startStagedUpdateAndRestart, logStagedUpdateFailure ?? (static _ => { }), launchNewInstance, shutDownCurrentInstance)
+    {
+    }
+
+    private AppRestartService(
+        Func<bool> startStagedUpdateAndRestart,
+        Action<Exception> logStagedUpdateFailure,
+        Action launchNewInstance,
+        Action shutDownCurrentInstance)
+    {
+        _startStagedUpdateAndRestart = startStagedUpdateAndRestart;
+        _logStagedUpdateFailure = logStagedUpdateFailure;
         _launchNewInstance = launchNewInstance;
         _shutDownCurrentInstance = shutDownCurrentInstance;
     }
 
     public void Restart()
     {
+        try
+        {
+            if (_startStagedUpdateAndRestart())
+            {
+                // Velopack is waiting for this clean exit before it applies the staged update.
+                _shutDownCurrentInstance();
+
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            _logStagedUpdateFailure(exception);
+        }
+
         _launchNewInstance();
         _shutDownCurrentInstance();
     }

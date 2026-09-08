@@ -26,6 +26,35 @@ public class AppRestartServiceTests
         Assert.Equal(new[] { "launch", "shutdown" }, callOrder);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Restart_BeginsAStagedUpdateBeforeFallingBackToANewInstance(bool stagedUpdateThrows)
+    {
+        var callOrder = new List<string>();
+        var failures = new List<Exception>();
+        var service = new AppRestartService(
+            startStagedUpdateAndRestart: () =>
+            {
+                callOrder.Add("update");
+
+                if (stagedUpdateThrows)
+                {
+                    throw new InvalidOperationException("the updater did not start");
+                }
+
+                return true;
+            },
+            launchNewInstance: () => callOrder.Add("launch"),
+            shutDownCurrentInstance: () => callOrder.Add("shutdown"),
+            logStagedUpdateFailure: failures.Add);
+
+        service.Restart();
+
+        Assert.Equal(stagedUpdateThrows ? new[] { "update", "launch", "shutdown" } : new[] { "update", "shutdown" }, callOrder);
+        Assert.Equal(stagedUpdateThrows, failures.Count > 0);
+    }
+
 
     [Fact]
     public void Restart_StillShutsDownWhenLaunchingTheNewInstanceIsANoOp()
