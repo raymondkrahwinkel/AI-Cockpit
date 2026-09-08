@@ -341,10 +341,16 @@ internal sealed class CockpitMcpEndpointHost
 
             return null;
         }
-        catch (System.Net.Sockets.SocketException)
+        // Every socket refusal costs the network listener, but only one of them is the port being taken — a
+        // privileged port answers with a permission error, and reading that as "another Cockpit has it" sends the
+        // operator after a cockpit that is not running.
+        catch (System.Net.Sockets.SocketException exception)
         {
-            return $"Not listening on the network: port {port} is already in use, most likely by another Cockpit "
-                + "on this machine. Change NodeEndpoint.Port in cockpit.json and restart.";
+            var reason = exception.SocketErrorCode == System.Net.Sockets.SocketError.AddressAlreadyInUse
+                ? $"port {port} is already in use, most likely by another Cockpit on this machine"
+                : $"port {port} could not be opened ({exception.Message.TrimEnd('.')})";
+
+            return $"Not listening on the network: {reason}. Change NodeEndpoint.Port in cockpit.json and restart.";
         }
     }
 
