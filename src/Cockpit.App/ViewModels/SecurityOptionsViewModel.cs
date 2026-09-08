@@ -45,6 +45,62 @@ public sealed partial class SecurityOptionsViewModel(
     // model, written only when the operator applies.
     public bool SuspendPersistence { get; set; }
 
+    // AC-1286: what could not be written, in the operator's words. Empty while everything the operator chose is on
+    // disk, and cleared again by the next write that succeeds — a reason left standing after it stopped being true
+    // is the next bug.
+    [ObservableProperty]
+    private string _persistError = "";
+
+    // Which Options category the failed write belongs to, so a blocked Apply can put the operator in front of it.
+    public string? PersistErrorCategoryTag { get; private set; }
+
+    // The writes this tab has in flight, chained end to end. A chain rather than a lock: these all read-modify-write
+    // the same section of cockpit.json, and a gate held across an await that needs the UI thread is how the dialog
+    // would deadlock instead of merely losing an update. Nothing here ever waits synchronously.
+
+    // Chained from the UI thread only — every caller is a bound property's handler or Apply. Two threads chaining
+    // at once would read the same predecessor and run side by side, which is the update loss this exists to stop.
+    private Task _persist = Task.CompletedTask;
+
+    // Everything this tab still has to write, as one task to wait on. Apply follows it implicitly by going through
+    // the same chain; a test waits on it rather than on the clock.
+    public Task PendingWrites => _persist;
+
+    // AC-1286: the one door every write goes through, staged and unstaged alike. It is still not awaited by the
+    // change handlers — a property setter cannot await — but the task is kept, so Apply follows it and a failure
+    // reaches the screen instead of the log.
+    private Task _PersistAsync(string what, string categoryTag, Func<Task> write)
+    {
+        _persist = _RunPersistAsync(_persist, what, categoryTag, write);
+
+        return _persist;
+    }
+
+    private async Task _RunPersistAsync(Task previous, string what, string categoryTag, Func<Task> write)
+    {
+        // Never throws: it caught its own failure below, which is what makes chaining onto it safe.
+        await previous.ConfigureAwait(true);
+
+        try
+        {
+            await write().ConfigureAwait(true);
+
+            // Only this tag's own failure is cleared. Apply writes in two steps, and clearing unconditionally let
+            // the second step's success erase the first step's failure — Apply then closed over an unwritten
+            // setting with nothing on screen, which is the very thing this reports.
+            if (PersistErrorCategoryTag is null || PersistErrorCategoryTag == categoryTag)
+            {
+                PersistError = "";
+                PersistErrorCategoryTag = null;
+            }
+        }
+        catch (Exception exception)
+        {
+            PersistError = $"Not saved: {what} could not be written. {exception.Message}";
+            PersistErrorCategoryTag = categoryTag;
+        }
+    }
+
     // True only while RefreshAsync seeds the toggle from disk, so setting the property then does not turn around and
     // write the same value straight back.
     private bool _loadingTerminalAccess;
@@ -207,13 +263,25 @@ public sealed partial class SecurityOptionsViewModel(
     // True only while `RefreshAsync` is seeding the toggle from disk, so the change it makes to the property is not written straight back out.
     private bool _loadingLockSetting;
 
-    public async Task RefreshAsync()
+    // AC-1286: `reseedStagedValues` is Cancel's, and only Cancel's. A refresh that lands for its own reasons — a
+    // plugin declaring credential fields, a credential written in the clear — must not overwrite what the operator
+    // has ticked in the open dialog, because Apply would then write the disk value straight back.
+    public async Task RefreshAsync(bool reseedStagedValues = false)
     {
+        var seedStaged = !SuspendPersistence || reseedStagedValues;
+        if (reseedStagedValues)
+        {
+            // Cancel put every value back to what is on disk, so a failure to write one of them describes a choice
+            // that no longer exists.
+            PersistError = "";
+            PersistErrorCategoryTag = null;
+        }
+
         var status = await protection.GetStatusAsync().ConfigureAwait(true);
         IsEncrypted = status.Enabled;
         ShowUnprotectedBanner = status.ShouldWarnUnprotected;
 
-        if (screenLockSettings is not null)
+        if (screenLockSettings is not null && seedStaged)
         {
             var settings = await screenLockSettings.LoadAsync().ConfigureAwait(true);
             _loadingLockSetting = true;
@@ -228,7 +296,7 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         // Absent in the design-time/unit-test graph — the toggle then stays off and inert.
-        if (terminalAccessSettings is not null)
+        if (terminalAccessSettings is not null && seedStaged)
         {
             var terminal = await terminalAccessSettings.LoadAsync().ConfigureAwait(true);
             _loadingTerminalAccess = true;
@@ -241,7 +309,7 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         // AC-1066: same "absent in design-time/unit-test graph" shape as terminal access above.
-        if (shellAccessSettings is not null)
+        if (shellAccessSettings is not null && seedStaged)
         {
             var shell = await shellAccessSettings.LoadAsync().ConfigureAwait(true);
             _loadingShellAccess = true;
@@ -256,13 +324,19 @@ public sealed partial class SecurityOptionsViewModel(
         // AC-790: same "absent in design-time/unit-test graph" shape as terminal access above.
         if (nodeEndpointSettings is not null)
         {
-            var node = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
-            _loadingNodeEndpoint = true;
-            NodeEndpointEnabled = node.Enabled;
-            AllowedDiscoveryRangesText = string.Join(", ", node.AllowedDiscoveryRanges);
-            _loadingNodeEndpoint = false;
-            NodeEndpointSharedSecret = node.SharedSecret;
-            _ApplyNodeEndpointAddresses(node.Enabled);
+            if (seedStaged)
+            {
+                var node = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
+                _loadingNodeEndpoint = true;
+                NodeEndpointEnabled = node.Enabled;
+                AllowedDiscoveryRangesText = string.Join(", ", node.AllowedDiscoveryRanges);
+                _loadingNodeEndpoint = false;
+                NodeEndpointSharedSecret = node.SharedSecret;
+            }
+
+            // Outside the guard: the addresses are what this run's listeners answer, not a staged value, and the
+            // Nodes tab has to keep telling the truth about them while the dialog is open.
+            _ApplyNodeEndpointAddresses(NodeEndpointEnabled);
         }
 
         // AC-792: subscribe once, not per refresh — this tab is rebuilt every time the dialog opens, and a
@@ -443,7 +517,11 @@ public sealed partial class SecurityOptionsViewModel(
 
         var allowedProfiles = ScopedProfiles.Where(row => row.IsAllowed).Select(row => row.Key).ToList();
         var allowedProjects = ScopedProjects.Where(row => row.IsAllowed).Select(row => row.Key).ToList();
-        return nodePairing.SetScopeAsync(allowedProfiles, allowedProjects);
+
+        // AC-1286: through the same chain as every other write on this tab. It is an operator's choice like the
+        // rest, so it may not be a detached task whose failure nobody ever sees.
+        return _PersistAsync("what this controller may use here", "nodes", () =>
+            nodePairing.SetScopeAsync(allowedProfiles, allowedProjects));
     }
 
     // Node binding off: normally nothing to show.
@@ -491,34 +569,46 @@ public sealed partial class SecurityOptionsViewModel(
 
     // Writes the three staged toggles in one pass, for the Options dialog's Apply (AC-999). Everything else on
     // this tab — encryption, pairing, the MCP server list — acts on the spot and is not part of this.
+
+    // AC-1286: through the same chain as the unstaged path, in two steps so a failure names its own tab. Apply
+    // therefore follows anything the operator's last click still had in flight rather than racing it, and never
+    // throws at `OnApplyAndClose` — `async void`, which would drop it on the dispatcher and say nothing.
     public async Task SaveStagedAsync()
     {
-        if (screenLockSettings is not null)
+        await _PersistAsync("your security settings", "security", async () =>
         {
-            await screenLockSettings.SaveAsync(new ScreenLockSettings { LockWhenOperatingSystemLocks = LockWithOperatingSystem }).ConfigureAwait(true);
-        }
-
-        if (terminalAccessSettings is not null)
-        {
-            if (terminalAccessSwitch is not null)
+            if (screenLockSettings is not null)
             {
-                terminalAccessSwitch.Enabled = TerminalAccessEnabled;
+                await screenLockSettings.SaveAsync(new ScreenLockSettings { LockWhenOperatingSystemLocks = LockWithOperatingSystem }).ConfigureAwait(true);
             }
 
-            await terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = TerminalAccessEnabled }).ConfigureAwait(true);
-        }
-
-        if (shellAccessSettings is not null)
-        {
-            if (shellAccessSwitch is not null)
+            if (terminalAccessSettings is not null)
             {
-                shellAccessSwitch.Enabled = ShellAccessEnabled;
+                if (terminalAccessSwitch is not null)
+                {
+                    terminalAccessSwitch.Enabled = TerminalAccessEnabled;
+                }
+
+                await terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = TerminalAccessEnabled }).ConfigureAwait(true);
             }
 
-            await shellAccessSettings.SaveAsync(new ShellAccessSettings { Enabled = ShellAccessEnabled }).ConfigureAwait(true);
+            if (shellAccessSettings is not null)
+            {
+                if (shellAccessSwitch is not null)
+                {
+                    shellAccessSwitch.Enabled = ShellAccessEnabled;
+                }
+
+                await shellAccessSettings.SaveAsync(new ShellAccessSettings { Enabled = ShellAccessEnabled }).ConfigureAwait(true);
+            }
+        }).ConfigureAwait(true);
+
+        if (nodeEndpointSettings is null)
+        {
+            return;
         }
 
-        if (nodeEndpointSettings is not null)
+        await _PersistAsync("the node settings", "nodes", async () =>
         {
             // Read-modify-write off disk for the same reason `OnNodeEndpointEnabledChanged` does it (AC-792): the
             // section carries a pairing this screen knows nothing about, and the secret held here can have gone
@@ -537,7 +627,7 @@ public sealed partial class SecurityOptionsViewModel(
                 SharedSecret = sharedSecret,
                 AllowedDiscoveryRanges = AllowedDiscoveryRangesText.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
             }).ConfigureAwait(true);
-        }
+        }).ConfigureAwait(true);
     }
 
     // Puts the three staged toggles back to what a cockpit that had never been configured would show (AC-999).
@@ -559,12 +649,13 @@ public sealed partial class SecurityOptionsViewModel(
             return;
         }
 
-        _ = screenLockSettings.SaveAsync(new ScreenLockSettings { LockWhenOperatingSystemLocks = value });
+        _ = _PersistAsync("locking with the operating system", "security", () =>
+            screenLockSettings.SaveAsync(new ScreenLockSettings { LockWhenOperatingSystemLocks = value }));
     }
 
     // The toggle changed. Flip the live switch at once (so the next session sees it without a restart) and persist,
     // unless we are only seeding the value from disk in RefreshAsync (or the store is absent in a test graph).
-    async partial void OnTerminalAccessEnabledChanged(bool value)
+    partial void OnTerminalAccessEnabledChanged(bool value)
     {
         if (_loadingTerminalAccess || SuspendPersistence || terminalAccessSettings is null)
         {
@@ -576,11 +667,12 @@ public sealed partial class SecurityOptionsViewModel(
             terminalAccessSwitch.Enabled = value;
         }
 
-        await terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = value }).ConfigureAwait(true);
+        _ = _PersistAsync("terminal access", "security", () =>
+            terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = value }));
     }
 
     // Same shape as OnTerminalAccessEnabledChanged above, for the shell-access toggle (AC-1066).
-    async partial void OnShellAccessEnabledChanged(bool value)
+    partial void OnShellAccessEnabledChanged(bool value)
     {
         if (_loadingShellAccess || SuspendPersistence || shellAccessSettings is null)
         {
@@ -592,12 +684,13 @@ public sealed partial class SecurityOptionsViewModel(
             shellAccessSwitch.Enabled = value;
         }
 
-        await shellAccessSettings.SaveAsync(new ShellAccessSettings { Enabled = value }).ConfigureAwait(true);
+        _ = _PersistAsync("shell access", "security", () =>
+            shellAccessSettings.SaveAsync(new ShellAccessSettings { Enabled = value }));
     }
 
     // Unlike terminal access above, this never flips anything live — the Kestrel listeners it governs are only
     // reconfigured at the next launch (CockpitMcpEndpointHost.MountAsync) — so this only persists (AC-790).
-    async partial void OnNodeEndpointEnabledChanged(bool value)
+    partial void OnNodeEndpointEnabledChanged(bool value)
     {
         // Display, not persistence, so it runs before the guards below: while the Options dialog stages this toggle
         // (SuspendPersistence, AC-999) the operator would otherwise tick the box and be told nothing at all.
@@ -608,30 +701,38 @@ public sealed partial class SecurityOptionsViewModel(
             return;
         }
 
-        // AC-792: read-modify-write rather than a fresh record, and the secret comes from what is on disk right now
-        // rather than from this view model's copy.
-        var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
-        var sharedSecret = current.SharedSecret is { Length: > 0 }
-            ? current.SharedSecret
-            : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        // AC-1286: the read sits inside the chained write, not beside it. Read outside, and the sibling handler
+        // below loads while this save is still running and writes the value it just replaced back over it.
+        _ = _PersistAsync("the node switch", "nodes", async () =>
+        {
+            // AC-792: read-modify-write rather than a fresh record, and the secret comes from what is on disk right
+            // now rather than from this view model's copy.
+            var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
+            var sharedSecret = current.SharedSecret is { Length: > 0 }
+                ? current.SharedSecret
+                : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
-        NodeEndpointSharedSecret = sharedSecret;
+            NodeEndpointSharedSecret = sharedSecret;
 
-        await nodeEndpointSettings.SaveAsync(current with { Enabled = value, SharedSecret = sharedSecret }).ConfigureAwait(true);
+            await nodeEndpointSettings.SaveAsync(current with { Enabled = value, SharedSecret = sharedSecret }).ConfigureAwait(true);
+        });
     }
 
     // A malformed entry is simply a range that never matches anything — `NodeVisibilityPolicy` skips what does not
     // parse as a CIDR — so there is nothing here worth validating before it reaches disk (AC-793).
-    async partial void OnAllowedDiscoveryRangesTextChanged(string value)
+    partial void OnAllowedDiscoveryRangesTextChanged(string value)
     {
         if (_loadingNodeEndpoint || SuspendPersistence || nodeEndpointSettings is null)
         {
             return;
         }
 
-        var ranges = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
-        await nodeEndpointSettings.SaveAsync(current with { AllowedDiscoveryRanges = ranges }).ConfigureAwait(true);
+        _ = _PersistAsync("the discovery ranges", "nodes", async () =>
+        {
+            var ranges = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var current = await nodeEndpointSettings.LoadAsync().ConfigureAwait(true);
+            await nodeEndpointSettings.SaveAsync(current with { AllowedDiscoveryRanges = ranges }).ConfigureAwait(true);
+        });
     }
 
     // ── AC-792 commands, node side ─────────────────────────────────────────────────────────────────────────────

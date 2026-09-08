@@ -2,6 +2,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Secrets;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -228,6 +229,105 @@ public class SecurityOptionsViewModelTests
         Assert.False(vm.IsComparingPairingCode);
     }
 
+    /// <summary>
+    /// AC-1286, the reported loss: a refresh that lands while the Options dialog is staging used to overwrite the
+    /// tick with the disk value, and Apply then wrote that old value back. The measured sequence was tick → Apply =
+    /// True, tick → refresh → Apply = False. Both controls are rows here: an ordinary refresh must leave the staged
+    /// tick alone, Cancel's own re-seed must still put the disk value back, and outside staging a refresh seeds as
+    /// it always did.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    // Outside staging the handler has already written the tick, so the refresh reads back what the operator chose
+    // rather than what was there before — the same guarantee, reached by the other path.
+    [InlineData(false, false, true)]
+    public async Task ARefreshWhileTheDialogIsStaging_DoesNotCostTheOperatorTheTick(
+        bool staged, bool reseedStagedValues, bool expectedOnDisk)
+    {
+        var store = new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = false, SharedSecret = "kept" });
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
+        await vm.RefreshAsync();
+        vm.SuspendPersistence = staged;
+
+        vm.NodeEndpointEnabled = true;
+        await vm.PendingWrites;
+        await vm.RefreshAsync(reseedStagedValues);
+        vm.SuspendPersistence = false;
+        await vm.SaveStagedAsync();
+
+        Assert.Equal(expectedOnDisk, (await store.LoadAsync()).Enabled);
+    }
+
+    /// <summary>
+    /// AC-1286's second, deterministic loss: the node handlers read-modify-write the same section, and with a store
+    /// that takes its time the ranges handler used to load while the switch was still saving and write the old
+    /// switch back over it — measured as `Enabled = False` with the ranges landing. The row without ranges is the
+    /// positive control: the same switch, the same store, nothing racing it.
+    /// </summary>
+    [Theory]
+    [InlineData("", 0)]
+    [InlineData("10.0.0.0/8", 1)]
+    public async Task TwoNodeSettingsChangedInARow_KeepBoth(string ranges, int expectedRanges)
+    {
+        var store = new SlowNodeEndpointSettingsStore(TimeSpan.FromMilliseconds(50));
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
+        await vm.RefreshAsync();
+
+        vm.NodeEndpointEnabled = true;
+        vm.AllowedDiscoveryRangesText = ranges;
+        await vm.PendingWrites;
+
+        var settled = await store.LoadAsync();
+        Assert.True(settled.Enabled);
+        Assert.Equal(expectedRanges, settled.AllowedDiscoveryRanges.Count);
+    }
+
+    /// <summary>
+    /// Apply writes in two steps — the security stores, then the node section. Clearing the line on any success let
+    /// the second step erase the first one's failure, so Apply closed over a setting that was never written with
+    /// nothing on screen: the reported bug, surviving inside its own fix.
+    /// </summary>
+    [Fact]
+    public async Task AFailedWriteIsNotErased_ByALaterStepOfTheSameApplyThatSucceeded()
+    {
+        var vm = new SecurityOptionsViewModel(
+            new FakeProtection(),
+            new FailableScreenLockSettingsStore { Fails = true },
+            nodeEndpointSettings: new FakeNodeEndpointSettingsStore(new NodeEndpointSettings { Enabled = false, SharedSecret = "kept" }));
+        await vm.RefreshAsync();
+
+        await vm.SaveStagedAsync();
+
+        Assert.Contains("the screen lock is not having it", vm.PersistError, StringComparison.Ordinal);
+        Assert.Equal("security", vm.PersistErrorCategoryTag);
+    }
+
+    /// <summary>
+    /// AC-1286: a write that fails used to end on the dispatcher as an unobserved exception from an
+    /// <c>async partial void</c> handler — measured as "the caller saw nothing". The operator now reads what did not
+    /// get saved, and the positive control in the same run is the line going away once a write succeeds.
+    /// </summary>
+    [Fact]
+    public async Task AWriteThatFails_IsReportedOnTheTab_AndTheLineGoesAwayWhenTheNextWriteSucceeds()
+    {
+        var store = new FailableNodeEndpointSettingsStore { Fails = true };
+        var vm = new SecurityOptionsViewModel(new FakeProtection(), nodeEndpointSettings: store);
+        await vm.RefreshAsync();
+
+        await vm.SaveStagedAsync();
+
+        Assert.Contains("Not saved", vm.PersistError, StringComparison.Ordinal);
+        Assert.Contains("the disk is not having it", vm.PersistError, StringComparison.Ordinal);
+        Assert.Equal("nodes", vm.PersistErrorCategoryTag);
+
+        store.Fails = false;
+        await vm.SaveStagedAsync();
+
+        Assert.Equal("", vm.PersistError);
+        Assert.Null(vm.PersistErrorCategoryTag);
+    }
+
     [Fact]
     public async Task RefreshAsync_CalledAgainBeforeTheFirstCallFinishes_NeverRunsTheTwoRebuildsInterleaved()
     {
@@ -340,6 +440,43 @@ public class SecurityOptionsViewModelTests
             new[] { new NodeEndpointAddress("cockpit-agents", url) }.Where(a => a.Url.Length > 0).ToList();
 
         public string? NodeListenerError { get; } = listenerError;
+    }
+
+    // Slow enough that a second handler's own load lands inside the first one's save — the shape the lost update
+    // needed, without a test that depends on how fast this machine is.
+    private sealed class SlowNodeEndpointSettingsStore(TimeSpan delay) : INodeEndpointSettingsStore
+    {
+        private NodeEndpointSettings _settings = new() { Enabled = false, SharedSecret = "kept" };
+
+        public Task<NodeEndpointSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(_settings);
+
+        public async Task SaveAsync(NodeEndpointSettings value, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(delay, cancellationToken);
+            _settings = value;
+        }
+    }
+
+    private sealed class FailableScreenLockSettingsStore : IScreenLockSettingsStore
+    {
+        public bool Fails { get; set; }
+
+        public Task<ScreenLockSettings> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ScreenLockSettings());
+
+        public Task SaveAsync(ScreenLockSettings settings, CancellationToken cancellationToken = default) =>
+            Fails ? throw new InvalidOperationException("the screen lock is not having it") : Task.CompletedTask;
+    }
+
+    private sealed class FailableNodeEndpointSettingsStore : INodeEndpointSettingsStore
+    {
+        public bool Fails { get; set; }
+
+        public Task<NodeEndpointSettings> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NodeEndpointSettings { Enabled = false, SharedSecret = "kept" });
+
+        public Task SaveAsync(NodeEndpointSettings value, CancellationToken cancellationToken = default) =>
+            Fails ? throw new InvalidOperationException("the disk is not having it") : Task.CompletedTask;
     }
 
     private sealed class FakeNodeEndpointSettingsStore(NodeEndpointSettings settings) : INodeEndpointSettingsStore

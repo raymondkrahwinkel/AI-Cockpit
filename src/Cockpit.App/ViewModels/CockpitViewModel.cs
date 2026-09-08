@@ -6162,6 +6162,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             failures.Add(("MCP Servers", McpServers.StatusMessage, "mcp-servers"));
         }
 
+        // AC-1286: before the failures are gathered rather than after the dialog has stopped staging, so a write
+        // that could not happen holds Apply open on its own tab instead of closing over an unsaved choice. It does
+        // not throw — `SaveStagedAsync` catches and reports through `PersistError`.
+        await Security.SaveStagedAsync();
+        if (Security.PersistError is { Length: > 0 } securityError)
+        {
+            failures.Add(("Security", securityError, Security.PersistErrorCategoryTag ?? "security"));
+        }
+
         // AC-1108: Commit() below re-commits every plugin's settings, not only the tab opened — measured 51+
         // separate cockpit.json writes here on top of SaveAllSettingsAsync's thirteen; batched to one round-trip.
         await using (CockpitConfigWriteBatch.Begin())
@@ -6209,7 +6218,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await toggle.SetMcpEnabledAsync(OrchestratorMcpEnabled);
         }
 
-        await Security.SaveStagedAsync();
         await AssistantOptions.SaveStagedAsync();
 
         // AC-233 used to write these after the dialog had closed, which is a path with no Cancel on it.
@@ -6222,16 +6230,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _RebaselineFingerprintAfterBlockedApply(failures);
     }
 
-    // The only refuser whose staged values the fingerprint covers, so the only one that may leave it dirty below.
+    // The refusers whose staged values the fingerprint covers, so the only ones that may leave it dirty below.
     private const string _ProfilesCategoryTag = "profiles";
+
+    // AC-1286: the security toggles are staged too, and a write that failed really did stay unwritten — rebaselining
+    // over it would tell the operator there is nothing pending while their choice is not on disk.
+    private static readonly string[] _StagedCategoryTags = [_ProfilesCategoryTag, "security", "nodes"];
 
     // A blocked Apply keeps the edit open, so the fingerprint still holds the value taken at open and the footer
     // goes on calling settings this click just wrote unsaved — with ✕ offering to discard what Cancel can now only
     // reload straight back (AC-1078). Refused profile rows are the exception: those really did stay unwritten.
     private void _RebaselineFingerprintAfterBlockedApply(List<(string Label, string Reason, string CategoryTag)> failures)
     {
-        var profilesRefused = failures.Any(failure => failure.CategoryTag == _ProfilesCategoryTag);
-        if (!OptionsApplyBlocked || profilesRefused)
+        var stagedRefused = failures.Any(failure => _StagedCategoryTags.Contains(failure.CategoryTag, StringComparer.Ordinal));
+        if (!OptionsApplyBlocked || stagedRefused)
         {
             return;
         }
@@ -6261,7 +6273,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await LoadCloneSettingsAsync();
         _RevertUpdateSettings();
         OrchestratorMcpEnabled = _delegationMcpToggle?.McpEnabled ?? OrchestratorMcpEnabled;
-        await Security.RefreshAsync();
+
+        // AC-1286: the one refresh that is meant to overwrite what the operator staged — Cancel keeps
+        // SuspendPersistence up across the re-seed, and every other refresh now leaves those values alone.
+        await Security.RefreshAsync(reseedStagedValues: true);
         await AssistantOptions.RefreshAsync();
 
         UsageThresholdSettings?.Revert();
