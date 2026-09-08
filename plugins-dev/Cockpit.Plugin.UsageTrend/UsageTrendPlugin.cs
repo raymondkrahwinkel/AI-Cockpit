@@ -29,7 +29,7 @@ public sealed class UsageTrendPlugin : ICockpitPlugin
         // The type id is persisted with every placed instance, so it is an API surface — changing it would orphan
         // trends on dashboards people have already arranged. No settings form: v1 always shows all three metrics,
         // so there is nothing to configure and the pane shows no gear (CreateConfigView left null).
-        host.AddWidget(new WidgetRegistration("widgets.usage-trend", "Usage Trend", context => new UsageTrendWidget(context))
+        host.AddWidget(new WidgetRegistration("widgets.usage-trend", "Usage Trend", context => new UsageTrendWidget(context, host.Cache))
         {
             IconKind = MaterialIconKind.ChartTimelineVariant,
             Description = "Context, 5h and weekly usage over time, per profile.",
