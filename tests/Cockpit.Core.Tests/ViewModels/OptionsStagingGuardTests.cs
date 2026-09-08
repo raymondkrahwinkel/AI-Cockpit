@@ -77,8 +77,8 @@ public class OptionsStagingGuardTests
     [Fact]
     public void EveryClickHandlerInTheDialog_IsADeclaredImmediateAction_OrOneOfTheFooterButtons()
     {
-        // The footer's own three are the transaction, not actions inside it.
-        string[] footer = ["OnApplyAndClose", "OnCancel"];
+        // The footer's own are the transaction, not actions inside it — AC-1287 added a second way to commit it.
+        string[] footer = ["OnApply", "OnApplyAndClose", "OnCancel"];
         var known = OptionsStaging.ImmediateActionHandlers
             .Concat(OptionsStaging.ReversibleValueHandlers)
             .Concat(footer)

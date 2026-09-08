@@ -151,6 +151,55 @@ public class OptionsStagedChangesTests
         Assert.False(vm.HasPendingOptionChanges);
     }
 
+    /// <summary>
+    /// AC-1287: Apply without closing. Asserted at the stores rather than at the dialog, and the change made after
+    /// it is what proves the staging started over instead of ending — an unstaged view model would have written
+    /// that second change straight out, which is the mode the dialog must not silently switch to.
+    /// </summary>
+    [Fact]
+    public async Task ApplyAndStay_Writes_AndLeavesTheDialogStagingFromWhatItJustApplied()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        vm.BeginOptionsEdit();
+        vm.TerminalFontSize = 20;
+
+        await vm.ApplyOptionsAndStayCommand.ExecuteAsync(null);
+
+        await stores.Terminal.Received(1).SaveAsync(Arg.Is<TerminalSettings>(settings => settings.FontSize == 20));
+        Assert.False(vm.HasPendingOptionChanges);
+
+        vm.TerminalFontSize = 22;
+
+        Assert.True(vm.HasPendingOptionChanges);
+        await stores.Terminal.Received(1).SaveAsync(Arg.Any<TerminalSettings>());
+    }
+
+    /// <summary>
+    /// AC-1287: a refusal reaches the new button through the same path as its neighbour — the section that refused
+    /// is held back and named, and everything else on the same click still commits.
+    /// </summary>
+    [Fact]
+    public async Task ApplyAndStay_WithARefusedSection_BlocksThatSectionTheSameWayApplyAndCloseDoes()
+    {
+        var stores = new Stores();
+        var vm = await stores.NewViewModelAsync();
+        var profileStore = Substitute.For<ISessionProfileStore>();
+        var profiles = new ManageProfilesDialogViewModel(profileStore, Substitute.For<IProfileLoginChecker>());
+        vm.Profiles = profiles;
+
+        vm.BeginOptionsEdit();
+        profiles.AddProfileCommand.Execute(null); // an empty new profile: invalid until configured
+        vm.LocalNotificationsEnabled = true; // an unrelated, otherwise-valid change
+
+        await vm.ApplyOptionsAndStayCommand.ExecuteAsync(null);
+
+        Assert.True(vm.OptionsApplyBlocked);
+        Assert.Equal("profiles", vm.OptionsApplyBlockedCategoryTag);
+        await profileStore.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
+        await stores.Notifications.Received(1).SaveAsync(Arg.Any<NotificationSettings>());
+    }
+
     [Fact]
     public async Task DiscardConfirmation_IsRequiredForDisplayOnlyChanges()
     {

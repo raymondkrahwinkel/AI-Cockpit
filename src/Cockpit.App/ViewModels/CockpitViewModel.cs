@@ -6122,7 +6122,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // they never been staged. AC-1082: used to stop at the first section that refused, blocking every other
     // category too — now every section is attempted, what validates commits, refusers are reported together.
     [RelayCommand]
-    private async Task ApplyOptionsAsync()
+    private Task ApplyOptionsAsync() => _ApplyOptionsAsync(endEdit: true);
+
+    // AC-1287: the same write, without the close. The staging cannot simply end here — the dialog stays open, and
+    // the next change would then persist on the spot instead of being staged — so it starts over below from what
+    // this click has just applied.
+    [RelayCommand]
+    private Task ApplyOptionsAndStayAsync() => _ApplyOptionsAsync(endEdit: false);
+
+    private async Task _ApplyOptionsAsync(bool endEdit)
     {
         OptionsApplyBlocked = false;
         OptionsSectionErrors = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -6202,8 +6210,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             // Left running when blocked: `_EndOptionsEdit` clears `PluginOptionsRows`, which is exactly the row the
             // operator still needs to fix and retry — ending the edit here would make a second Apply silently skip
-            // it instead of validating it again.
-            if (!OptionsApplyBlocked)
+            // it instead of validating it again. AC-1287: an Apply that keeps the dialog open leaves it running too.
+            if (!OptionsApplyBlocked && endEdit)
             {
                 _EndOptionsEdit();
             }
@@ -6228,6 +6236,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _RebaselineFingerprintAfterBlockedApply(failures);
+
+        // AC-1287: taken after every write above, so the baseline is the state the operator just applied and the
+        // footer stops calling it unsaved. A blocked Apply keeps its own baseline — the refusal is what
+        // `_RebaselineFingerprintAfterBlockedApply` already decided about.
+        if (!endEdit && !OptionsApplyBlocked)
+        {
+            _updateChoicesAtOpen =
+                (_startupChoiceMade, _channelChoiceMade, _chosenChannel, CheckForUpdatesOnStartup, IncludeNightlyBuilds);
+            _optionsFingerprintAtOpen = OptionsStaging.Fingerprint(this);
+            RefreshPendingOptionChanges();
+        }
     }
 
     // The refusers whose staged values the fingerprint covers, so the only ones that may leave it dirty below.

@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an "Apply" button next to "Apply and Close" in Options. It writes exactly what its neighbour writes and
+  leaves the window open, so a setting can be applied and tried before moving on to the next category. The page
+  stays a staged one afterwards — the next change is held until you apply again, the same as in a freshly opened
+  dialog — and a section that refuses is reported the same way either button asked for it.
+
 - added: a layout that will not settle is now stopped instead of taking the whole window down with it. When the
   cockpit's freeze watch finds the same region still unmeasured three checks in a row — twenty seconds of no
   progress, on a window that is already not answering — that region is taken out of layout and everything else
