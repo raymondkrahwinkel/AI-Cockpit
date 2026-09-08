@@ -14,6 +14,11 @@ public interface IPluginStorage
 
     void Set<T>(string key, T value);
 
+    /// <summary>Removes a value that is no longer part of this plugin's settings.</summary>
+    void Remove(string key)
+    {
+    }
+
     /// <summary>
     /// Stores a credential: a token, an API key, a webhook URL — anything that would be a problem in someone
     /// else's hands. Use this for a field name the host cannot guess is a secret (a <c>pat</c>, a

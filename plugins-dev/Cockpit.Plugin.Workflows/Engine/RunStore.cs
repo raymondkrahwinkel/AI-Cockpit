@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.Workflows.Engine;
 // Keeps what happened (#69). "It did not work" is not something an operator can act on, so every run is written
 // down — which step got what, what it produced, how long it took — and kept until the next twenty push it out.
 // A run history that grows without bound is a config file that grows without bound.
-internal sealed class RunStore(IPluginStorage storage)
+internal sealed class RunStore(IPluginCache storage)
 {
     private const string Key = "runs";
     private const int Keep = 20;
