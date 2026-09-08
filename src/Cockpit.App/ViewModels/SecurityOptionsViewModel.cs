@@ -87,10 +87,15 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private string _nodeEndpointAddressText = "";
 
-    // The switch is on but no listener answers yet: both address fields have nothing to show, and this is what says
-    // why. Set alongside the address text so the two can never disagree.
+    // The switch is on but no listener answers: both address fields have nothing to show, and this hides them.
+    // Set alongside the address text so the two can never disagree.
     [ObservableProperty]
-    private bool _nodeEndpointNeedsRestart;
+    private bool _nodeEndpointHasNoListener;
+
+    // What stands in their place — the restart line, or, when the host knows why the listener is missing, that
+    // reason instead (AC-1288). One property, so the operator never reads both at once.
+    [ObservableProperty]
+    private string _nodeEndpointNoListenerText = "";
 
     // AC-793: CIDR ranges allowed to see this node from outside its own local network — comma-separated, so no
     // new list-editing control is needed for what is, in practice, an occasional one-or-two-entry setting. Empty
@@ -455,9 +460,16 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         // Empty rather than an explanation: with no listener the address fields are hidden and
-        // `NodeEndpointNeedsRestart` says why, next to the switch that caused it.
+        // `NodeEndpointNoListenerText` says why, next to the switch that caused it.
         return string.Join(Environment.NewLine, addresses.Select(address => $"{address.ServerName}: {address.Url}"));
     }
+
+    // AC-1288: in the view model rather than in the view, so it and the host's own reason are one property the
+    // Nodes tab binds — two TextBlocks fighting over one line is how they end up both visible.
+    private const string NeedsRestartText =
+        "Not listening yet — apply this first, then restart Cockpit before it starts listening. The addresses to "
+        + "type into the other Cockpit appear here after that restart; if they stay away, check that this machine "
+        + "has a network connection.";
 
     private List<NodeEndpointAddress> _NodeAddresses() =>
         mcpEndpointHosts?.SelectMany(host => host.GetNodeAddresses()).ToList() ?? [];
@@ -467,7 +479,14 @@ public sealed partial class SecurityOptionsViewModel(
     private void _ApplyNodeEndpointAddresses(bool enabled)
     {
         NodeEndpointAddressText = _ResolveNodeEndpointAddressText(enabled);
-        NodeEndpointNeedsRestart = enabled && _NodeAddresses().Count == 0;
+
+        NodeEndpointHasNoListener = enabled && _NodeAddresses().Count == 0;
+
+        // A reason the host knows takes precedence over the restart line: telling an operator whose port is taken
+        // to restart sends them round the same failure again (AC-1288).
+        NodeEndpointNoListenerText = NodeEndpointHasNoListener
+            ? mcpEndpointHosts?.Select(host => host.NodeListenerError).FirstOrDefault(error => error is not null) ?? NeedsRestartText
+            : "";
     }
 
     // Writes the three staged toggles in one pass, for the Options dialog's Apply (AC-999). Everything else on

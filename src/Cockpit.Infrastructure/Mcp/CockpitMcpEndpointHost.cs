@@ -173,6 +173,15 @@ internal sealed class CockpitMcpEndpointHost
             var enabled = isEnabled ?? (static () => true);
             var bindNodeListener = nodeSettings.Enabled && nodeOnly && enabled();
 
+            // AC-1288: the node port is fixed (AC-1284), so it can already be held — another cockpit on this
+            // machine is the ordinary case. Kestrel fails the whole endpoint on that, loopback listener included,
+            // and StartAsync's catch turns it into a log line nobody reads.
+            if (bindNodeListener && _NodeListenerUnavailable(nodeSettings.McpPort) is { } unavailable)
+            {
+                NodeListenerError = unavailable;
+                bindNodeListener = false;
+            }
+
             builder.WebHost.ConfigureKestrel(options =>
             {
                 // Port 0 lets the OS pick a free loopback port. IPv4 specifically, not ListenLocalhost — that binds
@@ -311,6 +320,32 @@ internal sealed class CockpitMcpEndpointHost
         await broker.EnsureLoadedAsync().ConfigureAwait(false);
         return broker.Pairing is { } pairing
             && (pairing.AllowedProfileLabels.Count > 0 || pairing.AllowedProjectIds.Count > 0);
+    }
+
+    // AC-1288: see MountAsync. Set while the mount gate is held, read from the UI thread — a reference
+    // assignment, and the Nodes tab reads it after the mount it belongs to has long finished.
+    public string? NodeListenerError { get; private set; }
+
+    // Probed rather than caught, so a held port costs the network listener and not the endpoint: by the time
+    // Kestrel refuses, the loopback listener it shares is gone with it.
+
+    // ponytail: a probe, so the port can still be taken in the window between — that run then fails as it did
+    // before this, in the log. Bind the two listeners separately if that window ever matters.
+    private string? _NodeListenerUnavailable(int port)
+    {
+        try
+        {
+            var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, port);
+            probe.Start();
+            probe.Stop();
+
+            return null;
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+            return $"Not listening on the network: port {port} is already in use, most likely by another Cockpit "
+                + "on this machine. Change NodeEndpoint.Port in cockpit.json and restart.";
+        }
     }
 
     private string? _GetReachableAddress()

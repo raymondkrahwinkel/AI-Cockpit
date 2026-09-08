@@ -437,6 +437,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a Cockpit that cannot open its node port now says so on the Nodes tab, naming the port and that something
+  else already holds it — a second Cockpit on the same machine is the usual reason. Before this the failure left
+  nothing but a line in the log: the address field stayed empty, the page advised a restart, and restarting ran
+  into exactly the same held port. The local half of that endpoint also survives now — a held network port used to
+  take the machine's own connection to it down as well, because both listened on one socket set. Choose another
+  port with `NodeEndpoint.Port` in `cockpit.json` and restart.
+
 - fixed: turning on "Accept MCP connections from another Cockpit on this network" now says, right under the tick
   box, that the change has to be applied and Cockpit restarted before it starts listening — in that order. Until
   then the pairing address and the address below it were simply blank, with the only mention of a restart standing
