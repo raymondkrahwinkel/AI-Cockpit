@@ -142,18 +142,21 @@ public sealed class TranscriptComposerInputTests
     });
 
     // AC-726: the acceptance of the file drop, minus the drag itself — the OS gesture is verified by hand, this
-    // pins what the paths do once they arrive. The first two rows force opposite behaviour out of the same
-    // quoting decision: a plain path goes in bare, a path with a space in it goes in quoted.
+    // pins what the paths do once they arrive. Rows 1 and 2 force opposite behaviour out of the one quoting
+    // decision (bare path versus a path holding a space), and rows 1 and 5 out of the one leading-space
+    // decision — a caret sitting against a word gets a separator, a caret already after one does not.
     [Theory]
-    [InlineData(new[] { "/tmp/a.txt" }, "a/tmp/a.txt b", 12)]
-    [InlineData(new[] { "/tmp/my file.txt", "/tmp/b.md" }, "a\"/tmp/my file.txt\" /tmp/b.md b", 30)]
-    [InlineData(new string[0], "ab", 1)]
-    public void DroppedPaths_GoInAtTheCaret_QuotedOnlyWhenTheyContainASpace(
-        string[] paths, string expectedText, int expectedCaret) => HeadlessAvalonia.Run(() =>
+    [InlineData("ab", 1, new[] { "/tmp/a.txt" }, "a /tmp/a.txt b", 13)]
+    [InlineData("ab", 1, new[] { "/tmp/my file.txt", "/tmp/b.md" }, "a \"/tmp/my file.txt\" /tmp/b.md b", 31)]
+    [InlineData("ab", 1, new[] { "/tmp/say \"hi\".txt" }, "a \"/tmp/say \\\"hi\\\".txt\" b", 24)]
+    [InlineData("ab", 1, new string[0], "ab", 1)]
+    [InlineData("ab ", 3, new[] { "/tmp/a.txt" }, "ab /tmp/a.txt ", 14)]
+    public void DroppedPaths_GoInAtTheCaret_SeparatedAndQuotedAsAShellWouldReadThem(
+        string text, int caret, string[] paths, string expectedText, int expectedCaret) => HeadlessAvalonia.Run(() =>
     {
         var harness = new Harness();
-        harness.Box.Text = "ab";
-        harness.Box.CaretIndex = 1;
+        harness.Box.Text = text;
+        harness.Box.CaretIndex = caret;
 
         harness.Input.InsertDroppedPaths(paths);
 

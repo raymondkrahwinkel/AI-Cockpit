@@ -100,9 +100,13 @@ public partial class SessionView : UserControl
         InputBox.KeyUp += _composerInput.OnKeyUp;
 
         // AC-726: a file dropped from the file manager lands as its absolute path at the caret. On the whole
-        // pane, not just the box, so the drop works wherever the operator lets go. Tunnel, so a file drop
-        // pre-empts the TextBox's own drop handling; a drag carrying no files falls through to it untouched.
+        // pane, not just the box, so the drop works wherever the operator lets go — and a drag carrying no
+        // files is left entirely unhandled, so nothing here claims a gesture it has no answer for.
         DragDrop.SetAllowDrop(this, true);
+        // DragEnter as well as DragOver: AllowDrop inherits, so the target changes at every inner control
+        // boundary and Avalonia answers that with DragLeave + DragEnter — without the enter the highlight
+        // would blink off on each crossing.
+        AddHandler(DragDrop.DragEnterEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Tunnel);

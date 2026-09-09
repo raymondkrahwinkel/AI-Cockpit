@@ -181,8 +181,10 @@ internal sealed class TranscriptComposerInput
     }
 
     // AC-726: a file dragged in from the desktop's file manager. Only a transfer that actually carries files is
-    // claimed — anything else (dragged text, a selection from another box) falls through to the TextBox's own
-    // drop handling untouched. Contains() rather than reading the files out, because this runs per pointer move.
+    // claimed; anything else (dragged text, a selection from another box) is left entirely alone. Contains()
+    // rather than reading the files out, because this runs on every pointer move.
+    // ponytail: a transfer that carries files but no local path (a browser drag, a GVFS mount) still lights the
+    // composer and then drops nothing. Read the paths here instead of in OnDrop if that turns out to bite.
     internal void OnDragOver(object? sender, DragEventArgs e)
     {
         if (!e.DataTransfer.Contains(DataFormat.File))
@@ -212,8 +214,8 @@ internal sealed class TranscriptComposerInput
     }
 
     // Space-separated, and a path containing a space wrapped in double quotes — what a shell and most agents
-    // expect of a path list. The trailing space is the mention convention above: typing straight after a drop
-    // should not run into the path.
+    // expect of a path list. Padded with a space on whichever side already carries a word, so dropping onto
+    // "please read" gives a token of its own rather than "please read/home/…".
     internal void InsertDroppedPaths(IReadOnlyList<string> paths)
     {
         if (paths.Count == 0)
@@ -221,11 +223,18 @@ internal sealed class TranscriptComposerInput
             return;
         }
 
-        _InsertText(string.Join(" ", paths.Select(_QuoteIfSpaced)) + " ");
+        var caret = Math.Min(_inputBox.SelectionStart, _inputBox.SelectionEnd);
+        var before = _inputBox.Text ?? string.Empty;
+        var lead = caret > 0 && !char.IsWhiteSpace(before[caret - 1]) ? " " : string.Empty;
+        _InsertText(lead + string.Join(" ", paths.Select(_QuoteIfSpaced)) + " ");
     }
 
+    // A quote in the path is wrapped and escaped too, not just a space: left raw either way it splits the token
+    // back open at exactly the place the wrapping exists to hold together.
     private static string _QuoteIfSpaced(string path) =>
-        path.Contains(' ', StringComparison.Ordinal) ? $"\"{path}\"" : path;
+        path.AsSpan().IndexOfAny(' ', '"') >= 0
+            ? $"\"{path.Replace("\"", "\\\"", StringComparison.Ordinal)}\""
+            : path;
 
     private void _SetDropTarget(bool active) => _composerBorder.Classes.Set("fileDropTarget", active);
 
