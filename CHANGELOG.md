@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: dragging a file in from the file manager and dropping it on a session pane or on the assistant chat —
+  the floating window and the docked rail alike — puts its full path into the message box at the caret, leaving
+  whatever you had already typed where it was. Drop several at once and they arrive space-separated, with any
+  path that contains a space in quotes, the way a shell or an agent expects to read them; a folder drops as its
+  own path. While a file hovers over the pane, the message box is washed in the accent colour, so it is clear
+  where the path will land before you let go.
+
 - added: the diagnostics line now reports wall-clock age beside running time. A laptop that has been asleep
   freezes the running-time counter but not the calendar, so a log spanning a night used to read as if the
   cockpit had only run for a few minutes — and any "per hour" figure read off it was wrong by that ratio.

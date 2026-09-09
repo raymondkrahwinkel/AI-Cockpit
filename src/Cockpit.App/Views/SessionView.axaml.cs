@@ -81,6 +81,7 @@ public partial class SessionView : UserControl
 
         _composerInput = new TranscriptComposerInput(
             InputBox,
+            ComposerBorder,
             tryGetPastedBitmap: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetBitmapAsync() ?? Task.FromResult<Bitmap?>(null),
             tryGetPastedText: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetTextAsync() ?? Task.FromResult<string?>(null),
             hasComposer: () => DataContext is SessionViewModel,
@@ -97,6 +98,18 @@ public partial class SessionView : UserControl
         // AC-740: re-evaluates the @-mention token once the TextBox has applied the keystroke (character typed,
         // backspace, caret moved). Bubble is fine — nothing else claims KeyUp on this control.
         InputBox.KeyUp += _composerInput.OnKeyUp;
+
+        // AC-726: a file dropped from the file manager lands as its absolute path at the caret. On the whole
+        // pane, not just the box, so the drop works wherever the operator lets go — and a drag carrying no
+        // files is left entirely unhandled, so nothing here claims a gesture it has no answer for.
+        DragDrop.SetAllowDrop(this, true);
+        // DragEnter as well as DragOver: AllowDrop inherits, so the target changes at every inner control
+        // boundary and Avalonia answers that with DragLeave + DragEnter — without the enter the highlight
+        // would blink off on each crossing.
+        AddHandler(DragDrop.DragEnterEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
+        AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
+        AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Tunnel);
+        AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Tunnel);
 
         // Push-to-talk (F9 by default): tunnel on the whole panel, not just the input box, so it fires
         // regardless of which control inside the panel has focus — the operator should not have to
