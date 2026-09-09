@@ -180,11 +180,9 @@ internal sealed class TranscriptComposerInput
         }
     }
 
-    // AC-726: a file dragged in from the desktop's file manager. Only a transfer that actually carries files is
-    // claimed; anything else (dragged text, a selection from another box) is left entirely alone. Contains()
-    // rather than reading the files out, because this runs on every pointer move.
-    // ponytail: a transfer that carries files but no local path (a browser drag, a GVFS mount) still lights the
-    // composer and then drops nothing. Read the paths here instead of in OnDrop if that turns out to bite.
+    // AC-726: only a transfer that actually carries files is claimed; anything else is left entirely alone.
+    // Contains() rather than reading the paths out, because this runs on every pointer move.
+    // ponytail: files without a local path light the composer and drop nothing — read paths here if that bites.
     internal void OnDragOver(object? sender, DragEventArgs e)
     {
         if (!e.DataTransfer.Contains(DataFormat.File))

@@ -141,10 +141,8 @@ public sealed class TranscriptComposerInputTests
         Assert.Equal(0, harness.Send.ExecuteCount);
     });
 
-    // AC-726: the acceptance of the file drop, minus the drag itself — the OS gesture is verified by hand, this
-    // pins what the paths do once they arrive. Rows 1 and 2 force opposite behaviour out of the one quoting
-    // decision (bare path versus a path holding a space), and rows 1 and 5 out of the one leading-space
-    // decision — a caret sitting against a word gets a separator, a caret already after one does not.
+    // AC-726: what the paths do once they arrive; the OS drag itself is verified by hand. Rows 1 and 2 force
+    // opposite behaviour out of the one quoting decision, rows 1 and 5 out of the one leading-space decision.
     [Theory]
     [InlineData("ab", 1, new[] { "/tmp/a.txt" }, "a /tmp/a.txt b", 13)]
     [InlineData("ab", 1, new[] { "/tmp/my file.txt", "/tmp/b.md" }, "a \"/tmp/my file.txt\" /tmp/b.md b", 31)]
