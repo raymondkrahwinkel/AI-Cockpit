@@ -81,6 +81,7 @@ public partial class SessionView : UserControl
 
         _composerInput = new TranscriptComposerInput(
             InputBox,
+            ComposerBorder,
             tryGetPastedBitmap: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetBitmapAsync() ?? Task.FromResult<Bitmap?>(null),
             tryGetPastedText: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetTextAsync() ?? Task.FromResult<string?>(null),
             hasComposer: () => DataContext is SessionViewModel,
@@ -97,6 +98,14 @@ public partial class SessionView : UserControl
         // AC-740: re-evaluates the @-mention token once the TextBox has applied the keystroke (character typed,
         // backspace, caret moved). Bubble is fine — nothing else claims KeyUp on this control.
         InputBox.KeyUp += _composerInput.OnKeyUp;
+
+        // AC-726: a file dropped from the file manager lands as its absolute path at the caret. On the whole
+        // pane, not just the box, so the drop works wherever the operator lets go. Tunnel, so a file drop
+        // pre-empts the TextBox's own drop handling; a drag carrying no files falls through to it untouched.
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
+        AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Tunnel);
+        AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Tunnel);
 
         // Push-to-talk (F9 by default): tunnel on the whole panel, not just the input box, so it fires
         // regardless of which control inside the panel has focus — the operator should not have to

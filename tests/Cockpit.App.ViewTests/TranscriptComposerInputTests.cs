@@ -52,6 +52,7 @@ public sealed class TranscriptComposerInputTests
         {
             Input = new TranscriptComposerInput(
                 Box,
+                new Border(),
                 tryGetPastedBitmap: () => Task.FromResult(ClipboardBitmap),
                 tryGetPastedText: () => Task.FromResult(ClipboardText),
                 hasComposer: () => true,
@@ -138,6 +139,26 @@ public sealed class TranscriptComposerInputTests
         Assert.Equal("hi @src/Foo.cs , thanks", harness.Box.Text);
         Assert.Equal("hi @src/Foo.cs ".Length, harness.Box.CaretIndex);
         Assert.Equal(0, harness.Send.ExecuteCount);
+    });
+
+    // AC-726: the acceptance of the file drop, minus the drag itself — the OS gesture is verified by hand, this
+    // pins what the paths do once they arrive. The first two rows force opposite behaviour out of the same
+    // quoting decision: a plain path goes in bare, a path with a space in it goes in quoted.
+    [Theory]
+    [InlineData(new[] { "/tmp/a.txt" }, "a/tmp/a.txt b", 12)]
+    [InlineData(new[] { "/tmp/my file.txt", "/tmp/b.md" }, "a\"/tmp/my file.txt\" /tmp/b.md b", 30)]
+    [InlineData(new string[0], "ab", 1)]
+    public void DroppedPaths_GoInAtTheCaret_QuotedOnlyWhenTheyContainASpace(
+        string[] paths, string expectedText, int expectedCaret) => HeadlessAvalonia.Run(() =>
+    {
+        var harness = new Harness();
+        harness.Box.Text = "ab";
+        harness.Box.CaretIndex = 1;
+
+        harness.Input.InsertDroppedPaths(paths);
+
+        Assert.Equal(expectedText, harness.Box.Text);
+        Assert.Equal(expectedCaret, harness.Box.CaretIndex);
     });
 
     [Fact]

@@ -2,6 +2,7 @@ using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform.Storage;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
@@ -12,6 +13,7 @@ namespace Cockpit.App.Views;
 internal sealed class TranscriptComposerInput
 {
     private readonly TextBox _inputBox;
+    private readonly Border _composerBorder;
     private readonly Func<Task<Bitmap?>> _tryGetPastedBitmap;
     private readonly Func<Task<string?>> _tryGetPastedText;
     private readonly Func<bool> _hasComposer;
@@ -28,6 +30,7 @@ internal sealed class TranscriptComposerInput
 
     internal TranscriptComposerInput(
         TextBox inputBox,
+        Border composerBorder,
         Func<Task<Bitmap?>> tryGetPastedBitmap,
         Func<Task<string?>> tryGetPastedText,
         Func<bool> hasComposer,
@@ -38,6 +41,7 @@ internal sealed class TranscriptComposerInput
         Func<Action<byte[]>?> resolvePastedImageSink)
     {
         _inputBox = inputBox;
+        _composerBorder = composerBorder;
         _tryGetPastedBitmap = tryGetPastedBitmap;
         _tryGetPastedText = tryGetPastedText;
         _hasComposer = hasComposer;
@@ -175,6 +179,55 @@ internal sealed class TranscriptComposerInput
             // rather than crash the UI thread.
         }
     }
+
+    // AC-726: a file dragged in from the desktop's file manager. Only a transfer that actually carries files is
+    // claimed — anything else (dragged text, a selection from another box) falls through to the TextBox's own
+    // drop handling untouched. Contains() rather than reading the files out, because this runs per pointer move.
+    internal void OnDragOver(object? sender, DragEventArgs e)
+    {
+        if (!e.DataTransfer.Contains(DataFormat.File))
+        {
+            return;
+        }
+
+        e.DragEffects = DragDropEffects.Copy;
+        e.Handled = true;
+        _SetDropTarget(true);
+    }
+
+    internal void OnDragLeave(object? sender, DragEventArgs e) => _SetDropTarget(false);
+
+    internal void OnDrop(object? sender, DragEventArgs e)
+    {
+        _SetDropTarget(false);
+        var paths = e.DataTransfer.TryGetFiles()?.Select(file => file.TryGetLocalPath()).OfType<string>().ToArray();
+        if (paths is not { Length: > 0 })
+        {
+            return;
+        }
+
+        e.Handled = true;
+        InsertDroppedPaths(paths);
+        _inputBox.Focus();
+    }
+
+    // Space-separated, and a path containing a space wrapped in double quotes — what a shell and most agents
+    // expect of a path list. The trailing space is the mention convention above: typing straight after a drop
+    // should not run into the path.
+    internal void InsertDroppedPaths(IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 0)
+        {
+            return;
+        }
+
+        _InsertText(string.Join(" ", paths.Select(_QuoteIfSpaced)) + " ");
+    }
+
+    private static string _QuoteIfSpaced(string path) =>
+        path.Contains(' ', StringComparison.Ordinal) ? $"\"{path}\"" : path;
+
+    private void _SetDropTarget(bool active) => _composerBorder.Classes.Set("fileDropTarget", active);
 
     // Inserts text at the caret, replacing any current selection — mirrors a normal paste.
     private void _InsertText(string text)

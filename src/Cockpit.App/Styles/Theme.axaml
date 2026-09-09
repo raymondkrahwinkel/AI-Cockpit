@@ -1906,4 +1906,15 @@
         <Setter Property="Padding" Value="10"/>
     </Style>
 
+    <!-- AC-726: the composer while a file is being dragged over its pane. Same accent language as AC-962's dock
+         drop zone, so "this is where it lands" reads the same in both places — and it lives here rather than in
+         a view's own styles because SessionView and AssistantChatView both wear it. Brush and fill only: the
+         border thickness stays put, so nothing shifts under the pointer halfway through the drag. -->
+    <Style Selector="Border.fileDropTarget">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Background">
+            <SolidColorBrush Color="{StaticResource CockpitAccentColor}" Opacity="0.22"/>
+        </Setter>
+    </Style>
+
 </Styles>
