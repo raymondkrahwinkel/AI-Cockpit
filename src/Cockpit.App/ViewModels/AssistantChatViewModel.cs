@@ -186,6 +186,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _isDocked;
 
+    // AC-1301: whether that host is the Simple stand's conversation column — the third one, beside the floating
+    // window and the dock rail. It is the only host that stand has, so the header's Dock/Undock button stands
+    // down here: undocking would pop the conversation out and leave the column it fills empty.
+    [ObservableProperty]
+    private bool _isSimpleViewHost;
+
     // Everything else the operator had in flight (input text, attachments, the mention picker) is already on this view
     // model, and the transcript comes from the session: the scroll offset is the only thing a fresh view per host would
     // otherwise lose (AC-953).

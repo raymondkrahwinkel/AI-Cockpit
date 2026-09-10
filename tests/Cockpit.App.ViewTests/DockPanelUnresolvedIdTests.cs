@@ -36,7 +36,7 @@ public sealed class DockPanelUnresolvedIdTests
                 var content = main.GetVisualDescendants().OfType<ContentControl>().First(c => c.Name == "DockPanelContent");
                 Assert.Null(content.Content);
 
-                var rail = main.GetVisualDescendants().OfType<Grid>().First(g => g.Name == "RootGrid").ColumnDefinitions[4];
+                var rail = main.GetVisualDescendants().OfType<Grid>().First(g => g.Name == "PanelsRoot").ColumnDefinitions[4];
                 Assert.Equal(40, rail.Width.Value);
             }
             finally
@@ -61,7 +61,7 @@ public sealed class DockPanelUnresolvedIdTests
 
             try
             {
-                var rail = main.GetVisualDescendants().OfType<Grid>().First(g => g.Name == "RootGrid").ColumnDefinitions[4];
+                var rail = main.GetVisualDescendants().OfType<Grid>().First(g => g.Name == "PanelsRoot").ColumnDefinitions[4];
                 Assert.Equal(40, rail.Width.Value);
 
                 // DockPanelRegistry.Changed fires OnPropertyChanged(DockPanels)/(HasDockPanels) synchronously off

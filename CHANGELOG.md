@@ -32,6 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the cockpit now has a second stand of the same window. **Simple** shows one conversation — the
+  assistant's — filling the window beside the left column; **Panels** is the cockpit as it has always been, with
+  the sidebar, the workspace strip, the sessions grid, the dock rail and the status bar all still there. Nothing
+  was taken out of the panels stand to make room for the other one. A Simple/Panels switch sits low in the left
+  column in both stands and changes what is on screen right now; which stand the cockpit *opens* in is a setting
+  of its own, in Options → Appearance, and it stays on Panels unless you say otherwise. The stand is remembered
+  for the machine, not per project, so switching project never changes the shape of the window. Each stand keeps
+  its own selection, so switching there and back returns you to what you were looking at in that one.
+
 - added: dragging a file in from the file manager and dropping it on a session pane or on the assistant chat —
   the floating window and the docked rail alike — puts its full path into the message box at the caret, leaving
   whatever you had already typed where it was. Drop several at once and they arrive space-separated, with any

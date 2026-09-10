@@ -86,6 +86,7 @@ public partial class CockpitView : UserControl
         _ApplySidebarWidth();
         _ApplyDockRailWidth();
         _RebuildDockPanelContent();
+        _RebuildSimpleChatHost();
 
         if (DataContext is CockpitViewModel cockpit)
         {
@@ -244,6 +245,11 @@ public partial class CockpitView : UserControl
             _ApplyDockRailWidth();
             _RebuildDockPanelContent();
         }
+        else if (e.PropertyName is nameof(CockpitViewModel.SimpleView)
+                 or nameof(CockpitViewModel.CreateSimpleViewChatView))
+        {
+            _RebuildViewModeHosts();
+        }
         else if (e.PropertyName == nameof(CockpitViewModel.SelectedSession))
         {
             // Any selection change — the sidebar-switch shortcut, a sidebar click, or a pane click — moves
@@ -315,7 +321,7 @@ public partial class CockpitView : UserControl
         var column = _SidebarColumn();
         column.MinWidth = collapsed ? 0 : LayoutSettings.MinSidebarWidth;
         column.Width = new GridLength(collapsed ? CollapsedRailWidth : cockpit.SidebarWidth);
-        RootGrid.ColumnDefinitions[1].Width = new GridLength(collapsed ? 0 : 4);
+        PanelsRoot.ColumnDefinitions[1].Width = new GridLength(collapsed ? 0 : 4);
     }
 
     // The GridSplitter already clamps the drag itself (the column's MinWidth/MaxWidth), so the settled
@@ -333,7 +339,7 @@ public partial class CockpitView : UserControl
 
     // x:Name on a ColumnDefinition doesn't generate a code-behind field (unlike a Control), so it's
     // reached through the named root Grid instead.
-    private ColumnDefinition _SidebarColumn() => RootGrid.ColumnDefinitions[0];
+    private ColumnDefinition _SidebarColumn() => PanelsRoot.ColumnDefinitions[0];
 
     // AC-951: the dock rail's mirror image of `_ApplySidebarWidth` above — same reasoning, same shape.
     // Collapsed (no panel open): the rail column shrinks to the 40px tab strip and the splitter gives up its
@@ -354,7 +360,7 @@ public partial class CockpitView : UserControl
         column.MinWidth = collapsed ? 0 : LayoutSettings.MinDockRailWidth;
         column.Width = new GridLength(
             !cockpit.HasDockPanels ? 0 : collapsed ? CollapsedRailWidth : cockpit.DockRailWidth);
-        RootGrid.ColumnDefinitions[3].Width = new GridLength(collapsed ? 0 : 4);
+        PanelsRoot.ColumnDefinitions[3].Width = new GridLength(collapsed ? 0 : 4);
     }
 
     private async void OnDockRailSplitterDragCompleted(object? sender, VectorEventArgs e)
@@ -367,7 +373,7 @@ public partial class CockpitView : UserControl
         await cockpit.SetDockRailWidthAsync(_DockRailColumn().Width.Value);
     }
 
-    private ColumnDefinition _DockRailColumn() => RootGrid.ColumnDefinitions[4];
+    private ColumnDefinition _DockRailColumn() => PanelsRoot.ColumnDefinitions[4];
 
     // Builds the open panel's content fresh each time it opens — `DockPanelRegistration.CreateView` is a plain
     // factory, not a per-instance context to reattach, so there is nothing to preserve across a close/reopen
@@ -379,9 +385,45 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        DockPanelContent.Content = cockpit.OpenDockPanelId is { } panelId
+        // AC-1301: nothing stands in the rail while the Simple stand is on screen. The rail's own state
+        // (`AssistantDocked`, `OpenDockPanelId`) is left untouched, so the panels stand comes back exactly
+        // as it was rather than rebuilt from a default.
+        DockPanelContent.Content = !cockpit.SimpleView && cockpit.OpenDockPanelId is { } panelId
             ? cockpit.DockPanels.FirstOrDefault(panel => panel.Id == panelId)?.CreateView()
             : null;
+    }
+
+    // AC-1301: the two stands host the same assistant chat view model, so only one of them may hold a live
+    // view of it. Old host down before the new one goes up, so the leaving view writes its scroll position
+    // before the arriving one reads it — the ordering `_ShowInAsync` documents (AC-953).
+    private void _RebuildViewModeHosts()
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        if (cockpit.SimpleView)
+        {
+            _RebuildDockPanelContent();
+            _RebuildSimpleChatHost();
+            return;
+        }
+
+        _RebuildSimpleChatHost();
+        _RebuildDockPanelContent();
+    }
+
+    // The Simple stand's conversation column, `_RebuildDockPanelContent`'s twin: the chat view comes from a
+    // factory the assistant coordinator owns, and is cleared rather than merely hidden on the way out.
+    private void _RebuildSimpleChatHost()
+    {
+        if (SimpleChatHost is null || DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        SimpleChatHost.Content = cockpit.SimpleView ? cockpit.CreateSimpleViewChatView?.Invoke() : null;
     }
 
     // Renders the plugin-contributed left-menu buttons and sections (#14) and keeps them in sync: plugins

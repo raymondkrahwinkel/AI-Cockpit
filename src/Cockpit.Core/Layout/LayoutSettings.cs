@@ -48,6 +48,11 @@ public sealed record LayoutSettings
     // requiring the tray toggle every time.
     public bool CompanionWindowVisible { get; init; }
 
+    // Which stand the cockpit opens in (AC-1301): the Simple one — a single conversation filling the window —
+    // or the panels stand. Off by default, so an existing install opens exactly as it did. The Simple/Panels
+    // switch at the bottom of the left column changes what is on screen now and leaves this alone.
+    public bool OpenInSimpleView { get; init; }
+
     public const double DefaultSidebarWidth = 180;
     public const double MinSidebarWidth = 180;
     public const double MaxSidebarWidth = 480;

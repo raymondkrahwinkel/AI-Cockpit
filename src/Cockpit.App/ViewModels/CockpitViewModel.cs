@@ -916,6 +916,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public bool IsAssistantDropZoneVisible => AssistantDropZoneWidth > 0;
 
+    // AC-1301: which stand is on screen right now — the Simple one (a single conversation filling the window) or
+    // the panels stand. Seeded from `OpenInSimpleView` on load and moved by the Simple/Panels switch, which
+    // deliberately does not write back: the switch says what you see now, the setting says what you open in.
+    [ObservableProperty]
+    private bool _simpleView;
+
+    // The setting behind that seed, persisted in the `layout` section of `cockpit.json` and edited in
+    // Options -> Appearance. One stand for the whole cockpit: it is not held per project, and switching project
+    // does not move it.
+    [ObservableProperty]
+    private bool _openInSimpleView;
+
+    // AC-1301 criterion 4: the Simple stand keeps its own selection, apart from `SelectedSession`, so a stand
+    // switch returns to what you were looking at in each rather than to one shared choice. Nothing sets it yet
+    // — the rail that makes a conversation selectable in this stand is AC-1302.
+    [ObservableProperty]
+    private SessionViewModel? _simpleSelectedSession;
+
+    // How the Simple stand builds its conversation column: a factory owned by `AssistantIndicatorCoordinator`,
+    // which is what holds the standing chat view model and knows which hosts there are. Null until it starts,
+    // so the view rebuilds on this as well as on the stand itself.
+    [ObservableProperty]
+    private Func<Control>? _createSimpleViewChatView;
+
+    // The Simple/Panels switch. Two commands rather than one taking the stand as a parameter: a command
+    // parameter would be a string to parse, and there are exactly two stands.
+    [RelayCommand]
+    private void ShowSimpleView() => SimpleView = true;
+
+    [RelayCommand]
+    private void ShowPanelsView() => SimpleView = false;
+
     // What the rail's tab strip lists — read straight off the registry rather than copied into a collection of
     // our own, the same reasoning `WorkspacesViewModel.AvailableWidgets` follows.
     public IReadOnlyList<DockPanelRegistration> DockPanels => _dockPanelRegistry?.Panels ?? [];
@@ -2896,7 +2928,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadUsagePillSettingsAsync();
         _ = LoadSessionBehaviorSettingsAsync();
         _ = LoadScreenshotSettingsAsync();
-        _ = LoadLayoutSettingsAsync();
+        _ = LoadLayoutSettingsAsync(seedCurrentStand: true);
         _ = LoadVoiceSettingsAsync();
         _ = LoadTerminalSettingsAsync();
         _ = LoadShortcutSettingsAsync();
@@ -4480,7 +4512,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DebugSettingsStatus = "Saved";
     }
 
-    private async Task LoadLayoutSettingsAsync()
+    // `seedCurrentStand` only on the startup load: `CancelOptionsAsync` runs this too, and a Cancel that
+    // reset the stand on screen would throw away a Simple/Panels switch the dialog never touched.
+    private async Task LoadLayoutSettingsAsync(bool seedCurrentStand = false)
     {
         if (_layoutSettingsStore is null)
         {
@@ -4498,6 +4532,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DockRailWidth = settings.DockRailWidth;
         OpenDockPanelId = settings.OpenDockPanelId;
         AssistantDocked = settings.AssistantDocked;
+        OpenInSimpleView = settings.OpenInSimpleView;
+
+        // The stand the app opens in is the setting, never the stand last looked at (AC-1301 criterion 1) — this
+        // is the only place the two are joined.
+        if (seedCurrentStand)
+        {
+            SimpleView = settings.OpenInSimpleView;
+        }
     }
 
     // Every layout save writes the whole record, because the store holds one section rather than per-field keys —
@@ -4515,6 +4557,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
         AssistantDocked = AssistantDocked,
+        OpenInSimpleView = OpenInSimpleView,
     };
 
     // AC-953: docking or undocking the assistant moves both settings at once — which host it stands in, and
@@ -6393,6 +6436,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         GlobalStackSessionsVertically = layout.StackSessionsVertically;
         GlobalFocusRailLayout = layout.FocusRailLayout;
         MinimizeToTrayOnClose = layout.MinimizeToTrayOnClose;
+        OpenInSimpleView = layout.OpenInSimpleView;
 
         var voice = new VoiceSettings();
         VoiceEnabled = voice.IsEnabled;

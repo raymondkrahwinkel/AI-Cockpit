@@ -33,6 +33,7 @@ internal static class OptionsStaging
         "NotifyOnSessionFinished",
         "NotifyOnSessionIdle",
         "NotifyWhenAllSessionsIdle",
+        "OpenInSimpleView",
         "OrchestratorMcpEnabled",
         "RenderBackendSelection",
         "ScreenshotGlobalHotkeyEnabled",

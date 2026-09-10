@@ -250,12 +250,18 @@
         </Border>
 
     <Grid x:Name="RootGrid">
-        <!-- One row for AI-Cockpit, one for the status bar (#78). Everything that was here before stays in
-             row 0 by default, so adding the bar did not have to touch a single existing panel. -->
+        <!-- One row for AI-Cockpit, one for the status bar (#78). Row 0 holds the two stands (AC-1301) and
+             the overlays that belong to both of them; the status bar and the window chrome are the same in
+             either stand and sit outside them. -->
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
+
+        <!-- AC-1301: the panels stand, whole and unchanged — a wrapper, not a rearrangement. Nothing was
+             taken out of it to make the Simple stand possible (§6); the two are siblings and one of them is
+             hidden. The columns moved in here with it, so the code-behind that sizes them names this grid. -->
+        <Grid x:Name="PanelsRoot" Grid.Row="0" IsVisible="{Binding !SimpleView}">
         <Grid.ColumnDefinitions>
             <!-- Width set from CockpitViewModel.SidebarWidth in code-behind (#49) — a GridLength column
                  can't compiled-bind straight to the VM's double, so CockpitView.axaml.cs applies it on
@@ -338,6 +344,11 @@
                      panel fills with its last child, which ignores Dock and takes the middle. -->
                 <views:AssistantIndicator DockPanel.Dock="Bottom" Margin="0,8,0,0"
                                           DataContext="{Binding AssistantIndicator}"/>
+
+                <!-- AC-1301: the stand switch, as low in the column as it can go — the second Dock="Bottom"
+                     child, so it sits directly above the chip rather than under it. The chip's own place at the
+                     very bottom is Raymond's ("linksonder", AC-543) and this does not take it. -->
+                <views:ViewModeSwitch DockPanel.Dock="Bottom"/>
 
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the
                      primary session overview per AI-Cockpit's design goal (sidebar = sessions, not tools). -->
@@ -1660,13 +1671,15 @@
             </DockPanel>
         </Border>
 
+        </Grid>
+
         <!-- The toasts (#61), now a control of their own so a plugin's own window shows the same ones. -->
-        <controls:ToastOverlay Grid.Column="0" Grid.ColumnSpan="5"/>
+        <controls:ToastOverlay/>
 
         <!-- The breakdown (#78), rising out of the status bar in the corner the figures are in. It sits in the content
              row, so it floats over the sessions rather than pushing the bar around, and it is anchored bottom-right so
              it lines up with the button that opens it. -->
-        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="5"
+        <Border Grid.Row="0"
                 Classes="resourcePanel"
                 Classes.open="{Binding IsResourcePanelOpen}"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -1784,7 +1797,7 @@
 
         <!-- Status bar (#78): what AI-Cockpit is using right now. The total is AI-Cockpit's own process tree,
              so it already contains every session it spawned; the figures open the breakdown per session. -->
-        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5"
+        <Border Grid.Row="1"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
                 Padding="10,4">
@@ -1871,7 +1884,7 @@
         <!-- AC-962: where the assistant's floating chat docks if it is let go here. Declared last so it lies over
              everything, and never hit-testable — the pointer belongs to the window being dragged, and a zone that
              took it would end the gesture it exists to guide. Width comes from AssistantChatWindow. -->
-        <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Grid.ColumnSpan="5"
+        <Border Grid.Row="0" Grid.RowSpan="2"
                 Classes="assistantDropZone"
                 Classes.active="{Binding IsAssistantDropZoneActive}"
                 IsVisible="{Binding IsAssistantDropZoneVisible}"
@@ -1879,6 +1892,25 @@
                 HorizontalAlignment="Right"
                 Width="{Binding AssistantDropZoneWidth}"
                 BorderThickness="2,0,0,0"/>
+
+        <!-- AC-1301: the Simple stand — one conversation filling the window beside the same left column. The
+             rail in that column is deliberately near-empty here: what goes in it is AC-1302. -->
+        <Grid x:Name="SimpleRoot" Grid.Row="0" ColumnDefinitions="180,*"
+              IsVisible="{Binding SimpleView}">
+            <Border Grid.Column="0" Background="{DynamicResource CockpitSecondaryBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
+                <DockPanel Margin="8">
+                    <views:ViewModeSwitch DockPanel.Dock="Bottom"/>
+                    <!-- Holds the switch down while the rail above it is still empty. -->
+                    <Panel/>
+                </DockPanel>
+            </Border>
+
+            <!-- The conversation. Filled in code-behind from `CockpitViewModel.CreateSimpleViewChatView`, the
+                 dock rail's pattern: the chat view is built by a factory that hands the standing conversation
+                 over between hosts, not by a binding that would build a second one. -->
+            <ContentControl Grid.Column="1" x:Name="SimpleChatHost"/>
+        </Grid>
     </Grid>
     </DockPanel>
 </UserControl>

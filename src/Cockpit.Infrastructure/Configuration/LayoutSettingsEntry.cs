@@ -27,6 +27,8 @@ internal sealed class LayoutSettingsEntry
 
     public bool CompanionWindowVisible { get; set; }
 
+    public bool OpenInSimpleView { get; set; }
+
     public static LayoutSettingsEntry FromDomain(LayoutSettings settings) => new()
     {
         SingleSessionLayout = settings.SingleSessionLayout,
@@ -40,6 +42,7 @@ internal sealed class LayoutSettingsEntry
         OpenDockPanelId = settings.OpenDockPanelId,
         AssistantDocked = settings.AssistantDocked,
         CompanionWindowVisible = settings.CompanionWindowVisible,
+        OpenInSimpleView = settings.OpenInSimpleView,
     };
 
     public LayoutSettings ToDomain() => new()
@@ -55,5 +58,6 @@ internal sealed class LayoutSettingsEntry
         OpenDockPanelId = OpenDockPanelId,
         AssistantDocked = AssistantDocked,
         CompanionWindowVisible = CompanionWindowVisible,
+        OpenInSimpleView = OpenInSimpleView,
     };
 }

@@ -193,6 +193,7 @@
                          this whole button row per host; the coordinator does the swap (it is what knows which
                          hosts there are), this only asks for it. -->
                     <Button x:Name="DockToggleButton" Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
+                            IsVisible="{Binding !IsSimpleViewHost}"
                             Command="{Binding ToggleDockCommand}"
                             ToolTip.Tip="{Binding IsDocked, Converter={x:Static conv:DockToggleConverter.Tip}}">
                         <materialIcons:MaterialIcon Kind="{Binding IsDocked, Converter={x:Static conv:DockToggleConverter.Icon}}"

@@ -304,6 +304,10 @@ internal static class Screenshotter
         ["agent-line"] = (_, _) => new AgentLineInspectorDialog { DataContext = _AgentLine() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
         ["session"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
+        // AC-1301: the Simple stand. Its own scene because it is the one thing no other scene can show — that
+        // the panels stand is hidden rather than dismantled, and that the title bar and the status bar around
+        // both stands are the same in either.
+        ["simple-view"] = (_, _) => new MainWindow { DataContext = _SimpleStand() },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -2044,6 +2048,29 @@ internal static class Screenshotter
 
         return new ViewModels.AssistantChatViewModel(
             host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue(), indicator: indicator);
+    }
+
+    // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
+    // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
+    private static ViewModels.CockpitViewModel _SimpleStand()
+    {
+        var conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
+        conversation.Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.UserText, "what is still open on AC-1297?"));
+        conversation.Transcript.Add(new TranscriptEntryViewModel(
+            TranscriptEntryKind.AssistantText, "Five subtickets. **AC-1302** is the next one — it fills the rail beside this conversation."));
+
+        return new ViewModels.CockpitViewModel
+        {
+            SimpleView = true,
+            CreateSimpleViewChatView = () =>
+            {
+                var chat = _AssistantChatViewModel(conversation);
+                chat.IsDocked = true;
+                chat.IsSimpleViewHost = true;
+                return new AssistantChatView { DataContext = chat };
+            },
+        };
     }
 
     // AC-953: the assistant docked into the rail, built the way production builds it — the real `DockPanelRegistry`

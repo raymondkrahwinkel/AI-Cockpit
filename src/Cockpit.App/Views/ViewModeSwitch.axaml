@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="180"
+             x:Class="Cockpit.App.Views.ViewModeSwitch"
+             x:DataType="vm:CockpitViewModel">
+
+    <!-- AC-1301: the Simple/Panels switch, at the bottom of the left column in both stands and in the same
+         place in each — a control of its own rather than the markup twice, so the two cannot drift apart.
+         Labels are Simple and Panels and not Simple and Advanced: on a button, "Advanced" is a judgement of
+         the person pressing it, and these say what you get instead. -->
+    <StackPanel Spacing="4" Margin="0,8,0,0">
+        <!-- One framed track holding both segments (AC-789), same as the Projects layout switch: the border and
+             the inset surface belong to this Border, `ToggleButton.Segment` draws neither. -->
+        <Border CornerRadius="{DynamicResource CockpitPillRadius}" Padding="2"
+                Background="{DynamicResource CockpitInsetBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
+            <UniformGrid Columns="2">
+                <ToggleButton Classes="Compact Segment"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                              IsChecked="{Binding SimpleView, Mode=OneWay}"
+                              Command="{Binding ShowSimpleViewCommand}"
+                              Content="Simple"
+                              ToolTip.Tip="One conversation, filling the window"/>
+                <ToggleButton Classes="Compact Segment"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                              IsChecked="{Binding !SimpleView, Mode=OneWay}"
+                              Command="{Binding ShowPanelsViewCommand}"
+                              Content="Panels"
+                              ToolTip.Tip="The sessions grid with the sidebar, the workspace strip and the dock rail"/>
+            </UniformGrid>
+        </Border>
+
+        <!-- Not decoration: it is the whole difference between this switch and the setting behind it. -->
+        <TextBlock Text="Changes what you see now. Your default is in Options → Appearance."
+                   FontSize="10.5" TextWrapping="Wrap"
+                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+    </StackPanel>
+</UserControl>

@@ -902,6 +902,14 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Shows one session large (the focus) with the rest as a live miniature rail beside it — drag the divider between them to resize. No effect when showing one session at a time or stacking vertically."/>
                         </StackPanel>
+                        <!-- AC-1301: the stand the cockpit opens in, not the one on screen — the Simple/Panels
+                             switch at the bottom of the left column does that, and leaves this alone. -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <CheckBox Content="Open in the Simple view (one conversation, no panels)"
+                                      IsChecked="{Binding OpenInSimpleView}"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="Which stand the cockpit opens in. The Simple/Panels switch at the bottom of the left column changes what you see now; this is what the next start comes back to."/>
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Minimize to tray when closing the window"
                                       IsChecked="{Binding MinimizeToTrayOnClose}"/>
