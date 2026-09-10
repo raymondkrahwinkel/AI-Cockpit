@@ -444,13 +444,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     partial void OnAbandonedProcessCountChanged(int value) => OnPropertyChanged(nameof(ProcessActivityLabel));
 
-    // Short human-readable label for `SessionStatus`, for the sidebar status row.
+    // Short human-readable label for `SessionStatus`, for the sidebar status row. AC-1309: Failed's wording and
+    // brush are a placeholder — the considered sidebar treatment (label, colour class, tooltip) is subticket c's.
     public string SessionStatusLabel => SessionStatus switch
     {
         SessionStatus.Busy => "Busy",
         SessionStatus.WorkingBackground => "Working (background)",
         SessionStatus.NeedsAttention => "Needs attention",
         SessionStatus.Done => "Done",
+        SessionStatus.Failed => "Failed",
         _ => "Idle",
     };
 
@@ -1699,12 +1701,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // verify tool result instead, so this is only the image a tool result cannot carry.
     public abstract Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng);
 
-    // Theme brush resource key for the status dot — resolved in the view via a converter.
+    // Theme brush resource key for the status dot — resolved in the view via a converter. AC-1309: Failed
+    // borrows the waiting brush so it stands out rather than reading as idle; subticket c may give it its own.
     public string SessionStatusBrushKey => SessionStatus switch
     {
         SessionStatus.Busy => "CockpitStatusBusyBrush",
         SessionStatus.WorkingBackground => "CockpitStatusBackgroundBrush",
-        SessionStatus.NeedsAttention => "CockpitStatusWaitingBrush",
+        SessionStatus.NeedsAttention or SessionStatus.Failed => "CockpitStatusWaitingBrush",
         SessionStatus.Done => "CockpitStatusDoneBrush",
         _ => "CockpitTextFaintBrush",
     };
