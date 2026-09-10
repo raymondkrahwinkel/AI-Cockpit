@@ -1,4 +1,5 @@
 {
+  "audience": ["developer"],
   "category": "Productivity",
   "icon": "🌿",
   "logoAsset": "git-status.svg",
