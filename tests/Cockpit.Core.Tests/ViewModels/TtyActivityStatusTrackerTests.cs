@@ -268,16 +268,22 @@ public class TtyActivityStatusTrackerTests
     }
 
     [Fact]
-    public void ASessionRunningNothingBesideItsOwnShell_StillFallsToDoneAfterTheSafetyTimeout()
+    public void RunningWork_LengthensTheSafetyTimeout_ItDoesNotRemoveIt()
     {
-        // The counterproof: the samples keep arriving for a live pane, and they say nothing is running — its own
-        // pty is not work. A predicate that leant on the bare process count would never see this and would strand
-        // every terminal on Busy for good, which is worse than the premature Done it set out to fix.
-        var tracker = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
-        tracker.OnActivity(SessionActivity.Busy, T0);
+        // Both sides of the same claim: the timeout still exists, only its length depends on whether the session
+        // is running anything. A process that never ends — `tail -f`, a dev server — must still reach Done, or the
+        // pane is pinned on Busy and `RequiresCloseConfirmation` with it, which is AC-276's objection returning.
+        var quiet = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+        var working = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+        quiet.OnActivity(SessionActivity.Busy, T0);
+        working.OnActivity(SessionActivity.Busy, T0);
 
-        Assert.Equal(SessionStatus.Busy, tracker.OnProcessSample(hasProcesses: false, T0 + TimeSpan.FromSeconds(2)));
-        Assert.Equal(SessionStatus.Busy, tracker.OnProcessSample(hasProcesses: false, T0 + TimeSpan.FromSeconds(4)));
-        Assert.Equal(SessionStatus.Done, tracker.Poll(T0 + TimeSpan.FromSeconds(121)));
+        // Nothing running beside its own shell: the ordinary two-minute timeout stands.
+        quiet.OnProcessSample(hasProcesses: false, T0 + TimeSpan.FromSeconds(2));
+        Assert.Equal(SessionStatus.Done, quiet.Poll(T0 + TimeSpan.FromSeconds(121)));
+
+        // A process that never ends: held far past two minutes, but not forever.
+        Assert.Equal(SessionStatus.Busy, working.OnProcessSample(hasProcesses: true, T0 + TimeSpan.FromMinutes(9)));
+        Assert.Equal(SessionStatus.Done, working.OnProcessSample(hasProcesses: true, T0 + TimeSpan.FromMinutes(11)));
     }
 }

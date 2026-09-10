@@ -481,10 +481,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - fixed: a terminal session that sits quiet for two minutes while a tool or a slow MCP server answers no longer
   reads as "Done". The cockpit now looks at what the session actually has running: while it holds processes of its
-  own beyond its shell, the pane keeps saying it is working, which is what an agent-chat pane in the same spot has
-  always said. A session that is genuinely finished still turns Done — its own terminal does not count as work —
-  and a short command flickering past cannot flip the sidebar back and forth, since a session is only called quiet
-  after two consecutive readings say so.
+  own beyond its shell, the pane goes on saying it is working, which is what an agent-chat pane in the same spot
+  has always said. A session that is genuinely finished still turns Done — its own terminal does not count as
+  work — and one running something that never ends, a dev server or a `tail -f`, turns Done after ten minutes of
+  silence rather than sitting on "working" for good and asking every time you try to close it. A short command
+  flickering past cannot flip the sidebar back and forth either: a session is called quiet only once two
+  consecutive readings say so.
 
 - fixed: the store's publish pipeline no longer drops a plugin's curated work-kind tag every time it republishes,
   which is why the first-run wizard's work-kind step had quietly gone back to showing every plugin unchecked
