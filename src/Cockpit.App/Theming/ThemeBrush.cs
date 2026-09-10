@@ -10,7 +10,7 @@ public static class ThemeBrush
     // The named brush from the app's live resources, or a brush parsed from `fallbackHex` when no
     // `Application` resources exist (design-time preview, unit tests).
     public static IBrush Resolve(string key, string fallbackHex) =>
-        Application.Current is { } app && app.TryGetResource(key, null, out var value) && value is IBrush brush
+        Application.Current is { } app && app.TryGetResource(key, app.ActualThemeVariant, out var value) && value is IBrush brush
             ? brush
             : new SolidColorBrush(Color.Parse(fallbackHex));
 }

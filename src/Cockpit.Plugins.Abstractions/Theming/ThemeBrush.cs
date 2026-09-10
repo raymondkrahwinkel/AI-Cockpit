@@ -15,7 +15,7 @@ namespace Cockpit.Plugins.Abstractions.Theming;
 internal static class ThemeBrush
 {
     public static IBrush Resolve(string key, string fallbackHex) =>
-        Application.Current is { } app && app.TryGetResource(key, null, out var value) && value is IBrush brush
+        Application.Current is { } app && app.TryGetResource(key, app.ActualThemeVariant, out var value) && value is IBrush brush
             ? brush
             : new SolidColorBrush(Color.Parse(fallbackHex));
 }

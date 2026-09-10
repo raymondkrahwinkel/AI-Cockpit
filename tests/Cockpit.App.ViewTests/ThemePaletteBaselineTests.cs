@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Styling;
+using Cockpit.App.Theming;
 using Cockpit.TestSupport;
 
 namespace Cockpit.App.ViewTests;
@@ -82,6 +84,34 @@ public class ThemePaletteBaselineTests
             ?? throw new InvalidOperationException("The theme has no CockpitTextPrimaryColor."));
 
         Assert.Contains(ThemePalette.Hex(primary), _Painted("options"), StringComparison.Ordinal);
+    });
+
+    [Fact]
+    public void ThemeBrush_ResolvesTheApplicationsActualThemeVariant() => HeadlessAvalonia.Run(() =>
+    {
+        var app = Application.Current!;
+        var resources = app.Resources;
+        var variant = app.RequestedThemeVariant;
+        var expected = new SolidColorBrush(Colors.Red);
+
+        try
+        {
+            app.Resources = new ResourceDictionary
+            {
+                ThemeDictionaries =
+                {
+                    [ThemeVariant.Dark] = new ResourceDictionary { ["ThemeBrushVariantTest"] = expected },
+                },
+            };
+            app.RequestedThemeVariant = ThemeVariant.Dark;
+
+            Assert.Same(expected, ThemeBrush.Resolve("ThemeBrushVariantTest", "#000000"));
+        }
+        finally
+        {
+            app.Resources = resources;
+            app.RequestedThemeVariant = variant;
+        }
     });
 
     private static string _Painted(string scene)
