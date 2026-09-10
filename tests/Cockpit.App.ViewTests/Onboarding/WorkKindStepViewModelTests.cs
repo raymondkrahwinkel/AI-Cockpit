@@ -30,6 +30,10 @@ public class WorkKindStepViewModelTests : IDisposable
           "versions": [ { "version": "2.0.0", "path": "pull-requests/pr-2.0.0.zip", "abstractionsVersion": 1, "sha256": "bbb222" } ] },
         { "id": "clock", "name": "Clock", "author": "Cockpit", "latestVersion": "0.9.0",
           "versions": [ { "version": "0.9.0", "path": "clock/clock-0.9.0.zip", "abstractionsVersion": 1 } ] },
+        { "id": "example-companion-tool", "name": "Example Companion Tool", "author": "Cockpit", "latestVersion": "0.1.0",
+          "versions": [ { "version": "0.1.0", "path": "example-companion-tool/example-0.1.0.zip", "abstractionsVersion": 1 } ] },
+        { "id": "example-workspace", "name": "Example Workspace", "author": "Cockpit", "latestVersion": "0.1.0",
+          "versions": [ { "version": "0.1.0", "path": "example-workspace/example-0.1.0.zip", "abstractionsVersion": 1 } ] },
         { "id": "claude-provider", "name": "Claude", "author": "Cockpit", "latestVersion": "1.0.0", "category": "AI providers",
           "versions": [ { "version": "1.0.0", "path": "claude-provider/claude-1.0.0.zip", "abstractionsVersion": 1 } ] }
       ]
@@ -81,14 +85,16 @@ public class WorkKindStepViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task ChoosingAWorkKind_TicksThePluginsItNames_AndTheGenericOnes()
+    public async Task ChoosingAWorkKind_TicksOnlyThePluginsItNames()
     {
         var viewModel = _ViewModel();
         await viewModel.LoadAsync();
 
         viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
 
-        Assert.Equal(new[] { "GitHub Issues", "GitHub Pull Requests", "Clock" }, _Ticked(viewModel));
+        Assert.Equal(new[] { "GitHub Issues", "GitHub Pull Requests" }, _Ticked(viewModel));
+        Assert.False(viewModel.Plugins.Single(row => row.Name == "Example Companion Tool").IsSelected);
+        Assert.False(viewModel.Plugins.Single(row => row.Name == "Example Workspace").IsSelected);
     }
 
     [Fact]
@@ -108,8 +114,6 @@ public class WorkKindStepViewModelTests : IDisposable
     /// <summary>
     /// The mechanism ("a new selection replaces the old ticks") does not depend on a second real chip existing —
     /// today's set has only "Developer" (criterion 6) — so this proves it with a work kind built on the spot.
-    /// A generic plugin still ticks under that kind too, since it is generic for every kind, not just the ones
-    /// the wizard happens to offer as chips.
     /// </summary>
     [Fact]
     public async Task ChoosingADifferentWorkKind_ReplacesTheFirstsTicks_RatherThanAddingToThem()
@@ -121,7 +125,7 @@ public class WorkKindStepViewModelTests : IDisposable
         viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
         viewModel.SelectedWorkKind = otherKind;
 
-        Assert.Equal(new[] { "Clock" }, _Ticked(viewModel));
+        Assert.Empty(_Ticked(viewModel));
     }
 
     /// <summary>

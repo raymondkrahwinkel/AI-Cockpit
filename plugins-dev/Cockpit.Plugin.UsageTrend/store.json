@@ -1,4 +1,5 @@
 {
+  "audience": ["planning-and-tracking-work"],
   "category": "Widgets",
   "icon": "📈",
   "logoAsset": "usage-trend.svg",

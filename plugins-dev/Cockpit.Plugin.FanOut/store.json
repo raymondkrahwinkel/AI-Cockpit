@@ -1,4 +1,5 @@
 {
+  "audience": ["planning-and-tracking-work"],
   "category": "Automation",
   "icon": "🍴",
   "logoAsset": "fan-out.svg",
