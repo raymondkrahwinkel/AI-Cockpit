@@ -118,9 +118,12 @@
             <ItemsControl ItemsSource="{Binding Jobs}" IsVisible="{Binding HasJobs}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:ProjectJobChoice">
+                        <!-- AC-1304: from the host's `JobCommand`, not from `Actions.StartJob` — the two surfaces
+                             that list jobs want different things to happen, and the card is not the one that
+                             knows which. -->
                         <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                 Padding="10,7" Margin="0,0,0,4"
-                                Command="{Binding $parent[ItemsControl].((vm:ProjectCardViewModel)DataContext).Actions.StartJob}"
+                                Command="{Binding $parent[controls:ProjectCardView].JobCommand}"
                                 CommandParameter="{Binding}">
                             <StackPanel Spacing="2">
                                 <TextBlock Text="{Binding Job.Prompt}" FontSize="12" TextWrapping="Wrap"/>

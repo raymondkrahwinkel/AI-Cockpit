@@ -468,8 +468,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public bool ShowSessionGrid => HasSessionsHere && Workspaces.IsSessionsActive;
 
     // The "no sessions yet" prompt: only on a Sessions workspace, since a dashboard cannot hold a session and has its
-    // own empty state.
-    public bool ShowSessionEmptyState => !HasSessionsHere && Workspaces.IsSessionsActive;
+    // own empty state. AC-1304: and never in the Simple stand, whose column is always covered — by a conversation
+    // or by the start screen — and whose "+ New session" opens the dialog this one offers.
+    public bool ShowSessionEmptyState => !HasSessionsHere && Workspaces.IsSessionsActive && !SimpleView;
 
     // Whether the workspace now showing holds any session. Deliberately not `HasSessions`: a fresh
     // second workspace has to greet you with the empty state, even while the first one is full of running
@@ -933,7 +934,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     [NotifyPropertyChangedFor(nameof(ShowPanelsSidebar))]
     [NotifyPropertyChangedFor(nameof(ShowDockRail))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
+    [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
     private bool _simpleView;
+
+    // AC-1304: the start screen — "which project do you want to work on" — holds the conversation column while
+    // this is set. One flag rather than a screen per door: `+ New session` sets it, and the other two doors reach
+    // the same screen through the column simply having nothing to draw (criterion 1(a)).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
+    private bool _simpleStartScreenRequested;
 
     // The setting behind that seed, persisted in the `layout` section of `cockpit.json` and edited in
     // Options -> Appearance. One stand for the whole cockpit: it is not held per project, and switching project
@@ -949,6 +963,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
     [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     [NotifyPropertyChangedFor(nameof(ShowDockRail))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
     private SessionPanelViewModel? _simpleSelectedSession;
 
     // AC-1302: the standing assistant chat, which is what carries the relation AC-1300 established. Set by
@@ -979,8 +994,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The other half of the same answer. With no assistant session there is nothing to put in either place: a
     // picked session then takes the column on its own, there is no dock, and no way back is drawn to it
     // (criterion 4(b)) — both of these are false at once, which is what says so.
+
+    // AC-1304: and the start screen takes precedence over both — asked for it, the column holds the question
+    // rather than the conversation that stood there.
     public bool SimpleStandShowsTheAssistantInTheMainColumn =>
-        SimpleView && AssistantRootSession is not null && !SimpleStandDocksTheAssistant;
+        SimpleView && AssistantRootSession is not null && !SimpleStandDocksTheAssistant
+        && !SimpleStartScreenRequested;
+
+    // AC-1304 criterion 1(a): the three doors, answered in one place. `+ New session` sets the flag; closing the
+    // last conversation and a first start reach the same screen by leaving the column with nothing to draw.
+    public bool SimpleStandShowsTheStartScreen =>
+        SimpleView
+        && (SimpleStartScreenRequested || (SimpleSelectedSession is null && AssistantRootSession is null));
 
     // AC-1303: which panel the rail shows. In the Simple stand this follows the roles above and is deliberately
     // not written back: `OpenDockPanelId` is the panels stand's own stored choice, and docking here by picking a
@@ -1017,7 +1042,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(SimpleStandShowsTheAssistantInTheMainColumn));
             OnPropertyChanged(nameof(EffectiveOpenDockPanelId));
             OnPropertyChanged(nameof(ShowDockRail));
+
+            // AC-1304: switching the assistant off with nothing picked empties the column, which is the third
+            // door onto the start screen — and switching it back on takes the screen away again.
+            OnPropertyChanged(nameof(SimpleStandShowsTheStartScreen));
         }
+    }
+
+    // AC-1304 criterion 1(a): `+ New session` in the Simple stand asks for the start screen rather than the
+    // New-session dialog. The selection goes first, so the stand lands in one state — the question in the column,
+    // nothing docked beside it — rather than the screen laid over a conversation still marked as picked.
+    [RelayCommand]
+    private void ShowSimpleStartScreen()
+    {
+        SimpleSelectedSession = null;
+        SimpleStartScreenRequested = true;
     }
 
     // AC-1302: the rail's producer for the Simple stand's own selection. Separate from `SelectSession`, which
@@ -1037,6 +1076,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (newValue is not null)
         {
             newValue.IsSelectedInSimpleStand = true;
+
+            // AC-1304: picking a conversation is the answer to the question the start screen asks, so the screen
+            // stands down here rather than at each of the places that can pick one — the rail, `Go there`, and a
+            // project just started from the screen itself.
+            SimpleStartScreenRequested = false;
         }
 
         // AC-1303: and it is what the main column shows in this stand, so the panes follow it.
@@ -5412,7 +5456,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // sidebar's ▶ and the launcher's Start. What it opens with is `ProjectQuickStart`'s to answer; this
     // only launches it, through the same path the dialog's result takes.
     [RelayCommand]
-    private async Task StartProjectSessionAsync(Project? project)
+    private Task StartProjectSessionAsync(Project? project) => _QuickStartProjectAsync(project, prompt: null);
+
+    // AC-1304 criterion 2(a) and 3(a): a job started straight away, the way Start above already is — the start
+    // screen's own answer for a job. `StartProjectJobAsync` keeps the dialog it has offered since AC-491; which of
+    // the two a surface wants is the surface's to say (`ProjectCardView.JobCommand`), not this command's to guess.
+    [RelayCommand]
+    private Task StartProjectJobNowAsync(ProjectJobChoice? choice) =>
+        _QuickStartProjectAsync(choice?.Project, choice?.Job.Prompt);
+
+    // The dialog-free start, carrying `prompt` when a job was picked. The prompt is placed in the composer once the
+    // session exists, through the same seam the dialog route uses — nothing is sent, which is the promise the start
+    // screen makes out loud (criterion 3).
+    private async Task _QuickStartProjectAsync(Project? project, string? prompt)
     {
         if (project is null)
         {
@@ -5424,14 +5480,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // Only the name changes; that it is composed came with the result, and stays with it (#AC-324) — and being
             // composed is also what gets it numbered against the sessions already open, in
             // _LaunchSessionFromResultAsync.
-            await _LaunchSessionFromResultAsync(result with { SessionName = project.Name });
+            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = project.Name });
+            var started = Sessions.FirstOrDefault(session => session.PaneId == paneId);
+            if (prompt is not null)
+            {
+                started?.InjectText(prompt);
+            }
+
+            // AC-1304: the Simple stand draws what it has picked, so without this the click would open a session
+            // and change nothing on screen. Written whichever stand did the starting — it is that stand's own
+            // remembered choice (AC-1301 criterion 4), and what was just started is what it should open on.
+            if (started is not null)
+            {
+                SimpleSelectedSession = started;
+            }
 
             return;
         }
 
         // The project names no profile that still exists, so there is nothing to start it on. Ask rather than fail
         // quietly: the dialog opens on the project, leaving the operator only the choice the project cannot make.
-        await NewSessionForProjectAsync(project);
+        // Criterion 4 rests on exactly this: `ComposeAsync` says whether it can start, and nothing here re-asks.
+        await _NewSessionForProjectAsync(project, prompt);
     }
 
     // Opens the New-session dialog on `project` (AC-164) — the "New session…" next to the quick
@@ -8054,6 +8124,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             SelectedSession = Sessions.Count == 0
                 ? null
                 : Sessions[Math.Min(index, Sessions.Count - 1)];
+        }
+
+        // AC-1304 criterion 1(a): the Simple stand's own selection, which nothing cleared — closing the conversation
+        // it drew left the column pointing at a session that no longer exists. Null, not the neighbour the panels
+        // stand falls back to: this stand then draws the assistant, or the start screen — the second of its doors.
+        if (ReferenceEquals(SimpleSelectedSession, session))
+        {
+            SimpleSelectedSession = null;
         }
 
         if (Sessions.Count == 0)

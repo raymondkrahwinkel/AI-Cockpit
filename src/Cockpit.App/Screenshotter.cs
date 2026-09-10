@@ -316,6 +316,9 @@ internal static class Screenshotter
         // AC-1305: the same stand with two sessions waiting for consent outside its column. Its own scene because
         // the notification only exists in that state, and because two at once is the case the prototype never drew.
         ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
+        // AC-1304: the same stand with its column asking which project to work on. Its own scene because the
+        // question only stands there while no conversation does, which every other Simple scene has.
+        ["simple-view-start-screen"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen() },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -2139,6 +2142,17 @@ internal static class Screenshotter
         _Named(cockpit, "kind→staging").PendingConsent = _OpenConsent("Delete the staging namespace", "kubectl delete namespace staging", dangerous: true);
         _Named(cockpit, "AC-1302 de boomrail").PendingConsent = _OpenConsent("Read the pods", "kubectl get pods -n invoices", dangerous: false);
         cockpit.SimpleSelectedSession = null;
+        return cockpit;
+    }
+
+    // AC-1304: the start screen, reached the way the rail's "+ New session" reaches it — through the command, so
+    // the scene cannot draw a state the button cannot produce. The projects are the same design sample the
+    // Projects workspace renders from, which is the point: one source, two arrangements.
+    private static ViewModels.CockpitViewModel _SimpleStandStartScreen()
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        cockpit.Projects.StageDesignSample();
+        cockpit.ShowSimpleStartScreenCommand.Execute(null);
         return cockpit;
     }
 
