@@ -178,6 +178,7 @@ internal static class Screenshotter
         // AC-445: the workspace ⚙'s own Layout flyout, opened the way session-settings-flyout already proves
         // headless rendering can. Needs a session so `ShowSessionGrid` shows the toolbar the ⚙ lives in.
         ["workspace-layout-flyout"] = (width, height) => _MainWindowWithOneSession(width, height),
+        ["session-tree"] = (width, height) => _MainWindowWithSessionTree(width, height),
         // AC-1000: Voice and Assistant are now separate top-level categories rather than Carousel sub-pages of one
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
@@ -1212,6 +1213,24 @@ internal static class Screenshotter
     {
         var cockpit = new ViewModels.CockpitViewModel();
         cockpit.Sessions.Add(new ViewModels.SessionViewModel { Title = "Session", WorkspaceId = cockpit.Workspaces.Active!.Id });
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
+    // AC-1306: the sidebar's workspace tree with something to group — three Sessions tabs, one holding two
+    // sessions, one holding one, one holding none. The default graph has a single tab, on which the tree is a
+    // node with everything under it and neither the omitted-tabs note nor a second node ever renders.
+    private static MainWindow _MainWindowWithSessionTree(int width, int height)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        var infra = Core.Workspaces.Workspace.Create("Infra", Core.Workspaces.WorkspaceType.Sessions);
+        var empty = Core.Workspaces.Workspace.Create("Spare", Core.Workspaces.WorkspaceType.Sessions);
+        cockpit.Workspaces.Settings = cockpit.Workspaces.Settings.WithWorkspace(infra).WithWorkspace(empty)
+            .WithActive(cockpit.Workspaces.Settings.Workspaces[0].Id);
+
+        cockpit.Sessions[2].WorkspaceId = infra.Id;
+        cockpit.Sessions[1].ProcessCount = 2;
+        cockpit.Sessions[1].AbandonedProcessCount = 1;
+        cockpit.Sessions[1].ProcessMemoryBytes = 1019L * 1024 * 1024;
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 

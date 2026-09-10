@@ -290,6 +290,15 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     [RelayCommand]
     private Task SelectWorkspaceAsync(string workspaceId) => _ApplyAsync(Settings.WithActive(workspaceId));
 
+    // AC-1306: the sidebar tree's chevron. Collapsing is the one gesture on that node that walks nowhere, so it
+    // deliberately does not go through `SelectWorkspaceAsync` — the rest of the node does.
+    [RelayCommand]
+    private Task ToggleSidebarCollapsedAsync(string workspaceId) =>
+        _ApplyAsync(Settings.WithSidebarCollapsed(workspaceId, !IsSidebarCollapsed(workspaceId)));
+
+    // Whether the sidebar tree draws `workspaceId`'s node closed.
+    public bool IsSidebarCollapsed(string workspaceId) => Settings.CollapsedSidebarWorkspaceIds.Contains(workspaceId);
+
     // Drops a dragged tab at `targetIndex` in the strip (Raymond, 2026-07-15). Persists, so
     // the order you arranged is the order you come back to; the selection stays where it was, since
     // rearranging the desks is not the same as walking to another one.

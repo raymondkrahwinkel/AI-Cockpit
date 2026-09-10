@@ -10,10 +10,14 @@ internal sealed class WorkspaceSettingsEntry
 
     public string? ActiveWorkspaceId { get; set; }
 
+    // AC-1306: which sidebar tree nodes stand collapsed. Stale ids are dropped by `WorkspaceSettings.Normalized`.
+    public List<string> CollapsedSidebarWorkspaceIds { get; set; } = [];
+
     public static WorkspaceSettingsEntry FromDomain(WorkspaceSettings settings) => new()
     {
         Workspaces = [.. settings.Workspaces.Select(WorkspaceEntry.FromDomain)],
         ActiveWorkspaceId = settings.ActiveWorkspaceId,
+        CollapsedSidebarWorkspaceIds = [.. settings.CollapsedSidebarWorkspaceIds],
     };
 
     // The saved workspaces as domain records, normalized so the result is always bindable — a config written
@@ -22,5 +26,6 @@ internal sealed class WorkspaceSettingsEntry
     {
         Workspaces = [.. Workspaces.Select(entry => entry.ToDomain())],
         ActiveWorkspaceId = ActiveWorkspaceId,
+        CollapsedSidebarWorkspaceIds = [.. CollapsedSidebarWorkspaceIds],
     }.Normalized();
 }

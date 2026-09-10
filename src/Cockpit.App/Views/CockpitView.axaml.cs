@@ -648,9 +648,27 @@ public partial class CockpitView : UserControl
         }
 
         // Arm a possible reorder. Selecting first means a drag that never passes the threshold still did what a
-        // click does, rather than the row needing two gestures to both select and move.
+        // click does, rather than the row needing two gestures to both select and move. AC-1306: measured against
+        // the row's own node, so a drag reorders inside one workspace tab and never carries the row to another.
         _draggingSession = session;
-        _sessionDragOrigin = SessionListStrip?.ItemsPanelRoot is { } panel ? e.GetPosition(panel) : default;
+        _sessionDragOrigin = (sender as Control)?.FindAncestorOfType<ItemsControl>()?.ItemsPanelRoot is { } panel
+            ? e.GetPosition(panel)
+            : default;
+    }
+
+    // AC-1306: the rest of the node row walks to that workspace tab (§D4b) — the chevron inside it does not, so a
+    // press that came from a Button is left to the Button. Same shape and same reason as OnWorkspaceTabPressed.
+    private void OnSessionWorkspaceNodePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.Source is Control source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
+        {
+            return;
+        }
+
+        if (sender is Border { DataContext: SessionWorkspaceGroupViewModel group } && DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.Workspaces.SelectWorkspaceCommand.Execute(group.Id);
+        }
     }
 
     // Session reordering (AC-115), mirroring the workspace tab strip: two fields and a threshold rather than a full
@@ -662,7 +680,7 @@ public partial class CockpitView : UserControl
 
     private void OnSessionItemPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_draggingSession is null || SessionListStrip?.ItemsPanelRoot is not { } panel || DataContext is not CockpitViewModel cockpit)
+        if (_draggingSession is null || (sender as ItemsControl)?.ItemsPanelRoot is not { } panel || DataContext is not CockpitViewModel cockpit)
         {
             return;
         }

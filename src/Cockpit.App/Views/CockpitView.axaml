@@ -84,6 +84,145 @@
                 </Border>
             </Button>
         </DataTemplate>
+
+        <!-- AC-1306: the sidebar tree nests these rows one level down, so the row lives here rather than
+             inline in an ItemsControl the row can no longer name. Unchanged otherwise (§6): same context menu,
+             same hover-✕, same inline close confirm. The commands reach the cockpit view model through
+             $parent[UserControl] and not $parent[ItemsControl], which now resolves to the per-node one. -->
+        <DataTemplate x:Key="SidebarSessionRow" x:DataType="vm:SessionPanelViewModel">
+            <!-- Selection + attention are driven entirely by the style classes below
+                 (see Theme.axaml Border.sessionItem*): the active session lifts to a
+                 filled card with an accent left-edge, inactive ones stay flat against
+                 the sidebar. Background/border are NOT set inline here — a local value
+                 would beat the style setters and both rows would look identical. -->
+            <!-- AC-1063: tooltip on the row, not the statusline TextBlock — that block is
+                 IsVisible-gated on a non-empty statusline, so an empty one has no hover target.
+                 Also the only way to read the hard-clipped title in full. Repeated as HelpText. -->
+            <Border Classes="sessionItem" Margin="0,0,0,4" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
+                    Classes.active="{Binding IsSelected}"
+                    Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
+                    Cursor="Hand"
+                    ToolTip.Tip="{Binding SidebarCardTooltip}"
+                    AutomationProperties.HelpText="{Binding SidebarCardTooltip}"
+                    PointerPressed="OnSessionItemPointerPressed">
+                <Border.ContextMenu>
+                    <!-- Each item's DataContext is the session the menu was opened on; the command
+                         lives on the cockpit view model, so the Click handler routes through it with
+                         the session as parameter (see _InvokeSessionCommand). AC-561: this depends on
+                         the row's own Border staying alive for as long as the menu is open, which is
+                         what CockpitViewModel.VisibleSessions now guarantees (see its remarks) — the
+                         sidebar's ItemsControl only tears down and rebuilds the containers a
+                         reconcile actually touches, not every row on every change. -->
+                    <ContextMenu Opened="OnSessionContextMenuOpened">
+                        <MenuItem Header="Rename" Click="OnRenameSession"/>
+                        <MenuItem Header="Duplicate" Click="OnDuplicateSession"/>
+                        <!-- AC-564: only the SDK route, which has no /clear of its own — a TTY
+                             session is a real TUI and the operator types it there. -->
+                        <MenuItem Header="Clear context…" Click="OnClearSessionContext"
+                                  IsVisible="{Binding SupportsClearContext}"/>
+                        <Separator/>
+                        <MenuItem Header="Set status…" Click="OnSetSessionStatus"/>
+                        <MenuItem Header="Resume later…" Click="OnScheduleSessionResume"/>
+                        <MenuItem Header="Clear status" Click="OnClearSessionStatus"
+                                  IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <Separator/>
+                        <!-- AC-674/AC-703: submenu items built in code-behind on ContextMenu.Opened — a popup ContextMenu
+                             can't reach CockpitViewModel via $parent, and opening a second ContextMenu from a Click inside
+                             this one never showed (Avalonia closes it as part of this menu's own close). -->
+                        <MenuItem Header="Move to workspace"/>
+                        <Separator/>
+                        <MenuItem Header="Move up" Click="OnMoveSessionUp"/>
+                        <MenuItem Header="Move down" Click="OnMoveSessionDown"/>
+                        <Separator/>
+                        <MenuItem Header="Close" Click="OnCloseSessionMenu"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <StackPanel Spacing="4">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Ellipse Width="8" Height="8"
+                                         Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                           IsVisible="{Binding !IsRenaming}"/>
+                                <TextBox Text="{Binding EditTitle}" IsVisible="{Binding IsRenaming}"
+                                         Classes="Compact" MinWidth="110" FontWeight="SemiBold"
+                                         KeyDown="OnRenameBoxKeyDown" LostFocus="OnRenameBoxLostFocus"
+                                         AttachedToVisualTree="OnRenameBoxAttached"/>
+                                <materialIcons:MaterialIcon Kind="AlertOutline" Width="13" Height="13"
+                                           Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                           IsVisible="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
+                                           ToolTip.Tip="Needs attention"/>
+                                <!-- A consent request is waiting on this session (#AC-47): the same
+                                     "Ask me first" hand the cockpit.approve step uses, in the accent
+                                     colour, so the sidebar shows it even when the pane is off screen. -->
+                                <materialIcons:MaterialIcon Kind="HandBackLeftOutline" Width="13" Height="13"
+                                           Foreground="{StaticResource CockpitAccentBrush}"
+                                           IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                           ToolTip.Tip="Waiting for your consent"/>
+                                <!-- AC-1311: a marker, not a fourth status class — sits next to
+                                     whichever class the dot above already shows, for a session
+                                     with a backgrounded shell still running under it. -->
+                                <materialIcons:MaterialIcon Kind="ProgressClock" Width="12" Height="12"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                           IsVisible="{Binding HasOutstandingBackgroundShells}"
+                                           ToolTip.Tip="Something of this session is still running in the background"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <!-- Mirrors the session-header provider pill (SessionView.axaml) so a local
+                                     (Ollama/LM Studio) session is identifiable from the sidebar too, not just once
+                                     opened; hidden for Claude-CLI sessions, which leave ProviderBadge empty (#26). -->
+                                <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                        BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
+                                        CornerRadius="3" Padding="4,0" VerticalAlignment="Center"
+                                        IsVisible="{Binding ProviderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                    <TextBlock Text="{Binding ProviderBadge}" FontSize="9"
+                                               Foreground="{StaticResource CockpitAccentBrush}"/>
+                                </Border>
+                                <TextBlock Text="{Binding ActiveProfileLabel}"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding SessionStatusLabel}"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                <!-- AC-1096: what this session's processes still hold. Beside the status because that is
+                                     the claim it qualifies: Idle says the agent stopped, not that its build did. -->
+                                <TextBlock Text="{Binding ProcessActivityLabel}"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                           IsVisible="{Binding ProcessActivityLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                            <!-- AC-13: what this session is working on, set by the agent (via MCP) or a workflow;
+                                 accented so it stands out, hidden when blank. -->
+                            <TextBlock Text="{Binding Statusline}" FontSize="11"
+                                       Foreground="{StaticResource CockpitAccentBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        </StackPanel>
+        
+                        <!-- Hover-revealed close, hidden while the confirm prompt is up. -->
+                        <Button Grid.Column="1" Classes="Subtle closeSession"
+                                VerticalAlignment="Top" Padding="4,0"
+                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                IsVisible="{Binding !IsConfirmingClose}"
+                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).RequestCloseSessionCommand}"
+                                CommandParameter="{Binding}"
+                                ToolTip.Tip="Close session">
+                            <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                        </Button>
+                    </Grid>
+        
+                    <!-- Inline close confirm for a busy session (L11 pattern): Close / Keep. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsConfirmingClose}">
+                        <TextBlock Text="Close?" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <Button Content="Close" Classes="Compact"
+                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ConfirmCloseSessionCommand}"
+                                CommandParameter="{Binding}"/>
+                        <Button Content="Keep" Classes="Compact"
+                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).CancelCloseSessionCommand}"
+                                CommandParameter="{Binding}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
     </UserControl.Resources>
 
     <UserControl.Styles>
@@ -144,6 +283,19 @@
         </Style>
         <Style Selector="Border.workspaceTab:pointerover Button.closeWorkspace">
             <Setter Property="Opacity" Value="1"/>
+        </Style>
+
+        <!-- AC-1306: a node in the sidebar's workspace tree. It marks the workspace the tab strip marks too — the
+             same fact in a second place, so a click on either has to be visible on both. The accent left edge is
+             the sidebar's own word for "this is the one" (Border.sessionItem.active uses it), and the thickness is
+             always there so nothing shifts when the mark moves. Not Background: the node sets it inline to stay
+             hit-testable, and a local value beats a style setter — the drop-target style above says the same. -->
+        <Style Selector="Border.workspaceNode">
+            <Setter Property="BorderThickness" Value="2,0,0,0"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.workspaceNode.active">
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
         </Style>
 
         <!-- The figures in the status bar are a button, and have to look like one before they are hovered: a strip of
@@ -650,152 +802,79 @@
                             ToolTip.Tip="Open the projects overview"/>
                 </StackPanel>
 
-                <ScrollViewer>
-                    <!-- The sidebar lists only the workspace now showing, so it never offers a session the grid
-                         is hiding. Safe to filter here, unlike the grid below: these rows carry no pty.
-                         Drag-reorder (AC-115): the move/release handlers sit on the ItemsControl, not the row —
-                         a move rebuilds the row containers, so a per-row handler would stop firing mid-drag. Each
-                         row only arms the drag on PointerPressed. Mirrors the workspace tab strip. -->
-                    <ItemsControl x:Name="SessionListStrip" ItemsSource="{Binding VisibleSessions}"
-                                  PointerMoved="OnSessionItemPointerMoved"
-                                  PointerReleased="OnSessionItemPointerReleased">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:SessionPanelViewModel">
-                                <!-- Selection + attention are driven entirely by the style classes below
-                                     (see Theme.axaml Border.sessionItem*): the active session lifts to a
-                                     filled card with an accent left-edge, inactive ones stay flat against
-                                     the sidebar. Background/border are NOT set inline here — a local value
-                                     would beat the style setters and both rows would look identical. -->
-                                <!-- AC-1063: tooltip on the row, not the statusline TextBlock — that block is
-                                     IsVisible-gated on a non-empty statusline, so an empty one has no hover target.
-                                     Also the only way to read the hard-clipped title in full. Repeated as HelpText. -->
-                                <Border Classes="sessionItem" Margin="0,0,0,4" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
-                                        Classes.active="{Binding IsSelected}"
-                                        Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
-                                        Cursor="Hand"
-                                        ToolTip.Tip="{Binding SidebarCardTooltip}"
-                                        AutomationProperties.HelpText="{Binding SidebarCardTooltip}"
-                                        PointerPressed="OnSessionItemPointerPressed">
-                                    <Border.ContextMenu>
-                                        <!-- Each item's DataContext is the session the menu was opened on; the command
-                                             lives on the cockpit view model, so the Click handler routes through it with
-                                             the session as parameter (see _InvokeSessionCommand). AC-561: this depends on
-                                             the row's own Border staying alive for as long as the menu is open, which is
-                                             what CockpitViewModel.VisibleSessions now guarantees (see its remarks) — the
-                                             sidebar's ItemsControl only tears down and rebuilds the containers a
-                                             reconcile actually touches, not every row on every change. -->
-                                        <ContextMenu Opened="OnSessionContextMenuOpened">
-                                            <MenuItem Header="Rename" Click="OnRenameSession"/>
-                                            <MenuItem Header="Duplicate" Click="OnDuplicateSession"/>
-                                            <!-- AC-564: only the SDK route, which has no /clear of its own — a TTY
-                                                 session is a real TUI and the operator types it there. -->
-                                            <MenuItem Header="Clear context…" Click="OnClearSessionContext"
-                                                      IsVisible="{Binding SupportsClearContext}"/>
-                                            <Separator/>
-                                            <MenuItem Header="Set status…" Click="OnSetSessionStatus"/>
-                                            <MenuItem Header="Resume later…" Click="OnScheduleSessionResume"/>
-                                            <MenuItem Header="Clear status" Click="OnClearSessionStatus"
-                                                      IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                            <Separator/>
-                                            <!-- AC-674/AC-703: submenu items built in code-behind on ContextMenu.Opened — a popup ContextMenu
-                                                 can't reach CockpitViewModel via $parent, and opening a second ContextMenu from a Click inside
-                                                 this one never showed (Avalonia closes it as part of this menu's own close). -->
-                                            <MenuItem Header="Move to workspace"/>
-                                            <Separator/>
-                                            <MenuItem Header="Move up" Click="OnMoveSessionUp"/>
-                                            <MenuItem Header="Move down" Click="OnMoveSessionDown"/>
-                                            <Separator/>
-                                            <MenuItem Header="Close" Click="OnCloseSessionMenu"/>
-                                        </ContextMenu>
-                                    </Border.ContextMenu>
-                                    <StackPanel Spacing="4">
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <StackPanel Grid.Column="0" Spacing="2">
-                                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                    <Ellipse Width="8" Height="8"
-                                                             Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                                               IsVisible="{Binding !IsRenaming}"/>
-                                                    <TextBox Text="{Binding EditTitle}" IsVisible="{Binding IsRenaming}"
-                                                             Classes="Compact" MinWidth="110" FontWeight="SemiBold"
-                                                             KeyDown="OnRenameBoxKeyDown" LostFocus="OnRenameBoxLostFocus"
-                                                             AttachedToVisualTree="OnRenameBoxAttached"/>
-                                                    <materialIcons:MaterialIcon Kind="AlertOutline" Width="13" Height="13"
-                                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"
-                                                               IsVisible="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
-                                                               ToolTip.Tip="Needs attention"/>
-                                                    <!-- A consent request is waiting on this session (#AC-47): the same
-                                                         "Ask me first" hand the cockpit.approve step uses, in the accent
-                                                         colour, so the sidebar shows it even when the pane is off screen. -->
-                                                    <materialIcons:MaterialIcon Kind="HandBackLeftOutline" Width="13" Height="13"
-                                                               Foreground="{StaticResource CockpitAccentBrush}"
-                                                               IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                                               ToolTip.Tip="Waiting for your consent"/>
-                                                    <!-- AC-1311: a marker, not a fourth status class — sits next to
-                                                         whichever class the dot above already shows, for a session
-                                                         with a backgrounded shell still running under it. -->
-                                                    <materialIcons:MaterialIcon Kind="ProgressClock" Width="12" Height="12"
-                                                               Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                               IsVisible="{Binding HasOutstandingBackgroundShells}"
-                                                               ToolTip.Tip="Something of this session is still running in the background"/>
-                                                </StackPanel>
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <!-- Mirrors the session-header provider pill (SessionView.axaml) so a local
-                                                         (Ollama/LM Studio) session is identifiable from the sidebar too, not just once
-                                                         opened; hidden for Claude-CLI sessions, which leave ProviderBadge empty (#26). -->
-                                                    <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                                            BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
-                                                            CornerRadius="3" Padding="4,0" VerticalAlignment="Center"
-                                                            IsVisible="{Binding ProviderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                                        <TextBlock Text="{Binding ProviderBadge}" FontSize="9"
-                                                                   Foreground="{StaticResource CockpitAccentBrush}"/>
-                                                    </Border>
-                                                    <TextBlock Text="{Binding ActiveProfileLabel}"
-                                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
-                                                    <TextBlock Text="{Binding SessionStatusLabel}"
-                                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-                                                    <!-- AC-1096: what this session's processes still hold. Beside the status because that is
-                                                         the claim it qualifies: Idle says the agent stopped, not that its build did. -->
-                                                    <TextBlock Text="{Binding ProcessActivityLabel}"
-                                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
-                                                               IsVisible="{Binding ProcessActivityLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                                </StackPanel>
-                                                <!-- AC-13: what this session is working on, set by the agent (via MCP) or a workflow;
-                                                     accented so it stands out, hidden when blank. -->
-                                                <TextBlock Text="{Binding Statusline}" FontSize="11"
-                                                           Foreground="{StaticResource CockpitAccentBrush}"
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="2">
+                        <!-- AC-1306: the session list as a workspace tree.
+                             WHAT THIS TREE GROUPS: *where a session stands* — a workspace tab, and the sessions
+                             placed on it. That is all it claims. AC-1302's rail in the Simple stand groups *who
+                             drives what* (the assistant and the sessions it started). Two trees with the same
+                             shape and a different meaning: they may never be folded into one, because half of
+                             that one would be untrue.
+                             It replaces a flat list that showed only the tab now on screen, so that it never
+                             offered a session the grid was hiding. It shows the others now — and pays that debt
+                             the other way round instead: picking one walks to its tab first (see SelectSession).
+                             Drag-reorder (AC-115) sits on the per-node ItemsControl, so a drag reorders inside
+                             one node and never carries a session across to another tab. -->
+                        <ItemsControl x:Name="SessionListStrip" ItemsSource="{Binding SessionWorkspaceGroups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SessionWorkspaceGroupViewModel">
+                                    <StackPanel Spacing="2" Margin="0,0,0,6">
+                                        <!-- Two targets in one row (§D4b): the chevron folds, the rest walks. One
+                                             target for both would cost the operator a tab switch every time they
+                                             only wanted to tidy a node away. -->
+                                        <Border Classes="workspaceNode" Classes.active="{Binding IsActive}"
+                                                Padding="2,3" CornerRadius="{StaticResource CockpitControlRadius}"
+                                                Background="Transparent" Cursor="Hand"
+                                                PointerPressed="OnSessionWorkspaceNodePressed"
+                                                ToolTip.Tip="Switch to this workspace tab">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="4">
+                                                <Button Grid.Column="0" Classes="Subtle" Padding="2,0"
+                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                        Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Workspaces.ToggleSidebarCollapsedCommand}"
+                                                        CommandParameter="{Binding Id}"
+                                                        ToolTip.Tip="Fold this workspace tab away — it does not switch to it">
+                                                    <Panel>
+                                                        <materialIcons:MaterialIcon Kind="ChevronRight" Width="12" Height="12"
+                                                                                    IsVisible="{Binding !IsExpanded}"/>
+                                                        <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
+                                                                                    IsVisible="{Binding IsExpanded}"/>
+                                                    </Panel>
+                                                </Button>
+                                                <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11"
+                                                           FontWeight="SemiBold" VerticalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"
-                                                           IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                            </StackPanel>
+                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding CountLabel}" FontSize="11"
+                                                           VerticalAlignment="Center" Margin="0,0,4,0"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            </Grid>
+                                        </Border>
 
-                                            <!-- Hover-revealed close, hidden while the confirm prompt is up. -->
-                                            <Button Grid.Column="1" Classes="Subtle closeSession"
-                                                    VerticalAlignment="Top" Padding="4,0"
-                                                    Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                    IsVisible="{Binding !IsConfirmingClose}"
-                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).RequestCloseSessionCommand}"
-                                                    CommandParameter="{Binding}"
-                                                    ToolTip.Tip="Close session">
-                                                <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
-                                            </Button>
-                                        </Grid>
+                                        <!-- 13 px, measured: at 21 the measure line inside a row wraps to two -->
+                                        <ItemsControl ItemsSource="{Binding Sessions}" Margin="13,0,0,0"
+                                                      IsVisible="{Binding IsExpanded}"
+                                                      ItemTemplate="{StaticResource SidebarSessionRow}"
+                                                      PointerMoved="OnSessionItemPointerMoved"
+                                                      PointerReleased="OnSessionItemPointerReleased"/>
 
-                                        <!-- Inline close confirm for a busy session (L11 pattern): Close / Keep. -->
-                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsConfirmingClose}">
-                                            <TextBlock Text="Close?" FontSize="11" VerticalAlignment="Center"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                            <Button Content="Close" Classes="Compact"
-                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).ConfirmCloseSessionCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                            <Button Content="Keep" Classes="Compact"
-                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).CancelCloseSessionCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                        </StackPanel>
+                                        <!-- Criterion 4(b): the tab you are standing on keeps its node even with
+                                             nothing on it, and says so. -->
+                                        <TextBlock Margin="13,0,0,0" FontSize="11" TextWrapping="Wrap"
+                                                   IsVisible="{Binding ShowEmptyNote}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                   Text="No session on this workspace tab yet"/>
                                     </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Criterion 4(a): an empty tab is left out of the tree, but never left unmentioned —
+                             the strip above the grid is where it still is. -->
+                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="2,2,0,0"
+                                   IsVisible="{Binding HasOmittedEmptyWorkspaces}"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                   Text="{Binding OmittedEmptyWorkspacesLabel}"/>
+                    </StackPanel>
                 </ScrollViewer>
             </DockPanel>
         </Border>

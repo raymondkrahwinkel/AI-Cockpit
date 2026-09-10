@@ -4,6 +4,7 @@
 # that is missing. Re-record with COCKPIT_UPDATE_THEME_BASELINES=1 and read the diff.
 
 #242563EB  CockpitAccentRingTintColor
+#2AE0A33E  off-palette
 #FF000000  off-palette
 #FF0C0E12  CockpitSecondaryBgColor
 #FF0F1116  CockpitTextOnStatusColor, CockpitWindowBgColor

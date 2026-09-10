@@ -166,9 +166,12 @@ public class SessionContextMenuTargetViewTests
             window.Show();
             window.UpdateLayout();
 
+            // AC-1306: the strip is a workspace tree now, so Session 2 is on screen after all — under Desk2's own
+            // node, below Desk1's two. Which row a right-click lands on is what this test is about, and the row it
+            // has to land on is still the one at that pixel.
             var rows = _Rows(_Strip(view));
-            Assert.Equal(2, rows.Count);
-            var target = rows[1]; // second visible row = Session 3, the hidden Session 2 sits between them in Sessions
+            Assert.Equal(3, rows.Count);
+            var target = rows[1]; // second row under Desk1's node = Session 3; Desk2's node comes after both
             var expected = (SessionPanelViewModel)target.DataContext!;
             Assert.Equal("Session 3", expected.Title);
 

@@ -45,11 +45,16 @@ public class WorkspaceSettingsStoreTests : IDisposable
         });
         var saved = WorkspaceSettings.Default.WithWorkspace(dashboard);
 
+        // AC-1306: and the sidebar tree's folded nodes, or every start begins at the bottom of your own tree.
+        var folded = saved.Workspaces.First(workspace => workspace.Type == WorkspaceType.Sessions).Id;
+        saved = saved.WithSidebarCollapsed(folded, collapsed: true);
+
         await store.SaveAsync(saved);
         var loaded = await store.LoadAsync();
 
         Assert.Equal(3, System.Linq.Enumerable.Count(loaded.Workspaces));
         Assert.Equal(dashboard.Id, loaded.ActiveWorkspaceId);
+        Assert.Equal([folded], loaded.CollapsedSidebarWorkspaceIds);
         var reloaded = loaded.Workspaces.Single(workspace => workspace.Id == dashboard.Id);
         Assert.Equal("Monitoring", reloaded.Name);
         Assert.Equal(3, reloaded.Layout.Columns);

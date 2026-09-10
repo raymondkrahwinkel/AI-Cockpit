@@ -426,13 +426,20 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private int _abandonedProcessCount;
 
+    // AC-1306: above this much resident memory the measure line speaks; below it a session is doing what a session
+    // does and the figure is noise. 512 MB — a resting agent process sits well under it, a build or a test host over.
+    internal const long QuietProcessMemoryBytes = 512L * 1024 * 1024;
+
     // AC-1096: the processes behind the status, on the row the status is already on — an idle session with a test
     // host still resident reads exactly like a finished one without this number. Empty when there is none.
     public string ProcessActivityLabel
     {
         get
         {
-            if (ProcessCount == 0)
+            // AC-1306: it says nothing at all unless there is something to say. A session holding a normal amount
+            // of memory and nothing left behind gets no line rather than an empty one, and the row is shorter for
+            // it — which is the whole point at a sidebar 222 px wide with a workspace tree in it now.
+            if (ProcessCount == 0 || (AbandonedProcessCount == 0 && ProcessMemoryBytes < QuietProcessMemoryBytes))
             {
                 return string.Empty;
             }

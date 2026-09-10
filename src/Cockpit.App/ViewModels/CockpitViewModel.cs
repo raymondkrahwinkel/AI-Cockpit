@@ -237,6 +237,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // session with an open ContextMenu that is not part of the change keeps its own Border alive and the popup stays
     private readonly ObservableCollection<SessionPanelViewModel> _visibleSessions = [];
 
+    // AC-1306: the same stability rule one level up — a node that did not change keeps its own container, and with
+    // it every row and popup underneath.
+    private readonly ObservableCollection<SessionWorkspaceGroupViewModel> _sessionWorkspaceGroups = [];
+
     // Left-menu accordion sections contributed by plugins (#14), shown under the session list.
     public ObservableCollection<PluginSideSection> PluginSideSections { get; } = [];
 
@@ -2644,6 +2648,36 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    // AC-1306: what the panels sidebar draws — see `_SyncSessionWorkspaceGroups` for what this tree groups and
+    // what it deliberately is not.
+    public IEnumerable<SessionWorkspaceGroupViewModel> SessionWorkspaceGroups
+    {
+        get
+        {
+            _SyncVisibleSessions();
+            return _sessionWorkspaceGroups;
+        }
+    }
+
+    // How many Sessions workspaces the tree left out for holding nothing (criterion 4a). Set by the sync, so it
+    // never disagrees with the nodes drawn beside it.
+    [ObservableProperty]
+    private int _omittedEmptyWorkspaceCount;
+
+    public bool HasOmittedEmptyWorkspaces => OmittedEmptyWorkspaceCount > 0;
+
+    // Says where the left-out tabs went, since the tree is not the only way to them — the strip above the grid is.
+    public string OmittedEmptyWorkspacesLabel =>
+        OmittedEmptyWorkspaceCount == 1
+            ? "1 empty workspace tab hidden — it is in the tab strip"
+            : $"{OmittedEmptyWorkspaceCount} empty workspace tabs hidden — they are in the tab strip";
+
+    partial void OnOmittedEmptyWorkspaceCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(HasOmittedEmptyWorkspaces));
+        OnPropertyChanged(nameof(OmittedEmptyWorkspacesLabel));
+    }
+
     // Brings `_sidebarOrder` back in line with `Sessions`: drops sessions that have closed and appends any that
     // appeared, keeping the operator's chosen order for everything already tracked.
     private void _ReconcileSidebarOrder()
@@ -2686,32 +2720,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ReconcileSidebarOrder();
         var target = _sidebarOrder.Where(BelongsToActiveWorkspace).ToList();
 
-        for (var i = _visibleSessions.Count - 1; i >= 0; i--)
-        {
-            if (!target.Contains(_visibleSessions[i]))
-            {
-                _visibleSessions.RemoveAt(i);
-            }
-        }
-
-        for (var i = 0; i < target.Count; i++)
-        {
-            var session = target[i];
-            if (i < _visibleSessions.Count && ReferenceEquals(_visibleSessions[i], session))
-            {
-                continue;
-            }
-
-            var existingIndex = _visibleSessions.IndexOf(session);
-            if (existingIndex >= 0)
-            {
-                _visibleSessions.Move(existingIndex, i);
-            }
-            else
-            {
-                _visibleSessions.Insert(i, session);
-            }
-        }
+        _ReconcileInto(_visibleSessions, target);
+        _SyncSessionWorkspaceGroups();
 
         // Stamped on every reconcile, not just on change: the focus-rail's ordering (AC-444 #2) reads this
         // straight off the pane, so it has to track "the sidebar's own order" exactly, including a plain
@@ -2720,6 +2730,77 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             target[i].SidebarIndex = i;
         }
+    }
+
+    // Diffs `target` into `live` in place rather than clearing and re-adding: a row that only moved gets a single
+    // `Move`, which Avalonia honours by relocating the existing container instead of discarding it. AC-561 depends
+    // on it — a context menu open on one row must survive a change to another.
+    private static void _ReconcileInto<T>(ObservableCollection<T> live, IReadOnlyList<T> target)
+        where T : class
+    {
+        for (var i = live.Count - 1; i >= 0; i--)
+        {
+            if (!target.Contains(live[i]))
+            {
+                live.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < target.Count; i++)
+        {
+            if (i < live.Count && ReferenceEquals(live[i], target[i]))
+            {
+                continue;
+            }
+
+            var existingIndex = live.IndexOf(target[i]);
+            if (existingIndex >= 0)
+            {
+                live.Move(existingIndex, i);
+            }
+            else
+            {
+                live.Insert(i, target[i]);
+            }
+        }
+    }
+
+    // AC-1306: the sidebar tree — every Sessions workspace holding a session, plus the one now showing even when it
+    // holds none. Deliberately NOT filtered to the active desk the way `VisibleSessions` is: it exists to make work
+    // on a tab you are not looking at findable, and picking such a row walks to its tab (see `SelectSession`).
+    private void _SyncSessionWorkspaceGroups()
+    {
+        var fallback = SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings);
+        var activeId = Workspaces.Active is { } active && active.Type == WorkspaceType.Sessions ? active.Id : null;
+        var placed = _sidebarOrder
+            .Select(session => (Session: session, WorkspaceId: SessionWorkspacePlacement.Resolve(session, fallback)))
+            .Where(entry => entry.WorkspaceId is not null)
+            .ToList();
+
+        // A Projects or plugin workspace cannot host a session at all, so it is never a node here — its tab is
+        // the only way to it, which is half of why the tab strip stays.
+        var candidates = Workspaces.Settings.Workspaces.Where(workspace => workspace.Type == WorkspaceType.Sessions).ToList();
+        var wanted = candidates
+            .Select(workspace => (Workspace: workspace, Sessions: placed.Where(entry => entry.WorkspaceId == workspace.Id).Select(entry => entry.Session).ToList()))
+            .Where(node => node.Sessions.Count > 0 || node.Workspace.Id == activeId)
+            .ToList();
+
+        OmittedEmptyWorkspaceCount = candidates.Count - wanted.Count;
+
+        var groups = wanted
+            .Select(node =>
+            {
+                var group = _sessionWorkspaceGroups.FirstOrDefault(existing => existing.Id == node.Workspace.Id)
+                    ?? new SessionWorkspaceGroupViewModel(node.Workspace.Id);
+                group.Name = node.Workspace.Name;
+                group.IsActive = node.Workspace.Id == activeId;
+                group.IsExpanded = !Workspaces.IsSidebarCollapsed(node.Workspace.Id);
+                _ReconcileInto(group.Sessions, node.Sessions);
+                return group;
+            })
+            .ToList();
+
+        _ReconcileInto(_sessionWorkspaceGroups, groups);
     }
 
     // Called from both constructors, right after `Workspaces` is built — the design-time/test graph needs this exactly
@@ -2736,6 +2817,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(ShowSessionEmptyState));
             OnPropertyChanged(nameof(HasSessionsHere));
             OnPropertyChanged(nameof(VisibleSessions));
+            OnPropertyChanged(nameof(SessionWorkspaceGroups));
             OnPropertyChanged(nameof(GridColumns));
             OnPropertyChanged(nameof(ShowZoomButton));
 
@@ -3152,6 +3234,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(HasSessions));
             OnPropertyChanged(nameof(HasSessionsHere));
             OnPropertyChanged(nameof(VisibleSessions));
+            OnPropertyChanged(nameof(SessionWorkspaceGroups));
             OnPropertyChanged(nameof(GridColumns));
             OnPropertyChanged(nameof(ShowZoomButton));
             OnPropertyChanged(nameof(StackSessionsInStack));
@@ -5931,9 +6014,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The reorder lands in `_sidebarOrder`, never in `Sessions`: the session grid binds to `Sessions` and keeps its own
     // positional cell layout, so touching that collection would rebuild panes and drag the grid tiles along with the
     // strip — the very coupling this separation removes (AC-115).
+
+    // AC-1306: the index counts rows inside the session's own workspace node — the one list the sidebar draws it
+    // in. On the tab now showing that is exactly `VisibleSessions`, so nothing changes there. A drop outside the
+    // node is not a move: that would put the session on another desk, which is its own decision.
     public void MoveSessionToVisibleIndex(SessionPanelViewModel session, int targetVisibleIndex)
     {
-        var visible = VisibleSessions.ToList();
+        var visible = _SidebarGroupOf(session);
         var currentVisibleIndex = visible.IndexOf(session);
         if (currentVisibleIndex < 0
             || targetVisibleIndex < 0
@@ -5950,7 +6037,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _sidebarOrder.RemoveAt(from);
             _sidebarOrder.Insert(to, session);
             OnPropertyChanged(nameof(VisibleSessions));
+            OnPropertyChanged(nameof(SessionWorkspaceGroups));
         }
+    }
+
+    // The rows drawn under `session`'s own workspace node, in sidebar order.
+    private List<SessionPanelViewModel> _SidebarGroupOf(SessionPanelViewModel session)
+    {
+        var fallback = SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings);
+        var workspaceId = SessionWorkspacePlacement.Resolve(session, fallback);
+        _SyncVisibleSessions();
+        return workspaceId is null
+            ? []
+            : [.. _sidebarOrder.Where(other => SessionWorkspacePlacement.Resolve(other, fallback) == workspaceId)];
     }
 
     // AC-674: WorkspaceId is stamped before the pane write, since the write's Settings change synchronously
@@ -5979,7 +6078,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void MoveSessionUp(SessionPanelViewModel session)
     {
-        var index = VisibleSessions.ToList().IndexOf(session);
+        var index = _SidebarGroupOf(session).IndexOf(session);
         if (index > 0)
         {
             MoveSessionToVisibleIndex(session, index - 1);
@@ -5990,7 +6089,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void MoveSessionDown(SessionPanelViewModel session)
     {
-        var visible = VisibleSessions.ToList();
+        var visible = _SidebarGroupOf(session);
         var index = visible.IndexOf(session);
         if (index >= 0 && index < visible.Count - 1)
         {
@@ -7537,6 +7636,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void SelectSession(SessionPanelViewModel session)
     {
+        // AC-1306: the sidebar tree lists sessions standing on a tab that is not showing, so picking one walks
+        // there first — the strip must still never offer a session the grid then hides, which is what the removed
+        // filter was for. Through `WorkspacesViewModel`, the one place the tab strip switches through too.
+        if (!BelongsToActiveWorkspace(session)
+            && SessionWorkspacePlacement.Resolve(session, SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings)) is { } workspaceId)
+        {
+            Workspaces.SelectWorkspaceCommand.Execute(workspaceId);
+        }
+
         SelectedSession = session;
     }
 
