@@ -242,6 +242,40 @@ public class CockpitViewModelProjectStartTests
         await dialogs.DidNotReceive().ShowOptionsDialogAsync(Arg.Any<CockpitViewModel>());
     }
 
+    /// <summary>
+    /// AC-493 criterion 2: a recurring job is a reminder, not a trigger. However long its rule says it has been
+    /// since it last came round, opening the cockpit starts nothing — the operator presses the button, or nothing
+    /// happens. This is the whole of Raymond's own correction on the ticket, in one assertion.
+    /// </summary>
+    [Fact]
+    public async Task ProjectsWhoseRecurringJobsLastCameRoundLongAgo_StartNothingOnTheirOwn()
+    {
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var overdue = Enumerable.Range(1, 5)
+            .Select(week => Project.Create($"Invoices {week}") with
+            {
+                DefaultProfileLabel = "work",
+                Jobs =
+                [
+                    new ProjectJob("Process this month's invoices", "changes nothing · reports only",
+                        new JobRecurrence(week, DayOfWeek.Monday)),
+                ],
+            })
+            .ToList();
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = [.. overdue] });
+        var projects = new ProjectsViewModel(store, dialogs);
+        await projects.LoadAsync();
+
+        var vm = NewVm(dialogs, projects: projects);
+
+        // Not one session, and not one dialog either — "it is due anyway, so run it" is the simplest wrong
+        // implementation and the only one this catches.
+        Assert.Empty(vm.Sessions);
+        await dialogs.DidNotReceive().ShowNewSessionDialogAsync(
+            Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>(), Arg.Any<Project?>());
+    }
+
     private static NewSessionResult Confirmed() => new(
         SessionKind.Sdk,
         new SessionProfile("default", new ClaudeConfig(@"C:\fake\.claude")),
