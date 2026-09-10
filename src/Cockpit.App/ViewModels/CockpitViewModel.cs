@@ -987,6 +987,74 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             newValue.IsSelectedInSimpleStand = true;
         }
+
+        _RefreshSimpleConsentAlerts();
+    }
+
+    // AC-1305: the sessions with a consent request open that the Simple stand is not showing. That stand has room
+    // for one conversation, so a request on any other session would sit there unseen — the panels stand has the
+    // sidebar's hand for that (AC-47) and needs none of this.
+    public ObservableCollection<SessionPanelViewModel> SimpleConsentAlerts { get; } = [];
+
+    // Whether there is anything to show, so the notification can be animated open rather than toggled visible.
+    public bool HasSimpleConsentAlerts => SimpleConsentAlerts.Count > 0;
+
+    // Prompt ids the operator waved away with `Ignore`. Ignoring takes the notification off the screen and does
+    // nothing else: the consent stays open and unanswered. Answering it here would be a refusal nobody made, and
+    // no screen in the cockpit would show that it had happened.
+    private readonly HashSet<Guid> _ignoredConsentAlerts = [];
+
+    // What the column actually draws, not what is selected: `SimpleChatHost` hands over the assistant's conversation
+    // and nothing else. Reading the selection here would take a notification down while its card was still nowhere —
+    // the state this exists to prevent. Becomes `SimpleSelectedSession ?? _assistantSession` with AC-1303.
+    private SessionPanelViewModel? _SimpleViewSession => _assistantSession;
+
+    // `Ignore`. Deliberately not a Deny: see `_ignoredConsentAlerts`.
+    [RelayCommand]
+    private void IgnoreConsentAlert(SessionPanelViewModel? session)
+    {
+        if (session?.PendingConsent is { } consent)
+        {
+            _ignoredConsentAlerts.Add(consent.Id);
+            _RefreshSimpleConsentAlerts();
+        }
+    }
+
+    // `Go there`: pick the asking session, which is as far as this can go until AC-1303 couples the conversation
+    // column to that pick. The notification deliberately stays up until then — taking it down on the pick alone
+    // would leave the card nowhere at all, the one state this notification exists to prevent.
+    [RelayCommand]
+    private void GoToConsentAlert(SessionPanelViewModel? session)
+    {
+        if (session is not null)
+        {
+            SimpleSelectedSession = session;
+        }
+    }
+
+    // Rebuilt rather than patched: the list is small and derived from three things that move independently —
+    // which sessions have a request open, which one is in view, and which ones were waved away.
+    private void _RefreshSimpleConsentAlerts()
+    {
+        var inView = _SimpleViewSession;
+        var waiting = _ConsentPanes()
+            .Where(pane => pane.PendingConsent is { } consent
+                && !_ignoredConsentAlerts.Contains(consent.Id)
+                && !ReferenceEquals(pane, inView))
+            .ToList();
+
+        if (SimpleConsentAlerts.SequenceEqual(waiting))
+        {
+            return;
+        }
+
+        SimpleConsentAlerts.Clear();
+        foreach (var pane in waiting)
+        {
+            SimpleConsentAlerts.Add(pane);
+        }
+
+        OnPropertyChanged(nameof(HasSimpleConsentAlerts));
     }
 
     // How the Simple stand builds its conversation column: a factory owned by `AssistantIndicatorCoordinator`,
@@ -3074,9 +3142,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             pane.PendingConsent = new ConsentPromptViewModel(prompt, _consentBroker!);
 
+            // AC-1305: this and the close side are the open and shut of every banner there is, so the Simple stand's
+            // notification list is recomputed from both. `OnSessionPropertyChanged` is the net under them, for the
+            // one setter that bypasses the broker: the assistant host denying an unanswered card on teardown.
+            _RefreshSimpleConsentAlerts();
+
             // If the pane needing consent is not the one in view, point the operator at it. The assistant gets a
             // toast with no Review action: selecting it would put a session that belongs to no workspace into the
             // grid, and its consent is answered in the chat window, which is the one place it can be.
+            if (SimpleView)
+            {
+                // AC-1305: that stand has a notification of its own for exactly this, so here it would be a second
+                // one for the same request — with a Review that moves a selection it does not use, and a five
+                // second timeout, which a consent barrier must not have.
+                return;
+            }
+
             if (ReferenceEquals(pane, _assistantSession))
             {
                 ToastHost.Add($"Consent needed · {pane.Title}", ToastSeverity.Warning, actionLabel: null, onAction: null);
@@ -3086,6 +3167,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 ToastHost.Add($"Consent needed · {pane.Title}", ToastSeverity.Warning, "Review", () => SelectedSession = pane);
             }
         });
+
     }
 
     private void _OnConsentPromptClosed(object? sender, Guid promptId) =>
@@ -3098,6 +3180,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 pane.PendingConsent = null;
             }
+
+            _RefreshSimpleConsentAlerts();
         });
 
     // Fires a sample consent prompt on the selected session so the banner can be seen and tried before a real
@@ -7048,6 +7132,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (sender is not SessionPanelViewModel session)
         {
             return;
+        }
+
+        // AC-1305: this is the one place every pane's `PendingConsent` lands, whoever set it — the routing below,
+        // the close side, or the assistant host denying a card on teardown. Above the assistant's return, because
+        // the assistant asks for consent like any other session.
+        if (e.PropertyName == nameof(SessionPanelViewModel.PendingConsent))
+        {
+            _RefreshSimpleConsentAlerts();
         }
 
         // The assistant's session feeds this handler only for status plumbing (AC-543), never for the

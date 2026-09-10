@@ -32,6 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: in the Simple stand, a session asking for your consent while you are looking at another conversation now
+  says so, in a notification in the bottom-right corner. It names the session and the action it wants to take, and
+  it offers two things: **Go there**, which makes that session the conversation you are looking at, where the
+  Approve/Deny card is waiting; and **Ignore**, which only takes the notification off the screen. Ignoring answers
+  nothing — the request stays open until you approve or deny it, so a command is never refused on your behalf
+  without anyone having said no. Two sessions asking at the same time give you two notifications, stacked, and
+  answering one leaves the other standing. A session already filling the conversation column raises no
+  notification: its question is on the screen you are already looking at.
+
 - added: the cockpit now has a second stand of the same window. **Simple** shows one conversation — the
   assistant's — filling the window beside the left column; **Panels** is the cockpit as it has always been, with
   the sidebar, the workspace strip, the sessions grid, the dock rail and the status bar all still there. Nothing

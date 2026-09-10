@@ -15,7 +15,9 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -311,6 +313,9 @@ internal static class Screenshotter
         // AC-1302 criterion 4(b): the same stand with no assistant session, so the rail has no root to hang a
         // tree under and lists the sessions flat. Its own scene because that is a different rail, not a variation.
         ["simple-view-no-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: false) },
+        // AC-1305: the same stand with two sessions waiting for consent outside its column. Its own scene because
+        // the notification only exists in that state, and because two at once is the case the prototype never drew.
+        ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -2104,6 +2109,59 @@ internal static class Screenshotter
         };
         session.StartedByTheAssistant = startedByTheAssistant;
         return session;
+    }
+
+    // AC-1305: two of the rail's own sessions waiting for consent while the column draws the assistant. Built out
+    // of the real properties rather than a placed control, with nothing picked in the rail — which is the state the
+    // notification is for, and clearing the pick is also what recomputes the list.
+    private static ViewModels.CockpitViewModel _SimpleStandAwaitingConsent()
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        // By title, not by index: the base view model seeds design-time sessions of its own ahead of the rail's.
+        _Named(cockpit, "kind→staging").PendingConsent = _OpenConsent("Delete the staging namespace", "kubectl delete namespace staging", dangerous: true);
+        _Named(cockpit, "AC-1302 de boomrail").PendingConsent = _OpenConsent("Read the pods", "kubectl get pods -n invoices", dangerous: false);
+        cockpit.SimpleSelectedSession = null;
+        return cockpit;
+    }
+
+    private static ViewModels.SessionPanelViewModel _Named(ViewModels.CockpitViewModel cockpit, string title) =>
+        cockpit.Sessions.First(session => session.Title == title);
+
+    private static ViewModels.ConsentPromptViewModel _OpenConsent(string ask, string action, bool dangerous) =>
+        new(
+            new ConsentPrompt(
+                Guid.NewGuid(),
+                new ConsentRequest(
+                    ask,
+                    action,
+                    new ConsentSource("pane", PluginId: "cockpit-k8s", Label: "Kubernetes"),
+                    Scope: "cluster",
+                    Risk: dangerous ? ConsentRisk.Dangerous : ConsentRisk.LowRisk),
+                CanRemember: false),
+            new _NoConsentBroker());
+
+    // A broker that answers nothing, for the scene above: a render never presses a button, and a real one wants an
+    // audit log and a host behind it. Its events have no backing field for the same reason — nobody raises them.
+    private sealed class _NoConsentBroker : IConsentBroker
+    {
+        public event EventHandler<ConsentPrompt>? PromptOpened
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<Guid>? PromptClosed
+        {
+            add { }
+            remove { }
+        }
+
+        public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("A scene draws a request that is already open; it never opens one.");
+
+        public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)
+        {
+        }
     }
 
     // AC-953: the assistant docked into the rail, built the way production builds it — the real `DockPanelRegistry`

@@ -181,6 +181,26 @@
             <Setter Property="RenderTransform" Value="translateY(0)"/>
         </Style>
 
+        <!-- AC-1305: the Simple stand's consent notification, rising out of the same corner in the same way and for
+             the same reason — a panel that snaps into existence reads as a glitch. Closed it takes no pointer, so it
+             never eats a click in a corner it is not in. -->
+        <Style Selector="ScrollViewer.consentAlerts">
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
+            <Setter Property="RenderTransform" Value="translateY(10px)"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.12"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="ScrollViewer.consentAlerts.open">
+            <Setter Property="Opacity" Value="1"/>
+            <Setter Property="IsHitTestVisible" Value="True"/>
+            <Setter Property="RenderTransform" Value="translateY(0)"/>
+        </Style>
+
         <!-- AC-962: the band the assistant's floating chat is dropped on to dock it. Faint while the drag is
              merely running and accent-lit once the pointer is inside — same accent language the rail's own open
              tab uses, so "this is where it lands" reads the same in both places. -->
@@ -2012,6 +2032,53 @@
                  dock rail's pattern: the chat view is built by a factory that hands the standing conversation
                  over between hosts, not by a binding that would build a second one. -->
             <ContentControl Grid.Column="1" x:Name="SimpleChatHost"/>
+
+            <!-- AC-1305: a session that is not the one in this column is waiting for consent. The card itself
+                 (ConsentBanner, over the conversation) stays where the question belongs, so this only names who is
+                 waiting and takes you there. No timer: the barrier goes when it is answered or waved away, and the
+                 stack scrolls rather than pushing the one underneath off the window. -->
+            <ScrollViewer Grid.Column="1" Classes="consentAlerts"
+                          Classes.open="{Binding HasSimpleConsentAlerts}"
+                          HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16"
+                          MaxHeight="420" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding SimpleConsentAlerts}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="8"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SessionPanelViewModel">
+                            <Border Width="320" Padding="12,10" BoxShadow="0 6 20 0 #66000000"
+                                    CornerRadius="{DynamicResource CockpitControlRadius}"
+                                    Background="{DynamicResource CockpitPanelBgBrush}" BorderThickness="1"
+                                    BorderBrush="{DynamicResource CockpitStatusWaitingBrush}">
+                                <StackPanel Spacing="6">
+                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                        <!-- The same hand the sidebar carries for a pending consent (AC-47). -->
+                                        <materialIcons:MaterialIcon Kind="HandBackLeftOutline" Width="14" Height="14"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                        <TextBlock Text="Waiting for your consent" FontSize="12.5"
+                                                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Title}" FontSize="12"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding PendingConsent.Title}" FontSize="11.5"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Right">
+                                        <Button Content="Ignore" Classes="Compact" CommandParameter="{Binding}"
+                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).IgnoreConsentAlertCommand}"/>
+                                        <Button Content="Go there" Classes="Accent Compact" CommandParameter="{Binding}"
+                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).GoToConsentAlertCommand}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
         </Grid>
     </Grid>
     </DockPanel>
