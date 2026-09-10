@@ -15,8 +15,8 @@
          coloured left edge is rounded into the corners. -->
     <Border CornerRadius="{StaticResource CockpitControlRadius}" BoxShadow="0 6 20 0 #66000000">
     <Border CornerRadius="{StaticResource CockpitControlRadius}" ClipToBounds="True"
-            Background="{StaticResource CockpitPanelBgBrush}"
-            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+            Background="{DynamicResource CockpitPanelBgBrush}"
+            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
         <DockPanel>
             <!-- Left edge: the risk colour, so a dangerous action is legible at a glance before a word is read. -->
             <Border DockPanel.Dock="Left" Width="3"
@@ -30,18 +30,18 @@
                                Foreground="{Binding EdgeBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                     <TextBlock DockPanel.Dock="Right" Text="{Binding SourceLabel}"
                                VerticalAlignment="Center" FontSize="11"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12.5"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                 </DockPanel>
 
                 <!-- Ground truth: the literal action, verbatim, selectable so it can be copied and checked. -->
-                <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                         CornerRadius="{StaticResource CockpitControlRadius}" Padding="9,8">
                     <SelectableTextBlock Text="{Binding Action}" TextWrapping="Wrap"
                                          FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
-                                         Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                         Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                 </Border>
 
                 <!-- Decision row: remember (low-risk only) on the left, Deny/Approve on the right. -->

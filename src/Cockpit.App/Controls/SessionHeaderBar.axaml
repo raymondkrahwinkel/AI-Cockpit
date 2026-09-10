@@ -22,7 +22,7 @@
             <!-- cwd as an icon; profile + full path on hover, freeing the path's width. -->
             <materialIcons:MaterialIcon Kind="FolderOutline" Width="14" Height="14"
                                         VerticalAlignment="Center" Margin="8,0,0,0"
-                                        Foreground="{StaticResource CockpitTextFaintBrush}"
+                                        Foreground="{DynamicResource CockpitTextFaintBrush}"
                                         IsVisible="{Binding WorkingDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                 <ToolTip.Tip>
                     <MultiBinding StringFormat="{}{0} · {1}">
@@ -36,26 +36,26 @@
                  job, so this never duplicates it or goes stale after a checkout; the worktree's own branch stays in
                  the tooltip as the host-side fallback for when that plugin is off or hidden (a plain terminal pane).
                  Soft purple, apart from the grey kind chip and the status colours. -->
-            <Border Classes="tag" Background="{StaticResource CockpitIsolatedBadgeBgBrush}" Margin="8,0,0,0"
+            <Border Classes="tag" Background="{DynamicResource CockpitIsolatedBadgeBgBrush}" Margin="8,0,0,0"
                     IsVisible="{Binding WorktreeBranch, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                 <ToolTip.Tip>
                     <TextBlock MaxWidth="320" TextWrapping="Wrap"
                                Text="{Binding WorktreeBranch, StringFormat='Isolated git worktree on branch ‘{0}’. A private copy: commits here stay on this branch until you merge or discard it, leaving your main checkout untouched.'}"/>
                 </ToolTip.Tip>
-                <TextBlock Text="⑂ isolated" FontSize="10" Foreground="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
+                <TextBlock Text="⑂ isolated" FontSize="10" Foreground="{DynamicResource CockpitIsolatedBadgeTextBrush}"/>
             </Border>
 
             <!-- AC-439 cross-desk claim collision chip: another agent, on a different workspace the operator can see
                  but this session cannot, has claimed a resource that canonicalizes to the same physical thing. This
                  is never surfaced to the agent itself — only here, to the operator watching both desks. Disappears
                  on its own the next time the check runs after either claim is released (no dismiss action). -->
-            <Border Classes="tag" Background="{StaticResource CockpitStatusWaitingBrush}" Margin="8,0,0,0"
+            <Border Classes="tag" Background="{DynamicResource CockpitStatusWaitingBrush}" Margin="8,0,0,0"
                     IsVisible="{Binding HasClaimCollision}">
                 <ToolTip.Tip>
                     <TextBlock MaxWidth="320" TextWrapping="Wrap"
                                Text="A resource this session has claimed is also claimed by an agent on a different workspace. Neither agent can see the other — claims are private to a desk — so this is shown to you here rather than to either of them. It clears on its own once one side releases the claim."/>
                 </ToolTip.Tip>
-                <TextBlock Text="⚠ claim collision" FontSize="10" Foreground="{StaticResource CockpitTextOnStatusBrush}"/>
+                <TextBlock Text="⚠ claim collision" FontSize="10" Foreground="{DynamicResource CockpitTextOnStatusBrush}"/>
             </Border>
 
             <!-- Branch (plugin-contributed, e.g. git-status): sizes to its own content so it never renders past a
@@ -70,8 +70,8 @@
                  butting together with a thin divider between them, and the chevron glued on as the final segment.
                  Which metrics show is a global Options preference; empty (no space taken) when none applies. -->
             <Border VerticalAlignment="Center" Margin="8,0,0,0" ClipToBounds="True"
-                    Background="{StaticResource CockpitSecondaryBgBrush}"
-                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                    Background="{DynamicResource CockpitSecondaryBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                     CornerRadius="{StaticResource CockpitPillRadius}"
                     IsVisible="{Binding HasUsagePillRegion}">
                 <StackPanel Orientation="Horizontal">
@@ -85,7 +85,7 @@
                             <DataTemplate x:DataType="vm:UsagePillItem">
                                 <StackPanel Orientation="Horizontal">
                                     <!-- Divider between adjacent segments; the first segment carries none. -->
-                                    <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"
+                                    <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
                                             IsVisible="{Binding ShowLeadingDivider}"/>
                                     <TextBlock Text="{Binding DisplayText}" FontSize="10" Padding="8,2"
                                                VerticalAlignment="Center"
@@ -99,7 +99,7 @@
                     <!-- Chevron as the final segment: opens the detail flyout (ctx plus each rate window with its
                          reset time) — the thing the compact segments cannot say. Its divider shows only when a
                          metric segment precedes it. -->
-                    <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"
+                    <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
                             IsVisible="{Binding ShowChevronDivider}"/>
                     <Button VerticalAlignment="Stretch" Padding="6,2"
                             MinWidth="0" MinHeight="0"
@@ -108,12 +108,12 @@
                             ToolTip.Tip="{Binding LimitsTooltip}">
                         <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
                                                     VerticalAlignment="Center"
-                                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         <Button.Flyout>
                             <Flyout Placement="Bottom">
                                 <StackPanel Spacing="8" MinWidth="210" Margin="4">
                                     <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                     <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" Threshold="{Binding ContextThreshold}" FontSize="10" Height="14"
                                                        StretchTrack="True" HorizontalAlignment="Stretch"/>
                                     <ItemsControl ItemsSource="{Binding RateLimits}">
@@ -123,7 +123,7 @@
                                                     <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
                                                                        StretchTrack="True" HorizontalAlignment="Stretch"/>
                                                     <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                                               FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                               FontSize="10" Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                                IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                                                 </StackPanel>
                                             </DataTemplate>
@@ -134,7 +134,7 @@
                                          not be drawn as 0%), but silence in both places reads as a broken setting. -->
                                     <TextBlock Text="{Binding UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
                                                Margin="0,4,0,0"
-                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                IsVisible="{Binding UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                 </StackPanel>
                             </Flyout>
@@ -155,7 +155,7 @@
             <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
                        VerticalAlignment="Center" Margin="7,0,0,0"
                        TextTrimming="CharacterEllipsis" MaxWidth="220"
-                       Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                       Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
 
             <!-- Kind chip (TTY / SDK / provider tag); hidden when the session reports none. Its hover content is a slot
                  (KindChipTooltip) each view fills — the SDK header its connected-tools card, the TTY header its
@@ -181,10 +181,10 @@
             <Panel x:Name="ActivityColumn" Grid.Column="3" VerticalAlignment="Center" Margin="8,0,0,0"
                    Background="Transparent" ToolTip.Tip="{Binding McpServersTooltip}">
                 <TextBlock Text="{Binding Statusline}" FontSize="11" TextTrimming="CharacterEllipsis"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                            IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 <TextBlock Text="{Binding Status}" FontSize="11" TextTrimming="CharacterEllipsis"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                            IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
             </Panel>
         </Grid>

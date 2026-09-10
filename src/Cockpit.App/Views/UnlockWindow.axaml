@@ -11,7 +11,7 @@
         Title="{x:Static config:CockpitProduct.DisplayName}"
         Width="420" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
         <vm:UnlockViewModel/>
@@ -28,7 +28,7 @@
             <TextBlock Text="Locked" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
             <TextBlock Text="Your API keys and tokens are encrypted. Type the password to unlock them."
                        FontSize="12.5" TextWrapping="Wrap" TextAlignment="Center"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
         </StackPanel>
 
         <TextBox Name="PasswordBox" PasswordChar="•" PlaceholderText="Password"
@@ -37,7 +37,7 @@
 
         <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                    FontSize="12" TextWrapping="Wrap"
-                   Foreground="{StaticResource CockpitStatusErrorBrush}"/>
+                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
 
         <Button Content="Unlock" Classes="Accent" HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Center"
@@ -45,7 +45,7 @@
 
         <Button Content="I forgot my password" HorizontalAlignment="Center"
                 Background="Transparent" BorderThickness="0"
-                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"
+                Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="12"
                 IsEnabled="{Binding !IsBusy}" Click="OnForgot"/>
     </StackPanel>
 </Window>

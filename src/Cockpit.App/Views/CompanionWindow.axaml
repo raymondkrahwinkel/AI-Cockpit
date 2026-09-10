@@ -20,7 +20,7 @@
                  on remembering the tray icon. -->
             <Grid x:Name="HeaderBar" Background="Transparent" ColumnDefinitions="*,Auto" Margin="12,10,8,0">
                 <TextBlock Grid.Column="0" Text="Companion" FontSize="12" FontWeight="Medium"
-                           VerticalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                           VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 <Button x:Name="CloseButton" Grid.Column="1" Classes="Subtle Compact" VerticalAlignment="Center"
                         ToolTip.Tip="Hide companion">
                     <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>

@@ -18,27 +18,27 @@
     <StackPanel Margin="4,4" Spacing="10">
         <StackPanel Spacing="2">
             <TextBlock Text="Your assistant" FontSize="16" FontWeight="SemiBold"/>
-            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                        Text="One assistant sits above every workspace, reachable by voice or text. It can look up what's running, and start or stop agents for you."/>
         </StackPanel>
 
-        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+        <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,8">
             <StackPanel Spacing="4">
-                <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                            Text="Push-to-talk: hold F10 (changeable later), or use the chip in the sidebar. It never accepts consent on your behalf — a spoken &quot;yes&quot; is never an approval; that click stays yours."/>
-                <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                            Text="It runs as a real session the moment you wake it — that's why you pick its profile below, the same as any other session."/>
             </StackPanel>
         </Border>
 
         <CheckBox Content="Enable the assistant" IsChecked="{Binding AssistantOptions.IsEnabled}"/>
-        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
+        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
                    Text="It's fine to leave this off. Skipping, like leaving it unchecked, installs and starts nothing."/>
 
         <StackPanel Spacing="8" IsVisible="{Binding AssistantOptions.IsEnabled}">
-            <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+            <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                        IsVisible="{Binding OnlyLocalProvidersAvailable}">
                 <Run Text="Only "/>
                 <Run Text="{Binding LocalProvidersText}" FontWeight="SemiBold"/>
@@ -51,13 +51,13 @@
                            VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
                 <TextBlock Text="{Binding AssistantOptions.ProfileUnsetReason}"
                            IsVisible="{Binding AssistantOptions.ProfileUnsetReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                            VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
                 <Button Content="Choose profile…" VerticalAlignment="Center" Command="{Binding EditProfileCommand}"/>
             </StackPanel>
         </StackPanel>
 
-        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
+        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
                    Text="You can turn this on or off, or change its profile, later in Options → Voice → Assistant."/>
     </StackPanel>
 </UserControl>

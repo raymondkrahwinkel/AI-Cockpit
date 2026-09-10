@@ -11,7 +11,7 @@
         Title="Choose a location"
         Width="440" Height="520" CanResize="False"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
         <vm:MemorySourceLocationPickerViewModel/>
@@ -27,12 +27,12 @@
                 <TextBlock Text="{Binding SourceTitle}" FontSize="14" FontWeight="Medium"/>
                 <TextBlock Text="Pick a location by name — the field is filled with its identifier, not the name shown here."
                            FontSize="11.5" TextWrapping="Wrap"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
         </Border>
 
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="16,12">
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource CockpitChromeBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="16,12">
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                 <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
                 <Button Classes="Accent" Content="Choose" Command="{Binding PickCommand}" IsEnabled="{Binding CanPick}"/>
@@ -51,7 +51,7 @@
                  gained a second wrapped line of its own (point 1) and so grew taller than it used to be. -->
             <ScrollViewer IsVisible="{Binding IsLoading}">
                 <StackPanel Margin="16" Spacing="8" VerticalAlignment="Center">
-                    <TextBlock Text="Loading…" HorizontalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="Loading…" HorizontalAlignment="Center" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
             </ScrollViewer>
 
@@ -62,7 +62,7 @@
                     <Button Classes="Accent" Content="Sign in" Command="{Binding SignInCommand}"
                             IsVisible="{Binding CanSignIn}" IsEnabled="{Binding !IsSigningIn}" HorizontalAlignment="Center"/>
                     <TextBlock Text="Signing in…" IsVisible="{Binding IsSigningIn}" HorizontalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
             </ScrollViewer>
 
@@ -70,7 +70,7 @@
             <ScrollViewer IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
                 <StackPanel Margin="16" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
                     <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="360"
-                               Foreground="{StaticResource CockpitStatusErrorBrush}"/>
+                               Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
                     <Button Classes="Ghost" Content="Try again" Command="{Binding RetryCommand}" HorizontalAlignment="Center"/>
                 </StackPanel>
             </ScrollViewer>
@@ -116,7 +116,7 @@
                                      a small badge instead of a second background, so clicking a *different* row
                                      never reads as "two rows are selected". Bound to the view model's CurrentValue,
                                      not to SelectedLocation, so this badge stays put after that click. -->
-                                <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
                                         CornerRadius="{StaticResource CockpitControlRadius}"
                                         Padding="5,1" VerticalAlignment="Center">
                                     <Border.IsVisible>
@@ -125,7 +125,7 @@
                                             <Binding Path="$parent[ListBox].((vm:MemorySourceLocationPickerViewModel)DataContext).CurrentValue"/>
                                         </MultiBinding>
                                     </Border.IsVisible>
-                                    <TextBlock Text="Current" FontSize="9.5" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    <TextBlock Text="Current" FontSize="9.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                 </Border>
                             </StackPanel>
                             <!-- Always rendered, never IsVisible-collapsed: a location with no Detail (DepotMemorySource
@@ -135,7 +135,7 @@
                                  is a single space rather than empty string because an empty Text still measures to
                                  zero height in Avalonia, which would reproduce the exact gap this line exists to close. -->
                             <TextBlock Text="{Binding Detail, TargetNullValue=' '}" FontSize="11"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>

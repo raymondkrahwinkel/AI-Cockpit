@@ -27,13 +27,13 @@
         <!-- AC-248: outside the collapsible panel on purpose. A shared definition naming a server this machine has
              not got is exactly what the operator who never expands this list needs told (Raymond, 2026-08-02). -->
         <TextBlock Text="{Binding #Root.UnavailableText}" FontSize="11" TextWrapping="Wrap" Margin="19,0,0,0"
-                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                    IsVisible="{Binding #Root.UnavailableText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
         <StackPanel Spacing="4" Margin="19,2,0,0" IsVisible="{Binding #Root.IsExpanded}">
             <TextBlock Text="{Binding #Root.Hint}" FontSize="11" TextWrapping="Wrap"
                        Margin="0,0,0,2"
-                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                       Foreground="{DynamicResource CockpitTextFaintBrush}"
                        IsVisible="{Binding #Root.Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
             <ItemsControl ItemsSource="{Binding #Root.Servers}">
@@ -45,7 +45,7 @@
                                       IsEnabled="{Binding IsTickEnabled}"/>
                             <TextBlock Grid.Column="1" Text="{Binding TokenLabel}" VerticalAlignment="Center"
                                        Margin="8,0,0,0" FontSize="11"
-                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
                                        ToolTip.Tip="{Binding TokenTooltip}"/>
                         </Grid>
                     </DataTemplate>
@@ -59,7 +59,7 @@
                         Command="{Binding #Root.RefreshCommand}"
                         ToolTip.Tip="Re-enumerate the selected servers' tools and recount"/>
                 <TextBlock Text="{Binding #Root.TokenSummary}" VerticalAlignment="Center" FontSize="11"
-                           TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                           TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
             </DockPanel>
         </StackPanel>
     </StackPanel>

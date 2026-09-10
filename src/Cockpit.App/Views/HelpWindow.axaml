@@ -7,7 +7,7 @@
         Title="Help"
         Width="820" Height="720" MinWidth="560" MinHeight="380"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
     <!-- A window of its own, beside the cockpit rather than inside it (AC-1033): the help is something you keep
          open next to the thing you are setting up, which a page in Options or a workspace tab cannot be. -->
@@ -15,12 +15,12 @@
         <Style Selector="TextBlock.navGroup">
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
             <Setter Property="Margin" Value="10,12,0,4"/>
         </Style>
         <Style Selector="TextBlock.crumb">
             <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
         </Style>
         <Style Selector="TextBlock.badge">
             <Setter Property="FontSize" Value="10"/>
@@ -31,8 +31,8 @@
 
     <DockPanel>
         <Border DockPanel.Dock="Left" Width="252"
-                Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
+                Background="{DynamicResource CockpitSecondaryBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
             <DockPanel>
                 <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Margin="10,10,10,6"
                          PlaceholderText="Search all documentation…"/>
@@ -46,15 +46,15 @@
             <!-- Deliberately outside the scroller: arriving mid-article is exactly when you need to be told
                  where you are, and a banner that scrolls away takes that back the moment you start reading. -->
             <Border x:Name="JumpBanner" DockPanel.Dock="Top" IsVisible="False"
-                    Background="{StaticResource CockpitInsetBgBrush}"
-                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1"
+                    Background="{DynamicResource CockpitInsetBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1"
                     Padding="16,8">
                 <StackPanel Spacing="2">
                     <TextBlock x:Name="JumpBannerText" TextWrapping="Wrap" FontSize="12"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <Button x:Name="JumpBannerTop" Classes="Subtle" Padding="0" HorizontalAlignment="Left"
                             Content="Read the whole article from the top ↑" FontSize="12"
-                            Foreground="{StaticResource CockpitAccentBrush}"/>
+                            Foreground="{DynamicResource CockpitAccentBrush}"/>
                 </StackPanel>
             </Border>
 

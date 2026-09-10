@@ -13,7 +13,7 @@
         Title="Options"
         Width="880" Height="680"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
         <vm:CockpitViewModel/>
@@ -25,8 +25,8 @@
         <!-- Footer (AC-999): the dialog is a transaction now. Restore Defaults fills the buffer, Cancel throws it
              away, and only Apply writes — with or without closing (AC-1287). The old "Saved" label is gone with the
              old Save button — under a staged model it could only ever appear on the click that closes the window. -->
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource CockpitChromeBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <!-- AC-1082 gave the refusal its own column here, apart from "Unsaved changes", because the two used to
                  render on top of each other. AC-1084 took the label out again: joining every section's reason into
                  one footer line put a plugin's complaint somewhere other than on that plugin's page, which is what
@@ -39,7 +39,7 @@
                 <TextBlock Grid.Column="1" Text="Unsaved changes" HorizontalAlignment="Right"
                            VerticalAlignment="Center" Margin="0,0,12,0"
                            IsVisible="{Binding HasPendingOptionChanges}"
-                           Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
+                           Foreground="{DynamicResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
                 <!-- IsCancel, so Escape is a Cancel rather than the nothing it used to be. -->
                 <Button Grid.Column="2" Content="Cancel" Click="OnCancel" IsCancel="True" Margin="0,0,8,0"/>
                 <!-- AC-1287: the same write as its neighbour, minus the close, for settings you want to try before
@@ -62,7 +62,7 @@
                              PlaceholderText="Search settings…" Margin="0,0,0,10">
                         <TextBox.InnerLeftContent>
                             <materialIcons:MaterialIcon Kind="Magnify" Width="14" Height="14"
-                                                         Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                         Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                          Margin="8,0,0,0"/>
                         </TextBox.InnerLeftContent>
                     </TextBox>
@@ -240,7 +240,7 @@
                             <TextBlock Text="Sessions" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="How sessions behave and where their worktrees and clones live." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. SESSION BEHAVIOUR"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -286,7 +286,7 @@
                                     <DataTemplate x:DataType="vm:UsageThresholdProviderViewModel">
                                         <StackPanel Spacing="6" Margin="0,0,0,10">
                                             <TextBlock Text="{Binding DisplayName}" FontSize="11"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <ItemsControl ItemsSource="{Binding Signals}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate x:DataType="vm:UsageThresholdRowViewModel">
@@ -299,7 +299,7 @@
                                                                            HorizontalContentAlignment="Center"/>
                                                             <TextBlock Text="{Binding FollowsLabel}" FontSize="11"
                                                                        VerticalAlignment="Center"
-                                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                         </StackPanel>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
@@ -316,7 +316,7 @@
                                     <DataTemplate x:DataType="vm:UsageThresholdProviderViewModel">
                                         <StackPanel Spacing="6" Margin="0,0,0,10">
                                             <TextBlock Text="{Binding DisplayName}" FontSize="11"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <ItemsControl ItemsSource="{Binding Signals}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate x:DataType="vm:UsageThresholdRowViewModel">
@@ -329,7 +329,7 @@
                                                                            HorizontalContentAlignment="Center"/>
                                                             <TextBlock Text="{Binding FollowsLabel}" FontSize="11"
                                                                        VerticalAlignment="Center"
-                                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                         </StackPanel>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
@@ -389,7 +389,7 @@
                             <TextBlock Text="Profiles" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="The profiles sessions start under: provider, session defaults, delegation and environment." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
                     </StackPanel>
 
                     <Grid Grid.Row="1" ColumnDefinitions="180,1,*" Margin="24,4,24,20" IsVisible="{Binding Profiles, Converter={x:Static ObjectConverters.IsNotNull}}">
@@ -402,18 +402,18 @@
                         <DockPanel Grid.Column="0">
                             <StackPanel DockPanel.Dock="Bottom" Margin="0,8,12,0" Spacing="6">
                                 <Button Content="+ Add profile" Classes="Subtle" HorizontalAlignment="Left"
-                                        Foreground="{StaticResource CockpitAccentBrush}"
+                                        Foreground="{DynamicResource CockpitAccentBrush}"
                                         Command="{Binding Profiles.AddProfileCommand}"/>
 
                                 <StackPanel Spacing="6" IsVisible="{Binding Profiles.SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
                                     <Button Content="Remove" Classes="Subtle" HorizontalAlignment="Left"
-                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                             Command="{Binding Profiles.RemoveProfileCommand}"
                                             IsVisible="{Binding !Profiles.IsConfirmingRemove}"/>
                                     <StackPanel Spacing="4" IsVisible="{Binding Profiles.IsConfirmingRemove}">
                                         <TextBlock Text="{Binding Profiles.PendingRemovalLabel, StringFormat='Remove ‘{0}’?'}"
                                                    TextWrapping="Wrap" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <Button Content="No" Classes="Compact" Command="{Binding Profiles.CancelRemoveCommand}"/>
                                             <Button Content="Yes" Classes="Compact Accent" Command="{Binding Profiles.ConfirmRemoveCommand}"/>
@@ -421,7 +421,7 @@
                                     </StackPanel>
                                     <TextBlock Text="{Binding Profiles.StatusMessage}" FontSize="11" TextWrapping="Wrap"
                                                IsVisible="{Binding Profiles.StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                               Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                 </StackPanel>
                             </StackPanel>
 
@@ -442,7 +442,7 @@
                         </DockPanel>
 
                         <!-- The one functional divider criterion 2 allows: no border/card anywhere else on this page. -->
-                        <Border Grid.Column="1" Width="1" Background="{StaticResource CockpitHairlineBrush}" HorizontalAlignment="Center"/>
+                        <Border Grid.Column="1" Width="1" Background="{DynamicResource CockpitHairlineBrush}" HorizontalAlignment="Center"/>
 
                         <!-- Detail: the selected profile's fields, scrolling independently of the list column. -->
                         <ScrollViewer Grid.Column="2"
@@ -450,30 +450,30 @@
                             <StackPanel Margin="16,0,0,0" Spacing="11">
                                 <StackPanel Spacing="11" DataContext="{Binding Profiles.SelectedProfile}" x:DataType="vm:EditableProfileViewModel">
 
-                                    <TextBlock Text="IDENTITY" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <TextBlock Text="IDENTITY" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
 
                                     <StackPanel Spacing="4">
-                                        <TextBlock Text="Label" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="Label" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding Label}"/>
                                     </StackPanel>
 
                                     <StackPanel Spacing="4">
                                         <TextBlock Text="Provider (fixed after creation)" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider}"
                                                   DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"
                                                   IsEnabled="{Binding CanChooseProvider}"/>
                                     </StackPanel>
 
                                     <StackPanel Spacing="4">
-                                        <TextBlock Text="Purpose" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="Purpose" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding Purpose}"/>
                                     </StackPanel>
 
                                     <StackPanel Spacing="4">
                                         <TextBlock Text="Default working directory" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <DockPanel LastChildFill="True">
                                             <Button DockPanel.Dock="Right" Content="Browse" Classes="Compact" Margin="6,0,0,0"
                                                     Click="OnBrowseProfileWorkingDirectory"/>
@@ -487,21 +487,21 @@
                                          own instruction files ask first. -->
                                     <StackPanel Spacing="4">
                                         <TextBlock Text="Assistant" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding Assistant}" MaxWidth="340" HorizontalAlignment="Left"
                                                  PlaceholderText="Optional — who a session under this profile is, e.g. “Zyra”"/>
                                     </StackPanel>
 
                                     <StackPanel Spacing="4">
                                         <TextBlock Text="System prompt" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding ProfileSystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="94"
                                                  PlaceholderText="Optional — added to every session under this profile, e.g. “You are Olaf. Your memory lives in the Depot MCP; look yourself up there before answering.”"/>
                                     </StackPanel>
 
                                     <StackPanel Spacing="4">
                                         <TextBlock Text="Memory cap (MB)" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <NumericUpDown Value="{Binding MemoryCapMegabytes}" Minimum="512" Maximum="1048576"
                                                        Increment="512" FormatString="0" ClipValueToMinMax="True"
                                                        HorizontalAlignment="Left" Width="180"
@@ -512,7 +512,7 @@
                                     <!-- Claude-CLI provider fields — no header of their own, they follow Identity directly. -->
                                     <StackPanel Spacing="4" IsVisible="{Binding IsClaudeProvider}">
                                         <TextBlock Text="Config directory (CLAUDE_CONFIG_DIR)" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <DockPanel LastChildFill="True">
                                             <Button DockPanel.Dock="Right" Content="Browse" Classes="Compact" Margin="6,0,0,0"
                                                     Click="OnBrowseProfileConfigDir"/>
@@ -522,7 +522,7 @@
 
                                     <StackPanel Spacing="4" IsVisible="{Binding IsClaudeProvider}">
                                         <TextBlock Text="Executable (empty = bundled default)" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <DockPanel LastChildFill="True">
                                             <Button DockPanel.Dock="Right" Content="Browse" Classes="Compact" Margin="6,0,0,0"
                                                     Click="OnBrowseProfileExecutable"/>
@@ -533,18 +533,18 @@
                                     <!-- Local (Ollama / LM Studio) provider fields. -->
                                     <StackPanel Spacing="11" IsVisible="{Binding IsLocalProvider}">
                                         <TextBlock Text="LOCAL PROVIDER (OLLAMA / LM STUDIO)" FontSize="11" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
 
                                         <StackPanel Spacing="4">
                                             <TextBlock Text="Server base URL" FontSize="11"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <TextBox Text="{Binding BaseUrl}" FontFamily="{StaticResource CockpitMonoFont}"
                                                      PlaceholderText="{Binding BaseUrlPlaceholder}"/>
                                         </StackPanel>
 
                                         <StackPanel Spacing="4">
-                                            <TextBlock Text="Model" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <TextBlock Text="Model" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <DockPanel LastChildFill="True">
                                                 <Button DockPanel.Dock="Right" Content="Fetch" Classes="Compact" Margin="6,0,0,0"
                                                         Command="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).Profiles.RefreshModelsCommand}"
@@ -555,19 +555,19 @@
                                                                  PlaceholderText="Click to pick a fetched model, or type an id"/>
                                             </DockPanel>
                                             <TextBlock Text="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).Profiles.ModelFetchStatus}"
-                                                       FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                        IsVisible="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).Profiles.ModelFetchStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                         </StackPanel>
 
                                         <StackPanel Spacing="4" IsVisible="{Binding IsLmStudioProvider}">
                                             <TextBlock Text="API key (optional, only behind a proxy)" FontSize="11"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <TextBox Text="{Binding ApiKey}" PasswordChar="•"/>
                                         </StackPanel>
 
                                         <StackPanel Spacing="4">
                                             <TextBlock Text="Base system prompt (optional)" FontSize="11"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <TextBox Text="{Binding SystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap"
                                                      MinHeight="70" MaxHeight="146"
                                                      PlaceholderText="Sent as the first system message of every conversation"/>
@@ -585,15 +585,15 @@
                                          (TryGetConfigJson) — a false blocks Apply, see IsValid below. -->
                                     <StackPanel Spacing="4" IsVisible="{Binding IsPluginProviderMissing}">
                                         <TextBlock Text="Provider plugin not installed" FontSize="11" FontWeight="Bold"
-                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                         <TextBlock Text="This profile's provider plugin is missing, disabled, or failed to load. Its settings are kept as-is and cannot be edited here until the plugin is available again."
                                                    FontSize="11" TextWrapping="Wrap"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                     </StackPanel>
 
                                     <StackPanel Spacing="4" IsVisible="{Binding IsPluginProvider}" IsEnabled="{Binding !IsPluginProviderMissing}">
                                         <TextBlock Text="Provider settings" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                    IsVisible="{Binding !IsPluginProviderMissing}"/>
                                         <ContentControl Content="{Binding PluginConfigView.View}" IsVisible="{Binding !IsPluginProviderMissing}"/>
                                     </StackPanel>
@@ -602,27 +602,27 @@
                                          start options — mutually exclusive, so one shared header reads either way. -->
                                     <StackPanel Spacing="11" IsVisible="{Binding IsClaudeProvider}">
                                         <TextBlock Text="SESSION DEFAULTS" FontSize="11" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                         <TextBlock Text="Used to launch every new session. Live-switching these mid-session (the per-session dropdowns) is SDK-only — a TTY session only ever uses them as start defaults."
                                                    FontSize="11" TextWrapping="Wrap"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
 
                                         <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
                                             <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
-                                                <TextBlock Text="Mode" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <TextBlock Text="Mode" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <ComboBox ItemsSource="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).Profiles.PermissionModes}"
                                                           SelectedItem="{Binding SelectedPermissionMode}"
                                                           DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
                                             </StackPanel>
                                             <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
-                                                <TextBlock Text="Model" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <TextBlock Text="Model" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <AutoCompleteBox ItemsSource="{Binding ClaudeModelSuggestions}" Text="{Binding ClaudeModel}"
                                                                  FilterMode="ContainsOrdinal" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
                                                                  HorizontalAlignment="Stretch"/>
                                             </StackPanel>
                                             <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
-                                                <TextBlock Text="Effort" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <TextBlock Text="Effort" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <ComboBox ItemsSource="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).Profiles.Efforts}"
                                                           SelectedItem="{Binding SelectedEffort}"
                                                           DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
@@ -632,17 +632,17 @@
 
                                     <StackPanel Spacing="11" IsVisible="{Binding HasPluginOptionDefaults}">
                                         <TextBlock Text="SESSION DEFAULTS" FontSize="11" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                         <TextBlock Text="Pre-selected for every new session under this profile; each can still be changed when a session is started."
                                                    FontSize="11" TextWrapping="Wrap"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         <ItemsControl ItemsSource="{Binding PluginOptionDefaults}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
                                                     <Grid ColumnDefinitions="120,*" Margin="0,0,0,6">
                                                         <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
-                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                         <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
                                                                   SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
                                                                   DisplayMemberBinding="{Binding Label}"
@@ -660,49 +660,49 @@
                                          under this profile pre-selects. -->
                                     <StackPanel Spacing="11" IsVisible="{Binding HasTtyProvider}">
                                         <TextBlock Text="DEFAULT KIND &amp; VIEW" FontSize="11" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                         <StackPanel Spacing="6">
-                                            <TextBlock Text="Default kind" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <TextBlock Text="Default kind" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <Button Content="SDK" Classes.Accent="{Binding IsDefaultKindSdk}" Command="{Binding SelectDefaultKindSdkCommand}"/>
                                                 <Button Content="TTY" Classes.Accent="{Binding IsDefaultKindTty}" Command="{Binding SelectDefaultKindTtyCommand}"/>
                                             </StackPanel>
                                             <TextBlock Text="Which kind of session the New-session dialog's Kind toggle opens on for this profile."
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                         </StackPanel>
                                         <StackPanel Spacing="6" IsVisible="{Binding IsDefaultKindEffectivelySdk}">
-                                            <TextBlock Text="Default view" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <TextBlock Text="Default view" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <ComboBox ItemsSource="{Binding ReadingLevels}" SelectedItem="{Binding SelectedReadingLevel}"
                                                       DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
                                             <TextBlock Text="{Binding SelectedReadingLevel.Description}" FontSize="11" TextWrapping="Wrap"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         </StackPanel>
                                     </StackPanel>
                                     <StackPanel Spacing="6" IsVisible="{Binding !HasTtyProvider}">
                                         <TextBlock Text="DEFAULT KIND &amp; VIEW" FontSize="11" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
-                                        <TextBlock Text="SDK-only" FontSize="12.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                                        <TextBlock Text="SDK-only" FontSize="12.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <StackPanel Spacing="6" IsVisible="{Binding IsDefaultKindEffectivelySdk}">
-                                            <TextBlock Text="Default view" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <TextBlock Text="Default view" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <ComboBox ItemsSource="{Binding ReadingLevels}" SelectedItem="{Binding SelectedReadingLevel}"
                                                       DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
                                             <TextBlock Text="{Binding SelectedReadingLevel.Description}" FontSize="11" TextWrapping="Wrap"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         </StackPanel>
                                     </StackPanel>
 
                                     <!-- LOGIN: provider-neutral, gated on CanStartLogin rather than just "not local". -->
                                     <StackPanel Spacing="11" IsVisible="{Binding CanStartLogin}">
                                         <TextBlock Text="LOGIN" FontSize="11" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                         <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                             <Ellipse Width="8" Height="8"
                                                      Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                             <TextBlock Text="{Binding LoginStatusLabel}" VerticalAlignment="Center"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <Button Content="Login" Classes="Compact" Command="{Binding LoginCommand}" Margin="6,0,0,0"/>
                                         </StackPanel>
                                         <StackPanel IsVisible="{Binding HasLoginFlow}">
@@ -713,8 +713,8 @@
                                     <!-- DELEGATION: whether another session may hand work to this profile. -->
                                     <StackPanel Spacing="11">
                                         <TextBlock Text="DELEGATION" FontSize="11" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
 
                                         <CheckBox Content="Other sessions may delegate work to this profile"
                                                   IsChecked="{Binding AllowedAsTarget}"
@@ -722,53 +722,53 @@
 
                                         <StackPanel Spacing="11" IsVisible="{Binding AllowedAsTarget}">
                                             <StackPanel Spacing="4">
-                                                <TextBlock Text="Good for" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <TextBlock Text="Good for" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <TextBox Text="{Binding DelegationPurpose}"
                                                          PlaceholderText="e.g. cheap bulk refactors and summarising — no web access"/>
                                                 <TextBlock Text="Told to the delegating agent so it picks the right profile for the job."
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                             </StackPanel>
 
                                             <StackPanel Spacing="4">
-                                                <TextBlock Text="Only these kinds of work" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <TextBlock Text="Only these kinds of work" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <TextBox Text="{Binding AllowedTaskTypes}" PlaceholderText="summarize, refactor  (leave empty to accept anything)"/>
                                             </StackPanel>
 
                                             <StackPanel Spacing="4">
-                                                <TextBlock Text="May work in these directories" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <TextBlock Text="May work in these directories" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <TextBox Text="{Binding AllowedWorkingDirs}"
                                                          AcceptsReturn="True"
                                                          MinHeight="66"
                                                          TextWrapping="NoWrap"
                                                          PlaceholderText="/home/you/projects/webshop&#x0a;one directory per line"/>
                                                 <TextBlock Text="A delegated task may only run in these directories, and in what lies under them. Empty means a task may not choose a directory at all — so delegation can never reach an arbitrary part of the disk."
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                             </StackPanel>
 
                                             <StackPanel Spacing="4">
-                                                <TextBlock Text="Tool permission ceiling (delegated, local models)" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <TextBlock Text="Tool permission ceiling (delegated, local models)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <ComboBox ItemsSource="{Binding PermissionCeilingChoices}"
                                                           SelectedItem="{Binding PermissionCeiling}"
                                                           HorizontalAlignment="Left" MinWidth="200"
                                                           ToolTip.Tip="How far a delegated local-model session may go without a human: plan/default = read-only tools only, acceptEdits = also non-destructive writes, bypassPermissions = everything. Ignored when 'Auto-Approve tool calls' is on."/>
                                                 <TextBlock Text="plan / default = read-only only · acceptEdits = also writes · bypassPermissions = everything"
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                             </StackPanel>
 
                                             <StackPanel Spacing="4">
-                                                <TextBlock Text="Auto-runnable tools (allow-list)" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <TextBlock Text="Auto-runnable tools (allow-list)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <TextBox Text="{Binding AllowedTools}"
                                                          AcceptsReturn="True"
                                                          MinHeight="66"
                                                          TextWrapping="NoWrap"
                                                          PlaceholderText="get_current_user&#x0a;one tool name per line"/>
                                                 <TextBlock Text="Tools a delegated session may run unattended regardless of the ceiling — the explicit trust anchor for tools whose MCP server gives no read-only/destructive hint (those are otherwise blocked). One tool name per line."
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                             </StackPanel>
 
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <TextBlock Text="Tasks at once" FontSize="11" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <NumericUpDown Value="{Binding MaxConcurrentTasks}" Minimum="1" Maximum="8"
                                                                Increment="1" FormatString="0" Width="110"
                                                                HorizontalContentAlignment="Center"
@@ -777,13 +777,13 @@
 
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <TextBlock Text="Stop a task after" FontSize="11" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <NumericUpDown Value="{Binding DelegationTimeoutMinutes}" Minimum="0" Maximum="240"
                                                                Increment="1" FormatString="0" Width="110"
                                                                HorizontalContentAlignment="Center"
                                                                ToolTip.Tip="Minutes a delegated task may run here before the cockpit stops it. Nobody is watching a delegated session, so a model that loops or waits on something that never comes would otherwise hold this profile's slot indefinitely. 0 = no limit."/>
                                                 <TextBlock Text="minutes (0 = no limit)" FontSize="11" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                             </StackPanel>
 
                                             <CheckBox Content="Tasks on this profile may delegate further"
@@ -795,8 +795,8 @@
                                     <!-- MCP SERVERS: pre-selection for a New session under this profile. -->
                                     <StackPanel Spacing="11" IsVisible="{Binding HasMcpServers}">
                                         <TextBlock Text="MCP SERVERS" FontSize="11" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                         <CheckBox Content="Pre-select MCP servers for this profile"
                                                   IsChecked="{Binding RestrictMcpServers}"
                                                   ToolTip.Tip="Off: a new session ticks every enabled server (and future ones). On: only the servers ticked below."/>
@@ -811,11 +811,11 @@
                                     <!-- ENVIRONMENT VARIABLES: injected into every session spawned under this profile. -->
                                     <StackPanel Spacing="11" IsVisible="{Binding SupportsEnvVars}">
                                         <TextBlock Text="ENVIRONMENT VARIABLES" FontSize="11" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                         <TextBlock Text="Injected into every session spawned under this profile, terminal and headless alike. Mark a value as secret to store it encrypted and masked."
                                                    FontSize="11" TextWrapping="Wrap"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         <ItemsControl ItemsSource="{Binding EnvironmentVariables}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:ProfileEnvironmentVariableViewModel">
@@ -838,14 +838,14 @@
                                                         <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,2,0,0"
                                                                    Text="Not a valid variable name — letters, digits and underscores, not starting with a digit."
                                                                    FontSize="11" TextWrapping="Wrap"
-                                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                                                                    IsVisible="{Binding !IsKeyValid}"/>
                                                     </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                         <Button Content="+ Add variable" Classes="Subtle" HorizontalAlignment="Left"
-                                                Foreground="{StaticResource CockpitAccentBrush}"
+                                                Foreground="{DynamicResource CockpitAccentBrush}"
                                                 Command="{Binding AddEnvironmentVariableCommand}"/>
                                     </StackPanel>
                                 </StackPanel>
@@ -862,7 +862,7 @@
                             <TextBlock Text="Appearance" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="How sessions lay out on screen, and what the transcript and usage pill show." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. LAYOUT"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -941,7 +941,7 @@
                             <TextBlock Text="Terminal" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="The shell and font every TTY session opens with." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. SHELL"/>
                         <!-- Which shell a New terminal opens (#AC-25). "OS default" (blank) uses the machine's
@@ -949,7 +949,7 @@
                              panes only — an AI session runs its provider's CLI, not a shell. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Default shell"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <ComboBox ItemsSource="{Binding TerminalShellChoices}"
                                       SelectedItem="{Binding SelectedTerminalShell}"
@@ -965,7 +965,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                                     IsVisible="{Binding IsTerminalShellCustom}">
                             <TextBlock Text="Custom shell"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <TextBox Text="{Binding TerminalCustomShell}" Width="260"
                                      PlaceholderText="e.g. /usr/bin/fish or nu"
@@ -975,7 +975,7 @@
                         <TextBlock Classes="optionsSectionHeader" Text="2. FONT"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Font family"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <ComboBox ItemsSource="{Binding TerminalFontChoices}"
                                       SelectedItem="{Binding TerminalFontSelection}"
@@ -985,7 +985,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                                     IsVisible="{Binding IsTerminalFontCustom}">
                             <TextBlock Text="Custom font"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <TextBox Text="{Binding TerminalCustomFontFamily}" Width="260"
                                      PlaceholderText="e.g. JetBrains Mono, monospace"
@@ -993,7 +993,7 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="Font size"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <NumericUpDown Value="{Binding TerminalFontSize}" Minimum="8" Maximum="32"
                                            Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
@@ -1011,7 +1011,7 @@
                             <TextBlock Text="Notifications" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="When the cockpit tells you a session needs you, locally or on Discord." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. LOCAL NOTIFICATIONS"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -1026,12 +1026,12 @@
                         </StackPanel>
                         <StackPanel Spacing="4" IsVisible="{Binding DiscordNotificationsEnabled}">
                             <TextBlock Text="Discord webhook URL"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"/>
                             <TextBox Text="{Binding WebhookUrl}" PlaceholderText="https://discord.com/api/webhooks/..."/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="Away after (idle minutes)"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <NumericUpDown Value="{Binding IdleThresholdMinutes}" Minimum="1" Maximum="240"
                                            Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
@@ -1053,7 +1053,7 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="Session goes idle after (minutes)"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <NumericUpDown Value="{Binding SessionIdleMinutes}" Minimum="0" Maximum="240"
                                            Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
@@ -1074,7 +1074,7 @@
                             <TextBlock Text="Shortcuts" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="Every key the cockpit captures — screenshot, push-to-talk, and the shortcut list." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. SCREENSHOT"/>
                         <!-- Screenshots (AC-220): a capture goes to the session in view, the same way push-to-talk
@@ -1088,7 +1088,7 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Screenshot key"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <controls:ShortcutCaptureControl Gesture="{Binding ScreenshotHotkeyKeyName, Mode=TwoWay}"
                                                              Mode="SingleKey" MinWidth="110"/>
@@ -1100,10 +1100,10 @@
                              has already started. -->
                         <TextBlock Text="{Binding HotkeyConflict}"
                                    IsVisible="{Binding HotkeyConflict, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <TextBlock Text="{Binding ScreenshotHotkeyTrigger, StringFormat='Global hotkey: {0}'}"
                                    IsVisible="{Binding ScreenshotHotkeyTrigger, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <!-- AC-566: a preview between confirming a selection and it landing in the session.
                              Off by default — Raymond's own argument, not everyone wants the extra window. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -1116,7 +1116,7 @@
                         <TextBlock Classes="optionsSectionHeader" Text="2. DICTATION PUSH-TO-TALK"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Push-to-talk key"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <controls:ShortcutCaptureControl Gesture="{Binding VoicePushToTalkKeyName, Mode=TwoWay}"
                                                              Mode="SingleKey" MinWidth="110"/>
@@ -1136,14 +1136,14 @@
                              push-to-talk is on, since off means there is nothing to report. -->
                         <TextBlock Text="{Binding VoiceGlobalHotkeyTrigger, StringFormat='Global hotkey: {0}'}"
                                    IsVisible="{Binding VoiceGlobalHotkeyTrigger, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <!-- Linux only: the global hotkey is a desktop-portal binding the compositor takes at
                              startup, so a change to it applies on the next launch, not live (Windows re-arms it
                              live and has no such line). The Restart-now button appears once a change is saved. -->
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
                                     IsVisible="{Binding IsLinuxPlatform}">
                             <TextBlock Text="Requires restarting the cockpit to take effect."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"
                                        VerticalAlignment="Center" TextWrapping="Wrap"/>
                             <Button Content="Restart now" Classes="Accent"
                                     Command="{Binding RestartAppCommand}"
@@ -1161,13 +1161,13 @@
                                     ToolTip.Tip="Forces a fresh permission prompt from your desktop's shortcuts portal — try this if global hotkeys stopped working after moving the AppImage."/>
                             </StackPanel>
                             <TextBlock Text="This does not remove your desktop's old registration for the previous location — clean that up yourself in System Settings → Shortcuts."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="3. ASSISTANT PUSH-TO-TALK"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Push to talk"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <controls:ShortcutCaptureControl Gesture="{Binding AssistantOptions.PushToTalkKeyName, Mode=TwoWay}"
                                                              Mode="SingleKey" MinWidth="110"/>
@@ -1186,7 +1186,7 @@
                                 <DataTemplate x:DataType="vm:ShortcutRowViewModel">
                                     <Grid ColumnDefinitions="*,200" Margin="0,3">
                                         <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <controls:ShortcutCaptureControl Grid.Column="1" Gesture="{Binding Gesture, Mode=TwoWay}"/>
                                     </Grid>
                                 </DataTemplate>
@@ -1207,7 +1207,7 @@
                             <TextBlock Text="Voice" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="Push-to-talk dictation and its transcription model, plus mic behaviour while the assistant talks." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. DICTATION"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -1218,7 +1218,7 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Microphone"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <ComboBox ItemsSource="{Binding InputDevices}"
                                       SelectedItem="{Binding SelectedInputDevice}"
@@ -1228,7 +1228,7 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Dictation language"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <ComboBox ItemsSource="{Binding SttLanguages}"
                                       SelectedItem="{Binding SelectedSttLanguage}"
@@ -1250,19 +1250,19 @@
                                 ToolTip.Tip="Turns your speech into text with Whisper, on-device. What Whisper hears is what you get — the model and backend below (and the calibration further down) are the only levers on accuracy."/>
                         </StackPanel>
                         <!-- AC-68: detected acceleration, so the choices below read as host-aware rather than generic. -->
-                        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                 CornerRadius="5" Padding="8,5" HorizontalAlignment="Left" MaxWidth="440" Margin="0,2">
                             <TextBlock Text="{Binding TranscriptionHardware}"
                                        FontFamily="{StaticResource CockpitMonoFont}" FontSize="10.5"
                                        TextWrapping="Wrap"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         </Border>
                         <!-- Curated model dropdown (AC-68): presets with an accuracy-vs-load hint, plus a
                              "Custom…" item that reveals the old free-text box for any other ggml name. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Transcription model"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <ComboBox ItemsSource="{Binding TranscriptionModelChoices}"
                                       SelectedItem="{Binding SelectedTranscriptionModel}"
@@ -1273,7 +1273,7 @@
                                             <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center"/>
                                             <TextBlock Grid.Column="1" Text="{Binding Hint}" Margin="12,0,0,0"
                                                        VerticalAlignment="Center"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                        FontFamily="{StaticResource CockpitMonoFont}" FontSize="10"/>
                                         </Grid>
                                     </DataTemplate>
@@ -1283,7 +1283,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                                     IsVisible="{Binding IsTranscriptionModelCustom}">
                             <TextBlock Text="Custom model"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <TextBox Text="{Binding VoiceCustomModelName}" Width="220"
                                      PlaceholderText="e.g. large-v3-turbo-q5_0"
@@ -1293,7 +1293,7 @@
                              actually loads here — never CUDA on a non-NVIDIA machine. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Transcription backend"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <ComboBox ItemsSource="{Binding VoiceBackendPreferences}"
                                       SelectedItem="{Binding SelectedVoiceBackendPreference}"
@@ -1301,7 +1301,7 @@
                         </StackPanel>
                         <TextBlock Text="{Binding TranscriptionAdvice}"
                                    IsVisible="{Binding TranscriptionAdvice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                         <!-- AC-68: first-use calibration — a real measurement of speed + desktop hitch on
                              every backend this machine can use (CPU and, if a runtime loads, GPU), each timed
@@ -1317,7 +1317,7 @@
                                 <TextBlock Grid.Column="1" Text="{Binding CalibrationStatus}"
                                            IsVisible="{Binding CalibrationStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                            VerticalAlignment="Center"
-                                           Foreground="{StaticResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
+                                           Foreground="{DynamicResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
                             </Grid>
 
                             <StackPanel Spacing="6" IsVisible="{Binding HasCalibration}">
@@ -1325,14 +1325,14 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <Border Padding="8,6" Margin="0,2" CornerRadius="6"
-                                                    Background="{StaticResource CockpitSecondaryBgBrush}">
+                                                    Background="{DynamicResource CockpitSecondaryBgBrush}">
                                                 <StackPanel Spacing="4">
                                                     <Grid ColumnDefinitions="*,Auto">
                                                         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                                             <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold"
                                                                        VerticalAlignment="Center"/>
                                                             <Border IsVisible="{Binding IsChosen}" CornerRadius="3" Padding="5,1"
-                                                                    Background="{StaticResource CockpitAccentBrush}" VerticalAlignment="Center">
+                                                                    Background="{DynamicResource CockpitAccentBrush}" VerticalAlignment="Center">
                                                                 <TextBlock Text="AUTO" FontSize="9" FontWeight="Bold" Foreground="White"/>
                                                             </Border>
                                                         </StackPanel>
@@ -1344,14 +1344,14 @@
                                                                  Height="7"/>
                                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                                         <TextBlock Grid.Column="0" Text="desktop hitch" VerticalAlignment="Center"
-                                                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="10" Margin="0,0,8,0"/>
+                                                                   Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="10" Margin="0,0,8,0"/>
                                                         <ProgressBar Grid.Column="1" Minimum="0" Value="{Binding HitchMs}"
                                                                      Maximum="{Binding $parent[ItemsControl].DataContext.CalibrationHitchMaxMs}"
                                                                      Height="5" VerticalAlignment="Center"/>
                                                         <TextBlock Grid.Column="2" Text="{Binding HitchText}" HorizontalAlignment="Right"
                                                                    VerticalAlignment="Center" FontFamily="{StaticResource CockpitMonoFont}"
                                                                    FontSize="10" Margin="8,0,0,0"
-                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                                     </Grid>
                                                 </StackPanel>
                                             </Border>
@@ -1359,19 +1359,19 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 <TextBlock Text="{Binding CalibrationChosenText}" FontWeight="SemiBold" FontSize="12"
-                                           Foreground="{StaticResource CockpitAccentBrush}" Margin="0,2,0,0"/>
+                                           Foreground="{DynamicResource CockpitAccentBrush}" Margin="0,2,0,0"/>
                                 <TextBlock Text="{Binding CalibrationRationale}"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding CalibrationModelText}"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"
                                            FontFamily="{StaticResource CockpitMonoFont}"/>
 
                                 <!-- AC-68: the model ladder — the same model timed at several sizes on the
                                      winning backend, to advise the accuracy-vs-speed trade-off. -->
                                 <StackPanel Spacing="5" IsVisible="{Binding HasModelLadder}" Margin="0,4,0,0">
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,2"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,2"/>
                                     <TextBlock Text="Model speed on the chosen backend" FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                     <ItemsControl ItemsSource="{Binding CalibrationModelResults}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
@@ -1380,7 +1380,7 @@
                                                         <TextBlock Text="{Binding Model}" FontSize="11" VerticalAlignment="Center"
                                                                    FontFamily="{StaticResource CockpitMonoFont}"/>
                                                         <Border IsVisible="{Binding IsRecommended}" CornerRadius="3" Padding="5,1"
-                                                                Background="{StaticResource CockpitAccentBrush}" VerticalAlignment="Center">
+                                                                Background="{DynamicResource CockpitAccentBrush}" VerticalAlignment="Center">
                                                             <TextBlock Text="PICK" FontSize="9" FontWeight="Bold" Foreground="White"/>
                                                         </Border>
                                                     </StackPanel>
@@ -1394,9 +1394,9 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <TextBlock Text="{Binding CalibrationModelRecommendation}" FontWeight="SemiBold" FontSize="12"
-                                               Foreground="{StaticResource CockpitAccentBrush}"/>
+                                               Foreground="{DynamicResource CockpitAccentBrush}"/>
                                     <TextBlock Text="{Binding CalibrationModelAdvice}"
-                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </StackPanel>
 
@@ -1405,7 +1405,7 @@
                                         IsEnabled="{Binding CanRunCalibration}"/>
                                 <TextBlock Text="Turn on push-to-talk dictation above first — calibration needs the model."
                                            IsVisible="{Binding !VoiceEnabled}" VerticalAlignment="Center"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                             </StackPanel>
                         </StackPanel>
 
@@ -1432,7 +1432,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
                                         IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
                                 <TextBlock Text="…when the microphone is louder than"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
                                 <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
                                                Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
@@ -1448,7 +1448,7 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock Text="Open-mic: end utterance after (silence ms)"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
                                 <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"
                                                Increment="100" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
@@ -1470,7 +1470,7 @@
                             <TextBlock Text="Assistant" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="Talk to the assistant and let it answer — its own profile, replies and speech." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. VOICE ASSISTANT"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -1503,7 +1503,7 @@
                                            VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
                                 <TextBlock Text="{Binding AssistantOptions.ProfileUnsetReason}"
                                            IsVisible="{Binding AssistantOptions.ProfileUnsetReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
                                 <Button Content="Edit…" VerticalAlignment="Center"
                                         Command="{Binding EditAssistantProfileCommand}"
@@ -1553,7 +1553,7 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Voice"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
                                 <ComboBox ItemsSource="{Binding TtsVoices}"
                                           SelectedItem="{Binding SelectedTtsVoice}"
@@ -1565,7 +1565,7 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Speed"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
                                 <NumericUpDown Value="{Binding VoiceTtsSpeed}" Minimum="0.5" Maximum="2.0"
                                                Increment="0.05" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
@@ -1574,7 +1574,7 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Language"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
                                 <ComboBox ItemsSource="{Binding ReadAloudLanguages}"
                                           SelectedItem="{Binding SelectedReadAloudLanguage}"
@@ -1584,7 +1584,7 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Output device"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                            VerticalAlignment="Center"/>
                                 <ComboBox ItemsSource="{Binding OutputDevices}"
                                           SelectedItem="{Binding SelectedOutputDevice}"
@@ -1606,7 +1606,7 @@
                             <TextBlock Text="Security" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="Encryption, screen lock, terminal access, and the assistant's consent bypass." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <!-- AC-1286: a setting that could not be written says so here, and goes away again the
                              moment a write succeeds. Shown on both tabs that own one of these settings. -->
@@ -1621,16 +1621,16 @@
                                 ToolTip.Tip="Your provider API keys, MCP bearer tokens and the plugins' tokens are stored in cockpit.json. Encrypting them means the file gives up nothing without your password — if it is copied, synced, backed up, or the laptop walks off."/>
                         </StackPanel>
 
-                        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                 CornerRadius="6" Padding="12" Margin="0,4">
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Encrypted — the cockpit asks for your password when it starts"
                                            IsVisible="{Binding Security.IsEncrypted}"
-                                           FontSize="12.5" Foreground="{StaticResource CockpitStatusDoneBrush}"/>
+                                           FontSize="12.5" Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
                                 <TextBlock Text="Not encrypted — your keys and tokens are readable in cockpit.json"
                                            IsVisible="{Binding !Security.IsEncrypted}"
-                                           FontSize="12.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                           FontSize="12.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                             </StackPanel>
                         </Border>
 
@@ -1650,7 +1650,7 @@
 
                         <TextBlock Text="{Binding Security.Status}"
                                    IsVisible="{Binding Security.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                    TextWrapping="Wrap" Margin="0,4,0,0"/>
 
                         <!-- AC-5: only meaningful while encryption is on, so the row is shown then rather than
@@ -1700,15 +1700,15 @@
                                       ToolTip.Tip="Skip Cockpit's consent card for everything the assistant asks, including dangerous actions: shell commands, handing over a session with your rights, arbitrary network access. Turn it off to fall back to the per-source list, which keeps whatever you ticked there."/>
                             <TextBlock Text="Skips Cockpit's own consent card — Claude's own Allow/Deny in the chat still asks. Every skip is still recorded in the consent trail."
                                        IsVisible="{Binding AssistantOptions.HasConsentBypass}"
-                                       Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="11"
+                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}" FontSize="11"
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <Grid ColumnDefinitions="*,120,120" Margin="0,2,0,0"
                               IsVisible="{Binding !AssistantOptions.ConsentBypassAll}">
                             <TextBlock Grid.Column="1" Text="Everyday" FontSize="11"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                             <TextBlock Grid.Column="2" Text="Dangerous" FontSize="11"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         </Grid>
                         <ItemsControl ItemsSource="{Binding AssistantOptions.ConsentBypassSources}"
                                       IsVisible="{Binding !AssistantOptions.ConsentBypassAll}">
@@ -1717,20 +1717,20 @@
                                     <Grid ColumnDefinitions="*,120,120" Margin="0,3">
                                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Label}"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <!-- The host-stamped key, when it is not the label itself: a plugin
                                                  names its own label, so this is what says which plugin a row
                                                  really belongs to. -->
                                             <TextBlock Text="{Binding KeyDetail}" FontSize="10"
                                                        IsVisible="{Binding KeyDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                             <!-- Switched on but not a source this build recognises any more —
                                                  typically a stored key from before a source's id changed
                                                  underneath it. Still shown, still switchable off; never
                                                  hidden or silently migrated to a new key (#K11). -->
                                             <TextBlock Text="Unknown source — no longer in use" FontSize="10"
                                                        IsVisible="{Binding IsOrphan}"
-                                                       Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                         </StackPanel>
                                         <CheckBox Grid.Column="1" IsChecked="{Binding BypassLowRisk}"
                                                   ToolTip.Tip="Skip the card for this source's everyday, repeatable actions."/>
@@ -1764,7 +1764,7 @@
                             <TextBlock Text="MCP Servers" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="Shared MCP servers: which ones exist, who may use them, and how they sign in." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <Grid ColumnDefinitions="180,1,*" Margin="0,4,0,0" IsVisible="{Binding McpServers, Converter={x:Static ObjectConverters.IsNotNull}}">
 
@@ -1774,19 +1774,19 @@
                             <DockPanel Grid.Column="0">
                                 <StackPanel DockPanel.Dock="Bottom" Margin="0,8,12,0" Spacing="6">
                                     <Button Content="+ Add server" Classes="Subtle" HorizontalAlignment="Left"
-                                            Foreground="{StaticResource CockpitAccentBrush}"
+                                            Foreground="{DynamicResource CockpitAccentBrush}"
                                             Command="{Binding McpServers.AddServerCommand}"/>
                                     <TextBlock Text="Local models auto-get filesystem, fetch, git &amp; memory. Add a server to override one or reach Claude."
-                                               FontSize="10" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                               FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     <Button Content="Remove" Classes="Subtle" HorizontalAlignment="Left"
-                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                             Command="{Binding McpServers.RemoveServerCommand}"
                                             IsVisible="{Binding McpServers.SelectedServer, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                                     <!-- Dialog-wide validation refusals (duplicate names, a reserved-name clash) and
                                          the hidden-servers notice — the two things no single field can carry. -->
                                     <TextBlock Text="{Binding McpServers.StatusMessage}" FontSize="11" TextWrapping="Wrap"
                                                IsVisible="{Binding McpServers.StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                               Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                 </StackPanel>
 
                                 <ListBox ItemsSource="{Binding McpServers.Servers}" SelectedItem="{Binding McpServers.SelectedServer}"
@@ -1796,13 +1796,13 @@
                                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
                                                 <TextBlock Text="{Binding SelectedScope.ShortLabel}" FontSize="10" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                            IsVisible="{Binding SelectedScope.IsScoped}"/>
                                                 <TextBlock Text="(off)" FontSize="10" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                            IsVisible="{Binding !Enabled}"/>
                                                 <TextBlock Text="{Binding AuthStatusLabel}" FontSize="10" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                            IsVisible="{Binding ShowAuthStatus}"/>
                                             </StackPanel>
                                         </DataTemplate>
@@ -1811,7 +1811,7 @@
                             </DockPanel>
 
                             <!-- The one functional divider criterion 2 allows: no border/card anywhere else on this page. -->
-                            <Border Grid.Column="1" Width="1" Background="{StaticResource CockpitHairlineBrush}" HorizontalAlignment="Center"/>
+                            <Border Grid.Column="1" Width="1" Background="{DynamicResource CockpitHairlineBrush}" HorizontalAlignment="Center"/>
 
                             <!-- Detail: the selected server's fields. -->
                             <StackPanel Grid.Column="2" Margin="16,0,0,0" Spacing="11"
@@ -1819,19 +1819,19 @@
                                 <StackPanel Spacing="11" DataContext="{Binding McpServers.SelectedServer}" x:DataType="vm:EditableMcpServerViewModel">
 
                                     <StackPanel Spacing="4">
-                                        <TextBlock Text="Name" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="Name" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding Name}"/>
                                         <!-- Field-level half of the answered open question: the incomplete-server
                                              message lands here, not only in the shared footer. -->
                                         <TextBlock Text="Every server needs a name, plus a command (stdio) or a URL (http)."
                                                    FontSize="10" TextWrapping="Wrap"
-                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                                                    IsVisible="{Binding !IsValid}"/>
                                     </StackPanel>
 
                                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                                         <StackPanel Grid.Column="0" Spacing="4">
-                                            <TextBlock Text="Transport" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <TextBlock Text="Transport" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <ComboBox ItemsSource="{Binding Transports}" SelectedItem="{Binding Transport}"
                                                       HorizontalAlignment="Stretch"/>
                                         </StackPanel>
@@ -1839,21 +1839,21 @@
                                     </Grid>
 
                                     <StackPanel Spacing="4">
-                                        <TextBlock Text="Available to" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="Available to" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <ComboBox ItemsSource="{Binding Scopes}" SelectedItem="{Binding SelectedScope}"
                                                   DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
                                         <TextBlock Text="Local models need servers like filesystem; Claude Code already has its own file/shell/web tools."
-                                                   FontSize="10" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     </StackPanel>
 
                                     <!-- stdio -->
                                     <StackPanel Spacing="4" IsVisible="{Binding IsStdio}">
-                                        <TextBlock Text="Command" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="Command" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding Command}" FontFamily="{StaticResource CockpitMonoFont}"
                                                  PlaceholderText="e.g. npx"/>
                                     </StackPanel>
                                     <StackPanel Spacing="4" IsVisible="{Binding IsStdio}">
-                                        <TextBlock Text="Arguments (one per line)" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="Arguments (one per line)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding Args}" AcceptsReturn="True" TextWrapping="NoWrap"
                                                  MinHeight="76" MaxHeight="146" FontFamily="{StaticResource CockpitMonoFont}"
                                                  PlaceholderText="-y&#x0a;@modelcontextprotocol/server-filesystem&#x0a;."/>
@@ -1861,31 +1861,31 @@
 
                                     <!-- http -->
                                     <StackPanel Spacing="4" IsVisible="{Binding IsHttp}">
-                                        <TextBlock Text="URL" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="URL" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding Url}" FontFamily="{StaticResource CockpitMonoFont}"
                                                  PlaceholderText="https://host/mcp"/>
                                     </StackPanel>
                                     <StackPanel Spacing="4" IsVisible="{Binding IsHttp}">
-                                        <TextBlock Text="Authentication" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="Authentication" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <ComboBox ItemsSource="{Binding AuthModes}" SelectedItem="{Binding Auth}" HorizontalAlignment="Stretch"/>
                                     </StackPanel>
                                     <StackPanel Spacing="4" IsVisible="{Binding IsApiKeyAuth}">
-                                        <TextBlock Text="API key" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="API key" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding ApiKey}" PasswordChar="•"/>
                                     </StackPanel>
                                     <StackPanel Spacing="4" IsVisible="{Binding IsOAuthAuth}">
-                                        <TextBlock Text="OAuth authority (discovery base)" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="OAuth authority (discovery base)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding OAuthAuthority}" FontFamily="{StaticResource CockpitMonoFont}"
                                                  PlaceholderText="https://login.example.com"/>
                                     </StackPanel>
                                     <StackPanel Spacing="4" IsVisible="{Binding IsOAuthAuth}">
                                         <TextBlock Text="OAuth client id (optional — dynamic registration if empty)" FontSize="11"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding OAuthClientId}"/>
                                     </StackPanel>
                                     <StackPanel Spacing="4" IsVisible="{Binding IsOAuthAuth}">
                                         <TextBlock Text="OAuth scopes (optional — space-separated, replaces what is derived automatically; include offline_access yourself if you want a refresh token)"
-                                                   FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBox Text="{Binding OAuthScopes}" FontFamily="{StaticResource CockpitMonoFont}"
                                                  PlaceholderText="openid offline_access depot"/>
                                     </StackPanel>
@@ -1896,24 +1896,24 @@
                                          as the row itself is valid; sign out only withdraws whatever is already
                                          stored, so it stays disabled until there is something to withdraw. -->
                                     <StackPanel Spacing="4" IsVisible="{Binding IsOAuthAuth}">
-                                        <TextBlock Text="Sign-in" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="Sign-in" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
                                             <Button Grid.Column="0" Content="{Binding SignInButtonLabel}" Classes="Subtle"
-                                                    Foreground="{StaticResource CockpitAccentBrush}"
+                                                    Foreground="{DynamicResource CockpitAccentBrush}"
                                                     Command="{Binding SignInCommand}"/>
                                             <Button Grid.Column="1" Content="Sign out" Classes="Subtle"
-                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                     Command="{Binding SignOutCommand}"/>
                                             <TextBlock Grid.Column="2" Text="{Binding AuthStatusLabel}" FontSize="11" VerticalAlignment="Center"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}" IsVisible="{Binding ShowAuthStatus}"/>
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}" IsVisible="{Binding ShowAuthStatus}"/>
                                         </Grid>
-                                        <TextBlock Text="Working…" FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                        <TextBlock Text="Working…" FontSize="10" Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                    IsVisible="{Binding IsAuthBusy}"/>
                                         <TextBlock Text="{Binding SignInUnavailableReason}" FontSize="10" TextWrapping="Wrap"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                    IsVisible="{Binding SignInUnavailableReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                         <TextBlock Text="{Binding AuthMessage}" FontSize="10" TextWrapping="Wrap"
-                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                                                    IsVisible="{Binding AuthMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                     </StackPanel>
 
@@ -1921,9 +1921,9 @@
                                          only covers the Authorization: Bearer shape — a server that expects
                                          X-Api-Key or another scheme needs a free header instead. -->
                                     <StackPanel Spacing="4" IsVisible="{Binding IsHttp}">
-                                        <TextBlock Text="Custom headers" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="Custom headers" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <TextBlock Text="For a server that expects X-Api-Key or another scheme instead of Authorization: Bearer."
-                                                   FontSize="10" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         <ItemsControl ItemsSource="{Binding Headers}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:McpHeaderRowViewModel">
@@ -1942,7 +1942,7 @@
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                         <Button Content="+ Add header" Classes="Subtle" HorizontalAlignment="Left"
-                                                Foreground="{StaticResource CockpitAccentBrush}"
+                                                Foreground="{DynamicResource CockpitAccentBrush}"
                                                 Command="{Binding AddHeaderCommand}"/>
                                     </StackPanel>
 
@@ -1961,7 +1961,7 @@
                             <TextBlock Text="Nodes" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="Pair with another Cockpit to share MCP access, and run sessions on its machine." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsHint" TextWrapping="Wrap"
                                    IsVisible="{Binding Security.PersistError.Length}"
@@ -1980,16 +1980,16 @@
                                        IsVisible="{Binding Security.NodeEndpointHasNoListener}"
                                        Text="{Binding Security.NodeEndpointNoListenerText}"/>
                             <StackPanel Spacing="4" IsVisible="{Binding !Security.NodeEndpointHasNoListener}">
-                                <TextBlock Text="Pairing address — type this into the other Cockpit" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBlock Text="Pairing address — type this into the other Cockpit" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                 <TextBox Text="{Binding Security.NodePairingAddress}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
-                                <TextBlock Text="Address" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                                <TextBlock Text="Address" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                                 <TextBox Text="{Binding Security.NodeEndpointAddressText}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
                             </StackPanel>
-                            <TextBlock Text="Shared key" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                            <TextBlock Text="Shared key" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                             <TextBox Text="{Binding Security.NodeEndpointSharedSecret}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,8,0,0">
-                                <TextBlock Text="Visible outside this network" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBlock Text="Visible outside this network" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="This node is always visible on its own local network. Past that, nothing — not a discovery reply, not a pairing request — until you list the ranges allowed to reach it here, comma-separated CIDR notation (e.g. 203.0.113.0/24). Empty by default, on purpose."/>
                             </StackPanel>
@@ -1997,17 +1997,17 @@
                                      FontFamily="Consolas,monospace" FontSize="11.5"/>
 
                             <Border IsVisible="{Binding Security.IsPaired}" Margin="0,8,0,0" Padding="10"
-                                    CornerRadius="9" Background="{StaticResource CockpitInsetBgBrush}">
+                                    CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
                                 <StackPanel Spacing="6">
                                     <TextBlock Text="{Binding Security.PairedControllerText}" TextWrapping="Wrap" FontSize="11.5"/>
                                     <Button Content="Unpair" HorizontalAlignment="Left" Command="{Binding Security.UnpairNodeCommand}"/>
 
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,8,0,0">
-                                        <TextBlock Text="What this controller may use here" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Text="What this controller may use here" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <materialIcons:MaterialIcon Classes="hint"
                                             ToolTip.Tip="A fresh pairing starts able to reach every profile and every project, including ones you make later. Switch either kind to &quot;only these&quot; and it reaches nothing but what you tick below. Both take effect immediately, without unpairing."/>
                                     </StackPanel>
-                                    <TextBlock Text="Profiles" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                                    <TextBlock Text="Profiles" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                                     <CheckBox Content="All profiles, including ones made later" IsChecked="{Binding Security.AllowAllProfiles}"/>
                                     <!-- Disabled, not hidden: with "all" on, the ticks mean nothing but the list still says what is there. -->
                                     <ItemsControl ItemsSource="{Binding Security.ScopedProfiles}" IsEnabled="{Binding !Security.AllowAllProfiles}">
@@ -2017,17 +2017,17 @@
                                                     <CheckBox Content="{Binding Label}" IsChecked="{Binding IsAllowed}"/>
                                                     <!-- AC-1292: what this profile explicitly sets, not what its provider does by default. -->
                                                     <TextBlock Text="skips approvals" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
-                                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                               Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                                                                IsVisible="{Binding SkipsApprovals}"/>
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <TextBlock Text="No profiles saved yet." FontSize="11" FontStyle="Italic"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                IsVisible="{Binding !Security.ScopedProfiles.Count}"/>
 
-                                    <TextBlock Text="Projects" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                                    <TextBlock Text="Projects" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                                     <CheckBox Content="All projects, including ones made later" IsChecked="{Binding Security.AllowAllProjects}"/>
                                     <ItemsControl ItemsSource="{Binding Security.ScopedProjects}" IsEnabled="{Binding !Security.AllowAllProjects}">
                                         <ItemsControl.ItemTemplate>
@@ -2037,13 +2037,13 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <TextBlock Text="No projects saved yet." FontSize="11" FontStyle="Italic"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                IsVisible="{Binding !Security.ScopedProjects.Count}"/>
                                 </StackPanel>
                             </Border>
 
                             <Border IsVisible="{Binding Security.HasIncomingPairing}" Margin="0,8,0,0" Padding="10"
-                                    CornerRadius="9" Background="{StaticResource CockpitInsetBgBrush}">
+                                    CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
                                 <StackPanel Spacing="6">
                                     <TextBlock Text="{Binding Security.IncomingPairingCaption}" TextWrapping="Wrap" FontSize="11.5"/>
                                     <TextBlock Text="{Binding Security.IncomingPairingCode}" FontFamily="Consolas,monospace" FontSize="24" FontWeight="Bold"/>
@@ -2067,7 +2067,7 @@
                                         IsEnabled="{Binding !Security.IsDiscoveringNodes}"/>
                             </StackPanel>
                             <TextBlock Text="{Binding Security.DiscoveryStatus}" TextWrapping="Wrap" FontSize="11.5"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                        IsVisible="{Binding Security.DiscoveryStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             <ItemsControl ItemsSource="{Binding Security.FoundNodes}" IsVisible="{Binding Security.FoundNodes.Count}">
                                 <ItemsControl.ItemTemplate>
@@ -2090,7 +2090,7 @@
                             </StackPanel>
 
                             <Border IsVisible="{Binding Security.IsComparingPairingCode}" Padding="10"
-                                    CornerRadius="9" Background="{StaticResource CockpitInsetBgBrush}">
+                                    CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
                                 <StackPanel Spacing="6">
                                     <TextBlock Text="{Binding Security.OutgoingPairingCaption}" TextWrapping="Wrap" FontSize="11.5"/>
                                     <TextBlock Text="{Binding Security.OutgoingPairingCode}" FontFamily="Consolas,monospace" FontSize="24" FontWeight="Bold"/>
@@ -2103,7 +2103,7 @@
                             </Border>
 
                             <TextBlock Text="{Binding Security.PairingStatus}" TextWrapping="Wrap" FontSize="11.5"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                        IsVisible="{Binding Security.PairingStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         </StackPanel>
 
@@ -2118,12 +2118,12 @@
                         <ItemsControl ItemsSource="{Binding Security.PairedNodes}" Margin="24,4,0,0">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="9" Background="{StaticResource CockpitInsetBgBrush}">
+                                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
                                         <StackPanel Spacing="6">
                                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding NodeName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                                 <TextBlock Text="another machine" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
-                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <Button Content="Refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}"/>
                                             </StackPanel>
 
@@ -2133,9 +2133,9 @@
                                                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,2" VerticalAlignment="Center">
                                                             <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"/>
                                                             <TextBlock Text="{Binding Profile}" FontSize="11" VerticalAlignment="Center"
-                                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                             <TextBlock Text="{Binding Statusline}" FontSize="11" VerticalAlignment="Center"
-                                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                             <Button Content="Stop" Command="{Binding $parent[ItemsControl].DataContext.StopCommand}"
                                                                     CommandParameter="{Binding}"/>
                                                         </StackPanel>
@@ -2169,7 +2169,7 @@
                                             </StackPanel>
 
                                             <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="11.5"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                        IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                         </StackPanel>
                                     </Border>
@@ -2206,7 +2206,7 @@
                             <TextBlock Text="Backup" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="One archive with your settings, profiles and plugins — and the assistant's memory on its own." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. BACK UP THE COCKPIT"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -2246,10 +2246,10 @@
                                    Text="Both run straight away and are not undone by Cancel."/>
 
                         <TextBlock Text="Restoring replaces every setting, profile and plugin here. What is in place now is moved aside rather than deleted, and the cockpit restarts afterwards."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                         <TextBlock Text="{Binding BackupStatus}" IsVisible="{Binding BackupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. ASSISTANT MEMORY ONLY"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -2267,10 +2267,10 @@
                                    Text="Both run straight away and are not undone by Cancel."/>
 
                         <TextBlock Text="Importing replaces the assistant's memory. What is in place now is moved aside rather than deleted."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                         <TextBlock Text="{Binding AssistantMemoryBackupStatus}" IsVisible="{Binding AssistantMemoryBackupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -2282,7 +2282,7 @@
                             <TextBlock Text="Updates" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="Whether the cockpit checks for a newer build, and how to get one." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. UPDATES"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -2292,7 +2292,7 @@
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
-                            <TextBlock Text="This build:" Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
+                            <TextBlock Text="This build:" Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding CurrentBuild}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11" VerticalAlignment="Center"/>
                         </StackPanel>
 
@@ -2312,7 +2312,7 @@
                              stopped being able to keep. -->
                         <TextBlock x:Name="SelfUpdateNotice" IsVisible="{Binding !CanUpdateItself}"
                                    Text="This copy cannot update itself — it was not installed by the cockpit's installer, so it cannot check for a newer build either. Get a newer build from the release page, or update it the way you installed this one."
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                    TextWrapping="Wrap" Margin="0,8,0,0"/>
 
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
@@ -2338,12 +2338,12 @@
                             <ProgressBar Width="160" Height="6" VerticalAlignment="Center"
                                          Minimum="0" Maximum="100" Value="{Binding UpdateDownloadProgress}"/>
                             <TextBlock VerticalAlignment="Center" FontSize="11"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                        Text="{Binding UpdateDownloadProgress, StringFormat='{}{0}%'}"/>
                         </StackPanel>
 
                         <TextBlock Text="{Binding UpdateStatus}" IsVisible="{Binding UpdateStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -2355,7 +2355,7 @@
                             <TextBlock Text="Debug" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
                         <TextBlock Text="Controls for investigating the cockpit itself, not for doing the work." Classes="optionsHint"/>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. DIAGNOSTICS"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -2387,12 +2387,12 @@
                                 <TextBlock Text="{Binding RenderingSettingsStatus}"
                                            IsVisible="{Binding RenderingSettingsStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                            VerticalAlignment="Center"
-                                           Foreground="{StaticResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
+                                           Foreground="{DynamicResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
                                         IsVisible="{Binding RenderBackendNeedsRestart}">
                                 <TextBlock Text="Saved — restart to apply the new render backend."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"
                                            VerticalAlignment="Center" TextWrapping="Wrap"/>
                                 <Button Content="Restart Cockpit" Classes="Accent"
                                         Command="{Binding RestartAppCommand}"/>
@@ -2412,18 +2412,18 @@
                             <TextBlock Text="{Binding Diagnostics.Status}"
                                        IsVisible="{Binding Diagnostics.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                        VerticalAlignment="Center"
-                                       Foreground="{StaticResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
+                                       Foreground="{DynamicResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
                         </StackPanel>
 
-                        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                 CornerRadius="6" Padding="12" Margin="0,4">
                             <!-- AC-755: the report holds paths and OS lines longer than the dialog is wide, and
                                  the tab's own ScrollViewer only scrolls down, so they were simply cut off. -->
                             <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                                 <SelectableTextBlock Text="{Binding Diagnostics.Report}"
                                                      FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
-                                                     Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                     Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                      TextWrapping="NoWrap"/>
                             </ScrollViewer>
                         </Border>
@@ -2442,9 +2442,9 @@
                        FontSize="13" FontWeight="SemiBold"/>
             <ProgressBar Minimum="0" Maximum="100" Height="6"
                          Value="{Binding Security.MigrationProgress}"
-                         Foreground="{StaticResource CockpitAccentBrush}"/>
+                         Foreground="{DynamicResource CockpitAccentBrush}"/>
             <TextBlock Text="Do not close the cockpit while this runs." HorizontalAlignment="Center"
-                       FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                       FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
         </StackPanel>
     </Border>
 
@@ -2455,13 +2455,13 @@
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" Width="330">
             <TextBlock Text="Calibrating transcription" HorizontalAlignment="Center" FontSize="13" FontWeight="SemiBold"/>
             <TextBlock Text="{Binding CalibrationStatus}" HorizontalAlignment="Center" TextAlignment="Center"
-                       FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}" TextWrapping="Wrap"/>
+                       FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}" TextWrapping="Wrap"/>
             <ProgressBar Minimum="0" Maximum="100" Height="6"
                          IsIndeterminate="{Binding CalibrationProgressIndeterminate}"
                          Value="{Binding CalibrationProgressValue}"
-                         Foreground="{StaticResource CockpitAccentBrush}"/>
+                         Foreground="{DynamicResource CockpitAccentBrush}"/>
             <TextBlock Text="Measuring each backend in its own process — this can take a few minutes, especially the CPU run and the first-time model or runtime download." HorizontalAlignment="Center" TextAlignment="Center"
-                       FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}" TextWrapping="Wrap"/>
+                       FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}" TextWrapping="Wrap"/>
             <Button Content="Cancel" Command="{Binding CancelCalibrationCommand}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
         </StackPanel>
     </Border>

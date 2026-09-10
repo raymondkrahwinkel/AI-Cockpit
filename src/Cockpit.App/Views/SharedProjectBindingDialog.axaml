@@ -9,7 +9,7 @@
         Title="Add to my projects"
         Width="520" Height="420" MinWidth="440" MinHeight="320"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
         <vm:SharedProjectBindingDialogViewModel/>
@@ -20,11 +20,11 @@
          machine-specific resource row), never the shared ones this project already carries. -->
     <Window.Styles>
         <Style Selector="TextBlock.FieldLabel">
-            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextPrimaryBrush}"/>
             <Setter Property="FontSize" Value="13"/>
         </Style>
         <Style Selector="TextBlock.FieldHint">
-            <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="Margin" Value="0,1,0,6"/>
@@ -32,11 +32,11 @@
     </Window.Styles>
 
     <Grid RowDefinitions="*,Auto">
-        <Border Grid.Row="1" Background="{StaticResource CockpitChromeBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+        <Border Grid.Row="1" Background="{DynamicResource CockpitChromeBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" Text="* required" VerticalAlignment="Center" FontSize="11"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
                     <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"/>
@@ -47,7 +47,7 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Spacing="18" Margin="24,20,24,28">
                 <TextBlock Text="{Binding Hint}" TextWrapping="Wrap" FontSize="12"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
                 <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="Profile *"/>
@@ -89,7 +89,7 @@
                     <TextBlock Classes="FieldHint"
                                Text="This project's own definition names these; where they live is yours to fill in. Skipping one is fine — the project starts without that row."/>
                     <Border MaxHeight="220" CornerRadius="{StaticResource CockpitPanelRadius}"
-                            Background="{StaticResource CockpitInsetBgBrush}" Padding="10">
+                            Background="{DynamicResource CockpitInsetBgBrush}" Padding="10">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <ItemsControl ItemsSource="{Binding ResourceRows}">
                                 <ItemsControl.ItemTemplate>
@@ -98,7 +98,7 @@
                                             <TextBlock Text="{Binding DisplayLabel}" FontSize="12" FontWeight="SemiBold"/>
                                             <TextBox Text="{Binding Reference}" PlaceholderText="leave blank to skip"/>
                                             <TextBlock Text="{Binding OriginalReference, StringFormat='was: {0}'}"
-                                                       FontSize="10.5" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       FontSize="10.5" Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                        IsVisible="{Binding OriginalReference, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                         </StackPanel>
                                     </DataTemplate>

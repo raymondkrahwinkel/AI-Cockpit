@@ -16,12 +16,12 @@
     <StackPanel Spacing="18" Margin="4,8">
         <StackPanel Spacing="2">
             <TextBlock Text="Bring a backup along" FontSize="16" FontWeight="SemiBold"/>
-            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                        Text="Coming from another machine? Restore the backup you made there and the rest of this setup is already answered — settings, profiles, permissions, and the plugins the archive names are fetched from their store again."/>
         </StackPanel>
 
         <StackPanel Spacing="6">
-            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                        Text="Nothing here is touched until a restore finishes. Once it does, this app restarts to come up on what you restored."/>
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button Content="Choose a backup…" Classes="Accent" Click="OnChooseBackup"
@@ -33,9 +33,9 @@
 
         <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="11.5"
                    IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
-        <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource CockpitTextFaintBrush}"
+        <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource CockpitTextFaintBrush}"
                    Text="No backup? Skip this step — the next few pages set this machine up from scratch."/>
     </StackPanel>
 </UserControl>

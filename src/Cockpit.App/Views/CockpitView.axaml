@@ -17,7 +17,7 @@
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
              x:Class="Cockpit.App.Views.CockpitView"
              x:DataType="vm:CockpitViewModel"
-             Background="{StaticResource CockpitWindowBgBrush}">
+             Background="{DynamicResource CockpitWindowBgBrush}">
 
     <Design.DataContext>
         <vm:CockpitViewModel/>
@@ -150,21 +150,21 @@
                                          KeyDown="OnRenameBoxKeyDown" LostFocus="OnRenameBoxLostFocus"
                                          AttachedToVisualTree="OnRenameBoxAttached"/>
                                 <materialIcons:MaterialIcon Kind="AlertOutline" Width="13" Height="13"
-                                           Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                           Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                                            IsVisible="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                            ToolTip.Tip="Needs attention"/>
                                 <!-- A consent request is waiting on this session (#AC-47): the same
                                      "Ask me first" hand the cockpit.approve step uses, in the accent
                                      colour, so the sidebar shows it even when the pane is off screen. -->
                                 <materialIcons:MaterialIcon Kind="HandBackLeftOutline" Width="13" Height="13"
-                                           Foreground="{StaticResource CockpitAccentBrush}"
+                                           Foreground="{DynamicResource CockpitAccentBrush}"
                                            IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}"
                                            ToolTip.Tip="Waiting for your consent"/>
                                 <!-- AC-1311: a marker, not a fourth status class — sits next to
                                      whichever class the dot above already shows, for a session
                                      with a backgrounded shell still running under it. -->
                                 <materialIcons:MaterialIcon Kind="ProgressClock" Width="12" Height="12"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                                            IsVisible="{Binding HasOutstandingBackgroundShells}"
                                            ToolTip.Tip="Something of this session is still running in the background"/>
                             </StackPanel>
@@ -172,27 +172,27 @@
                                 <!-- Mirrors the session-header provider pill (SessionView.axaml) so a local
                                      (Ollama/LM Studio) session is identifiable from the sidebar too, not just once
                                      opened; hidden for Claude-CLI sessions, which leave ProviderBadge empty (#26). -->
-                                <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                        BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
+                                <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                        BorderBrush="{DynamicResource CockpitAccentBrush}" BorderThickness="1"
                                         CornerRadius="3" Padding="4,0" VerticalAlignment="Center"
                                         IsVisible="{Binding ProviderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                                     <TextBlock Text="{Binding ProviderBadge}" FontSize="9"
-                                               Foreground="{StaticResource CockpitAccentBrush}"/>
+                                               Foreground="{DynamicResource CockpitAccentBrush}"/>
                                 </Border>
                                 <TextBlock Text="{Binding ActiveProfileLabel}"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"/>
                                 <TextBlock Text="{Binding SessionStatusLabel}"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"/>
                                 <!-- AC-1096: what this session's processes still hold. Beside the status because that is
                                      the claim it qualifies: Idle says the agent stopped, not that its build did. -->
                                 <TextBlock Text="{Binding ProcessActivityLabel}"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"
                                            IsVisible="{Binding ProcessActivityLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
                             <!-- AC-13: what this session is working on, set by the agent (via MCP) or a workflow;
                                  accented so it stands out, hidden when blank. -->
                             <TextBlock Text="{Binding Statusline}" FontSize="11"
-                                       Foreground="{StaticResource CockpitAccentBrush}"
+                                       Foreground="{DynamicResource CockpitAccentBrush}"
                                        TextTrimming="CharacterEllipsis"
                                        IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         </StackPanel>
@@ -200,7 +200,7 @@
                         <!-- Hover-revealed close, hidden while the confirm prompt is up. -->
                         <Button Grid.Column="1" Classes="Subtle closeSession"
                                 VerticalAlignment="Top" Padding="4,0"
-                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 IsVisible="{Binding !IsConfirmingClose}"
                                 Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).RequestCloseSessionCommand}"
                                 CommandParameter="{Binding}"
@@ -212,7 +212,7 @@
                     <!-- Inline close confirm for a busy session (L11 pattern): Close / Keep. -->
                     <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsConfirmingClose}">
                         <TextBlock Text="Close?" FontSize="11" VerticalAlignment="Center"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <Button Content="Close" Classes="Compact"
                                 Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).ConfirmCloseSessionCommand}"
                                 CommandParameter="{Binding}"/>
@@ -253,16 +253,16 @@
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="Border.workspaceTab TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
         </Style>
         <Style Selector="Border.workspaceTab:pointerover">
-            <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
         </Style>
         <Style Selector="Border.workspaceTab.active">
-            <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
         </Style>
         <Style Selector="Border.workspaceTab.active TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextPrimaryBrush}"/>
         </Style>
         <!-- A widget is being dragged over this tab and would land there: the same accent outline the drop ghost
              draws on the grid, because it answers the same question in the same gesture — only here the answer
@@ -272,11 +272,11 @@
              it would not be hit-testable — and a local value beats a style setter, so a Background here would
              silently do nothing. BorderBrush/BorderThickness carry no local value, so they land. -->
         <Style Selector="ContentPresenter.dropTarget > Border.workspaceTab">
-            <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
             <Setter Property="BorderThickness" Value="2"/>
         </Style>
         <Style Selector="ContentPresenter.dropTarget > Border.workspaceTab TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextPrimaryBrush}"/>
         </Style>
         <Style Selector="Border.workspaceTab Button.closeWorkspace">
             <Setter Property="Opacity" Value="0"/>
@@ -309,7 +309,7 @@
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="Button.statusMeter:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
         </Style>
 
         <!-- The resource panel (#78) rises out of the status bar rather than appearing: closed it is not merely
@@ -357,15 +357,15 @@
              merely running and accent-lit once the pointer is inside — same accent language the rail's own open
              tab uses, so "this is where it lands" reads the same in both places. -->
         <Style Selector="Border.assistantDropZone">
-            <Setter Property="Background" Value="{StaticResource CockpitCategoryTintBlueBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitCategoryTintBlueBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
         </Style>
         <Style Selector="Border.assistantDropZone.active">
-            <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
             <!-- The tint the rail tab wears is 9% accent, which reads on a 40px strip and all but vanishes over a
                  quarter of the screen. Same colour, carried far enough that a band this wide is unmistakable. -->
             <Setter Property="Background">
-                <SolidColorBrush Color="{StaticResource CockpitAccentColor}" Opacity="0.22"/>
+                <SolidColorBrush Color="{DynamicResource CockpitAccentColor}" Opacity="0.22"/>
             </Setter>
         </Style>
 
@@ -386,8 +386,8 @@
         <!-- AC-860: update banner intentionally follows CockpitAccentSelectionBrush's alpha. -->
         <Border DockPanel.Dock="Top"
                 IsVisible="{Binding UpdateBannerVisible}"
-                Background="{StaticResource CockpitAccentSelectionBrush}"
-                BorderBrush="{StaticResource CockpitAccentBrush}"
+                Background="{DynamicResource CockpitAccentSelectionBrush}"
+                BorderBrush="{DynamicResource CockpitAccentBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="16,9">
             <DockPanel LastChildFill="False">
@@ -418,16 +418,16 @@
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <materialIcons:MaterialIcon Kind="ArrowUpBoldCircleOutline" Width="18" Height="18"
-                                                Foreground="{StaticResource CockpitAccentBrush}"
+                                                Foreground="{DynamicResource CockpitAccentBrush}"
                                                 VerticalAlignment="Center"/>
                     <TextBlock VerticalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                               Foreground="{DynamicResource CockpitTextPrimaryBrush}"
                                Text="A new build is available —"/>
                     <TextBlock VerticalAlignment="Center" FontWeight="SemiBold"
-                               Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                               Foreground="{DynamicResource CockpitTextPrimaryBrush}"
                                Text="{Binding UpdateName}"/>
                     <TextBlock VerticalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                Text="{Binding CurrentBuild, StringFormat='· you’re on {0}'}"/>
                     <!-- Download progress (AC-388): only costs space while a download is actually in flight. -->
                     <ProgressBar VerticalAlignment="Center" Width="120" Height="6" Margin="8,0,0,0"
@@ -435,7 +435,7 @@
                                  Value="{Binding UpdateDownloadProgress}"
                                  IsVisible="{Binding IsUpdateDownloading}"/>
                     <TextBlock VerticalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                IsVisible="{Binding IsUpdateDownloading}"
                                Text="{Binding UpdateDownloadProgress, StringFormat='{}{0}%'}"/>
                 </StackPanel>
@@ -450,7 +450,7 @@
         <Border DockPanel.Dock="Top"
                 IsVisible="{Binding Security.ShowUnprotectedBanner}"
                 Background="#26E0A33E"
-                BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
+                BorderBrush="{DynamicResource CockpitStatusWaitingBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="16,9">
             <DockPanel LastChildFill="False">
@@ -459,7 +459,7 @@
                          banner shows its work rather than going quiet mid-rewrite. -->
                     <TextBlock Text="Encrypting…" VerticalAlignment="Center"
                                IsVisible="{Binding Security.IsMigrating}"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <Button Classes="Accent" Padding="12,5" Content="Enable now"
                             IsVisible="{Binding !Security.IsMigrating}"
                             Click="OnEnableEncryption"
@@ -472,13 +472,13 @@
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <materialIcons:MaterialIcon Kind="ShieldAlertOutline" Width="18" Height="18"
-                                                Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                                                 VerticalAlignment="Center"/>
                     <TextBlock VerticalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                               Foreground="{DynamicResource CockpitTextPrimaryBrush}"
                                Text="Your API keys and tokens are stored unencrypted."/>
                     <TextBlock VerticalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                Text="Turn on encryption to protect them at rest — it only takes a moment."/>
                 </StackPanel>
             </DockPanel>
@@ -522,9 +522,9 @@
 
         <!-- Sidebar: always visible in both grid and zoom mode — the constant overview/status anchor.
              AC-1303: except in the Simple stand, where the rail above holds this column instead. -->
-        <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}"
+        <Border Grid.Column="0" Background="{DynamicResource CockpitSecondaryBgBrush}"
                 IsVisible="{Binding ShowPanelsSidebar}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="8">
 
                 <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
@@ -537,8 +537,8 @@
                          "new session" stays a single click, "new terminal" is one flyout down. One accent pill with
                          a hairline divider, so it reads as a single split-button rather than two loose buttons. -->
                     <Border CornerRadius="{StaticResource CockpitControlRadius}" ClipToBounds="True"
-                            Background="{StaticResource CockpitAccentBrush}"
-                            BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1">
+                            Background="{DynamicResource CockpitAccentBrush}"
+                            BorderBrush="{DynamicResource CockpitAccentBrush}" BorderThickness="1">
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Classes="Subtle" Padding="11,6"
                                     VerticalAlignment="Stretch" ToolTip.Tip="New session or terminal">
@@ -569,7 +569,7 @@
                                 </Button.Flyout>
                             </Button>
                             <Border DockPanel.Dock="Right" Width="1" Margin="0,4"
-                                    Background="{StaticResource CockpitAccentPressedBrush}"/>
+                                    Background="{DynamicResource CockpitAccentPressedBrush}"/>
                             <Button Classes="Subtle" Content="+ New session" Command="{Binding NewSessionCommand}"
                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12,6"/>
                         </DockPanel>
@@ -592,7 +592,7 @@
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the
                      primary session overview per AI-Cockpit's design goal (sidebar = sessions, not tools). -->
                 <StackPanel DockPanel.Dock="Bottom" Spacing="4">
-                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
                     <!-- The "Open mic" toggle that stood here is gone (AC-543). It drove exactly the command the
                          assistant chip's listening mode now drives, so the two were one state with two switches —
                          and its label still promised the old behaviour, dictating into the selected session, which
@@ -610,7 +610,7 @@
                                  an update shows in the main window rather than only a transient toast. The button
                                  opens the store on the Updates filter while the badge is showing. -->
                             <Border DockPanel.Dock="Right" IsVisible="{Binding Plugins.HasUpdateBadge}"
-                                    Background="{StaticResource CockpitAccentBrush}" CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1"
+                                    Background="{DynamicResource CockpitAccentBrush}" CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1"
                                     VerticalAlignment="Center" Margin="6,0,0,0"
                                     ToolTip.Tip="Plugin updates available — click to review them">
                                 <TextBlock Text="{Binding Plugins.UpdateBadgeCount}" FontSize="10" FontWeight="SemiBold"
@@ -620,7 +620,7 @@
                                  (new, or its bytes changed) — mirrors the AC-76 update pill so the two read as the
                                  same kind of indicator; it clears once every such plugin is approved or disabled. -->
                             <Border DockPanel.Dock="Right" IsVisible="{Binding Plugins.HasPendingApproval}"
-                                    Background="{StaticResource CockpitStatusWaitingBrush}" CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1"
+                                    Background="{DynamicResource CockpitStatusWaitingBrush}" CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1"
                                     VerticalAlignment="Center" Margin="6,0,0,0"
                                     ToolTip.Tip="Plugins awaiting your approval — click to review them">
                                 <TextBlock Text="{Binding Plugins.PendingApprovalCount}" FontSize="10" FontWeight="SemiBold"
@@ -644,27 +644,27 @@
                                             Padding="8,8" CornerRadius="0" Content="Profiles"
                                             Command="{Binding ManageProfilesCommand}"
                                             ToolTip.Tip="Add, edit or remove session profiles"/>
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,8" CornerRadius="0" Content="MCP servers"
                                             Command="{Binding OpenMcpServersCommand}"
                                             ToolTip.Tip="Add, edit or remove shared MCP servers"/>
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,8" CornerRadius="0" Content="Verify runners"
                                             Command="{Binding OpenVerifyRunnersCommand}"
                                             ToolTip.Tip="Register the per-project command the visual verify loop may run"/>
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,8" CornerRadius="0" Content="Command palette"
                                             Command="{Binding ShowCommandPaletteCommand}"
                                             ToolTip.Tip="Run any app or plugin command by name — Ctrl+K"/>
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,8" CornerRadius="0" Content="Options"
                                             Command="{Binding OptionsCommand}"
                                             ToolTip.Tip="Configure notifications, sessions, and voice — Ctrl+O"/>
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,8" CornerRadius="0" Content="About"
                                             Command="{Binding AboutCommand}"
@@ -688,24 +688,24 @@
                                             Padding="8,8" CornerRadius="0" Content="Documentation"
                                             Command="{Binding ShowDocumentationCommand}"
                                             ToolTip.Tip="Everything Cockpit and its plugins ship documentation for — a window of its own, no connection needed"/>
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,8" CornerRadius="0" Content="Guide"
                                             Command="{Binding OpenGuideCommand}"
                                             ToolTip.Tip="Opens in your browser — the guide is online and needs a connection"/>
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,8" CornerRadius="0" Content="Glossary"
                                             Command="{Binding ShowGlossaryCommand}"
                                             ToolTip.Tip="Session, project, profile, plugin, MCP server — explained here, no browser needed"/>
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                     <!-- AC-397: the only window on traffic the operator is not part of. Under Help
                                          because it is something you go and look at, not something you act from. -->
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,8" CornerRadius="0" Content="Agent line"
                                             Command="{Binding ShowAgentLineCommand}"
                                             ToolTip.Tip="What the agents on this desk have said to each other — messages, wakes, claims and refusals. Read-only."/>
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,8" CornerRadius="0" Content="Run setup again"
                                             Command="{Binding RunSetupAgainCommand}"
@@ -733,17 +733,17 @@
                     <Grid ColumnDefinitions="*,Auto,Auto" Margin="2,0,0,2">
                         <TextBlock Grid.Column="0" Text="Projects" FontSize="11" FontWeight="SemiBold"
                                    VerticalAlignment="Center"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         <!-- The way to the overview: without it, reaching it means knowing a workspace type exists
                              and finding it in the "+" menu — which is exactly the knowledge it is built to spare. -->
                         <Button Grid.Column="1" Classes="Subtle" Padding="4,0"
-                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 Command="{Binding OpenProjectsWorkspaceCommand}"
                                 ToolTip.Tip="Open the projects overview">
                             <materialIcons:MaterialIcon Kind="ViewGridOutline" Width="12" Height="12"/>
                         </Button>
                         <Button Grid.Column="2" Classes="Subtle" Padding="4,0"
-                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 Command="{Binding Projects.AddProjectCommand}"
                                 ToolTip.Tip="New project">
                             <materialIcons:MaterialIcon Kind="Plus" Width="12" Height="12"/>
@@ -782,7 +782,7 @@
                                         <!-- Hover-revealed quick start, mirroring the session rows' hover ✕. -->
                                         <Button Grid.Column="2" Classes="Subtle startProject"
                                                 Padding="4,0" VerticalAlignment="Center"
-                                                Foreground="{StaticResource CockpitAccentBrush}"
+                                                Foreground="{DynamicResource CockpitAccentBrush}"
                                                 Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StartProjectSessionCommand}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip.Tip="Start a session on this project">
@@ -795,7 +795,7 @@
                     </ItemsControl>
 
                     <Button Classes="Subtle" Padding="8,2" FontSize="11" HorizontalAlignment="Left"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            Foreground="{DynamicResource CockpitTextFaintBrush}"
                             IsVisible="{Binding Projects.HasMoreThanSidebarShows}"
                             Command="{Binding OpenProjectsWorkspaceCommand}"
                             Content="All projects →"
@@ -881,9 +881,9 @@
 
         <!-- Collapsed rail: a slim strip in the sidebar's own column (so it never overlaps the session
              content) with the expand chevron and a compact New session. Shown only while collapsed. -->
-        <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}"
+        <Border Grid.Column="0" Background="{DynamicResource CockpitSecondaryBgBrush}"
                 IsVisible="{Binding SidebarCollapsed}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="4,8">
                 <StackPanel DockPanel.Dock="Top" Spacing="6" HorizontalAlignment="Center">
                     <Button Content="»" Classes="Subtle" Padding="6,2"
@@ -985,7 +985,7 @@
                  to switch desks — a strip there would be chrome you cannot act on. -->
             <Border Grid.Row="0" Margin="12,12,12,0" Padding="0,0,0,6"
                     IsVisible="{Binding !SimpleView}"
-                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
                 <DockPanel>
                     <!-- Dock the + first so the tab list never pushes it off the edge when the strip fills up. -->
                     <Button DockPanel.Dock="Right" Classes="Subtle" Padding="8,3" Content="+"
@@ -1171,7 +1171,7 @@
                                         <!-- Export/import live with the dashboard's other controls rather than in
                                              the toolbar: they are things you do once, not affordances the
                                              arranging needs in front of it. -->
-                                        <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Margin="0,4,0,0"/>
+                                        <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Margin="0,4,0,0"/>
                                         <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                                 Padding="6,4" Content="Export this dashboard…" Click="OnExportDashboardPressed"
                                                 ToolTip.Tip="Save it to a file — to keep, or to hand to someone. Credentials are left out."/>
@@ -1199,7 +1199,7 @@
                                              IsVisible="{Binding Workspaces.DashboardShowGridLines}"
                                              Columns="{Binding Workspaces.DashboardColumns}"
                                              Rows="{Binding Workspaces.DashboardRows}"
-                                             LineBrush="{StaticResource CockpitHairlineBrush}"/>
+                                             LineBrush="{DynamicResource CockpitHairlineBrush}"/>
 
                 <!-- Column/row counts come from the view model, not the XAML: the row count grows past the
                      configured height as widgets are added (rows are a starting height, not a cap). The panel
@@ -1228,8 +1228,8 @@
                     </ItemsControl.ItemContainerTheme>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="vm:WidgetPaneViewModel">
-                            <Border Margin="4" CornerRadius="8" Background="{StaticResource CockpitPanelBgBrush}"
-                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                            <Border Margin="4" CornerRadius="8" Background="{DynamicResource CockpitPanelBgBrush}"
+                                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
                                 <DockPanel>
                                     <!-- Pane chrome. The gear is bound to HasConfig: a widget that declared no
                                          settings form shows no gear at all, rather than one that opens nothing. -->
@@ -1271,7 +1271,7 @@
                                                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                 Cursor="BottomRightCorner" PointerPressed="OnWidgetResizePressed"
                                                 ToolTip.Tip="Drag to resize">
-                                            <Path Data="M 10,0 L 10,10 L 0,10" Stroke="{StaticResource CockpitTextFaintBrush}"
+                                            <Path Data="M 10,0 L 10,10 L 0,10" Stroke="{DynamicResource CockpitTextFaintBrush}"
                                                   StrokeThickness="1.5" Margin="2"/>
                                         </Border>
                                     </Panel>
@@ -1288,8 +1288,8 @@
                 <Border x:Name="WidgetDropGhost" IsVisible="False" IsHitTestVisible="False" ZIndex="100"
                         Margin="12" HorizontalAlignment="Left" VerticalAlignment="Top"
                         CornerRadius="8" BorderThickness="2"
-                        BorderBrush="{StaticResource CockpitAccentBrush}"
-                        Background="{StaticResource CockpitPanelBgBrush}" Opacity="0.55"/>
+                        BorderBrush="{DynamicResource CockpitAccentBrush}"
+                        Background="{DynamicResource CockpitPanelBgBrush}" Opacity="0.55"/>
 
                 <!-- The dashboard's empty state carries no button of its own: the toolbar's "Add widget" is
                      always there, and two buttons doing one thing is how the old one ended up buried under the
@@ -1297,7 +1297,7 @@
                 <StackPanel IsVisible="{Binding Workspaces.ShowDashboardEmptyState}" MaxWidth="320"
                             HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Border Width="56" Height="56" CornerRadius="14"
-                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                             HorizontalAlignment="Center" Margin="0,0,0,16">
                         <materialIcons:MaterialIcon Kind="ViewDashboardOutline" Width="24" Height="24"
                                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -1306,7 +1306,7 @@
                                HorizontalAlignment="Center" Margin="0,0,0,6"/>
                     <TextBlock Text="Use “+ Add widget” above to fill this dashboard. Widgets come from plugins — install more from the store."
                                TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
                 </Panel>
             </DockPanel>
@@ -1325,7 +1325,7 @@
                          card right underneath it saying a project still needed a profile. -->
                     <TextBlock Text="Pick a project to begin."
                                FontSize="13" Margin="0,6,0,18" HorizontalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
                     <!-- The statistics row (projects / worked on / sessions open) stood here. Removed (AC-772): it is
                          a dashboard gesture in front of the thing you came for, and it answers no question this
@@ -1341,8 +1341,8 @@
                              and the inset surface belong to this Border, `ToggleButton.Segment` draws neither. -->
                         <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="2"
                                 HorizontalAlignment="Center"
-                                Background="{StaticResource CockpitInsetBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                Background="{DynamicResource CockpitInsetBgBrush}"
+                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
                             <StackPanel Orientation="Horizontal" Spacing="1">
                                 <ToggleButton Classes="Compact Segment"
                                               IsChecked="{Binding Projects.IsCardsLayout, Mode=OneWay}"
@@ -1382,7 +1382,7 @@
                         </Border>
                         <TextBlock Text="Remembered for next time — change it whenever you like"
                                    FontSize="11" Margin="0,6,0,12" HorizontalAlignment="Center"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     </StackPanel>
 
                     <!-- Grouped by category (AC-618/AC-655): the same `ProjectCategoryGroups` the Manage-projects
@@ -1398,7 +1398,7 @@
                                 <StackPanel Spacing="4" Margin="0,10,0,0">
                                     <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold"
                                                HorizontalAlignment="Center"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                IsVisible="{Binding HasHeader}"/>
 
                                     <ItemsControl ItemsSource="{Binding Cards}">
@@ -1430,7 +1430,7 @@
                             <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
                                 <StackPanel Spacing="4" Margin="0,10,0,0">
                                     <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                                IsVisible="{Binding HasHeader}"/>
                                     <ItemsControl ItemsSource="{Binding Cards}">
                                         <ItemsControl.ItemTemplate>
@@ -1467,10 +1467,10 @@
                                 <StackPanel Spacing="4" Margin="0,10,0,0">
                                     <TextBlock Text="{Binding SourceName, StringFormat='From your team · {0}'}" FontSize="13" FontWeight="SemiBold"
                                                HorizontalAlignment="Center"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                     <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
                                                HorizontalAlignment="Center"
-                                               Foreground="{StaticResource CockpitStatusErrorBrush}"
+                                               Foreground="{DynamicResource CockpitStatusErrorBrush}"
                                                IsVisible="{Binding HasError}"/>
 
                                     <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">
@@ -1500,14 +1500,14 @@
                                    HorizontalAlignment="Center"/>
                         <TextBlock Text="A project remembers the folder you work in, who works on it and what it may reach — so starting work on it is one click, every time."
                                    TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
 
                     <!-- AC-248: only shown when no source is registered at all — a signed-out connection already
                          speaks for itself via its own group's Error text. Host-generic wording (AC-244). -->
                     <TextBlock IsVisible="{Binding Projects.HasNoSharedProjectSources}" FontSize="11"
                                HorizontalAlignment="Center" Margin="0,14,0,0" TextWrapping="Wrap" TextAlignment="Center"
-                               Foreground="{StaticResource CockpitTextFaintBrush}">
+                               Foreground="{DynamicResource CockpitTextFaintBrush}">
                         Projects can also come from a plugin, shared with your team.
                         <LineBreak/>
                         <Run Text="Set one up in "/><Run Text="Options" FontWeight="SemiBold"/><Run Text=", under Plugins."/>
@@ -1536,7 +1536,7 @@
                            HorizontalAlignment="Center" Margin="0,0,0,6"/>
                 <TextBlock Text="Start a session to begin. You pick the profile — and with it the provider — and its defaults up front."
                            TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,0,0,16"/>
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,0,0,16"/>
                 <Button Content="+ New session" Command="{Binding NewSessionCommand}"
                         Classes="Accent" HorizontalAlignment="Center"/>
             </StackPanel>
@@ -1604,7 +1604,7 @@
                                     <CheckBox Content="Use the default layout (Options)"
                                               IsChecked="{Binding WorkspaceFollowsGlobalLayout}"/>
                                     <TextBlock Text="Off: this workspace arranges itself, and Options no longer moves it."
-                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                     <!-- Disabled rather than hidden while following: they show what this desk is
                                          doing, which is the thing you came here to read before changing it. -->
                                     <CheckBox Content="Show one session at a time (no grid)"
@@ -1726,7 +1726,7 @@
                                          into any cell; the gutters between panes are separately draggable to resize
                                          (handled by SessionTilePanel). Collapsed in single/zoom = no dead control. -->
                                     <Border x:Name="PaneDragHandle" DockPanel.Dock="Top" Height="14" Margin="0,0,0,2"
-                                            Background="{StaticResource CockpitSecondaryBgBrush}"
+                                            Background="{DynamicResource CockpitSecondaryBgBrush}"
                                             CornerRadius="{StaticResource CockpitControlRadius}"
                                             Cursor="SizeAll" ToolTip.Tip="Drag to move this pane"
                                             IsVisible="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StackSessionsInStack}"
@@ -1734,7 +1734,7 @@
                                             PointerMoved="OnPaneDragHandleMoved"
                                             PointerReleased="OnPaneDragHandleReleased">
                                         <TextBlock Text="⣿⣿⣿" FontSize="9" VerticalAlignment="Center" HorizontalAlignment="Center"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     </Border>
                                     <!-- ContentControl + ViewLocator picks SessionView (SDK) or
                                          TtyView (TTY) from the panel view model's type. -->
@@ -1747,17 +1747,17 @@
                                         IsVisible="{Binding #PaneRoot.(controls:SessionTilePanel.IsMiniature)}"
                                         IsHitTestVisible="False"
                                         VerticalAlignment="Top" Height="16" Padding="6,0"
-                                        Background="{StaticResource CockpitChromeBgBrush}"
-                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                                        Background="{DynamicResource CockpitChromeBgBrush}"
+                                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
                                     <DockPanel LastChildFill="False">
                                         <Ellipse DockPanel.Dock="Left" Width="5" Height="5" Margin="0,0,6,0" VerticalAlignment="Center"
                                                  Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                         <TextBlock DockPanel.Dock="Right" Text="{Binding SessionStatusLabel}" FontSize="9"
                                                    VerticalAlignment="Center" Margin="6,0,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         <TextBlock Text="{Binding Title}" FontSize="9" FontWeight="SemiBold"
                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                                     </DockPanel>
                                 </Border>
                                 <!-- Accent/hairline frame: a SIBLING overlay, never the PARENT of the transcript
@@ -1777,7 +1777,7 @@
                 <Border x:Name="DropIndicator" IsVisible="False" IsHitTestVisible="False" ZIndex="100"
                         HorizontalAlignment="Left" VerticalAlignment="Top"
                         Background="Transparent" BorderThickness="2"
-                        BorderBrush="{StaticResource CockpitAccentBrush}"
+                        BorderBrush="{DynamicResource CockpitAccentBrush}"
                         CornerRadius="{StaticResource CockpitPanelRadius}"/>
                 </Grid>
             </DockPanel>
@@ -1793,7 +1793,7 @@
                      argument on the way out (see AppRestartService.BuildLaunchArguments), so this is the one button
                      back to a normal, fully-plugged-in cockpit. -->
                 <Border IsVisible="{Binding IsSafeMode}"
-                        Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusErrorBrush}"
+                        Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitStatusErrorBrush}"
                         BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Classes="Accent" Padding="10,4"
@@ -1802,51 +1802,51 @@
                                 Content="Restart"/>
                         <TextBlock Text="{Binding SafeModeBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
                                    Margin="0,0,12,0"
-                                   Foreground="{StaticResource CockpitStatusErrorBrush}" FontSize="12"/>
+                                   Foreground="{DynamicResource CockpitStatusErrorBrush}" FontSize="12"/>
                     </DockPanel>
                 </Border>
 
                 <!-- Plugin-failure banner (#14): the app kept running; details live in the Plugin store → Installed. -->
                 <Border IsVisible="{Binding HasPluginFailures}"
-                        Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
+                        Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitStatusWaitingBrush}"
                         BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6,0"
-                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 Command="{Binding DismissPluginFailuresCommand}">
                             <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
                         </Button>
                         <TextBlock Text="{Binding PluginFailureBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
-                                   Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12"/>
+                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}" FontSize="12"/>
                     </DockPanel>
                 </Border>
 
                 <!-- Pending-approval banner (AC-208): plugins sitting at awaiting-approval (new, or bytes changed
                      since approved) otherwise showed up nowhere except a row in Plugin Manager. -->
                 <Border IsVisible="{Binding HasPendingApprovals}"
-                        Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
+                        Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitStatusWaitingBrush}"
                         BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6,0"
-                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 Command="{Binding DismissPendingApprovalsCommand}">
                             <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
                         </Button>
                         <TextBlock Text="{Binding PendingApprovalBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
-                                   Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12"/>
+                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}" FontSize="12"/>
                     </DockPanel>
                 </Border>
 
                 <!-- Incoming-pairing banner (AC-1291): the offer lives two minutes and showed up nowhere unless the
                      Nodes page happened to be open. No dismiss button — see the view model. -->
                 <Border IsVisible="{Binding HasIncomingPairing}"
-                        Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
+                        Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitStatusWaitingBrush}"
                         BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Content="Review it" Margin="8,0,0,0"
                                 Command="{Binding ShowIncomingPairingCommand}"/>
                         <TextBlock Text="{Binding IncomingPairingBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
-                                   Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12"/>
+                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}" FontSize="12"/>
                     </DockPanel>
                 </Border>
             </StackPanel>
@@ -2000,8 +2000,8 @@
              appearing to run underneath the rail — acceptance criterion 3 (AC-951). -->
         <Border Grid.Column="4"
                 IsVisible="{Binding ShowDockRail}"
-                Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1,0,0,0">
+                Background="{DynamicResource CockpitSecondaryBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1,0,0,0">
             <DockPanel>
                 <!-- Tab strip: one button per registered panel, icon over rotated title, anchored to the top of
                      the rail. Stays on screen in both the collapsed and the expanded state, so switching panels
@@ -2014,7 +2014,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="docking:DockPanelRegistration">
                             <Button Classes="Subtle" Width="40" Padding="0" HorizontalContentAlignment="Stretch"
-                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1"
+                                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1"
                                     Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).ToggleDockPanelCommand}"
                                     CommandParameter="{Binding Id}"
                                     ToolTip.Tip="{Binding Title}">
@@ -2024,8 +2024,8 @@
                                          CockpitCategoryTintBlueBrush rather than a second resource at the same
                                          hex (see its definition in Theme.axaml for why that would fail the
                                          palette-baseline test). -->
-                                    <Border Background="{StaticResource CockpitCategoryTintBlueBrush}"
-                                            BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="0,0,2,0">
+                                    <Border Background="{DynamicResource CockpitCategoryTintBlueBrush}"
+                                            BorderBrush="{DynamicResource CockpitAccentBrush}" BorderThickness="0,0,2,0">
                                         <Border.IsVisible>
                                             <MultiBinding Converter="{x:Static conv:DockPanelActiveConverter.Instance}">
                                                 <Binding Path="Id"/>
@@ -2069,8 +2069,8 @@
                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
                 Margin="0,0,10,6"
                 Width="320"
-                Background="{StaticResource CockpitPanelBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                Background="{DynamicResource CockpitPanelBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="8"
                 BoxShadow="0 8 24 0 #40000000">
             <StackPanel Margin="14,12" Spacing="10">
@@ -2088,14 +2088,14 @@
                      from figures that do not add up. -->
                 <TextBlock Text="{Binding ResourceSummary}"
                            FontSize="14" FontWeight="SemiBold"
-                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                           Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
 
-                <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
 
                 <!-- Above the list, not below it: it says what the list is. -->
                 <TextBlock Text="{Binding ResourceDetail}"
                            FontSize="10.5" TextWrapping="Wrap"
-                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
 
                 <ItemsControl ItemsSource="{Binding ResourceRows}" IsVisible="{Binding HasResourceRows}">
                     <ItemsControl.ItemTemplate>
@@ -2105,12 +2105,12 @@
                                     <TextBlock DockPanel.Dock="Right"
                                                Text="{Binding Memory}"
                                                FontSize="11.5" FontWeight="SemiBold"
-                                               Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                                               Foreground="{DynamicResource CockpitTextPrimaryBrush}"
                                                VerticalAlignment="Center"/>
                                     <TextBlock Text="{Binding Title}"
                                                FontSize="11.5"
                                                TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                                               Foreground="{DynamicResource CockpitTextPrimaryBrush}"
                                                VerticalAlignment="Center"
                                                Margin="0,0,8,0"/>
                                 </DockPanel>
@@ -2119,12 +2119,12 @@
                                      says it is most of what is being used, and that is the part you would act on. -->
                                 <ProgressBar Height="4" Minimum="0" Maximum="1"
                                              Value="{Binding MemoryShare}"
-                                             Foreground="{StaticResource CockpitAccentBrush}"
-                                             Background="{StaticResource CockpitSecondaryBgBrush}"/>
+                                             Foreground="{DynamicResource CockpitAccentBrush}"
+                                             Background="{DynamicResource CockpitSecondaryBgBrush}"/>
 
                                 <TextBlock Text="{Binding Cpu}"
                                            FontSize="10.5"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                             </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -2135,11 +2135,11 @@
                      can weigh more than the whole app, and putting it in a figure the operator reads as "what the
                      AI-Cockpit costs" would be a lie. -->
                 <StackPanel Spacing="10" IsVisible="{Binding HasModelServers}">
-                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
 
                     <TextBlock Text="Local model servers"
                                FontSize="11" FontWeight="SemiBold"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
                     <ItemsControl ItemsSource="{Binding ModelServerRows}">
                         <ItemsControl.ItemTemplate>
@@ -2149,24 +2149,24 @@
                                         <TextBlock DockPanel.Dock="Right"
                                                    Text="{Binding Memory}"
                                                    FontSize="11.5" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                                                   Foreground="{DynamicResource CockpitTextPrimaryBrush}"
                                                    VerticalAlignment="Center"/>
                                         <TextBlock Text="{Binding Title}"
                                                    FontSize="11.5"
                                                    TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                                                   Foreground="{DynamicResource CockpitTextPrimaryBrush}"
                                                    VerticalAlignment="Center"
                                                    Margin="0,0,8,0"/>
                                     </DockPanel>
 
                                     <ProgressBar Height="4" Minimum="0" Maximum="1"
                                                  Value="{Binding MemoryShare}"
-                                                 Foreground="{StaticResource CockpitAccentBrush}"
-                                                 Background="{StaticResource CockpitSecondaryBgBrush}"/>
+                                                 Foreground="{DynamicResource CockpitAccentBrush}"
+                                                 Background="{DynamicResource CockpitSecondaryBgBrush}"/>
 
                                     <TextBlock Text="{Binding Cpu}"
                                                FontSize="10.5"
-                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -2174,7 +2174,7 @@
 
                     <TextBlock Text="Runs beside the cockpit, not under it: one server answers every session, so this is not part of the total above."
                                FontSize="10.5" TextWrapping="Wrap"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 </StackPanel>
             </StackPanel>
         </Border>
@@ -2182,8 +2182,8 @@
         <!-- Status bar (#78): what AI-Cockpit is using right now. The total is AI-Cockpit's own process tree,
              so it already contains every session it spawned; the figures open the breakdown per session. -->
         <Border Grid.Row="1"
-                Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
+                Background="{DynamicResource CockpitSecondaryBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
                 Padding="10,4">
             <DockPanel>
                 <!-- The memory figure is its own TextBlock so it alone can change colour: amber as it climbs, red at
@@ -2201,7 +2201,7 @@
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
                         <TextBlock Text="{Binding ResourceCpu}"
                                    FontSize="11"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                    VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding ResourceMemory}"
                                    FontSize="11"
@@ -2211,11 +2211,11 @@
                              is open (that is where it will go). -->
                         <materialIcons:MaterialIcon Kind="ChevronUp" Width="10" Height="10" Margin="0,2,0,0"
                                    IsVisible="{Binding !IsResourcePanelOpen}"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    VerticalAlignment="Center"/>
                         <materialIcons:MaterialIcon Kind="ChevronDown" Width="10" Height="10" Margin="0,-2,0,0"
                                    IsVisible="{Binding IsResourcePanelOpen}"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
@@ -2260,7 +2260,7 @@
 
                 <TextBlock Text="{Binding ResourceSessions}"
                            FontSize="11"
-                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                            VerticalAlignment="Center"/>
             </DockPanel>
         </Border>

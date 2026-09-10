@@ -11,7 +11,7 @@
         Title="Projects"
         Width="720" Height="620" MinWidth="560" MinHeight="420"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
         <vm:ProjectsViewModel/>
@@ -22,8 +22,8 @@
          widen — a shared Depot environment as well as this machine. A tab inside the options tree would have to be
          unpicked again the moment that lands. -->
     <Grid RowDefinitions="*,Auto">
-        <Border Grid.Row="1" Background="{StaticResource CockpitChromeBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+        <Border Grid.Row="1" Background="{DynamicResource CockpitChromeBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="Auto,*,Auto">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                     <Button Content="New project…" Classes="Accent" Command="{Binding AddProjectCommand}"/>
@@ -41,7 +41,7 @@
                     <TextBlock Text="No projects yet" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
                     <TextBlock MaxWidth="420" TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
                                HorizontalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                Text="A project remembers the folder you work in, who works on it and what it may reach — so starting work on it is one click, every time."/>
                 </StackPanel>
 
@@ -56,7 +56,7 @@
                             <StackPanel Spacing="8" Margin="0,10,0,0">
                                 <TextBlock Text="{Binding CategoryName}" FontSize="12" FontWeight="SemiBold"
                                            TextTrimming="CharacterEllipsis"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                            IsVisible="{Binding HasHeader}"/>
 
                                 <ItemsControl ItemsSource="{Binding Cards}">
@@ -95,9 +95,9 @@
                                      (AC-772 criterion 23) — one control rather than two templates that have to be
                                      kept in step by hand, which is how "Not set up yet" survived in two places. -->
                                 <TextBlock Text="{Binding SourceName, StringFormat='From your team · {0}'}" FontSize="12"
-                                           FontWeight="SemiBold" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                           FontWeight="SemiBold" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                 <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap"
-                                           Foreground="{StaticResource CockpitStatusErrorBrush}"
+                                           Foreground="{DynamicResource CockpitStatusErrorBrush}"
                                            IsVisible="{Binding HasError}"/>
 
                                 <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">

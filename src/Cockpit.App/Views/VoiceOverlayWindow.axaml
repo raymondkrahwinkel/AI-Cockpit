@@ -21,7 +21,7 @@
         <Grid>
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsListening}">
                 <Border Width="9" Height="9" VerticalAlignment="Center" CornerRadius="4.5"
-                        Background="{StaticResource CockpitAccentBrush}"
+                        Background="{DynamicResource CockpitAccentBrush}"
                         BoxShadow="0 0 0 4 #2E3b82f6"/>
                 <!-- Live microphone waveform (#34b): each bar's height tracks a captured level, newest on
                      the right, so the pill shows sound actually coming in rather than a static graphic.
@@ -35,21 +35,21 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:VoiceOverlayBarViewModel">
                             <Rectangle Width="3" Height="{Binding Height}" RadiusX="2" RadiusY="2"
-                                       VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
+                                       VerticalAlignment="Bottom" Fill="{DynamicResource CockpitAccentBrush}"/>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <TextBlock Text="Listening" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
-                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                           Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
             </StackPanel>
             <!-- The key is held but nothing is being recorded. Deliberately unlike the other three rows: no
                  waveform and no spinner, because nothing is moving — a flat waveform under "Listening" is
                  exactly what this replaces. The dot is hollow and grey rather than the accent colour of a live mic. -->
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsUnavailable}">
                 <Ellipse Width="9" Height="9" VerticalAlignment="Center" StrokeThickness="1.5"
-                         Stroke="{StaticResource CockpitTextSecondaryBrush}"/>
+                         Stroke="{DynamicResource CockpitTextSecondaryBrush}"/>
                 <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
             <!-- The dictation produced nothing and says what went wrong (AC-557). Unlike Unavailable's hollow grey
                  dot: that row is a key held over a microphone that never opened, this one is a minute of talking
@@ -57,15 +57,15 @@
                  itself after a few seconds — see VoiceOverlayCoordinator.ShowPushToTalkThenClear. -->
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsFailed}">
                 <Border Width="9" Height="9" VerticalAlignment="Center" CornerRadius="4.5"
-                        Background="{StaticResource CockpitStatusErrorBrush}"/>
+                        Background="{DynamicResource CockpitStatusErrorBrush}"/>
                 <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
-                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                           Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsTranscribing}">
                 <Ellipse Width="16" Height="16" VerticalAlignment="Center" StrokeThickness="2"
-                         Stroke="{StaticResource CockpitTextSecondaryBrush}" Opacity="0.5"/>
+                         Stroke="{DynamicResource CockpitTextSecondaryBrush}" Opacity="0.5"/>
                 <TextBlock Text="Transcribing…" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
             <!-- Read-aloud is playing (#34, Raymond 2026-07-15). No waveform: the playback queue reports that it
                  is speaking, not how loudly, and bars driven by nothing are a meter that measures nothing. A
@@ -73,9 +73,9 @@
                  any dictation and should not read as the louder of the two. -->
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsSpeaking}">
                 <Border Width="9" Height="9" VerticalAlignment="Center" CornerRadius="4.5"
-                        Background="{StaticResource CockpitAccentBrush}"/>
+                        Background="{DynamicResource CockpitAccentBrush}"/>
                 <TextBlock Text="Reading aloud" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
-                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                           Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
             </StackPanel>
             <!-- First use only: the model (~1.6 GB) and the GPU runtime come down inside the first dictation.
                  Its own row rather than a re-worded Transcribing one — the pill must not claim to transcribe
@@ -84,13 +84,13 @@
                  counting text alone instead of a bar parked at a position we made up. -->
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsPreparing}">
                 <Ellipse Width="16" Height="16" VerticalAlignment="Center" StrokeThickness="2"
-                         Stroke="{StaticResource CockpitAccentBrush}" Opacity="0.6"/>
+                         Stroke="{DynamicResource CockpitAccentBrush}" Opacity="0.6"/>
                 <StackPanel Spacing="6" VerticalAlignment="Center" MinWidth="220">
                     <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="Medium"
-                               Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                     <ProgressBar IsVisible="{Binding HasProgress}" Value="{Binding ProgressValue}"
                                  Minimum="0" Maximum="1" Height="3" CornerRadius="2"
-                                 Foreground="{StaticResource CockpitAccentBrush}"/>
+                                 Foreground="{DynamicResource CockpitAccentBrush}"/>
                 </StackPanel>
             </StackPanel>
         </Grid>

@@ -13,7 +13,7 @@
         Title="Plugin store"
         Width="1200" Height="820" MinWidth="760" MinHeight="480"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
         <vm:PluginStoreDialogViewModel/>
@@ -23,8 +23,8 @@
 
         <!-- Footer: restart banner (once an install/update needs it) on the left, Close on the right —
              NeedsRestart/RestartNowCommand are the same manager properties the Options tab uses. -->
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource CockpitChromeBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="*,Auto">
                 <Button Grid.Column="0" Content="Restart the cockpit now" Classes="Accent" HorizontalAlignment="Left"
                         Command="{Binding Manager.RestartNowCommand}"
@@ -33,7 +33,7 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <TextBlock Text="{Binding Manager.StatusMessage}" VerticalAlignment="Center" FontSize="11"
                                MaxWidth="420" TextTrimming="CharacterEllipsis"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                IsVisible="{Binding Manager.StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     <Button Content="Close" Click="OnClose"/>
                 </StackPanel>
@@ -41,7 +41,7 @@
         </Border>
 
         <!-- Search/sort bar, always visible above every filter/page. -->
-        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
             <!-- No IsEnabled on the bar itself (AC-455): Refresh and Update all carry their own gates now, and
                  searching or sorting the catalogue changes nothing, so there is no reason to stop reading it
                  while the store works. -->
@@ -74,7 +74,7 @@
             <!-- Sidebar: Discover / All plugins / categories / Workflow templates up top, with Installed and
                  Available updates pinned to the foot of the column (above "+ Manage stores") rather than
                  trailing the categories — two ListBoxes over one shared SelectedSidebarItem (§sidebar split). -->
-            <DockPanel Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}">
+            <DockPanel Grid.Column="0" Background="{DynamicResource CockpitSecondaryBgBrush}">
                 <DockPanel.Styles>
                     <!-- A zero-count "Installed"/"Available updates" entry is greyed out and unclickable
                          rather than hidden — IsEnabled=False both dims it (default disabled styling) and
@@ -87,7 +87,7 @@
                 <!-- Opens the Manage-stores dialog (add/remove stores, each with its name/icon/count) — moved
                      out of this sidebar into its own dialog (§manage-stores). -->
                 <Button DockPanel.Dock="Bottom" Classes="Subtle" Margin="8"
-                        HorizontalAlignment="Left" Foreground="{StaticResource CockpitAccentBrush}"
+                        HorizontalAlignment="Left" Foreground="{DynamicResource CockpitAccentBrush}"
                         Click="OnManageStores">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <materialIcons:MaterialIcon Kind="Cog" Width="13" Height="13"/>
@@ -97,13 +97,13 @@
 
                 <!-- Installed / Available updates, pinned to the foot above Manage stores. -->
                 <StackPanel DockPanel.Dock="Bottom" Margin="4,6,4,0">
-                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="6,0,6,6"/>
+                    <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="6,0,6,6"/>
                     <ListBox ItemsSource="{Binding SecondarySidebarItems}" SelectedItem="{Binding SelectedSidebarItem}"
                              Background="Transparent">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:PluginStoreSidebarItem">
                                 <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
-                                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                           Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -114,7 +114,7 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:PluginStoreSidebarItem">
                             <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
-                                       Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -134,10 +134,10 @@
                             <Button Content="Install from zip…" Command="{Binding InstallFromZipCommand}"/>
                         </StackPanel>
                         <TextBlock Text="Install a plugin from a .zip, or configure, enable, disable or remove an installed one. Enabling, disabling or removing takes effect after you restart the cockpit."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <TextBlock Text="No plugins installed yet."
                                    IsVisible="{Binding !HasPlugins}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="12"/>
                         <!-- Grouped by the category the store gives each plugin (Raymond, 2026-07-15): one flat
                              list stopped being readable once widgets, providers, issue trackers and a workflow
                              engine all lived in it. Two nested ItemsControls, which is why every command below
@@ -149,36 +149,36 @@
                                 <DataTemplate x:DataType="vm:InstalledPluginGroup">
                                     <StackPanel Spacing="6" Margin="0,4,0,10">
                                         <TextBlock Text="{Binding Header}" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                    IsVisible="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).ShowInstalledGroupHeaders}"/>
                                         <ItemsControl ItemsSource="{Binding Plugins}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:PluginRowViewModel">
-                                    <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                    <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                             CornerRadius="{StaticResource CockpitControlRadius}" Margin="0,0,0,8" Padding="12">
                                         <StackPanel Spacing="4">
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
                                                 <TextBlock Text="{Binding Version}"
-                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                                            VerticalAlignment="Center"/>
                                                 <TextBlock Text="{Binding Author}" IsVisible="{Binding HasAuthor}"
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"
                                                            VerticalAlignment="Center"/>
                                             </StackPanel>
                                             <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="12"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <TextBlock Text="{Binding StatusText}" FontSize="11"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                             <TextBlock Text="{Binding FailureText}" IsVisible="{Binding HasFailure}"
                                                        FontSize="11" TextWrapping="Wrap"
-                                                       Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                             <!-- A contribution (e.g. its MCP server) failing after the plugin loaded is a
                                                  separate fact from HasFailure above (#184) — the plugin is still running. -->
                                             <TextBlock Text="{Binding McpContributionFailureText}" IsVisible="{Binding HasMcpContributionFailure}"
                                                        FontSize="11" TextWrapping="Wrap"
-                                                       Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                             <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
                                                 <Button Classes="Compact" IsVisible="{Binding HasSettings}"
                                                         ToolTip.Tip="Configure this plugin"
@@ -217,7 +217,7 @@
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.TogglePluginMenuVisibilityCommand}"
                                                         CommandParameter="{Binding}"/>
                                                 <Button Content="Remove" Classes="Compact Subtle"
-                                                        Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.RemovePluginCommand}"
                                                         CommandParameter="{Binding}"/>
                                             </StackPanel>
@@ -244,18 +244,18 @@
                             <TextBlock Text="Flows somebody already drew. A template is text, not code — nothing is loaded and nothing runs. It arrives switched off, and it is yours to read before you arm it: a flow can carry a shell command."
                                        FontSize="11.5" TextWrapping="Wrap" MaxWidth="640"
                                        HorizontalAlignment="Left"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         </StackPanel>
 
                         <TextBlock Text="{Binding TemplatesEmptyMessage}"
                                    IsVisible="{Binding !Manager.HasAvailableTemplates}"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
 
                         <ItemsControl ItemsSource="{Binding FilteredTemplates}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:StoreTemplateRowViewModel">
-                                                <Border Background="{StaticResource CockpitPanelBgBrush}"
-                                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                                <Border Background="{DynamicResource CockpitPanelBgBrush}"
+                                                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                                         CornerRadius="{StaticResource CockpitControlRadius}"
                                                         Padding="12,10" Margin="0,0,0,8">
                                                     <DockPanel>
@@ -276,21 +276,21 @@
                                                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12.5"/>
                                                                 <TextBlock Text="{Binding Version}" FontSize="11"
                                                                            VerticalAlignment="Center"
-                                                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                                             </StackPanel>
         
                                                             <TextBlock Text="{Binding Description}" FontSize="11.5"
                                                                        TextWrapping="Wrap"
-                                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
         
                                                             <StackPanel Orientation="Horizontal" Spacing="10">
                                                                 <TextBlock Text="{Binding Author}" FontSize="10.5"
-                                                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                                                 <!-- A flow built on YouTrack's steps is no use without YouTrack, and
                                                                      finding that out on the canvas is finding it out too late. -->
                                                                 <TextBlock Text="{Binding Needs}" FontSize="10.5"
                                                                            IsVisible="{Binding HasNeeds}"
-                                                                           Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                                           Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                                             </StackPanel>
                                                         </StackPanel>
                                                     </DockPanel>
@@ -313,7 +313,7 @@
                 <StackPanel IsVisible="{Binding HasNoStores}" HorizontalAlignment="Center" VerticalAlignment="Center"
                             Spacing="10" MaxWidth="320">
                     <TextBlock Text="No plugin stores configured yet." HorizontalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
                         <TextBox Text="{Binding Manager.NewStoreUrl}" Width="240"
                                  PlaceholderText="github.com/owner/repo or index.json URL"/>
@@ -348,7 +348,7 @@
 
                         <TextBlock Text="{Binding EmptyStateMessage}"
                                    IsVisible="{Binding !HasFilteredResults}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
                         <ItemsControl ItemsSource="{Binding FilteredPlugins}">
                             <ItemsControl.ItemsPanel>
@@ -369,8 +369,8 @@
             </Panel>
 
             <!-- Detail panel: collapses to nothing when no plugin is selected. -->
-            <Border Grid.Column="2" Width="340" Background="{StaticResource CockpitPanelBgBrush}"
-                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1,0,0,0"
+            <Border Grid.Column="2" Width="340" Background="{DynamicResource CockpitPanelBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1,0,0,0"
                     IsVisible="{Binding SelectedPlugin, Converter={x:Static ObjectConverters.IsNotNull}}">
                 <ScrollViewer>
                     <StackPanel Margin="16" Spacing="10" DataContext="{Binding SelectedPlugin}"
@@ -389,27 +389,27 @@
                                        IsVisible="{Binding HasRemoteLogo}"/>
                                 <Viewbox Width="28" Height="28" IsVisible="{Binding HasLogoAsset}">
                                     <Path Data="{Binding LogoAssetUri, Converter={x:Static conv:PluginLogoGeometryConverter.Instance}}"
-                                          Fill="{StaticResource CockpitTextPrimaryBrush}"/>
+                                          Fill="{DynamicResource CockpitTextPrimaryBrush}"/>
                                 </Viewbox>
                                 <TextBlock Text="{Binding IconGlyphOrNull}" FontSize="26" HorizontalAlignment="Center" VerticalAlignment="Center"
                                            IsVisible="{Binding ShowsIconGlyph}"/>
                                 <TextBlock Text="{Binding MonogramLetter}" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                            IsVisible="{Binding ShowsMonogram}"/>
                             </Panel>
                         </Border>
 
                         <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding Author}" Foreground="{StaticResource CockpitTextSecondaryBrush}" IsVisible="{Binding HasAuthor}"/>
+                        <TextBlock Text="{Binding Author}" Foreground="{DynamicResource CockpitTextSecondaryBrush}" IsVisible="{Binding HasAuthor}"/>
                         <Border Classes="tag" HorizontalAlignment="Left">
                             <TextBlock Text="{Binding Category}"/>
                         </Border>
 
-                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
                         <StackPanel Spacing="4">
                             <Button Classes="Subtle" HorizontalAlignment="Left"
-                                    Foreground="{StaticResource CockpitAccentBrush}"
+                                    Foreground="{DynamicResource CockpitAccentBrush}"
                                     IsVisible="{Binding HasHomepage}" Click="OnOpenHomepage">
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <TextBlock Text="Homepage"/>
@@ -417,7 +417,7 @@
                                 </StackPanel>
                             </Button>
                             <Button Classes="Subtle" HorizontalAlignment="Left"
-                                    Foreground="{StaticResource CockpitAccentBrush}"
+                                    Foreground="{DynamicResource CockpitAccentBrush}"
                                     IsVisible="{Binding HasRepository}" Click="OnOpenRepository">
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <TextBlock Text="Repository"/>
@@ -426,11 +426,11 @@
                             </Button>
                         </StackPanel>
 
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
 
                         <TextBlock Text="Version" FontWeight="SemiBold"/>
                         <TextBlock Text="Pick a version — an older one to roll back if a new one misbehaves, or the current one to reinstall."
-                                   FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                   FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
                             <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
                                       ItemsSource="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).SelectedPluginVersions}"
@@ -441,12 +441,12 @@
                                     ToolTip.Tip="Install the selected version"/>
                         </Grid>
                         <TextBlock Text="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).SelectedVersionNotes}"
-                                   FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).HasSelectedVersionNotes}"/>
 
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
 
-                        <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
                         <Button Content="{Binding PrimaryActionLabel}" Classes="Accent" HorizontalAlignment="Stretch"
                                 IsEnabled="{Binding CanTakePrimaryAction}"
@@ -482,18 +482,18 @@
                  and freezing them buys nothing but a dialog that cannot be read while it works. -->
             <Border x:Name="BusyOverlay" Grid.Column="0" Grid.ColumnSpan="3"
                     IsVisible="{Binding Manager.IsBusy}" IsHitTestVisible="False"
-                    Background="{StaticResource CockpitScrimBrush}">
+                    Background="{DynamicResource CockpitScrimBrush}">
                 <Border Width="380" Padding="20,18" HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Background="{StaticResource CockpitPanelBgBrush}"
-                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        Background="{DynamicResource CockpitPanelBgBrush}"
+                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                         CornerRadius="{StaticResource CockpitPanelRadius}">
                     <StackPanel Spacing="12">
                         <TextBlock Text="{Binding Manager.StatusMessage}" TextWrapping="Wrap" FontSize="12.5"
-                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                   Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                         <ProgressBar Minimum="0" Maximum="100" Height="6"
                                      IsIndeterminate="{Binding Manager.BusyProgressIndeterminate}"
                                      Value="{Binding Manager.BusyProgressValue}"
-                                     Foreground="{StaticResource CockpitAccentBrush}"/>
+                                     Foreground="{DynamicResource CockpitAccentBrush}"/>
                     </StackPanel>
                 </Border>
             </Border>

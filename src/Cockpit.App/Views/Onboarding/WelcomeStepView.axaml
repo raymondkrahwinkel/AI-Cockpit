@@ -16,21 +16,21 @@
                    RenderOptions.BitmapInterpolationMode="HighQuality"
                    HorizontalAlignment="Left"/>
             <TextBlock Text="Welcome to" FontSize="13" Margin="0,10,0,0"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             <TextBlock Text="{x:Static config:CockpitBrand.ProductName}" FontSize="22" FontWeight="Bold"/>
         </StackPanel>
 
         <StackPanel Spacing="6">
             <TextBlock Text="Nothing happens without you" FontSize="15" FontWeight="SemiBold"/>
             <TextBlock TextWrapping="Wrap" FontSize="12.5"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                        Text="Every install, every change, and every message an AI provider sees starts with something you asked for or approved. Nothing runs in the background without you having said yes to it first."/>
         </StackPanel>
 
         <StackPanel Spacing="6">
             <TextBlock Text="Your work isn't locked to one AI vendor" FontSize="15" FontWeight="SemiBold"/>
             <TextBlock TextWrapping="Wrap" FontSize="12.5"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                        Text="Your sessions, profiles and settings live on your own machine, not inside a vendor's account. Switch models or providers whenever you want — you keep everything you built and never start over."/>
         </StackPanel>
     </StackPanel>

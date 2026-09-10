@@ -4,13 +4,13 @@
         Width="640" Height="560"
         MinWidth="360" MinHeight="300"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource CockpitPanelBgBrush}">
+        Background="{DynamicResource CockpitPanelBgBrush}">
 
   <DockPanel>
     <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="16,12,16,10">
       <TextBlock Grid.Column="0" Name="CountText" FontSize="13.5" FontWeight="SemiBold"
                  VerticalAlignment="Center"
-                 Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                 Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
         <Button Name="FitButton" Classes="Compact" Content="Fit" Click="_OnFit"/>
         <Button Name="ActualSizeButton" Classes="Compact" Content="1:1" Click="_OnActualSize"/>
@@ -24,7 +24,7 @@
       <Button Grid.Column="1" Name="NextButton" Classes="Ghost" Content="Next" Click="_OnNext"/>
     </Grid>
 
-    <Border Background="{StaticResource CockpitSecondaryBgBrush}">
+    <Border Background="{DynamicResource CockpitSecondaryBgBrush}">
       <!-- Scrolling off while Fit sits at zoom 1, on otherwise — see _ApplyZoom. Pointer events drive panning. -->
       <ScrollViewer Name="BodyScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled"
                     PointerPressed="_OnBodyPointerPressed" PointerMoved="_OnBodyPointerMoved"

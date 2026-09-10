@@ -38,24 +38,24 @@
                  peephole, not one. Draggable by the bar, like every other chromeless window in this app
                  (Controls/CockpitWindowChrome does the same for dialogs; not reused here because it has no room
                  for a toggle button, only a title and caption buttons). -->
-            <Border x:Name="HeaderBar" DockPanel.Dock="Top" Background="{StaticResource CockpitChromeBgBrush}"
-                    BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
+            <Border x:Name="HeaderBar" DockPanel.Dock="Top" Background="{DynamicResource CockpitChromeBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
                     Padding="12,9">
                 <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto">
                     <Border Grid.Column="0" Classes="avatarBadge" Width="28" Height="28" CornerRadius="9" Margin="0,0,8,0">
                         <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
                                                     HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                    Foreground="{DynamicResource CockpitAccentBrush}"/>
                     </Border>
                     <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                         <!-- AC-1040: the assistant's own page, from the window it is read in. The row is the
                              title's; the `?` is added to it in the code-behind and is absent when the page is. -->
                         <StackPanel x:Name="TitleRow" Orientation="Horizontal" Spacing="6">
                             <TextBlock Text="Assistant" FontSize="13.5" FontWeight="SemiBold"
-                                       Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                         </StackPanel>
                         <TextBlock Text="{Binding Session.ActiveProfileLabel}" FontSize="11"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding Session.ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <!-- AC-575, criterion 5. This window is where the assistant's work is read, so it is also
                              where "some of these were never shown to you" has to be legible. Says that it is on,
@@ -63,9 +63,9 @@
                         <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding ConsentBypassActive}">
                             <materialIcons:MaterialIcon Kind="ShieldOffOutline" Width="11" Height="11"
                                                         VerticalAlignment="Center"
-                                                        Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                        Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                             <TextBlock Text="Consent card skipped for some sources" FontSize="10.5"
-                                       Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                                        ToolTip.Tip="Set in Options → Voice. Every skipped card is still written to the consent trail."/>
                         </StackPanel>
                     </StackPanel>
@@ -103,14 +103,14 @@
                                 <StackPanel Width="280" Spacing="0">
                                     <TextBlock Text="Spawn log" FontSize="11.5" FontWeight="SemiBold"
                                                Margin="10,8,10,6"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                    <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
 
                                     <!-- Empty state: nothing recorded yet — a fresh install, or a window opened
                                          before the assistant has ever asked to start anything. -->
                                     <TextBlock Text="The assistant has not started anything yet." FontSize="11.5"
                                                Margin="10,14" TextWrapping="Wrap" TextAlignment="Center"
-                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                IsVisible="{Binding !HasSpawnLogEntries}"/>
 
                                     <ScrollViewer MaxHeight="320" IsVisible="{Binding HasSpawnLogEntries}">
@@ -120,30 +120,30 @@
                                                     <StackPanel Spacing="2" Margin="10,7">
                                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                                             <TextBlock Text="{Binding When}" FontSize="10.5"
-                                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                                             <TextBlock Text="{Binding What}" FontSize="11" FontWeight="SemiBold"
-                                                                       Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                                                       Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                                                             <!-- Criterion 5's first field. One word today, because
                                                                  the assistant is the only caller there is; the day
                                                                  AC-436's coordinator writes to this trail its rows
                                                                  are otherwise indistinguishable from these. -->
                                                             <TextBlock Text="{Binding Who}" FontSize="10.5"
-                                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                                         </StackPanel>
                                                         <TextBlock Text="{Binding Where}" FontSize="11"
-                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                         <!-- The session by name, so the trail reads without anyone
                                                              having to match pane ids by eye. Absent on a refused
                                                              start, which produced no session to name. -->
                                                         <TextBlock Text="{Binding Session}" FontSize="10.5"
                                                                    IsVisible="{Binding HasSession}"
-                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                         <TextBlock Text="{Binding StartDetails}" FontSize="10.5" TextWrapping="Wrap"
                                                                    IsVisible="{Binding HasStartDetails}"
-                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                                         <TextBlock Text="{Binding Refusal}" FontSize="10.5" FontStyle="Italic"
                                                                    TextWrapping="Wrap"
-                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                                    IsVisible="{Binding HasRefusal}"/>
                                                     </StackPanel>
                                                 </DataTemplate>
@@ -151,7 +151,7 @@
                                         </ItemsControl>
                                     </ScrollViewer>
 
-                                    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
+                                    <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
 
                                     <!-- Save the conversation as text. This window is the assistant's only surface,
                                          so a conversation that went wrong here can only be shown to anyone else by
@@ -165,7 +165,7 @@
                                         </StackPanel>
                                     </Button>
 
-                                    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
+                                    <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
 
                                     <!-- AC-1261: empties the transcript on screen and starts a new conversation.
                                          The old one stays readable in transcripts/ (AC-947 retention, unchanged),
@@ -228,8 +228,8 @@
                  further down ("T2's narrow-window layout"). -->
             <WrapPanel DockPanel.Dock="Top" Margin="10,6,10,0" ItemSpacing="8" LineSpacing="6">
                 <Border ClipToBounds="True"
-                        Background="{StaticResource CockpitSecondaryBgBrush}"
-                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        Background="{DynamicResource CockpitSecondaryBgBrush}"
+                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                         CornerRadius="{StaticResource CockpitPillRadius}"
                         IsVisible="{Binding Session.HasUsagePillRegion, FallbackValue=False}">
                     <StackPanel Orientation="Horizontal">
@@ -242,7 +242,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:UsagePillItem">
                                     <StackPanel Orientation="Horizontal">
-                                        <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"
+                                        <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
                                                 IsVisible="{Binding ShowLeadingDivider}"/>
                                         <TextBlock Text="{Binding DisplayText}" FontSize="10" Padding="8,2"
                                                    VerticalAlignment="Center"
@@ -253,7 +253,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"
+                        <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"
                                 IsVisible="{Binding Session.ShowChevronDivider, FallbackValue=False}"/>
                         <Button VerticalAlignment="Stretch" Padding="6,2"
                                 MinWidth="0" MinHeight="0"
@@ -262,12 +262,12 @@
                                 ToolTip.Tip="{Binding Session.LimitsTooltip}">
                             <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
                                                         VerticalAlignment="Center"
-                                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                             <Button.Flyout>
                                 <Flyout Placement="Bottom">
                                     <StackPanel Spacing="8" MinWidth="210" Margin="4">
                                         <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <controls:LimitBar Label="ctx" Percent="{Binding Session.ContextUsedPercent}" Threshold="{Binding Session.ContextThreshold}" FontSize="10" Height="14"
                                                            StretchTrack="True" HorizontalAlignment="Stretch"/>
                                         <ItemsControl ItemsSource="{Binding Session.RateLimits}">
@@ -277,7 +277,7 @@
                                                         <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
                                                                            StretchTrack="True" HorizontalAlignment="Stretch"/>
                                                         <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                                                   FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                                   FontSize="10" Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                                    IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                                                     </StackPanel>
                                                 </DataTemplate>
@@ -285,7 +285,7 @@
                                         </ItemsControl>
                                         <TextBlock Text="{Binding Session.UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
                                                    Margin="0,4,0,0"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                    IsVisible="{Binding Session.UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                     </StackPanel>
                                 </Flyout>
@@ -299,8 +299,8 @@
                      one segment per live agent session (statusdot + name). Its own Border/IsVisible (pitfall 3): it
                      must not disappear along with the usage pill just because the assistant has not reported usage yet. -->
                 <Border x:Name="SessionPill" ClipToBounds="True"
-                        Background="{StaticResource CockpitSecondaryBgBrush}"
-                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        Background="{DynamicResource CockpitSecondaryBgBrush}"
+                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                         CornerRadius="{StaticResource CockpitPillRadius}"
                         IsVisible="{Binding HasLiveSessions}">
                     <StackPanel Orientation="Horizontal">
@@ -313,12 +313,12 @@
                                 Background="Transparent" BorderThickness="0"
                                 ToolTip.Tip="All sessions">
                             <TextBlock Text="⋯" FontSize="12" FontWeight="Bold"
-                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                             <Button.Flyout>
                                 <Flyout Placement="BottomEdgeAlignedLeft">
                                     <StackPanel Spacing="2" MinWidth="220" MaxWidth="280" Margin="4">
                                         <TextBlock Text="Sessions" FontSize="11.5" FontWeight="SemiBold"
-                                                   Margin="6,4" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Margin="6,4" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <ItemsControl ItemsSource="{Binding LiveSessions}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:SessionPanelViewModel">
@@ -334,9 +334,9 @@
                                                                        MaxWidth="220" TextTrimming="CharacterEllipsis"/>
                                                             <StackPanel Orientation="Horizontal" Spacing="3">
                                                                 <TextBlock Text="{Binding SessionStatusLabel}" FontSize="10.5"
-                                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                                                <TextBlock Text="·" FontSize="10.5" Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                                                <TextBlock FontSize="10.5" Foreground="{StaticResource CockpitTextSecondaryBrush}">
+                                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                                <TextBlock Text="·" FontSize="10.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                                <TextBlock FontSize="10.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}">
                                                                     <TextBlock.Text>
                                                                         <MultiBinding Converter="{x:Static conv:SessionDeskNameConverter.Instance}">
                                                                             <Binding Path="PaneId"/>
@@ -347,7 +347,7 @@
                                                             </StackPanel>
                                                             <TextBlock Text="{Binding Statusline}" FontSize="10.5" TextWrapping="Wrap"
                                                                        MaxWidth="220"
-                                                                       Foreground="{StaticResource CockpitAccentBrush}"
+                                                                       Foreground="{DynamicResource CockpitAccentBrush}"
                                                                        IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                                         </StackPanel>
                                                     </StackPanel>
@@ -380,7 +380,7 @@
                                                 <Binding Path="#Root.((vm:AssistantChatViewModel)DataContext).DeskNameByPaneId"/>
                                             </MultiBinding>
                                         </ToolTip.Tip>
-                                        <Border Width="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                                        <Border Width="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                                         <StackPanel Orientation="Horizontal" Spacing="5" Margin="8,0" VerticalAlignment="Center">
                                             <Ellipse Width="8" Height="8"
                                                      Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
@@ -410,8 +410,8 @@
                              SessionView.axaml. The sentence is a Grid, not a StackPanel: a StackPanel measures
                              its stacked child with unbounded width, so TextWrapping never fires there. -->
                         <Border Padding="8,4"
-                                Background="{StaticResource CockpitSecondaryBgBrush}"
-                                BorderBrush="{StaticResource CockpitStatusWaitingBrush}" BorderThickness="1"
+                                Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                BorderBrush="{DynamicResource CockpitStatusWaitingBrush}" BorderThickness="1"
                                 CornerRadius="{StaticResource CockpitControlRadius}">
                             <DockPanel>
                                 <WrapPanel DockPanel.Dock="Right" VerticalAlignment="Top">
@@ -452,9 +452,9 @@
                                 <Grid ColumnDefinitions="Auto,*" Margin="0,0,10,0">
                                     <materialIcons:MaterialIcon Grid.Column="0" Kind="GaugeFull" Width="13" Height="13"
                                                                 Margin="0,0,6,0" VerticalAlignment="Top"
-                                                                Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                                Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                     <TextBlock Grid.Column="1" Text="{Binding Text}" FontSize="11.5" TextWrapping="Wrap"
-                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                               Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                 </Grid>
                             </DockPanel>
                         </Border>
@@ -481,7 +481,7 @@
                  attachments, the screenshot button). Still no send button: Enter sends, Shift+Enter inserts a
                  newline, Ctrl+V attaches an image and Arrow-Up recalls the last queued message, so the whole
                  composer stays reachable from the keyboard alone (criterion 8). -->
-            <Border x:Name="ComposerBorder" DockPanel.Dock="Bottom" Padding="10,6,10,10" BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
+            <Border x:Name="ComposerBorder" DockPanel.Dock="Bottom" Padding="10,6,10,10" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
                 <StackPanel Spacing="6">
                     <!-- Progress, read straight off the session the same way SessionView.axaml reads it. The window
                          is a narrower frame on the same SDK view, so it owes the operator the same answer to "is it
@@ -496,9 +496,9 @@
                                 IsVisible="{Binding Session.ShowThinkingIndicator, FallbackValue=False}">
                         <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="9" Height="9"
                                                     VerticalAlignment="Center"
-                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                    Foreground="{DynamicResource CockpitAccentBrush}"/>
                         <TextBlock Text="Thinking…" FontSize="11.5" VerticalAlignment="Center"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
 
                     <!-- Replaces "Thinking…" for the stretch it used to leave blank (AC-532): a tool call is the
@@ -508,10 +508,10 @@
                                 IsVisible="{Binding Session.HasActiveToolActivity, FallbackValue=False}">
                         <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="9" Height="9"
                                                     VerticalAlignment="Center"
-                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                    Foreground="{DynamicResource CockpitAccentBrush}"/>
                         <TextBlock Text="{Binding Session.ActiveToolActivityLabel}" FontSize="11.5"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                   Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                     </StackPanel>
 
                     <!-- Background work (AC-531): a detached sub-agent or shell outlives both indicators above, and
@@ -527,16 +527,16 @@
                             ToolTip.Tip="Sub-agents and shells still running in the background">
                         <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                             <TextBlock Text="Background" FontSize="11.5" VerticalAlignment="Center"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            <Border Background="{StaticResource CockpitStatusBackgroundBrush}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <Border Background="{DynamicResource CockpitStatusBackgroundBrush}"
                                     CornerRadius="{StaticResource CockpitPillRadius}"
                                     Padding="6,1" MinWidth="18">
                                 <TextBlock Text="{Binding Session.BackgroundTaskCount}" FontSize="10.5" FontWeight="Bold"
-                                           Foreground="{StaticResource CockpitTextOnStatusBrush}"
+                                           Foreground="{DynamicResource CockpitTextOnStatusBrush}"
                                            HorizontalAlignment="Center"/>
                             </Border>
                             <materialIcons:MaterialIcon Kind="ChevronUp" Width="11" Height="11"
-                                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         </StackPanel>
                         <Button.Flyout>
                             <Flyout Placement="TopEdgeAlignedLeft">
@@ -545,45 +545,45 @@
                                         <TextBlock DockPanel.Dock="Left" Text="Running now" FontWeight="SemiBold" FontSize="12.5"/>
                                         <TextBlock DockPanel.Dock="Right" Text="{Binding Session.BackgroundTaskSummary}" FontSize="11.5"
                                                    HorizontalAlignment="Right"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     </DockPanel>
 
-                                    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
+                                    <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
 
                                     <!-- Work that finishes while the flyout is open empties the list rather than
                                          closing it — same empty state the session pane's pop-out shows. -->
                                     <TextBlock Text="No background work." FontSize="12.5" Margin="10,16"
                                                HorizontalAlignment="Center"
-                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                IsVisible="{Binding !Session.HasBackgroundTasks}"/>
 
                                     <StackPanel IsVisible="{Binding Session.HasBackgroundTasks}" Margin="0,4,0,0">
                                         <TextBlock Text="SUB-AGENTS" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                    IsVisible="{Binding Session.HasBackgroundSubAgents}"/>
                                         <ItemsControl ItemsSource="{Binding Session.BackgroundSubAgents}"
                                                       ItemTemplate="{StaticResource BackgroundTaskRowTemplate}"
                                                       IsVisible="{Binding Session.HasBackgroundSubAgents}"/>
 
                                         <TextBlock Text="SHELLS" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                    IsVisible="{Binding Session.HasBackgroundShells}"/>
                                         <ItemsControl ItemsSource="{Binding Session.BackgroundShells}"
                                                       ItemTemplate="{StaticResource BackgroundTaskRowTemplate}"
                                                       IsVisible="{Binding Session.HasBackgroundShells}"/>
 
                                         <TextBlock Text="OTHER" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                    IsVisible="{Binding Session.HasBackgroundOtherTasks}"/>
                                         <ItemsControl ItemsSource="{Binding Session.BackgroundOtherTasks}"
                                                       ItemTemplate="{StaticResource BackgroundTaskRowTemplate}"
                                                       IsVisible="{Binding Session.HasBackgroundOtherTasks}"/>
                                     </StackPanel>
 
-                                    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
+                                    <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
                                             Padding="10,7" IsVisible="{Binding Session.HasBackgroundTasks}">
                                         <TextBlock Text="Disappears from the list once the work finishes." FontSize="10.5"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     </Border>
                                 </StackPanel>
                             </Flyout>
@@ -594,24 +594,24 @@
                          silent speaker icon — a switched-off toggle a few pixels up in the header is easy to miss
                          the one time it matters (a reply that never gets read out loud). -->
                     <TextBlock Text="Read-aloud is off — replies land here only." FontSize="10.5"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"
                                IsVisible="{Binding !SpeakReplies}"/>
                     <!-- AC-935: the reply target a row's reply button set, shown above the composer until sent
                          or cancelled — the same Session.PendingReplyTo the send path itself reads and clears,
                          not a separate chip-only flag. -->
-                    <Border x:Name="ReplyChip" Background="{StaticResource CockpitSecondaryBgBrush}"
-                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                    <Border x:Name="ReplyChip" Background="{DynamicResource CockpitSecondaryBgBrush}"
+                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                             CornerRadius="{StaticResource CockpitControlRadius}"
                             Padding="8,4" Margin="0,0,0,6"
                             IsVisible="{Binding Session.HasPendingReplyTo, FallbackValue=False}">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <materialIcons:MaterialIcon Kind="CommentArrowLeftOutline" Width="13" Height="13"
-                                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                             <TextBlock Text="Replying to" FontSize="11" VerticalAlignment="Center"
-                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                             <TextBlock Text="{Binding Session.PendingReplyExcerpt}" FontSize="12" VerticalAlignment="Center"
                                        MaxWidth="320" TextTrimming="CharacterEllipsis"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                             <Button x:Name="ReplyChipCancelButton" Command="{Binding Session.ClearReplyTargetCommand}" Classes="Subtle"
                                     VerticalAlignment="Center" Padding="4,0"
                                     ToolTip.Tip="Cancel this reply">
@@ -633,16 +633,16 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:QueuedMessageViewModel">
-                                <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                         CornerRadius="{StaticResource CockpitControlRadius}"
                                         Padding="8,4" Margin="0,0,6,6">
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                         <TextBlock Text="Queued" FontSize="11" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         <TextBlock Text="{Binding DisplayText}" FontSize="12" VerticalAlignment="Center"
                                                    MaxWidth="240" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <Button Command="{Binding RemoveCommand}" Classes="Subtle"
                                                 VerticalAlignment="Center" Padding="4,0"
                                                 ToolTip.Tip="Cancel this queued message">
@@ -665,8 +665,8 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ImageAttachmentViewModel">
-                                <Border Background="{StaticResource CockpitPanelBgBrush}"
-                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                <Border Background="{DynamicResource CockpitPanelBgBrush}"
+                                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                         CornerRadius="{StaticResource CockpitControlRadius}"
                                         Padding="4" Margin="0,0,6,6">
                                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -715,13 +715,13 @@
                          ListBox is never focused, so InputBox keeps the caret throughout. -->
                     <Popup IsOpen="{Binding MentionPicker.IsOpen}" PlacementTarget="{Binding #ComposerBorder}"
                            Placement="Top" IsLightDismissEnabled="False" VerticalOffset="-4">
-                        <Border Background="{StaticResource CockpitPanelBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        <Border Background="{DynamicResource CockpitPanelBgBrush}"
+                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                 CornerRadius="{StaticResource CockpitControlRadius}"
                                 Width="{Binding #ComposerBorder.Bounds.Width}" MaxHeight="220" Padding="0,4">
                             <Grid>
                                 <TextBlock Text="Indexing…" FontSize="12" Margin="10,6"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                                            IsVisible="{Binding MentionPicker.IsLoading}"/>
                                 <ListBox Focusable="False" ItemsSource="{Binding MentionPicker.Matches}"
                                          SelectedItem="{Binding MentionPicker.Selected}"
@@ -729,13 +729,13 @@
                                          IsVisible="{Binding !MentionPicker.IsLoading}">
                                     <ListBox.Styles>
                                         <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
-                                            <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+                                            <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
                                         </Style>
                                         <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-                                            <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+                                            <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
                                         </Style>
                                         <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-                                            <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+                                            <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
                                         </Style>
                                     </ListBox.Styles>
                                     <ListBox.ItemTemplate>
@@ -743,7 +743,7 @@
                                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,3">
                                                 <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
                                                 <TextBlock Text="{Binding ParentDirectory}"
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                            IsVisible="{Binding ParentDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                             </StackPanel>
                                         </DataTemplate>
@@ -762,9 +762,9 @@
                             HorizontalAlignment="Center" VerticalAlignment="Center">
                     <materialIcons:MaterialIcon Kind="AlertCircleOutline" Width="24" Height="24"
                                                 HorizontalAlignment="Center"
-                                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     <TextBlock Text="{Binding UnavailableReason}" TextWrapping="Wrap" TextAlignment="Center"
-                               FontSize="12.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               FontSize="12.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
 
                 <!-- Empty state: no session started yet, or one with nothing said in it yet — same message
@@ -780,11 +780,11 @@
                     <Border Classes="avatarBadge" Width="44" Height="44" CornerRadius="13" HorizontalAlignment="Center">
                         <materialIcons:MaterialIcon Kind="Creation" Width="22" Height="22"
                                                     HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                                                    Foreground="{DynamicResource CockpitAccentBrush}"/>
                     </Border>
                     <TextBlock Text="Type a message to start talking with the assistant." TextWrapping="Wrap"
                                TextAlignment="Center" FontSize="12.5"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 </StackPanel>
 
                 <!-- The transcript itself: SessionView.axaml's own row (Controls/TranscriptRowView.axaml, AC-722),
@@ -844,7 +844,7 @@
         <controls:ConsentBannerHost DataContext="{Binding Session}"/>
         <!-- Rounded hairline frame: a SIBLING overlay (no child), never the PARENT of the transcript subtree (see the
              root-Grid note above). Hit-transparent so it never eats a click; drawn on top at the window edge. -->
-        <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10"
+        <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10"
                 IsHitTestVisible="False"/>
         </Grid>
 </UserControl>
