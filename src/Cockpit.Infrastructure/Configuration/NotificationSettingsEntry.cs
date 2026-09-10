@@ -26,6 +26,10 @@ internal sealed class NotificationSettingsEntry
     // than as silence: a hand-cleared value should not switch the safety net off without saying so.
     public int MonitorMessagesPerHour { get; set; } = NotificationSettings.DefaultMonitorMessagesPerHour;
 
+    // Minutes a session may write nothing before the monitor reports it. 0 or less reads as the default for the
+    // same reason as above — a cleared value must not silence the safety net without saying so.
+    public int MonitorSilenceMinutes { get; set; } = (int)NotificationSettings.DefaultMonitorSilenceThreshold.TotalMinutes;
+
     // Minutes a finished session stays "done" before it counts as idle. 0 turns the idle transition off, so it round-trips as written rather than falling back to the default.
     public int SessionIdleMinutes { get; set; } = (int)SessionIdleDecision.DefaultIdleThreshold.TotalMinutes;
 
@@ -40,6 +44,7 @@ internal sealed class NotificationSettingsEntry
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle,
         NotifyOnCiFailure = settings.NotifyOnCiFailure,
         MonitorMessagesPerHour = settings.MonitorMessagesPerHour,
+        MonitorSilenceMinutes = (int)settings.MonitorSilenceThreshold.TotalMinutes,
         SessionIdleMinutes = (int)settings.SessionIdleThreshold.TotalMinutes,
     };
 
@@ -58,6 +63,9 @@ internal sealed class NotificationSettingsEntry
         MonitorMessagesPerHour = MonitorMessagesPerHour > 0
             ? MonitorMessagesPerHour
             : NotificationSettings.DefaultMonitorMessagesPerHour,
+        MonitorSilenceThreshold = MonitorSilenceMinutes > 0
+            ? TimeSpan.FromMinutes(MonitorSilenceMinutes)
+            : NotificationSettings.DefaultMonitorSilenceThreshold,
         SessionIdleThreshold = SessionIdleMinutes > 0
             ? TimeSpan.FromMinutes(SessionIdleMinutes)
             : TimeSpan.Zero,

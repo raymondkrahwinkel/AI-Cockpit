@@ -597,6 +597,12 @@
                                             <MenuItem Header="Resume later…" Click="OnScheduleSessionResume"/>
                                             <MenuItem Header="Clear status" Click="OnClearSessionStatus"
                                                       IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            <!-- AC-1313: the two per-session knobs of the background monitor. Bound straight to the
+                                                 session (the menu item's DataContext), so no command and no code-behind is needed. -->
+                                            <MenuItem Header="Mute in the monitor" ToggleType="CheckBox"
+                                                      IsChecked="{Binding MonitorMuted, Mode=TwoWay}"/>
+                                            <MenuItem Header="Allow an hour of silence" ToggleType="CheckBox"
+                                                      IsChecked="{Binding MonitorQuietForAnHour, Mode=TwoWay}"/>
                                             <Separator/>
                                             <!-- AC-674/AC-703: submenu items built in code-behind on ContextMenu.Opened — a popup ContextMenu
                                                  can't reach CockpitViewModel via $parent, and opening a second ContextMenu from a Click inside

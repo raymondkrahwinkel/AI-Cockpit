@@ -448,8 +448,22 @@ public partial class App : Application
             sessionMonitor.Watching = () =>
             [
                 .. cockpitViewModel.AllSessions().Select(session => new Services.MonitoredSession(
-                    session.PaneId, session.Title, session.SessionStatus, session.AbandonedProcessCount)),
+                    session.PaneId, session.Title, session.SessionStatus, session.AbandonedProcessCount,
+                    // AC-1313: the row count only where it is free. An SDK session's transcript is in memory; a
+                    // TTY session's is a file, and reading every one of those every tick is the cost this service
+                    // was built to avoid — null there, which the monitor reads as "no silence signal".
+                    (session as ViewModels.SessionViewModel)?.Transcript.Count,
+                    session.HasOutstandingBackgroundShells,
+                    session.MonitorMuted,
+                    session.MonitorSilenceAfter)),
             ];
+
+            // AC-1313: the background work with no pane. `null` as the caller is what makes this the unscoped read
+            // — the monitor owns no tasks, so a scoped one would only ever hand back nothing.
+            if (Program.Services.GetService<Cockpit.Core.Abstractions.Delegation.IDelegationService>() is { } delegation)
+            {
+                sessionMonitor.Tasks = () => delegation.ListTasks(status: null, callerPaneId: null);
+            }
             // `int.MaxValue` is "every row counts as already seen": it empties `NewRows`, which the monitor has no
             // use for, while `LastRows` is taken off the tail regardless of it.
             sessionMonitor.Tail = async paneId => (await probe(paneId, int.MaxValue).ConfigureAwait(true))?.LastRows ?? [];

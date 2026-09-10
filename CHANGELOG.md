@@ -40,6 +40,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   stays quiet until it ends, and a session you already asked the assistant to watch for one of these hears about
   it from that watch only — never twice. The hourly ceiling on these messages is `monitorMessagesPerHour` under
   `notifications` in `cockpit.json`, defaulting to twelve; anything over it waits rather than being dropped.
+- added: that same safety net now also tells the assistant when a session has simply gone quiet — measured on what
+  the session writes and never on the status it shows, so it still works on a session whose status is wrong. It
+  says so once, with how long the silence has lasted, and a session that finished and was left standing is
+  included on purpose: that is the one nobody notices. A session waiting on a test run of its own or on background
+  work it handed out is not reported at all, and neither is a terminal-route session, whose record is a file too
+  dear to read every sweep. The threshold is `monitorSilenceMinutes` under `notifications` in `cockpit.json`,
+  defaulting to ten; a session's right-click menu can give that one pane an hour instead, or mute it entirely for
+  as long as you have parked it.
+- added: delegated background tasks are watched too — the work started with `delegate_task`, which runs without a
+  pane and therefore appears in no session list. A task that failed, and one still running long past the silence
+  threshold, are each reported once, naming the session sitting waiting for its answer.
 
 - added: dragging a file in from the file manager and dropping it on a session pane or on the assistant chat —
   the floating window and the docked rail alike — puts its full path into the message box at the caret, leaving

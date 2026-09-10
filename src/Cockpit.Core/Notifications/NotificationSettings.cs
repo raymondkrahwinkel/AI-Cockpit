@@ -40,6 +40,13 @@ public sealed record NotificationSettings
 
     public int MonitorMessagesPerHour { get; init; } = DefaultMonitorMessagesPerHour;
 
+    // AC-1313: how long a session may write nothing before the monitor says so. Measured on transcript rows and
+    // never on status, so it keeps working on a session whose status is wrong — which is the case it is for. A
+    // session may ask for more room (`quietFor`) and the operator may give one more or mute it outright.
+    public static readonly TimeSpan DefaultMonitorSilenceThreshold = TimeSpan.FromMinutes(10);
+
+    public TimeSpan MonitorSilenceThreshold { get; init; } = DefaultMonitorSilenceThreshold;
+
     // How long a finished session stays "done" before it counts as idle. Distinct from `IdleThreshold`,
     // which is about *you* being away from the PC — this is about a *session* having nothing to do.
     // `TimeSpan.Zero` turns the idle transition off.

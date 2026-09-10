@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Notifications;
 using NSubstitute;
 
@@ -19,8 +20,17 @@ public class SessionMonitorTests
     public SessionMonitorTests() =>
         _settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new NotificationSettings());
 
-    private static MonitoredSession _Session(string paneId, SessionStatus status, int abandoned = 0) =>
-        new(paneId, $"work on {paneId}", status, abandoned);
+    private static MonitoredSession _Session(string paneId, SessionStatus status, int abandoned = 0, int? rows = null) =>
+        new(paneId, $"work on {paneId}", status, abandoned, rows);
+
+    // AC-1313: a delegated task as `list_delegated_tasks` reports it — the background work that has no pane.
+    private static DelegatedTaskView _Task(
+        string taskId,
+        DelegatedTaskStatus status,
+        DateTimeOffset started,
+        string? owner = "pane-1") =>
+        new(taskId, "local-review", $"review for {owner}", "review", status, started, started, null, 1, null,
+            status is DelegatedTaskStatus.Failed ? "the model refused" : null, owner);
 
     private SessionMonitor _Monitor(params MonitoredSession[] sessions) => _Monitor(() => sessions);
 
@@ -188,5 +198,126 @@ public class SessionMonitorTests
             Arg.Any<string>(),
             Arg.Is<string>(body => body.Contains("4 of its processes")
                 && !body.Contains("nobody has answered")));
+    }
+
+    // AC-1313 criterion 4: a session that really hangs — it writes nothing and nothing of its own is running — is
+    // said once, with how long it has been quiet, and is not said again while it stays that way.
+    [Fact]
+    public async Task ASessionThatHasWrittenNothing_IsReportedOnceWithHowLongItHasBeenQuiet()
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero);
+        using var monitor = _Monitor(_Session("pane-1", SessionStatus.Busy, rows: 12));
+        monitor.Clock = () => now;
+
+        await monitor.RunOnceAsync();
+        now = now.AddMinutes(11);
+        await monitor.RunOnceAsync();
+        now = now.AddMinutes(11);
+        await monitor.RunOnceAsync();
+
+        _inbox.Received(1).Deliver(
+            Arg.Any<string>(),
+            AssistantIdentity.PaneId,
+            Arg.Any<string>(),
+            Arg.Is<string>(body => body.Contains("pane-1") && body.Contains("written nothing for 11 minutes")));
+    }
+
+    // Counterproof to criterion 4, and the test that carries this ticket: a session that legitimately waits is
+    // worth nothing at all. Three ways of waiting, none of which the session has to remember to declare — one on a
+    // test run of its own, one on a delegated review it started, one whose rows this cockpit cannot count.
+    [Fact]
+    public async Task SessionsThatAreLegitimatelyWaiting_AreNotReportedHoweverLongTheyAreQuiet()
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero);
+        using var monitor = _Monitor(
+            _Session("pane-1", SessionStatus.Busy, rows: 12) with { HasOutstandingWork = true },
+            _Session("pane-2", SessionStatus.Busy, rows: 12),
+            _Session("pane-3", SessionStatus.Busy));
+        monitor.Clock = () => now;
+        monitor.Tasks = () => [_Task("task-1", DelegatedTaskStatus.Running, now.AddMinutes(-5), owner: "pane-2")];
+
+        await monitor.RunOnceAsync();
+        now = now.AddMinutes(11);
+        await monitor.RunOnceAsync();
+
+        _inbox.DidNotReceiveWithAnyArgs().Deliver(default!, default!, default!, default!);
+    }
+
+    // Criterion 5: a threshold of the operator's own for one pane wins over the global one, and only for that pane.
+    [Fact]
+    public async Task APaneAllowedAnHourOfSilence_IsNotReportedAfterTenMinutesWhileAPlainOneIs()
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero);
+        using var monitor = _Monitor(
+            _Session("pane-1", SessionStatus.Busy, rows: 12) with { SilenceAfter = TimeSpan.FromMinutes(60) },
+            _Session("pane-2", SessionStatus.Busy, rows: 12));
+        monitor.Clock = () => now;
+
+        await monitor.RunOnceAsync();
+        now = now.AddMinutes(11);
+        await monitor.RunOnceAsync();
+
+        _inbox.Received(1).Deliver(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Is<string>(body => body.Contains("pane-2") && !body.Contains("pane-1")));
+    }
+
+    // Counterproof to criterion 5: muting is not a very high threshold. A parked pane is worth nothing on any
+    // signal — the silence it is parked in, and the crashed turn it was parked with.
+    [Fact]
+    public async Task AMutedPane_IsReportedNeitherForItsSilenceNorForItsCrashedTurn()
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero);
+        using var monitor = _Monitor(_Session("pane-1", SessionStatus.Failed, rows: 12) with { Muted = true });
+        monitor.Clock = () => now;
+
+        await monitor.RunOnceAsync();
+        now = now.AddMinutes(61);
+        await monitor.RunOnceAsync();
+
+        _inbox.DidNotReceiveWithAnyArgs().Deliver(default!, default!, default!, default!);
+    }
+
+    // Criterion 6: a delegated task has no pane and no statusline, so nothing else can report it. The message names
+    // the pane sitting waiting for its answer, and says it once however long the task stays failed.
+    [Fact]
+    public async Task ADelegatedTaskThatFailed_IsReportedOnceAndNamesThePaneWaitingOnIt()
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero);
+        using var monitor = _Monitor(_Session("pane-1", SessionStatus.Idle));
+        monitor.Clock = () => now;
+        monitor.Tasks = () => [_Task("task-1", DelegatedTaskStatus.Failed, now.AddMinutes(-5), owner: "pane-1")];
+
+        await monitor.RunOnceAsync();
+        await monitor.RunOnceAsync();
+
+        _inbox.Received(1).Deliver(
+            Arg.Any<string>(),
+            AssistantIdentity.PaneId,
+            Arg.Any<string>(),
+            Arg.Is<string>(body => body.Contains("task-1")
+                && body.Contains("pane pane-1 is waiting on it")
+                && body.Contains("the model refused")));
+    }
+
+    // Counterproof to criterion 6: a task that is still working within its threshold, and one that is already done,
+    // are both worth nothing. Without this the monitor reports every delegated task twice over its life.
+    [Fact]
+    public async Task ADelegatedTaskStillRunningOrAlreadyFinished_IsNotReportedAtAll()
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero);
+        using var monitor = _Monitor(_Session("pane-1", SessionStatus.Idle));
+        monitor.Clock = () => now;
+        monitor.Tasks = () =>
+        [
+            _Task("task-1", DelegatedTaskStatus.Running, now.AddMinutes(-5)),
+            _Task("task-2", DelegatedTaskStatus.Completed, now.AddMinutes(-90)),
+        ];
+
+        await monitor.RunOnceAsync();
+
+        _inbox.DidNotReceiveWithAnyArgs().Deliver(default!, default!, default!, default!);
     }
 }

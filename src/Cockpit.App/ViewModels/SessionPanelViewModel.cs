@@ -406,6 +406,19 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // (AC-276).
     public virtual bool HasOutstandingBackgroundShells => false;
 
+    // AC-1313: the operator parked this pane, so the background monitor says nothing about it at all. Deliberately
+    // a setting and not something derived — a session parked on purpose is not recognisable by anything else.
+    [ObservableProperty]
+    private bool _monitorMuted;
+
+    // AC-1313: an hour of room for this one pane instead of the global silence threshold, for a session that
+    // legitimately writes nothing for a long stretch — a build, a long test run.
+    [ObservableProperty]
+    private bool _monitorQuietForAnHour;
+
+    // What the monitor is handed: a threshold rather than a special case of its own.
+    public TimeSpan? MonitorSilenceAfter => MonitorQuietForAnHour ? TimeSpan.FromHours(1) : null;
+
     // AC-1096: what this session's processes are doing, refreshed by the cockpit's resource sample. All zero
     // until the first sample, and for a session with no local process to weigh (an HTTP-backed provider).
     [ObservableProperty]
