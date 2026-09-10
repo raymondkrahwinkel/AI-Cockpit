@@ -31,6 +31,10 @@ public class SessionWatcherTests
         public List<string> Rows { get; } = [];
 
         public bool Gone { get; set; }
+
+        // AC-1311: something of this pane's own still running (a backgrounded shell) even though Status does
+        // not hold on it — what the real probe reads off `HasOutstandingBackgroundShells`.
+        public bool HasOutstandingWork { get; set; }
     }
 
     private SessionWatcher _Watcher(FakePane pane, Action? onProbe = null)
@@ -52,7 +56,8 @@ public class SessionWatcherTests
                     pane.HasTranscript,
                     pane.Rows.Count,
                     [.. pane.Rows.Skip(since)],
-                    [.. pane.Rows.TakeLast(5)]));
+                    [.. pane.Rows.TakeLast(5)],
+                    pane.HasOutstandingWork));
         };
 
         return watcher;
@@ -95,6 +100,53 @@ public class SessionWatcherTests
         _Delivered(1, "busy-to-idle");
         _Delivered(1, Pane);
         _Delivered(1, "Which base branch should I cut from?");
+    }
+
+    // AC-1311 criterion 1: a crash is exactly the case `busy-to-idle` must not stay silent on — the agent stopped
+    // working, just not on purpose. Paired with its tegenproef: staying Busy is not news, and one crash is one
+    // report, not one per tick after.
+    [Fact]
+    public async Task APaneThatCrashesFromBusy_IsReportedAsBusyToIdle_ButStayingBusyIsNot()
+    {
+        var pane = new FakePane { Status = SessionStatus.Busy };
+        using var watcher = _Watcher(pane);
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.BusyToIdle], null, null);
+
+        await watcher.RunOnceAsync();
+        _inbox.DidNotReceiveWithAnyArgs().Deliver(default!, default!, default!, default!);
+
+        pane.Status = SessionStatus.Failed;
+        await watcher.RunOnceAsync();
+        _Delivered(1, "busy-to-idle");
+
+        await watcher.RunOnceAsync();
+        _Delivered(1, "busy-to-idle");
+    }
+
+    // AC-1311 criterion 2: the SF-188 case — a pane that stopped talking while a backgrounded shell is still
+    // running under it is not "finished", and the report has to say so. Tegenproef: the same transition without
+    // that work carries no such line.
+    [Theory]
+    [InlineData(true, "still running")]
+    [InlineData(false, null)]
+    public async Task ABusyToIdleReport_MentionsOutstandingWorkOnlyWhenThereIsSome(bool hasOutstandingWork, string? mustContain)
+    {
+        var pane = new FakePane { Status = SessionStatus.Busy, HasOutstandingWork = hasOutstandingWork };
+        using var watcher = _Watcher(pane);
+        await watcher.WatchAsync(Pane, [SessionWatchEvents.BusyToIdle], null, null);
+
+        pane.Status = SessionStatus.Idle;
+        await watcher.RunOnceAsync();
+
+        if (mustContain is not null)
+        {
+            _Delivered(1, mustContain);
+        }
+        else
+        {
+            _inbox.Received(1).Deliver(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is<string>(body => !body.Contains("still running", StringComparison.Ordinal)));
+        }
     }
 
     // Criterion 3: a pane left sitting idle is not news every thirty seconds.

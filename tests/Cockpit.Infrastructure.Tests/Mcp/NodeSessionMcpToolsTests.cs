@@ -190,6 +190,22 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         Assert.DoesNotContain(_gateway.Calls, call => call.StartsWith("StopAsync", StringComparison.Ordinal));
     }
 
+    // AC-1311: the field was carried by AssistantSessionRow but never reached this server's own wire — the
+    // second copy of list_sessions' projection, easiest one to forget because it lives beside the assistant's
+    // rather than in it.
+    [Fact]
+    public async Task List_CarriesHasOutstandingWork()
+    {
+        McpRequestContext.Set(NodeCallerIdentity.PaneId);
+        _pairing.Profiles.Add(AllowedProfile);
+        _read.Sessions.Add(new AssistantSessionRow(
+            "pane-mine", "a test run", AllowedProfile, "", null, null, HasOutstandingWork: true));
+
+        var listed = _Json(await _Tools().ListNodeSessionsAsync())["sessions"]!.AsArray();
+
+        Assert.True(Assert.Single(listed)!["hasOutstandingWork"]!.GetValue<bool>());
+    }
+
     [Fact]
     public async Task Start_UnderALabelThatDiffersOnlyInCase_IsCheckedAgainstTheProfileThatWouldActuallyRun()
     {

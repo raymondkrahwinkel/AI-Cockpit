@@ -25,7 +25,7 @@ internal sealed class NodeSessionMcpTools(
         "This tool belongs to the cockpit that is paired to this one as its controller. It is not available to a session on this machine.";
 
     [McpServerTool(Name = "list_node_sessions", ReadOnly = true)]
-    [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. IT IS NOT EVERYTHING RUNNING THERE: you see the sessions running under a profile that machine's operator has allowed you, and nothing else, so never report this as \"the node is idle\" — say what you can see. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean.")]
+    [Description("Lists the AI sessions running on this node — the machine you are paired to, not your own. IT IS NOT EVERYTHING RUNNING THERE: you see the sessions running under a profile that machine's operator has allowed you, and nothing else, so never report this as \"the node is idle\" — say what you can see. THESE ARE NOT YOUR SESSIONS AND THEIR IDS ARE NOT YOURS: a pane id from this list means nothing to stop_agent, and a pane id from your own list_sessions means nothing to stop_node_agent, so never carry one across. When you tell the operator what is running, say which machine each session is on — two sessions can carry the same name on two machines, and the whole risk here is stopping the one you did not mean. hasOutstandingWork can be true under any status: it means something of that session's own — a backgrounded shell such as a build or a test run — is still going even though the session stopped talking, because that work deliberately does not hold the status. A session reading Idle or Done with hasOutstandingWork true is not finished; say so.")]
     public async Task<string> ListNodeSessionsAsync()
     {
         try
@@ -47,6 +47,9 @@ internal sealed class NodeSessionMcpTools(
                     statusline = session.Statusline,
                     status = session.Status,
                     needsYou = session.NeedsYou,
+                    // AC-1311: the second wire copy of this field — easiest one to forget, since it lives
+                    // beside the assistant's own list_sessions rather than in it.
+                    hasOutstandingWork = session.HasOutstandingWork,
                 }),
             });
         }

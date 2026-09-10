@@ -17,6 +17,9 @@ public class SessionPanelRailOrderingTests
     [InlineData(SessionStatus.WorkingBackground, false)]
     [InlineData(SessionStatus.NeedsAttention, true)]
     [InlineData(SessionStatus.Done, false)]
+    // AC-1311 criterion 3: Failed falls in the same needs-eyes-on-it class as NeedsAttention — a crashed session
+    // must sort to the top of the rail exactly like one waiting on a permission does.
+    [InlineData(SessionStatus.Failed, true)]
     public void RequestsAttention_FollowsSessionStatus(SessionStatus status, bool expected) => HeadlessAvalonia.Run(() =>
     {
         var session = new SessionViewModel { SessionStatus = status };

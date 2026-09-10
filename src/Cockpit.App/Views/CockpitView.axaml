@@ -632,6 +632,13 @@
                                                                Foreground="{StaticResource CockpitAccentBrush}"
                                                                IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}"
                                                                ToolTip.Tip="Waiting for your consent"/>
+                                                    <!-- AC-1311: a marker, not a fourth status class — sits next to
+                                                         whichever class the dot above already shows, for a session
+                                                         with a backgrounded shell still running under it. -->
+                                                    <materialIcons:MaterialIcon Kind="ProgressClock" Width="12" Height="12"
+                                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                               IsVisible="{Binding HasOutstandingBackgroundShells}"
+                                                               ToolTip.Tip="Something of this session is still running in the background"/>
                                                 </StackPanel>
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <!-- Mirrors the session-header provider pill (SessionView.axaml) so a local

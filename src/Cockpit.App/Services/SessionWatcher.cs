@@ -23,7 +23,11 @@ public sealed record WatchedPane(
     bool HasTranscript,
     int TranscriptRows,
     IReadOnlyList<string> NewRows,
-    IReadOnlyList<string> LastRows);
+    IReadOnlyList<string> LastRows,
+    // AC-1311: something of this session's own is still running even though Status does not hold on it — the
+    // same fact `list_sessions` carries as `hasOutstandingWork`. Without it, "it stopped working" reads as
+    // finished for a pane that is really just quiet while a backgrounded shell runs under it.
+    bool HasOutstandingWork = false);
 
 // The five things a watch can be armed for, spelled the way the assistant passes them.
 public static class SessionWatchEvents
@@ -278,12 +282,17 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
 
         if (watch.Events.Contains(SessionWatchEvents.BusyToIdle)
             && watch.Status is SessionStatus.Busy or SessionStatus.WorkingBackground
-            && pane.Status is SessionStatus.Idle or SessionStatus.Done)
+            && pane.Status is SessionStatus.Idle or SessionStatus.Done or SessionStatus.Failed)
         {
             watch.Reported = true;
+            // AC-1311 criterion 2: a pane that stopped talking while something of its own is still running (a
+            // backgrounded shell) is not "finished" — say so, or the report reads like SF-188 did.
+            var outstanding = pane.HasOutstandingWork
+                ? " Something of its own is still running under it — this is not finished."
+                : string.Empty;
             _Report(paneId, pane.Title, SessionWatchEvents.BusyToIdle,
-                "it stopped working. The lines below say whether that is finished or a question waiting for an "
-                    + "answer — read them before you report either.",
+                $"it stopped working.{outstanding} The lines below say whether that is finished or a question "
+                    + "waiting for an answer — read them before you report either.",
                 pane.LastRows);
         }
 
@@ -413,14 +422,15 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
                 true,
                 session.Transcript.Count,
                 [.. session.Transcript.Skip(Math.Max(since, session.Transcript.Count - MaxNewRows)).Select(row => row.TextWithImageSuffix)],
-                [.. session.Transcript.Skip(Math.Max(0, session.Transcript.Count - TailRows)).Select(row => row.TextWithImageSuffix)])),
+                [.. session.Transcript.Skip(Math.Max(0, session.Transcript.Count - TailRows)).Select(row => row.TextWithImageSuffix)],
+                session.HasOutstandingBackgroundShells)),
 
             // A plain terminal is a TtyViewModel too and has no agent behind it to have written anything, so it
             // falls through to the arm below — the same split `AssistantReadGateway` makes for `read_transcript`.
             TtyViewModel { IsTerminal: false } tty => _TtyPaneAsync(tty, since),
 
             { } pane => Task.FromResult<WatchedPane?>(
-                new WatchedPane(pane.Title, pane.SessionStatus, _NeedsAttention(pane), false, 0, [], [])),
+                new WatchedPane(pane.Title, pane.SessionStatus, _NeedsAttention(pane), false, 0, [], [], pane.HasOutstandingBackgroundShells)),
 
             _ => Task.FromResult<WatchedPane?>(null),
         };
@@ -447,10 +457,15 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
             // already seen are the tail of those. Bounded by the read itself, so a session that wrote ten thousand
             // rows since the last tick costs two hundred strings — exactly the ceiling the SDK arm holds to.
             [.. rows.Skip(Math.Max(0, rows.Count - Math.Max(0, slice.TotalEntries - since)))],
-            [.. rows.TakeLast(TailRows)]);
+            [.. rows.TakeLast(TailRows)],
+            tty.HasOutstandingBackgroundShells);
     }
 
-    private static bool _NeedsAttention(SessionPanelViewModel pane) => pane.RequestsAttention;
+    // AC-1311: narrower than `RequestsAttention` on purpose — `Failed` gets its own report through
+    // `busy-to-idle`, and this event's wording ("stopped on something nobody has answered") is written for a
+    // pending permission, not a crash.
+    private static bool _NeedsAttention(SessionPanelViewModel pane) =>
+        pane.SessionStatus is SessionStatus.NeedsAttention || pane.PendingConsent is not null;
 
     public void Dispose()
     {
