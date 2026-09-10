@@ -592,6 +592,30 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
+    // AC-488: the starting points the overview offers in place of an empty state. A fixed list rather than
+    // anything stored — a starting point is a set of answers, not a thing the operator owns or can edit.
+    public IReadOnlyList<ProjectStartingPoint> StartingPoints { get; } = ProjectStartingPoint.All;
+
+    // AC-488: asks the one question a starting point cannot answer itself and saves what comes back. Never the
+    // project editor — everything it would ask is answered, and that form is the step this gallery removes. What
+    // lands is a project like any other because this goes through `AddNewProjectAsync`, the add door's own.
+    [RelayCommand]
+    private async Task UseStartingPointAsync(ProjectStartingPoint startingPoint)
+    {
+        if (_dialogs is null)
+        {
+            return;
+        }
+
+        if (await _dialogs.PickFolderAsync($"Choose {startingPoint.Needs}") is not { Length: > 0 } folder)
+        {
+            return;
+        }
+
+        var stored = await AddNewProjectAsync(startingPoint.Create(folder));
+        SelectedProject = Projects.FirstOrDefault(project => project.Id == stored.Id);
+    }
+
     // The two do not race each other because there is no `await` between the `_settings.WithProject(stored)` read below
     // and the `_settings = settings;` write in `_PersistAsync` (AC-799).
     internal async Task<Project> AddNewProjectAsync(Project created)

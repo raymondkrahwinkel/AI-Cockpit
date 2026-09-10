@@ -292,6 +292,9 @@ internal static class Screenshotter
         // Rendered although the segment is not offered yet (ProjectsDisplaySettings.ContinueLayoutAvailable) — the
         // layout is built, and this is what will show whether it is worth offering.
         ["projects-workspace-continue"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Continue),
+        // AC-488: the same workspace with nothing staged, which is the only state the starting-point gallery is
+        // drawn in. Its own scene rather than a fourth layout: what differs is what there is, not how it is laid out.
+        ["projects-workspace-empty"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, withProjects: false),
         ["plugin-store"] = (_, _) => _PluginStore(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
@@ -320,6 +323,9 @@ internal static class Screenshotter
         // AC-1304: the same stand with its column asking which project to work on. Its own scene because the
         // question only stands there while no conversation does, which every other Simple scene has.
         ["simple-view-start-screen"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen() },
+        // AC-488: the same screen on a cockpit that has no projects yet — the state its own ticket left standing
+        // for this one, and the second place the starting-point gallery is drawn.
+        ["simple-view-start-screen-empty"] = (_, _) => new MainWindow { DataContext = _SimpleStandStartScreen(withProjects: false) },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -1340,7 +1346,7 @@ internal static class Screenshotter
 
     // AC-772 criteria 15 and 20: the Projects workspace in one layout, since only a render per layout shows whether
     // each holds together and that all three carry the "From your team" section.
-    private static MainWindow _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode layout)
+    private static MainWindow _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode layout, bool withProjects = true)
     {
         var cockpit = new ViewModels.CockpitViewModel();
 
@@ -1354,8 +1360,14 @@ internal static class Screenshotter
             cockpit.OpenProjectFolderCommand,
             cockpit.ShareProjectCommand,
             cockpit.SyncProjectNowCommand);
-        cockpit.Projects.StageDesignSample();
-        cockpit.Projects.StageDesignSharedProjects();
+        // AC-488: a workspace staged with nothing is not a variation of this scene, it is the other half of it —
+        // the state this screen spends its first minute in, and the only one the starting-point gallery draws in.
+        if (withProjects)
+        {
+            cockpit.Projects.StageDesignSample();
+            cockpit.Projects.StageDesignSharedProjects();
+        }
+
         cockpit.Projects.LayoutMode = layout;
 
         cockpit.Workspaces.OpenWorkspaceAsync(Cockpit.Core.Workspaces.WorkspaceType.Projects.Id).GetAwaiter().GetResult();
@@ -2167,10 +2179,17 @@ internal static class Screenshotter
     // AC-1304: the start screen, reached the way the rail's "+ New session" reaches it — through the command, so
     // the scene cannot draw a state the button cannot produce. The projects are the same design sample the
     // Projects workspace renders from, which is the point: one source, two arrangements.
-    private static ViewModels.CockpitViewModel _SimpleStandStartScreen()
+    private static ViewModels.CockpitViewModel _SimpleStandStartScreen(bool withProjects = true)
     {
         var cockpit = _SimpleStand(withAssistant: true);
-        cockpit.Projects.StageDesignSample();
+
+        // AC-488: without the sample this screen asks its question and offers nothing, which is where its own
+        // ticket left the answer — the starting-point gallery, the same one the Projects workspace shows.
+        if (withProjects)
+        {
+            cockpit.Projects.StageDesignSample();
+        }
+
         cockpit.ShowSimpleStartScreenCommand.Execute(null);
         return cockpit;
     }

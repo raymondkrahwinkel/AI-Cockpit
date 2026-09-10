@@ -206,6 +206,54 @@ public class ProjectsViewModelTests
         await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// AC-488 criteria 2 and 3. Both in one test because they are one claim seen from two sides: a starting point
+    /// asks the folder and nothing else (criterion 3), and what that leaves behind is a project like any other
+    /// (criterion 2) — asserting them apart would mean staging the same click twice.
+    /// </summary>
+    [Fact]
+    public async Task UseStartingPoint_AsksOnlyForTheFolder_AndLeavesAPlainProjectBehind()
+    {
+        var (viewModel, store, dialogs) = Build();
+        var startingPoint = ProjectStartingPoint.All[0];
+        dialogs.PickFolderAsync(Arg.Any<string>()).Returns("/home/raymond/invoices");
+        await viewModel.LoadAsync();
+
+        await viewModel.UseStartingPointCommand.ExecuteAsync(startingPoint);
+
+        // Never the project editor: everything it would ask is already answered, and putting that form in front of
+        // this audience is the step the gallery exists to remove.
+        await dialogs.DidNotReceive().ShowProjectDialogAsync(Arg.Any<Project?>(), Arg.Any<ISharedProjectSource?>());
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<ProjectSettings>(settings => settings.Projects.Count == 1),
+            Arg.Any<CancellationToken>());
+
+        var saved = Assert.Single(viewModel.Projects);
+        Assert.Equal(startingPoint.Name, saved.Name);
+        Assert.Equal("/home/raymond/invoices", saved.SourceDirectory);
+        Assert.Equal(startingPoint.Jobs, saved.Jobs);
+        Assert.Contains(ProjectStartingPoint.SharedBehavior, saved.BehaviorPrompt);
+        Assert.Equal(saved.Id, viewModel.SelectedProject?.Id);
+
+        // The two the template is honest about not knowing: no server to tick (there is no bookkeeping or mail
+        // plugin) and no profile label it could know on this machine.
+        Assert.Empty(saved.McpOverlay.EnabledServerNames!);
+        Assert.Null(saved.DefaultProfileLabel);
+    }
+
+    [Fact]
+    public async Task UseStartingPoint_WhenTheFolderIsNotChosen_WritesNothing()
+    {
+        var (viewModel, store, dialogs) = Build();
+        dialogs.PickFolderAsync(Arg.Any<string>()).Returns((string?)null);
+        await viewModel.LoadAsync();
+
+        await viewModel.UseStartingPointCommand.ExecuteAsync(ProjectStartingPoint.All[0]);
+
+        await store.DidNotReceive().SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task EditProject_PersistsTheEditedProjectUnderTheSameId()
     {
