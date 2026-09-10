@@ -121,10 +121,9 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         Assert.Equal(expectedKeys, actualKeys);
     }
 
-    // AC-1311 criterion 4: needsYou stays on the wire exactly as the row already carries it — the tool never
-    // recomputes it from status. The second case is one the real derivation (AC-1309) would never produce, and
-    // that is the point: a tool that silently "corrected" it to false would be recomputing needsYou itself,
-    // which is precisely the second opinion this criterion rules out.
+    // AC-1311 criterion 4: needsYou stays on the wire exactly as the row carries it, never recomputed. The
+    // second case is one the real derivation would never produce — a tool that "corrected" it to false would
+    // itself be the second opinion this criterion rules out.
     [Theory]
     [InlineData("NeedsAttention", true)]
     [InlineData("Busy", true)]

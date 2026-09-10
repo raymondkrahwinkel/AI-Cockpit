@@ -1715,9 +1715,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     };
 
     // Needs eyes on it: stuck waiting on the operator, a crashed turn (AC-1311), or a consent prompt is open
-    // (AC-444 #2), for the rail's sort order and the status dot. AC-1311: `SessionWatcher`'s own
-    // `needs-attention` probe stays narrower than this — its wording is written for a pending permission, and a
-    // crash already gets its own report through `busy-to-idle`.
+    // (AC-444 #2) — the rail's sort order and the status dot. `SessionWatcher`'s own `needs-attention` probe
+    // stays narrower than this; see its comment for why.
     public bool RequestsAttention =>
         SessionStatus is SessionStatus.NeedsAttention or SessionStatus.Failed || PendingConsent is not null;
 

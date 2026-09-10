@@ -461,10 +461,9 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
             tty.HasOutstandingBackgroundShells);
     }
 
-    // AC-1311: narrower than `RequestsAttention` on purpose. `Failed` now sorts into the sidebar's attention
-    // class, but its report already goes out through `busy-to-idle` with wording that fits a crash; the
-    // `needs-attention` event's own wording ("stopped on something nobody has answered") is written for a
-    // pending permission specifically, so a crash must not trip it a second time with the wrong words.
+    // AC-1311: narrower than `RequestsAttention` on purpose — `Failed` gets its own report through
+    // `busy-to-idle`, and this event's wording ("stopped on something nobody has answered") is written for a
+    // pending permission, not a crash.
     private static bool _NeedsAttention(SessionPanelViewModel pane) =>
         pane.SessionStatus is SessionStatus.NeedsAttention || pane.PendingConsent is not null;
 
