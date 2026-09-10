@@ -10,6 +10,8 @@ public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout, TimeSpa
     private DateTimeOffset? _lastSignalAt;
     private SessionActivity _lastActivity = SessionActivity.None;
     private bool _seenAnySignal;
+    private bool _processesPresent;
+    private int _emptyProcessSamples;
 
     // Records a transcript reading's classified activity at `now` and returns the resulting
     // status. `SessionActivity.None` is a metadata reading that leaves the status unchanged.
@@ -40,6 +42,24 @@ public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout, TimeSpa
         return _Status(now);
     }
 
+    // AC-1310: what the resource sample that already reads the process table every two seconds saw under this
+    // session. Asymmetric on purpose — seeing a process is proof and lands at once, while claiming silence takes
+    // two consecutive empty samples, so a short `git` cannot flip the sidebar and back within one turn.
+    public SessionStatus OnProcessSample(bool hasProcesses, DateTimeOffset now)
+    {
+        if (hasProcesses)
+        {
+            _processesPresent = true;
+            _emptyProcessSamples = 0;
+        }
+        else if (++_emptyProcessSamples >= 2)
+        {
+            _processesPresent = false;
+        }
+
+        return _Status(now);
+    }
+
     private SessionStatus _Status(DateTimeOffset now)
     {
         if (!_seenAnySignal)
@@ -65,7 +85,9 @@ public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout, TimeSpa
         }
 
         // Busy or BackgroundBusy — but a turn that went silent far past the safety timeout falls back to Done.
-        if (_lastSignalAt is { } at && now - at >= busySafetyTimeout)
+        // AC-1310: unless processes are still running under the session. The timeout rescues a stalled CLI, and
+        // one waiting on a slow MCP server or a test run is not stalled — that is the two-minute false Done.
+        if (_lastSignalAt is { } at && now - at >= busySafetyTimeout && !_processesPresent)
         {
             return SessionStatus.Done;
         }

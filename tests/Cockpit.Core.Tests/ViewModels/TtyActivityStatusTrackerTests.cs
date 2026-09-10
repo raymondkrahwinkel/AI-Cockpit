@@ -251,4 +251,33 @@ public class TtyActivityStatusTrackerTests
         Assert.Equal(SessionStatus.Busy, tracker.OnActivity(SessionActivity.Busy, T0));
         Assert.Equal(SessionStatus.WorkingBackground, tracker.OnActivity(SessionActivity.BackgroundBusy, T0));
     }
+
+    [Fact]
+    public void ProcessesUnderTheSession_HoldASilentTurnOffDone_AndOneEmptySampleDoesNotReleaseIt()
+    {
+        // AC-1310: the two-minute false Done. A turn waiting on a slow MCP server or a test run is silent but not
+        // stalled, and the process tree is the only thing on this route that can tell the two apart. The damping is
+        // asymmetric on purpose: seeing a process is proof, claiming silence is the side that can be wrong.
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+        tracker.OnActivity(SessionActivity.Busy, T0);
+
+        Assert.Equal(SessionStatus.Done, tracker.Poll(T0 + TimeSpan.FromSeconds(121)));
+        Assert.Equal(SessionStatus.Busy, tracker.OnProcessSample(hasProcesses: true, T0 + TimeSpan.FromSeconds(122)));
+        Assert.Equal(SessionStatus.Busy, tracker.OnProcessSample(hasProcesses: false, T0 + TimeSpan.FromSeconds(124)));
+        Assert.Equal(SessionStatus.Done, tracker.OnProcessSample(hasProcesses: false, T0 + TimeSpan.FromSeconds(126)));
+    }
+
+    [Fact]
+    public void ASessionRunningNothingBesideItsOwnShell_StillFallsToDoneAfterTheSafetyTimeout()
+    {
+        // The counterproof: the samples keep arriving for a live pane, and they say nothing is running — its own
+        // pty is not work. A predicate that leant on the bare process count would never see this and would strand
+        // every terminal on Busy for good, which is worse than the premature Done it set out to fix.
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+        tracker.OnActivity(SessionActivity.Busy, T0);
+
+        Assert.Equal(SessionStatus.Busy, tracker.OnProcessSample(hasProcesses: false, T0 + TimeSpan.FromSeconds(2)));
+        Assert.Equal(SessionStatus.Busy, tracker.OnProcessSample(hasProcesses: false, T0 + TimeSpan.FromSeconds(4)));
+        Assert.Equal(SessionStatus.Done, tracker.Poll(T0 + TimeSpan.FromSeconds(121)));
+    }
 }

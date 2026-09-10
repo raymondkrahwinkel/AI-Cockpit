@@ -641,6 +641,18 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // the one `stuck` exists for, so emptiness must not be the thing that refuses a watch on it.
     public bool HasReadableTranscript => _transcriptReader is not null && StatusFile is not null;
 
+    // AC-1310: the TTY route has no event saying work is still running, so the sample that already reads the
+    // process table every two seconds is the only source. The damping lives in the tracker.
+    internal override void OnProcessesSampled(int spawnedProcessCount)
+    {
+        if (_statusTrackingStopped)
+        {
+            return;
+        }
+
+        SessionStatus = _statusTracker.OnProcessSample(spawnedProcessCount > 0, DateTimeOffset.UtcNow);
+    }
+
     private void _OnStatusPollTick(object? sender, EventArgs e)
     {
         if (_statusTrackingStopped)

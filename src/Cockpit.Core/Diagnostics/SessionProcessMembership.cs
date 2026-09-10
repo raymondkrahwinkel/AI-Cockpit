@@ -18,9 +18,11 @@ public sealed class SessionProcessMembership
         var members = snapshot.LiveReachableFrom(seeds);
         _membersByRoot[rootProcessId] = members;
 
+        // AC-1310: the root drops out of `members` once it exits, so subtract it only while it is still there.
         return new SessionProcesses(
             snapshot.SumOf(members),
             members.Count,
+            members.Count - (members.Contains(rootProcessId) ? 1 : 0),
             snapshot.AbandonedCount(members, rootProcessId));
     }
 

@@ -36,6 +36,23 @@ public sealed class ResourceMonitorAbandonedProcessTests
     }
 
     [Fact]
+    public void Sample_AfterASessionsChildIsOrphaned_ItStillCountsAsThatSessionsSpawnedProcess()
+    {
+        // AC-1310, the counterproof to membership: this is the reason a ppid walk was rejected. A test run whose
+        // launcher exited is exactly the work the TTY status must keep seeing — dropping out of the session's own
+        // count at that moment would time the pane out to Done while the run is still going.
+        var table = new MutableProcessTable(_Rows(spawnedParentProcessId: SessionProcessId));
+        var monitor = new ResourceMonitor(table, _ => null);
+        var sessions = new[] { new SessionProcessRef("pane-a", "Session", SessionProcessId) };
+
+        monitor.Sample(sessions);
+        table.Rows = _Rows(spawnedParentProcessId: DeadParentProcessId);
+        var measured = monitor.Sample(sessions).Sessions.Single();
+
+        Assert.Equal((2, 1, 1), (measured.ProcessCount, measured.SpawnedProcessCount, measured.AbandonedProcessCount));
+    }
+
+    [Fact]
     public void Sample_DoesNotCountASessionsProcessesTwice()
     {
         // Everything still hangs off the cockpit, so the tree and the membership overlap completely — summing the
