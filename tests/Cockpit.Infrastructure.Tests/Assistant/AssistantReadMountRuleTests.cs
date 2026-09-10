@@ -121,6 +121,26 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         Assert.Equal(expectedKeys, actualKeys);
     }
 
+    // AC-1311 criterion 4: needsYou stays on the wire exactly as the row already carries it — the tool never
+    // recomputes it from status. The second case is one the real derivation (AC-1309) would never produce, and
+    // that is the point: a tool that silently "corrected" it to false would be recomputing needsYou itself,
+    // which is precisely the second opinion this criterion rules out.
+    [Theory]
+    [InlineData("NeedsAttention", true)]
+    [InlineData("Busy", true)]
+    public async Task ListSessions_NeedsYou_IsProjectedStraightFromTheRow_NeverRecomputed(string status, bool needsYou)
+    {
+        _gateway.ListSessionsAsync().Returns(Task.FromResult<IReadOnlyList<AssistantSessionRow>>(
+            [new AssistantSessionRow("pane-1", "AC-223", "Opus", "", "ws-2", "Cockpit", status, needsYou)]));
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(await _Tools().ListSessionsAsync());
+        var session = result["sessions"]!.AsArray()[0]!;
+
+        Assert.Equal(status, (string)session["status"]!);
+        Assert.Equal(needsYou, (bool)session["needsYou"]!);
+    }
+
     [Fact]
     public void TheBroadReadServer_IsNeverInTheNoSelectionFanOut()
     {

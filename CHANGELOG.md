@@ -396,6 +396,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   something running underneath it. The sidebar now shows "Failed" for a crashed session too, in the same
   colour as "needs attention" for now — a more considered label and colour of its own are a following change.
 
+- changed: a crashed session now sorts to the top of the sidebar next to the ones waiting on you, instead of
+  sitting wherever it happened to be — the same place "needs attention" already pulls a session to. The
+  assistant's own background watch on a session now also speaks up when that session crashes rather than
+  staying quiet, and its message says so when the session still has something of its own running underneath it
+  (a build, a test run) rather than reading as simply finished. A small clock icon next to a session's name in
+  the sidebar now shows the same thing: work of its own still going even though the session has gone quiet.
+
 - changed: **the log now records when the assistant chat changes host and when a terminal settles on a new size**,
   so a freeze can be placed on a timeline afterwards instead of resting on what you remember doing just before it.
   Each of the two leaves one line, not one per layout pass — a line per pass would both bury the log and allocate
