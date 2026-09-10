@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:projects="using:Cockpit.Core.Projects"
+             x:Class="Cockpit.App.Controls.StartingPointsView"
+             x:DataType="vm:ProjectsViewModel">
+
+    <!-- AC-488: what a cockpit with no projects shows instead of saying it has none. Each tile is a set of answers
+         to the project dialog, so pressing one leaves a plain project behind — the same kind the manager lists and
+         edits, never a second concept (AC-487). The only question a tile asks is where the files are.
+
+         Its own control because two surfaces stand empty for the same reason: this workspace, and the Simple
+         stand's start screen, which left this state to AC-488 rather than drawing a second one. -->
+    <StackPanel MaxWidth="920" HorizontalAlignment="Center">
+        <TextBlock Text="Start with one of these" FontSize="17" FontWeight="SemiBold"
+                   HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+        <TextBlock Text="Each one sets up a project for you, with the work it offers ready to press. The only thing it asks is where your files are."
+                   FontSize="13" Margin="0,6,0,14" MaxWidth="520" HorizontalAlignment="Center"
+                   TextWrapping="Wrap" TextAlignment="Center"
+                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+
+        <ItemsControl ItemsSource="{Binding StartingPoints}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel HorizontalAlignment="Center"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="projects:ProjectStartingPoint">
+                    <!-- The whole tile is the button: there is one thing to do with a starting point, so a
+                         separate action inside it would only be a second place to aim at. Width matches
+                         `ProjectCardView`, so the gallery and the cards that replace it line up. -->
+                    <Button Classes="Subtle" Width="278" Margin="8" Padding="16"
+                            HorizontalContentAlignment="Left"
+                            CornerRadius="{StaticResource CockpitPanelRadius}"
+                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                            Command="{Binding $parent[ItemsControl].((vm:ProjectsViewModel)DataContext).UseStartingPointCommand}"
+                            CommandParameter="{Binding}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding Needs, StringFormat='Needs: {0}'}" FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+                    </Button>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Criterion 4 carries no button of its own here. Both hosts already stand one under this gallery, on the
+             same `AddProjectCommand`, and a third way to the one dialog would be a choice where there is none. -->
+    </StackPanel>
+</UserControl>

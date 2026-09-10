@@ -85,9 +85,10 @@ public interface ISessionDialogService
     Task<string?> PickPluginZipAsync();
 
     /// <summary>
-    /// Opens a folder picker for choosing a local plugin store's folder (AC-7); returns the chosen path or null if cancelled.
+    /// Opens a folder picker under <paramref name="title"/>; returns the chosen path or null if cancelled. Used by
+    /// a local plugin store's folder (AC-7) and by a starting point, whose only question is where the files are (AC-488).
     /// </summary>
-    Task<string?> PickPluginStoreFolderAsync();
+    Task<string?> PickFolderAsync(string title);
 
     /// <summary>
     /// Picks a dashboard file to import; returns the chosen path or null if cancelled.

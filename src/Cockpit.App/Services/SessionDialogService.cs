@@ -621,7 +621,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 
-    public async Task<string?> PickPluginStoreFolderAsync()
+    public async Task<string?> PickFolderAsync(string title)
     {
         // The active window, not always MainWindow: the picker is launched from the Manage-stores dialog, itself
         // an owned modal over the store surface, so it must attach to that stack rather than behind it.
@@ -632,7 +632,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var folders = await owner.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Choose a plugin store folder",
+            Title = title,
             AllowMultiple = false,
         });
 
