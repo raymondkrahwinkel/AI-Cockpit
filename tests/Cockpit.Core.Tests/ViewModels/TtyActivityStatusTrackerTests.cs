@@ -251,4 +251,39 @@ public class TtyActivityStatusTrackerTests
         Assert.Equal(SessionStatus.Busy, tracker.OnActivity(SessionActivity.Busy, T0));
         Assert.Equal(SessionStatus.WorkingBackground, tracker.OnActivity(SessionActivity.BackgroundBusy, T0));
     }
+
+    [Fact]
+    public void ProcessesUnderTheSession_HoldASilentTurnOffDone_AndOneEmptySampleDoesNotReleaseIt()
+    {
+        // AC-1310: the two-minute false Done. A turn waiting on a slow MCP server or a test run is silent but not
+        // stalled, and the process tree is the only thing on this route that can tell the two apart. The damping is
+        // asymmetric on purpose: seeing a process is proof, claiming silence is the side that can be wrong.
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+        tracker.OnActivity(SessionActivity.Busy, T0);
+
+        Assert.Equal(SessionStatus.Done, tracker.Poll(T0 + TimeSpan.FromSeconds(121)));
+        Assert.Equal(SessionStatus.Busy, tracker.OnProcessSample(hasProcesses: true, T0 + TimeSpan.FromSeconds(122)));
+        Assert.Equal(SessionStatus.Busy, tracker.OnProcessSample(hasProcesses: false, T0 + TimeSpan.FromSeconds(124)));
+        Assert.Equal(SessionStatus.Done, tracker.OnProcessSample(hasProcesses: false, T0 + TimeSpan.FromSeconds(126)));
+    }
+
+    [Fact]
+    public void RunningWork_LengthensTheSafetyTimeout_ItDoesNotRemoveIt()
+    {
+        // Both sides of the same claim: the timeout still exists, only its length depends on whether the session
+        // is running anything. A process that never ends — `tail -f`, a dev server — must still reach Done, or the
+        // pane is pinned on Busy and `RequiresCloseConfirmation` with it, which is AC-276's objection returning.
+        var quiet = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+        var working = new TtyActivityStatusTracker(SafetyTimeout, NoSettleDelay);
+        quiet.OnActivity(SessionActivity.Busy, T0);
+        working.OnActivity(SessionActivity.Busy, T0);
+
+        // Nothing running beside its own shell: the ordinary two-minute timeout stands.
+        quiet.OnProcessSample(hasProcesses: false, T0 + TimeSpan.FromSeconds(2));
+        Assert.Equal(SessionStatus.Done, quiet.Poll(T0 + TimeSpan.FromSeconds(121)));
+
+        // A process that never ends: held far past two minutes, but not forever.
+        Assert.Equal(SessionStatus.Busy, working.OnProcessSample(hasProcesses: true, T0 + TimeSpan.FromMinutes(9)));
+        Assert.Equal(SessionStatus.Done, working.OnProcessSample(hasProcesses: true, T0 + TimeSpan.FromMinutes(11)));
+    }
 }

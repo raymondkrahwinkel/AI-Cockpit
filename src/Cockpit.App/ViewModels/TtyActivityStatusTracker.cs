@@ -7,9 +7,16 @@ namespace Cockpit.App.ViewModels;
 // AC-276 delays Done to avoid a false finish before late sub-agent status; turn_duration is not reliably present.
 public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout, TimeSpan turnSettleDelay)
 {
+    // AC-1310: the ceiling on how long running processes may hold a silent turn off Done. Far above any slow tool
+    // call, and deliberately short of SessionWatcher's 15-minute stuck threshold — a `tail -f` or a dev server is
+    // silent forever, and pinning a pane on Busy would strand it behind a close confirmation for good (AC-276).
+    private static readonly TimeSpan WorkingSafetyTimeout = TimeSpan.FromMinutes(10);
+
     private DateTimeOffset? _lastSignalAt;
     private SessionActivity _lastActivity = SessionActivity.None;
     private bool _seenAnySignal;
+    private bool _processesPresent;
+    private int _emptyProcessSamples;
 
     // Records a transcript reading's classified activity at `now` and returns the resulting
     // status. `SessionActivity.None` is a metadata reading that leaves the status unchanged.
@@ -40,6 +47,24 @@ public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout, TimeSpa
         return _Status(now);
     }
 
+    // AC-1310: what the resource sample that already reads the process table every two seconds saw under this
+    // session. Asymmetric on purpose — seeing a process is proof and lands at once, while claiming silence takes
+    // two consecutive empty samples, so a short `git` cannot flip the sidebar and back within one turn.
+    public SessionStatus OnProcessSample(bool hasProcesses, DateTimeOffset now)
+    {
+        if (hasProcesses)
+        {
+            _processesPresent = true;
+            _emptyProcessSamples = 0;
+        }
+        else if (++_emptyProcessSamples >= 2)
+        {
+            _processesPresent = false;
+        }
+
+        return _Status(now);
+    }
+
     private SessionStatus _Status(DateTimeOffset now)
     {
         if (!_seenAnySignal)
@@ -65,7 +90,9 @@ public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout, TimeSpa
         }
 
         // Busy or BackgroundBusy — but a turn that went silent far past the safety timeout falls back to Done.
-        if (_lastSignalAt is { } at && now - at >= busySafetyTimeout)
+        // AC-1310: processes of its own lengthen that timeout, they never remove it. A turn waiting on a slow MCP
+        // server is silent but not stalled; a session that never finishes still has to reach Done in the end.
+        if (_lastSignalAt is { } at && now - at >= (_processesPresent ? WorkingSafetyTimeout : busySafetyTimeout))
         {
             return SessionStatus.Done;
         }

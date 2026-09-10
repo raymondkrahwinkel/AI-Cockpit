@@ -54,7 +54,8 @@ public sealed class ResourceMonitor : ISingletonService
                 measured.MemoryBytes,
                 _pressureAvg10(processId),
                 processes.Count,
-                processes.AbandonedCount));
+                processes.AbandonedCount,
+                processes.SpawnedCount));
         }
 
         _sampledAt = now;
@@ -122,8 +123,8 @@ public sealed record ResourceUsage(
 }
 
 // One session's share, measured across everything it has spawned. `PressureAvg10` is the share of the last ten
-// seconds its cgroup stalled on memory (AC-1060) — null off Linux, and null for a session with no cgroup.
-// `AbandonedProcessCount` is how many of its processes no longer hang off it by parent link (AC-1096).
+// seconds its cgroup stalled on memory (AC-1060) — null off Linux and without a cgroup. `AbandonedProcessCount` is
+// how many no longer hang off it by parent link (AC-1096); `SpawnedProcessCount` drops its own root (AC-1310).
 public sealed record SessionResourceUsage(
     string PaneId,
     string Title,
@@ -131,4 +132,5 @@ public sealed record SessionResourceUsage(
     long MemoryBytes,
     double? PressureAvg10 = null,
     int ProcessCount = 0,
-    int AbandonedProcessCount = 0);
+    int AbandonedProcessCount = 0,
+    int SpawnedProcessCount = 0);

@@ -3475,6 +3475,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             session.ProcessMemoryBytes = measured.MemoryBytes;
             session.ProcessCount = measured.ProcessCount;
             session.AbandonedProcessCount = measured.AbandonedProcessCount;
+
+            // AC-1310: every sample, not only the ones that change a number — a route that derives its status
+            // from the process tree needs the empty samples too, or it can never stand its damping down.
+            session.OnProcessesSampled(measured.SpawnedProcessCount);
         }
     }
 

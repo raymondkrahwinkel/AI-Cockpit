@@ -444,6 +444,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     partial void OnAbandonedProcessCountChanged(int value) => OnPropertyChanged(nameof(ProcessActivityLabel));
 
+    // AC-1310: called on every resource sample with what this session has running beside its own root process.
+    // Only the TTY route uses it — the SDK route is told by an event and has no need to measure.
+    internal virtual void OnProcessesSampled(int spawnedProcessCount)
+    {
+    }
+
     // Short human-readable label for `SessionStatus`, for the sidebar status row. AC-1311: three visual classes
     // reach the operator (needs-eyes-on-it, working, quiet — see `RequestsAttention`/`SessionStatusBrushKey`),
     // but the exact wording stays per-status here and in the tooltip, next to `ProcessActivityLabel`.
