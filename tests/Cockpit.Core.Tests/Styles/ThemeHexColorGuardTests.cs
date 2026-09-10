@@ -48,8 +48,6 @@ public partial class ThemeHexColorGuardTests
     private static readonly Dictionary<(string Path, string Hex), (int Occurrences, string Reason)> AllowedLiterals =
         new()
         {
-            [("src/Cockpit.App/Views/CockpitView.axaml", "#263b82f6")] =
-                (1, "26-alpha echo of CockpitAccentColor for the update banner tint"),
             [("src/Cockpit.App/Views/CockpitView.axaml", "#26E0A33E")] =
                 (1, "26-alpha echo of CockpitStatusWaitingColor for the unprotected-secrets banner tint"),
             [("src/Cockpit.App/Styles/Theme.axaml", "#2AE0A33E")] =
