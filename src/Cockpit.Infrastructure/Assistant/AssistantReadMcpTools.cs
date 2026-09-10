@@ -56,6 +56,9 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway, IDele
                     // Idle covers both "never came up" and "finished a turn" — status alone cannot tell them apart,
                     // ready is the field that does.
                     ready = session.Ready,
+                    // AC-1309: something of this session's own is still running even though status does not say
+                    // so — a backgrounded shell, deliberately not status-pinning (AC-276).
+                    hasOutstandingWork = session.HasOutstandingWork,
                     // AC-1096: what that session's processes are still doing, which its status cannot say.
                     processCount = session.ProcessCount,
                     cpuPercent = Math.Round(session.CpuPercent, 1),

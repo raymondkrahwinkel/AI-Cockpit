@@ -15,7 +15,6 @@ public class SessionPanelRailOrderingTests
     [InlineData(SessionStatus.Idle, false)]
     [InlineData(SessionStatus.Busy, false)]
     [InlineData(SessionStatus.WorkingBackground, false)]
-    [InlineData(SessionStatus.WaitingForInput, true)]
     [InlineData(SessionStatus.NeedsAttention, true)]
     [InlineData(SessionStatus.Done, false)]
     public void RequestsAttention_FollowsSessionStatus(SessionStatus status, bool expected) => HeadlessAvalonia.Run(() =>

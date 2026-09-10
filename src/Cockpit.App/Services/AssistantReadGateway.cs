@@ -161,14 +161,16 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit, ISharedProj
                         workspaceId,
                         workspaceId is not null && namesById.TryGetValue(workspaceId, out var name) ? name : null,
                         session.SessionStatus.ToString(),
-                        // An SDK session has a permission to be stopped on; a TTY pane has no such state, but can
-                        // reach NeedsAttention on its own route (AC-920: an unanswered `AskUserQuestion`). Kept as
-                        // two arms rather than one shared `SessionStatus` check so the SDK arm stays untouched.
-                        session is SessionViewModel { HasPendingPermission: true }
-                            or TtyViewModel { SessionStatus: SessionStatus.NeedsAttention },
+                        // Derived from Status alone (AC-1309), not computed a second time: NeedsYou meant "what is
+                        // this session doing", and Status already answers that — a separate `HasPendingPermission`
+                        // reading here was a second opinion on the same question.
+                        session.SessionStatus == SessionStatus.NeedsAttention,
                         // The same precondition every other waker in the cockpit already checks before sending —
                         // not a second opinion computed here (AC-545 follow-up).
                         session.CanTakeAPrompt,
+                        // AC-1309: what this session still carries that Status does not hold it on — a
+                        // backgrounded shell, tracked but deliberately not status-pinning (AC-276).
+                        session.HasOutstandingBackgroundShells,
                         // AC-1096: read off the same sample the sidebar row shows, so the spoken answer and the
                         // screen cannot disagree about what a session is still holding.
                         session.ProcessCount,

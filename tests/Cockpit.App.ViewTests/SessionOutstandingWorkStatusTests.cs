@@ -4,12 +4,14 @@ using Cockpit.Core.Sessions;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// Status while work outlives the turn (AC-276). The main agent legitimately reaches <c>end_turn</c> several times
-/// per instruction while sub-agents it spawned keep running — measured at 1195 of 3054 turn endings across 77 real
-/// sessions — and <see cref="SessionViewModel.IsBusy"/> alone flipped the session to Done on every one of them,
-/// firing a premature "session finished" each time. A sub-agent now holds the session on
-/// <see cref="SessionStatus.WorkingBackground"/>; a shell deliberately does not, because a dev server would
-/// otherwise pin the session there for as long as it runs.
+/// Status while work outlives the turn (AC-276), and status for a turn that did not end cleanly (AC-1309). The
+/// main agent legitimately reaches <c>end_turn</c> several times per instruction while sub-agents it spawned keep
+/// running — measured at 1195 of 3054 turn endings across 77 real sessions — and <see cref="SessionViewModel.IsBusy"/>
+/// alone flipped the session to Done on every one of them, firing a premature "session finished" each time. A
+/// sub-agent now holds the session on <see cref="SessionStatus.WorkingBackground"/>; a shell deliberately does
+/// not, because a dev server would otherwise pin the session there for as long as it runs — instead it is
+/// reported alongside the status via <see cref="SessionViewModel.HasOutstandingBackgroundShells"/>, never inside
+/// it, so it cannot blot out <see cref="SessionStatus.NeedsAttention"/> or hide a crashed turn behind "Done".
 /// </summary>
 [Collection("avalonia")]
 public class SessionOutstandingWorkStatusTests
@@ -44,56 +46,34 @@ public class SessionOutstandingWorkStatusTests
         session.Apply(Outstanding());
 
         Assert.Equal(SessionStatus.Done, session.SessionStatus);
+        // AC-1309's other half of the same pair: nothing left running means nothing to report either.
+        Assert.False(session.HasOutstandingBackgroundShells);
     });
 
-    [Fact]
-    public void AnOutstandingShell_DoesNotHoldTheStatus() => HeadlessAvalonia.Run(() =>
+    [Theory]
+    [InlineData(false, SessionStatus.Done)]
+    [InlineData(true, SessionStatus.NeedsAttention)]
+    public void AnOutstandingShell_DoesNotHoldTheStatus_ButIsStillReported(bool needsAttention, SessionStatus expected) => HeadlessAvalonia.Run(() =>
     {
-        // The regression this guards is the fix's own worst failure mode: a dev server or tail -f never ends, so
-        // treating it like a sub-agent would leave the session on WorkingBackground forever — worse than the
-        // premature Done the ticket is about.
+        // AC-276's worst failure mode: a dev server never ends, so holding the status on it would pin the session
+        // forever. AC-1309 adds the case a status-only fix cannot carry: a permission prompt still outranks the
+        // status, but the shell must still be reported underneath it.
         var session = new SessionViewModel();
         session.IsBusy = true;
         session.Apply(Outstanding(new BackgroundTask("b1", BackgroundTaskKind.Shell, "npm run dev")));
-
         session.Apply(Turn());
 
-        Assert.Equal(SessionStatus.Done, session.SessionStatus);
+        if (needsAttention)
+        {
+            session.Apply(new SessionStatusChanged { SessionId = "s1", NeedsAction = "permission" });
+        }
+
+        Assert.Equal(expected, session.SessionStatus);
         Assert.True(session.HasOutstandingBackgroundShells, "the shell is still tracked, it just does not hold the status");
     });
 
     [Fact]
-    public void AnUnknownKind_HoldsNothing_ButIsStillCarried() => HeadlessAvalonia.Run(() =>
-    {
-        // A task type a newer CLI names and this build does not: it must not be able to freeze the status by
-        // passing itself off as a sub-agent. Ordinal 0 is Unknown precisely so an unmapped value lands here.
-        var session = new SessionViewModel();
-        session.IsBusy = true;
-        session.Apply(Outstanding(new BackgroundTask("x1", BackgroundTaskKind.Unknown, "something new")));
-
-        session.Apply(Turn());
-
-        Assert.Equal(SessionStatus.Done, session.SessionStatus);
-        Assert.False(session.HasOutstandingBackgroundShells);
-    });
-
-    [Fact]
-    public void SubAgentsAndShellsTogether_TheSubAgentDecides() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        session.IsBusy = true;
-        session.Apply(Outstanding(
-            new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1"),
-            new BackgroundTask("b1", BackgroundTaskKind.Shell, "npm run dev")));
-
-        session.Apply(Turn());
-
-        Assert.Equal(SessionStatus.WorkingBackground, session.SessionStatus);
-        Assert.True(session.HasOutstandingBackgroundShells);
-    });
-
-    [Fact]
-    public void ASessionError_ClearsOutstandingWork_SoACrashedSessionDoesNotHangOnWorkingBackground() => HeadlessAvalonia.Run(() =>
+    public void ASessionError_SetsFailed_AndClearsOutstandingWork_ButANewTurnReadsAsBusyAgain() => HeadlessAvalonia.Run(() =>
     {
         // Unlike the TTY route this one has no safety timeout to fall back on: a sub-agent left in the list after
         // the session died would hold it on WorkingBackground indefinitely, and RequiresCloseConfirmation would
@@ -106,10 +86,17 @@ public class SessionOutstandingWorkStatusTests
 
         session.Apply(new SessionError { SessionId = "s1", Message = "the driver died" });
 
-        // Idle rather than Done because no turn ever completed — the point is that it is not WorkingBackground,
-        // which is where a surviving sub-agent entry would have pinned it with nothing left to release it.
-        Assert.Equal(SessionStatus.Idle, session.SessionStatus);
-        Assert.False(session.HasOutstandingBackgroundShells);
+        // AC-1309: a crashed turn must never read as Done — that is what the OAuth-token measurement on the
+        // ticket showed happening today.
+        Assert.Equal(SessionStatus.Failed, session.SessionStatus);
+        Assert.False(session.HasOutstandingBackgroundShells, "whatever was outstanding died with the session (AC-276)");
+
+        // The tegenproef a fix that only checks `ErrorKind != null` fails: Failed must not survive the next turn
+        // starting, or a session that recovers reads as still broken while it is working again.
+        session.IsBusy = true;
+        session.Apply(new SessionStatusChanged { SessionId = "s1" });
+
+        Assert.Equal(SessionStatus.Busy, session.SessionStatus);
     });
 
     [Fact]
@@ -125,5 +112,20 @@ public class SessionOutstandingWorkStatusTests
         session.Apply(new SessionStatusChanged { SessionId = "s1", NeedsAction = "permission" });
 
         Assert.Equal(SessionStatus.NeedsAttention, session.SessionStatus);
+    });
+
+    [Fact]
+    public void OutstandingWorkNeverMakesASessionRequireCloseConfirmation() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-276's dev-server objection, as a test on the field this ticket adds: a shell that never ends must
+        // not turn "Done" into "ask before closing" through the back door the status itself was closed to avoid.
+        var session = new SessionViewModel();
+        session.IsBusy = true;
+        session.Apply(Outstanding(new BackgroundTask("b1", BackgroundTaskKind.Shell, "npm run dev")));
+        session.Apply(Turn());
+
+        Assert.Equal(SessionStatus.Done, session.SessionStatus);
+        Assert.True(session.HasOutstandingBackgroundShells);
+        Assert.False(session.RequiresCloseConfirmation, "only Busy/WorkingBackground ask before closing — the outstanding-work field must not join that set");
     });
 }

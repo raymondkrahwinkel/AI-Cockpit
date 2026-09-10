@@ -47,16 +47,15 @@ public class AssistantReadNeedsYouTests
         Assert.False(row.NeedsYou);
     }
 
-    // No regression on the SDK route (AC6): its own flag still drives NeedsYou, untouched by the TTY arm added
-    // alongside it.
+    // AC-1309: NeedsYou is derived from Status alone now, on the SDK route same as the TTY one — one source of
+    // truth instead of a second reading of `HasPendingPermission` that could disagree with it.
     [Fact]
-    public void ListSessions_ForAnSdkSessionWithAPendingPermission_StillReportsNeedsYou()
+    public void ListSessions_ForAnSdkSessionNeedingAttention_StillReportsNeedsYou()
     {
         var (gateway, session) = Dispatcher.UIThread.Invoke(() =>
         {
             var cockpit = new CockpitViewModel();
-            var sdk = new SessionViewModel();
-            sdk.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Bash") { IsPendingPermission = true });
+            var sdk = new SessionViewModel { SessionStatus = SessionStatus.NeedsAttention };
             cockpit.Sessions.Add(sdk);
             return (new AssistantReadGateway(cockpit, new SharedProjectSourceRegistry()), sdk);
         });

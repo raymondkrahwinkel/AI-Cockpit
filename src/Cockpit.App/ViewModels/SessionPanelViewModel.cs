@@ -449,7 +449,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         SessionStatus.Busy => "Busy",
         SessionStatus.WorkingBackground => "Working (background)",
-        SessionStatus.WaitingForInput => "Waiting for input",
         SessionStatus.NeedsAttention => "Needs attention",
         SessionStatus.Done => "Done",
         _ => "Idle",
@@ -1705,7 +1704,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         SessionStatus.Busy => "CockpitStatusBusyBrush",
         SessionStatus.WorkingBackground => "CockpitStatusBackgroundBrush",
-        SessionStatus.WaitingForInput or SessionStatus.NeedsAttention => "CockpitStatusWaitingBrush",
+        SessionStatus.NeedsAttention => "CockpitStatusWaitingBrush",
         SessionStatus.Done => "CockpitStatusDoneBrush",
         _ => "CockpitTextFaintBrush",
     };
@@ -1713,7 +1712,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Needs eyes on it: stuck waiting on the operator, or a consent prompt is open (AC-444 #2). The single
     // predicate `SessionWatcher` also probes on, so the rail's ordering and the OS-notification decision
     // never drift apart into two answers for the same question.
-    public bool RequestsAttention => SessionStatus is SessionStatus.NeedsAttention or SessionStatus.WaitingForInput || PendingConsent is not null;
+    public bool RequestsAttention => SessionStatus is SessionStatus.NeedsAttention || PendingConsent is not null;
 
     // Sort key for the focus-rail's tile order (AC-444 #2): attention-needing sessions first, then the
     // sidebar's own order. A single int rather than two separate comparisons — `Controls.SessionTilePanel`

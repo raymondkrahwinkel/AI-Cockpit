@@ -661,6 +661,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // True once at least one turn has finished, so an idle session reads as Done rather than Idle — independent of whether a (success) turn added a transcript row (T4).
     private bool _hasCompletedATurn;
 
+    // True from a `SessionError` until the turn it ended is superseded — by a fresh send (where `IsBusy` outranks
+    // it in `_RecomputeStatus`) or by the next `TurnCompleted` success (AC-1309). Drives `SessionStatus.Failed`.
+    private bool _lastTurnFailed;
+
     // Carries messages other agents left for this pane out with its next turn (AC-394). Optional: a pane built
     // without it — every design-time and most test constructions — simply sends what it was given, which is the
     // behaviour every session had before this existed.
@@ -1685,6 +1689,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ClearCurrentTurnImages();
         _hasCompletedATurn = false;
         _needsAttention = false;
+        _lastTurnFailed = false;
         IsBusy = false;
 
         _usage.Reset();
@@ -3001,6 +3006,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // AC-531: deliberately no _backgroundTasks/_RebuildBackgroundTaskRows() call here, unlike
                 // _activeToolCalls just above.
                 _hasCompletedATurn = true;
+                // This success supersedes whatever the previous turn ended in (AC-1309): a Failed session that
+                // recovers reads as Done, not stuck on the error that no longer describes it.
+                _lastTurnFailed = false;
                 IsBusy = false;
                 _AccumulateUsage(turn);
                 _RefreshLimits();
@@ -3042,6 +3050,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // otherwise a later image-less turn's tool call could attach the errored turn's stale images (AC-116).
                 ClearCurrentTurnImages();
                 IsBusy = false;
+                _lastTurnFailed = true;
                 // Whatever was outstanding died with the session (AC-276). Unlike the TTY route this one has no
                 // safety timeout to fall back on, so a sub-agent left in the list here would hold a crashed session
                 // on WorkingBackground forever — and make closing it ask "still working?" on the way out.
@@ -3147,15 +3156,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // Derives `SessionStatus` from the flags this view model already tracks: busy while a turn is in flight; see
-    // AC-276.
+    // AC-276. `_lastTurnFailed` only decides anything once neither of those outrank it (AC-1309) — a fresh send
+    // reads as Busy regardless, which is what lets a retried turn escape Failed without a separate reset.
     private void _RecomputeStatus()
     {
-        SessionStatus = (_needsAttention, IsBusy, _HasOutstandingSubAgents) switch
+        SessionStatus = (_needsAttention, IsBusy, _HasOutstandingSubAgents, _lastTurnFailed) switch
         {
-            (true, _, _) => SessionStatus.NeedsAttention,
-            (false, true, _) => SessionStatus.Busy,
-            (false, false, true) => SessionStatus.WorkingBackground,
-            (false, false, false) => _hasCompletedATurn ? SessionStatus.Done : SessionStatus.Idle,
+            (true, _, _, _) => SessionStatus.NeedsAttention,
+            (false, true, _, _) => SessionStatus.Busy,
+            (false, false, true, _) => SessionStatus.WorkingBackground,
+            (false, false, false, true) => SessionStatus.Failed,
+            (false, false, false, false) => _hasCompletedATurn ? SessionStatus.Done : SessionStatus.Idle,
         };
     }
 
