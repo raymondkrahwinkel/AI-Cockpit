@@ -5,5 +5,8 @@ namespace Cockpit.App.ViewTests;
 
 internal sealed class FixedProcessTable(IReadOnlyList<ProcessRow> rows) : IProcessTableReader
 {
-    public IReadOnlyList<ProcessRow> Read() => rows;
+    // Settable so a test can take a second sample of a machine that moved on (AC-1310).
+    public IReadOnlyList<ProcessRow> Rows { get; set; } = rows;
+
+    public IReadOnlyList<ProcessRow> Read() => Rows;
 }
