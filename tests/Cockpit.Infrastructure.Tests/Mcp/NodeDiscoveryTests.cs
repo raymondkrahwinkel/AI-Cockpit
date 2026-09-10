@@ -23,6 +23,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
     private readonly string _configPath = Path.Combine(Path.GetTempPath(), $"node-discovery-{Guid.NewGuid():N}.json");
     private readonly string _certificatePath = Path.Combine(Path.GetTempPath(), $"node-discovery-{Guid.NewGuid():N}.pfx");
     private readonly string _discoveryIdPath = Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt");
+    private readonly string _finderDiscoveryIdPath = Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt");
 
     private NodeEndpointSettingsStore _store = null!;
     private NodeSelfSignedCertificate _certificate = null!;
@@ -45,6 +46,9 @@ public class NodeDiscoveryTests : IAsyncLifetime
         await host.StartAsync(CancellationToken.None);
         return host;
     }
+
+    private NodeDiscoveryClient _CreateFinder(IPAddress? localMulticastInterface, int? port = null)
+        => new(new NodeDiscoveryId(_finderDiscoveryIdPath), localMulticastInterface, port);
 
     private async Task<NodeDiscoveryResponder> _StartResponderAsync(NodePairingHost pairingHost, Func<IEnumerable<IPNetwork>> ownRanges)
     {
@@ -72,7 +76,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => [IPNetwork.Parse("127.0.0.0/8")]);
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback, responder.BoundPort!.Value);
+            var finder = _CreateFinder(IPAddress.Loopback, responder.BoundPort!.Value);
             var results = await finder.FindAsync(TimeSpan.FromSeconds(3));
 
             var foundNode = Assert.Single(results);
@@ -91,6 +95,27 @@ public class NodeDiscoveryTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task Discovery_KeepsAnAnnounceWithoutAnId_ButSkipsItsOwnId()
+    {
+        using var responder = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        responder.JoinMulticastGroup(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), IPAddress.Loopback);
+        var ownId = new NodeDiscoveryId(_finderDiscoveryIdPath);
+        var response = Task.Run(async () =>
+        {
+            var query = await responder.ReceiveAsync();
+            await responder.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { Marker = NodeDiscoveryAnnounce.CurrentMarker, PairingPort = 20382 }, NodeDiscoveryJson.Options), query.RemoteEndPoint);
+            await responder.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new NodeDiscoveryAnnounce(ownId.Value, 20383), NodeDiscoveryJson.Options), query.RemoteEndPoint);
+        });
+
+        var port = ((IPEndPoint)responder.Client.LocalEndPoint!).Port;
+        var results = await new NodeDiscoveryClient(ownId, IPAddress.Loopback, port).FindAsync(TimeSpan.FromSeconds(3));
+        await response;
+
+        var foundNode = Assert.Single(results);
+        Assert.Equal("127.0.0.1:20382", foundNode.Address);
+    }
+
     /// <summary>
     /// AC-1075: before the port became a test seam, client and responder always used the one hardcoded
     /// <see cref="NodeDiscoveryProtocol.Port"/> — the same value any other same-host process also binds. Pins
@@ -105,10 +130,10 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => [IPNetwork.Parse("127.0.0.0/8")]);
         try
         {
-            var wrongPortFinder = new NodeDiscoveryClient(IPAddress.Loopback, _ReserveEphemeralPort());
+            var wrongPortFinder = _CreateFinder(IPAddress.Loopback, _ReserveEphemeralPort());
             Assert.Empty(await wrongPortFinder.FindAsync(TimeSpan.FromMilliseconds(500)));
 
-            var rightPortFinder = new NodeDiscoveryClient(IPAddress.Loopback, responder.BoundPort!.Value);
+            var rightPortFinder = _CreateFinder(IPAddress.Loopback, responder.BoundPort!.Value);
             Assert.Single(await rightPortFinder.FindAsync(TimeSpan.FromSeconds(3)));
         }
         finally
@@ -127,7 +152,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => []);
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback, responder.BoundPort!.Value);
+            var finder = _CreateFinder(IPAddress.Loopback, responder.BoundPort!.Value);
             var results = await finder.FindAsync(TimeSpan.FromMilliseconds(500));
 
             Assert.Empty(results);
@@ -149,7 +174,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => []);
         try
         {
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback, responder.BoundPort!.Value);
+            var finder = _CreateFinder(IPAddress.Loopback, responder.BoundPort!.Value);
             var results = await finder.FindAsync(TimeSpan.FromSeconds(3));
 
             Assert.Single(results);
@@ -218,7 +243,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         {
             // The switch is off, so StartAsync returned before binding — BoundPort is null. Any port nobody
             // holds proves the same "answers nothing" point; there is no responder port to scope this to.
-            var finder = new NodeDiscoveryClient(IPAddress.Loopback, _ReserveEphemeralPort());
+            var finder = _CreateFinder(IPAddress.Loopback, _ReserveEphemeralPort());
             var results = await finder.FindAsync(TimeSpan.FromMilliseconds(500));
 
             Assert.Empty(results);
@@ -268,7 +293,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
     {
         _certificate.Dispose();
 
-        foreach (var path in new[] { _configPath, _certificatePath, _discoveryIdPath })
+        foreach (var path in new[] { _configPath, _certificatePath, _discoveryIdPath, _finderDiscoveryIdPath })
         {
             var directory = Path.GetDirectoryName(path)!;
             var fileName = Path.GetFileName(path);
