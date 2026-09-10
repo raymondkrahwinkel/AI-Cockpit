@@ -1,3 +1,4 @@
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
@@ -36,9 +37,10 @@ public sealed class AssistantChatLiveSessionsTests
         return cockpit;
     }
 
-    private static SessionViewModel _Session(string paneId, string title, bool showPluginHeaderItems = true)
+    private static SessionViewModel _Session(
+        string paneId, string title, bool showPluginHeaderItems = true, bool startedByTheAssistant = false)
     {
-        var session = new SessionViewModel { Title = title };
+        var session = new SessionViewModel { Title = title, StartedByTheAssistant = startedByTheAssistant };
         session.AdoptPaneId(paneId);
         session.ShowPluginHeaderItems = showPluginHeaderItems;
         return session;
@@ -89,6 +91,53 @@ public sealed class AssistantChatLiveSessionsTests
 
         Assert.Equal("Sessions", vm.DeskNameByPaneId["s1"]);
     });
+
+    /// <summary>AC-1300 criterion 1 and criterion 3(b): the two sessions are alike in everything the old
+    /// "it lives and it is visible" rule could see — same desk, same profile, live at the same moment — and are
+    /// told apart only by who started them. <c>LiveSessions</c> still holds both, so the badges and the
+    /// <c>⋯</c> list lose nothing; the relation holds strictly fewer, and on a different ground.</summary>
+    [Fact]
+    public void SessionsStartedByTheAssistant_HoldsOnlyThoseTheAssistantStarted() => HeadlessAvalonia.Run(() =>
+    {
+        var cockpit = _Cockpit();
+        cockpit.Sessions.Add(_Session("spawned", "AC-774", startedByTheAssistant: true));
+        cockpit.Sessions.Add(_Session("operator-opened", "AC-774"));
+
+        var vm = _Vm(cockpit);
+
+        Assert.Equal(["spawned", "operator-opened"], vm.LiveSessions.Select(session => session.PaneId));
+        Assert.Equal(["spawned"], vm.SessionsStartedByTheAssistant.Select(session => session.PaneId));
+    });
+
+    /// <summary>AC-1300 criterion 2: the relation lives on the session, not on the assistant, so a chat window
+    /// built fresh over the same cockpit — the assistant closed and started again — still finds it; and it needs
+    /// no cleanup step, because a closed session takes it along. The other half of (a), a whole-cockpit restart,
+    /// is <c>SessionRestoreViewTests.RestoreSessionPanesAsync_APaneTheAssistantStarted_ComesBackInTheRelation</c>.</summary>
+    [Fact]
+    public void SessionsStartedByTheAssistant_SurvivesAFreshChatWindowAndDropsAClosedSession() => HeadlessAvalonia.Run(() =>
+    {
+        var cockpit = _Cockpit();
+        var session = _Session("spawned", "AC-774", startedByTheAssistant: true);
+        cockpit.Sessions.Add(session);
+
+        _Vm(cockpit).Dispose();
+        var reopened = _Vm(cockpit);
+        Assert.Equal(["spawned"], reopened.SessionsStartedByTheAssistant.Select(live => live.PaneId));
+
+        cockpit.Sessions.Remove(session);
+        Assert.Empty(reopened.SessionsStartedByTheAssistant);
+    });
+
+    /// <summary>AC-1300 criterion 4: the same exception <see cref="SessionWorkspacePlacement.Resolve"/> makes —
+    /// asserted on the resolver itself rather than on the collection, which drops the assistant a step earlier by
+    /// pane id and so would pass either way.</summary>
+    [Fact]
+    public void AssistantSessionOrigin_NeverPutsTheAssistantUnderItself()
+    {
+        var assistant = new SessionViewModel { BelongsToNoWorkspace = true, StartedByTheAssistant = true };
+
+        Assert.False(AssistantSessionOrigin.Resolve(assistant));
+    }
 
     /// <summary>AC-774's own lesson, back in this window: the subscription this view model holds on the live
     /// session list must come off on close, or every reopened chat window chains another handler onto it.</summary>

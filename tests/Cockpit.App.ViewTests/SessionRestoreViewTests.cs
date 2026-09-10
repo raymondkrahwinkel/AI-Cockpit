@@ -81,6 +81,32 @@ public class SessionRestoreViewTests
         Assert.Null(restored.ProcessId);
     }
 
+    /// <summary>AC-1300 criterion 2(a), the half a restart of the whole cockpit decides: the relation is carried in
+    /// the pane record, so a session the assistant started and that is still there comes back attributable to it.
+    /// Read through <see cref="AssistantSessionOrigin.Resolve"/>, the one place that answers the question.</summary>
+    [Fact]
+    public async Task RestoreSessionPanesAsync_APaneTheAssistantStarted_ComesBackInTheRelation()
+    {
+        var spawned = new WorkspacePane("spawned-pane", PaneKind.AiSession) { ProfileId = "work", StartedByTheAssistant = true };
+        var opened = new WorkspacePane("operator-pane", PaneKind.AiSession) { ProfileId = "work" };
+        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(spawned).WithPane(opened);
+        var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
+
+        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
+        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
+
+        var stateStore = Substitute.For<ISessionStateStore>();
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+
+        var vm = NewVm(workspaceStore, stateStore);
+        await vm.Workspaces.InitializeAsync();
+        await vm.RestoreSessionPanesAsync();
+
+        Assert.Equal(
+            ["spawned-pane"],
+            vm.Sessions.Where(AssistantSessionOrigin.Resolve).Select(session => session.PaneId));
+    }
+
     // AC-514: a name that changes after the pane already exists — a plugin/agent suggestion, or an operator's
     // inline rename — used to live only on the view model, so the pane record a restart reads back still carried
     // whatever title it was created with. These prove the fix's other half: what SuggestName/CommitRename write

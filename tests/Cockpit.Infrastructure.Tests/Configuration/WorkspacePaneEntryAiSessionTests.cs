@@ -22,6 +22,7 @@ public class WorkspacePaneEntryAiSessionTests
             NameIsChosen = true,
             SessionKind = PaneSessionKind.Tty,
             ProjectId = "proj-1",
+            StartedByTheAssistant = true,
         };
 
         var restored = WorkspacePaneEntry.FromDomain(pane).ToDomain();
@@ -30,6 +31,9 @@ public class WorkspacePaneEntryAiSessionTests
         Assert.Equal(pane.NameIsChosen, restored.NameIsChosen);
         Assert.Equal(pane.SessionKind, restored.SessionKind);
         Assert.Equal(pane.ProjectId, restored.ProjectId);
+        // AC-1300: mapped by hand in both directions like the rest, so a field that is never wired up here is a
+        // relation that silently empties on the next restart.
+        Assert.Equal(pane.StartedByTheAssistant, restored.StartedByTheAssistant);
     }
 
     [Fact]

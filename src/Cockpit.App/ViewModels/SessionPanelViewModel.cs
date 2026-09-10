@@ -1330,6 +1330,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // with an owner pane (AC-543).
     public bool BelongsToNoWorkspace { get; internal set; }
 
+    // AC-1300: whether the assistant started this session, mirroring `WorkspacePane.StartedByTheAssistant` so a
+    // restored pane comes back with the relation intact. Read through `AssistantSessionOrigin.Resolve`, never
+    // directly — that is where the assistant's own exception lives.
+    public bool StartedByTheAssistant { get; internal set; }
+
     // Mirrors `Cockpit.Core.Voice.VoiceSettings.AutoSubmitAfterVoice`: when true a finished transcript is submitted right after injection (see `OnVoiceSubmitRequested`) instead of waiting for a manual send.
     [ObservableProperty]
     private bool _autoSubmitAfterVoice;

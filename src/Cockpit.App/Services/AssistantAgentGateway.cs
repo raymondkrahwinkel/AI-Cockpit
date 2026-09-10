@@ -159,7 +159,10 @@ internal sealed class AssistantAgentGateway(
 
             var started = await cockpit.StartSessionOnWorkspaceAsync(
                 workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind,
-                launchOptions, request.IsolateInWorktree, explicitProjectId: project?.Id).ConfigureAwait(true);
+                launchOptions, request.IsolateInWorktree, explicitProjectId: project?.Id,
+                // AC-1300: the relation is stamped on here, at the one moment the caller is known, rather than read
+                // back out of the spawn trail later — a trail records what happened, not what is still true.
+                startedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant).ConfigureAwait(true);
 
             if (started is not { } pane)
             {

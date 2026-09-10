@@ -284,6 +284,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // start/stop — real SessionPanelViewModel instances, not a DTO, so the header binds to them directly.
     public ObservableCollection<SessionPanelViewModel> LiveSessions { get; } = new();
 
+    // AC-1300: of those, the ones the assistant itself started — the only source a hierarchy may be drawn on. A
+    // second collection filled in the same rebuild, deliberately not a filter over `LiveSessions`, which has to go
+    // on showing every live session for the badges and the `⋯` list.
+    public ObservableCollection<SessionPanelViewModel> SessionsStartedByTheAssistant { get; } = new();
+
     // Whether the session pill has anything to show — its own flag (AC-776 pitfall 3), not borrowed from the
     // usage pill's `HasUsagePillRegion`: a session badge must not disappear just because the assistant itself has
     // not reported usage yet.
@@ -322,9 +327,14 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             .ToList();
 
         LiveSessions.Clear();
+        SessionsStartedByTheAssistant.Clear();
         foreach (var session in sessions)
         {
             LiveSessions.Add(session);
+            if (AssistantSessionOrigin.Resolve(session))
+            {
+                SessionsStartedByTheAssistant.Add(session);
+            }
         }
 
         DeskNameByPaneId = sessions.ToDictionary(

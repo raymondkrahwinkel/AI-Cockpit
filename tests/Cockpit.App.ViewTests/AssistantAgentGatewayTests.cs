@@ -155,16 +155,20 @@ public class AssistantAgentGatewayTests
     }
 
     [Fact]
-    public async Task ASessionsDeskIsTheOneTypeThatIsNotRefusedForItsType()
+    public async Task ASessionsDeskIsTheOneTypeThatIsNotRefusedForItsType_AndWhatItStartsIsTheAssistants()
     {
         // The other side of the theory above: the refusal is about the type, not about every desk. Without this
         // the theory would still pass if the gateway refused everything.
         var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
 
         var result = await gateway.SpawnAsync(_Request(desk.Id));
 
         Assert.True(result.Ok, result.Error);
+        // AC-1300 criterion 1(a), asserted here because this is the one test that runs a real spawn end to end:
+        // the session the assistant just started is attributable to it, not merely recorded in the trail.
+        var started = cockpit.Sessions.Single(session => session.PaneId == result.PaneId);
+        Assert.True(AssistantSessionOrigin.Resolve(started), "a session the assistant started is the assistant's");
     }
 
     [Fact]

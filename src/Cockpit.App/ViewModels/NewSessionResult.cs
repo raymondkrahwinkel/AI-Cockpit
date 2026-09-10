@@ -28,6 +28,11 @@ public sealed record NewSessionResult(
     // 14:22", "webshop (copy)" (AC-310, AC-324).
     public bool NameIsComposed { get; init; }
 
+    // AC-1300: whether the cockpit's own assistant asked for this session. False for every operator-driven start —
+    // the New-session dialog, the launcher, Duplicate — which is what keeps a session the operator opened out of the
+    // assistant's relation even when it lives beside one the assistant started.
+    public bool StartedByTheAssistant { get; init; }
+
     // Whether the session this starts carries a name somebody meant, and so one a ticket linked to it later must
     // leave alone (#AC-310). The whole rule, in one expression: a name is chosen when there is one and nobody
     // composed it. Everything downstream applies this rather than working it out again (#AC-324).

@@ -6558,6 +6558,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.Title = string.IsNullOrWhiteSpace(pane.Title) ? "Session" : pane.Title;
         session.HasGeneratedName = !pane.NameIsChosen;
         session.ProjectId = pane.ProjectId;
+        session.StartedByTheAssistant = pane.StartedByTheAssistant;
         session.HasPersistedPane = true;
         _AttachSession(session);
     }
@@ -6573,6 +6574,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             Title = session.Title,
             NameIsChosen = result.NameIsChosen,
             ProjectId = result.ProjectId,
+            StartedByTheAssistant = result.StartedByTheAssistant,
         };
 
     // Persists `session`'s pane record right after `AddSession` — deliberately before `_StartSessionAsync` runs, not
@@ -6580,6 +6582,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // one that comes back describing a session that never actually started this way (AC-410).
     private void _PersistNewSessionPane(SessionPanelViewModel session, NewSessionResult result)
     {
+        session.StartedByTheAssistant = result.StartedByTheAssistant;
         session.HasPersistedPane = true;
         _ = Workspaces.AddPaneAsync(session.WorkspaceId, _BuildSessionPane(session, result));
     }
@@ -7852,7 +7855,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         bool? isolateInWorktree = null,
         // This is the sole thing that changes about how a project is found: given, it is looked up directly and the
         // folder map-match below never runs; left out, the folder decides exactly as it always has (AC-773).
-        string? explicitProjectId = null)
+        string? explicitProjectId = null,
+        // AC-1300: true only when the assistant itself asked. A coordinator's or a paired controller's spawn comes
+        // through this same door but is somebody else's session, so it is stamped like an operator's own.
+        bool startedByTheAssistant = false)
     {
         var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
 
@@ -7905,6 +7911,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ProjectId = projectId,
             // The tri-state override applied last, over whatever the project resolved (or false, with no project).
             IsolateInWorktree = isolateInWorktree ?? composed?.IsolateInWorktree ?? false,
+            StartedByTheAssistant = startedByTheAssistant,
         };
 
         // Non-interactive (AC-719): a failed isolation refuses with a reason instead of raising a modal on the main
