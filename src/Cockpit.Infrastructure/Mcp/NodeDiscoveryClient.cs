@@ -12,19 +12,21 @@ namespace Cockpit.Infrastructure.Mcp;
 // Security tab's "discover" action is something the operator presses, not a background subscription.
 internal sealed class NodeDiscoveryClient : INodeDiscoveryClient, ISingletonService
 {
+    private readonly NodeDiscoveryId _discoveryId;
     private readonly IPAddress? _localMulticastInterface;
     private readonly int _port;
 
     public NodeDiscoveryClient()
-        : this(localMulticastInterface: null)
+        : this(new NodeDiscoveryId(), localMulticastInterface: null)
     {
     }
 
     // Test seam: send out one specific local interface instead of letting the OS pick, forcing the query over
     // loopback. `port` (AC-1075) is a second seam: the production port is one shared value any other same-host
     // process also binds, so a test needs its own to avoid cross-talk with one of those.
-    internal NodeDiscoveryClient(IPAddress? localMulticastInterface, int? port = null)
+    internal NodeDiscoveryClient(NodeDiscoveryId discoveryId, IPAddress? localMulticastInterface, int? port = null)
     {
+        _discoveryId = discoveryId;
         _localMulticastInterface = localMulticastInterface;
         _port = port ?? NodeDiscoveryProtocol.Port;
     }
@@ -75,10 +77,17 @@ internal sealed class NodeDiscoveryClient : INodeDiscoveryClient, ISingletonServ
                     continue;
                 }
 
+                if (announce.DiscoveryId == _discoveryId.Value)
+                {
+                    continue;
+                }
+
                 // Keyed by discovery id, not by address: a node with several NICs on this segment could answer
                 // from more than one of them, and that is one node found, not two rows in the list.
                 var address = $"{received.RemoteEndPoint.Address}:{announce.PairingPort}";
-                found[announce.DiscoveryId] = new NodeDiscoveryFound(address, announce.DiscoveryId);
+                // An address substitutes for a missing id only as this round's deduplication key.
+                var discoveryId = announce.DiscoveryId ?? address;
+                found[discoveryId] = new NodeDiscoveryFound(address, discoveryId);
             }
         }
         catch (OperationCanceledException) when (timeoutCancellation.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
