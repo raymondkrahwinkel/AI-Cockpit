@@ -33,6 +33,13 @@ public sealed record NotificationSettings
     // at all, not merely that the answer is swallowed.
     public bool NotifyOnCiFailure { get; init; } = true;
 
+    // AC-1312: how many messages the background session monitor may send the assistant in one hour. Each one wakes
+    // it (`InboxWakeScheduler`), so this is the ceiling on turns a pathological run can cost. Findings over the
+    // ceiling are held, not dropped — the next tick under it says them.
+    public const int DefaultMonitorMessagesPerHour = 12;
+
+    public int MonitorMessagesPerHour { get; init; } = DefaultMonitorMessagesPerHour;
+
     // How long a finished session stays "done" before it counts as idle. Distinct from `IdleThreshold`,
     // which is about *you* being away from the PC — this is about a *session* having nothing to do.
     // `TimeSpan.Zero` turns the idle transition off.

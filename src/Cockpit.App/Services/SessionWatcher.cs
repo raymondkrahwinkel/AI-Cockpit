@@ -218,6 +218,12 @@ public sealed class SessionWatcher(IAgentMessageInbox inbox, ILogger<SessionWatc
     // something that was never running.
     public bool Unwatch(string paneId) => _watches.Remove(paneId);
 
+    // AC-1312: whether the assistant armed this pane for this event itself. Asked by `SessionMonitor` before it
+    // reports one of the events both services know, so a watched pane is not told the same thing twice. One lookup
+    // into the arming this service already keeps, rather than a second set of books next to it.
+    public bool IsArmed(string paneId, string @event) =>
+        _watches.TryGetValue(paneId, out var watch) && watch.Events.Contains(@event);
+
     // One look at every armed pane. Public because the tests drive it directly rather than waiting on the timer —
     // the same seam `CiWatcher.RunOnceAsync` opens.
     public async Task RunOnceAsync()

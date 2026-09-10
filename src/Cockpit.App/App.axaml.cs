@@ -432,10 +432,33 @@ public partial class App : Application
 
         // AC-640: the same shape one layer along, for the sessions the assistant armed a watch on with
         // `watch_session`. Started with nothing watched, unlike the CI one: it only ever follows what it was asked to.
-        if (Program.Services.GetService<Services.SessionWatcher>() is { } sessionWatcher)
+        var sessionWatcher = Program.Services.GetService<Services.SessionWatcher>();
+        if (sessionWatcher is not null)
         {
             sessionWatcher.Probe = Services.SessionWatcher.ProbeOf(cockpitViewModel);
             sessionWatcher.Start();
+        }
+
+        // AC-1312: the safety net under that watch — every live session, nothing armed, for the four states the
+        // host already knows. The tail rows come off the same probe the watch uses, asked only for a pane that is
+        // being reported; `IsArmed` is what keeps a watched pane from hearing the same event from both services.
+        if (Program.Services.GetService<Services.SessionMonitor>() is { } sessionMonitor)
+        {
+            var probe = Services.SessionWatcher.ProbeOf(cockpitViewModel);
+            sessionMonitor.Watching = () =>
+            [
+                .. cockpitViewModel.AllSessions().Select(session => new Services.MonitoredSession(
+                    session.PaneId, session.Title, session.SessionStatus, session.AbandonedProcessCount)),
+            ];
+            // `int.MaxValue` is "every row counts as already seen": it empties `NewRows`, which the monitor has no
+            // use for, while `LastRows` is taken off the tail regardless of it.
+            sessionMonitor.Tail = async paneId => (await probe(paneId, int.MaxValue).ConfigureAwait(true))?.LastRows ?? [];
+            if (sessionWatcher is { } armed)
+            {
+                sessionMonitor.Armed = armed.IsArmed;
+            }
+
+            sessionMonitor.Start();
         }
 
         // AC-656: and give every pane a turn as soon as its own inbox has mail, instead of leaving it for that

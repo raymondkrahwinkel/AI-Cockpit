@@ -22,6 +22,10 @@ internal sealed class NotificationSettingsEntry
 
     public bool NotifyOnCiFailure { get; set; } = true;
 
+    // Messages an hour the background session monitor may send the assistant. 0 or less reads as the default rather
+    // than as silence: a hand-cleared value should not switch the safety net off without saying so.
+    public int MonitorMessagesPerHour { get; set; } = NotificationSettings.DefaultMonitorMessagesPerHour;
+
     // Minutes a finished session stays "done" before it counts as idle. 0 turns the idle transition off, so it round-trips as written rather than falling back to the default.
     public int SessionIdleMinutes { get; set; } = (int)SessionIdleDecision.DefaultIdleThreshold.TotalMinutes;
 
@@ -35,6 +39,7 @@ internal sealed class NotificationSettingsEntry
         NotifyOnSessionIdle = settings.NotifyOnSessionIdle,
         NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle,
         NotifyOnCiFailure = settings.NotifyOnCiFailure,
+        MonitorMessagesPerHour = settings.MonitorMessagesPerHour,
         SessionIdleMinutes = (int)settings.SessionIdleThreshold.TotalMinutes,
     };
 
@@ -50,6 +55,9 @@ internal sealed class NotificationSettingsEntry
         NotifyOnSessionIdle = NotifyOnSessionIdle,
         NotifyWhenAllSessionsIdle = NotifyWhenAllSessionsIdle,
         NotifyOnCiFailure = NotifyOnCiFailure,
+        MonitorMessagesPerHour = MonitorMessagesPerHour > 0
+            ? MonitorMessagesPerHour
+            : NotificationSettings.DefaultMonitorMessagesPerHour,
         SessionIdleThreshold = SessionIdleMinutes > 0
             ? TimeSpan.FromMinutes(SessionIdleMinutes)
             : TimeSpan.Zero,

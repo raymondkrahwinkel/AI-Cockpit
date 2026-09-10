@@ -32,6 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a background safety net that tells the assistant when a session went wrong without anyone having to ask
+  for it — a turn that ended in an error, a permission prompt nobody answered, processes a session left running
+  after whatever started them died, and a pane that disappeared while it was still working. Everything found in
+  the same sweep goes out as one message that names each session, what happened and its last few lines, so four
+  sessions falling over at once cost one interruption instead of four. A state that lasts is said once and then
+  stays quiet until it ends, and a session you already asked the assistant to watch for one of these hears about
+  it from that watch only — never twice. The hourly ceiling on these messages is `monitorMessagesPerHour` under
+  `notifications` in `cockpit.json`, defaulting to twelve; anything over it waits rather than being dropped.
+
 - added: dragging a file in from the file manager and dropping it on a session pane or on the assistant chat —
   the floating window and the docked rail alike — puts its full path into the message box at the caret, leaving
   whatever you had already typed where it was. Drop several at once and they arrive space-separated, with any
