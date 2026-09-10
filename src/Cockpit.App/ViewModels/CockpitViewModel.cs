@@ -144,6 +144,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly IScreenshotSettingsStore? _screenshotSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
+    private Task _layoutPersist = Task.CompletedTask;
     private readonly IDockPanelRegistry? _dockPanelRegistry;
     private readonly IDebugSettingsStore? _debugSettingsStore;
     private readonly DiagnosticsBackgroundService? _diagnosticsBackgroundService;
@@ -4500,10 +4501,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AssistantDocked = settings.AssistantDocked;
     }
 
-    // Every layout save writes the whole record, because the store holds one section rather than per-field keys —
-    // so a save that built its own literal could silently drop a field it did not know about. Written once here
-    // for that reason: this is the list a new layout setting has to be added to, and the only one.
-    private LayoutSettings _CurrentLayoutSettings() => new()
+    // Each layout write starts from the saved record, then overrides only values this view model owns.
+    private LayoutSettings _CurrentLayoutSettings(LayoutSettings settings) => settings with
     {
         SingleSessionLayout = GlobalSingleSessionLayout,
         StackSessionsVertically = GlobalStackSessionsVertically,
@@ -4516,6 +4515,31 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         OpenDockPanelId = OpenDockPanelId,
         AssistantDocked = AssistantDocked,
     };
+
+    private Task _PersistLayoutSettingsAsync()
+    {
+        var write = _RunLayoutPersistAsync(_layoutPersist);
+        _layoutPersist = _IgnoreLayoutPersistFailureAsync(write);
+        return write;
+    }
+
+    private async Task _RunLayoutPersistAsync(Task previous)
+    {
+        await previous.ConfigureAwait(true);
+        var settings = await _layoutSettingsStore!.LoadAsync();
+        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings(settings));
+    }
+
+    private static async Task _IgnoreLayoutPersistFailureAsync(Task write)
+    {
+        try
+        {
+            await write.ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+        }
+    }
 
     // AC-953: docking or undocking the assistant moves both settings at once — which host it stands in, and
     // which rail panel is open to show it — so they go out in one write rather than two that would each
@@ -4530,7 +4554,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
+        await _PersistLayoutSettingsAsync();
     }
 
     // Persists the layout settings edited in the Options flyout to `cockpit.json`.
@@ -4542,7 +4566,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
+        await _PersistLayoutSettingsAsync();
         LayoutSettingsStatus = "Saved";
     }
 
@@ -4557,7 +4581,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
+        await _PersistLayoutSettingsAsync();
     }
 
     // Collapses or expands the left sidebar and persists it immediately — a direct-manipulation setting like
@@ -4572,7 +4596,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
+        await _PersistLayoutSettingsAsync();
     }
 
     // Persists the dock rail's width alone (AC-951), the sidebar's `SetSidebarWidthAsync` mirrored: called from
@@ -4586,7 +4610,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
+        await _PersistLayoutSettingsAsync();
     }
 
     // Opens the tapped rail panel, or closes the rail if that panel is already the open one — the toggle the
@@ -4602,7 +4626,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(_CurrentLayoutSettings());
+        await _PersistLayoutSettingsAsync();
     }
 
     private async Task LoadWorktreeSettingsAsync()
