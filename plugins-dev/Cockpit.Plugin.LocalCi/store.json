@@ -1,4 +1,5 @@
 {
+  "audience": ["developer"],
   "category": "Automation",
   "icon": "🧪",
   "logoAsset": "local-ci.svg",

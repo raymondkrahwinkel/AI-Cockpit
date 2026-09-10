@@ -839,14 +839,14 @@ public class CockpitViewModelTests
     public async Task SetSidebarWidthAsync_PersistsTheWidthAndUpdatesTheProperty()
     {
         var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
-        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings { CompanionWindowVisible = true });
         var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
 
         await vm.SetSidebarWidthAsync(320);
 
         Assert.Equal(320, vm.SidebarWidth);
         await layoutSettingsStore.Received(1).SaveAsync(
-            Arg.Is<LayoutSettings>(s => s.SidebarWidth == 320), Arg.Any<CancellationToken>());
+            Arg.Is<LayoutSettings>(s => s.SidebarWidth == 320 && s.CompanionWindowVisible), Arg.Any<CancellationToken>());
     }
 
     [Theory]

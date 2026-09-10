@@ -1,4 +1,5 @@
 {
+  "audience": ["documents-and-design"],
   "category": "Project tools",
   "icon": "🗄️",
   "logoAsset": "depot.svg",

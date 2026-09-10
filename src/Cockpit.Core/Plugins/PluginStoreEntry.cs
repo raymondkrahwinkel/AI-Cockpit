@@ -18,7 +18,7 @@ public sealed record PluginStoreEntry(
     string? Published = null,
     // AC-511 criterion 6: the work kinds a plugin is recommended for. A free list of strings, not the domain's
     // own enum — an unrecognised value still round-trips instead of failing the whole index. Null/empty means
-    // generic: the wizard shows the plugin for every work kind chosen, not just a listed one.
+    // unclassified: the wizard keeps the plugin visible but never preselects it.
     IReadOnlyList<string>? Audience = null,
     string? LogoAsset = null,
     // AC-815: hides the entry from Discover/All/categories/search/Featured/Recently-added — install-from-zip

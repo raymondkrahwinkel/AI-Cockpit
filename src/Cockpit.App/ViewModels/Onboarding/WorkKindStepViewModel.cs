@@ -217,11 +217,10 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
     {
         foreach (var plugin in Plugins)
         {
-            // Generic (no audience) ticks for whichever work kind is chosen; a tagged plugin ticks only for one
-            // of its own kinds.
+            // An unclassified plugin stays visible but gets no recommendation; a tagged plugin ticks for one of
+            // its own kinds.
             plugin.IsSelected = SelectedWorkKind is not null
-                && (plugin.Audience.Count == 0
-                    || plugin.Audience.Contains(SelectedWorkKind.Key, StringComparer.OrdinalIgnoreCase));
+                && plugin.Audience.Contains(SelectedWorkKind.Key, StringComparer.OrdinalIgnoreCase);
         }
     }
 
