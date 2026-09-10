@@ -98,12 +98,15 @@ public class NodeDiscoveryTests : IAsyncLifetime
     [Fact]
     public async Task Discovery_KeepsAnAnnounceWithoutAnId_ButSkipsItsOwnId()
     {
-        using var responder = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        using var responder = new UdpClient();
+        responder.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        responder.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
         responder.JoinMulticastGroup(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), IPAddress.Loopback);
         var ownId = new NodeDiscoveryId(_finderDiscoveryIdPath);
+        using var responseCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var response = Task.Run(async () =>
         {
-            var query = await responder.ReceiveAsync();
+            var query = await responder.ReceiveAsync(responseCancellation.Token);
             await responder.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { Marker = NodeDiscoveryAnnounce.CurrentMarker, PairingPort = 20382 }, NodeDiscoveryJson.Options), query.RemoteEndPoint);
             await responder.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new NodeDiscoveryAnnounce(ownId.Value, 20383), NodeDiscoveryJson.Options), query.RemoteEndPoint);
         });
