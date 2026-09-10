@@ -116,6 +116,19 @@ public class WorkspaceAgentGatewayWakeTests
         Assert.DoesNotContain("read_inbox", Assert.Single(deliveringSent), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Wake_OnAPaneThatFailed_StartsATurnAnyway()
+    {
+        // AC-1309: a crashed turn leaves no question standing, unlike NeedsAttention — Failed is wakeable the
+        // same as Idle/Done.
+        var (cockpit, sender, target, sent) = _Desk(SessionStatus.Failed);
+
+        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+
+        Assert.Equal(AgentWakeOutcome.Woken, outcome);
+        Assert.Single(sent);
+    }
+
     [Theory]
     [InlineData(SessionStatus.Busy)]
     [InlineData(SessionStatus.WorkingBackground)]
@@ -140,26 +153,6 @@ public class WorkspaceAgentGatewayWakeTests
 
         // Reported as awaiting its operator rather than as busy, because that is what it is — a session with a
         // permission decision outstanding is standing still, and telling the sender "it was working" would be untrue.
-        Assert.Equal(AgentWakeOutcome.AwaitingOperator, outcome);
-        Assert.Empty(sent);
-    }
-
-    [Fact]
-    public async Task Wake_OnAPaneWaitingForInput_IsRefusedAsAwaitingOperator()
-    {
-        var (cockpit, sender, target, sent) = _Desk(SessionStatus.WaitingForInput);
-
-        var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
-
-        // Reversed by AC-615, deliberately and not quietly. AC-395 put this status in the wakeable set on the
-        // reading that a session waiting for input is standing still, and that was defensible while wake was
-        // something each session had to opt into: only a pane that had chosen it could be reached this way.
-        //
-        // Raymond's decision of 2026-07-31 moves the consent to the operator and turns it on by default, and that
-        // changes what this status costs. WaitingForInput means a tool-use permission decision is pending or the CLI
-        // asked for something — a question in front of a human, the same signal NeedsAttention carries. Under
-        // default-on it would reach every session on the desk, so the first thing an agent could do with the wake
-        // route is talk over the decision its operator is standing at.
         Assert.Equal(AgentWakeOutcome.AwaitingOperator, outcome);
         Assert.Empty(sent);
     }
@@ -327,7 +320,6 @@ public class WorkspaceAgentGatewayWakeTests
     [InlineData(SessionStatus.Busy)]
     [InlineData(SessionStatus.WorkingBackground)]
     [InlineData(SessionStatus.NeedsAttention)]
-    [InlineData(SessionStatus.WaitingForInput)]
     public async Task WakeForWaitingMail_OnAPaneThatIsNotStandingStill_IsRefusedAndSendsNothing(SessionStatus status)
     {
         var (cockpit, sender, target, sent) = _Desk(status);

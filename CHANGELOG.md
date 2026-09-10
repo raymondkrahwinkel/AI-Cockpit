@@ -387,6 +387,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a session whose latest turn crashed is no longer indistinguishable from one that finished
+  cleanly. Its status now reads as its own state instead of folding into "done" — which used to also mean a
+  session could announce "session finished" after a turn that actually errored, as long as an earlier turn in
+  the same session had succeeded; that false "finished" is gone. A session that still has a background shell
+  running (a dev server, a test watch) also reports that fact on its own now, separately from whatever its
+  status says, so the assistant and another agent trying to wake it are not told it is idle when it still has
+  something running underneath it. The sidebar now shows "Failed" for a crashed session too, in the same
+  colour as "needs attention" for now — a more considered label and colour of its own are a following change.
+
 - changed: **the log now records when the assistant chat changes host and when a terminal settles on a new size**,
   so a freeze can be placed on a timeline afterwards instead of resting on what you remember doing just before it.
   Each of the two leaves one line, not one per layout pass — a line per pass would both bury the log and allocate

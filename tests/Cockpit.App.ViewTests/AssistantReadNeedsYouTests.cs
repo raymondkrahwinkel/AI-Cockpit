@@ -2,6 +2,9 @@ using Avalonia.Threading;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Sessions;
+using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
@@ -47,16 +50,19 @@ public class AssistantReadNeedsYouTests
         Assert.False(row.NeedsYou);
     }
 
-    // No regression on the SDK route (AC6): its own flag still drives NeedsYou, untouched by the TTY arm added
-    // alongside it.
+    // AC-1309: NeedsYou is derived from Status alone now — one source of truth instead of a second reading of
+    // `HasPendingPermission`. That widens what counts: a CLI `needs_action` with no pending-permission row (no
+    // tool call to answer, just a status signal) used to read as NeedsYou=false on the SDK route; it does not now.
     [Fact]
-    public void ListSessions_ForAnSdkSessionWithAPendingPermission_StillReportsNeedsYou()
+    public void ListSessions_ForAnSdkSessionWithACliNeedsAction_ReportsNeedsYou_WithNoPendingPermissionRow()
     {
         var (gateway, session) = Dispatcher.UIThread.Invoke(() =>
         {
             var cockpit = new CockpitViewModel();
-            var sdk = new SessionViewModel();
-            sdk.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Bash") { IsPendingPermission = true });
+            // The parameterless constructor is the previewer's — it seeds sample transcript rows, including one
+            // with IsPendingPermission set, which would make this assertion meaningless either way.
+            var sdk = new SessionViewModel(Substitute.For<ISessionManager>());
+            sdk.Apply(new SessionStatusChanged { SessionId = "s1", NeedsAction = "needs_action" });
             cockpit.Sessions.Add(sdk);
             return (new AssistantReadGateway(cockpit, new SharedProjectSourceRegistry()), sdk);
         });
@@ -65,5 +71,6 @@ public class AssistantReadNeedsYouTests
 
         var row = Assert.Single(rows, row => row.PaneId == session.PaneId);
         Assert.True(row.NeedsYou);
+        Assert.False(session.HasPendingPermission, "the old check would have missed this — no permission row exists here");
     }
 }

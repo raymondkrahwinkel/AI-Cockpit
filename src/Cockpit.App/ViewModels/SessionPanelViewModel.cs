@@ -444,14 +444,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     partial void OnAbandonedProcessCountChanged(int value) => OnPropertyChanged(nameof(ProcessActivityLabel));
 
-    // Short human-readable label for `SessionStatus`, for the sidebar status row.
+    // Short human-readable label for `SessionStatus`, for the sidebar status row. AC-1309: Failed's wording and
+    // brush are a placeholder — the considered sidebar treatment (label, colour class, tooltip) is subticket c's.
     public string SessionStatusLabel => SessionStatus switch
     {
         SessionStatus.Busy => "Busy",
         SessionStatus.WorkingBackground => "Working (background)",
-        SessionStatus.WaitingForInput => "Waiting for input",
         SessionStatus.NeedsAttention => "Needs attention",
         SessionStatus.Done => "Done",
+        SessionStatus.Failed => "Failed",
         _ => "Idle",
     };
 
@@ -1700,12 +1701,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // verify tool result instead, so this is only the image a tool result cannot carry.
     public abstract Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng);
 
-    // Theme brush resource key for the status dot — resolved in the view via a converter.
+    // Theme brush resource key for the status dot — resolved in the view via a converter. AC-1309: Failed
+    // borrows the waiting brush so it stands out rather than reading as idle; subticket c may give it its own.
     public string SessionStatusBrushKey => SessionStatus switch
     {
         SessionStatus.Busy => "CockpitStatusBusyBrush",
         SessionStatus.WorkingBackground => "CockpitStatusBackgroundBrush",
-        SessionStatus.WaitingForInput or SessionStatus.NeedsAttention => "CockpitStatusWaitingBrush",
+        SessionStatus.NeedsAttention or SessionStatus.Failed => "CockpitStatusWaitingBrush",
         SessionStatus.Done => "CockpitStatusDoneBrush",
         _ => "CockpitTextFaintBrush",
     };
@@ -1713,7 +1715,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Needs eyes on it: stuck waiting on the operator, or a consent prompt is open (AC-444 #2). The single
     // predicate `SessionWatcher` also probes on, so the rail's ordering and the OS-notification decision
     // never drift apart into two answers for the same question.
-    public bool RequestsAttention => SessionStatus is SessionStatus.NeedsAttention or SessionStatus.WaitingForInput || PendingConsent is not null;
+    public bool RequestsAttention => SessionStatus is SessionStatus.NeedsAttention || PendingConsent is not null;
 
     // Sort key for the focus-rail's tile order (AC-444 #2): attention-needing sessions first, then the
     // sidebar's own order. A single int rather than two separate comparisons — `Controls.SessionTilePanel`

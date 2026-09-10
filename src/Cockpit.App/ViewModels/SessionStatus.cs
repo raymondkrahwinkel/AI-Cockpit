@@ -16,12 +16,14 @@ public enum SessionStatus
     // producing output.
     WorkingBackground,
 
-    // A tool-use permission decision is pending, or the CLI reported `needs_action`.
-    WaitingForInput,
-
     // The most recent turn finished successfully and nothing is pending.
     Done,
 
-    // Same signal as `WaitingForInput` but reserved for the sidebar's "jumps out" affordance (badge/highlight).
+    // The most recent turn ended in a `SessionError` and no new turn has started since (AC-1309). Says something
+    // about the agent, not about what is still running — a backgrounded shell survives this unaffected.
+    Failed,
+
+    // A tool-use permission decision is pending, or the CLI reported `needs_action` — the sidebar's "jumps out"
+    // affordance (badge/highlight).
     NeedsAttention,
 }

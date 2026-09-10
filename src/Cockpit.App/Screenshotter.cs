@@ -2269,7 +2269,7 @@ internal static class Screenshotter
 
         SessionStatus[] statuses =
         [
-            SessionStatus.Busy, SessionStatus.WaitingForInput, SessionStatus.NeedsAttention,
+            SessionStatus.Busy, SessionStatus.Failed, SessionStatus.NeedsAttention,
             SessionStatus.WorkingBackground, SessionStatus.Done, SessionStatus.Idle,
         ];
         string[] names = ["AC-774", "depot-fix", "ci-run", "AC-561-mockup-review", "cleanup-worktrees", "release-notes"];

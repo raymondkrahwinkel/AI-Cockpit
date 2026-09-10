@@ -58,12 +58,12 @@ internal sealed class WorkspaceAgentGateway(
         }
 
         // AC-1013: written as an allow-list of wakeable states, not a deny-list, so a status added later defaults
-        // to "not woken" rather than silently becoming wakeable. AC-615: WaitingForInput was removed from the
-        // wakeable set — it looks idle but means a decision is pending on the operator, same as NeedsAttention.
+        // to "not woken" rather than silently becoming wakeable. AC-1309: Failed joins Idle/Done — no question was
+        // left standing — and the outstanding-work field never weighs in here, only the status next to it does.
         if (target.SessionStatus switch
             {
-                SessionStatus.Idle or SessionStatus.Done => (AgentWakeOutcome?)null,
-                SessionStatus.WaitingForInput or SessionStatus.NeedsAttention => AgentWakeOutcome.AwaitingOperator,
+                SessionStatus.Idle or SessionStatus.Done or SessionStatus.Failed => (AgentWakeOutcome?)null,
+                SessionStatus.NeedsAttention => AgentWakeOutcome.AwaitingOperator,
                 SessionStatus.Busy or SessionStatus.WorkingBackground => AgentWakeOutcome.Busy,
                 _ => AgentWakeOutcome.Busy,
             } is { } refusal)
