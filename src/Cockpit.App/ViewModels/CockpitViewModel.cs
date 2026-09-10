@@ -929,10 +929,65 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _openInSimpleView;
 
     // AC-1301 criterion 4: the Simple stand keeps its own selection, apart from `SelectedSession`, so a stand
-    // switch returns to what you were looking at in each rather than to one shared choice. Nothing sets it yet
-    // — the rail that makes a conversation selectable in this stand is AC-1302.
+    // switch returns to what you were looking at in each rather than to one shared choice. Written by the rail
+    // (AC-1302); what the conversation column does with it is AC-1303.
     [ObservableProperty]
-    private SessionViewModel? _simpleSelectedSession;
+    private SessionPanelViewModel? _simpleSelectedSession;
+
+    // AC-1302: the standing assistant chat, which is what carries the relation AC-1300 established. Set by
+    // `AssistantChatViewModel` itself when it is built against this cockpit; `AssistantIndicatorCoordinator`
+    // still owns it, this is only how the Simple stand's rail reaches the one collection it may draw on.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AssistantRootSession))]
+    private AssistantChatViewModel? _assistantChat;
+
+    // AC-1302 criterion 4: the session the rail hangs its tree under, or null when there is none — with no
+    // assistant session there is nothing to draw a node from, and the rail lists the sessions flat instead of
+    // drawing an empty root.
+    public SessionPanelViewModel? AssistantRootSession => AssistantChat?.Session;
+
+    partial void OnAssistantChatChanged(AssistantChatViewModel? oldValue, AssistantChatViewModel? newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.PropertyChanged -= _OnAssistantChatPropertyChanged;
+        }
+
+        if (newValue is not null)
+        {
+            newValue.PropertyChanged += _OnAssistantChatPropertyChanged;
+        }
+    }
+
+    // The assistant session arrives after the chat view model does — it is started, and it comes back after a
+    // restart — so the root has to follow that rather than only the chat swap.
+    private void _OnAssistantChatPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is null or nameof(AssistantChatViewModel.Session))
+        {
+            OnPropertyChanged(nameof(AssistantRootSession));
+        }
+    }
+
+    // AC-1302: the rail's producer for the Simple stand's own selection. Separate from `SelectSession`, which
+    // moves the panels stand's selection — the two stands deliberately do not share one choice (AC-1301).
+    [RelayCommand]
+    private void SelectSimpleSession(SessionPanelViewModel session) => SimpleSelectedSession = session;
+
+    // Marks the picked row in the rail, the way `OnSelectedSessionChanged` marks it in the sidebar. Without this
+    // a click in the rail changes nothing you can see, which reads as a list that does not work.
+    partial void OnSimpleSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.IsSelectedInSimpleStand = false;
+        }
+
+        if (newValue is not null)
+        {
+            newValue.IsSelectedInSimpleStand = true;
+        }
+    }
 
     // How the Simple stand builds its conversation column: a factory owned by `AssistantIndicatorCoordinator`,
     // which is what holds the standing chat view model and knows which hosts there are. Null until it starts,

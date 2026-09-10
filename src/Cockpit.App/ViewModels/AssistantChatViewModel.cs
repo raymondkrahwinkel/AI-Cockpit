@@ -235,6 +235,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         {
             _cockpit.Sessions.CollectionChanged += _OnCockpitSessionsChanged;
             _RebuildLiveSessions();
+
+            // AC-1302: hand ourselves to the cockpit here, next to the subscription above, because this is the
+            // moment this view model becomes the one attached to that cockpit — the Simple stand's rail has no
+            // other route to the relation, and every construction path passes through here.
+            _cockpit.AssistantChat = this;
         }
     }
 
@@ -620,6 +625,13 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         if (_cockpit is not null)
         {
             _cockpit.Sessions.CollectionChanged -= _OnCockpitSessionsChanged;
+
+            // Only when it is still us: a replacement is stood up before the old one is disposed, and clearing
+            // unconditionally would leave the rail reading a chat that no longer exists.
+            if (ReferenceEquals(_cockpit.AssistantChat, this))
+            {
+                _cockpit.AssistantChat = null;
+            }
         }
     }
 }

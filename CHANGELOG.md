@@ -41,6 +41,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   for the machine, not per project, so switching project never changes the shape of the window. Each stand keeps
   its own selection, so switching there and back returns you to what you were looking at in that one.
 
+- added: the Simple stand's left column now shows the sessions as a tree: the assistant at the top, and under it,
+  indented, the sessions the assistant itself started. What each row says is what the sidebar already says of a
+  session — the status dot in its status colour, the name, the provider, the profile, the status, and the line the
+  agent set about what it is working on, which is left out entirely when the agent has nothing to report. Clicking
+  a row picks that session. Only sessions the assistant started hang under it: one you opened yourself is still
+  yours and stays out of that branch, even while it is running on the same workspace. With no assistant session
+  there is no root to hang anything under, and the column lists the sessions flat instead.
+
 - added: dragging a file in from the file manager and dropping it on a session pane or on the assistant chat —
   the floating window and the docked rail alike — puts its full path into the message box at the caret, leaving
   whatever you had already typed where it was. Drop several at once and they arrive space-separated, with any

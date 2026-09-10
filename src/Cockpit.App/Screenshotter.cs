@@ -307,7 +307,10 @@ internal static class Screenshotter
         // AC-1301: the Simple stand. Its own scene because it is the one thing no other scene can show — that
         // the panels stand is hidden rather than dismantled, and that the title bar and the status bar around
         // both stands are the same in either.
-        ["simple-view"] = (_, _) => new MainWindow { DataContext = _SimpleStand() },
+        ["simple-view"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: true) },
+        // AC-1302 criterion 4(b): the same stand with no assistant session, so the rail has no root to hang a
+        // tree under and lists the sessions flat. Its own scene because that is a different rail, not a variation.
+        ["simple-view-no-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: false) },
         // AC-696: two sessions on the desk showing, a third on another. Its own scene because the plain
         // "session" one puts every session on one desk and so cannot show the difference: these two used to
         // lay out as the top row of a 2x2, the other desk's session claiming an empty row underneath.
@@ -2028,7 +2031,10 @@ internal static class Screenshotter
     }
 
     private static ViewModels.AssistantChatViewModel _AssistantChatViewModel(
-        ViewModels.SessionViewModel? session, bool speakReplies = true, bool alwaysOn = false)
+        ViewModels.SessionViewModel? session,
+        bool speakReplies = true,
+        bool alwaysOn = false,
+        ViewModels.CockpitViewModel? cockpit = null)
     {
         var host = new _FakeAssistantSessionHost
         {
@@ -2047,30 +2053,57 @@ internal static class Screenshotter
         };
 
         return new ViewModels.AssistantChatViewModel(
-            host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue(), indicator: indicator);
+            host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue(), indicator: indicator,
+            cockpit: cockpit);
     }
 
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
     // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
-    private static ViewModels.CockpitViewModel _SimpleStand()
+    private static ViewModels.CockpitViewModel _SimpleStand(bool withAssistant)
     {
         var conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
+        conversation.ActiveProfileLabel = "work";
         conversation.Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.UserText, "what is still open on AC-1297?"));
         conversation.Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.AssistantText, "Five subtickets. **AC-1302** is the next one — it fills the rail beside this conversation."));
 
-        return new ViewModels.CockpitViewModel
+        var cockpit = new ViewModels.CockpitViewModel { SimpleView = true };
+
+        // AC-1302: two the assistant started and one the operator opened themselves, so the scene shows the rail
+        // drawing the relation rather than everything that happens to be alive.
+        var picked = _RailSession("kind→staging", "personal", "CLAUDE", startedByTheAssistant: true,
+            statusline: "kind→staging gelijktrekken: Traefik + configuratie…");
+        cockpit.Sessions.Add(picked);
+        cockpit.Sessions.Add(_RailSession("AC-1302 de boomrail", "default", "CLAUDE", startedByTheAssistant: true));
+        cockpit.Sessions.Add(_RailSession("mijn eigen sessie", "personal", "CODEX", startedByTheAssistant: false));
+
+        // AC-1302: with a row picked, so the scene shows the rail's active mark and not only its resting state.
+        cockpit.SelectSimpleSessionCommand.Execute(picked);
+
+        cockpit.CreateSimpleViewChatView = () =>
         {
-            SimpleView = true,
-            CreateSimpleViewChatView = () =>
-            {
-                var chat = _AssistantChatViewModel(conversation);
-                chat.IsDocked = true;
-                chat.IsSimpleViewHost = true;
-                return new AssistantChatView { DataContext = chat };
-            },
+            var chat = _AssistantChatViewModel(withAssistant ? conversation : null, cockpit: cockpit);
+            chat.IsDocked = true;
+            chat.IsSimpleViewHost = true;
+            return new AssistantChatView { DataContext = chat };
         };
+
+        return cockpit;
+    }
+
+    private static ViewModels.SessionViewModel _RailSession(
+        string title, string profile, string providerBadge, bool startedByTheAssistant, string statusline = "")
+    {
+        var session = new ViewModels.SessionViewModel
+        {
+            Title = title,
+            ActiveProfileLabel = profile,
+            ProviderBadge = providerBadge,
+            Statusline = statusline,
+        };
+        session.StartedByTheAssistant = startedByTheAssistant;
+        return session;
     }
 
     // AC-953: the assistant docked into the rail, built the way production builds it — the real `DockPanelRegistry`

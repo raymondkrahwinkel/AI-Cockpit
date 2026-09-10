@@ -23,6 +23,69 @@
         <vm:CockpitViewModel/>
     </Design.DataContext>
 
+    <UserControl.Resources>
+        <!-- AC-1302: a row in the Simple stand's rail. It says what the sidebar's row already says (see the
+             sessionItem template further down) and nothing more: the same properties, the same Border.sessionItem
+             classes, the same StatusBrushConverter. Rename, drag-reorder, the context menu and the close button
+             stay out — the rail selects, it does not manage. -->
+        <DataTemplate x:Key="SimpleRailSessionRow" x:DataType="vm:SessionPanelViewModel">
+            <Button Classes="Subtle" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).SelectSimpleSessionCommand}"
+                    CommandParameter="{Binding}"
+                    Cursor="Hand"
+                    ToolTip.Tip="{Binding SidebarCardTooltip}"
+                    AutomationProperties.HelpText="{Binding SidebarCardTooltip}">
+                <!-- The picked row lifts to the same filled card with the accent left edge the sidebar's active row
+                     gets (Theme.axaml Border.sessionItem.active) — off this stand's own selection, not the other's. -->
+                <Border Classes="sessionItem" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
+                        Classes.active="{Binding IsSelectedInSimpleStand}"
+                        Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}">
+                    <StackPanel Spacing="2">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8"
+                                     Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                            <materialIcons:MaterialIcon Kind="AlertOutline" Width="13" Height="13"
+                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"
+                                       IsVisible="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
+                                       ToolTip.Tip="Needs attention"/>
+                            <materialIcons:MaterialIcon Kind="HandBackLeftOutline" Width="13" Height="13"
+                                       Foreground="{DynamicResource CockpitAccentBrush}"
+                                       IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                       ToolTip.Tip="Waiting for your consent"/>
+                            <materialIcons:MaterialIcon Kind="ProgressClock" Width="12" Height="12"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                       IsVisible="{Binding HasOutstandingBackgroundShells}"
+                                       ToolTip.Tip="Something of this session is still running in the background"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                    BorderBrush="{DynamicResource CockpitAccentBrush}" BorderThickness="1"
+                                    CornerRadius="3" Padding="4,0" VerticalAlignment="Center"
+                                    IsVisible="{Binding ProviderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                <TextBlock Text="{Binding ProviderBadge}" FontSize="9"
+                                           Foreground="{DynamicResource CockpitAccentBrush}"/>
+                            </Border>
+                            <TextBlock Text="{Binding ActiveProfileLabel}"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"/>
+                            <TextBlock Text="{Binding SessionStatusLabel}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                            <TextBlock Text="{Binding ProcessActivityLabel}"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"
+                                       IsVisible="{Binding ProcessActivityLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        </StackPanel>
+                        <!-- AC-13: hidden rather than blanked when the agent has nothing to report, so the row gets
+                             shorter — the same thing the sidebar does, and criterion 2(b) of this ticket. -->
+                        <TextBlock x:Name="SimpleRailStatusline" Text="{Binding Statusline}" FontSize="11"
+                                   Foreground="{DynamicResource CockpitAccentBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+                </Border>
+            </Button>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <UserControl.Styles>
         <!-- The per-session close ✕ stays invisible until its sidebar row is hovered, so the overview
              reads calm; hovering reveals the affordance. Opacity (not IsVisible) keeps the row layout
@@ -1901,8 +1964,47 @@
                     BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
                 <DockPanel Margin="8">
                     <views:ViewModeSwitch DockPanel.Dock="Bottom"/>
-                    <!-- Holds the switch down while the rail above it is still empty. -->
-                    <Panel/>
+
+                    <!-- AC-1302: the tree of sessions. It groups *who drives what* — the assistant and the sessions
+                         it started. AC-1305's rail groups *where something stands* (workspace -> sessions). Two trees
+                         with the same shape and a different meaning: they may never become one tree, because half of
+                         that one would be untrue.
+                         The children come from `SessionsStartedByTheAssistant` (AC-1300) and never from
+                         `LiveSessions`: a session the operator opened themselves lives too, and on the same
+                         workspace, but the assistant did not start it and it does not hang under it. -->
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Spacing="6">
+                            <StackPanel x:Name="SimpleRailAssistantBranch" Spacing="2"
+                                        IsVisible="{Binding AssistantRootSession, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <TextBlock Text="ASSISTANT" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                <ContentControl x:Name="SimpleRailAssistantRoot"
+                                                Content="{Binding AssistantRootSession}"
+                                                ContentTemplate="{StaticResource SimpleRailSessionRow}"/>
+                                <!-- The one level the tree has. A session that starts sessions of its own is not
+                                     designed and not drawn; that is a new conversation, not a deeper rail. -->
+                                <Border Margin="10,0,0,0" Padding="8,0,0,0" BorderThickness="1,0,0,0"
+                                        BorderBrush="{DynamicResource CockpitHairlineBrush}">
+                                    <ItemsControl x:Name="SimpleRailAssistantSessions"
+                                                  ItemsSource="{Binding AssistantChat.SessionsStartedByTheAssistant}"
+                                                  ItemTemplate="{StaticResource SimpleRailSessionRow}"/>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Criterion 4(b): no assistant session, so no root to hang anything under. The rail
+                                 lists the sessions flat rather than drawing an "Assistant" node with nothing behind
+                                 it. Unfiltered by workspace on purpose: the Simple stand shows one conversation at
+                                 a time and offers no way to switch desks. -->
+                            <StackPanel x:Name="SimpleRailFlatBranch" Spacing="2"
+                                        IsVisible="{Binding AssistantRootSession, Converter={x:Static ObjectConverters.IsNull}}">
+                                <TextBlock Text="SESSIONS" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                <ItemsControl x:Name="SimpleRailFlatSessions"
+                                              ItemsSource="{Binding Sessions}"
+                                              ItemTemplate="{StaticResource SimpleRailSessionRow}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
                 </DockPanel>
             </Border>
 

@@ -329,6 +329,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _isSelected;
 
+    // AC-1302: the same for the Simple stand's rail, which keeps a selection of its own (AC-1301). A second flag
+    // rather than a shared one: the two stands may point at different sessions, and one flag would make the rail
+    // mark whatever the panels grid has open. Set by `CockpitViewModel`, like `IsSelected`.
+    [ObservableProperty]
+    private bool _isSelectedInSimpleStand;
+
     // Whether this panel's view is shown in the session grid: always in multi-session (grid) mode, and only when
     // selected in single-pane mode (#24 / Zoom).
     [ObservableProperty]
