@@ -2073,7 +2073,26 @@ internal static class Screenshotter
         conversation.Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.AssistantText, "Five subtickets. **AC-1302** is the next one — it fills the rail beside this conversation."));
 
-        var cockpit = new ViewModels.CockpitViewModel { SimpleView = true };
+        // AC-1303: the real registry with the real registration shape, because picking a session is what hands the
+        // assistant to the rail in this stand — without it the scene would draw a rail with nothing resolvable in it.
+        var panels = new Docking.DockPanelRegistry();
+        var cockpit = new ViewModels.CockpitViewModel(panels) { SimpleView = true };
+
+        // One chat view model for both hosts, the way `AssistantIndicatorCoordinator` holds one: it is also what
+        // puts itself on `cockpit.AssistantChat`, so building it inside a factory would leave the rail without its
+        // root until that factory happened to run.
+        var chat = _AssistantChatViewModel(withAssistant ? conversation : null, cockpit: cockpit);
+
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId,
+            "Assistant",
+            Material.Icons.MaterialIconKind.Creation,
+            () =>
+            {
+                chat.IsDocked = true;
+                chat.IsSimpleViewHost = false;
+                return new AssistantChatView { DataContext = chat };
+            }));
 
         // AC-1302: two the assistant started and one the operator opened themselves, so the scene shows the rail
         // drawing the relation rather than everything that happens to be alive.
@@ -2088,7 +2107,6 @@ internal static class Screenshotter
 
         cockpit.CreateSimpleViewChatView = () =>
         {
-            var chat = _AssistantChatViewModel(withAssistant ? conversation : null, cockpit: cockpit);
             chat.IsDocked = true;
             chat.IsSimpleViewHost = true;
             return new AssistantChatView { DataContext = chat };

@@ -885,7 +885,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // When true the left sidebar is collapsed out of view; the session content takes its space.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowPanelsSidebar))]
     private bool _sidebarCollapsed;
+
+    // AC-1303: the left column carries the sidebar in one stand and the Simple stand's rail in the other, so
+    // "is the sidebar showing" is no longer the same question as "is it collapsed". The rail has no collapsed
+    // state of its own: collapsing it would leave that stand with no way to pick a session at all.
+    public bool ShowPanelsSidebar => !SimpleView && !SidebarCollapsed;
 
     // Width in pixels of the right dock rail's expanded panel (AC-951) — the sidebar's mirror image, same
     // drag/persist wiring via `SetDockRailWidthAsync` and `CockpitView.axaml.cs`.
@@ -895,6 +901,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Which dock panel is open, by id; null collapses the rail to its 40px strip. Toggled by clicking a rail
     // tab — the same tab again closes it, a different one switches straight to it (one panel open at a time).
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     private string? _openDockPanelId;
 
     // Whether the Assistant is docked into the rail instead of its own floating window (AC-950 [c]). Nothing
@@ -920,6 +927,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the panels stand. Seeded from `OpenInSimpleView` on load and moved by the Simple/Panels switch, which
     // deliberately does not write back: the switch says what you see now, the setting says what you open in.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    [NotifyPropertyChangedFor(nameof(ShowPanelsSidebar))]
+    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
     private bool _simpleView;
 
     // The setting behind that seed, persisted in the `layout` section of `cockpit.json` and edited in
@@ -932,6 +944,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // switch returns to what you were looking at in each rather than to one shared choice. Written by the rail
     // (AC-1302); what the conversation column does with it is AC-1303.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
     private SessionPanelViewModel? _simpleSelectedSession;
 
     // AC-1302: the standing assistant chat, which is what carries the relation AC-1300 established. Set by
@@ -939,12 +955,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // still owns it, this is only how the Simple stand's rail reaches the one collection it may draw on.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AssistantRootSession))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandDocksTheAssistant))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    [NotifyPropertyChangedFor(nameof(ShowDockRail))]
     private AssistantChatViewModel? _assistantChat;
 
     // AC-1302 criterion 4: the session the rail hangs its tree under, or null when there is none — with no
     // assistant session there is nothing to draw a node from, and the rail lists the sessions flat instead of
     // drawing an empty root.
     public SessionPanelViewModel? AssistantRootSession => AssistantChat?.Session;
+
+    // AC-1303: the Simple stand's two roles, answered here rather than in the rail's click handler. The state
+    // moves along more paths than that click — the assistant is switched off, or comes back, while a session
+    // stands picked (criterion 5). Computed, so no copy of the answer can go stale between those paths.
+    public bool SimpleStandDocksTheAssistant =>
+        SimpleView
+        && AssistantRootSession is not null
+        && SimpleSelectedSession is not null
+        && !ReferenceEquals(SimpleSelectedSession, AssistantRootSession);
+
+    // The other half of the same answer. With no assistant session there is nothing to put in either place: a
+    // picked session then takes the column on its own, there is no dock, and no way back is drawn to it
+    // (criterion 4(b)) — both of these are false at once, which is what says so.
+    public bool SimpleStandShowsTheAssistantInTheMainColumn =>
+        SimpleView && AssistantRootSession is not null && !SimpleStandDocksTheAssistant;
+
+    // AC-1303: which panel the rail shows. In the Simple stand this follows the roles above and is deliberately
+    // not written back: `OpenDockPanelId` is the panels stand's own stored choice, and docking here by picking a
+    // session would leave the assistant tab open there too, on a rail the operator had closed.
+    public string? EffectiveOpenDockPanelId => SimpleView
+        ? SimpleStandDocksTheAssistant ? AssistantIndicatorCoordinator.DockPanelId : null
+        : OpenDockPanelId;
 
     partial void OnAssistantChatChanged(AssistantChatViewModel? oldValue, AssistantChatViewModel? newValue)
     {
@@ -966,6 +1008,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (e.PropertyName is null or nameof(AssistantChatViewModel.Session))
         {
             OnPropertyChanged(nameof(AssistantRootSession));
+
+            // AC-1303 criterion 5: this is the path the roles were once left out of. Switching the assistant off
+            // and on again does not touch the stand or the selection, so without these two the picked session
+            // would keep the column while the returning assistant stood in neither place.
+            OnPropertyChanged(nameof(SimpleStandDocksTheAssistant));
+            OnPropertyChanged(nameof(SimpleStandShowsTheAssistantInTheMainColumn));
+            OnPropertyChanged(nameof(EffectiveOpenDockPanelId));
+            OnPropertyChanged(nameof(ShowDockRail));
         }
     }
 
@@ -988,6 +1038,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             newValue.IsSelectedInSimpleStand = true;
         }
 
+        // AC-1303: and it is what the main column shows in this stand, so the panes follow it.
+        RefreshPaneVisibility();
         _RefreshSimpleConsentAlerts();
     }
 
@@ -1004,10 +1056,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // no screen in the cockpit would show that it had happened.
     private readonly HashSet<Guid> _ignoredConsentAlerts = [];
 
-    // What the column actually draws, not what is selected: `SimpleChatHost` hands over the assistant's conversation
-    // and nothing else. Reading the selection here would take a notification down while its card was still nowhere —
-    // the state this exists to prevent. Becomes `SimpleSelectedSession ?? _assistantSession` with AC-1303.
-    private SessionPanelViewModel? _SimpleViewSession => _assistantSession;
+    // What the column actually draws, which since AC-1303 is the picked session — its pane takes the main column
+    // and the assistant moves to the dock. Falling back to the assistant covers the two states where nothing is
+    // picked and the ones where the pick is the assistant itself, in both of which the column draws it.
+    private SessionPanelViewModel? _SimpleViewSession => SimpleSelectedSession ?? _assistantSession;
 
     // `Ignore`. Deliberately not a Deny: see `_ignoredConsentAlerts`.
     [RelayCommand]
@@ -1057,6 +1109,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         OnPropertyChanged(nameof(HasSimpleConsentAlerts));
     }
 
+    // AC-1303: the stand decides which panes are drawn as much as zoom does, so the switch refreshes them too.
+    partial void OnSimpleViewChanged(bool value) => RefreshPaneVisibility();
+
     // How the Simple stand builds its conversation column: a factory owned by `AssistantIndicatorCoordinator`,
     // which is what holds the standing chat view model and knows which hosts there are. Null until it starts,
     // so the view rebuilds on this as well as on the stand itself.
@@ -1080,6 +1135,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // (AC-953: the Assistant's tab is withdrawn while it is undocked, which is exactly when that happens).
     public bool HasDockPanels => DockPanels.Count > 0;
 
+    // AC-1303: whether the rail stands at all. The Simple stand answers it differently: it draws no tab strip, so
+    // a rail with nothing open there would be exactly the 40px strip of chrome the line above rejects — and one
+    // you could not even click your way out of.
+    public bool ShowDockRail => SimpleView ? SimpleStandDocksTheAssistant : HasDockPanels;
+
     // AC-951: the rail reads the registry directly, so it needs telling when that changes — a panel can arrive
     // (or, since AC-953, be withdrawn) long after this view model is built.
     private void _WireDockPanelChanges()
@@ -1093,6 +1153,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             OnPropertyChanged(nameof(DockPanels));
             OnPropertyChanged(nameof(HasDockPanels));
+            OnPropertyChanged(nameof(ShowDockRail));
         };
     }
 
@@ -2482,15 +2543,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // Sets each session's `SessionPanelViewModel.IsPaneVisible` for the current layout: all visible in the
-    // multi-session grid, only the selected one in single-pane mode (#24 / Zoom).
+    // multi-session grid, only the selected one in single-pane mode (#24 / Zoom), and in the Simple stand
+    // (AC-1303) only the picked one.
+
+    // AC-1303 reaches these same panes rather than building its own: a session may have exactly one live view,
+    // since `TtyView` owns the pty and `OnUnloaded` both disposes it and reports the pane closed. That rules out
+    // a second copy for that stand, and a move between stands too — a detach would count as a close.
     private void RefreshPaneVisibility()
     {
         var single = ShowSinglePane;
+        var simple = SimpleView;
         foreach (var session in Sessions)
         {
             var here = BelongsToActiveWorkspace(session);
             session.IsOnActiveDesk = here;
-            session.IsPaneVisible = here && (!single || session.IsSelected);
+            session.IsPaneVisible = here && (simple
+                ? ReferenceEquals(session, SimpleSelectedSession)
+                : !single || session.IsSelected);
         }
     }
 

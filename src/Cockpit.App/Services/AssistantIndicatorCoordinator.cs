@@ -101,7 +101,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // the property (not just the swap) because the stand also arrives later, from the layout restore.
         _cockpit.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(CockpitViewModel.AssistantDocked))
+            // AC-1303: the Simple stand docks the assistant by picking a session rather than by the operator
+            // setting the dock stand, so that is a second way the rail comes to need this tab.
+            if (e.PropertyName is nameof(CockpitViewModel.AssistantDocked)
+                or nameof(CockpitViewModel.SimpleStandDocksTheAssistant))
             {
                 _ApplyDockRegistration();
             }
@@ -256,7 +259,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             return;
         }
 
-        if (_cockpit.AssistantDocked)
+        if (_cockpit.AssistantDocked || _cockpit.SimpleStandDocksTheAssistant)
         {
             panels.Register(new DockPanelRegistration(
                 DockPanelId,
@@ -397,6 +400,15 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     // The header's Dock/Undock button: the other host, whichever this is.
     private async Task _ToggleDockAsync()
     {
+        // AC-1303: in the Simple stand the dock is a role and not a setting, so this button means "give the main
+        // column back" rather than "pop out into a window". It lands in the same state as picking the assistant's
+        // own row in the rail, which is the other way back — one state, reached two ways (criterion 4(a)).
+        if (_cockpit.SimpleStandDocksTheAssistant)
+        {
+            _cockpit.SimpleSelectedSession = _cockpit.AssistantRootSession;
+            return;
+        }
+
         if (_chatViewModel is { } chat)
         {
             await _ShowInAsync(!chat.IsDocked).ConfigureAwait(true);

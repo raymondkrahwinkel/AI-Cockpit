@@ -100,13 +100,13 @@ public class Ac1305SimpleConsentAlertTests
     /// Criterion 2(a): <c>Go there</c> picks the asking session and answers nothing on the way.
     /// </summary>
     /// <remarks>
-    /// Picking is as far as it goes until AC-1303 couples the conversation column to that selection, and the
-    /// notification deliberately stays up in the meantime: the column still draws the assistant, so taking it down
-    /// on the selection alone would leave the card nowhere at all — the one state this notification exists to
-    /// prevent, reached through the button meant to prevent it.
+    /// AC-1303 coupled the conversation column to that pick, so the notification now goes down with it — the card
+    /// is on screen, and naming a session you are already looking at is noise rather than a safety net. Until then
+    /// this asserted the opposite, deliberately: taking it down while the column still drew the assistant would
+    /// have left the card nowhere at all. The consent itself is still untouched, which is the rest of 2(a).
     /// </remarks>
     [Fact]
-    public void GoThereChoosesTheAskingSessionAndLeavesItsQuestionUnanswered()
+    public void GoThereChoosesTheAskingSession_TakesItsNotificationDown_AndLeavesItsQuestionUnanswered()
     {
         var broker = Substitute.For<IConsentBroker>();
         var (cockpit, asking, prompt) = _WithAConsentOutOfView(broker);
@@ -115,7 +115,7 @@ public class Ac1305SimpleConsentAlertTests
             cockpit.GoToConsentAlertCommand.Execute(cockpit.SimpleConsentAlerts[0]));
 
         Assert.Same(asking, cockpit.SimpleSelectedSession);
-        Assert.Same(asking, Assert.Single(cockpit.SimpleConsentAlerts));
+        Assert.Empty(cockpit.SimpleConsentAlerts);
         Assert.NotNull(asking.PendingConsent);
         broker.DidNotReceive().Respond(prompt.Id, Arg.Any<ConsentOutcome>(), Arg.Any<bool>());
     }

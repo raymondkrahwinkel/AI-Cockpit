@@ -229,12 +229,13 @@ public partial class CockpitView : UserControl
         {
             _ApplySidebarWidth();
         }
-        else if (e.PropertyName is nameof(CockpitViewModel.DockRailWidth) or nameof(CockpitViewModel.OpenDockPanelId))
+        else if (e.PropertyName is nameof(CockpitViewModel.DockRailWidth)
+                 or nameof(CockpitViewModel.EffectiveOpenDockPanelId))
         {
             _ApplyDockRailWidth();
-            if (e.PropertyName == nameof(CockpitViewModel.OpenDockPanelId))
+            if (e.PropertyName == nameof(CockpitViewModel.EffectiveOpenDockPanelId))
             {
-                _RebuildDockPanelContent();
+                _RebuildViewModeHosts();
             }
         }
         else if (e.PropertyName == nameof(CockpitViewModel.DockPanels))
@@ -243,11 +244,16 @@ public partial class CockpitView : UserControl
             // maybe after OpenDockPanelId is restored) and withdraws on undock — so the rail
             // follows the registry, not only the open-panel id.
             _ApplyDockRailWidth();
-            _RebuildDockPanelContent();
+            _RebuildViewModeHosts();
         }
         else if (e.PropertyName is nameof(CockpitViewModel.SimpleView)
-                 or nameof(CockpitViewModel.CreateSimpleViewChatView))
+                 or nameof(CockpitViewModel.CreateSimpleViewChatView)
+                 // AC-1303: the role swap inside the Simple stand is a host swap too — the conversation moves
+                 // between the main column and the dock without the stand itself changing.
+                 or nameof(CockpitViewModel.SimpleStandShowsTheAssistantInTheMainColumn))
         {
+            _ApplySidebarWidth();
+            _ApplyDockRailWidth();
             _RebuildViewModeHosts();
         }
         else if (e.PropertyName == nameof(CockpitViewModel.SelectedSession))
@@ -317,7 +323,10 @@ public partial class CockpitView : UserControl
         // Collapsed: the sidebar column shrinks to the slim rail (which holds the expand chevron) and the
         // splitter gives up its grip. The column's own MinWidth (the splitter's drag floor) must be lifted
         // first, or it would refuse to shrink below the sidebar's minimum. Expanded: both are restored.
-        var collapsed = cockpit.SidebarCollapsed;
+
+        // AC-1303: the Simple stand's rail has no collapsed state — collapsing it would leave that stand with
+        // no way to pick a session, so a collapse carried over from the panels stand must not follow it here.
+        var collapsed = cockpit.SidebarCollapsed && !cockpit.SimpleView;
         var column = _SidebarColumn();
         column.MinWidth = collapsed ? 0 : LayoutSettings.MinSidebarWidth;
         column.Width = new GridLength(collapsed ? CollapsedRailWidth : cockpit.SidebarWidth);
@@ -354,12 +363,15 @@ public partial class CockpitView : UserControl
         // AC-953: with nothing registered there is no rail at all — not a 40px strip of empty chrome — so the
         // column gives its width back to the session content rather than merely hiding what stands in it.
         // AC-960: a restored id no registered panel claims (unloaded/removed plugin) collapses the same way.
-        var collapsed = cockpit.OpenDockPanelId is not { } openPanelId
+
+        // AC-1303: the effective id, so the Simple stand sizes the rail from the role it gives the assistant
+        // rather than from the panels stand's stored choice.
+        var collapsed = cockpit.EffectiveOpenDockPanelId is not { } openPanelId
             || !cockpit.DockPanels.Any(panel => panel.Id == openPanelId);
         var column = _DockRailColumn();
         column.MinWidth = collapsed ? 0 : LayoutSettings.MinDockRailWidth;
         column.Width = new GridLength(
-            !cockpit.HasDockPanels ? 0 : collapsed ? CollapsedRailWidth : cockpit.DockRailWidth);
+            !cockpit.ShowDockRail ? 0 : collapsed ? CollapsedRailWidth : cockpit.DockRailWidth);
         PanelsRoot.ColumnDefinitions[3].Width = new GridLength(collapsed ? 0 : 4);
     }
 
@@ -385,33 +397,49 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        // AC-1301: nothing stands in the rail while the Simple stand is on screen. The rail's own state
-        // (`AssistantDocked`, `OpenDockPanelId`) is left untouched, so the panels stand comes back exactly
-        // as it was rather than rebuilt from a default.
-        DockPanelContent.Content = !cockpit.SimpleView && cockpit.OpenDockPanelId is { } panelId
+        // AC-1301/AC-1303: the effective id. In the Simple stand the rail holds the assistant exactly while a
+        // session is picked; the panels stand's own state (`AssistantDocked`, `OpenDockPanelId`) is left
+        // untouched either way, so that stand comes back as it was rather than rebuilt from a default.
+        DockPanelContent.Content = cockpit.EffectiveOpenDockPanelId is { } panelId
             ? cockpit.DockPanels.FirstOrDefault(panel => panel.Id == panelId)?.CreateView()
             : null;
     }
 
-    // AC-1301: the two stands host the same assistant chat view model, so only one of them may hold a live
-    // view of it. Old host down before the new one goes up, so the leaving view writes its scroll position
-    // before the arriving one reads it — the ordering `_ShowInAsync` documents (AC-953).
+    // AC-1303: building a host asks the coordinator for the chat view model, and constructing that one sets
+    // `CockpitViewModel.AssistantChat` — the very property this is triggered by. Re-entering builds a second one
+    // on top of the one still in its constructor: measured as recursion that took the test host down.
+    private bool _rebuildingHosts;
+
+    // AC-1301: the hosts share one assistant chat view model, so only one of them may hold a live view of it.
+    // Old host down before the new one goes up, so the leaving view writes its scroll position before the
+    // arriving one reads it — the ordering `_ShowInAsync` documents (AC-953).
+
+    // AC-1303: keyed on where the conversation is going rather than on the stand, since inside the Simple stand
+    // it now moves between the main column and the dock as well. Every rebuild path funnels through here.
     private void _RebuildViewModeHosts()
     {
-        if (DataContext is not CockpitViewModel cockpit)
+        if (_rebuildingHosts || DataContext is not CockpitViewModel cockpit)
         {
             return;
         }
 
-        if (cockpit.SimpleView)
+        _rebuildingHosts = true;
+        try
         {
-            _RebuildDockPanelContent();
+            if (cockpit.SimpleStandShowsTheAssistantInTheMainColumn)
+            {
+                _RebuildDockPanelContent();
+                _RebuildSimpleChatHost();
+                return;
+            }
+
             _RebuildSimpleChatHost();
-            return;
+            _RebuildDockPanelContent();
         }
-
-        _RebuildSimpleChatHost();
-        _RebuildDockPanelContent();
+        finally
+        {
+            _rebuildingHosts = false;
+        }
     }
 
     // The Simple stand's conversation column, `_RebuildDockPanelContent`'s twin: the chat view comes from a
@@ -423,7 +451,11 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        SimpleChatHost.Content = cockpit.SimpleView ? cockpit.CreateSimpleViewChatView?.Invoke() : null;
+        // AC-1303: only while the assistant is the thing being worked in. Picking an agent hands the conversation
+        // to the dock, and this column then belongs to that agent's own pane.
+        SimpleChatHost.Content = cockpit.SimpleStandShowsTheAssistantInTheMainColumn
+            ? cockpit.CreateSimpleViewChatView?.Invoke()
+            : null;
     }
 
     // Renders the plugin-contributed left-menu buttons and sections (#14) and keeps them in sync: plugins

@@ -341,10 +341,13 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- AC-1301: the panels stand, whole and unchanged — a wrapper, not a rearrangement. Nothing was
-             taken out of it to make the Simple stand possible (§6); the two are siblings and one of them is
-             hidden. The columns moved in here with it, so the code-behind that sizes them names this grid. -->
-        <Grid x:Name="PanelsRoot" Grid.Row="0" IsVisible="{Binding !SimpleView}">
+        <!-- AC-1303: the one root both stands are drawn in, replacing AC-1301's two sibling roots. A session may
+             have exactly one live view — `TtyView` owns the pty, and `OnUnloaded` disposes it *and* reports the
+             pane closed — so a second root could neither copy a live pane nor be handed one. Each stand therefore
+             changes the chrome around the one session grid: the left column, the tab strip, the toolbar and the
+             dock rail each say which stand they belong to. §6 holds by those conditions, not by a hidden sibling.
+             The code-behind that sizes the columns names this grid. -->
+        <Grid x:Name="PanelsRoot" Grid.Row="0">
         <Grid.ColumnDefinitions>
             <!-- Width set from CockpitViewModel.SidebarWidth in code-behind (#49) — a GridLength column
                  can't compiled-bind straight to the VM's double, so CockpitView.axaml.cs applies it on
@@ -365,9 +368,10 @@
                                MaxWidth="{x:Static layout:LayoutSettings.MaxDockRailWidth}"/>
         </Grid.ColumnDefinitions>
 
-        <!-- Sidebar: always visible in both grid and zoom mode — the constant overview/status anchor. -->
+        <!-- Sidebar: always visible in both grid and zoom mode — the constant overview/status anchor.
+             AC-1303: except in the Simple stand, where the rail above holds this column instead. -->
         <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}"
-                IsVisible="{Binding !SidebarCollapsed}"
+                IsVisible="{Binding ShowPanelsSidebar}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="8">
 
@@ -822,10 +826,62 @@
             </DockPanel>
         </Border>
 
+        <!-- AC-1303: the same left column, carrying the Simple stand's rail where the sidebar stands in the
+             other. One root with two chromes rather than two roots, because a session may have exactly one live
+             view: both stands have to reach the one session grid instead of each holding a grid of its own. -->
+        <Border Grid.Column="0" IsVisible="{Binding SimpleView}"
+                Background="{DynamicResource CockpitSecondaryBgBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
+            <DockPanel Margin="8">
+                <views:ViewModeSwitch DockPanel.Dock="Bottom"/>
+
+                <!-- AC-1302: the tree of sessions. It groups *who drives what* — the assistant and the sessions
+                     it started. AC-1305's rail groups *where something stands* (workspace -> sessions). Two trees
+                     with the same shape and a different meaning: they may never become one tree, because half of
+                     that one would be untrue.
+                     The children come from `SessionsStartedByTheAssistant` (AC-1300) and never from
+                     `LiveSessions`: a session the operator opened themselves lives too, and on the same
+                     workspace, but the assistant did not start it and it does not hang under it. -->
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="6">
+                        <StackPanel x:Name="SimpleRailAssistantBranch" Spacing="2"
+                                    IsVisible="{Binding AssistantRootSession, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <TextBlock Text="ASSISTANT" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            <ContentControl x:Name="SimpleRailAssistantRoot"
+                                            Content="{Binding AssistantRootSession}"
+                                            ContentTemplate="{StaticResource SimpleRailSessionRow}"/>
+                            <!-- The one level the tree has. A session that starts sessions of its own is not
+                                 designed and not drawn; that is a new conversation, not a deeper rail. -->
+                            <Border Margin="10,0,0,0" Padding="8,0,0,0" BorderThickness="1,0,0,0"
+                                    BorderBrush="{DynamicResource CockpitHairlineBrush}">
+                                <ItemsControl x:Name="SimpleRailAssistantSessions"
+                                              ItemsSource="{Binding AssistantChat.SessionsStartedByTheAssistant}"
+                                              ItemTemplate="{StaticResource SimpleRailSessionRow}"/>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Criterion 4(b): no assistant session, so no root to hang anything under. The rail
+                             lists the sessions flat rather than drawing an "Assistant" node with nothing behind
+                             it. Unfiltered by workspace on purpose: the Simple stand shows one conversation at
+                             a time and offers no way to switch desks. -->
+                        <StackPanel x:Name="SimpleRailFlatBranch" Spacing="2"
+                                    IsVisible="{Binding AssistantRootSession, Converter={x:Static ObjectConverters.IsNull}}">
+                            <TextBlock Text="SESSIONS" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            <ItemsControl x:Name="SimpleRailFlatSessions"
+                                          ItemsSource="{Binding Sessions}"
+                                          ItemTemplate="{StaticResource SimpleRailSessionRow}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
         <!-- Sidebar-width splitter (#49): drags SidebarColumn between its min/max, then
              OnSidebarSplitterDragCompleted reads the settled width back and persists it. -->
         <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns"
-                      IsVisible="{Binding !SidebarCollapsed}"
+                      IsVisible="{Binding ShowPanelsSidebar}"
                       DragCompleted="OnSidebarSplitterDragCompleted"/>
 
         <!-- Main area: empty-state welcome until a session exists (#31), then the grid/zoom. -->
@@ -836,8 +892,11 @@
                  that only appeared once a session existed would be a strip you could never reach a dashboard
                  from. Hidden while there is only one workspace (ShowTabStrip) — that is the cockpit as it has
                  always looked, and a lone tab is chrome that earns nothing — but the + stays, since it is what
-                 makes the second workspace that reveals the strip. -->
+                 makes the second workspace that reveals the strip.
+                 AC-1303: and it stands down in the Simple stand, which shows one conversation and offers no way
+                 to switch desks — a strip there would be chrome you cannot act on. -->
             <Border Grid.Row="0" Margin="12,12,12,0" Padding="0,0,0,6"
+                    IsVisible="{Binding !SimpleView}"
                     BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
                 <DockPanel>
                     <!-- Dock the + first so the tab list never pushes it off the edge when the strip fills up. -->
@@ -1416,8 +1475,21 @@
             <DockPanel Grid.Row="1" Margin="12" IsVisible="{Binding ShowSessionGrid}">
                 <!-- This workspace's toolbar. The ⚙ lives here rather than inside the Zoom row because that row
                      hides itself in single-session layout (#24) — and that is exactly the layout you would open
-                     the ⚙ to get back out of. -->
-                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                     the ⚙ to get back out of.
+                     AC-1303: gone in the Simple stand, where every control on it (zoom, the layout ⚙) speaks
+                     about a grid of panes that stand shows exactly one of. -->
+                <!-- AC-1303 criterion 4(a): the way back, in the strip above the agent's pane — the slot the
+                     panels stand's toolbar has. Shown only while the assistant is actually in the dock, so with
+                     no assistant there is no button pointing nowhere (4(b)). It picks the assistant's own row,
+                     which is the other way back, so both land in one state rather than two that resemble it. -->
+                <Button DockPanel.Dock="Top" HorizontalAlignment="Left" Margin="0,0,0,8"
+                        Classes="Subtle Compact" Content="← Assistant"
+                        IsVisible="{Binding SimpleStandDocksTheAssistant}"
+                        Command="{Binding SelectSimpleSessionCommand}"
+                        CommandParameter="{Binding AssistantRootSession}"
+                        ToolTip.Tip="Put the assistant back in this column"/>
+
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" IsVisible="{Binding !SimpleView}">
                     <!-- The transient Zoom toggle is hidden in the persistent single-session layout (#24),
                          where it would be a no-op (the single pane is always shown) — no dead control. -->
                     <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowZoomButton}">
@@ -1688,13 +1760,71 @@
                     </DockPanel>
                 </Border>
             </StackPanel>
+
+            <!-- AC-1301: the assistant's conversation, filled in code-behind from
+                 `CockpitViewModel.CreateSimpleViewChatView` — the dock rail's pattern: a factory that hands the
+                 standing conversation between hosts, not a binding that would build a second one.
+                 AC-1303: it takes this column only while the assistant is the thing being worked in. Pick an
+                 agent and it steps aside for that agent's own pane, which is drawn by the session grid behind
+                 this, and moves to the dock rail on the right. -->
+            <ContentControl Grid.Row="1" x:Name="SimpleChatHost"
+                            IsVisible="{Binding SimpleStandShowsTheAssistantInTheMainColumn}"/>
+
+            <!-- AC-1305: a session that is not the one in this column is waiting for consent. The card itself
+                 (ConsentBanner, over the conversation) stays where the question belongs, so this only names who is
+                 waiting and takes you there. No timer: the barrier goes when it is answered or waved away, and the
+                 stack scrolls rather than pushing the one underneath off the window.
+                 AC-1303: it used to hang inside the Simple stand's own root, which is what kept it off the panels
+                 stand; that root is gone, so it now says which stand it belongs to itself. -->
+            <ScrollViewer Grid.Row="1" Classes="consentAlerts" IsVisible="{Binding SimpleView}"
+                          Classes.open="{Binding HasSimpleConsentAlerts}"
+                          HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16"
+                          MaxHeight="420" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding SimpleConsentAlerts}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="8"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SessionPanelViewModel">
+                            <Border Width="320" Padding="12,10" BoxShadow="0 6 20 0 #66000000"
+                                    CornerRadius="{DynamicResource CockpitControlRadius}"
+                                    Background="{DynamicResource CockpitPanelBgBrush}" BorderThickness="1"
+                                    BorderBrush="{DynamicResource CockpitStatusWaitingBrush}">
+                                <StackPanel Spacing="6">
+                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                        <!-- The same hand the sidebar carries for a pending consent (AC-47). -->
+                                        <materialIcons:MaterialIcon Kind="HandBackLeftOutline" Width="14" Height="14"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                                        <TextBlock Text="Waiting for your consent" FontSize="12.5"
+                                                   FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Title}" FontSize="12"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding PendingConsent.Title}" FontSize="11.5"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Right">
+                                        <Button Content="Ignore" Classes="Compact" CommandParameter="{Binding}"
+                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).IgnoreConsentAlertCommand}"/>
+                                        <Button Content="Go there" Classes="Accent Compact" CommandParameter="{Binding}"
+                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).GoToConsentAlertCommand}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
         </Grid>
 
         <!-- Dock rail (AC-951): the sidebar's mirror image on the right. This GridSplitter (column 3) resizes
              the rail column (4) while the star-sized content column (2) absorbs the difference — the same
              relationship column 1's splitter has with columns 0 and 2. -->
         <GridSplitter Grid.Column="3" Background="Transparent" ResizeDirection="Columns"
-                      IsVisible="{Binding OpenDockPanelId, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"
+                      IsVisible="{Binding EffectiveOpenDockPanelId, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"
                       DragCompleted="OnDockRailSplitterDragCompleted"/>
 
         <!-- Stretches the full row like the sidebar (column 0) does — confirmed against the approved mockup's
@@ -1702,14 +1832,18 @@
              resource panel (declared after this Border, so drawn in front of it) still read on top rather than
              appearing to run underneath the rail — acceptance criterion 3 (AC-951). -->
         <Border Grid.Column="4"
-                IsVisible="{Binding HasDockPanels}"
+                IsVisible="{Binding ShowDockRail}"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1,0,0,0">
             <DockPanel>
                 <!-- Tab strip: one button per registered panel, icon over rotated title, anchored to the top of
                      the rail. Stays on screen in both the collapsed and the expanded state, so switching panels
                      or closing the open one is always a single click away. -->
-                <ItemsControl DockPanel.Dock="Right" Width="40" VerticalAlignment="Top" ItemsSource="{Binding DockPanels}">
+                <!-- AC-1303: not in the Simple stand. What stands in the rail there follows from which session is
+                     picked, so a tab would be a second, contradicting way to say it — and `ToggleDockPanel` writes
+                     the panels stand's own `OpenDockPanelId`, which this stand must leave exactly as it found. -->
+                <ItemsControl DockPanel.Dock="Right" Width="40" VerticalAlignment="Top"
+                              IsVisible="{Binding !SimpleView}" ItemsSource="{Binding DockPanels}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="docking:DockPanelRegistration">
                             <Button Classes="Subtle" Width="40" Padding="0" HorizontalContentAlignment="Stretch"
@@ -1728,7 +1862,7 @@
                                         <Border.IsVisible>
                                             <MultiBinding Converter="{x:Static conv:DockPanelActiveConverter.Instance}">
                                                 <Binding Path="Id"/>
-                                                <Binding Path="$parent[ItemsControl].((vm:CockpitViewModel)DataContext).OpenDockPanelId"/>
+                                                <Binding Path="$parent[ItemsControl].((vm:CockpitViewModel)DataContext).EffectiveOpenDockPanelId"/>
                                             </MultiBinding>
                                         </Border.IsVisible>
                                     </Border>
@@ -1750,7 +1884,7 @@
                 <!-- The open panel's content — rebuilt by the code-behind whenever OpenDockPanelId changes
                      (DockPanelRegistration.CreateView is a plain Func<Control>, not a compiled binding). -->
                 <ContentControl x:Name="DockPanelContent"
-                                IsVisible="{Binding OpenDockPanelId, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
+                                IsVisible="{Binding EffectiveOpenDockPanelId, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
             </DockPanel>
         </Border>
 
@@ -1976,110 +2110,6 @@
                 Width="{Binding AssistantDropZoneWidth}"
                 BorderThickness="2,0,0,0"/>
 
-        <!-- AC-1301: the Simple stand — one conversation filling the window beside the same left column. The
-             rail in that column is deliberately near-empty here: what goes in it is AC-1302. -->
-        <Grid x:Name="SimpleRoot" Grid.Row="0" ColumnDefinitions="180,*"
-              IsVisible="{Binding SimpleView}">
-            <Border Grid.Column="0" Background="{DynamicResource CockpitSecondaryBgBrush}"
-                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
-                <DockPanel Margin="8">
-                    <views:ViewModeSwitch DockPanel.Dock="Bottom"/>
-
-                    <!-- AC-1302: the tree of sessions. It groups *who drives what* — the assistant and the sessions
-                         it started. AC-1305's rail groups *where something stands* (workspace -> sessions). Two trees
-                         with the same shape and a different meaning: they may never become one tree, because half of
-                         that one would be untrue.
-                         The children come from `SessionsStartedByTheAssistant` (AC-1300) and never from
-                         `LiveSessions`: a session the operator opened themselves lives too, and on the same
-                         workspace, but the assistant did not start it and it does not hang under it. -->
-                    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-                        <StackPanel Spacing="6">
-                            <StackPanel x:Name="SimpleRailAssistantBranch" Spacing="2"
-                                        IsVisible="{Binding AssistantRootSession, Converter={x:Static ObjectConverters.IsNotNull}}">
-                                <TextBlock Text="ASSISTANT" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                <ContentControl x:Name="SimpleRailAssistantRoot"
-                                                Content="{Binding AssistantRootSession}"
-                                                ContentTemplate="{StaticResource SimpleRailSessionRow}"/>
-                                <!-- The one level the tree has. A session that starts sessions of its own is not
-                                     designed and not drawn; that is a new conversation, not a deeper rail. -->
-                                <Border Margin="10,0,0,0" Padding="8,0,0,0" BorderThickness="1,0,0,0"
-                                        BorderBrush="{DynamicResource CockpitHairlineBrush}">
-                                    <ItemsControl x:Name="SimpleRailAssistantSessions"
-                                                  ItemsSource="{Binding AssistantChat.SessionsStartedByTheAssistant}"
-                                                  ItemTemplate="{StaticResource SimpleRailSessionRow}"/>
-                                </Border>
-                            </StackPanel>
-
-                            <!-- Criterion 4(b): no assistant session, so no root to hang anything under. The rail
-                                 lists the sessions flat rather than drawing an "Assistant" node with nothing behind
-                                 it. Unfiltered by workspace on purpose: the Simple stand shows one conversation at
-                                 a time and offers no way to switch desks. -->
-                            <StackPanel x:Name="SimpleRailFlatBranch" Spacing="2"
-                                        IsVisible="{Binding AssistantRootSession, Converter={x:Static ObjectConverters.IsNull}}">
-                                <TextBlock Text="SESSIONS" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,2"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                <ItemsControl x:Name="SimpleRailFlatSessions"
-                                              ItemsSource="{Binding Sessions}"
-                                              ItemTemplate="{StaticResource SimpleRailSessionRow}"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </ScrollViewer>
-                </DockPanel>
-            </Border>
-
-            <!-- The conversation. Filled in code-behind from `CockpitViewModel.CreateSimpleViewChatView`, the
-                 dock rail's pattern: the chat view is built by a factory that hands the standing conversation
-                 over between hosts, not by a binding that would build a second one. -->
-            <ContentControl Grid.Column="1" x:Name="SimpleChatHost"/>
-
-            <!-- AC-1305: a session that is not the one in this column is waiting for consent. The card itself
-                 (ConsentBanner, over the conversation) stays where the question belongs, so this only names who is
-                 waiting and takes you there. No timer: the barrier goes when it is answered or waved away, and the
-                 stack scrolls rather than pushing the one underneath off the window. -->
-            <ScrollViewer Grid.Column="1" Classes="consentAlerts"
-                          Classes.open="{Binding HasSimpleConsentAlerts}"
-                          HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16"
-                          MaxHeight="420" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <ItemsControl ItemsSource="{Binding SimpleConsentAlerts}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Spacing="8"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:SessionPanelViewModel">
-                            <Border Width="320" Padding="12,10" BoxShadow="0 6 20 0 #66000000"
-                                    CornerRadius="{DynamicResource CockpitControlRadius}"
-                                    Background="{DynamicResource CockpitPanelBgBrush}" BorderThickness="1"
-                                    BorderBrush="{DynamicResource CockpitStatusWaitingBrush}">
-                                <StackPanel Spacing="6">
-                                    <StackPanel Orientation="Horizontal" Spacing="7">
-                                        <!-- The same hand the sidebar carries for a pending consent (AC-47). -->
-                                        <materialIcons:MaterialIcon Kind="HandBackLeftOutline" Width="14" Height="14"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
-                                        <TextBlock Text="Waiting for your consent" FontSize="12.5"
-                                                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding Title}" FontSize="12"
-                                               TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding PendingConsent.Title}" FontSize="11.5"
-                                               TextWrapping="Wrap"
-                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Right">
-                                        <Button Content="Ignore" Classes="Compact" CommandParameter="{Binding}"
-                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).IgnoreConsentAlertCommand}"/>
-                                        <Button Content="Go there" Classes="Accent Compact" CommandParameter="{Binding}"
-                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).GoToConsentAlertCommand}"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
-        </Grid>
     </Grid>
     </DockPanel>
 </UserControl>

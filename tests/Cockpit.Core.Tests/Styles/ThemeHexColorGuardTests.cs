@@ -57,6 +57,9 @@ public partial class ThemeHexColorGuardTests
                      "sidebar's real background, and matching the previous pixels"),
             [("src/Cockpit.App/Views/CockpitView.axaml", "#40000000")] =
                 (1, "black drop-shadow on the resource flyout panel, not tied to any theme colour"),
+            [("src/Cockpit.App/Views/CockpitView.axaml", "#66000000")] =
+                (1, "black drop-shadow on AC-1305's consent notification, the same colourless kind as the one "
+                    + "above and heavier because that card floats over a conversation rather than over chrome"),
             [("src/Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116")] =
                 (2, "CC-alpha echo of CockpitWindowBgColor, shared by the migration and calibration blocking overlays"),
             [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#F01a1d24")] =
