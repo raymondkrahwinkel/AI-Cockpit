@@ -14,8 +14,8 @@ name: Nightly
 # the app is.
 on:
   schedule:
-    # 02:00 UTC — the small hours in Amsterdam, whichever side of daylight saving we are on.
-    - cron: '0 2 * * *'
+    # 02:43 UTC — the small hours in Amsterdam, whichever side of daylight saving we are on.
+    - cron: '43 2 * * *'
   workflow_dispatch:
 
 permissions:
