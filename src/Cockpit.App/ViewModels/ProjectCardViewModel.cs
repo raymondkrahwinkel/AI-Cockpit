@@ -9,7 +9,8 @@ public sealed partial class ProjectCardViewModel(
     Project project,
     string originBadge,
     ProjectCardActions? actions = null,
-    bool hasRemoteChanges = false) : ObservableObject
+    bool hasRemoteChanges = false,
+    DateOnly? today = null) : ObservableObject
 {
     public Project Project { get; } = project;
 
@@ -22,8 +23,15 @@ public sealed partial class ProjectCardViewModel(
     public bool HasRemoteChanges { get; } = hasRemoteChanges;
 
     // AC-491: the work this project offers, each paired with the project so one button can start it. Empty for a
-    // project that offers none, which is what keeps such a card exactly as it was.
-    public IReadOnlyList<ProjectJobChoice> Jobs { get; } = [.. project.Jobs.Select(job => new ProjectJobChoice(project, job))];
+    // project that offers none. AC-493: `today` is the replaceable clock a recurring job's line is read against —
+    // left out in production, set by a test that must stand on a chosen day rather than wait for a real Monday.
+    public IReadOnlyList<ProjectJobChoice> Jobs { get; } =
+    [
+        .. project.Jobs.Select(job => new ProjectJobChoice(project, job)
+        {
+            Today = today ?? DateOnly.FromDateTime(DateTime.Today),
+        }),
+    ];
 
     public bool HasJobs => Jobs.Count > 0;
 

@@ -278,6 +278,37 @@ public class ProjectStoreTests : IDisposable
         Assert.Contains("personal", written);
     }
 
+    /// <summary>
+    /// AC-493 criterion 1: a job written before recurrence existed loads as the job it was. Absence must stay
+    /// absence — giving it a default would turn every job already on disk into a recurring one without saying so.
+    /// </summary>
+    [Fact]
+    public async Task AJobWithoutARecurrence_KeepsNone_AndAJobWithOneKeepsIt()
+    {
+        var store = new ProjectStore(_configFilePath);
+        var plain = Project.Create("Invoices") with
+        {
+            Jobs = [new ProjectJob("Process this month's invoices", "changes nothing · reports only")],
+        };
+
+        await store.SaveAsync(ProjectSettings.Empty.WithProject(plain));
+
+        // A job that does not come round writes no recurrence at all, which is what leaves a config this version
+        // wrote identical in shape to every one already on disk.
+        Assert.DoesNotContain("Recurrence", await File.ReadAllTextAsync(_configFilePath), StringComparison.Ordinal);
+        var reloaded = Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs);
+        Assert.Equal("Process this month's invoices", reloaded.Prompt);
+        Assert.Null(reloaded.Recurrence);
+
+        // And the other direction, so a rule that never reached the disk cannot pass unnoticed.
+        await store.SaveAsync(ProjectSettings.Empty.WithProject(
+            plain with { Jobs = [plain.Jobs[0] with { Recurrence = new JobRecurrence(2, DayOfWeek.Monday) }] }));
+
+        Assert.Equal(
+            new JobRecurrence(2, DayOfWeek.Monday),
+            Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs).Recurrence);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDir))

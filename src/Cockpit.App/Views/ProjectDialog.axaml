@@ -250,18 +250,32 @@
                     <ItemsControl ItemsSource="{Binding Jobs}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ProjectJobViewModel">
-                                <Grid ColumnDefinitions="6*,4*,Auto" ColumnSpacing="6" Margin="0,0,0,6">
-                                    <TextBox Grid.Column="0" Text="{Binding Prompt}" AcceptsReturn="True" TextWrapping="Wrap"
-                                             PlaceholderText="Process this month's invoices"/>
-                                    <TextBox Grid.Column="1" Text="{Binding BlastRadius}" TextWrapping="Wrap"
-                                             PlaceholderText="changes nothing · reports only"/>
-                                    <Button Grid.Column="2" Classes="Subtle" VerticalAlignment="Center"
-                                            ToolTip.Tip="Remove this job"
-                                            Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).RemoveJobCommand}"
-                                            CommandParameter="{Binding}">
-                                        <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
-                                    </Button>
-                                </Grid>
+                                <StackPanel Spacing="4" Margin="0,0,0,10">
+                                    <Grid ColumnDefinitions="6*,4*,Auto" ColumnSpacing="6">
+                                        <TextBox Grid.Column="0" Text="{Binding Prompt}" AcceptsReturn="True" TextWrapping="Wrap"
+                                                 PlaceholderText="Process this month's invoices"/>
+                                        <TextBox Grid.Column="1" Text="{Binding BlastRadius}" TextWrapping="Wrap"
+                                                 PlaceholderText="changes nothing · reports only"/>
+                                        <Button Grid.Column="2" Classes="Subtle" VerticalAlignment="Center"
+                                                ToolTip.Tip="Remove this job"
+                                                Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).RemoveJobCommand}"
+                                                CommandParameter="{Binding}">
+                                            <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                                        </Button>
+                                    </Grid>
+                                    <!-- AC-493: "does not repeat" is the first choice and the default, so a job that
+                                         does not come round is made by leaving this alone. The day only appears once
+                                         a week is picked — until then there is nothing for it to qualify. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Classes="FieldHint" Margin="0" VerticalAlignment="Center" Text="Comes round"/>
+                                        <ComboBox ItemsSource="{Binding WeekChoices}" SelectedIndex="{Binding RecurrenceWeek}"
+                                                  MinWidth="140"/>
+                                        <ComboBox ItemsSource="{Binding DayChoices}" SelectedItem="{Binding RecurrenceDay}"
+                                                  MinWidth="120" IsVisible="{Binding Repeats}"/>
+                                        <TextBlock Classes="FieldHint" Margin="0" VerticalAlignment="Center"
+                                                   Text="of the month" IsVisible="{Binding Repeats}"/>
+                                    </StackPanel>
+                                </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
