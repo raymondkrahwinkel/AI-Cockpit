@@ -148,9 +148,10 @@
              has an update", not "this panel does". The tint is the accent at low alpha, so it tracks the accent
              colour rather than pinning a second brown. Collapsed (not just transparent) when there is nothing to
              say, so it costs no height until a build is waiting. -->
+        <!-- AC-860: update banner intentionally follows CockpitAccentSelectionBrush's alpha. -->
         <Border DockPanel.Dock="Top"
                 IsVisible="{Binding UpdateBannerVisible}"
-                Background="#263b82f6"
+                Background="{StaticResource CockpitAccentSelectionBrush}"
                 BorderBrush="{StaticResource CockpitAccentBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="16,9">
