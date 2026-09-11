@@ -88,6 +88,7 @@ public class WorkKindStepViewModelTests : IDisposable
     public async Task ChoosingAWorkKind_TicksOnlyThePluginsItNames()
     {
         var viewModel = _ViewModel();
+        Assert.Null(viewModel.SelectedWorkKind);
         await viewModel.LoadAsync();
 
         viewModel.SelectedWorkKind = _Kind(PluginWorkKinds.Developer);
