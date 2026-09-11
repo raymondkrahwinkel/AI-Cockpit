@@ -776,7 +776,9 @@ public partial class App : Application
         };
         if (platform is not null)
         {
-            platform.ColorValuesChanged += (_, values) => selector.SetSystem(values.ThemeVariant);
+            // Fired by the OS; nothing here says on which thread, and the variant is a UI property.
+            platform.ColorValuesChanged += (_, values) =>
+                Dispatcher.UIThread.Post(() => selector.SetSystem(values.ThemeVariant));
         }
     }
 
