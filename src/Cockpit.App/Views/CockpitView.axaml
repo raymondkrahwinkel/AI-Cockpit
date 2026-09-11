@@ -1858,93 +1858,13 @@
                  standing conversation between hosts, not a binding that would build a second one.
                  AC-1303: it takes this column only while the assistant is the thing being worked in. Pick an
                  agent and it steps aside for that agent's own pane, which is drawn by the session grid behind
-                 this, and moves to the dock rail on the right. -->
+                 this, and moves to the dock rail on the right.
+                 AC-1316: it holds the column before the assistant has started too, and with it switched off —
+                 the chat view says so itself, and typing is what starts it. The start offer ("which project",
+                 AC-1304) is the empty state of that conversation, drawn in AssistantChatView; there is no
+                 screen in front of it any more. -->
             <ContentControl Grid.Row="1" x:Name="SimpleChatHost"
                             IsVisible="{Binding SimpleStandShowsTheAssistantInTheMainColumn}"/>
-
-            <!-- AC-1304: what this column asks when there is no conversation in it — the first question for
-                 someone who does not think in profiles or folders. Deliberately NOT a projects list of its own:
-                 it draws `Projects.ProjectCategoryGroups` and `ProjectCardView`, the same source and the same
-                 card the panels stand's overview uses, so a project cannot appear on one screen and not the
-                 other. A fourth arrangement of that source, next to Cards, List and Continue.
-                 The filled state only. A cockpit with no projects at all is AC-488. -->
-            <ScrollViewer Grid.Row="1" x:Name="SimpleStartScreen"
-                          IsVisible="{Binding SimpleStandShowsTheStartScreen}">
-                <StackPanel MaxWidth="920" Margin="24,28" HorizontalAlignment="Center">
-                    <TextBlock Text="Which project do you want to work on?" FontSize="21" FontWeight="SemiBold"
-                               HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
-                    <TextBlock Text="A card opens a session on that project's own settings. Nothing is sent until you press Send."
-                               FontSize="13" Margin="0,6,0,18" HorizontalAlignment="Center"
-                               TextWrapping="Wrap" TextAlignment="Center"
-                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-
-                    <!-- The way back to the standing conversation, for the door that reached this screen while one
-                         was still open. Only with an assistant: without one there is nothing to go back to, which
-                         is the same condition the rail's own root branch stands on (AC-1302 criterion 4). -->
-                    <Border IsVisible="{Binding AssistantRootSession, Converter={x:Static ObjectConverters.IsNotNull}}"
-                            Margin="8,0,8,10" Padding="14,10"
-                            CornerRadius="{DynamicResource CockpitPanelRadius}"
-                            Background="{DynamicResource CockpitPanelBgBrush}"
-                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="Open" Padding="14,6"
-                                    VerticalAlignment="Center" Margin="12,0,0,0"
-                                    Command="{Binding SelectSimpleSessionCommand}"
-                                    CommandParameter="{Binding AssistantRootSession}"/>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="Talk to your assistant" FontWeight="SemiBold" FontSize="14"/>
-                                <TextBlock Text="{Binding AssistantRootSession.ActiveProfileLabel}" FontSize="11"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                            </StackPanel>
-                        </DockPanel>
-                    </Border>
-
-                    <!-- AC-488: with no projects at all this screen's question has no answers to offer, which is
-                         the empty state AC-1304 left standing for this ticket. The same gallery as the projects
-                         workspace, not a second one — the stand draws one source in its own arrangement. -->
-                    <Panel IsVisible="{Binding !Projects.HasProjects}">
-                        <controls:StartingPointsView DataContext="{Binding Projects}"/>
-                    </Panel>
-
-                    <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
-                                <StackPanel Spacing="4" Margin="0,10,0,0">
-                                    <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold"
-                                               HorizontalAlignment="Center"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                               IsVisible="{Binding HasHeader}"/>
-                                    <ItemsControl ItemsSource="{Binding Cards}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel HorizontalAlignment="Center"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:ProjectCardViewModel">
-                                                <!-- This screen's answer for a job: start it, with the prompt
-                                                     waiting in the box. The dialog has no place in a stand that
-                                                     exists so the settings never have to be asked about. -->
-                                                <controls:ProjectCardView
-                                                    JobCommand="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).StartProjectJobNowCommand}"/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-
-                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,24,0,0"
-                                HorizontalAlignment="Center">
-                        <TextBlock Text="Not listed?" VerticalAlignment="Center" FontSize="13"
-                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                        <Button Content="Something else…" Classes="Subtle" Padding="12,6"
-                                Command="{Binding Projects.AddProjectCommand}"
-                                ToolTip.Tip="Add a project — the same dialog the projects overview opens"/>
-                    </StackPanel>
-                </StackPanel>
-            </ScrollViewer>
 
             <!-- AC-1305: a session that is not the one in this column is waiting for consent. The card itself
                  (ConsentBanner, over the conversation) stays where the question belongs, so this only names who is

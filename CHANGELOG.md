@@ -422,6 +422,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the Simple stand no longer asks "which project" before you can type. The conversation column holds
+  the assistant from the first moment — before it has started, and with it switched off, where it says so — and
+  the project cards and starting points stand inside that conversation as an offer while nothing has been said,
+  or when `+ New session` asks for them. The screen that stood in front of the conversation is gone; nothing on
+  it was lost except the "Talk to your assistant" row, which the conversation itself replaces.
 - changed: a session whose latest turn crashed is no longer indistinguishable from one that finished
   cleanly. Its status now reads as its own state instead of folding into "done" — which used to also mean a
   session could announce "session finished" after a turn that actually errored, as long as an earlier turn in
@@ -505,6 +510,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a message typed into the assistant while it was switched off, had no profile, or had just failed to
+  start was cleared from the box before the assistant answered that it could not take it — the words were gone
+  with no notice. They now stay in the box when nothing was sent.
 - fixed: a terminal session that sits quiet for two minutes while a tool or a slow MCP server answers no longer
   reads as "Done". The cockpit now looks at what the session actually has running: while it holds processes of its
   own beyond its shell, the pane goes on saying it is working, which is what an agent-chat pane in the same spot

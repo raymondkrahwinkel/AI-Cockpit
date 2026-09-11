@@ -758,8 +758,14 @@
             <Grid>
                 <!-- The assistant cannot be reached at all (criterion 1): says why, rather than sitting on an
                      empty transcript that looks like nothing was ever said. -->
-                <StackPanel IsVisible="{Binding IsUnavailable}" MaxWidth="280" Spacing="8"
+                <StackPanel MaxWidth="280" Spacing="8"
                             HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="IsUnavailable"/>
+                            <Binding Path="!ShowsStartOffer"/>
+                        </MultiBinding>
+                    </StackPanel.IsVisible>
                     <materialIcons:MaterialIcon Kind="AlertCircleOutline" Width="24" Height="24"
                                                 HorizontalAlignment="Center"
                                                 Foreground="{DynamicResource CockpitTextFaintBrush}"/>
@@ -769,12 +775,13 @@
 
                 <!-- Empty state: no session started yet, or one with nothing said in it yet — same message
                      either way, since both read as "nothing to show" to the operator. -->
-                <StackPanel IsVisible="{Binding !IsUnavailable}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                             MaxWidth="260" Spacing="10">
                     <StackPanel.IsVisible>
                         <MultiBinding Converter="{x:Static BoolConverters.And}">
                             <Binding Path="!IsUnavailable"/>
                             <Binding Path="!HasMessages"/>
+                            <Binding Path="!ShowsStartOffer"/>
                         </MultiBinding>
                     </StackPanel.IsVisible>
                     <Border Classes="avatarBadge" Width="44" Height="44" CornerRadius="13" HorizontalAlignment="Center">
@@ -787,6 +794,83 @@
                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 </StackPanel>
 
+                <!-- AC-1316: the Simple stand's start offer, in the transcript's place while nothing has been said
+                     or `+ New session` asks for it (AC-1304's three doors, answered by `ShowsStartOffer`). An
+                     offer, not a gate: the composer below stays the first thing to use, and the cards stand beside
+                     it. Deliberately NOT a projects list of its own — it draws `Cockpit.Projects.ProjectCategoryGroups`
+                     and `ProjectCardView`, the same source and the same card as the panels stand's overview
+                     (AC-1304 criterion 1(b)); a cockpit with no projects draws the starting points (AC-488). -->
+                <ScrollViewer x:Name="StartOffer" IsVisible="{Binding ShowsStartOffer}"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel MaxWidth="920" Margin="24,28" HorizontalAlignment="Center">
+                        <!-- What typing here does, in three facts the system knows — where it works, on whose
+                             say-so, and that a project is the other way in. No promise beyond that. -->
+                        <TextBlock Text="Type your question below — it works in your Cockpit folder, with what your assistant profile allows. Or start on a project:"
+                                   FontSize="13" Margin="0,0,0,18" HorizontalAlignment="Center"
+                                   TextWrapping="Wrap" TextAlignment="Center"
+                                   IsVisible="{Binding !IsUnavailable}"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <!-- Switched off or no profile: the reason stands where the hint would, and the cards
+                             stay — a project still starts on its own settings without the assistant. -->
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,18"
+                                    HorizontalAlignment="Center" IsVisible="{Binding IsUnavailable}">
+                            <materialIcons:MaterialIcon Kind="AlertCircleOutline" Width="18" Height="18"
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            <TextBlock Text="{Binding UnavailableReason}" TextWrapping="Wrap" FontSize="13"
+                                       VerticalAlignment="Center" MaxWidth="560"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </StackPanel>
+
+                        <Panel IsVisible="{Binding !Cockpit.Projects.HasProjects}">
+                            <controls:StartingPointsView DataContext="{Binding Cockpit.Projects}"/>
+                        </Panel>
+
+                        <TextBlock Text="A card opens a session on that project's own settings. Nothing is sent until you press Send."
+                                   FontSize="12" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                                   IsVisible="{Binding Cockpit.Projects.HasProjects}"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+
+                        <ItemsControl ItemsSource="{Binding Cockpit.Projects.ProjectCategoryGroups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
+                                    <StackPanel Spacing="4" Margin="0,10,0,0">
+                                        <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold"
+                                                   HorizontalAlignment="Center"
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                                   IsVisible="{Binding HasHeader}"/>
+                                        <ItemsControl ItemsSource="{Binding Cards}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel HorizontalAlignment="Center"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:ProjectCardViewModel">
+                                                    <!-- A job starts now, with its prompt waiting in the box. The
+                                                         dialog has no place in a stand that exists so the
+                                                         settings never have to be asked about (AC-1304). -->
+                                                    <controls:ProjectCardView
+                                                        JobCommand="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).Cockpit.StartProjectJobNowCommand}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,24,0,0"
+                                    HorizontalAlignment="Center">
+                            <TextBlock Text="Not listed?" VerticalAlignment="Center" FontSize="13"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            <Button Content="Something else…" Classes="Subtle" Padding="12,6"
+                                    Command="{Binding Cockpit.Projects.AddProjectCommand}"
+                                    ToolTip.Tip="Add a project — the same dialog the projects overview opens"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+
                 <!-- The transcript itself: SessionView.axaml's own row (Controls/TranscriptRowView.axaml, AC-722),
                      just in a narrower frame — the scroller stays this window's own (always-follow, not
                      SessionView's stick-only-while-at-bottom), see the code-behind.
@@ -798,7 +882,13 @@
                      viewport, not the infinite height an enclosing ScrollViewer would hand it. x:Name still reads
                      TranscriptScroll — the code-behind and the follow tests ask for the transcript's scroll owner
                      by that name. -->
-                <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Session.VisibleTranscript}" IsVisible="{Binding HasMessages}">
+                <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Session.VisibleTranscript}">
+                    <ItemsControl.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="HasMessages"/>
+                            <Binding Path="!ShowsStartOffer"/>
+                        </MultiBinding>
+                    </ItemsControl.IsVisible>
                     <ItemsControl.Template>
                         <ControlTemplate TargetType="ItemsControl">
                             <ScrollViewer x:Name="TranscriptScroll">

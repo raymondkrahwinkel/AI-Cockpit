@@ -992,6 +992,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheAssistantInTheMainColumn))]
     [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     [NotifyPropertyChangedFor(nameof(ShowDockRail))]
+    [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
     private AssistantChatViewModel? _assistantChat;
 
     // AC-1302 criterion 4: the session the rail hangs its tree under, or null when there is none — with no
@@ -1012,17 +1013,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // picked session then takes the column on its own, there is no dock, and no way back is drawn to it
     // (criterion 4(b)) — both of these are false at once, which is what says so.
 
-    // AC-1304: and the start screen takes precedence over both — asked for it, the column holds the question
-    // rather than the conversation that stood there.
+    // AC-1316: not gated on the assistant's session existing — that gate was a circle (the session starts once a
+    // host shows the chat view; the column showed it once the session existed). The chat view says "switched off"
+    // itself and starts the assistant on the first message, so the column holds it whenever nothing else is picked.
     public bool SimpleStandShowsTheAssistantInTheMainColumn =>
-        SimpleView && AssistantRootSession is not null && !SimpleStandDocksTheAssistant
-        && !SimpleStartScreenRequested;
+        SimpleView
+        && (SimpleSelectedSession is null || ReferenceEquals(SimpleSelectedSession, AssistantRootSession));
 
-    // AC-1304 criterion 1(a): the three doors, answered in one place. `+ New session` sets the flag; closing the
-    // last conversation and a first start reach the same screen by leaving the column with nothing to draw.
+    // AC-1304 criterion 1(a): the three doors, answered in one place. AC-1316: the screen is the empty state of
+    // the assistant's own conversation, drawn inside the chat view — `+ New session` lays it over a conversation,
+    // and a conversation with nothing said in it shows it of its own accord.
     public bool SimpleStandShowsTheStartScreen =>
         SimpleView
-        && (SimpleStartScreenRequested || (SimpleSelectedSession is null && AssistantRootSession is null));
+        && (SimpleStartScreenRequested || (SimpleSelectedSession is null && !(AssistantChat?.HasMessages ?? false)));
 
     // AC-1303: which panel the rail shows. In the Simple stand this follows the roles above and is deliberately
     // not written back: `OpenDockPanelId` is the panels stand's own stored choice, and docking here by picking a
@@ -1048,6 +1051,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // restart — so the root has to follow that rather than only the chat swap.
     private void _OnAssistantChatPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // AC-1316: the first reply is what takes the offer away, so the screen follows the transcript too.
+        if (e.PropertyName is null or nameof(AssistantChatViewModel.HasMessages))
+        {
+            OnPropertyChanged(nameof(SimpleStandShowsTheStartScreen));
+        }
+
         if (e.PropertyName is null or nameof(AssistantChatViewModel.Session))
         {
             OnPropertyChanged(nameof(AssistantRootSession));
