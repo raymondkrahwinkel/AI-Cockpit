@@ -413,4 +413,29 @@ public class DepotMemorySourceTests
         Assert.Equal("depot", registration.FamilyKey);
         Assert.Equal("Acme", registration.InstanceTitle);
     }
+
+    [Fact]
+    public async Task AppendNoteAsync_CallsDepotsAtomicAppend_NeverWrite()
+    {
+        // AC-492: `append` is server-side atomic and creates the file; `write` would replace it. A sign-in demand
+        // comes back as its own outcome so the host can offer SignInAsync and retry with the same note.
+        var host = _HostReturning(PluginMcpToolCallResult.AuthorizationRequired);
+        var connection = Connection("c1", "Acme");
+        var registration = DepotMemorySource.BuildRegistrationPairs([connection], host).Single().Registration;
+
+        var result = await registration.AppendNoteAsync!("cockpit", "\n## stamp\n\nnote\n", CancellationToken.None);
+
+        Assert.Equal(ProjectMemoryAppendOutcome.AuthorizationRequired, result.Outcome);
+        await host.Received(1).CallMcpToolAsync(
+            connection.McpServerName,
+            "append",
+            Arg.Is<IReadOnlyDictionary<string, object?>?>(arguments =>
+                Equals(arguments!["project"], "cockpit")
+                && Equals(arguments["path"], DepotMemorySource.NotesPath)
+                && Equals(arguments["content"], "\n## stamp\n\nnote\n")),
+            Arg.Any<string?>(),
+            Arg.Any<CancellationToken>());
+        await host.DidNotReceive().CallMcpToolAsync(Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        Assert.Null(DepotMemorySource.BuildRegistrationPairs([connection]).Single().Registration.AppendNoteAsync);
+    }
 }

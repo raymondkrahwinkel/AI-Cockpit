@@ -951,6 +951,17 @@ back).
   here to fetch — the operator picks your source by `Title` from the editor's small dropdown, but still types the
   bare identifier (`cockpit` in `depot:cockpit`) into a free-text box themselves.
 
+**Letting the host write a note (AC-492).** Set the optional `AppendNoteAsync` init-property —
+`Func<string value, string note, CancellationToken, Task<ProjectMemoryAppendResult>>` — and the host can put a
+quick note into a project's memory itself, without a session. You receive the bare identifier and one
+ready-made Markdown block (a dated heading plus the note), and you append that block after whatever the location
+already holds; where inside the location it goes is your own fixed choice. The block is all you are given, so
+there is no way to replace existing content — and two calls for the same location may overlap, so use an
+append that survives that. Answer with `ProjectMemoryAppendResult.Success`, `.AuthorizationRequired` (the host
+offers your `SignInAsync` and retries) or `.Failed(reason)`; never throw. Leave it null and the host treats your
+source as read-only: it is not offered anywhere a note could be captured. Setting it raises your manifest's
+`minHostVersion` to `0.31.0`.
+
 ### `IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources { get; }` {#ireadonlylistprojectmemorysourceregistration-projectmemorysources--get}
 
 Every memory source plugins have contributed, in registration order — what the project editor's picker and a

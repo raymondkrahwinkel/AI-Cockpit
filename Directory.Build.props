@@ -8,7 +8,13 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.30.0: an embedded session now says where it actually runs (AC-1037) — IEmbeddedSession.WorktreePath,
+    <!-- 0.31.0: a memory source can now be written to by the host itself (AC-492) —
+         ProjectMemorySourceRegistration.AppendNoteAsync, the contract's first write operation, so a quick note
+         lands in a project's memory without a session being started. Deliberately NOT an abstractionsVersion
+         bump, on the same reasoning as 0.30.0 below: a trailing init-property with a null default, so an
+         already-compiled plugin loads and reads as "cannot write". A plugin that sets it (Depot does) sets
+         minHostVersion 0.31.0 — an older host's copy of the record has no such setter. Minor; still 0.x.
+         0.30.0: an embedded session now says where it actually runs (AC-1037) — IEmbeddedSession.WorktreePath,
          the isolated worktree the host resolved for it. A plugin that starts a step it did not hand a worktree
          (Autopilot's review gates and parallel agents) could not tell whether that step's commits landed on the
          run's branch or on a session branch of its own, which is how a step reported a green suite of a tree the
@@ -233,7 +239,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.30.0</VersionPrefix>
+    <VersionPrefix>0.31.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

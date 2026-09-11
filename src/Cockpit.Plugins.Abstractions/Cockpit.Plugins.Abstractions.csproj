@@ -418,7 +418,13 @@
          pop-out companion window (AC-235), the same shape as AddWidget/Widgets. Existing implementations keep
          compiling untouched. Additions only — a minor; major and abstractionsVersion stay 2. No in-repo plugin
          calls this yet — the companion window itself (AC-237) is a later ticket in the same epic. -->
-    <Version>1.60.0</Version>
+    <!-- 1.61.0 (AC-492): added ProjectMemorySourceRegistration.AppendNoteAsync plus ProjectMemoryAppendResult /
+         ProjectMemoryAppendOutcome — the memory-source contract's first write operation, so the host itself can
+         append a quick note to a project's memory without starting a session. A trailing init-property with a
+         null default, like the three read callbacks before it, so an existing plugin binary keeps loading and
+         reads as "cannot write". Additions only — a minor; major and abstractionsVersion stay 2. Consumed
+         in-repo by Cockpit.Plugin.Depot, whose minHostVersion moves to 0.31.0 with it. -->
+    <Version>1.61.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
