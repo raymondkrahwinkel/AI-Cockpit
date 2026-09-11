@@ -650,14 +650,6 @@ internal static class Screenshotter
     ];
 
     // AC-1316: the kind is a segment the operator clicks, so the scene clicks it — the segment checks itself and
-    // its command sets the model, and neither happens by setting the other.
-    private static void _ChooseWorkKind(Window window)
-    {
-        var segment = window.GetVisualDescendants().OfType<RadioButton>()
-            .First(button => (string?)button.Content == PluginWorkKinds.All[0].Label);
-        segment.IsChecked = true;
-        segment.Command!.Execute(segment.CommandParameter);
-    }
 
     // Every scene name a render can be asked for, this table's own plus the selection surface's — that one keeps
     // its names with the scene because its modes are states the surface is driven into after it is shown, not
@@ -699,11 +691,8 @@ internal static class Screenshotter
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
         ["plugins-menu"] = window => _OpenFlyout(window, "PluginsMenuButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
-        ["first-run-work-kind"] = _ChooseWorkKind,
-        ["first-run-work-kind-long"] = _ChooseWorkKind,
         ["first-run-work-kind-unfolded"] = window =>
         {
-            _ChooseWorkKind(window);
             window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(toggle => toggle.Name == "Fold").IsChecked = true;
         },
         ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),

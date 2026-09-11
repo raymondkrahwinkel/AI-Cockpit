@@ -42,7 +42,8 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
         _WatchSelection();
     }
 
-    public IReadOnlyList<PluginWorkKindOption> WorkKinds => PluginWorkKinds.All;
+    public IReadOnlyList<WorkKindChoiceViewModel> WorkKinds { get; } =
+        [.. PluginWorkKinds.All.Select(kind => new WorkKindChoiceViewModel(kind))];
 
     public ObservableCollection<WorkKindPluginRowViewModel> Plugins { get; } = [];
 
@@ -79,12 +80,17 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
                 return;
             }
 
+            foreach (var kind in WorkKinds)
+            {
+                kind.IsSelected = kind.Option == value;
+            }
+
             _ApplyRecommendation();
             OnPropertyChanged(nameof(ListCaption));
         }
     }
 
-    // The segment's click: a RadioButton in a group only ever checks, so the choice flows one way, button to model.
+    // The segment click changes only the model; its class follows the model back to the view.
     [RelayCommand]
     private void SelectWorkKind(PluginWorkKindOption kind) => SelectedWorkKind = kind;
 
@@ -258,4 +264,16 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
             };
         }
     }
+}
+
+public sealed partial class WorkKindChoiceViewModel(PluginWorkKindOption option) : ObservableObject
+{
+    public PluginWorkKindOption Option { get; } = option;
+
+    public string Label => Option.Label;
+
+    public string Description => Option.Description;
+
+    [ObservableProperty]
+    private bool _isSelected;
 }

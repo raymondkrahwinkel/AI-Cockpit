@@ -38,13 +38,13 @@
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="plugins:PluginWorkKindOption">
+                        <DataTemplate x:DataType="onboarding:WorkKindChoiceViewModel">
                             <!-- The description hovers rather than sitting under the segments: every line spent
                                  up here is a line the plugin list — which carries the consent — does not get. -->
-                            <RadioButton Classes="Segment" GroupName="WorkKind" Content="{Binding Label}"
+                            <Button Classes="Segment" Classes.on="{Binding IsSelected}" Content="{Binding Label}"
                                          ToolTip.Tip="{Binding Description}"
                                          Command="{Binding $parent[ItemsControl].((onboarding:WorkKindStepViewModel)DataContext).SelectWorkKindCommand}"
-                                         CommandParameter="{Binding}"/>
+                                    CommandParameter="{Binding Option}"/>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

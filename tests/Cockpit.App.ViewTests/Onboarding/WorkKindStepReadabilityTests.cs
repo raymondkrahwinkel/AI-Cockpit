@@ -16,9 +16,7 @@ namespace Cockpit.App.ViewTests.Onboarding;
 public class WorkKindStepReadabilityTests
 {
     /// <summary>
-    /// A plain label with a lighter tint for the chosen one is a sentence; a segment in a group is a choice. Choosing
-    /// through the control — not the model — is what the operator does, so that is the route that has to set the
-    /// model, and the caption under it has to say what that did to the list, including when it did nothing.
+    /// A segment is a model-backed choice: the clicked button changes the selection, and exactly one button reflects it.
     /// </summary>
     [Fact]
     public void TheKinds_AreSegmentsInOneGroup_AndChoosingOneDrivesTheModelAndTheCaption() => HeadlessAvalonia.Run(() =>
@@ -28,23 +26,29 @@ public class WorkKindStepReadabilityTests
         {
             window.UpdateLayout();
             var model = (WorkKindStepViewModel)_Step(window).DataContext!;
-            var segments = window.GetVisualDescendants().OfType<RadioButton>()
+            var segments = window.GetVisualDescendants().OfType<Button>()
                 .Where(button => button.Classes.Contains("Segment")).ToList();
 
             Assert.Equal(PluginWorkKinds.All.Select(kind => kind.Label), segments.Select(segment => (string?)segment.Content));
-            Assert.All(segments, segment => Assert.Equal("WorkKind", segment.GroupName));
+            Assert.DoesNotContain(segments, segment => segment.Classes.Contains("on"));
 
-            // The scene chose Development; the rows carry that audience, so the caption says they were suggested.
+            var development = segments.Single(segment => (string?)segment.Content == "Development");
+            development.Command!.Execute(development.CommandParameter);
+            development.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
             Assert.Same(PluginWorkKinds.All[0], model.SelectedWorkKind);
+            Assert.Single(segments, segment => segment.Classes.Contains("on"));
             Assert.Equal("Suggested for Development — change any tick.", model.ListCaption);
 
             // A kind no row is tagged for: the click lands, the list unticks, and the caption says so instead of
             // leaving a list of empty boxes to explain itself.
             var documents = segments.Single(segment => (string?)segment.Content == "Documents and design");
-            documents.IsChecked = true;
             documents.Command!.Execute(documents.CommandParameter);
+            documents.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
 
             Assert.Same(PluginWorkKinds.All[3], model.SelectedWorkKind);
+            Assert.Single(segments, segment => segment.Classes.Contains("on"));
+            Assert.Contains("on", documents.Classes);
             Assert.Equal("Nothing suggested for Documents and design yet — tick what you want.", model.ListCaption);
             Assert.All(model.Plugins, plugin => Assert.False(plugin.IsSelected));
         }
