@@ -134,8 +134,8 @@
 
     <!-- Everything outside the selection is dimmed by four rectangles rather than a cut-out, which Avalonia has
          no primitive for. Their bounds are set in code from the same conversion the pointer goes through.
-         The dim is the one value with no token behind it: nothing else in the app darkens a whole screen, and
-         the theme has no shade for it — the same reason VoiceOverlayWindow hardcodes its own translucent pill. -->
+         The dim deliberately has no token behind it (AC-860): it darkens a picture of the operator's screen, not
+         a surface of the app, so a theme variant has no say over it — the same footing as StandInDesktop. -->
     <Canvas Name="Shade" IsHitTestVisible="False">
       <Rectangle Name="ShadeTop" Fill="#99000000" />
       <Rectangle Name="ShadeBottom" Fill="#99000000" />

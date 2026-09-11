@@ -14,7 +14,7 @@
     <!-- AC-237: chrome copied from VoiceOverlayWindow (no decorations, always on top, rounded translucent card),
          but this window is interactive and draggable — see CompanionWindow.axaml.cs for why it skips the
          overlay's X11 click-through input shape. -->
-    <Border Background="#F01a1d24" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="16">
+    <Border Background="{DynamicResource CockpitFloatingCardBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="16">
         <StackPanel>
             <!-- The drag handle and the window's own way out (its own Close), so hiding it never depends solely
                  on remembering the tray icon. -->

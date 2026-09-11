@@ -449,7 +449,7 @@
              once encryption is on or the operator dismisses it. -->
         <Border DockPanel.Dock="Top"
                 IsVisible="{Binding Security.ShowUnprotectedBanner}"
-                Background="#26E0A33E"
+                Background="{DynamicResource CockpitStatusWaitingRowTintBrush}"
                 BorderBrush="{DynamicResource CockpitStatusWaitingBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="16,9">

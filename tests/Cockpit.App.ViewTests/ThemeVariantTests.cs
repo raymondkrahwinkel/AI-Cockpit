@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Cockpit.TestSupport;
@@ -119,4 +120,55 @@ public class ThemeVariantTests
         Assert.Equal(RenderedScene.Token(chipRing), ((ISolidColorBrush)ring.Background!).Color);
         Assert.Equal(RenderedScene.Token(tagEdge), ((ISolidColorBrush)tag.BorderBrush!).Color);
     }));
+
+    // The three veils, each held to its own job rather than to a look (AC-860): the scrim dims and leaves what is
+    // under it recognisable; the curtain takes it away and carries the text tokens itself; the floating card carries
+    // primary text over any desktop. White at 70% — the obvious mirror — dims 1.00×, hence the dark scrim at 25%.
+    [Theory]
+    [MemberData(nameof(Variants))]
+    public void EachVeil_DoesItsOwnJob(string variant) => HeadlessAvalonia.Run(() => ThemeVariants.Under(variant, () =>
+    {
+        var panel = RenderedScene.Token("CockpitPanelBgColor");
+        var primary = RenderedScene.Token("CockpitTextPrimaryColor");
+        var secondary = RenderedScene.Token("CockpitTextSecondaryColor");
+
+        var scrimmed = _Over(RenderedScene.Token("CockpitScrimColor"), panel);
+        var dimming = WcagContrast.RelativeLuminance(panel) / WcagContrast.RelativeLuminance(scrimmed);
+        Assert.True(dimming >= 1.5, $"In {variant} the scrim dims the panel {dimming:F2}×, short of a perceptible 1.5×");
+        Assert.True(WcagContrast.Ratio(_Over(RenderedScene.Token("CockpitScrimColor"), primary), scrimmed) >= 2.0, $"In {variant} text under the scrim is no longer recognisable");
+
+        var curtained = _Over(RenderedScene.Token("CockpitCurtainColor"), panel);
+        Assert.True(WcagContrast.Ratio(_Over(RenderedScene.Token("CockpitCurtainColor"), primary), curtained) <= 2.0, $"In {variant} text under the curtain still reads");
+        Assert.True(WcagContrast.Ratio(primary, curtained) >= WcagContrast.AaNormalText, $"In {variant} primary ink does not read on the curtain");
+        Assert.True(WcagContrast.Ratio(secondary, curtained) >= WcagContrast.AaNormalText, $"In {variant} secondary ink does not read on the curtain");
+
+        foreach (var desktop in new[] { Colors.Black, Colors.White })
+        {
+            var card = _Over(RenderedScene.Token("CockpitFloatingCardColor"), desktop);
+            Assert.True(WcagContrast.Ratio(primary, card) >= WcagContrast.AaNormalText, $"In {variant} primary ink does not read on the floating card over {desktop}");
+        }
+    }));
+
+    // The listening glow is a BoxShadows, since a shadow carries no brush — the one echo the tint list above cannot
+    // see, and the one that had drifted to the pre-AC-381 accent.
+    [Theory]
+    [MemberData(nameof(Variants))]
+    public void TheListeningGlow_IsAnAlphaEchoOfTheAccent(string variant) => HeadlessAvalonia.Run(() => ThemeVariants.Under(variant, () =>
+    {
+        var app = Application.Current!;
+        Assert.True(app.TryFindResource("CockpitAccentGlowShadow", app.ActualThemeVariant, out var value) && value is BoxShadows, "no CockpitAccentGlowShadow in this variant");
+        var glow = ((BoxShadows)value!)[0].Color;
+        var accent = RenderedScene.Token("CockpitAccentColor");
+
+        Assert.Equal((accent.R, accent.G, accent.B), (glow.R, glow.G, glow.B));
+        Assert.True(glow.A < 255, "the glow is a tint, not the accent itself");
+    }));
+
+    // Source over: what a translucent colour puts on screen above an opaque one.
+    private static Color _Over(Color top, Color under)
+    {
+        var alpha = top.A / 255.0;
+        byte Mix(byte a, byte b) => (byte)Math.Round(alpha * a + (1 - alpha) * b);
+        return Color.FromRgb(Mix(top.R, under.R), Mix(top.G, under.G), Mix(top.B, under.B));
+    }
 }

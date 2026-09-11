@@ -5,7 +5,6 @@
 
 #402563EB  CockpitFocusHairlineColor
 #66FFFFFF  off-palette
-#B3000000  off-palette
 #FF000000  off-palette
 #FF0C0E12  CockpitSecondaryBgColor
 #FF12141A  CockpitChromeBgColor

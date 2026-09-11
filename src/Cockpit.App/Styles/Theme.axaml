@@ -68,6 +68,9 @@
                          fill to dim. 70% of the window takes the height out of a panel without dimming it (1.09×). -->
                     <Color x:Key="CockpitGhostHoverColor">#0affffff</Color>
                     <Color x:Key="CockpitScrimColor">#b30f1116</Color>
+                    <Color x:Key="CockpitCurtainColor">#CC0f1116</Color>
+                    <Color x:Key="CockpitFloatingCardColor">#F01a1d24</Color>
+                    <BoxShadows x:Key="CockpitAccentGlowShadow">0 0 0 4 #2E2563EB</BoxShadows>
 
                     <Color x:Key="CockpitUserBubbleColor">#28313B</Color>
                     <Color x:Key="CockpitIsolatedBadgeBgColor">#332b47</Color>
@@ -144,6 +147,11 @@
                          it at 10.2:1. Zyra's call on the measurement, 2026-09-10, not Raymond's. -->
                     <Color x:Key="CockpitGhostHoverColor">#0d000000</Color>
                     <Color x:Key="CockpitScrimColor">#400f1116</Color>
+                    <!-- The curtain and the card are *not* the dark ones: both carry the text tokens on their own
+                         surface, and this variant's ink is dark — so each is the alpha echo of its light surface. -->
+                    <Color x:Key="CockpitCurtainColor">#CCf1f3f7</Color>
+                    <Color x:Key="CockpitFloatingCardColor">#F0ffffff</Color>
+                    <BoxShadows x:Key="CockpitAccentGlowShadow">0 0 0 4 #2E2563EB</BoxShadows>
 
                     <Color x:Key="CockpitUserBubbleColor">#d7e3f7</Color>
                     <Color x:Key="CockpitIsolatedBadgeBgColor">#ece3fb</Color>
@@ -242,6 +250,12 @@
                  reach; what does that is a different alpha per variant, not a mirrored colour. -->
             <SolidColorBrush x:Key="CockpitGhostHoverBrush" Color="{DynamicResource CockpitGhostHoverColor}"/>
             <SolidColorBrush x:Key="CockpitScrimBrush" Color="{DynamicResource CockpitScrimColor}"/>
+            <!-- Two more veils, each a different job from the scrim (ThemeVariantTests holds the numbers): the
+                 curtain blocks a dialog and carries its own text, so what it covers must go (≤2:1 left) and the
+                 text tokens must read on it — the window at 80%, light in light. The floating card is a chromeless
+                 window over the *desktop*, not the app: the panel at 94%, its edge the ordinary hairline. -->
+            <SolidColorBrush x:Key="CockpitCurtainBrush" Color="{DynamicResource CockpitCurtainColor}"/>
+            <SolidColorBrush x:Key="CockpitFloatingCardBrush" Color="{DynamicResource CockpitFloatingCardColor}"/>
 
             <!-- The operator's own bubble (T2): a cool slate against the neutral panel, ≥1.25:1 from it, so "mine"
                  reads without shouting. The isolated badge (AC-334) is its own violet, apart from every accent and

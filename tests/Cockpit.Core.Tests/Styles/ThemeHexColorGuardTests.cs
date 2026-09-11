@@ -38,41 +38,25 @@ namespace Cockpit.Core.Tests.Styles;
 public partial class ThemeHexColorGuardTests
 {
     /// <summary>
-    /// A hex literal outside <c>Theme.axaml</c> that is not a hardcoded colour: an alpha-tinted echo of a token
-    /// (the properties that carry transparency — <c>BoxShadow</c>, a translucent <c>Background</c> — have no brush
-    /// type to hang a <c>{StaticResource}</c> on) or a plain black scrim/shadow that is deliberately colour-agnostic
-    /// — no theme token means "black", so there is nothing for it to point at. Keyed by the file's path relative to
-    /// the repository root plus the exact literal, so a second, different literal landing in the same file does not
+    /// A hex literal outside <c>Theme.axaml</c> that is deliberately not a theme colour: a black drop-shadow (black
+    /// in both variants, so no token to follow) or the dim over a picture of the operator's screen. Every
+    /// alpha-tinted echo of a token that used to sit here is a token since AC-860 — a veil that looks right in dark
+    /// and silently wrong in light is exactly what an "echo" allowance hid. Keyed by the file's path relative to the
+    /// repository root plus the exact literal, so a second, different literal landing in the same file does not
     /// silently inherit this file's allowance.
     /// </summary>
     private static readonly Dictionary<(string Path, string Hex), (int Occurrences, string Reason)> AllowedLiterals =
         new()
         {
-            [("src/Cockpit.App/Views/CockpitView.axaml", "#26E0A33E")] =
-                (1, "26-alpha echo of CockpitStatusWaitingColor for the unprotected-secrets banner tint"),
             [("src/Cockpit.App/Views/CockpitView.axaml", "#40000000")] =
                 (1, "black drop-shadow on the resource flyout panel, not tied to any theme colour"),
             [("src/Cockpit.App/Views/CockpitView.axaml", "#66000000")] =
                 (1, "black drop-shadow on AC-1305's consent notification, the same colourless kind as the one "
                     + "above and heavier because that card floats over a conversation rather than over chrome"),
-            [("src/Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116")] =
-                (2, "CC-alpha echo of CockpitWindowBgColor, shared by the migration and calibration blocking overlays"),
-            [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#F01a1d24")] =
-                (1, "F0-alpha echo of CockpitPanelBgColor for the voice pill background"),
-            [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#1AFFFFFF")] =
-                (1, "white hairline border at low alpha — colourless, not a theme colour"),
-            [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#2E3b82f6")] =
-                (1, "2E-alpha echo of CockpitAccentColor for the listening-dot glow"),
-            [("src/Cockpit.App/Views/CompanionWindow.axaml", "#F01a1d24")] =
-                (1, "F0-alpha echo of CockpitPanelBgColor, same card background as VoiceOverlayWindow (AC-237)"),
-            [("src/Cockpit.App/Views/CompanionWindow.axaml", "#1AFFFFFF")] =
-                (1, "white hairline border at low alpha — colourless, same as VoiceOverlayWindow's own"),
             [("src/Cockpit.App/Views/ScreenshotSelectionWindow.axaml", "#99000000")] =
-                (4, "black screen-dim scrim outside the selection rectangle, not tied to any theme colour"),
+                (4, "dims a picture of the operator's screen outside the selection — not a surface of the app, so no variant has a say (AC-860)"),
             [("src/Cockpit.App/Controls/ConsentBanner.axaml", "#66000000")] =
                 (1, "black drop-shadow, not tied to any theme colour"),
-            [("src/Cockpit.App/Controls/ConsentBannerHost.axaml", "#B3000000")] =
-                (1, "black modal scrim, not tied to any theme colour"),
             // The canvas's two non-accent kind stripes. A categorical palette, like the usage chart's: their only
             // job is to be told apart from each other and from the trigger's accent. Pointing them at status
             // tokens would give a decision node a colour this app reads as "blocked" — and the card's border is
@@ -189,7 +173,8 @@ public partial class ThemeHexColorGuardTests
             }
         }
 
-        Assert.Contains(("src/Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116"), found.Keys);
+        // A literal the scan is known to reach: proof the walk and the regex work before the empty-set check below.
+        Assert.Contains(("src/Cockpit.App/Views/ScreenshotSelectionWindow.axaml", "#99000000"), found.Keys);
 
         var unexpected = found
             .Where(entry => !AllowedLiterals.TryGetValue(entry.Key, out var allowed) || allowed.Occurrences != entry.Value)
