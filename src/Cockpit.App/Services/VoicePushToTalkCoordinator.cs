@@ -58,7 +58,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         _cockpit.VoiceGlobalHotkeyTrigger = _hotkeys.DescribeTrigger(
             GlobalHotkeys.PushToTalk,
             unboundMessage: "Your desktop has not bound it yet. Look for “Push to talk (hold)” in its own shortcut settings.",
-            unsupportedMessage: "Not available on macOS — the in-window key still works while the cockpit has focus.",
+            macOsRefusedMessage: "macOS refused this key — pick another. The in-window key still works while the cockpit has focus.",
             failedMessage: "It is switched on but could not be registered — see the log. The in-window key still works while the cockpit has focus.");
 
     // The pill's view model. Reports what the hold is doing; what the pill actually shows is `VoiceOverlayCoordinator`'s call, since open-mic and read-aloud want it too.

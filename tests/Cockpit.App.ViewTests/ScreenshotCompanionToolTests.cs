@@ -5,6 +5,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.QuickNotes;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Voice;
@@ -106,6 +107,7 @@ public sealed class ScreenshotCompanionToolTests
             Substitute.For<IVoiceSettingsStore>(),
             Substitute.For<IScreenshotSettingsStore>(),
             Substitute.For<IAssistantSettingsStore>(),
+            Substitute.For<IQuickNoteSettingsStore>(),
             Substitute.For<IHotkeyExclusivityGuard>(),
             Substitute.For<IToastService>(),
             NullLogger<GlobalHotkeyCoordinator>.Instance);

@@ -325,6 +325,9 @@ internal static class Screenshotter
         // this window is five lists whose failure mode is one of them quietly bound to the wrong collection.
         ["agent-line"] = (_, _) => new AgentLineInspectorDialog { DataContext = _AgentLine() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
+        // AC-492: the quick-note surface with a failed write, since that is the state the ticket's one hard rule is
+        // about — the note stays, and the line under it says why.
+        ["quick-note"] = (_, _) => new QuickNoteWindow { DataContext = new ViewModels.QuickNoteViewModel { Note = "Ask finance for the Q3 numbers before Friday.", Message = "Could not save: Depot is unreachable. Your note is kept here." } },
         ["session"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
         // AC-1301: the Simple stand. Its own scene because it is the one thing no other scene can show — that
         // the panels stand is hidden rather than dismantled, and that the title bar and the status bar around

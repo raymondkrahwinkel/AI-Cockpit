@@ -7,6 +7,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.QuickNotes;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Toasts;
@@ -155,6 +156,7 @@ public class VoiceDictationSurfaceTests
             voiceSettings,
             screenshotSettings,
             assistantSettings,
+            Substitute.For<IQuickNoteSettingsStore>(),
             Substitute.For<IHotkeyExclusivityGuard>(),
             Substitute.For<IToastService>(),
             NullLogger<GlobalHotkeyCoordinator>.Instance);

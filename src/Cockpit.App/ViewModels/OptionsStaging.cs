@@ -35,6 +35,8 @@ internal static class OptionsStaging
         "NotifyWhenAllSessionsIdle",
         "OpenInSimpleView",
         "OrchestratorMcpEnabled",
+        "QuickNoteGlobalHotkeyEnabled",
+        "QuickNoteHotkeyKeyName",
         "RenderBackendSelection",
         "ScreenshotGlobalHotkeyEnabled",
         "ScreenshotHotkeyKeyName",

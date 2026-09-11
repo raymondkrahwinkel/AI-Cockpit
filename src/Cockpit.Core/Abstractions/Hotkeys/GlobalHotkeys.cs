@@ -15,4 +15,7 @@ public static class GlobalHotkeys
     // on purpose: PushToTalk feeds the selected session, this feeds the assistant, and the damaging
     // mistake is words landing in the wrong one.
     public const string AssistantPushToTalk = "cockpit_assistant_push_to_talk";
+
+    // Press to jot a note into a project's memory without starting anything (AC-492) — F7 by default.
+    public const string QuickNote = "cockpit_quick_note";
 }

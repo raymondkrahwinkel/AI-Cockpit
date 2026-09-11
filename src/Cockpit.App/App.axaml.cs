@@ -362,6 +362,9 @@ public partial class App : Application
         // button runs from here, the same way the open-mic coordinator is exposed for the sidebar toggle.
         cockpitViewModel.Screenshots = Program.Services.GetRequiredService<ScreenshotCoordinator>();
 
+        // Resolved for its constructor like the others above (AC-492); held so the palette can open the note too.
+        cockpitViewModel.QuickNotes = Program.Services.GetRequiredService<QuickNoteCoordinator>();
+
         // Fire-and-forget (#34, AC-220): arms every desktop-wide key the operator switched on, as one
         // registration. A no-op when none of them is, so the portal/keyboard-hook is only ever touched for an
         // operator who opted in.

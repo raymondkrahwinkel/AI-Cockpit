@@ -27,8 +27,10 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Whiteboard;
+using Cockpit.Core.Abstractions.QuickNotes;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Hotkeys;
+using Cockpit.Core.QuickNotes;
 using Cockpit.Core.Screenshots;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Usage;
@@ -146,6 +148,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IUsagePillSettingsStore? _usagePillSettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly IScreenshotSettingsStore? _screenshotSettingsStore;
+    private readonly IQuickNoteSettingsStore? _quickNoteSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private Task _layoutPersist = Task.CompletedTask;
     private readonly IDockPanelRegistry? _dockPanelRegistry;
@@ -2247,6 +2250,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             bindings.Add(new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", ScreenshotHotkeyKeyName));
         }
 
+        if (QuickNoteGlobalHotkeyEnabled)
+        {
+            bindings.Add(new GlobalHotkeyBinding(GlobalHotkeys.QuickNote, "Quick note", QuickNoteHotkeyKeyName));
+        }
+
         return bindings;
     }
 
@@ -2283,6 +2291,46 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             GlobalHotkeyEnabled = ScreenshotGlobalHotkeyEnabled,
             HotkeyKeyName = string.IsNullOrWhiteSpace(ScreenshotHotkeyKeyName) ? "F8" : ScreenshotHotkeyKeyName.Trim(),
             PreviewEnabled = ScreenshotPreviewEnabled,
+        });
+    }
+
+    // Whether the quick-note key fires while the cockpit has no focus (AC-492); off by default like the others.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HotkeyConflict))]
+    private bool _quickNoteGlobalHotkeyEnabled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HotkeyConflict))]
+    private string _quickNoteHotkeyKeyName = "F7";
+
+    // What the quick-note hotkey is really triggered by, in the words of whoever bound it.
+    [ObservableProperty]
+    private string _quickNoteHotkeyTrigger = string.Empty;
+
+    private async Task LoadQuickNoteSettingsAsync()
+    {
+        if (_quickNoteSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _quickNoteSettingsStore.LoadAsync();
+        QuickNoteGlobalHotkeyEnabled = settings.GlobalHotkeyEnabled;
+        QuickNoteHotkeyKeyName = settings.HotkeyKeyName;
+    }
+
+    [RelayCommand]
+    private async Task SaveQuickNoteSettingsAsync()
+    {
+        if (_quickNoteSettingsStore is null)
+        {
+            return;
+        }
+
+        await _quickNoteSettingsStore.SaveAsync(new QuickNoteSettings
+        {
+            GlobalHotkeyEnabled = QuickNoteGlobalHotkeyEnabled,
+            HotkeyKeyName = string.IsNullOrWhiteSpace(QuickNoteHotkeyKeyName) ? "F7" : QuickNoteHotkeyKeyName.Trim(),
         });
     }
 
@@ -2390,6 +2438,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // discovered per button.
     [ObservableProperty]
     private ScreenshotCoordinator? _screenshots;
+
+    // The quick-note coordinator (AC-492), wired at startup — the palette's way to the note window without the key.
+    public QuickNoteCoordinator? QuickNotes { get; set; }
 
     partial void OnScreenshotsChanged(ScreenshotCoordinator? value)
     {
@@ -2990,6 +3041,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
         ProjectQuickStart? projectQuickStart = null,
         IScreenshotSettingsStore? screenshotSettingsStore = null,
+        IQuickNoteSettingsStore? quickNoteSettingsStore = null,
         ISessionResourceResolver? sessionResourceResolver = null,
         IWorkspaceAgentCoordinator? agentCoordinator = null,
         IAgentMessageInbox? agentMessages = null,
@@ -3209,6 +3261,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _usagePillSettingsStore = usagePillSettingsStore;
         _sessionBehaviorSettingsStore = sessionBehaviorSettingsStore;
         _screenshotSettingsStore = screenshotSettingsStore;
+        _quickNoteSettingsStore = quickNoteSettingsStore;
         _layoutSettingsStore = layoutSettingsStore;
         _voiceSettingsStore = voiceSettingsStore;
         _terminalSettingsStore = terminalSettingsStore;
@@ -3262,6 +3315,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadUsagePillSettingsAsync();
         _ = LoadSessionBehaviorSettingsAsync();
         _ = LoadScreenshotSettingsAsync();
+        _ = LoadQuickNoteSettingsAsync();
         _ = LoadLayoutSettingsAsync(seedCurrentStand: true);
         _ = LoadVoiceSettingsAsync();
         _ = LoadTerminalSettingsAsync();
@@ -5564,10 +5618,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private Task StartProjectJobNowAsync(ProjectJobChoice? choice) =>
         _QuickStartProjectAsync(choice?.Project, choice?.Job);
 
-    // The dialog-free start, carrying `job` when one was picked. Its prompt is placed in the composer once the
-    // session exists, through the same seam the dialog route uses — nothing is sent, which is the promise the start
-    // screen makes out loud (criterion 3).
-    private async Task _QuickStartProjectAsync(Project? project, ProjectJob? job)
+    // AC-492's "save and start": the same dialog-free start as the sidebar's ▶, with the note in the composer.
+    internal Task StartProjectSessionWithPromptAsync(Project project, string prompt) =>
+        _QuickStartProjectAsync(project, job: null, prompt);
+
+    // The dialog-free start, carrying `job` when one was picked, or a bare `prompt` (AC-492). Whichever it is goes
+    // into the composer once the session exists, through the same seam the dialog route uses — nothing is sent,
+    // which is the promise the start screen makes out loud (criterion 3).
+    private async Task _QuickStartProjectAsync(Project? project, ProjectJob? job, string? prompt = null)
     {
         if (project is null)
         {
@@ -5581,9 +5639,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // _LaunchSessionFromResultAsync.
             var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = project.Name, ProjectJobId = job?.Id });
             var started = Sessions.FirstOrDefault(session => session.PaneId == paneId);
-            if (job is not null)
+            if ((prompt ?? job?.Prompt) is { } composerText)
             {
-                started?.InjectText(job.Prompt);
+                started?.InjectText(composerText);
             }
 
             // AC-1304: the Simple stand draws what it has picked, so without this the click would open a session
@@ -6518,6 +6576,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
         }
 
+        if (QuickNotes is { } quickNotes)
+        {
+            commands.Add(new PaletteCommand("Quick note", string.Empty, quickNotes.Open));
+        }
+
         // Debug-only (#73): a way to raise a sample consent prompt on the selected session so the AC-47 banner can
         // be tried before a real consumer wires one up. Hidden unless the debug controls are on.
         if (ShowDebugControls && _consentBroker is not null)
@@ -6545,6 +6608,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Before the voice save, which is what raises VoiceSettingsSaved — the hotkey coordinator re-arms on that
         // and reads both sections, so a screenshot key saved after it would not be armed until the next launch.
         await SaveScreenshotSettingsCommand.ExecuteAsync(null);
+        await SaveQuickNoteSettingsCommand.ExecuteAsync(null);
         await SaveLayoutSettingsCommand.ExecuteAsync(null);
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
         await SaveTerminalSettingsCommand.ExecuteAsync(null);
@@ -6815,6 +6879,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await LoadUsagePillSettingsAsync();
         await LoadSessionBehaviorSettingsAsync();
         await LoadScreenshotSettingsAsync();
+        await LoadQuickNoteSettingsAsync();
         await LoadLayoutSettingsAsync();
         await LoadVoiceSettingsAsync();
         await LoadTerminalSettingsAsync();
@@ -6881,6 +6946,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ScreenshotGlobalHotkeyEnabled = screenshot.GlobalHotkeyEnabled;
         ScreenshotHotkeyKeyName = screenshot.HotkeyKeyName;
         ScreenshotPreviewEnabled = screenshot.PreviewEnabled;
+
+        var quickNotes = new QuickNoteSettings();
+        QuickNoteGlobalHotkeyEnabled = quickNotes.GlobalHotkeyEnabled;
+        QuickNoteHotkeyKeyName = quickNotes.HotkeyKeyName;
 
         var layout = new LayoutSettings();
         GlobalSingleSessionLayout = layout.SingleSessionLayout;

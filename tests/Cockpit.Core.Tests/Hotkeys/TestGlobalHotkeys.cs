@@ -5,7 +5,9 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Abstractions.QuickNotes;
 using Cockpit.Core.Abstractions.Screenshots;
+using Cockpit.Core.QuickNotes;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Screenshots;
@@ -28,7 +30,8 @@ internal static class TestGlobalHotkeys
         IHotkeyExclusivityGuard? guard = null,
         IToastService? toasts = null,
         TimeSpan? retryInterval = null,
-        AssistantSettings? assistant = null)
+        AssistantSettings? assistant = null,
+        QuickNoteSettings? quickNotes = null)
     {
         var voiceStore = Substitute.For<IVoiceSettingsStore>();
         voiceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(voice ?? new VoiceSettings());
@@ -41,11 +44,15 @@ internal static class TestGlobalHotkeys
         var assistantStore = Substitute.For<IAssistantSettingsStore>();
         assistantStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(assistant ?? new AssistantSettings());
 
+        var quickNoteStore = Substitute.For<IQuickNoteSettingsStore>();
+        quickNoteStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(quickNotes ?? new QuickNoteSettings());
+
         return new GlobalHotkeyCoordinator(
             hotkeys,
             voiceStore,
             screenshotStore,
             assistantStore,
+            quickNoteStore,
             guard ?? AlwaysAvailable(),
             toasts ?? Substitute.For<IToastService>(),
             logger ?? NullLogger<GlobalHotkeyCoordinator>.Instance,

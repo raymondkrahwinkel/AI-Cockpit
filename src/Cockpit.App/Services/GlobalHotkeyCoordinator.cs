@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.QuickNotes;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Voice;
@@ -21,6 +22,7 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
     private readonly IVoiceSettingsStore _voiceSettingsStore;
     private readonly IScreenshotSettingsStore _screenshotSettingsStore;
     private readonly IAssistantSettingsStore _assistantSettingsStore;
+    private readonly IQuickNoteSettingsStore _quickNoteSettingsStore;
     private readonly IHotkeyExclusivityGuard _guard;
     private readonly IToastService _toasts;
     private readonly ILogger<GlobalHotkeyCoordinator> _logger;
@@ -46,6 +48,7 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         IVoiceSettingsStore voiceSettingsStore,
         IScreenshotSettingsStore screenshotSettingsStore,
         IAssistantSettingsStore assistantSettingsStore,
+        IQuickNoteSettingsStore quickNoteSettingsStore,
         IHotkeyExclusivityGuard guard,
         IToastService toasts,
         ILogger<GlobalHotkeyCoordinator> logger,
@@ -55,6 +58,7 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         _voiceSettingsStore = voiceSettingsStore;
         _screenshotSettingsStore = screenshotSettingsStore;
         _assistantSettingsStore = assistantSettingsStore;
+        _quickNoteSettingsStore = quickNoteSettingsStore;
         _guard = guard;
         _toasts = toasts;
         _logger = logger;
@@ -89,13 +93,13 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
     // for and did not get, which is the one thing this class used to be unable to say out loud (AC-332).
     private IReadOnlySet<string> _asked = new HashSet<string>();
 
-    // The line a settings screen shows about one hotkey: never switched on reports nothing, an armed key
-    // reports what Windows/Wayland actually bound (or macOS's lack of a global hotkey), and `failedMessage`
-    // covers the AC-332 case — switched on but arming failed, which used to read exactly like never enabled.
+    // The line a settings screen shows about one hotkey: nothing when never switched on, what the desktop bound
+    // when armed, `failedMessage` when asked for but not armed (AC-332). Armed without a description is Wayland
+    // still waiting (`unboundMessage`) — except on macOS, where Carbon answers at once, so it was refused (AC-492).
     public string DescribeTrigger(
-        string hotkeyId, string unboundMessage, string unsupportedMessage, string failedMessage) =>
+        string hotkeyId, string unboundMessage, string macOsRefusedMessage, string failedMessage) =>
         IsArmed(hotkeyId)
-            ? TriggerDescriptionFor(hotkeyId) ?? (OperatingSystem.IsMacOS() ? unsupportedMessage : unboundMessage)
+            ? TriggerDescriptionFor(hotkeyId) ?? (OperatingSystem.IsMacOS() ? macOsRefusedMessage : unboundMessage)
             : _asked.Contains(hotkeyId) ? failedMessage : string.Empty;
 
     // Arms exactly the keys switched on; also the re-arm path since the OS service replaces its whole
@@ -192,6 +196,13 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         if (assistant.IsEnabled)
         {
             bindings.Add(new GlobalHotkeyBinding(GlobalHotkeys.AssistantPushToTalk, "Talk to the assistant (hold)", assistant.PushToTalkKeyName));
+        }
+
+        // AC-492: like the assistant's, not gated on voice — the note is typed.
+        var quickNotes = await _quickNoteSettingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (quickNotes.GlobalHotkeyEnabled)
+        {
+            bindings.Add(new GlobalHotkeyBinding(GlobalHotkeys.QuickNote, "Quick note", quickNotes.HotkeyKeyName));
         }
 
         return bindings;

@@ -32,6 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a **Quick note** key — a desktop-wide hotkey (F7 by default, off until you switch it on under
+  Options → Shortcuts) that opens a small note window over whatever you are doing, so a thought lands in a
+  project's memory without Cockpit coming to the front and without a session starting. The window asks which
+  project, most recently opened first, and only offers projects whose memory can actually take a note (a Depot
+  project; a plain folder cannot yet). **Save** writes the note and starts nothing; **Save and start** is a
+  separate button that also opens a session on that project with the note in its composer, unsent. A save that
+  fails — Depot unreachable, or a sign-in needed — keeps your note in the window and says why. The same window is
+  reachable as **Quick note** in the command palette. On macOS every desktop-wide key (screenshot, push-to-talk,
+  quick note) is now registered too, without needing Accessibility permission — not yet verified on a Mac.
 - added: in the Simple stand, a session asking for your consent while you are looking at another conversation now
   says so, in a notification in the bottom-right corner. It names the session and the action it wants to take, and
   it offers two things: **Go there**, which makes that session the conversation you are looking at, where the

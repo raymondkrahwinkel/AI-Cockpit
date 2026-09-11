@@ -3,9 +3,8 @@ using Cockpit.Core.Abstractions.Hotkeys;
 
 namespace Cockpit.Infrastructure.Hotkeys;
 
-// Fallback for macOS, where neither the XDG GlobalShortcuts portal nor a low-level keyboard hook is
-// available. Logs and never fires, so a cockpit build there still starts; the operator just has no
-// desktop-wide keys (push-to-talk keeps its in-window key, and the screenshot its button).
+// Fallback for a platform with no hotkey service (none of Windows, Linux or macOS today). Logs and never
+// fires, so a cockpit build there still starts; the operator just has no desktop-wide keys.
 internal sealed class NoOpGlobalHotkeyService(ILogger<NoOpGlobalHotkeyService> logger) : IGlobalHotkeyService
 {
     // Explicit no-op accessors rather than field-like events: a field-like event that is never raised

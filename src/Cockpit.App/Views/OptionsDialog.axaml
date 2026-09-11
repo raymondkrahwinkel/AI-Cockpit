@@ -1104,7 +1104,7 @@
                             <controls:ShortcutCaptureControl Gesture="{Binding ScreenshotHotkeyKeyName, Mode=TwoWay}"
                                                              Mode="SingleKey" MinWidth="110"/>
                             <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="Pressed to capture. macOS has no desktop-wide key at all — the composer button is the way there."/>
+                                ToolTip.Tip="Pressed to capture. On macOS only F1–F12 can be bound; the composer button works either way."/>
                         </StackPanel>
                         <!-- Both keys are registered as one set, so two features on one key means one of them
                              stops firing. Said while it is being typed, not after saving — by then the silence
@@ -1186,7 +1186,27 @@
                                 ToolTip.Tip="Hold to speak to the assistant. Works while Cockpit is in the background."/>
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="4. KEYBOARD SHORTCUTS"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="4. QUICK NOTE"/>
+                        <!-- AC-492: a note into a project's memory without starting anything. Only the desktop-wide
+                             key is a choice, for the same reason the screenshot key is. -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <CheckBox Content="Quick-note hotkey (works without focus)"
+                                      IsChecked="{Binding QuickNoteGlobalHotkeyEnabled}"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="Opens a small note window over whatever you are doing. Save writes it into the project's memory and starts nothing; the Quick note command in the palette opens the same window without the key."/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Quick-note key"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <controls:ShortcutCaptureControl Gesture="{Binding QuickNoteHotkeyKeyName, Mode=TwoWay}"
+                                                             Mode="SingleKey" MinWidth="110"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding QuickNoteHotkeyTrigger, StringFormat='Global hotkey: {0}'}"
+                                   IsVisible="{Binding QuickNoteHotkeyTrigger, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                        <TextBlock Classes="optionsSectionHeader" Text="5. KEYBOARD SHORTCUTS"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Keyboard shortcuts" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"

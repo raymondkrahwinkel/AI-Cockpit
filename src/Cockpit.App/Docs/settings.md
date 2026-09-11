@@ -83,7 +83,13 @@ and how long "quiet" has to last before it counts.
 ## Shortcuts {#shortcuts}
 
 Every key the cockpit captures globally: the screenshot hotkey, push-to-talk for dictation, push-to-talk for
-the [assistant](help:assistant#talking), and the full list of in-app keyboard shortcuts.
+the [assistant](help:assistant#talking), the quick-note key, and the full list of in-app keyboard shortcuts.
+
+The quick-note key (F7 by default, off until you switch it on) opens a small note window over whatever you are
+doing and writes what you type into a project's memory — only projects whose memory can take a note are offered,
+most recently opened first. **Save** starts nothing; **Save and start** is the separate button that also opens a
+session on that project. A save that fails keeps your note in the window and says why. On macOS a key that the
+system refuses is reported here as refused rather than shown as bound.
 
 Global hotkeys are captured by the app whether or not it has focus, so this page exists as much to see what
 is taken as to change it — if a key stopped working in another program, this is the list to check.

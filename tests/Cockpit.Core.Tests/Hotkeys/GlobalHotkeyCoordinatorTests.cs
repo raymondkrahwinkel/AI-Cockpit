@@ -7,7 +7,9 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Abstractions.QuickNotes;
 using Cockpit.Core.Abstractions.Screenshots;
+using Cockpit.Core.QuickNotes;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Screenshots;
@@ -74,22 +76,25 @@ public class GlobalHotkeyCoordinatorTests
         Assert.Empty(service.LastBindings);
     }
 
-    [Fact]
-    public async Task EachSwitchedOnFeature_ContributesItsOwnKey()
+    /// <summary>With voice off only dictation drops out: the screenshot and quick-note keys are typed features (AC-492 criterion 5).</summary>
+    [Theory]
+    [InlineData(true, new[] { "cockpit_push_to_talk=F9", "cockpit_screenshot=F8", "cockpit_quick_note=F7" })]
+    [InlineData(false, new[] { "cockpit_screenshot=F8", "cockpit_quick_note=F7" })]
+    public async Task EachSwitchedOnFeature_ContributesItsOwnKey(bool voiceOn, string[] expectedBindings)
     {
         var service = new FakeGlobalHotkeyService();
         var coordinator = TestGlobalHotkeys.Coordinator(
             service,
-            new VoiceSettings { IsEnabled = true, GlobalPushToTalk = true, PushToTalkKeyName = "F9" },
-            new ScreenshotSettings { GlobalHotkeyEnabled = true, HotkeyKeyName = "F8" });
+            new VoiceSettings { IsEnabled = voiceOn, GlobalPushToTalk = true, PushToTalkKeyName = "F9" },
+            new ScreenshotSettings { GlobalHotkeyEnabled = true, HotkeyKeyName = "F8" },
+            quickNotes: new QuickNoteSettings { GlobalHotkeyEnabled = true, HotkeyKeyName = "F7" });
 
         await coordinator.ApplyAsync();
 
-        Assert.Collection(service.LastBindings,
-            binding => Assert.Equivalent(new GlobalHotkeyBinding(GlobalHotkeys.PushToTalk, "Push to talk (hold)", "F9"), binding),
-            binding => Assert.Equivalent(new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8"), binding));
-        Assert.True(coordinator.IsArmed(GlobalHotkeys.PushToTalk));
+        Assert.Equal(expectedBindings, service.LastBindings.Select(binding => $"{binding.Id}={binding.KeyName}"));
+        Assert.Equal(voiceOn, coordinator.IsArmed(GlobalHotkeys.PushToTalk));
         Assert.True(coordinator.IsArmed(GlobalHotkeys.Screenshot));
+        Assert.True(coordinator.IsArmed(GlobalHotkeys.QuickNote));
 
         // And in one registration, which is the whole reason a second key could not simply arm itself:
         // IGlobalHotkeyService.StartAsync registers a set, so two features each arming their own would leave only
@@ -138,6 +143,7 @@ public class GlobalHotkeyCoordinatorTests
             voiceStore,
             screenshotStore,
             _AssistantOff(),
+            _QuickNotesOff(),
             TestGlobalHotkeys.AlwaysAvailable(),
             Substitute.For<IToastService>(),
             logger);
@@ -167,6 +173,7 @@ public class GlobalHotkeyCoordinatorTests
             voiceStore,
             screenshotStore,
             _AssistantOff(),
+            _QuickNotesOff(),
             TestGlobalHotkeys.AlwaysAvailable(),
             Substitute.For<IToastService>(),
             new CapturingLogger<GlobalHotkeyCoordinator>());
@@ -314,6 +321,7 @@ public class GlobalHotkeyCoordinatorTests
             voiceStore,
             screenshotStore,
             _AssistantOff(),
+            _QuickNotesOff(),
             guard,
             Substitute.For<IToastService>(),
             NullLogger<GlobalHotkeyCoordinator>.Instance);
@@ -355,6 +363,13 @@ public class GlobalHotkeyCoordinatorTests
     {
         var store = Substitute.For<IAssistantSettingsStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantSettings());
+        return store;
+    }
+
+    private static IQuickNoteSettingsStore _QuickNotesOff()
+    {
+        var store = Substitute.For<IQuickNoteSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new QuickNoteSettings());
         return store;
     }
 
