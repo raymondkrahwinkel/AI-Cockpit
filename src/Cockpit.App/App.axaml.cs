@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -49,12 +50,28 @@ public partial class App : Application
     // through instead of hiding to tray (#33). Distinguishes a genuine quit from a close-to-tray.
     public bool IsQuitting { get; private set; }
 
+    // The macOS application menu's own two entries (AC-1299), following DataTray (SE-278). Their Click handlers
+    // are wired in _StartCockpit once the view model exists; the headers need nothing, so they are set here.
+    private readonly NativeMenuItem _appMenuAboutItem = new($"About {CockpitProduct.DisplayName}");
+    private readonly NativeMenuItem _appMenuSettingsItem =
+        new("Settings…") { Gesture = new KeyGesture(Key.OemComma, KeyModifiers.Meta) };
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
 
         // macOS builds its Apple-menu/About/Hide/Quit labels from Application.Name, not the bundle's Info.plist.
         Name = CockpitProduct.DisplayName;
+
+        // Must be attached here, not in OnFrameworkInitializationCompleted: Avalonia.Native's app-menu exporter is
+        // constructed between the two (AppBuilder.SetupUnsafe → AfterSetup) and, finding no menu on the Application,
+        // commits to its own "About Avalonia" for good. Services/Hide/Quit are appended by the platform.
+        NativeMenu.SetMenu(this, new NativeMenu
+        {
+            _appMenuAboutItem,
+            new NativeMenuItemSeparator(),
+            _appMenuSettingsItem,
+        });
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -286,6 +303,10 @@ public partial class App : Application
         // auto-show a MainWindow that replaces the startup unlock window.
         _mainWindow.Show();
         _SetUpTrayIcon();
+
+        // Same routes as the sidebar's Options and About (AC-1299); no-op off macOS, where nothing exports this menu.
+        _appMenuAboutItem.Click += (_, _) => cockpitViewModel.AboutCommand.Execute(null);
+        _appMenuSettingsItem.Click += (_, _) => cockpitViewModel.OptionsCommand.Execute(null);
 
         // AC-237: resolved here, ahead of plugin phase 2 below, so its subscription to the tool registry's
         // Changed event is already listening by the time a plugin registers a companion tool.
