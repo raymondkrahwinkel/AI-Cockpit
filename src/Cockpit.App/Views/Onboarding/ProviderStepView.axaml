@@ -11,6 +11,25 @@
     <Design.DataContext>
         <vm:ProviderStepViewModel/>
     </Design.DataContext>
+    <UserControl.Resources>
+        <DataTemplate x:Key="ProviderRow" x:DataType="vm:ProviderPickerRowViewModel">
+            <Border Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,8">
+                <StackPanel Spacing="3">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <CheckBox IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanSelect}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding Row.Name}" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center"/>
+                        <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1" IsVisible="{Binding ShowDetectionPill}" BorderThickness="1" VerticalAlignment="Center" BorderBrush="{Binding DetectionBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}">
+                            <TextBlock Text="{Binding DetectionLabel}" FontSize="10" FontWeight="SemiBold" Foreground="{Binding DetectionBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                        </Border>
+                        <TextBlock Text="Not compatible with this build" FontSize="10.5" FontWeight="SemiBold" IsVisible="{Binding Row.IsIncompatible}" ToolTip.Tip="{Binding Row.IncompatibilityReason}" Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+                        <TextBlock Text="{Binding Row.StatusText}" FontSize="10.5" IsVisible="{Binding Row.IsInstalled}" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Row.Description}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="28,0,0,0"/>
+                    <TextBlock Text="{Binding OutcomeText}" IsVisible="{Binding HasOutcome}" TextWrapping="Wrap" FontSize="11" Margin="28,0,0,0" Foreground="{Binding OutcomeBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
 
     <!-- AC-510[b]: what the operator already has, observed where possible (criterion 1); the four ways an install
          can land (criterion 2); offline as a first-class, non-error state with the local providers still working
@@ -78,7 +97,9 @@
                         <Binding Path="HasProviders"/>
                     </MultiBinding>
                 </ScrollViewer.IsVisible>
-                <ItemsControl ItemsSource="{Binding Providers}">
+                <StackPanel Spacing="8">
+                <TextBlock Text="Found on this machine" FontWeight="SemiBold" FontSize="12" IsVisible="{Binding HasFoundProviders}"/>
+                <ItemsControl ItemsSource="{Binding FoundProviders}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Spacing="6"/>
@@ -127,6 +148,15 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <TextBlock Text="Available to add" FontWeight="SemiBold" FontSize="12" IsVisible="{Binding HasOtherProviders}"/>
+                <ItemsControl ItemsSource="{Binding OtherProviders}" ItemTemplate="{StaticResource ProviderRow}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="6"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+                </StackPanel>
             </ScrollViewer>
         </Panel>
 

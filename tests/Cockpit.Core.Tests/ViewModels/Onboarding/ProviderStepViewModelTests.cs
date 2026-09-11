@@ -163,6 +163,43 @@ public class ProviderStepViewModelTests : IDisposable
         Assert.Equal(ProviderDetectionState.NotApplicable, vm.Providers[0].Detection);
     }
 
+    [Fact]
+    public async Task LoadAsync_FoundProvidersComeFirst_PreservingCatalogueOrderWithinGroups()
+    {
+        var storeDir = Path.Combine(_tempDir, "mixed-store");
+        Directory.CreateDirectory(storeDir);
+        File.WriteAllText(Path.Combine(storeDir, "index.json"), """
+        {
+          "name": "AI-Cockpit Plugins",
+          "plugins": [
+            { "id": "gemini-provider", "name": "Gemini", "latestVersion": "1.0.0", "category": "AI providers", "versions": [] },
+            { "id": "cli-agent-provider", "name": "Codex", "latestVersion": "1.0.0", "category": "AI providers", "versions": [] },
+            { "id": "claude-provider", "name": "Claude", "latestVersion": "1.0.0", "category": "AI providers", "versions": [] },
+            { "id": "kimi-provider", "name": "Kimi", "latestVersion": "1.0.0", "category": "AI providers", "versions": [] }
+          ]
+        }
+        """);
+        File.WriteAllText(Path.Combine(_tempDir, "claude.cmd"), string.Empty);
+        var originalPath = Environment.GetEnvironmentVariable("PATH");
+        Environment.SetEnvironmentVariable("PATH", _tempDir);
+
+        try
+        {
+            var store = PluginStoreConfig.Local(storeDir);
+            var configStore = Substitute.For<IPluginStoreConfigStore>();
+            configStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([store]);
+            var vm = new ProviderStepViewModel(configStore, new PluginStoreClient(), Substitute.For<IPluginProvisioningService>(), _EmptyBootstrap());
+
+            await vm.LoadAsync();
+
+            Assert.Equal(["claude-provider", "gemini-provider", "cli-agent-provider", "kimi-provider"], vm.Providers.Select(row => row.Row.Id));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", originalPath);
+        }
+    }
+
     // --- Criterion 2, "half succeeded": one plugin failing in the batch is isolated, and the summary names it
     // rather than reading as one opaque failure. --------------------------------------------------------------------
 

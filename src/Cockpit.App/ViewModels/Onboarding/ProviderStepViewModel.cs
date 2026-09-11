@@ -22,6 +22,12 @@ public sealed partial class ProviderStepViewModel : ObservableObject
 
     public ObservableCollection<ProviderPickerRowViewModel> Providers { get; } = [];
 
+    public IEnumerable<ProviderPickerRowViewModel> FoundProviders =>
+        Providers.Where(row => row.Detection == ProviderDetectionState.Found);
+
+    public IEnumerable<ProviderPickerRowViewModel> OtherProviders =>
+        Providers.Where(row => row.Detection != ProviderDetectionState.Found);
+
     // Always shown, not only while offline: a fair alternative on any network (AC-510[b]).
     public string LocalProvidersText { get; } = string.Join(" and ",
         SessionProviderCatalog.Providers
@@ -46,6 +52,10 @@ public sealed partial class ProviderStepViewModel : ObservableObject
     private string _summaryMessage = string.Empty;
 
     public bool HasProviders => Providers.Count > 0;
+
+    public bool HasFoundProviders => FoundProviders.Any();
+
+    public bool HasOtherProviders => OtherProviders.Any();
 
     public bool CanInstallSelected => !IsInstalling && !IsLoading && Providers.Any(row => row.IsSelected);
 
@@ -81,6 +91,10 @@ public sealed partial class ProviderStepViewModel : ObservableObject
         Providers.CollectionChanged += (_, e) =>
         {
             OnPropertyChanged(nameof(HasProviders));
+            OnPropertyChanged(nameof(FoundProviders));
+            OnPropertyChanged(nameof(OtherProviders));
+            OnPropertyChanged(nameof(HasFoundProviders));
+            OnPropertyChanged(nameof(HasOtherProviders));
             InstallSelectedCommand.NotifyCanExecuteChanged();
 
             // Each row's own checkbox can flip CanInstallSelected (nothing checked → something checked), so the
@@ -166,7 +180,15 @@ public sealed partial class ProviderStepViewModel : ObservableObject
                     ? (HostExecutableProbe.Resolve(command) is not null ? ProviderDetectionState.Found : ProviderDetectionState.NotFound)
                     : ProviderDetectionState.NotApplicable;
 
-                Providers.Add(new ProviderPickerRowViewModel(row, detection));
+                var provider = new ProviderPickerRowViewModel(row, detection);
+                if (detection == ProviderDetectionState.Found)
+                {
+                    Providers.Insert(Providers.TakeWhile(candidate => candidate.Detection == ProviderDetectionState.Found).Count(), provider);
+                }
+                else
+                {
+                    Providers.Add(provider);
+                }
             }
         }
 
