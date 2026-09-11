@@ -22,8 +22,11 @@ internal static class AuditTrailFiles
     // The assistant spawn trail (AC-545): every session the assistant asked the host to start or stop.
     public const string AssistantSpawn = "assistant-spawn-audit.jsonl";
 
+    // The job-run trail (AC-490): which project jobs were started, and what their agents said they did.
+    public const string JobHistory = "job-history.jsonl";
+
     // Every trail's file name. The order carries no meaning.
-    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, AgentNotify, AssistantSpawn];
+    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, AgentNotify, AssistantSpawn, JobHistory];
 
     // Where `fileName` lives for this install: next to `cockpit.json`, under the state root
     // a development build keeps to itself.

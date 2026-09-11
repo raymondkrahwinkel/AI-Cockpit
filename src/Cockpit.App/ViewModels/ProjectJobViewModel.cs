@@ -9,8 +9,13 @@ namespace Cockpit.App.ViewModels;
 public partial class ProjectJobViewModel(
     string prompt = "",
     string blastRadius = "",
-    JobRecurrence? recurrence = null) : ViewModelBase
+    JobRecurrence? recurrence = null,
+    string? id = null) : ViewModelBase
 {
+    // AC-490: the id the row came in with, so an edited job stays the job its runs were recorded against. A row
+    // the editor added has none yet and is minted a fresh one on save.
+    private readonly string _id = id ?? ProjectJob.NewId();
+
     [ObservableProperty]
     private string _prompt = prompt;
 
@@ -47,5 +52,8 @@ public partial class ProjectJobViewModel(
     public ProjectJob ToDomain() => new(
         Prompt.Trim(),
         BlastRadius.Trim(),
-        Repeats ? new JobRecurrence(RecurrenceWeek, RecurrenceDay) : null);
+        Repeats ? new JobRecurrence(RecurrenceWeek, RecurrenceDay) : null)
+    {
+        Id = _id,
+    };
 }

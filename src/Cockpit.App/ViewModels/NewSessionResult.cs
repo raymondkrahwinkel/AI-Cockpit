@@ -33,6 +33,10 @@ public sealed record NewSessionResult(
     // assistant's relation even when it lives beside one the assistant started.
     public bool StartedByTheAssistant { get; init; }
 
+    // AC-490: the project job this session was started from, or null for every other start. What makes the session a
+    // run of that job — recorded against it once it exists — and what gets the agent asked to report on the work.
+    public string? ProjectJobId { get; init; }
+
     // Whether the session this starts carries a name somebody meant, and so one a ticket linked to it later must
     // leave alone (#AC-310). The whole rule, in one expression: a name is chosen when there is one and nobody
     // composed it. Everything downstream applies this rather than working it out again (#AC-324).
@@ -54,9 +58,12 @@ public sealed record NewSessionResult(
 
         // The profile's own words first, the standing instruction after — the same order, and the same blank-line
         // join, that _AppendedInstructions already uses for the delegation nudge.
-        merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.IsNullOrWhiteSpace(SystemPrompt)
+        var standing = ProjectJobId is null
             ? AgentStatusSystemPrompt.Default
-            : SystemPrompt.Trim() + "\n\n" + AgentStatusSystemPrompt.Default;
+            : AgentStatusSystemPrompt.Default + "\n\n" + AgentStatusSystemPrompt.JobRun;
+        merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.IsNullOrWhiteSpace(SystemPrompt)
+            ? standing
+            : SystemPrompt.Trim() + "\n\n" + standing;
         return merged;
     }
 }

@@ -31,12 +31,29 @@ internal sealed class ProjectStore : IProjectStore, ISingletonService
             return ProjectSettings.Empty;
         }
 
-        return new ProjectSettings
+        var settings = new ProjectSettings
         {
             Projects = [.. configFile.Projects.Select(entry => entry.ToDomain())],
             HiddenSharedProjectIds = [.. configFile.HiddenSharedProjectIds],
             CategoryOrder = [.. configFile.CategoryOrder],
         }.Normalized();
+
+        // AC-490: a job written before ids existed was just given one in memory; put it on disk before anything can
+        // record a run against it, since a run pointing at an id the next load would re-mint belongs to nothing.
+        if (configFile.Projects.Any(project => project.Jobs?.Any(job => !job.HasId) == true))
+        {
+            try
+            {
+                await SaveAsync(settings, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // An unwritable config still loads; the run recorder only writes after a save of its own succeeded
+                // (`CockpitViewModel._RecordJobStartedAfterAsync`), so the orphan still cannot happen.
+            }
+        }
+
+        return settings;
     }
 
     public Task SaveAsync(ProjectSettings settings, CancellationToken cancellationToken = default) =>

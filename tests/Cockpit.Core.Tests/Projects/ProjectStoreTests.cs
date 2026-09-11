@@ -309,6 +309,38 @@ public class ProjectStoreTests : IDisposable
             Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs).Recurrence);
     }
 
+    /// <summary>
+    /// AC-490 criterion 1: a job is the same job after its prompt is rewritten, and a job written before ids existed
+    /// has its id on disk from the very load that minted it — so nothing can record a run against an id the next
+    /// load would replace. A prompt hash, or an id minted on load and left in memory, fails this.
+    /// </summary>
+    [Fact]
+    public async Task AJobWrittenWithoutAnId_GetsOneOnLoadThatIsOnDiskAtOnce_AndKeepsItThroughARewrite()
+    {
+        // A config as AC-491 wrote it: a job with a prompt and a blast radius, and no id anywhere.
+        await File.WriteAllTextAsync(_configFilePath, """
+            { "Projects": [ { "Id": "p1", "Name": "Invoices", "Jobs": [
+                { "Prompt": "Process this month's invoices", "BlastRadius": "changes nothing · reports only" } ] } ] }
+            """);
+        var store = new ProjectStore(_configFilePath);
+
+        var loaded = Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs);
+
+        // The id the load minted is already in the file — not waiting for a later save that might never come.
+        Assert.False(string.IsNullOrWhiteSpace(loaded.Id));
+        Assert.Contains(loaded.Id, await File.ReadAllTextAsync(_configFilePath), StringComparison.Ordinal);
+        Assert.Equal(loaded.Id, Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs).Id);
+
+        // Rewording the prompt is an edit to the job, not a new job: its runs stay its runs.
+        var project = Assert.Single((await store.LoadAsync()).Projects);
+        await store.SaveAsync(ProjectSettings.Empty.WithProject(
+            project with { Jobs = [loaded with { Prompt = "Process the invoices and flag anything odd" }] }));
+
+        var rewritten = Assert.Single(Assert.Single((await store.LoadAsync()).Projects).Jobs);
+        Assert.Equal("Process the invoices and flag anything odd", rewritten.Prompt);
+        Assert.Equal(loaded.Id, rewritten.Id);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDir))

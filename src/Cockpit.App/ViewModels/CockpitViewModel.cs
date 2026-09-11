@@ -121,6 +121,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Composes what a session started from a project opens with (AC-164).
     private readonly ProjectQuickStart? _projectQuickStart;
+
+    // AC-490: the job-run trail a session started from a project job is written to.
+    private readonly IProjectJobHistory? _projectJobHistory;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
     private readonly IAttentionNotifier? _attentionNotifier;
@@ -3034,7 +3037,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         INodeSessionsClient? nodeSessionsClient = null,
         // AC-927: where the launch routes say which MCP servers a session really got, so its header can name
         // those. Absent in the design-time/unit-test graph, where the header keeps showing the selection alone.
-        SessionMcpMounts? sessionMcpMounts = null)
+        SessionMcpMounts? sessionMcpMounts = null,
+        // AC-490: where a session started from a project job is recorded as a run of it. Absent in the design-time
+        // and unit-test graph, where starting a job records nothing.
+        IProjectJobHistory? projectJobHistory = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
         // the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -3130,6 +3136,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Worktrees = worktrees ?? new WorktreesViewModel();
         Projects = projects ?? new ProjectsViewModel();
         _projectQuickStart = projectQuickStart;
+        _projectJobHistory = projectJobHistory;
 
         // Before the first load below, so every card it builds carries them (AC-772) — these are what let one
         // ProjectCardView serve both the Projects workspace and the Manage-projects window.
@@ -5548,19 +5555,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // sidebar's ▶ and the launcher's Start. What it opens with is `ProjectQuickStart`'s to answer; this
     // only launches it, through the same path the dialog's result takes.
     [RelayCommand]
-    private Task StartProjectSessionAsync(Project? project) => _QuickStartProjectAsync(project, prompt: null);
+    private Task StartProjectSessionAsync(Project? project) => _QuickStartProjectAsync(project, job: null);
 
     // AC-1304 criterion 2(a) and 3(a): a job started straight away, the way Start above already is — the start
     // screen's own answer for a job. `StartProjectJobAsync` keeps the dialog it has offered since AC-491; which of
     // the two a surface wants is the surface's to say (`ProjectCardView.JobCommand`), not this command's to guess.
     [RelayCommand]
     private Task StartProjectJobNowAsync(ProjectJobChoice? choice) =>
-        _QuickStartProjectAsync(choice?.Project, choice?.Job.Prompt);
+        _QuickStartProjectAsync(choice?.Project, choice?.Job);
 
-    // The dialog-free start, carrying `prompt` when a job was picked. The prompt is placed in the composer once the
+    // The dialog-free start, carrying `job` when one was picked. Its prompt is placed in the composer once the
     // session exists, through the same seam the dialog route uses — nothing is sent, which is the promise the start
     // screen makes out loud (criterion 3).
-    private async Task _QuickStartProjectAsync(Project? project, string? prompt)
+    private async Task _QuickStartProjectAsync(Project? project, ProjectJob? job)
     {
         if (project is null)
         {
@@ -5572,11 +5579,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // Only the name changes; that it is composed came with the result, and stays with it (#AC-324) — and being
             // composed is also what gets it numbered against the sessions already open, in
             // _LaunchSessionFromResultAsync.
-            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = project.Name });
+            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = project.Name, ProjectJobId = job?.Id });
             var started = Sessions.FirstOrDefault(session => session.PaneId == paneId);
-            if (prompt is not null)
+            if (job is not null)
             {
-                started?.InjectText(prompt);
+                started?.InjectText(job.Prompt);
             }
 
             // AC-1304: the Simple stand draws what it has picked, so without this the click would open a session
@@ -5593,36 +5600,36 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The project names no profile that still exists, so there is nothing to start it on. Ask rather than fail
         // quietly: the dialog opens on the project, leaving the operator only the choice the project cannot make.
         // Criterion 4 rests on exactly this: `ComposeAsync` says whether it can start, and nothing here re-asks.
-        await _NewSessionForProjectAsync(project, prompt);
+        await _NewSessionForProjectAsync(project, job);
     }
 
     // Opens the New-session dialog on `project` (AC-164) — the "New session…" next to the quick
     // start, for when the operator wants to change something the project would otherwise decide.
     [RelayCommand]
-    private Task NewSessionForProjectAsync(Project? project) => _NewSessionForProjectAsync(project, prompt: null);
+    private Task NewSessionForProjectAsync(Project? project) => _NewSessionForProjectAsync(project, job: null);
 
     // Starts one of the project's own jobs (AC-491) — the same dialog, seeded with the job's prompt.
     [RelayCommand]
     private Task StartProjectJobAsync(ProjectJobChoice? choice) =>
-        _NewSessionForProjectAsync(choice?.Project, choice?.Job.Prompt);
+        _NewSessionForProjectAsync(choice?.Project, choice?.Job);
 
-    // The dialog on `project`, carrying `prompt` when a job was picked. The prompt is placed in the composer once
+    // The dialog on `project`, carrying `job` when one was picked. Its prompt is placed in the composer once
     // the session exists, through the seam a plugin's prefill already uses — the operator reads it there and still
-    // decides when, or whether, to send it. Without a prompt this is the plain route, unchanged.
-    private async Task _NewSessionForProjectAsync(Project? project, string? prompt)
+    // decides when, or whether, to send it. Without a job this is the plain route, unchanged.
+    private async Task _NewSessionForProjectAsync(Project? project, ProjectJob? job)
     {
         if (project is null || _dialogService is null)
         {
             return;
         }
 
-        var prefill = string.IsNullOrWhiteSpace(prompt) ? null : new NewSessionPrefill(InitialPrompt: prompt);
+        var prefill = string.IsNullOrWhiteSpace(job?.Prompt) ? null : new NewSessionPrefill(InitialPrompt: job.Prompt);
         if (await _dialogService.ShowNewSessionDialogAsync(prefill, project: project) is not { } result)
         {
             return;
         }
 
-        var paneId = await _LaunchSessionFromResultAsync(result);
+        var paneId = await _LaunchSessionFromResultAsync(result with { ProjectJobId = job?.Id });
         if (paneId is not null && prefill?.InitialPrompt is { } initialPrompt)
         {
             Sessions.FirstOrDefault(session => session.PaneId == paneId)?.InjectText(initialPrompt);
@@ -5836,10 +5843,40 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (result.ProjectId is { Length: > 0 } projectId
             && Projects.Projects.FirstOrDefault(project => project.Id == projectId) is { } opened)
         {
-            _ = Projects.MarkOpenedAsync(opened, DateTimeOffset.Now);
+            var marked = Projects.MarkOpenedAsync(opened, DateTimeOffset.Now);
+            _ = result.ProjectJobId is { } jobId
+                ? _RecordJobStartedAfterAsync(marked, paneId, projectId, jobId)
+                : marked;
         }
 
         return paneId;
+    }
+
+    // AC-490: writes the run's `Started` line only once `saved` — the project save above, which carries the job's id —
+    // has succeeded. A run recorded against an id that never reached disk would point at nothing after the next
+    // load, so a failed or skipped save means no line rather than an orphan.
+    private async Task _RecordJobStartedAfterAsync(Task<bool> saved, string paneId, string projectId, string jobId)
+    {
+        if (_projectJobHistory is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!await saved)
+            {
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Not recording the job run for pane {PaneId}: the project could not be saved.", paneId);
+            return;
+        }
+
+        await _projectJobHistory.RecordAsync(new ProjectJobRunEvent(paneId, projectId, jobId, DateTimeOffset.Now, ProjectJobRunEventKind.Started));
+        await Projects.RefreshJobRunsAsync();
     }
 
     // When asked and the folder is a git repository, a worktree is created for this session on its own branch — keyed

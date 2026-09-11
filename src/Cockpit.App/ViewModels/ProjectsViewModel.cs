@@ -16,6 +16,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 {
     private readonly IProjectStore _store;
 
+    // AC-490: the job-run trail the cards read "started 9 September" from, and what was read from it last. Null
+    // in a graph without one, where every job's line stays the calendar's alone.
+    private readonly IProjectJobHistory? _jobHistory;
+    private IReadOnlyList<ProjectJobRun> _jobRuns = [];
+
     // Takes the cockpit's own copy of a picked or downloaded logo. Null under the previewer, where a project keeps whatever path it was given.
     private readonly IProjectLogoStore? _logos;
 
@@ -69,7 +74,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         IProjectLogoStore? logos = null,
         IProjectOwnershipRegistry? ownership = null,
         ISharedProjectSourceRegistry? sharedSources = null,
-        IProjectsDisplaySettingsStore? displaySettings = null)
+        IProjectsDisplaySettingsStore? displaySettings = null,
+        IProjectJobHistory? jobHistory = null)
     {
         _store = store;
         _dialogs = dialogs;
@@ -77,6 +83,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _ownership = ownership;
         _sharedSources = sharedSources;
         _displaySettings = displaySettings;
+        _jobHistory = jobHistory;
 
         // AC-762: a source that registers after the startup race already lost it (App.axaml.cs's plugin phase 2
         // runs after CockpitViewModel's constructor kicks off the first LoadAsync) gets its own retry instead of
@@ -168,15 +175,16 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     // Records that a session just started on `project`, so the overview can lead with what is
     // actually worked on. Persists like every other change here; a project removed in the meantime is left alone
-    // rather than written back.
-    public async Task MarkOpenedAsync(Project project, DateTimeOffset openedAt)
+    // rather than written back. True when the project was saved — AC-490 records a job run only after that.
+    public async Task<bool> MarkOpenedAsync(Project project, DateTimeOffset openedAt)
     {
         if (_settings.Projects.FirstOrDefault(candidate => candidate.Id == project.Id) is not { } stored)
         {
-            return;
+            return false;
         }
 
         await _PersistAsync(_settings.WithUpdated(stored with { LastOpenedAt = openedAt }));
+        return true;
     }
 
     // AC-1059: `update_project` without the dialog — same direct-patch shape `MarkOpenedAsync` uses above,
@@ -299,7 +307,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         _settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(true);
-        _Republish();
+        await RefreshJobRunsAsync(cancellationToken).ConfigureAwait(true);
 
         if (_displaySettings is not null)
         {
@@ -799,10 +807,22 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     }
 
     private ProjectCardViewModel _ToCard(Project project) =>
-        new(project, _OriginBadge(project), CardActions, _remoteChangedProjectIds.Contains(project.Id))
+        new(project, _OriginBadge(project), CardActions, _remoteChangedProjectIds.Contains(project.Id), jobRuns: _jobRuns)
         {
             IsSelected = project.Id == SelectedProject?.Id,
         };
+
+    // AC-490: re-reads the job-run trail and rebuilds the cards on it. Called after a run's `Started` line is written,
+    // since the project save that precedes it has already republished without that line.
+    public async Task RefreshJobRunsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_jobHistory is not null)
+        {
+            _jobRuns = await _jobHistory.ReadRecentRunsAsync(cancellationToken: cancellationToken).ConfigureAwait(true);
+        }
+
+        _Republish();
+    }
 
     // AC-894: every local project genuinely bound to a Depot source right now, and the id `DepotSyncWatcher` should
     // ask that source about — the same "genuinely bound" test `_ResolveSharedSource` already applies for the editor,

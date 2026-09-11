@@ -115,7 +115,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
         foreach (var job in project.Jobs)
         {
-            Jobs.Add(new ProjectJobViewModel(job.Prompt, job.BlastRadius, job.Recurrence));
+            Jobs.Add(new ProjectJobViewModel(job.Prompt, job.BlastRadius, job.Recurrence, job.Id));
         }
     }
 

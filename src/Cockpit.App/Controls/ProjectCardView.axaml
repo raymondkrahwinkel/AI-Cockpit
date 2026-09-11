@@ -130,10 +130,15 @@
                                 <TextBlock Text="{Binding Job.BlastRadius}" FontSize="11" TextWrapping="Wrap"
                                            Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                 <!-- AC-493: the rule and the date it last came round, which for a job missed while
-                                     the cockpit was closed is a date in the past. Absent for a job that does not
-                                     come round, so such a job reads exactly as it did. -->
+                                     the cockpit was closed is a date in the past. AC-490 adds when the job was last
+                                     started. Absent for a job with neither, so such a job reads exactly as it did. -->
                                 <TextBlock Text="{Binding RecurrenceLine}" FontSize="11" TextWrapping="Wrap"
                                            IsVisible="{Binding RecurrenceLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                <!-- AC-490: the agent's own account of the last run, labelled as such — a claim the
+                                     card passes on, not a fact it measured. -->
+                                <TextBlock Text="{Binding AgentSummaryLine}" FontSize="11" TextWrapping="Wrap"
+                                           IsVisible="{Binding AgentSummaryLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                             </StackPanel>
                         </Button>

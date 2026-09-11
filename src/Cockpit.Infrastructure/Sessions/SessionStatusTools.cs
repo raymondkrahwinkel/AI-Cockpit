@@ -4,6 +4,7 @@ using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
+using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Formatting;
 using Cockpit.Infrastructure.Mcp;
@@ -19,7 +20,9 @@ internal sealed class SessionStatusTools(
     RunTracker tracker,
     IWorkspaceAgentGateway workspaces,
     IWorkspaceAgentCoordinator coordinator,
-    IAgentMessageInbox inbox)
+    IAgentMessageInbox inbox,
+    // AC-490: null only in a test graph that never asks about job runs.
+    IProjectJobHistory? jobHistory = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -63,6 +66,41 @@ internal sealed class SessionStatusTools(
         // The same verified pane, so a name cannot be pushed onto a session an agent merely names either.
         var renamed = await labels.SuggestNameAsync(caller, name);
         return JsonSerializer.Serialize(new { ok = true, status = status ?? string.Empty, renamed }, SerializerOptions);
+    }
+
+    [McpServerTool(Name = "report_job_progress", ReadOnly = false, Destructive = false)]
+    [Description("Reports, in the operator's own working terms, what this session has done so far with the project job it was started for — '14 of 22 invoices read, 3 need a human', not what the process did. Call it as the work moves and once more before you stop; each call replaces the last, and the newest is what the project shows next to the job, labelled as your account of the work. Only a session started from a project job has a job to report on: for any other session this is refused rather than recorded nowhere.")]
+    public async Task<string> ReportJobProgressAsync(
+        [Description("What has been done with the work, in the operator's terms. Kept to a paragraph; longer text is cut.")] string summary,
+        [Description("Optional. Your session id — the value of the COCKPIT_PANE_ID environment variable in this session. Only needed as a fallback when automatic session identification is unavailable.")] string? session = null)
+    {
+        var caller = McpRequestContext.CurrentPaneId ?? session;
+        if (string.IsNullOrEmpty(caller))
+        {
+            return _Error("Could not identify your session and no `session` was given — pass the COCKPIT_PANE_ID environment variable as `session`.");
+        }
+
+        if (string.IsNullOrWhiteSpace(summary))
+        {
+            return _Error("`summary` is required.");
+        }
+
+        if (jobHistory is null)
+        {
+            return _Error("This cockpit keeps no job history, so there is nothing to report to.");
+        }
+
+        // The run is looked up rather than trusted: a session that was not started from a job has nothing this
+        // report belongs to, and saying so beats a line no card will ever show.
+        var runs = await jobHistory.ReadRecentRunsAsync().ConfigureAwait(false);
+        if (runs.FirstOrDefault(run => string.Equals(run.PaneId, caller, StringComparison.Ordinal)) is not { } run)
+        {
+            return _Error("This session was not started from a project job, so there is no job to report progress on.");
+        }
+
+        await jobHistory.RecordAsync(new ProjectJobRunEvent(
+            caller, run.ProjectId, run.JobId, DateTimeOffset.Now, ProjectJobRunEventKind.Progress, summary.Trim())).ConfigureAwait(false);
+        return JsonSerializer.Serialize(new { ok = true, jobId = run.JobId }, SerializerOptions);
     }
 
     [McpServerTool(Name = "start_run", ReadOnly = false, Destructive = false)]

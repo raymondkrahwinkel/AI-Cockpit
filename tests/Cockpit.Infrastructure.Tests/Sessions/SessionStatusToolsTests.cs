@@ -2,8 +2,11 @@ using System.Text.Json;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
+using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
@@ -53,14 +56,59 @@ public class SessionStatusToolsTests
         RunTracker? tracker = null,
         IWorkspaceAgentGateway? workspaces = null,
         IWorkspaceAgentCoordinator? coordinator = null,
-        IAgentMessageInbox? inbox = null) =>
+        IAgentMessageInbox? inbox = null,
+        IProjectJobHistory? jobHistory = null) =>
         new(
             labels ?? _Labels(),
             runner ?? Substitute.For<ITrackedCommandRunner>(),
             tracker ?? new RunTracker(),
             workspaces ?? Substitute.For<IWorkspaceAgentGateway>(),
             coordinator ?? Substitute.For<IWorkspaceAgentCoordinator>(),
-            inbox ?? Substitute.For<IAgentMessageInbox>());
+            inbox ?? Substitute.For<IAgentMessageInbox>(),
+            jobHistory);
+
+    /// <summary>
+    /// AC-490 criterion 3: the summary is the agent's claim, kept against the caller's own run and nowhere else. A
+    /// session that was not started from a job is refused rather than written to a run it does not have — and the
+    /// verified pane decides which run that is, never the id the agent names (the AC-128 rule set_status holds).
+    /// </summary>
+    [Fact]
+    public async Task ReportJobProgress_RecordsTheAgentsClaimAgainstTheCallersRun_AndRefusesASessionWithoutOne()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"), "job-history.jsonl");
+        var history = new ProjectJobHistoryLog(path, NullLogger<ProjectJobHistoryLog>.Instance);
+        await history.RecordAsync(new ProjectJobRunEvent("job-pane", "p1", "j1", DateTimeOffset.Now.AddMinutes(-5), ProjectJobRunEventKind.Started));
+        var tools = _Tools(jobHistory: history);
+
+        try
+        {
+            // The agent names another pane's id; the report still lands on the verified caller's run.
+            McpRequestContext.Set("job-pane");
+            var accepted = JsonDocument.Parse(await tools.ReportJobProgressAsync("14 of 22 invoices read, 3 need a human", "other-pane")).RootElement;
+            Assert.True(accepted.GetProperty("ok").GetBoolean());
+
+            var run = Assert.Single(await history.ReadRecentRunsAsync());
+            Assert.Equal("job-pane", run.PaneId);
+            Assert.Equal("14 of 22 invoices read, 3 need a human", run.AgentSummary);
+            Assert.NotNull(run.LastReportedAt);
+
+            // A later report replaces the earlier one in what the run shows; the trail keeps both lines.
+            await tools.ReportJobProgressAsync("22 of 22 invoices read");
+            Assert.Equal("22 of 22 invoices read", Assert.Single(await history.ReadRecentRunsAsync()).AgentSummary);
+
+            // A pane with no run: refused, and the trail is not touched.
+            McpRequestContext.Set("plain-pane");
+            var refused = JsonDocument.Parse(await tools.ReportJobProgressAsync("did some things")).RootElement;
+            Assert.False(refused.GetProperty("ok").GetBoolean());
+            Assert.Contains("not started from a project job", refused.GetProperty("error").GetString(), StringComparison.Ordinal);
+            Assert.Equal(3, (await history.ReadRecentAsync(limit: int.MaxValue)).Count);
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
 
     [Fact]
     public async Task SetStatus_KeysOnTheVerifiedPane_NotTheAgentSuppliedSessionId()

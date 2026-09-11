@@ -10,7 +10,8 @@ public sealed partial class ProjectCardViewModel(
     string originBadge,
     ProjectCardActions? actions = null,
     bool hasRemoteChanges = false,
-    DateOnly? today = null) : ObservableObject
+    DateOnly? today = null,
+    IReadOnlyList<ProjectJobRun>? jobRuns = null) : ObservableObject
 {
     public Project Project { get; } = project;
 
@@ -30,6 +31,8 @@ public sealed partial class ProjectCardViewModel(
         .. project.Jobs.Select(job => new ProjectJobChoice(project, job)
         {
             Today = today ?? DateOnly.FromDateTime(DateTime.Today),
+            // AC-490: `jobRuns` is the trail newest first, so the first match is the job's latest start.
+            LastRun = jobRuns?.FirstOrDefault(run => run.JobId == job.Id),
         }),
     ];
 
