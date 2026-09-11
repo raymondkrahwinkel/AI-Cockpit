@@ -959,6 +959,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _openInSimpleView;
 
+    // The theme stand (AC-860), edited in Options -> Appearance. `App` turns it into the variant on screen; what
+    // is actually showing is read from `Application.ActualThemeVariant`, never from here.
+    [ObservableProperty]
+    private ThemeMode _themeMode = ThemeMode.Dark;
+
+    public static ThemeMode[] ThemeModes { get; } = Enum.GetValues<ThemeMode>();
+
     // AC-1301 criterion 4: the Simple stand keeps its own selection, apart from `SelectedSession`, so a stand
     // switch returns to what you were looking at in each rather than to one shared choice. Written by the rail
     // (AC-1302); what the conversation column does with it is AC-1303.
@@ -4873,6 +4880,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         OpenDockPanelId = settings.OpenDockPanelId;
         AssistantDocked = settings.AssistantDocked;
         OpenInSimpleView = settings.OpenInSimpleView;
+        ThemeMode = settings.ThemeMode;
 
         // The stand the app opens in is the setting, never the stand last looked at (AC-1301 criterion 1) — this
         // is the only place the two are joined.
@@ -4896,6 +4904,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         OpenDockPanelId = OpenDockPanelId,
         AssistantDocked = AssistantDocked,
         OpenInSimpleView = OpenInSimpleView,
+        ThemeMode = ThemeMode,
     };
 
     private Task _PersistLayoutSettingsAsync()
@@ -6842,6 +6851,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         GlobalFocusRailLayout = layout.FocusRailLayout;
         MinimizeToTrayOnClose = layout.MinimizeToTrayOnClose;
         OpenInSimpleView = layout.OpenInSimpleView;
+        ThemeMode = layout.ThemeMode;
 
         var voice = new VoiceSettings();
         VoiceEnabled = voice.IsEnabled;

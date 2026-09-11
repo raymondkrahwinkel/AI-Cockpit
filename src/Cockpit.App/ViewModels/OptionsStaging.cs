@@ -57,6 +57,7 @@ internal static class OptionsStaging
         "TerminalCustomShell",
         "TerminalFontSelection",
         "TerminalFontSize",
+        "ThemeMode",
         "VoiceAutoSubmit",
         "VoiceCustomModelName",
         "VoiceEnabled",

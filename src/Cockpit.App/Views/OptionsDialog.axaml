@@ -861,7 +861,7 @@
                         <StackPanel x:Name="AppearanceHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Appearance" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
-                        <TextBlock Text="How sessions lay out on screen, and what the transcript and usage pill show." Classes="optionsHint"/>
+                        <TextBlock Text="How sessions lay out on screen, which theme, and what the transcript and usage pill show." Classes="optionsHint"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsSectionHeader" Text="1. LAYOUT"/>
@@ -917,13 +917,24 @@
                                 ToolTip.Tip="Keeps the app running in the system tray instead of quitting. Check that the tray icon appears before relying on it."/>
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="2. TRANSCRIPT"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="2. THEME"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Theme" VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding ThemeModes}" SelectedItem="{Binding ThemeMode}" MinWidth="120"/>
+                            <!-- The variant on screen, apart from the stand chosen above: under System the two differ. -->
+                            <TextBlock Text="{Binding $parent[Window].ActualThemeVariant, StringFormat='on screen: {0}'}"
+                                       Classes="hint" VerticalAlignment="Center"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="System follows the operating system's light/dark preference and changes with it. The window's own border is drawn by the operating system and follows that preference regardless of the choice here."/>
+                        </StackPanel>
+
+                        <TextBlock Classes="optionsSectionHeader" Text="3. TRANSCRIPT"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox Content="Show a timestamp on each message"
                                       IsChecked="{Binding ShowTimestamps}"/>
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="3. USAGE PILL"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="4. USAGE PILL"/>
                         <TextBlock Classes="hint" Text="Which metrics show on the session header, each as its own mini-pill."/>
                         <StackPanel Spacing="6">
                             <CheckBox Content="Context window (ctx %)" IsChecked="{Binding ShowUsagePillContext}"/>

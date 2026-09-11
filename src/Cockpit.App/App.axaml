@@ -4,7 +4,8 @@
              xmlns:local="using:Cockpit.App"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              RequestedThemeVariant="Dark">
-             <!-- Dark until an Options setting says otherwise (AC-860); Styles/Theme.axaml carries both variants. -->
+             <!-- Dark until settings load; Styles/Theme.axaml carries both variants and `App._FollowTheme` moves
+                  this to the operator's choice (AC-860). -->
 
     <Application.DataTemplates>
         <local:ViewLocator/>

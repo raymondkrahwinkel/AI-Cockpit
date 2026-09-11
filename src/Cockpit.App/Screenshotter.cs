@@ -187,6 +187,7 @@ internal static class Screenshotter
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
+        ["appearance"] = (_, _) => _OptionsOnTab("Appearance"),
         // AC-445: the Layout section (single session / stack vertically / focus + rail) lives on the Sessions
         // tab, not the Notifications tab "options" opens on.
         ["session-layout"] = (_, _) => _OptionsOnTab("Sessions"),

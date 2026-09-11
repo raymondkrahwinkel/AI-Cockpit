@@ -302,6 +302,7 @@ public partial class App : Application
         // The onboarding gate owns every creation route (AC-509). Show explicitly because Avalonia will not
         // auto-show a MainWindow that replaces the startup unlock window.
         _mainWindow.Show();
+        _FollowTheme(cockpitViewModel);
         _SetUpTrayIcon();
 
         // Same routes as the sidebar's Options and About (AC-1299); no-op off macOS, where nothing exports this menu.
@@ -752,6 +753,31 @@ public partial class App : Application
         // Posted, not called: with nothing to tear down this returns inside the ShutdownRequested handler that just
         // cancelled, and re-entering the lifetime's shutdown from there is asking for it.
         Dispatcher.UIThread.Post(() => _desktop?.Shutdown());
+    }
+
+    // AC-860: one subscription, taken when the main window is up — every window reads the app-wide variant set here,
+    // so one per TopLevel would be the same work seven times over. `TopLevel.PlatformSettings` is not public in
+    // Avalonia 12.1; the application-level one is. The stand stays on the view model and is what gets saved.
+    private void _FollowTheme(CockpitViewModel cockpit)
+    {
+        var platform = PlatformSettings;
+        var selector = new Theming.ThemeSelector(
+            cockpit.ThemeMode,
+            platform?.GetColorValues().ThemeVariant ?? PlatformThemeVariant.Dark,
+            variant => RequestedThemeVariant = variant);
+
+        selector.SetMode(cockpit.ThemeMode);
+        cockpit.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CockpitViewModel.ThemeMode))
+            {
+                selector.SetMode(cockpit.ThemeMode);
+            }
+        };
+        if (platform is not null)
+        {
+            platform.ColorValuesChanged += (_, values) => selector.SetSystem(values.ThemeVariant);
+        }
     }
 
     // Keep the tray icon visible so support is obvious; only the setting changes close into hide (#33).
