@@ -12,8 +12,10 @@
 #FFD5DAE3  CockpitHairlineColor
 #FFDDE2EB  CockpitSecondaryBgColor
 #FFE4E7EE  CockpitHairlineSoftColor
+#FFEDEFF5  CockpitInsetBgColor
 #FFF8F9FC  CockpitChromeBgColor
 #FFFFFFFF  CockpitPanelBgColor, CockpitTextOnAccentColor, CockpitTextOnStatusColor
 radius  0,0,0,0
+radius  20,20,20,20
 radius  3,3,3,3
 radius  9,9,9,9

@@ -13,6 +13,7 @@ public sealed partial class WorkKindPluginRowViewModel : ObservableObject
         Name = entry.Name;
         Version = version.Version;
         Author = entry.Author;
+        Description = entry.Description;
         Audience = entry.Audience ?? [];
         From = $"{store.Location} → {version.Path}";
         Checksum = version.Sha256 ?? "This store publishes no checksum for this version.";
@@ -20,11 +21,14 @@ public sealed partial class WorkKindPluginRowViewModel : ObservableObject
     }
 
     // Design-time/preview row: the same fields, without a store to install from.
-    internal WorkKindPluginRowViewModel(string name, string version, string author, string from, string checksum, bool isSelected)
+    internal WorkKindPluginRowViewModel(string name, string version, string author, string from, string checksum, bool isSelected,
+        string? description = null, IReadOnlyList<string>? audience = null)
     {
         Name = name;
         Version = version;
         Author = author;
+        Description = description;
+        Audience = audience ?? [];
         From = from;
         Checksum = checksum;
         IsSelected = isSelected;
@@ -35,6 +39,10 @@ public sealed partial class WorkKindPluginRowViewModel : ObservableObject
     public string Version { get; }
 
     public string? Author { get; }
+
+    // What the plugin does for the operator, in the store's own words; null when the store said nothing, and then
+    // the row says nothing rather than something made up.
+    public string? Description { get; }
 
     // The store this plugin comes from and the zip within it — the consent dialog's "Location", before there is a folder.
     public string From { get; }

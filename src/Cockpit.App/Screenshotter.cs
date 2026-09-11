@@ -588,6 +588,9 @@ internal static class Screenshotter
         // case where the confirm button can be pushed past the bottom edge, and nobody sees that on three rows.
         ["first-run-work-kind"] = (_, _) => _WorkKindWizard(pluginCount: 3),
         ["first-run-work-kind-long"] = (_, _) => _WorkKindWizard(pluginCount: 6),
+        // AC-1316: the fold open on one row — the grant, the origin and the checksum are folded, never hidden, and
+        // this is the half of that sentence the two scenes above cannot show.
+        ["first-run-work-kind-unfolded"] = (_, _) => _WorkKindWizard(pluginCount: 3),
     };
 
     private static Window _WorkKindWizard(int pluginCount)
@@ -598,7 +601,9 @@ internal static class Screenshotter
             author: "Cockpit",
             from: $"https://plugins.example.org/index.json → pack-{index}/pack-1.{index}.0.zip",
             checksum: $"9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b{index:D2}",
-            isSelected: true));
+            isSelected: true,
+            description: WorkKindPluginDescriptions[(index - 1) % WorkKindPluginDescriptions.Length],
+            audience: [PluginWorkKinds.Developer]));
 
         var step = new Views.Onboarding.WorkKindStep(new ViewModels.Onboarding.WorkKindStepViewModel(rows));
 
@@ -633,6 +638,26 @@ internal static class Screenshotter
 
     private static readonly string[] WorkKindPluginNames =
         ["GitHub Issues", "GitHub Pull Requests", "YouTrack", "Weather", "Time Tracking", "Invoices"];
+
+    private static readonly string[] WorkKindPluginDescriptions =
+    [
+        "Browse open GitHub issues across your repos in a searchable, sortable dialog.",
+        "Shows how many open pull requests are yours in the left menu, with a live badge.",
+        "Lists open YouTrack issues across your configured projects, one click from a session.",
+        "The weather where you are, for a Dashboard workspace.",
+        "Tracks the hours a session spends per project and totals them per week.",
+        "Drafts invoices from a project's logged hours — drafts only, nothing is sent.",
+    ];
+
+    // AC-1316: the kind is a segment the operator clicks, so the scene clicks it — the segment checks itself and
+    // its command sets the model, and neither happens by setting the other.
+    private static void _ChooseWorkKind(Window window)
+    {
+        var segment = window.GetVisualDescendants().OfType<RadioButton>()
+            .First(button => (string?)button.Content == PluginWorkKinds.All[0].Label);
+        segment.IsChecked = true;
+        segment.Command!.Execute(segment.CommandParameter);
+    }
 
     // Every scene name a render can be asked for, this table's own plus the selection surface's — that one keeps
     // its names with the scene because its modes are states the surface is driven into after it is shown, not
@@ -674,6 +699,13 @@ internal static class Screenshotter
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
         ["plugins-menu"] = window => _OpenFlyout(window, "PluginsMenuButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
+        ["first-run-work-kind"] = _ChooseWorkKind,
+        ["first-run-work-kind-long"] = _ChooseWorkKind,
+        ["first-run-work-kind-unfolded"] = window =>
+        {
+            _ChooseWorkKind(window);
+            window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(toggle => toggle.Name == "Fold").IsChecked = true;
+        },
         ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-statusline"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-unknown"] = window => _OpenTooltip(window, "ActivityColumn"),

@@ -39,7 +39,7 @@ public class WorkKindConsentParityTests
     [InlineData("From:")] // the dialog's "Location", before there is a folder
     [InlineData("SHA-256 (pinned on install):")] // the dialog's "SHA-256 (pinned on consent)"
     [InlineData("9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b01")] // the checksum itself
-    [InlineData("May:")] // said per row, where the dialog says it once per dialog
+    [InlineData("May:")] // said per row behind the fold, where the dialog says it once per dialog
     public void EveryFactTheDialogCarries_HasItsCounterpartOnARow(string expected) => HeadlessAvalonia.Run(() =>
     {
         var batch = _Texts("first-run-work-kind");
@@ -47,6 +47,10 @@ public class WorkKindConsentParityTests
         Assert.Contains(batch, text => text.Contains(expected, StringComparison.Ordinal));
     });
 
+    /// <summary>
+    /// Per row, and since AC-1316 behind each row's fold: present on every row, shown when asked. The grant reads
+    /// the same on every row only until AC-107 narrows it per plugin, and it is already where that will land.
+    /// </summary>
     [Fact]
     public void EachRow_SaysWhatItsPluginMay_RatherThanOnceForTheList() => HeadlessAvalonia.Run(() =>
     {

@@ -80,8 +80,21 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
             }
 
             _ApplyRecommendation();
+            OnPropertyChanged(nameof(ListCaption));
         }
     }
+
+    // The segment's click: a RadioButton in a group only ever checks, so the choice flows one way, button to model.
+    [RelayCommand]
+    private void SelectWorkKind(PluginWorkKindOption kind) => SelectedWorkKind = kind;
+
+    // What the list is doing right now, said next to it rather than only in the sentence at the top. A kind no
+    // store has tagged says so instead of leaving a list of unticked rows to explain itself.
+    public string ListCaption => SelectedWorkKind is null
+        ? "Nothing chosen yet — tick what you want."
+        : Plugins.Any(plugin => _IsRecommendedFor(plugin, SelectedWorkKind))
+            ? $"Suggested for {SelectedWorkKind.Label} — change any tick."
+            : $"Nothing suggested for {SelectedWorkKind.Label} yet — tick what you want.";
 
     public int SelectedCount => Plugins.Count(plugin => plugin.IsSelected);
 
@@ -219,10 +232,12 @@ public sealed partial class WorkKindStepViewModel : ObservableObject
         {
             // An unclassified plugin stays visible but gets no recommendation; a tagged plugin ticks for one of
             // its own kinds.
-            plugin.IsSelected = SelectedWorkKind is not null
-                && plugin.Audience.Contains(SelectedWorkKind.Key, StringComparer.OrdinalIgnoreCase);
+            plugin.IsSelected = SelectedWorkKind is not null && _IsRecommendedFor(plugin, SelectedWorkKind);
         }
     }
+
+    private static bool _IsRecommendedFor(WorkKindPluginRowViewModel plugin, PluginWorkKindOption kind) =>
+        plugin.Audience.Contains(kind.Key, StringComparer.OrdinalIgnoreCase);
 
     // Keeps the button's count and enabled state on a hand-ticked box. Each row raises its own change, so the
     // count is derived rather than tracked — a tracked one would drift the first time a row was ticked twice.
