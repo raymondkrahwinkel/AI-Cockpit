@@ -78,8 +78,6 @@ public partial class ThemeHexColorGuardTests
                 (1, "black drop-shadow, not tied to any theme colour"),
             [("src/Cockpit.App/Controls/ConsentBannerHost.axaml", "#B3000000")] =
                 (1, "black modal scrim, not tied to any theme colour"),
-            [("plugins-dev/Cockpit.Plugin.Workflows/Canvas/NodeDialog.cs", "#B0000000")] =
-                (1, "black modal scrim behind the node dialog, not tied to any theme colour"),
             // The canvas's two non-accent kind stripes. A categorical palette, like the usage chart's: their only
             // job is to be told apart from each other and from the trigger's accent. Pointing them at status
             // tokens would give a decision node a colour this app reads as "blocked" — and the card's border is
@@ -88,10 +86,6 @@ public partial class ThemeHexColorGuardTests
                 (1, "the decision node's kind stripe — a categorical colour, not a status"),
             [("plugins-dev/Cockpit.Plugin.Workflows/Canvas/WorkflowNodeControl.cs", "#7A8290")] =
                 (1, "the plain step's kind stripe — a neutral slate, deliberately hueless so it cannot be read as a faded accent"),
-
-            // AC-985: same argument as the whiteboard's other content files below — white paper, not UI chrome.
-            [("plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/WhiteboardControl.cs", "Brushes.White")] =
-                (1, "the default colour swatch's paper-white fill, whiteboard content like its neighbours in AllowedFiles"),
         };
 
     /// <summary>
@@ -120,21 +114,10 @@ public partial class ThemeHexColorGuardTests
         // the data rather than as "this is the 5h line". A categorical palette is not a theme colour.
         "plugins-dev/Cockpit.Plugin.UsageTrend/UsageTrendChartControl.cs",
 
-        // The diagram plugin's sample render (AC-809): a fixed palette for Mermaider, not the cockpit's UI chrome.
-        "plugins-dev/Cockpit.Plugin.Diagram/DiagramWorkspaceBody.cs",
-
-        // The seven Mermaid render colours above, pulled into their own file at AC-911 so DiagramWorkspaceBody's
-        // own render and the template previews share one copy — same reason, new file.
-        "plugins-dev/Cockpit.Plugin.Diagram/DiagramTheme.cs",
-
-        // The whiteboard's own surface (AC-821/AC-822): white paper, a yellow pencil ink and a blue shape stroke,
-        // same argument as the workflow canvas's kind stripes above — a whiteboard's content is deliberately not
-        // theme-driven, the way a real sheet of paper stays white under any repaint of the app around it.
-        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Canvas/WhiteboardCanvasControl.cs",
-        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Canvas/FreehandLayer.cs",
-        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Canvas/ResizeHandle.cs",
-        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Rendering/WhiteboardSnapshotVisual.cs",
-        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Rendering/WhiteboardObjectPainter.cs",
+        // The whiteboard's own surface (AC-821/AC-822), one named palette since AC-860: white paper, a yellow pencil
+        // ink and a blue shape stroke — a whiteboard's content is deliberately not theme-driven, the way a real sheet
+        // of paper stays white under any repaint of the app around it.
+        "plugins-dev/Cockpit.Plugin.Diagram/Whiteboard/Rendering/WhiteboardPalette.cs",
 
         // The wireframe sketch's greys (AC-871): a wireframe must read as a sketch, never as a finished design, so
         // no product colour belongs in it. All eight literals are achromatic — no token to point at even in

@@ -8,6 +8,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using Cockpit.Plugin.Diagram.Whiteboard.Model;
+using Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard.Canvas;
 
@@ -96,7 +97,7 @@ public sealed class WhiteboardCanvasControl : Border
     {
         Document = document;
         Edits = new WhiteboardEditJournal(document.Id);
-        Background = Brushes.White;
+        Background = WhiteboardPalette.Paper;
         ClipToBounds = true;
         Focusable = true;
         ContextRequested += _OnContextRequested;
@@ -993,7 +994,7 @@ public sealed class WhiteboardCanvasControl : Border
         {
             Text = control.Model.Text ?? string.Empty,
             AcceptsReturn = true,
-            Background = Brushes.White,
+            Background = WhiteboardPalette.Paper,
             BorderThickness = new Thickness(1),
             Padding = new Thickness(4),
         };
@@ -1054,9 +1055,6 @@ public sealed class WhiteboardCanvasControl : Border
     {
         private const double DotSpacing = 24;
 
-        private static readonly IBrush DotBrush = new SolidColorBrush(Color.Parse("#D6DEE8"));
-        private static readonly IBrush TextBrush = new SolidColorBrush(Color.Parse("#94A3B8"));
-
         private string _message = message;
 
         public string Message
@@ -1077,7 +1075,7 @@ public sealed class WhiteboardCanvasControl : Border
             {
                 for (var y = DotSpacing / 2; y < bounds.Height; y += DotSpacing)
                 {
-                    context.DrawEllipse(DotBrush, null, new Point(x, y), 1.5, 1.5);
+                    context.DrawEllipse(WhiteboardPalette.GridDot, null, new Point(x, y), 1.5, 1.5);
                 }
             }
 
@@ -1091,7 +1089,7 @@ public sealed class WhiteboardCanvasControl : Border
                 FlowDirection.LeftToRight,
                 Typeface.Default,
                 14,
-                TextBrush)
+                WhiteboardPalette.HintText)
             {
                 TextAlignment = TextAlignment.Center,
                 MaxTextWidth = maxWidth,
@@ -1163,8 +1161,8 @@ public sealed class WhiteboardCanvasControl : Border
 
         var prompt = new Border
         {
-            Background = Brushes.White,
-            BorderBrush = Brushes.Black,
+            Background = WhiteboardPalette.Paper,
+            BorderBrush = WhiteboardPalette.Outline,
             BorderThickness = new Thickness(1),
             Padding = new Thickness(8),
             Child = new StackPanel

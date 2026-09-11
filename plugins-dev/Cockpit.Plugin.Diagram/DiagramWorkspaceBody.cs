@@ -1177,7 +1177,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
         public override void Render(DrawingContext context)
         {
-            var pen = new Pen(_Brush("CockpitTextSecondaryBrush") ?? Brushes.Gray, 1.5);
+            var pen = new Pen(_Brush("CockpitTextSecondaryBrush") ?? Brushes.Transparent, 1.5);
             var rect = new Rect(Bounds.Size).Deflate(3);
             switch (Kind)
             {
@@ -1339,7 +1339,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
                 Padding = new Thickness(5, 1),
                 CornerRadius = new CornerRadius(4),
                 IsHitTestVisible = false,
-                Child = new TextBlock { Text = name, FontSize = 10, Foreground = Brushes.White },
+                Child = new TextBlock { Text = name, FontSize = 10, Foreground = _Brush("CockpitTextOnAccentBrush") },
             }
             : new Border
             {
@@ -1384,7 +1384,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             Padding = new Thickness(5, 1),
             CornerRadius = new CornerRadius(4),
             IsHitTestVisible = false,
-            Child = new TextBlock { Text = "you're editing", FontSize = 10, Foreground = Brushes.White },
+            Child = new TextBlock { Text = "you're editing", FontSize = 10, Foreground = _Brush("CockpitTextOnAccentBrush") },
         };
         Canvas.SetLeft(mark, bounds.X);
         Canvas.SetTop(mark, bounds.Y - 18);
@@ -1913,7 +1913,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
             fidelity.Children.Add(new TextBlock { Text = "The renderer dropped this:", FontSize = 11, FontWeight = FontWeight.SemiBold });
             foreach (var finding in proposal.FidelityFindings)
             {
-                fidelity.Children.Add(new TextBlock { Text = $"⚠ {finding}", FontSize = 11, TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Goldenrod });
+                fidelity.Children.Add(new TextBlock { Text = $"⚠ {finding}", FontSize = 11, TextWrapping = TextWrapping.Wrap, Foreground = _Brush("CockpitStatusWaitingBrush") });
             }
 
             body.Children.Add(fidelity);
@@ -1957,12 +1957,12 @@ internal sealed class DiagramWorkspaceBody : UserControl
         var lines = new StackPanel { Spacing = 1 };
         foreach (var line in block.OldLines)
         {
-            lines.Children.Add(new TextBlock { Text = $"− {line.Text}", FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 11, Foreground = Brushes.IndianRed });
+            lines.Children.Add(new TextBlock { Text = $"− {line.Text}", FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 11, Foreground = _Brush("CockpitStatusErrorBrush") });
         }
 
         foreach (var line in block.NewLines)
         {
-            lines.Children.Add(new TextBlock { Text = $"+ {line.Text}", FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 11, Foreground = Brushes.MediumSeaGreen });
+            lines.Children.Add(new TextBlock { Text = $"+ {line.Text}", FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 11, Foreground = _Brush("CockpitStatusDoneBrush") });
         }
 
         var accepted = _acceptedBlocks.Contains(index);

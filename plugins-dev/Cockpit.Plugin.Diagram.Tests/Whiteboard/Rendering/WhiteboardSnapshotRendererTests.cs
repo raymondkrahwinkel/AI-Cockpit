@@ -68,7 +68,7 @@ public class WhiteboardSnapshotRendererTests
         var markerPixel = _PixelAt(_Render(markerDocument, size), 80, 40);
 
         Assert.NotEqual(pencilPixel, markerPixel);
-        Assert.False(_CloseTo(markerPixel, WhiteboardObjectPainter.MarkerColor, tolerance: 10), $"expected a translucent blend, got opaque marker colour {markerPixel}");
+        Assert.False(_CloseTo(markerPixel, WhiteboardPalette.MarkerColor, tolerance: 10), $"expected a translucent blend, got opaque marker colour {markerPixel}");
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class WhiteboardSnapshotRendererTests
 
         var pixel = _PixelAt(_Render(document, new PixelSize(140, 140)), 70, 70);
 
-        Assert.True(_CloseTo(pixel, WhiteboardObjectPainter.StickyNoteColor), $"expected sticky-note yellow, got {pixel}");
+        Assert.True(_CloseTo(pixel, WhiteboardPalette.StickyNoteColor), $"expected sticky-note yellow, got {pixel}");
     }
 
     [Fact]
@@ -183,7 +183,7 @@ public class WhiteboardSnapshotRendererTests
 
         var pixel = _PixelAt(_Render(document, new PixelSize(140, 140)), 70, 70);
 
-        Assert.True(_CloseTo(pixel, WhiteboardObjectPainter.StickyNoteColor), $"expected sticky-note yellow, got {pixel}");
+        Assert.True(_CloseTo(pixel, WhiteboardPalette.StickyNoteColor), $"expected sticky-note yellow, got {pixel}");
     }
 
     // AC-913: a document bigger than the requested pixel size is scaled down to fit, not cropped — a shape placed
@@ -196,7 +196,7 @@ public class WhiteboardSnapshotRendererTests
 
         var pixel = _PixelAt(_Render(document, new PixelSize(50, 50)), 25, 25);
 
-        Assert.True(_CloseTo(pixel, WhiteboardObjectPainter.StickyNoteColor), $"expected the sticky note scaled into view, got {pixel}");
+        Assert.True(_CloseTo(pixel, WhiteboardPalette.StickyNoteColor), $"expected the sticky note scaled into view, got {pixel}");
     }
 
     // AC-1007 AC2: uses the real fit math (WhiteboardGeometry) rather than a raster pixel-sampling proxy — a

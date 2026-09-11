@@ -37,7 +37,7 @@ internal sealed class FreehandLayer : Control
 
             if (stroke.Id == SelectedId)
             {
-                var pen = new Pen(Brushes.White, 1, dashStyle: DashStyle.Dash);
+                var pen = new Pen(WhiteboardPalette.Paper, 1, dashStyle: DashStyle.Dash);
                 context.DrawRectangle(null, pen, _Bounds(stroke.Points).Inflate(4));
             }
         }

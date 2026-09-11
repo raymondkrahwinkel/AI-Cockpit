@@ -5,45 +5,25 @@ using Cockpit.Plugin.Diagram.Whiteboard.Model;
 
 namespace Cockpit.Plugin.Diagram.Whiteboard.Rendering;
 
-// One fixed visual language: freehand defaults to yellow, placed defaults to this blue; WhiteboardObject.Color can
-// override either (null = default). PlacedColor is reserved — WhiteboardMcpTools' consent prompts promise this
-// exact blue marks the agent's work, so it must stay out of the operator's palette and off place_on_whiteboard.
-
 // The compact icon a placed object shows for its badge: a one-letter glyph on the object, the full text in the
 // tooltip the control attaches (see PlacedObjectControl) — no text pill, so it never outgrows a small object.
 internal readonly record struct PlacedBadge(string Glyph, string Tooltip);
 
+// Paints with WhiteboardPalette only — every colour the whiteboard shows lives there.
 internal static class WhiteboardObjectPainter
 {
-    public static readonly Color FreehandColor = Color.Parse("#F2C230");
-    public static readonly Color PlacedColor = Color.Parse("#2563EB");
-    public static readonly Color MarkerColor = Color.Parse("#FF7A1A");
-    public static readonly Color StickyNoteColor = Color.Parse("#FDE68A");
-
-    // AC-916: the operator's colour swatches — deliberately excludes PlacedColor (#2563EB), reserved for the
-    // agent (see the header comment above). Each reads as both a 2.5px pencil stroke and a 0.35-alpha marker stroke.
-    public static readonly IReadOnlyList<string> Palette =
-    [
-        "#DC2626", // red
-        "#EA580C", // orange
-        "#16A34A", // green
-        "#0D9488", // teal
-        "#7C3AED", // purple
-        "#DB2777", // pink
-    ];
-
-    private static readonly IBrush FreehandBrush = new SolidColorBrush(FreehandColor);
-    private static readonly IBrush PlacedBrush = new SolidColorBrush(PlacedColor);
+    private static readonly IBrush FreehandBrush = new SolidColorBrush(WhiteboardPalette.FreehandColor);
+    private static readonly IBrush PlacedBrush = new SolidColorBrush(WhiteboardPalette.PlacedColor);
     private static readonly IPen PlacedPen = new Pen(PlacedBrush, 2);
 
     // Semi-transparent by construction — this is what "semi-transparent" and "distinguishable from the pencil" mean
     // in practice: the same stroke geometry as the pencil, just a translucent brush and (at the call site) thicker.
-    private static readonly IBrush MarkerBrush = new SolidColorBrush(MarkerColor, 0.35);
+    private static readonly IBrush MarkerBrush = new SolidColorBrush(WhiteboardPalette.MarkerColor, 0.35);
 
-    private static readonly IBrush StickyNoteBrush = new SolidColorBrush(StickyNoteColor);
-    private static readonly IPen StickyNotePen = new Pen(new SolidColorBrush(Color.Parse("#F5C518")), 1);
-    private static readonly IBrush StickyNoteTextBrush = new SolidColorBrush(Color.Parse("#3F3618"));
-    private static readonly IBrush BadgeBackground = new SolidColorBrush(Color.Parse("#1F2937"), 0.85);
+    private static readonly IBrush StickyNoteBrush = new SolidColorBrush(WhiteboardPalette.StickyNoteColor);
+    private static readonly IPen StickyNotePen = new Pen(WhiteboardPalette.StickyNoteEdge, 1);
+    private static readonly IBrush StickyNoteTextBrush = WhiteboardPalette.StickyNoteText;
+    private static readonly IBrush BadgeBackground = WhiteboardPalette.BadgeBackground;
 
     // The badge every renderer of a placed object can pin on it: whose mark it is (AC-854) or where a picture came
     // from. Only drawn on hover/selection (AC-918) — the glyph is what's on the object, the tooltip is the full text.
@@ -63,7 +43,7 @@ internal static class WhiteboardObjectPainter
 
         var brush = color is null
             ? (isMarker ? MarkerBrush : FreehandBrush)
-            : new SolidColorBrush(_ResolveColor(color, FreehandColor), isMarker ? 0.35 : 1);
+            : new SolidColorBrush(_ResolveColor(color, WhiteboardPalette.FreehandColor), isMarker ? 0.35 : 1);
         var pen = new Pen(brush, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
         var geometry = new StreamGeometry();
         using (var ctx = geometry.Open())
@@ -84,7 +64,7 @@ internal static class WhiteboardObjectPainter
     // contrast and Image has no line to colour, so both ignore it regardless of what WhiteboardObject.Color holds.
     public static void PaintPlaced(DrawingContext context, PlacedShapeKind kind, Rect rect, string? text, Bitmap? image, string? color = null, PlacedBadge? badge = null, bool showBadge = false)
     {
-        var brush = color is null ? PlacedBrush : new SolidColorBrush(_ResolveColor(color, PlacedColor));
+        var brush = color is null ? PlacedBrush : new SolidColorBrush(_ResolveColor(color, WhiteboardPalette.PlacedColor));
         var pen = color is null ? PlacedPen : new Pen(brush, 2);
         var textBrush = brush;
 
@@ -179,7 +159,7 @@ internal static class WhiteboardObjectPainter
             FlowDirection.LeftToRight,
             Typeface.Default,
             9,
-            Brushes.White);
+            WhiteboardPalette.BadgeGlyph);
         context.DrawText(formatted, origin + new Point((_BadgeDiameter - formatted.Width) / 2, (_BadgeDiameter - formatted.Height) / 2));
     }
 
