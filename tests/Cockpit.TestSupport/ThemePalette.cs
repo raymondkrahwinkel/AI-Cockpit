@@ -153,7 +153,7 @@ public static partial class ThemePalette
         var namesByColour = new Dictionary<Color, SortedSet<string>>();
         foreach (var key in _TokenKeys())
         {
-            if (!application.TryFindResource(key, out var value) || value is not Color colour)
+            if (!application.TryFindResource(key, application.ActualThemeVariant, out var value) || value is not Color colour)
             {
                 throw new InvalidOperationException(
                     $"Theme.axaml declares the colour token '{key}', but the running application does not resolve it to a colour.");

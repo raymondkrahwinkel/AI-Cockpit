@@ -50,11 +50,6 @@ public partial class ThemeHexColorGuardTests
         {
             [("src/Cockpit.App/Views/CockpitView.axaml", "#26E0A33E")] =
                 (1, "26-alpha echo of CockpitStatusWaitingColor for the unprotected-secrets banner tint"),
-            [("src/Cockpit.App/Styles/Theme.axaml", "#2AE0A33E")] =
-                (1, "2A-alpha echo of CockpitStatusWaitingColor for the needs-attention sidebar row (AC-406) — " +
-                     "replaces a pre-mixed opaque #2E2A26 that would have held the old waiting colour through a " +
-                     "repaint; the alpha was picked by rendering the row against CockpitSecondaryBgColor, the " +
-                     "sidebar's real background, and matching the previous pixels"),
             [("src/Cockpit.App/Views/CockpitView.axaml", "#40000000")] =
                 (1, "black drop-shadow on the resource flyout panel, not tied to any theme colour"),
             [("src/Cockpit.App/Views/CockpitView.axaml", "#66000000")] =
@@ -209,7 +204,8 @@ public partial class ThemeHexColorGuardTests
     /// Every <c>ThemeBrush.Resolve("XxxBrush", "#hex")</c> fallback must equal the value of <c>Theme.axaml</c>'s
     /// matching <c>XxxColor</c> token (compared case-insensitively — the tokens are deliberately mixed-case), so a
     /// future token-value change (another AC-334-style repaint) cannot drift from the fallback that fires for the
-    /// few callers that build their visuals outside Avalonia's styling system.
+    /// few callers that build their visuals outside Avalonia's styling system. The dark value: a fallback fires when
+    /// no theme is loaded at all, and dark is what the app starts in (AC-860).
     /// </summary>
     [Fact]
     public void ResolveFallback_MatchesThemeAxamlColorToken()
@@ -417,8 +413,13 @@ public partial class ThemeHexColorGuardTests
 
     private static Dictionary<string, string> _ParseThemeColorTokens(string themeAxamlPath)
     {
+        // The Dark dictionary only: Theme.axaml declares every colour once per variant (AC-860), and a merged read
+        // would hand back whichever variant happens to be written last.
+        var dark = DarkDictionaryRegex().Match(File.ReadAllText(themeAxamlPath));
+        Assert.True(dark.Success, "Theme.axaml no longer carries a ResourceDictionary keyed \"Dark\" — the parse below would read nothing");
+
         var tokens = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (Match match in ThemeColorTokenRegex().Matches(File.ReadAllText(themeAxamlPath)))
+        foreach (Match match in ThemeColorTokenRegex().Matches(dark.Value))
         {
             tokens[match.Groups["key"].Value] = match.Groups["hex"].Value;
         }
@@ -456,6 +457,9 @@ public partial class ThemeHexColorGuardTests
 
     [GeneratedRegex("""<Color x:Key="(?<key>[^"]+)">(?<hex>#[0-9A-Fa-f]{3,8})</Color>""")]
     private static partial Regex ThemeColorTokenRegex();
+
+    [GeneratedRegex("""<ResourceDictionary x:Key="Dark">.*?</ResourceDictionary>""", RegexOptions.Singleline)]
+    private static partial Regex DarkDictionaryRegex();
 
     [GeneratedRegex("\"[^\"]*\"")]
     private static partial Regex QuotedSpanRegex();

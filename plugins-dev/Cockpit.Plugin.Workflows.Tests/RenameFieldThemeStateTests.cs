@@ -7,6 +7,7 @@ using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions;
 using NSubstitute;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -94,6 +95,5 @@ public class RenameFieldThemeStateTests
         return new WorkflowEditorControl(workflow, save: () => { }, host, new RunStore(new InMemoryPluginStorage()), []);
     }
 
-    private static Color _Token(string key) =>
-        (Color)(Application.Current?.FindResource(key) ?? throw new InvalidOperationException($"no token '{key}'"));
+    private static Color _Token(string key) => ThemeTokens.Colour(key);
 }

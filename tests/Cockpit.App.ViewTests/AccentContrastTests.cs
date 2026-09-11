@@ -15,11 +15,16 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class AccentContrastTests
 {
+    public static IEnumerable<object[]> Stands =>
+        from token in new[] { "CockpitAccentColor", "CockpitAccentHoverColor", "CockpitAccentPressedColor" }
+        from variant in ThemeVariants.Names
+        select new object[] { token, variant };
+
+    // Both variants (AC-860): the accent is the one meaning-carrying token light did not re-tint, on the claim
+    // that contrast against white is symmetric — this is where that claim is measured rather than assumed.
     [Theory]
-    [InlineData("CockpitAccentColor")]
-    [InlineData("CockpitAccentHoverColor")]
-    [InlineData("CockpitAccentPressedColor")]
-    public void EveryAccentStand_MeetsAaForTheTextItCarries(string accentToken) => HeadlessAvalonia.Run(() =>
+    [MemberData(nameof(Stands))]
+    public void EveryAccentStand_MeetsAaForTheTextItCarries(string accentToken, string variant) => HeadlessAvalonia.Run(() => ThemeVariants.Under(variant, () =>
     {
         var accent = RenderedScene.Token(accentToken);
         var textOnAccent = RenderedScene.Token("CockpitTextOnAccentColor");
@@ -30,5 +35,5 @@ public class AccentContrastTests
             $"{accentToken} ({ThemePalette.Hex(accent)}) against CockpitTextOnAccentColor ({ThemePalette.Hex(textOnAccent)}) "
             + $"measures {ratio:F2}:1, short of the {WcagContrast.AaNormalText}:1 AA floor the 12.5px SemiBold "
             + "button label needs.");
-    });
+    }));
 }

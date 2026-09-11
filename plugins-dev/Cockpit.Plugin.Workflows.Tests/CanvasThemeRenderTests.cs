@@ -6,6 +6,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
 using Cockpit.Plugin.Workflows.Canvas;
 using Cockpit.Plugin.Workflows.Model;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -48,16 +49,15 @@ public class CanvasThemeRenderTests
     [Fact]
     public void TheTriggersStripe_IsTheThemesAccent_NotAColourOfItsOwn()
     {
-        var accent = Application.Current?.FindResource("CockpitAccentColor");
-
         // If the theme had failed to load, this lookup would miss and the card would fall back to Fluent — the
         // failure mode the fixture exists to rule out, and one that would make every other assertion here a lie.
-        Assert.Equal(Color.Parse("#2563eb"), Assert.IsType<Color>(accent));
+        var accent = ThemeTokens.Colour("CockpitAccentColor");
+        Assert.Equal(Color.Parse("#2563eb"), accent);
 
         var stripe = _StripeColourOf("cockpit.manual", "Run manually", "canvas-kind-trigger.png");
 
-        Assert.True(_HueSeparation(stripe, (Color)accent) < 5, $"the trigger's stripe is {stripe}, not the accent {accent}");
-        Assert.True(Math.Abs(_Saturation(stripe) - _Saturation((Color)accent)) < 0.1, $"the trigger's stripe {stripe} is a weaker accent, not the accent");
+        Assert.True(_HueSeparation(stripe, accent) < 5, $"the trigger's stripe is {stripe}, not the accent {accent}");
+        Assert.True(Math.Abs(_Saturation(stripe) - _Saturation(accent)) < 0.1, $"the trigger's stripe {stripe} is a weaker accent, not the accent");
     }
 
     // A card three times its own size, so the thing a 60px-tall card is too small to judge — how its title, its

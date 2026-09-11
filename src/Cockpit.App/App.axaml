@@ -4,7 +4,7 @@
              xmlns:local="using:Cockpit.App"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              RequestedThemeVariant="Dark">
-             <!-- Cockpit is dark-only by design (see Styles/Theme.axaml) — no light variant offered. -->
+             <!-- Dark until an Options setting says otherwise (AC-860); Styles/Theme.axaml carries both variants. -->
 
     <Application.DataTemplates>
         <local:ViewLocator/>

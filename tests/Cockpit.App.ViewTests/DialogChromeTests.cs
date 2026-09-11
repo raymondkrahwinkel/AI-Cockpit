@@ -7,6 +7,7 @@ using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Configuration;
+using Cockpit.TestSupport;
 
 namespace Cockpit.App.ViewTests;
 
@@ -361,10 +362,7 @@ public class DialogChromeTests
     private static TextBlock _Name(ProjectsDialog window) =>
         Assert.Single(_VisibleTextBlocks(window), block => block.Text == "Projects");
 
-    private static Color _Colour(string key) =>
-        Avalonia.Application.Current?.TryFindResource(key, out var value) == true && value is Color colour
-            ? colour
-            : throw new InvalidOperationException($"The theme has no '{key}' — the dialog chrome is built on it.");
+    private static Color _Colour(string key) => ThemeTokens.Colour(key);
 
     private static List<TextBlock> _VisibleTextBlocks(Window window) =>
         window.GetVisualDescendants().OfType<TextBlock>().Where(block => block.IsVisible).ToList();

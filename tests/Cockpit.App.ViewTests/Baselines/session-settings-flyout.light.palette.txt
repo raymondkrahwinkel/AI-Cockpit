@@ -1,0 +1,23 @@
+# What this screen paints: every colour, named after the theme token holding that value, or
+# off-palette when no token does — plus every corner radius. A screen may paint fewer of these
+# than are listed (a scroll bar exists only when its content overflows); it may not paint one
+# that is missing. Re-record with COCKPIT_UPDATE_THEME_BASELINES=1 and read the diff.
+
+#66000000  off-palette
+#99000000  off-palette
+#CC000000  off-palette
+#FF000000  off-palette
+#FF161920  CockpitTextPrimaryColor
+#FF2563EB  CockpitAccentColor
+#FF5A616D  CockpitTextSecondaryColor
+#FF7C8391  CockpitTextFaintColor
+#FFD5DAE3  CockpitHairlineColor
+#FFDDE2EB  CockpitSecondaryBgColor
+#FFEDEFF5  CockpitInsetBgColor
+#FFF1F3F7  CockpitWindowBgColor
+#FFF2F2F2  off-palette
+#FFFFFFFF  CockpitPanelBgColor, CockpitTextOnAccentColor, CockpitTextOnStatusColor
+radius  0,0,0,0
+radius  20,20,20,20
+radius  5,5,5,5
+radius  9,9,9,9

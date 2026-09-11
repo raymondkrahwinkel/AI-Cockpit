@@ -22,7 +22,10 @@ public static class AppMermaidTheme
     private static string Hex(string resourceKey)
     {
         var app = Application.Current ?? throw new InvalidOperationException("no running Avalonia application");
-        var color = (Color)(app.FindResource(resourceKey) ?? throw new InvalidOperationException($"no token '{resourceKey}'"));
+        // In the actual variant: a colour token lives once per variant (AC-860) and a variant-less lookup misses it.
+        var color = app.TryFindResource(resourceKey, app.ActualThemeVariant, out var value) && value is Color found
+            ? found
+            : throw new InvalidOperationException($"no token '{resourceKey}'");
         return $"#{color.R:x2}{color.G:x2}{color.B:x2}";
     }
 }

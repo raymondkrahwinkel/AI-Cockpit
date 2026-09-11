@@ -276,7 +276,7 @@ public sealed class MarkdownView : ContentControl
     // (design-time preview): nothing to compare, so nothing is ever discarded.
     private static Color? _CurrentPalette() =>
         Application.Current is { } app
-        && app.TryGetResource("CockpitTextPrimaryBrush", null, out var value)
+        && app.TryGetResource("CockpitTextPrimaryBrush", app.ActualThemeVariant, out var value)
         && value is ISolidColorBrush brush
             ? brush.Color
             : null;

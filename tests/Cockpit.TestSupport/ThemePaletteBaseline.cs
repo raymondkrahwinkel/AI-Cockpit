@@ -9,18 +9,18 @@ public static class ThemePaletteBaseline
 {
     private const string RewriteVariable = "COCKPIT_UPDATE_THEME_BASELINES";
 
-    /// <summary>The tail every baseline file's name ends in — how <see cref="VerifyNoOrphans"/> reads a scene name back off one.</summary>
+    /// <summary>The tail every baseline file's name ends in — what <see cref="VerifyNoOrphans"/> enumerates by.</summary>
     private const string BaselineSuffix = ".palette.txt";
 
     /// <summary>
-    /// Where a scene's baseline lives. Callers go through this rather than spelling the file name themselves,
-    /// because the name is read back apart by <see cref="VerifyNoOrphans"/> and a second copy of the format is a
-    /// second thing to keep in step. When they were separate, changing the suffix here left every caller writing
-    /// the old name and the orphan check enumerating nothing — which is not an error, it is an empty list, so the
-    /// check went green with real orphans sitting in the directory.
+    /// Where a scene's baseline lives, one file per theme variant (AC-860). Callers go through this rather than
+    /// spelling the file name themselves, because the name is read back apart by <see cref="VerifyNoOrphans"/> and
+    /// a second copy of the format is a second thing to keep in step. When they were separate, changing the suffix
+    /// here left every caller writing the old name and the orphan check enumerating nothing — which is not an
+    /// error, it is an empty list, so the check went green with real orphans sitting in the directory.
     /// </summary>
-    public static string PathFor(string baselineDirectory, string scene) =>
-        Path.Combine(baselineDirectory, $"{scene}{BaselineSuffix}");
+    public static string PathFor(string baselineDirectory, string scene, string variant) =>
+        Path.Combine(baselineDirectory, $"{scene}.{variant.ToLowerInvariant()}{BaselineSuffix}");
 
     /// <summary>
     /// Fails when a screen paints a colour or a radius its baseline does not list.
@@ -87,12 +87,14 @@ public static class ThemePaletteBaseline
     /// </remarks>
     public static void VerifyNoOrphans(string baselineDirectory, IEnumerable<string> scenes)
     {
-        var expected = new HashSet<string>(scenes, StringComparer.Ordinal);
+        var expected = new HashSet<string>(
+            scenes.SelectMany(scene => ThemeVariants.Names.Select(variant => Path.GetFileName(PathFor(baselineDirectory, scene, variant)))),
+            StringComparer.Ordinal);
 
         var orphans = Directory.EnumerateFiles(baselineDirectory, $"*{BaselineSuffix}")
             .Select(Path.GetFileName)
             .OfType<string>()
-            .Where(file => !expected.Contains(file[..^BaselineSuffix.Length]))
+            .Where(file => !expected.Contains(file))
             .Order(StringComparer.Ordinal)
             .ToList();
 

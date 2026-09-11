@@ -2,201 +2,263 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia">
 
-    <!-- Cockpit dark theme: flat, hairline-bordered, quiet. -->
+    <!-- Cockpit theme: flat, hairline-bordered, quiet — in two variants (AC-860). A colour lives once per variant
+         in the ThemeDictionaries; a brush is declared once, below them, and follows the active variant through
+         DynamicResource, so the StaticResource setters further down keep pointing at one brush instance. The six
+         colourless tokens (radii, thickness, rail width, mono font) know no variant and sit outside.
+         Every token's rule is written as a contrast, not a lightness: "a step towards the panel" holds in both
+         variants where "a shade lighter" holds in one. The rules sit on the brushes; the dictionaries only note
+         where a variant's value is not the mirror of the other's. -->
     <Styles.Resources>
         <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
 
-            <!-- Surfaces -->
-            <Color x:Key="CockpitWindowBgColor">#0f1116</Color>
-            <Color x:Key="CockpitPanelBgColor">#1a1d24</Color>
-            <Color x:Key="CockpitSecondaryBgColor">#0c0e12</Color>
-            <Color x:Key="CockpitHairlineColor">#2a2f39</Color>
+                <ResourceDictionary x:Key="Dark">
+                    <!-- Surfaces, by lightness: secondary < window < chrome < panel < inset. -->
+                    <Color x:Key="CockpitWindowBgColor">#0f1116</Color>
+                    <Color x:Key="CockpitPanelBgColor">#1a1d24</Color>
+                    <Color x:Key="CockpitSecondaryBgColor">#0c0e12</Color>
+                    <Color x:Key="CockpitInsetBgColor">#202430</Color>
+                    <Color x:Key="CockpitChromeBgColor">#12141a</Color>
+                    <Color x:Key="CockpitHairlineColor">#2a2f39</Color>
+                    <Color x:Key="CockpitHairlineSoftColor">#20242c</Color>
+                    <Color x:Key="CockpitHairlineHoverColor">#38404d</Color>
 
-            <SolidColorBrush x:Key="CockpitWindowBgBrush" Color="{StaticResource CockpitWindowBgColor}"/>
-            <SolidColorBrush x:Key="CockpitPanelBgBrush" Color="{StaticResource CockpitPanelBgColor}"/>
-            <SolidColorBrush x:Key="CockpitSecondaryBgBrush" Color="{StaticResource CockpitSecondaryBgColor}"/>
-            <SolidColorBrush x:Key="CockpitHairlineBrush" Color="{StaticResource CockpitHairlineColor}"/>
+                    <!-- Text. Faint clears no AA floor (3.19:1 on the panel) — the third step of the ladder, on purpose. -->
+                    <Color x:Key="CockpitTextPrimaryColor">#e8eaef</Color>
+                    <Color x:Key="CockpitTextSecondaryColor">#949aa5</Color>
+                    <Color x:Key="CockpitTextFaintColor">#656c78</Color>
+                    <Color x:Key="CockpitTextOnAccentColor">#ffffff</Color>
+                    <!-- The status fills are bright here, so the ink that reads on them is the near-black. Same value
+                         as the window today, not the same token: an ink tied to a surface moves for the wrong reason. -->
+                    <Color x:Key="CockpitTextOnStatusColor">#0f1116</Color>
+                    <!-- Away from the accent towards *lighter* here: on a dark panel that is the side with contrast left. -->
+                    <Color x:Key="CockpitClickablePathFgColor">#93b4f7</Color>
 
-            <!-- The layer above the panel (chips, the markdown code-chip, a table header) — one step lighter than
-                 CockpitPanelBgColor so a chip sitting on a panel still reads as raised. -->
-            <Color x:Key="CockpitInsetBgColor">#202430</Color>
-            <SolidColorBrush x:Key="CockpitInsetBgBrush" Color="{StaticResource CockpitInsetBgColor}"/>
+                    <!-- Accent + status. -->
+                    <Color x:Key="CockpitAccentColor">#2563eb</Color>
+                    <Color x:Key="CockpitAccentHoverColor">#1d4ed8</Color>
+                    <Color x:Key="CockpitAccentPressedColor">#1e40af</Color>
+                    <Color x:Key="CockpitStatusBusyColor">#22D3EE</Color>
+                    <Color x:Key="CockpitStatusWaitingColor">#E0A33E</Color>
+                    <Color x:Key="CockpitStatusDoneColor">#5AA576</Color>
+                    <Color x:Key="CockpitStatusBackgroundColor">#A67CD8</Color>
+                    <Color x:Key="CockpitStatusErrorColor">#D64545</Color>
 
-            <!-- The band a window's title bar and a dialog's footer sit on (the mockup's "top" surface). It is a
-                 shade *lighter* than the window fill, which is why the rail colour cannot stand in for it:
-                 CockpitSecondaryBgColor is darker than the window and reads as recessed, and a header that
-                 recedes puts the quietest surface where the dialog's name is. Its seam is softer than the
-                 general hairline (the mockup's soft line) so the header reads as joined to the content below
-                 rather than boxed off from it. -->
-            <Color x:Key="CockpitChromeBgColor">#12141a</Color>
-            <Color x:Key="CockpitHairlineSoftColor">#20242c</Color>
+                    <!-- Alpha echoes: same RGB as the base above, only the alpha differs (AC-381). -->
+                    <Color x:Key="CockpitAccentSelectionColor">#292563eb</Color>
+                    <Color x:Key="CockpitFocusHairlineColor">#402563eb</Color>
+                    <Color x:Key="CockpitAccentRingTintColor">#242563EB</Color>
+                    <Color x:Key="CockpitStatusBusyChipTintColor">#1222D3EE</Color>
+                    <Color x:Key="CockpitStatusBusyRingTintColor">#1F22D3EE</Color>
+                    <Color x:Key="CockpitStatusWaitingChipTintColor">#14E0A33E</Color>
+                    <Color x:Key="CockpitStatusWaitingRingTintColor">#1FE0A33E</Color>
+                    <Color x:Key="CockpitStatusWaitingRowTintColor">#2AE0A33E</Color>
+                    <Color x:Key="CockpitStatusDoneChipTintColor">#145AA576</Color>
+                    <Color x:Key="CockpitStatusDoneRingTintColor">#1F5AA576</Color>
+                    <Color x:Key="CockpitStatusErrorChipTintColor">#14D64545</Color>
+                    <Color x:Key="CockpitStatusErrorRingTintColor">#1FD64545</Color>
+                    <Color x:Key="CockpitCategoryTintBlueColor">#182563EB</Color>
+                    <Color x:Key="CockpitCategoryTintCyanColor">#1822D3EE</Color>
+                    <Color x:Key="CockpitCategoryTintAmberColor">#18E0A33E</Color>
+                    <Color x:Key="CockpitCategoryTintGreenColor">#185AA576</Color>
+                    <Color x:Key="CockpitCategoryTintPurpleColor">#18A67CD8</Color>
 
-            <SolidColorBrush x:Key="CockpitChromeBgBrush" Color="{StaticResource CockpitChromeBgColor}"/>
-            <SolidColorBrush x:Key="CockpitHairlineSoftBrush" Color="{StaticResource CockpitHairlineSoftColor}"/>
+                    <!-- The two tokens that paint with light rather than with a surface: white to lift, the window
+                         fill to dim. 70% of the window takes the height out of a panel without dimming it (1.09×). -->
+                    <Color x:Key="CockpitGhostHoverColor">#0affffff</Color>
+                    <Color x:Key="CockpitScrimColor">#b30f1116</Color>
 
-            <!-- The edge a secondary control lifts to under the pointer. The mockup answers hover on a
-                 neutral button by brightening its *edge* and leaving the fill alone, which keeps a row of
-                 buttons still while the pointer crosses it — a fill that changes moves the eye to whatever
-                 the pointer happens to be over rather than to what the operator is looking for. -->
-            <Color x:Key="CockpitHairlineHoverColor">#38404d</Color>
-            <SolidColorBrush x:Key="CockpitHairlineHoverBrush" Color="{StaticResource CockpitHairlineHoverColor}"/>
+                    <Color x:Key="CockpitUserBubbleColor">#28313B</Color>
+                    <Color x:Key="CockpitIsolatedBadgeBgColor">#332b47</Color>
+                    <Color x:Key="CockpitIsolatedBadgeTextColor">#a78bda</Color>
 
-            <!-- Text on an accent fill. Not CockpitTextPrimaryColor: that is a near-white tuned to sit on the
-                 dark surfaces, and on the blue it loses the bit of contrast the label needs to stay crisp. -->
-            <Color x:Key="CockpitTextOnAccentColor">#ffffff</Color>
-            <SolidColorBrush x:Key="CockpitTextOnAccentBrush" Color="{StaticResource CockpitTextOnAccentColor}"/>
+                    <!-- Roles — see the rules below the dictionaries. Here a raised chip is separated by height, and
+                         "needs you" is carried by tinted ink like every other state. -->
+                    <StaticResource x:Key="CockpitInsetEdgeColor" ResourceKey="CockpitHairlineSoftColor"/>
+                    <StaticResource x:Key="CockpitNeedsYouChipFillColor" ResourceKey="CockpitStatusErrorChipTintColor"/>
+                    <StaticResource x:Key="CockpitNeedsYouChipRingColor" ResourceKey="CockpitStatusErrorRingTintColor"/>
+                    <StaticResource x:Key="CockpitNeedsYouChipLabelColor" ResourceKey="CockpitTextPrimaryColor"/>
+                    <StaticResource x:Key="CockpitNeedsYouChipDetailColor" ResourceKey="CockpitTextFaintColor"/>
+                </ResourceDictionary>
 
-            <!-- Text and glyphs on a *status* fill — a "needs you" badge, a "the CEO is working…" band, the number
-                 inside a step's dot. The status colours are bright by design (they have to catch the eye across a
-                 grid), so the white that answers the accent is unreadable on them: 1.55:1 on the cyan, 2.03:1 on the
-                 amber. This is the other end — the app's own near-black, which clears 10.6:1 on busy, 9.2:1 on
-                 waiting and 6.6:1 on done. Not CockpitWindowBgColor, which happens to be the same value today:
-                 naming it after the window would tie an ink to a surface, and the next repaint moves those two for
-                 different reasons. -->
-            <Color x:Key="CockpitTextOnStatusColor">#0f1116</Color>
-            <SolidColorBrush x:Key="CockpitTextOnStatusBrush" Color="{StaticResource CockpitTextOnStatusColor}"/>
+                <ResourceDictionary x:Key="Light">
+                    <!-- Surfaces, by lightness: secondary < inset < window < chrome < panel. The ladder reorders, it
+                         does not mirror: only the inset moves, because "raised" cannot be lighter than a pure white
+                         panel (Raymond's pick, 2026-09-10 — white gives the compressed ladder all the room there is).
+                         The cost: rail and chip now sit 1.13 apart instead of 1.25, so height alone no longer tells
+                         them apart — CockpitInsetEdgeBrush below is what does. -->
+                    <Color x:Key="CockpitWindowBgColor">#f1f3f7</Color>
+                    <Color x:Key="CockpitPanelBgColor">#ffffff</Color>
+                    <Color x:Key="CockpitSecondaryBgColor">#dde2eb</Color>
+                    <Color x:Key="CockpitInsetBgColor">#edeff5</Color>
+                    <Color x:Key="CockpitChromeBgColor">#f8f9fc</Color>
+                    <Color x:Key="CockpitHairlineColor">#d5dae3</Color>
+                    <Color x:Key="CockpitHairlineSoftColor">#e4e7ee</Color>
+                    <Color x:Key="CockpitHairlineHoverColor">#b3bac7</Color>
 
-            <!-- Accent at 16% (#29 alpha) — the fill behind a selected row in an open dropdown. A solid accent
-                 there would make the list read as one loud band; tinted, the row is picked out without the
-                 text on it having to fight the fill. Kept as an alpha echo of CockpitAccentColor below (AC-381) —
-                 it drifted from the base accent once before (AC-406/AC-337) by keeping the old hex after a
-                 re-tint, so this stays the same RGB as the base, only the alpha differs. -->
-            <Color x:Key="CockpitAccentSelectionColor">#292563eb</Color>
-            <SolidColorBrush x:Key="CockpitAccentSelectionBrush" Color="{StaticResource CockpitAccentSelectionColor}"/>
+                    <!-- Text: 17.6 / 6.2 / 3.8 on the panel. Faint stays under the AA floor, in parity with dark. -->
+                    <Color x:Key="CockpitTextPrimaryColor">#161920</Color>
+                    <Color x:Key="CockpitTextSecondaryColor">#5a616d</Color>
+                    <Color x:Key="CockpitTextFaintColor">#7c8391</Color>
+                    <Color x:Key="CockpitTextOnAccentColor">#ffffff</Color>
+                    <!-- The status fills are dark here (they have to read on white), so the ink on them is white. -->
+                    <Color x:Key="CockpitTextOnStatusColor">#ffffff</Color>
+                    <!-- Away from the accent towards *darker*: lighter-than-blue on white heads for invisible. -->
+                    <Color x:Key="CockpitClickablePathFgColor">#1E3A73</Color>
 
-            <!-- The foreground of a code-span `MarkdownView` resolved to a real file (AC-642): lighter than
-                 CockpitAccentColor so it still reads as code rather than as a link, matching the mockup's
-                 `.path.live` rule. Paired with CockpitAccentSelectionBrush above as the background wash — same
-                 16%-accent tint already used for a selected row, so this reuses rather than invents a second wash. -->
-            <Color x:Key="CockpitClickablePathFgColor">#93b4f7</Color>
-            <SolidColorBrush x:Key="CockpitClickablePathFgBrush" Color="{StaticResource CockpitClickablePathFgColor}"/>
+                    <!-- Accent unchanged: contrast with white is symmetric, so AC-381's ladder (5.17 / 6.70 / 8.72)
+                         holds. The five status hues are re-tuned to ≥5:1 on the panel — all readable, all equally
+                         quiet, which is why "needs you" needs a fill here (see the role brushes). -->
+                    <Color x:Key="CockpitAccentColor">#2563eb</Color>
+                    <Color x:Key="CockpitAccentHoverColor">#1d4ed8</Color>
+                    <Color x:Key="CockpitAccentPressedColor">#1e40af</Color>
+                    <Color x:Key="CockpitStatusBusyColor">#0E7490</Color>
+                    <Color x:Key="CockpitStatusWaitingColor">#A35F02</Color>
+                    <Color x:Key="CockpitStatusDoneColor">#2B7546</Color>
+                    <Color x:Key="CockpitStatusBackgroundColor">#7A46C8</Color>
+                    <Color x:Key="CockpitStatusErrorColor">#C62F2F</Color>
 
-            <!-- Accent at 25% (#40 alpha) — the quiet edge a TextBox/ComboBox gets from a click (AC-438).
-                 :focus-visible carries the full accent ring for keyboard navigation; a plain :focus (which a
-                 mouse click also sets) is not silence — a clicked field still needs a marker distinct from a
-                 merely-hovered one — but it is not the loud keyboard ring either, or the two signals would be
-                 the same colour and the whole point of splitting them is lost. 25% rather than the 16% used
-                 for a selection tint: that one shades a whole row, this one is a 1-2px stroke, and needed more
-                 of the accent in it to still read as its own colour rather than fade into the hairline grey —
-                 checked against both CockpitHairlineColor and CockpitHairlineHoverColor in
-                 ThemeControlStateTests (rendered pixels, not a hex comparison by eye). -->
-            <Color x:Key="CockpitFocusHairlineColor">#402563eb</Color>
-            <SolidColorBrush x:Key="CockpitFocusHairlineBrush" Color="{StaticResource CockpitFocusHairlineColor}"/>
+                    <!-- Alpha echoes, same alphas as dark, the RGB following this variant's base. -->
+                    <Color x:Key="CockpitAccentSelectionColor">#292563eb</Color>
+                    <Color x:Key="CockpitFocusHairlineColor">#402563eb</Color>
+                    <Color x:Key="CockpitAccentRingTintColor">#242563EB</Color>
+                    <Color x:Key="CockpitStatusBusyChipTintColor">#120E7490</Color>
+                    <Color x:Key="CockpitStatusBusyRingTintColor">#1F0E7490</Color>
+                    <Color x:Key="CockpitStatusWaitingChipTintColor">#14A35F02</Color>
+                    <Color x:Key="CockpitStatusWaitingRingTintColor">#1FA35F02</Color>
+                    <Color x:Key="CockpitStatusWaitingRowTintColor">#2AA35F02</Color>
+                    <Color x:Key="CockpitStatusDoneChipTintColor">#142B7546</Color>
+                    <Color x:Key="CockpitStatusDoneRingTintColor">#1F2B7546</Color>
+                    <Color x:Key="CockpitStatusErrorChipTintColor">#14C62F2F</Color>
+                    <Color x:Key="CockpitStatusErrorRingTintColor">#1FC62F2F</Color>
+                    <Color x:Key="CockpitCategoryTintBlueColor">#182563EB</Color>
+                    <Color x:Key="CockpitCategoryTintCyanColor">#180E7490</Color>
+                    <Color x:Key="CockpitCategoryTintAmberColor">#18A35F02</Color>
+                    <Color x:Key="CockpitCategoryTintGreenColor">#182B7546</Color>
+                    <Color x:Key="CockpitCategoryTintPurpleColor">#187A46C8</Color>
 
-            <!-- White at 4% (#0a alpha) — the wash under a chromeless button on hover. A token rather than a
-                 literal because it is the one place the theme paints with light instead of with a surface
-                 colour: a ghost button has no fill to brighten, so it borrows one from whatever it sits on. -->
-            <Color x:Key="CockpitGhostHoverColor">#0affffff</Color>
-            <SolidColorBrush x:Key="CockpitGhostHoverBrush" Color="{StaticResource CockpitGhostHoverColor}"/>
+                    <!-- Both paint with shadow here: 5% black lifts a ghost button as much as 4% white does in dark
+                         (1.12 vs 1.11). The scrim is the dark one at 25% — the mirror (white at 70%) measures 1.00×
+                         on the panel, indistinguishable from nothing; this one dims it 1.76× and leaves the text under
+                         it at 10.2:1. Zyra's call on the measurement, 2026-09-10, not Raymond's. -->
+                    <Color x:Key="CockpitGhostHoverColor">#0d000000</Color>
+                    <Color x:Key="CockpitScrimColor">#400f1116</Color>
 
-            <!-- The dim a modal busy layer lays over what it blocks (AC-420) — the window fill at 70% (#b3
-                 alpha), not black. Black over these blue-grey surfaces reads as a smudge; the app's own
-                 darkest surface leaves the covered content recognisable while plainly out of reach. -->
-            <Color x:Key="CockpitScrimColor">#b30f1116</Color>
-            <SolidColorBrush x:Key="CockpitScrimBrush" Color="{StaticResource CockpitScrimColor}"/>
+                    <Color x:Key="CockpitUserBubbleColor">#d7e3f7</Color>
+                    <Color x:Key="CockpitIsolatedBadgeBgColor">#ece3fb</Color>
+                    <Color x:Key="CockpitIsolatedBadgeTextColor">#6A3AA6</Color>
 
-            <!-- Text -->
-            <Color x:Key="CockpitTextPrimaryColor">#e8eaef</Color>
-            <Color x:Key="CockpitTextSecondaryColor">#949aa5</Color>
-            <Color x:Key="CockpitTextFaintColor">#656c78</Color>
+                    <!-- Roles: the full hairline around a raised chip (the soft one measures 1.08 against the inset
+                         here), and "needs you" as a solid fill with the on-status ink (Raymond, 2026-09-10). -->
+                    <StaticResource x:Key="CockpitInsetEdgeColor" ResourceKey="CockpitHairlineColor"/>
+                    <StaticResource x:Key="CockpitNeedsYouChipFillColor" ResourceKey="CockpitStatusErrorColor"/>
+                    <StaticResource x:Key="CockpitNeedsYouChipRingColor" ResourceKey="CockpitTextOnStatusColor"/>
+                    <StaticResource x:Key="CockpitNeedsYouChipLabelColor" ResourceKey="CockpitTextOnStatusColor"/>
+                    <StaticResource x:Key="CockpitNeedsYouChipDetailColor" ResourceKey="CockpitTextOnStatusColor"/>
+                </ResourceDictionary>
 
-            <SolidColorBrush x:Key="CockpitTextPrimaryBrush" Color="{StaticResource CockpitTextPrimaryColor}"/>
-            <SolidColorBrush x:Key="CockpitTextSecondaryBrush" Color="{StaticResource CockpitTextSecondaryColor}"/>
-            <SolidColorBrush x:Key="CockpitTextFaintBrush" Color="{StaticResource CockpitTextFaintColor}"/>
+            </ResourceDictionary.ThemeDictionaries>
 
-            <!-- User message bubble (T2): a calm cool-slate fill, distinct from the warm-neutral panel so
-                 the operator's own lines read as "mine" on the right without shouting. -->
-            <Color x:Key="CockpitUserBubbleColor">#28313B</Color>
-            <SolidColorBrush x:Key="CockpitUserBubbleBrush" Color="{StaticResource CockpitUserBubbleColor}"/>
+            <!-- Surfaces. The window is the canvas; the panel is the card on it (lighter in both variants); the
+                 secondary surface is recessed (darker than the window in both); the chrome band a title bar and a
+                 dialog footer sit on is a step *towards the panel*, never towards the rail — a header that recedes
+                 puts the quietest surface where the dialog's name is. Its seam is the soft hairline, so the header
+                 reads as joined to the content rather than boxed off. -->
+            <SolidColorBrush x:Key="CockpitWindowBgBrush" Color="{DynamicResource CockpitWindowBgColor}"/>
+            <SolidColorBrush x:Key="CockpitPanelBgBrush" Color="{DynamicResource CockpitPanelBgColor}"/>
+            <SolidColorBrush x:Key="CockpitSecondaryBgBrush" Color="{DynamicResource CockpitSecondaryBgColor}"/>
+            <SolidColorBrush x:Key="CockpitChromeBgBrush" Color="{DynamicResource CockpitChromeBgColor}"/>
+            <!-- The layer a chip, the markdown code-chip and a table header sit on: one step *away from the window*
+                 past the panel — raised in dark, where there is room above the panel, recessed in light, where there
+                 is none above white. Read with CockpitInsetEdgeBrush, which is the edge that separates it from the
+                 rail once height alone cannot. -->
+            <SolidColorBrush x:Key="CockpitInsetBgBrush" Color="{DynamicResource CockpitInsetBgColor}"/>
 
-            <!-- The session header's "isolated" badge (a session running in its own git worktree, AC-334): its own
-                 violet, apart from the grey kind chip and the status colours, so an isolated session is recognisable
-                 at a glance regardless of what the accent/status colours are set to. -->
-            <Color x:Key="CockpitIsolatedBadgeBgColor">#332b47</Color>
-            <Color x:Key="CockpitIsolatedBadgeTextColor">#a78bda</Color>
-            <SolidColorBrush x:Key="CockpitIsolatedBadgeBgBrush" Color="{StaticResource CockpitIsolatedBadgeBgColor}"/>
-            <SolidColorBrush x:Key="CockpitIsolatedBadgeTextBrush" Color="{StaticResource CockpitIsolatedBadgeTextColor}"/>
+            <!-- Lines. The hairline is where a surface stops (≥1.25:1 against the panel); the soft one joins rather
+                 than boxes; hover lifts a secondary control's *edge* by ~1.3× more contrast and leaves the fill
+                 alone, so a row of buttons stays still while the pointer crosses it. -->
+            <SolidColorBrush x:Key="CockpitHairlineBrush" Color="{DynamicResource CockpitHairlineColor}"/>
+            <SolidColorBrush x:Key="CockpitHairlineSoftBrush" Color="{DynamicResource CockpitHairlineSoftColor}"/>
+            <SolidColorBrush x:Key="CockpitHairlineHoverBrush" Color="{DynamicResource CockpitHairlineHoverColor}"/>
 
-            <!-- Accent + status. CockpitAccentColor was #3b82f6 with CockpitTextOnAccentColor (white) on it:
-                 3.68:1, short of the 4.5:1 AA floor the 12.5px SemiBold button label needs (AC-381). Darkened
-                 to #2563eb (5.17:1) to fix it. The old ladder answered "hover" with a *lighter* tint
-                 (#4a8bf7); repeating that pattern here would have landed hover back on ~#3b82f6 — exactly the
-                 3.68:1 this ticket removes. Contrast with white only improves as the colour gets darker, so
-                 hover and pressed are chosen further down the same blue instead, each measured against white:
-                 base #2563eb 5.17:1, hover #1d4ed8 6.70:1, pressed #1e40af 8.72:1. -->
-            <Color x:Key="CockpitAccentColor">#2563eb</Color>
-            <Color x:Key="CockpitAccentHoverColor">#1d4ed8</Color>
-            <Color x:Key="CockpitAccentPressedColor">#1e40af</Color>
-            <!-- Cyan rather than a second blue: the accent moved onto blue (AC-334), and a blue "busy" dot next to a
-                 blue accent border would stop reading as its own signal. Raymond's call, 2026-07-27. -->
-            <Color x:Key="CockpitStatusBusyColor">#22D3EE</Color>
-            <Color x:Key="CockpitStatusWaitingColor">#E0A33E</Color>
-            <Color x:Key="CockpitStatusDoneColor">#5AA576</Color>
-            <!-- "Working (background)": sub-agents still running while the main agent is quiet. Purple so it reads apart from the cyan "busy" and green "done" dots. -->
-            <Color x:Key="CockpitStatusBackgroundColor">#A67CD8</Color>
-            <!-- Error toast severity (#61) — no session status used red before this, so a new token. -->
-            <Color x:Key="CockpitStatusErrorColor">#D64545</Color>
+            <!-- Text: three steps — the answer, its context, its metadata — each measurably apart on the panel.
+                 Primary is not the ink for a fill: it is tuned to the surfaces and loses the bit of contrast a label
+                 on the accent needs, so a coloured fill carries its own ink (≥4.5:1 on the accent ladder, ≥4.3:1 on
+                 all five status fills). -->
+            <SolidColorBrush x:Key="CockpitTextPrimaryBrush" Color="{DynamicResource CockpitTextPrimaryColor}"/>
+            <SolidColorBrush x:Key="CockpitTextSecondaryBrush" Color="{DynamicResource CockpitTextSecondaryColor}"/>
+            <SolidColorBrush x:Key="CockpitTextFaintBrush" Color="{DynamicResource CockpitTextFaintColor}"/>
+            <SolidColorBrush x:Key="CockpitTextOnAccentBrush" Color="{DynamicResource CockpitTextOnAccentColor}"/>
+            <SolidColorBrush x:Key="CockpitTextOnStatusBrush" Color="{DynamicResource CockpitTextOnStatusColor}"/>
 
-            <SolidColorBrush x:Key="CockpitAccentBrush" Color="{StaticResource CockpitAccentColor}"/>
-            <SolidColorBrush x:Key="CockpitAccentHoverBrush" Color="{StaticResource CockpitAccentHoverColor}"/>
-            <SolidColorBrush x:Key="CockpitAccentPressedBrush" Color="{StaticResource CockpitAccentPressedColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusBusyBrush" Color="{StaticResource CockpitStatusBusyColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusWaitingBrush" Color="{StaticResource CockpitStatusWaitingColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusDoneBrush" Color="{StaticResource CockpitStatusDoneColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusBackgroundBrush" Color="{StaticResource CockpitStatusBackgroundColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusErrorBrush" Color="{StaticResource CockpitStatusErrorColor}"/>
+            <!-- Accent: base, hover, pressed, each further down the same blue and each ≥4.5:1 under white (AC-381);
+                 a lighter hover would land back on the 3.68:1 that ticket removed. Cyan for busy, not a second blue:
+                 a blue dot next to a blue accent border stops being its own signal (Raymond, 2026-07-27). Purple for
+                 "working in the background", red for error (#61) — no session status used red before it. -->
+            <SolidColorBrush x:Key="CockpitAccentBrush" Color="{DynamicResource CockpitAccentColor}"/>
+            <SolidColorBrush x:Key="CockpitAccentHoverBrush" Color="{DynamicResource CockpitAccentHoverColor}"/>
+            <SolidColorBrush x:Key="CockpitAccentPressedBrush" Color="{DynamicResource CockpitAccentPressedColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusBusyBrush" Color="{DynamicResource CockpitStatusBusyColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusWaitingBrush" Color="{DynamicResource CockpitStatusWaitingColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusDoneBrush" Color="{DynamicResource CockpitStatusDoneColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusBackgroundBrush" Color="{DynamicResource CockpitStatusBackgroundColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusErrorBrush" Color="{DynamicResource CockpitStatusErrorColor}"/>
 
-            <!-- Assistant indicator state washes (AC-543 vormgeving pass): the mockup tints the whole chip
-                 surface per state (≈7-8% alpha) and the mic badge behind it a touch stronger (≈12-14%), not just
-                 the border/icon the rest of this theme already covers. Alpha-echoes of the status colours above,
-                 same rule AC-381's CockpitAccentSelectionColor already follows: same RGB as the base colour, only
-                 the alpha differs, so a re-tint of the base can never leave these drifted behind it. The
-                 thinking/accent chip wash needs no colour of its own — CockpitAccentSelectionColor already is the
-                 accent at 16% alpha, which is what the mockup's own accent-tint variable is. -->
-            <Color x:Key="CockpitStatusBusyChipTintColor">#1222D3EE</Color>
-            <Color x:Key="CockpitStatusBusyRingTintColor">#1F22D3EE</Color>
-            <Color x:Key="CockpitStatusWaitingChipTintColor">#14E0A33E</Color>
-            <Color x:Key="CockpitStatusWaitingRingTintColor">#1FE0A33E</Color>
-            <!-- The error colour as a chip/ring tint, at the same two alphas every other status tint uses. Added
-                 for the assistant chip's "needs you" (AC-543): amber already means "dictating, not the assistant"
-                 and may not be reused, and the remaining free hues all read as calm. A decision waiting on the
-                 operator is the one chip state that has to break the resting palette. -->
-            <Color x:Key="CockpitStatusErrorChipTintColor">#14D64545</Color>
-            <Color x:Key="CockpitStatusErrorRingTintColor">#1FD64545</Color>
-            <Color x:Key="CockpitStatusDoneChipTintColor">#145AA576</Color>
-            <Color x:Key="CockpitStatusDoneRingTintColor">#1F5AA576</Color>
-            <Color x:Key="CockpitAccentRingTintColor">#242563EB</Color>
+            <!-- Washes: the accent at 16% behind a selected row (a solid would make the list one loud band), at 25%
+                 as the quiet edge a click gives a field (AC-438 — more than the row wash because a 1px stroke needs
+                 more of the hue to read as its own colour next to the hairline; the keyboard ring stays the full
+                 accent). The assistant chip tints its whole surface per state at ≈7-8% and the mic badge behind it
+                 at ≈12% (AC-543); the needs-attention sidebar row at ≈16% (AC-406, picked by matching the pre-mixed opaque
+                 it replaced against the rail); the plugin-store tiles carry one of five category tints at ≈9% (AC-553)
+                 — a distinct alpha each, so the same hex never sits under two keys. Error as a chip tint is "needs
+                 you": amber already means "dictating" there. All of these are alpha echoes of their base, re-derived per variant rather
+                 than copied — a copied tint is how AC-406/AC-337 drifted. -->
+            <SolidColorBrush x:Key="CockpitAccentSelectionBrush" Color="{DynamicResource CockpitAccentSelectionColor}"/>
+            <SolidColorBrush x:Key="CockpitFocusHairlineBrush" Color="{DynamicResource CockpitFocusHairlineColor}"/>
+            <SolidColorBrush x:Key="CockpitAccentRingTintBrush" Color="{DynamicResource CockpitAccentRingTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusBusyChipTintBrush" Color="{DynamicResource CockpitStatusBusyChipTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusBusyRingTintBrush" Color="{DynamicResource CockpitStatusBusyRingTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusWaitingChipTintBrush" Color="{DynamicResource CockpitStatusWaitingChipTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusWaitingRingTintBrush" Color="{DynamicResource CockpitStatusWaitingRingTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusWaitingRowTintBrush" Color="{DynamicResource CockpitStatusWaitingRowTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusDoneChipTintBrush" Color="{DynamicResource CockpitStatusDoneChipTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusDoneRingTintBrush" Color="{DynamicResource CockpitStatusDoneRingTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusErrorChipTintBrush" Color="{DynamicResource CockpitStatusErrorChipTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusErrorRingTintBrush" Color="{DynamicResource CockpitStatusErrorRingTintColor}"/>
+            <SolidColorBrush x:Key="CockpitCategoryTintBlueBrush" Color="{DynamicResource CockpitCategoryTintBlueColor}"/>
+            <SolidColorBrush x:Key="CockpitCategoryTintCyanBrush" Color="{DynamicResource CockpitCategoryTintCyanColor}"/>
+            <SolidColorBrush x:Key="CockpitCategoryTintAmberBrush" Color="{DynamicResource CockpitCategoryTintAmberColor}"/>
+            <SolidColorBrush x:Key="CockpitCategoryTintGreenBrush" Color="{DynamicResource CockpitCategoryTintGreenColor}"/>
+            <SolidColorBrush x:Key="CockpitCategoryTintPurpleBrush" Color="{DynamicResource CockpitCategoryTintPurpleColor}"/>
 
-            <SolidColorBrush x:Key="CockpitStatusBusyChipTintBrush" Color="{StaticResource CockpitStatusBusyChipTintColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusBusyRingTintBrush" Color="{StaticResource CockpitStatusBusyRingTintColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusWaitingChipTintBrush" Color="{StaticResource CockpitStatusWaitingChipTintColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusWaitingRingTintBrush" Color="{StaticResource CockpitStatusWaitingRingTintColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusDoneChipTintBrush" Color="{StaticResource CockpitStatusDoneChipTintColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusDoneRingTintBrush" Color="{StaticResource CockpitStatusDoneRingTintColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusErrorChipTintBrush" Color="{StaticResource CockpitStatusErrorChipTintColor}"/>
-            <SolidColorBrush x:Key="CockpitStatusErrorRingTintBrush" Color="{StaticResource CockpitStatusErrorRingTintColor}"/>
-            <SolidColorBrush x:Key="CockpitAccentRingTintBrush" Color="{StaticResource CockpitAccentRingTintColor}"/>
+            <!-- A code-span resolved to a real file (AC-642): ≥2:1 away from the accent so it reads as code, not as
+                 a link, on the same 16% accent wash a selected row uses. -->
+            <SolidColorBrush x:Key="CockpitClickablePathFgBrush" Color="{DynamicResource CockpitClickablePathFgColor}"/>
 
-            <!-- Plugin store logo tiles (AC-553): a tint per *category*, not per plugin — the mark itself carries
-                 no colour of its own (CockpitTextPrimaryBrush, same as everywhere else an icon sits on a surface),
-                 so eleven plugins in a grid read as one family instead of eleven clashing brand colours. Five
-                 tints, each an alpha echo of a hue the theme already uses elsewhere (accent blue, the three status
-                 hues, the isolated-badge purple) — a new category never needs a new colour, PluginCategoryTint
-                 (Cockpit.App) picks one of these five by a stable hash of the category string. 0x18 alpha
-                 (~9.4%) rather than the *RingTint tokens' own 0x1F: an identical hex under a second resource key
-                 reads as ambiguous to ThemePaletteBaselineTests (which resource key painted this pixel?) and
-                 fails every unrelated scene that already paints a *RingTint colour, not just this ticket's own. -->
-            <Color x:Key="CockpitCategoryTintBlueColor">#182563EB</Color>
-            <Color x:Key="CockpitCategoryTintCyanColor">#1822D3EE</Color>
-            <Color x:Key="CockpitCategoryTintAmberColor">#18E0A33E</Color>
-            <Color x:Key="CockpitCategoryTintGreenColor">#185AA576</Color>
-            <Color x:Key="CockpitCategoryTintPurpleColor">#18A67CD8</Color>
+            <!-- The wash under a chromeless button on hover pushes its surface ~1.1× off whatever it sits on — the
+                 one place the theme paints with light or shadow instead of a surface, because a ghost button has no
+                 fill to move. The scrim (AC-420) has to leave the covered content recognisable and plainly out of
+                 reach; what does that is a different alpha per variant, not a mirrored colour. -->
+            <SolidColorBrush x:Key="CockpitGhostHoverBrush" Color="{DynamicResource CockpitGhostHoverColor}"/>
+            <SolidColorBrush x:Key="CockpitScrimBrush" Color="{DynamicResource CockpitScrimColor}"/>
 
-            <SolidColorBrush x:Key="CockpitCategoryTintBlueBrush" Color="{StaticResource CockpitCategoryTintBlueColor}"/>
-            <SolidColorBrush x:Key="CockpitCategoryTintCyanBrush" Color="{StaticResource CockpitCategoryTintCyanColor}"/>
-            <SolidColorBrush x:Key="CockpitCategoryTintAmberBrush" Color="{StaticResource CockpitCategoryTintAmberColor}"/>
-            <SolidColorBrush x:Key="CockpitCategoryTintGreenBrush" Color="{StaticResource CockpitCategoryTintGreenColor}"/>
-            <SolidColorBrush x:Key="CockpitCategoryTintPurpleBrush" Color="{StaticResource CockpitCategoryTintPurpleColor}"/>
+            <!-- The operator's own bubble (T2): a cool slate against the neutral panel, ≥1.25:1 from it, so "mine"
+                 reads without shouting. The isolated badge (AC-334) is its own violet, apart from every accent and
+                 status hue, so a worktree session is recognisable whatever those are set to. -->
+            <SolidColorBrush x:Key="CockpitUserBubbleBrush" Color="{DynamicResource CockpitUserBubbleColor}"/>
+            <SolidColorBrush x:Key="CockpitIsolatedBadgeBgBrush" Color="{DynamicResource CockpitIsolatedBadgeBgColor}"/>
+            <SolidColorBrush x:Key="CockpitIsolatedBadgeTextBrush" Color="{DynamicResource CockpitIsolatedBadgeTextColor}"/>
+
+            <!-- Roles — the two places a light theme is a rule and not a value: the edge around a raised chip, and
+                 the means "needs you" uses to shout. Avalonia has no variant selector, so a rule that differs per
+                 variant is a brush whose colour is an *alias* that each dictionary points somewhere else. An alias
+                 rather than a copied hex, so the baselines keep naming the token that actually owns the value. -->
+            <SolidColorBrush x:Key="CockpitInsetEdgeBrush" Color="{DynamicResource CockpitInsetEdgeColor}"/>
+            <SolidColorBrush x:Key="CockpitNeedsYouChipFillBrush" Color="{DynamicResource CockpitNeedsYouChipFillColor}"/>
+            <SolidColorBrush x:Key="CockpitNeedsYouChipRingBrush" Color="{DynamicResource CockpitNeedsYouChipRingColor}"/>
+            <SolidColorBrush x:Key="CockpitNeedsYouChipLabelBrush" Color="{DynamicResource CockpitNeedsYouChipLabelColor}"/>
+            <SolidColorBrush x:Key="CockpitNeedsYouChipDetailBrush" Color="{DynamicResource CockpitNeedsYouChipDetailColor}"/>
 
             <!-- Geometry. The mockup's control radius (9px) is what every input, select and button
                  carries. Its window radius (14px) belongs to the rounded card a web page draws to
@@ -227,9 +289,10 @@
             <!-- Fluent's own scroll-bar keys, redefined because the values sit inside its template at Template
                  priority, where a style setter of ours cannot reach them (AC-405). The groove keeps one colour
                  whether or not the pointer is over it; the thumb is the part that answers. -->
-            <SolidColorBrush x:Key="ScrollBarTrackFill" Color="{StaticResource CockpitInsetBgColor}"/>
-            <SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="{StaticResource CockpitInsetBgColor}"/>
-            <SolidColorBrush x:Key="ScrollViewerScrollBarsSeparatorBackground" Color="{StaticResource CockpitInsetBgColor}"/>
+            <SolidColorBrush x:Key="ScrollBarTrackFill" Color="{DynamicResource CockpitInsetBgColor}"/>
+            <SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="{DynamicResource CockpitInsetBgColor}"/>
+            <SolidColorBrush x:Key="ScrollViewerScrollBarsSeparatorBackground" Color="{DynamicResource CockpitInsetBgColor}"/>
+
 
             <!-- ProgressBar's groove (AC-447). Its ControlTheme sets Background itself —
                  `Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"` in Fluent's
@@ -244,7 +307,7 @@
                  aliases Fluent derives from it elsewhere are wired with StaticResource inside Fluent's own
                  dictionary, so they resolve there and do not see this override (measured — see
                  ThemeControlStateTests.AProgressBar_DrawsItsGrooveInTheThemesInsetColour_NotFluentsTranslucentWhite). -->
-            <SolidColorBrush x:Key="SystemControlBackgroundBaseLowBrush" Color="{StaticResource CockpitInsetBgColor}"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundBaseLowBrush" Color="{DynamicResource CockpitInsetBgColor}"/>
 
         </ResourceDictionary>
     </Styles.Resources>
@@ -1180,7 +1243,9 @@
          yet; it arrives with the projects flow, and calling this one "chip" would take the name it needs. -->
     <Style Selector="Border.tag">
         <Setter Property="Background" Value="{StaticResource CockpitInsetBgBrush}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+        <!-- The edge is a role brush: soft where height already separates the tag from its surface, the full
+             hairline where it does not (light — the tag and the rail are painted 1.13 apart there, AC-860). -->
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitInsetEdgeBrush}"/>
         <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
         <Setter Property="CornerRadius" Value="5"/>
         <Setter Property="Padding" Value="6,1"/>
@@ -1282,14 +1347,11 @@
         <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
     </Style>
 
-    <!-- Needs-attention sidebar item: a soft accent-tinted fill so it reads louder than a plain dot.
-         Declared after .active so an active+waiting row keeps this tint (with .active's accent edge).
-         2A-alpha echo of CockpitStatusWaitingColor (AC-406) — was a pre-mixed opaque literal that would
-         have held the old waiting colour through a repaint. Picked by rendering the real row against the
-         sidebar's own background (CockpitSecondaryBgColor) and matching the previous pixels, not by eye
-         against a mockup background — see ThemeHexColorGuardTests.AllowedLiterals for the measurement. -->
+    <!-- Needs-attention sidebar item: a soft amber wash so it reads louder than a plain dot. Declared after
+         .active so an active+waiting row keeps this tint (with .active's accent edge). A token since AC-860: as a
+         literal it was the dark echo in both variants, and over the light rail that composites to beige. -->
     <Style Selector="Border.sessionItem.attention">
-        <Setter Property="Background" Value="#2AE0A33E"/>
+        <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingRowTintBrush}"/>
     </Style>
 
     <!-- Projects workspace card (AC-709). Unlike the sidebar's sessionItem row (flat, left-edge-only border),
@@ -1654,7 +1716,7 @@
          reporting, so it is the one that may not blend into the resting palette. -->
     <Style Selector="Button.assistantIndicatorChip.awaitingOperator">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusErrorBrush}"/>
-        <Setter Property="Background" Value="{StaticResource CockpitStatusErrorChipTintBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitNeedsYouChipFillBrush}"/>
     </Style>
     <!-- Unavailable dims the whole chip instead of tinting it — a broken assistant should draw the eye less, not
          announce itself in a colour it does not have anything to report with. -->
@@ -1842,6 +1904,19 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
         <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
+    <!-- The one state whose *means* differs per variant (AC-860): tinted ink in dark, where a bright hue is loud on
+         its own; a solid fill with the on-status ink in light, where any hue that reads on white is quiet. The
+         fill and the three inks are role brushes, so this stays one rule with two answers instead of two rules. After
+         the ring, label and detail rules above on purpose: same priority, so the later declaration wins. -->
+    <Style Selector="Button.assistantIndicatorChip.awaitingOperator TextBlock.assistantIndicatorLabel">
+        <Setter Property="Foreground" Value="{StaticResource CockpitNeedsYouChipLabelBrush}"/>
+    </Style>
+    <Style Selector="Button.assistantIndicatorChip.awaitingOperator TextBlock.assistantIndicatorDetail">
+        <Setter Property="Foreground" Value="{StaticResource CockpitNeedsYouChipDetailBrush}"/>
+    </Style>
+    <Style Selector="Button.assistantIndicatorChip.awaitingOperator Border.assistantIndicatorRing.awaitingOperator">
+        <Setter Property="Background" Value="{StaticResource CockpitNeedsYouChipRingBrush}"/>
+    </Style>
 
     <!-- The key hint badge at the right of the chip (mockup's .key): mono, thin hairline border, small radius,
          tight padding, faint text — a keycap that reads as a hint rather than another button. -->
@@ -1912,7 +1987,7 @@
          would be dead. The fill needs no layout change either, so nothing shifts under the pointer mid-drag. -->
     <Style Selector="Border.fileDropTarget">
         <Setter Property="Background">
-            <SolidColorBrush Color="{StaticResource CockpitAccentColor}" Opacity="0.22"/>
+            <SolidColorBrush Color="{DynamicResource CockpitAccentColor}" Opacity="0.22"/>
         </Setter>
     </Style>
 

@@ -10,7 +10,8 @@ namespace Cockpit.App.ViewTests;
 /// <summary>
 /// The recorded state of the repaint (AC-169). Every scene the screenshot harness can render is rendered here and
 /// held against a file, so a screen that starts painting a colour no theme token accounts for shows up as a diff on
-/// something reviewable rather than on nobody's screen.
+/// something reviewable rather than on nobody's screen. Once per theme variant (AC-860): a light theme nothing
+/// renders is a light theme nothing guards.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -47,18 +48,19 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class ThemePaletteBaselineTests
 {
-    public static TheoryData<string> Scenes => [.. Screenshotter.SceneNames];
+    public static IEnumerable<object[]> Scenes =>
+        from scene in Screenshotter.SceneNames from variant in ThemeVariants.Names select new object[] { scene, variant };
 
     private static string BaselineDirectory =>
         Path.Combine(RepositoryPaths.Root, "tests", "Cockpit.App.ViewTests", "Baselines");
 
     [Theory]
     [MemberData(nameof(Scenes))]
-    public void AScene_PaintsNothingItsBaselineDoesNotAccountFor(string scene)
+    public void AScene_PaintsNothingItsBaselineDoesNotAccountFor(string scene, string variant)
     {
-        var painted = HeadlessAvalonia.Run(() => _Painted(scene));
+        var painted = HeadlessAvalonia.Run(() => ThemeVariants.Under(variant, () => _Painted(scene)));
 
-        ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, scene), painted);
+        ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, scene, variant), painted);
     }
 
     /// <summary>
@@ -80,8 +82,7 @@ public class ThemePaletteBaselineTests
     [Fact]
     public void TheHarness_ShowsItsWindow_SoTheThemesSelectorsHaveRun() => HeadlessAvalonia.Run(() =>
     {
-        var primary = (Color)(Application.Current?.FindResource("CockpitTextPrimaryColor")
-            ?? throw new InvalidOperationException("The theme has no CockpitTextPrimaryColor."));
+        var primary = ThemeTokens.Colour("CockpitTextPrimaryColor");
 
         Assert.Contains(ThemePalette.Hex(primary), _Painted("options"), StringComparison.Ordinal);
     });

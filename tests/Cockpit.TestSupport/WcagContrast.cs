@@ -22,13 +22,14 @@ public static class WcagContrast
     /// <summary>The ratio between two colours' relative luminance, per WCAG 2.x: (L_lighter + 0.05) / (L_darker + 0.05).</summary>
     public static double Ratio(Color a, Color b)
     {
-        var la = _RelativeLuminance(a);
-        var lb = _RelativeLuminance(b);
+        var la = RelativeLuminance(a);
+        var lb = RelativeLuminance(b);
         var (lighter, darker) = la >= lb ? (la, lb) : (lb, la);
         return (lighter + 0.05) / (darker + 0.05);
     }
 
-    private static double _RelativeLuminance(Color colour) =>
+    /// <summary>WCAG relative luminance, 0 (black) to 1 (white) — what "lighter than" means when a surface ladder is ordered.</summary>
+    public static double RelativeLuminance(Color colour) =>
         0.2126 * _Linearize(colour.R) + 0.7152 * _Linearize(colour.G) + 0.0722 * _Linearize(colour.B);
 
     /// <summary>sRGB gamma expansion of one 0-255 channel into the linear-light value the luminance formula wants.</summary>

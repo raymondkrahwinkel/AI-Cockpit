@@ -1,5 +1,4 @@
 using System.Reflection;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Controls.Shapes;
@@ -8,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Xunit.Abstractions;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -62,8 +62,7 @@ public class GitHubIssuesDialogControlTests
         var row = harness.Grid.GetVisualDescendants().OfType<DataGridRow>().First(candidate => Equals(candidate.DataContext, First));
         var rectangle = row.GetVisualDescendants().OfType<Rectangle>().First(candidate => candidate.Name == "BackgroundRectangle");
         var fill = (rectangle.Fill as ISolidColorBrush)?.Color;
-        var token = (Color)(Application.Current?.FindResource("CockpitAccentSelectionColor")
-            ?? throw new InvalidOperationException("The theme has no CockpitAccentSelectionColor."));
+        var token = ThemeTokens.Colour("CockpitAccentSelectionColor");
 
         harness.Close();
 

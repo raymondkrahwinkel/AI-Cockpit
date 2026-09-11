@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media;
+using Cockpit.TestSupport;
 
 namespace Cockpit.App.ViewTests;
 
@@ -24,8 +25,7 @@ internal static class RenderedScene
     }
 
     /// <summary>The live value of a <c>Theme.axaml</c> colour token, so an assertion follows a repaint instead of pinning a hex.</summary>
-    public static Color Token(string key) =>
-        (Color)(Application.Current?.FindResource(key) ?? throw new InvalidOperationException($"no token '{key}'"));
+    public static Color Token(string key) => ThemeTokens.Colour(key);
 
     /// <summary>The live brush behind a <c>Theme.axaml</c> token, for comparing against something rendered.</summary>
     public static IBrush TokenBrush(string key) =>

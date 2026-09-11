@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
@@ -58,6 +59,15 @@ internal static class Screenshotter
         var snapshotPath = _Value(args, "--snapshot");
         var snapshotTarget = _Value(args, "--snapshot-target");
 
+        // "--theme Light|Dark" renders the other variant (AC-860); the app's own default stands when it is absent.
+        var theme = _Value(args, "--theme");
+        if (theme is not null && theme is not ("Light" or "Dark"))
+        {
+            Console.Error.WriteLine($"--theme must be Light or Dark; it is \"{theme}\".");
+
+            return 1;
+        }
+
         var width = DefaultWindowWidth;
         var height = DefaultWindowHeight;
         if (_Value(args, "--size") is { } size)
@@ -85,7 +95,7 @@ internal static class Screenshotter
 
         try
         {
-            Run(outputPngPath, width, height, scene, snapshotPath, snapshotTarget);
+            Run(outputPngPath, width, height, scene, snapshotPath, snapshotTarget, theme);
         }
         catch (Exception exception)
         {
@@ -113,7 +123,7 @@ internal static class Screenshotter
     private static string? _Value(string[] args, string name) =>
         Array.IndexOf(args, name) is var index && index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
 
-    public static void Run(string outputPngPath, int width = DefaultWindowWidth, int height = DefaultWindowHeight, string? scene = null, string? snapshotPath = null, string? snapshotTarget = null)
+    public static void Run(string outputPngPath, int width = DefaultWindowWidth, int height = DefaultWindowHeight, string? scene = null, string? snapshotPath = null, string? snapshotTarget = null, string? theme = null)
     {
         if (!Path.GetExtension(outputPngPath).Equals(".png", StringComparison.OrdinalIgnoreCase))
         {
@@ -121,6 +131,11 @@ internal static class Screenshotter
         }
 
         BuildHeadlessAvaloniaApp().SetupWithoutStarting();
+
+        if (theme is not null)
+        {
+            Application.Current!.RequestedThemeVariant = theme == "Light" ? ThemeVariant.Light : ThemeVariant.Dark;
+        }
 
         var window = ShowScene(scene, width, height);
 
@@ -1966,6 +1981,8 @@ internal static class Screenshotter
             (Cockpit.Core.Assistant.AssistantActivity.Thinking, null),
             (Cockpit.Core.Assistant.AssistantActivity.Speaking, null),
             (Cockpit.Core.Assistant.AssistantActivity.Dictating, null),
+            // The one state whose means differs per theme variant (AC-860) — the gallery used to leave it out.
+            (Cockpit.Core.Assistant.AssistantActivity.AwaitingOperator, null),
             (Cockpit.Core.Assistant.AssistantActivity.Unavailable, "No model on this machine"),
         };
 

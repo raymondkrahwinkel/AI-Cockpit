@@ -7,6 +7,7 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using Cockpit.TestSupport;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
@@ -19,11 +20,18 @@ namespace Cockpit.App.ViewTests;
 /// Two of these shipped wrong for months for that reason — a selected row went light grey the moment it was
 /// clicked, and a disabled dropdown came out lighter than the editable fields around it.
 /// </summary>
+/// <remarks>
+/// Run once per theme variant (AC-860) through the two nested classes at the bottom: every assertion here reads
+/// the live token, so the same body proves the light palette reaches the same template slots. A class per variant
+/// rather than a theory parameter on each of forty methods — the variant is the fixture, not the case.
+/// </remarks>
 [Collection("avalonia")]
-public class ThemeControlStateTests
+public abstract class ThemeControlStateTests(string variant)
 {
+    private void _Run(Action body) => HeadlessAvalonia.Run(() => ThemeVariants.Under(variant, body));
+
     [Fact]
-    public void ATickedCheckBox_DrawsInTheCockpitAccent_NotTheSystemOne() => HeadlessAvalonia.Run(() =>
+    public void ATickedCheckBox_DrawsInTheCockpitAccent_NotTheSystemOne() => _Run(() =>
     {
         // Avalonia's own accent (#0078d7) is what the box used before this. It looks close enough to the theme's
         // blue to pass an eyeball test, and would have stayed behind the day the accent token moves.
@@ -37,7 +45,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AnUncheckedCheckBox_CarriesTheThemesOwnSurfaceAndHairline() => HeadlessAvalonia.Run(() =>
+    public void AnUncheckedCheckBox_CarriesTheThemesOwnSurfaceAndHairline() => _Run(() =>
     {
         // AC-422: Fluent's own CheckBox template sets Background and BorderBrush on this same Border directly
         // in markup, which runs at Template priority. The theme's own rule for this Border used to carry no
@@ -52,7 +60,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void APickedRadioButton_DrawsInTheCockpitAccent_NotTheSystemOne() => HeadlessAvalonia.Run(() =>
+    public void APickedRadioButton_DrawsInTheCockpitAccent_NotTheSystemOne() => _Run(() =>
     {
         // The same defect as the CheckBox above, one control further along: the ring was filled and stroked with
         // Avalonia's #0078d7 while the theme's accent is #3b82f6 (AC-404, found by the AC-338 palette baseline).
@@ -67,7 +75,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void APickedRadioButton_ActuallyPaintsItsRing() => HeadlessAvalonia.Run(() =>
+    public void APickedRadioButton_ActuallyPaintsItsRing() => _Run(() =>
     {
         // The three assertions above were all true of a button that came out as a white dot on nothing: Fluent's
         // own radio rules are still loaded, they match template parts by name, and one of them fades a part called
@@ -84,7 +92,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AnUnpickedRadioButton_CarriesTheThemesOwnSurfaceAndHairline() => HeadlessAvalonia.Run(() =>
+    public void AnUnpickedRadioButton_CarriesTheThemesOwnSurfaceAndHairline() => _Run(() =>
     {
         // Asserted against the tokens rather than against the unticked CheckBox: the two controls reach their
         // template parts by different routes (a real ControlTemplate here, Fluent's own template plus a
@@ -100,7 +108,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void ADisabledRadioButton_RecedesOnTheSameTokensAsADisabledCheckBox() => HeadlessAvalonia.Run(() =>
+    public void ADisabledRadioButton_RecedesOnTheSameTokensAsADisabledCheckBox() => _Run(() =>
     {
         var choice = new RadioButton { Content = "x", IsChecked = false, IsEnabled = false };
         using var host = RenderedScene.Show(choice);
@@ -110,7 +118,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AScrollBar_DrawsInTheThemeRatherThanFluentsOwnGreys() => HeadlessAvalonia.Run(() =>
+    public void AScrollBar_DrawsInTheThemeRatherThanFluentsOwnGreys() => _Run(() =>
     {
         // The theme never claimed a ScrollBar, so every scrollable surface carried Fluent's #1F1F1F track and
         // corner and its #858585 thumb — colours no source lint could find, because we never wrote them (AC-405).
@@ -123,7 +131,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AScrollBarThumb_StandsOutFromTheTrackItSlidesOn() => HeadlessAvalonia.Run(() =>
+    public void AScrollBarThumb_StandsOutFromTheTrackItSlidesOn() => _Run(() =>
     {
         // The obvious way to get this wrong: every colour resolves to a theme token and the thumb is then
         // invisible in its own groove. No assertion about tokens can see that; this one is about the gap.
@@ -133,11 +141,12 @@ public class ThemeControlStateTests
         var thumb = _Brightness(_ColourOf(viewer.GetVisualDescendants().OfType<Thumb>().First().Background));
         var track = _Brightness(_ColourOf(_Named<Rectangle>(viewer, "TrackRect").Fill));
 
-        Assert.True(thumb - track > 30, $"a thumb at {thumb:F0} on a track at {track:F0} is not a thumb anyone can see");
+        // Apart in either direction: the thumb is lighter than its groove in dark and darker in light (AC-860).
+        Assert.True(Math.Abs(thumb - track) > 30, $"a thumb at {thumb:F0} on a track at {track:F0} is not a thumb anyone can see");
     });
 
     [Fact]
-    public void AScrollBarThumb_ActuallyPaintsThatColour() => HeadlessAvalonia.Run(() =>
+    public void AScrollBarThumb_ActuallyPaintsThatColour() => _Run(() =>
     {
         // Same reason as the radio button's ring: a brush is what a control was told to paint with, and the
         // question here is what reached the screen.
@@ -151,7 +160,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AProgressBar_DrawsItsGrooveInTheThemesInsetColour_NotFluentsTranslucentWhite() => HeadlessAvalonia.Run(() =>
+    public void AProgressBar_DrawsItsGrooveInTheThemesInsetColour_NotFluentsTranslucentWhite() => _Run(() =>
     {
         // Fluent's own ControlTheme sets Background itself — `{DynamicResource SystemControlBackgroundBaseLowBrush}`
         // in its ProgressBar.xaml — which is white at 20% alpha (#33FFFFFF) and painted straight through by
@@ -168,7 +177,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AProgressBar_ActuallyPaintsItsGrooveInThatColour() => HeadlessAvalonia.Run(() =>
+    public void AProgressBar_ActuallyPaintsItsGrooveInThatColour() => _Run(() =>
     {
         // Same reason as the ScrollBar thumb's paired test above: a brush is what the control was told to paint
         // with, and this is what reached the frame. Sampled to the right of the indicator, which stops well short
@@ -182,7 +191,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void ADisabledComboBox_RecedesRatherThanStandingOut() => HeadlessAvalonia.Run(() =>
+    public void ADisabledComboBox_RecedesRatherThanStandingOut() => _Run(() =>
     {
         // Left to Fluent, a disabled picker is drawn *lighter* than its enabled neighbours: it steps forward on a
         // dark form, which is the opposite of what disabled means ("Provider (fixed after creation)").
@@ -198,7 +207,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void ASelectedRow_KeepsTheThemeFill_OnceItHasBeenClicked() => HeadlessAvalonia.Run(() =>
+    public void ASelectedRow_KeepsTheThemeFill_OnceItHasBeenClicked() => _Run(() =>
     {
         // AC-336 reported this as a bug: a selected row going light grey with dark text the moment it was clicked
         // (Discover in the plugin store, the picked profile in ManageProfiles), because :selected was styled and
@@ -220,7 +229,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void ADisabledButton_KeepsTheThemeSurface() => HeadlessAvalonia.Run(() =>
+    public void ADisabledButton_KeepsTheThemeSurface() => _Run(() =>
     {
         var button = new Button { Content = "x", IsEnabled = false };
         using var host = RenderedScene.Show(button);
@@ -238,7 +247,7 @@ public class ThemeControlStateTests
     [InlineData("Subtle")]
     [InlineData("RowAction")]
     [InlineData("copyBtn")]
-    public void ADisabledButton_FadesItsLabel(string variant) => HeadlessAvalonia.Run(() =>
+    public void ADisabledButton_FadesItsLabel(string variant) => _Run(() =>
     {
         // The label is the part that says "not now"; the fill barely moves. Three rules in this theme tried to
         // fade it by setting TextBlock.Foreground on the presenter and none of them ever did anything: the
@@ -263,7 +272,7 @@ public class ThemeControlStateTests
     [Theory]
     [InlineData("RowAction", "CockpitTextSecondaryColor")]
     [InlineData("copyBtn", "CockpitTextFaintColor")]
-    public void AButtonVariant_UsesItsOwnRestColour_NotTheBasePrimary(string variant, string expectedToken) => HeadlessAvalonia.Run(() =>
+    public void AButtonVariant_UsesItsOwnRestColour_NotTheBasePrimary(string variant, string expectedToken) => _Run(() =>
     {
         // AC-406: RowAction and copyBtn each set Foreground on the button itself at rest, which is an inherited
         // value the base `:is(TextBlock)` rule (naming the label directly) always won over — so both read the
@@ -280,7 +289,7 @@ public class ThemeControlStateTests
     [Theory]
     [InlineData("RowAction")]
     [InlineData("copyBtn")]
-    public void AButtonVariant_LightensItsLabel_OnHover(string variant) => HeadlessAvalonia.Run(() =>
+    public void AButtonVariant_LightensItsLabel_OnHover(string variant) => _Run(() =>
     {
         // The hover half of the same defect: both variants set TextBlock.Foreground on the ContentPresenter,
         // which paints nothing a ContentPresenter has never claimed as its own property — the label never saw it.
@@ -298,7 +307,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void ADisabledPicker_FadesItsChosenValue() => HeadlessAvalonia.Run(() =>
+    public void ADisabledPicker_FadesItsChosenValue() => _Run(() =>
     {
         var picker = new ComboBox { ItemsSource = new[] { "Claude CLI" }, SelectedIndex = 0, IsEnabled = false };
         using var host = RenderedScene.Show(picker);
@@ -311,7 +320,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void ASwitch_MovesItsKnobAcrossTheTrack() => HeadlessAvalonia.Run(() =>
+    public void ASwitch_MovesItsKnobAcrossTheTrack() => _Run(() =>
     {
         var off = new CheckBox { Classes = { "Switch" }, Content = "x", IsChecked = false };
         var on = new CheckBox { Classes = { "Switch" }, Content = "x", IsChecked = true };
@@ -327,14 +336,14 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void ANeedsAttentionSidebarRow_StillReadsAsTheOldAmberWash() => HeadlessAvalonia.Run(() =>
+    public void ANeedsAttentionSidebarRow_StillReadsAsTheOldAmberWash() => _Run(() =>
     {
         // AC-406: Border.sessionItem.attention traded a pre-mixed opaque #2E2A26 for a 2A-alpha echo of
         // CockpitStatusWaitingColor, composited live over the sidebar's own CockpitSecondaryBgBrush — the row's
         // real background, since the row itself is Transparent at rest. Rendered rather than compared as a
         // string: an alpha blend is not a hex diff, it is pixels on a screen, and the previous colour is gone
         // from Theme.axaml (mutated to prove the guard, then restored) so this pins the actual visual result
-        // instead of re-deriving it.
+        // instead of re-deriving it. Light has no old wash to match; its pin is the same echo over the light rail.
         var sidebar = new Border
         {
             Background = RenderedScene.TokenBrush("CockpitSecondaryBgBrush"),
@@ -345,14 +354,14 @@ public class ThemeControlStateTests
         using var host = RenderedScene.Show(sidebar, width: 100, height: 40);
 
         var painted = RenderedScene.PaintedAt(host.Window, new Point(50, 20));
-        var oldWash = RenderedScene.AsRendered(new SolidColorBrush(Color.FromRgb(0x2E, 0x2A, 0x26)));
+        var oldWash = RenderedScene.AsRendered(new SolidColorBrush(variant == "Dark" ? Color.FromRgb(0x2E, 0x2A, 0x26) : Color.FromRgb(0xD3, 0xCC, 0xC5)));
 
         var delta = Math.Abs(painted.R - oldWash.R) + Math.Abs(painted.G - oldWash.G) + Math.Abs(painted.B - oldWash.B);
         Assert.True(delta <= 20, $"the needs-attention row painted {painted}, which reads as a different colour than the old wash {oldWash} (Δ{delta})");
     });
 
     [Fact]
-    public void TextInAPopup_IsStillTheThemesTextColour() => HeadlessAvalonia.Run(() =>
+    public void TextInAPopup_IsStillTheThemesTextColour() => _Run(() =>
     {
         // The base text colour is inherited from the top level rather than stamped onto each text block, which is
         // what lets a control tint its own label. A popup is its own top level — an open dropdown, a tooltip and a
@@ -376,7 +385,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AnInput_SitsAboveTheWindowRatherThanSunkIntoIt() => HeadlessAvalonia.Run(() =>
+    public void AnInput_SitsAboveTheWindowRatherThanSunkIntoIt() => _Run(() =>
     {
         // The mockup puts inputs a step lighter than the window they are on, so a form reads as a column of things
         // you can type in. They used to be darker, which reads as a recess.
@@ -391,7 +400,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AnInputAndAPicker_ShareTheSameBox() => HeadlessAvalonia.Run(() =>
+    public void AnInputAndAPicker_ShareTheSameBox() => _Run(() =>
     {
         // A label/field grid only lines up if the typed row and the picked row are the same height and shape.
         var box = new TextBox { Text = "x" };
@@ -405,7 +414,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AnInput_KeepsTheFillAndBorderItAskedFor_AcrossHoverAndFocus() => HeadlessAvalonia.Run(() =>
+    public void AnInput_KeepsTheFillAndBorderItAskedFor_AcrossHoverAndFocus() => _Run(() =>
     {
         // Naming a real part is not enough to own it. Fluent's own TextBox theme names PART_BorderElement in these
         // same states, and a setter behind a pseudo-class outranks the template binding that carries the control's
@@ -446,7 +455,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AnInput_StillShowsItIsFocused_WhenThePointerIsRestingOnIt() => HeadlessAvalonia.Run(() =>
+    public void AnInput_StillShowsItIsFocused_WhenThePointerIsRestingOnIt() => _Run(() =>
     {
         // Clicking into a field leaves the pointer on it, so hover and focus are both live and both name this
         // element. Handing the control's own fill and border back removed the two things that used to tell those
@@ -470,7 +479,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AnInput_TakesTheFullAccentRing_OnlyViaKeyboardFocus() => HeadlessAvalonia.Run(() =>
+    public void AnInput_TakesTheFullAccentRing_OnlyViaKeyboardFocus() => _Run(() =>
     {
         // AC-438: the full accent ring moved to :focus-visible, which Avalonia only sets when focus arrived via
         // keyboard navigation — not via Control.Focus() and not via a pointer click (both proven bare of
@@ -493,7 +502,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AnInput_TakesTheQuietEdge_WhenFocusedByAClickAlone() => HeadlessAvalonia.Run(() =>
+    public void AnInput_TakesTheQuietEdge_WhenFocusedByAClickAlone() => _Run(() =>
     {
         // The click route on its own, pointer off the field entirely afterwards — so nothing here could be hover
         // answering for focus, only the quiet :focus rule itself.
@@ -511,7 +520,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AnInput_ClickFocusAndHover_PaintDistinguishableColours() => HeadlessAvalonia.Run(() =>
+    public void AnInput_ClickFocusAndHover_PaintDistinguishableColours() => _Run(() =>
     {
         // AC-438's third acceptance criterion: a clicked field and a merely-hovered one are exactly the pair
         // AC-425 nearly rendered identically once before (both name Border#PART_BorderElement, same priority).
@@ -545,7 +554,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void AnInput_ShowsOnlyHover_WhenThePointerIsOnItButItIsNotFocused() => HeadlessAvalonia.Run(() =>
+    public void AnInput_ShowsOnlyHover_WhenThePointerIsOnItButItIsNotFocused() => _Run(() =>
     {
         // The guard above only proves hover+focus draws the accent edge. Nothing proved hover alone draws its own,
         // different colour — a theme rule that answered hover with the accent too would leave that test green while
@@ -562,7 +571,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void APicker_StillShowsItIsFocused_WhenThePointerIsRestingOnIt() => HeadlessAvalonia.Run(() =>
+    public void APicker_StillShowsItIsFocused_WhenThePointerIsRestingOnIt() => _Run(() =>
     {
         // The input's problem one control along, and the one this theme has now been caught by twice: hover and
         // focus name the same element at the same priority, so the later rule answers for both while you are
@@ -582,7 +591,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void APicker_TakesTheFullAccentRing_OnlyViaKeyboardFocus() => HeadlessAvalonia.Run(() =>
+    public void APicker_TakesTheFullAccentRing_OnlyViaKeyboardFocus() => _Run(() =>
     {
         // The ComboBox half of AC-438's :focus/:focus-visible split, proven with a real Tab press rather than
         // assumed from the TextBox result one control along.
@@ -602,7 +611,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void APicker_KeyboardFocusWash_UsesTheCockpitAccentTint_NotTheSystemOne() => HeadlessAvalonia.Run(() =>
+    public void APicker_KeyboardFocusWash_UsesTheCockpitAccentTint_NotTheSystemOne() => _Run(() =>
     {
         // AC-423: Fluent's ComboBox template carries a second overlay behind Border#Background — Border#Highlight
         // Background — that its own :focus-visible trigger reveals with Avalonia's system accent (#0078d7) at
@@ -625,7 +634,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void APicker_ClickFocusAndHover_PaintDistinguishableColours() => HeadlessAvalonia.Run(() =>
+    public void APicker_ClickFocusAndHover_PaintDistinguishableColours() => _Run(() =>
     {
         // The ComboBox half of AC-438's third acceptance criterion — same pair, one control along. BorderThickness
         // widened for the same reason as the TextBox guard above: a fatter test-only border keeps the sample
@@ -656,7 +665,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void APicker_KeepsTheFillItAskedFor_WhileHovered() => HeadlessAvalonia.Run(() =>
+    public void APicker_KeepsTheFillItAskedFor_WhileHovered() => _Run(() =>
     {
         // The same defect one control along. Only hover: measured against Fluent's ComboBox theme, focus is not a
         // state it reclaims this part in, so a rule of ours for it would set a value nothing was competing for.
@@ -675,7 +684,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void APicker_ShowsOnlyHover_WhenThePointerIsOnItButItIsNotFocused() => HeadlessAvalonia.Run(() =>
+    public void APicker_ShowsOnlyHover_WhenThePointerIsOnItButItIsNotFocused() => _Run(() =>
     {
         // The mirror of the TextBox guard above, one control along: a picker's BorderBrush comes from the same
         // pointerover/focus pair on Border#Background, and nothing else pinned that hover and focus draw two
@@ -691,7 +700,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void APicker_ShowsFocus_WhenItIsFocusedButThePointerIsNotOnIt() => HeadlessAvalonia.Run(() =>
+    public void APicker_ShowsFocus_WhenItIsFocusedButThePointerIsNotOnIt() => _Run(() =>
     {
         // AC-438: picker.Focus() is the click route on its own, pointer off the picker entirely — so this pins
         // the quiet edge, not the keyboard ring (see APicker_TakesTheFullAccentRing_OnlyViaKeyboardFocus).
@@ -709,7 +718,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void ACompactPicker_KeepsTheFillItsOwnStyleGives_WhileHovered() => HeadlessAvalonia.Run(() =>
+    public void ACompactPicker_KeepsTheFillItsOwnStyleGives_WhileHovered() => _Run(() =>
     {
         // The session bar's pickers get their fill from a style setter (ComboBox.Compact) rather than an instance
         // value — the reclaim above is a TemplateBinding, which reads whatever Background resolves to regardless
@@ -728,7 +737,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void ASubtleToggle_CarriesNoBorderOrFill_LikeItsButtonSiblings() => HeadlessAvalonia.Run(() =>
+    public void ASubtleToggle_CarriesNoBorderOrFill_LikeItsButtonSiblings() => _Run(() =>
     {
         // AC-694: the always-on listen toggle in the Assistant window header carries Classes="Subtle Compact" for the
         // same flat look as the Button.Subtle/Compact icon buttons beside it. Before AC-685 added this rule only
@@ -742,7 +751,7 @@ public class ThemeControlStateTests
     });
 
     [Fact]
-    public void ASubtleToggle_ColoursItsIconWithTheAccent_OnlyWhenChecked() => HeadlessAvalonia.Run(() =>
+    public void ASubtleToggle_ColoursItsIconWithTheAccent_OnlyWhenChecked() => _Run(() =>
     {
         var off = new ToggleButton { Content = new MaterialIcon { Kind = MaterialIconKind.VolumeOff }, Classes = { "Subtle" }, IsChecked = false };
         var on = new ToggleButton { Content = new MaterialIcon { Kind = MaterialIconKind.VolumeHigh }, Classes = { "Subtle" }, IsChecked = true };
@@ -812,4 +821,8 @@ public class ThemeControlStateTests
     /// <summary>Perceived lightness — enough to say which of two surfaces sits in front of the other.</summary>
     private static double _Brightness(Color colour) =>
         (0.299 * colour.R) + (0.587 * colour.G) + (0.114 * colour.B);
+
+    public sealed class Dark() : ThemeControlStateTests("Dark");
+
+    public sealed class Light() : ThemeControlStateTests("Light");
 }
