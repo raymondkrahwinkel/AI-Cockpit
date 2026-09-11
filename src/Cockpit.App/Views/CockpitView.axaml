@@ -1338,46 +1338,48 @@
                     <StackPanel HorizontalAlignment="Center" Margin="0,0,0,6"
                                 IsVisible="{Binding Projects.HasProjects}">
                         <!-- One framed track holding all segments (AC-789), not a row of separate pills: the border
-                             and the inset surface belong to this Border, `ToggleButton.Segment` draws neither. -->
+                             and the inset surface belong to this Border, `RadioButton.Segment` draws neither. RadioButtons,
+                             not ToggleButtons: a ToggleButton clicked while already on blanks itself; a RadioButton
+                             only ever checks. -->
                         <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="2"
                                 HorizontalAlignment="Center"
                                 Background="{DynamicResource CockpitInsetBgBrush}"
                                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
                             <StackPanel Orientation="Horizontal" Spacing="1">
-                                <ToggleButton Classes="Compact Segment"
-                                              IsChecked="{Binding Projects.IsCardsLayout, Mode=OneWay}"
-                                              Command="{Binding Projects.SetLayoutModeCommand}"
-                                              CommandParameter="Cards"
-                                              ToolTip.Tip="One card per project">
+                                <RadioButton Classes="Segment" GroupName="ProjectsLayout"
+                                             IsChecked="{Binding Projects.IsCardsLayout, Mode=OneWay}"
+                                             Command="{Binding Projects.SetLayoutModeCommand}"
+                                             CommandParameter="Cards"
+                                             ToolTip.Tip="One card per project">
                                     <StackPanel Orientation="Horizontal" Spacing="5">
                                         <materialIcons:MaterialIcon Kind="ViewGridOutline" Width="14" Height="14"/>
                                         <TextBlock Text="Cards"/>
                                     </StackPanel>
-                                </ToggleButton>
-                                <ToggleButton Classes="Compact Segment"
-                                              IsChecked="{Binding Projects.IsListLayout, Mode=OneWay}"
-                                              Command="{Binding Projects.SetLayoutModeCommand}"
-                                              CommandParameter="List"
-                                              ToolTip.Tip="Wide rows — twice as many projects on a screen">
+                                </RadioButton>
+                                <RadioButton Classes="Segment" GroupName="ProjectsLayout"
+                                             IsChecked="{Binding Projects.IsListLayout, Mode=OneWay}"
+                                             Command="{Binding Projects.SetLayoutModeCommand}"
+                                             CommandParameter="List"
+                                             ToolTip.Tip="Wide rows — twice as many projects on a screen">
                                     <StackPanel Orientation="Horizontal" Spacing="5">
                                         <materialIcons:MaterialIcon Kind="ViewListOutline" Width="14" Height="14"/>
                                         <TextBlock Text="List"/>
                                     </StackPanel>
-                                </ToggleButton>
+                                </RadioButton>
                                 <!-- Not offered until LastOpenedAt is verified reliable enough to order by
                                      (ProjectsDisplaySettings.ContinueLayoutAvailable) — a segment that lands on an
                                      empty date is worse than no segment. -->
-                                <ToggleButton Classes="Compact Segment"
-                                              IsVisible="{Binding Projects.ShowContinueLayoutOption}"
-                                              IsChecked="{Binding Projects.IsContinueLayout, Mode=OneWay}"
-                                              Command="{Binding Projects.SetLayoutModeCommand}"
-                                              CommandParameter="Continue"
-                                              ToolTip.Tip="Carry on where you left off">
+                                <RadioButton Classes="Segment" GroupName="ProjectsLayout"
+                                             IsVisible="{Binding Projects.ShowContinueLayoutOption}"
+                                             IsChecked="{Binding Projects.IsContinueLayout, Mode=OneWay}"
+                                             Command="{Binding Projects.SetLayoutModeCommand}"
+                                             CommandParameter="Continue"
+                                             ToolTip.Tip="Carry on where you left off">
                                     <StackPanel Orientation="Horizontal" Spacing="5">
                                         <materialIcons:MaterialIcon Kind="Restore" Width="14" Height="14"/>
                                         <TextBlock Text="Continue"/>
                                     </StackPanel>
-                                </ToggleButton>
+                                </RadioButton>
                             </StackPanel>
                         </Border>
                         <TextBlock Text="Remembered for next time — change it whenever you like"

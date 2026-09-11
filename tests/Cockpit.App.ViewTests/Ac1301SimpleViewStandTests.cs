@@ -1,6 +1,13 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using NSubstitute;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
@@ -21,6 +28,7 @@ namespace Cockpit.App.ViewTests;
 /// AC-1301: the Simple stand — the setting that decides which stand the cockpit opens in, the in-view
 /// switch that deliberately does not touch it, and the selection each stand keeps of its own.
 /// </summary>
+[Collection("avalonia")]
 public class Ac1301SimpleViewStandTests
 {
     // Criterion 1: the setting decides the stand the app opens in, and the switch decides only what is on
@@ -85,6 +93,48 @@ public class Ac1301SimpleViewStandTests
 
         Assert.Same(inSimple, cockpit.SimpleSelectedSession);
         Assert.Same(inPanels, cockpit.SelectedSession);
+    }
+
+    // The switch is a pair of segments, not two toggles: clicking the stand that is already on screen changes
+    // nothing — not the stand, and not the segment's selection either. A ToggleButton flips its own IsChecked on
+    // every click regardless of the binding, so the same click used to blank the selected segment.
+    [Fact]
+    public void ClickingTheStandAlreadyOnScreen_LeavesTheSelectionStanding() => HeadlessAvalonia.Run(() =>
+    {
+        var cockpit = _Cockpit(_LayoutStore(new LayoutSettings { OpenInSimpleView = true }));
+        var window = new Window { Width = 200, Height = 100, Content = new ViewModeSwitch { DataContext = cockpit } };
+        window.Show();
+        try
+        {
+            var simple = window.GetVisualDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Simple"));
+            var panels = window.GetVisualDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Panels"));
+            Assert.True(simple.IsChecked);
+            Assert.False(panels.IsChecked);
+
+            _Click(window, simple);
+
+            Assert.True(cockpit.SimpleView);
+            Assert.True(simple.IsChecked, "clicking the active segment must not blank it");
+            Assert.False(panels.IsChecked);
+
+            _Click(window, panels);
+            _Click(window, panels);
+
+            Assert.False(cockpit.SimpleView);
+            Assert.True(panels.IsChecked, "clicking the active segment must not blank it");
+            Assert.False(simple.IsChecked);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    private static void _Click(Window window, Control control)
+    {
+        var centre = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(centre, MouseButton.Left);
+        window.MouseUp(centre, MouseButton.Left);
     }
 
     private static ILayoutSettingsStore _LayoutStore(LayoutSettings settings)
