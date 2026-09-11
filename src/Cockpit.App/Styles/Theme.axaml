@@ -1156,10 +1156,13 @@
     <!-- Segment of a segmented control (AC-789): the frame belongs to the surrounding Border, so a segment draws
          no border of its own and the checked one is marked by a raised surface instead of the accent fill — an
          accent-filled segment reads as the page's primary action rather than as "you are here".
-         A RadioButton and not a ToggleButton: a ToggleButton flips its own IsChecked on every click, so clicking the
-         segment that is already on blanks it; a RadioButton only ever checks. Same dense footprint as
-         ToggleButton.Compact. Declared after the RadioButton template above so the button-shaped one wins. -->
-    <Style Selector="RadioButton.Segment">
+         A plain Button with an `on` class the view binds to the view model, and neither a ToggleButton nor a
+         RadioButton: both of those own an IsChecked of their own that fights the binding — a ToggleButton flips it on
+         every click, and a RadioButton's group writes a local `false` into every sibling, across every instance
+         of the same GroupName in the window (AC-1297: two ViewModeSwitch copies, one per stand, blanked each
+         other). Here nothing owns the selection: the class is a pure function of the view model, and a click is
+         only a command. Same dense footprint as ToggleButton.Compact. -->
+    <Style Selector="Button.Segment">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
@@ -1183,23 +1186,29 @@
             </ControlTemplate>
         </Setter>
     </Style>
-    <Style Selector="RadioButton.Segment:pointerover /template/ ContentPresenter">
+    <Style Selector="Button.Segment:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitHairlineSoftBrush}"/>
     </Style>
-    <Style Selector="RadioButton.Segment:checked">
+    <Style Selector="Button.Segment:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+    </Style>
+    <Style Selector="Button.Segment.on">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
-    <Style Selector="RadioButton.Segment:checked /template/ ContentPresenter">
+    <Style Selector="Button.Segment.on /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
     </Style>
-    <Style Selector="RadioButton.Segment:checked:pointerover /template/ ContentPresenter">
+    <Style Selector="Button.Segment.on:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
     </Style>
-    <Style Selector="RadioButton.Segment materialIcons|MaterialIcon">
+    <Style Selector="Button.Segment.on:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+    <Style Selector="Button.Segment materialIcons|MaterialIcon">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
-    <Style Selector="RadioButton.Segment:checked materialIcons|MaterialIcon">
+    <Style Selector="Button.Segment.on materialIcons|MaterialIcon">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
 

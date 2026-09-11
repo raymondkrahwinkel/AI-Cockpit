@@ -9,29 +9,29 @@
 
     <!-- AC-1301: the Simple/Panels switch, at the bottom of the left column in both stands and in the same
          place in each — a control of its own rather than the markup twice, so the two cannot drift apart.
-         RadioButtons, not ToggleButtons: a ToggleButton flips itself on every click, so clicking the stand already
-         on screen blanked its selection; a RadioButton in a group only ever checks. Labels are Simple and Panels
+         Plain Buttons with an `on` class bound to SimpleView, not ToggleButtons and not RadioButtons: both keep an
+         IsChecked of their own next to the binding, and this control sits twice in CockpitView (one per stand), so
+         a RadioButton group blanked the visible copy from the hidden one (AC-1297). The selection is derived from
+         the view model and nothing else; a click is only a command. Labels are Simple and Panels
          and not Simple and Advanced: on a button, "Advanced" is a judgement of the person pressing it, and these
          say what you get instead. -->
     <StackPanel Spacing="4" Margin="0,8,0,0">
         <!-- One framed track holding both segments (AC-789), same as the Projects layout switch: the border and
-             the inset surface belong to this Border, `RadioButton.Segment` draws neither. -->
+             the inset surface belong to this Border, `Button.Segment` draws neither. -->
         <Border CornerRadius="{DynamicResource CockpitPillRadius}" Padding="2"
                 Background="{DynamicResource CockpitInsetBgBrush}"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
             <UniformGrid Columns="2">
-                <RadioButton Classes="Segment" GroupName="ViewMode"
-                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                             IsChecked="{Binding SimpleView, Mode=OneWay}"
-                             Command="{Binding ShowSimpleViewCommand}"
-                             Content="Simple"
-                             ToolTip.Tip="One conversation, filling the window"/>
-                <RadioButton Classes="Segment" GroupName="ViewMode"
-                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                             IsChecked="{Binding !SimpleView, Mode=OneWay}"
-                             Command="{Binding ShowPanelsViewCommand}"
-                             Content="Panels"
-                             ToolTip.Tip="The sessions grid with the sidebar, the workspace strip and the dock rail"/>
+                <Button Classes="Segment" Classes.on="{Binding SimpleView}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Command="{Binding ShowSimpleViewCommand}"
+                        Content="Simple"
+                        ToolTip.Tip="One conversation, filling the window"/>
+                <Button Classes="Segment" Classes.on="{Binding !SimpleView}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Command="{Binding ShowPanelsViewCommand}"
+                        Content="Panels"
+                        ToolTip.Tip="The sessions grid with the sidebar, the workspace strip and the dock rail"/>
             </UniformGrid>
         </Border>
 
