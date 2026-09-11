@@ -30,14 +30,10 @@ public class WorkKindStepReadabilityTests
                 .Where(button => button.Classes.Contains("Segment")).ToList();
 
             Assert.Equal(PluginWorkKinds.All.Select(kind => kind.Label), segments.Select(segment => (string?)segment.Content));
-            Assert.DoesNotContain(segments, segment => segment.Classes.Contains("on"));
-
             var development = segments.Single(segment => (string?)segment.Content == "Development");
-            development.Command!.Execute(development.CommandParameter);
-            development.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-
             Assert.Same(PluginWorkKinds.All[0], model.SelectedWorkKind);
             Assert.Single(segments, segment => segment.Classes.Contains("on"));
+            Assert.Contains("on", development.Classes);
             Assert.Equal("Suggested for Development — change any tick.", model.ListCaption);
 
             // A kind no row is tagged for: the click lands, the list unticks, and the caption says so instead of

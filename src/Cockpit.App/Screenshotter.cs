@@ -649,8 +649,6 @@ internal static class Screenshotter
         "Drafts invoices from a project's logged hours — drafts only, nothing is sent.",
     ];
 
-    // AC-1316: the kind is a segment the operator clicks, so the scene clicks it — the segment checks itself and
-
     // Every scene name a render can be asked for, this table's own plus the selection surface's — that one keeps
     // its names with the scene because its modes are states the surface is driven into after it is shown, not
     // windows that open in them, so the name means nothing until then.
@@ -691,8 +689,11 @@ internal static class Screenshotter
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
         ["plugins-menu"] = window => _OpenFlyout(window, "PluginsMenuButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
+        ["first-run-work-kind"] = _ChooseWorkKind,
+        ["first-run-work-kind-long"] = _ChooseWorkKind,
         ["first-run-work-kind-unfolded"] = window =>
         {
+            _ChooseWorkKind(window);
             window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(toggle => toggle.Name == "Fold").IsChecked = true;
         },
         ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),
@@ -710,6 +711,15 @@ internal static class Screenshotter
         ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
     };
+
+    // AC-1316: screenshot scenes click a segment so the selected state follows the operator's command path.
+    private static void _ChooseWorkKind(Window window)
+    {
+        var segment = window.GetVisualDescendants().OfType<Button>()
+            .First(button => button.Classes.Contains("Segment") && (string?)button.Content == PluginWorkKinds.All[0].Label);
+        segment.Command!.Execute(segment.CommandParameter);
+        segment.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+    }
 
     private static void _OpenMentionPicker(Window window)
     {
