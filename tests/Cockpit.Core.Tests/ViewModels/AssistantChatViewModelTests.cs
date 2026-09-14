@@ -478,6 +478,9 @@ public class AssistantChatViewModelTests
     {
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_NoEvents());
+        // AC-1319: a tool call arriving marks the turn as in flight, so a driver that cannot take mid-turn input
+        // would queue the chat's words locally instead of sending them — the Claude driver these tests stand in for can.
+        driver.Capabilities.Returns(SessionCapabilities.ClaudeCli with { SupportsMidTurnInput = true });
         var session = new SessionViewModel(new SessionManager(_FactoryFor(driver)));
         await session.StartConfiguredAsync(
             new SessionProfile("assistant", new ClaudeConfig(@"C:\fake\.claude")),
