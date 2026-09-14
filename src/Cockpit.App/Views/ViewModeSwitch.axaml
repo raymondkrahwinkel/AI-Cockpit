@@ -15,29 +15,23 @@
          the view model and nothing else; a click is only a command. Labels are Simple and Panels
          and not Simple and Advanced: on a button, "Advanced" is a judgement of the person pressing it, and these
          say what you get instead. -->
-    <StackPanel Spacing="4" Margin="0,8,0,0">
-        <!-- One framed track holding both segments (AC-789), same as the Projects layout switch: the border and
-             the inset surface belong to this Border, `Button.Segment` draws neither. -->
-        <Border CornerRadius="{DynamicResource CockpitPillRadius}" Padding="2"
-                Background="{DynamicResource CockpitInsetBgBrush}"
-                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
-            <UniformGrid Columns="2">
-                <Button Classes="Segment" Classes.on="{Binding SimpleView}"
-                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                        Command="{Binding ShowSimpleViewCommand}"
-                        Content="Simple"
-                        ToolTip.Tip="One conversation, filling the window"/>
-                <Button Classes="Segment" Classes.on="{Binding !SimpleView}"
-                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                        Command="{Binding ShowPanelsViewCommand}"
-                        Content="Panels"
-                        ToolTip.Tip="The sessions grid with the sidebar, the workspace strip and the dock rail"/>
-            </UniformGrid>
-        </Border>
-
-        <!-- Not decoration: it is the whole difference between this switch and the setting behind it. -->
-        <TextBlock Text="Changes what you see now. Your default is in Options → Appearance."
-                   FontSize="10.5" TextWrapping="Wrap"
-                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-    </StackPanel>
+    <!-- One framed track holding both segments (AC-789), same as the Projects layout switch: the border and
+         the inset surface belong to this Border, `Button.Segment` draws neither. No hint line under it (AC-1316):
+         the segments' tooltips say what each stand is, and the setting lives where every setting lives. -->
+    <Border CornerRadius="{DynamicResource CockpitPillRadius}" Padding="2" Margin="0,8,0,0"
+            Background="{DynamicResource CockpitInsetBgBrush}"
+            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
+        <UniformGrid Columns="2">
+            <Button Classes="Segment" Classes.on="{Binding SimpleView}"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    Command="{Binding ShowSimpleViewCommand}"
+                    Content="Simple"
+                    ToolTip.Tip="One conversation, filling the window"/>
+            <Button Classes="Segment" Classes.on="{Binding !SimpleView}"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    Command="{Binding ShowPanelsViewCommand}"
+                    Content="Panels"
+                    ToolTip.Tip="The sessions grid with the sidebar, the workspace strip and the dock rail"/>
+        </UniformGrid>
+    </Border>
 </UserControl>

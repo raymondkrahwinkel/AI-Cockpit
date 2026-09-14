@@ -590,12 +590,6 @@
                         </Button.Flyout>
                     </Button>
 
-                    <!-- Criterion 9: read-aloud off is a text-assistant, said plainly rather than left to a
-                         silent speaker icon — a switched-off toggle a few pixels up in the header is easy to miss
-                         the one time it matters (a reply that never gets read out loud). -->
-                    <TextBlock Text="Read-aloud is off — replies land here only." FontSize="10.5"
-                               Foreground="{DynamicResource CockpitTextFaintBrush}"
-                               IsVisible="{Binding !SpeakReplies}"/>
                     <!-- AC-935: the reply target a row's reply button set, shown above the composer until sent
                          or cancelled — the same Session.PendingReplyTo the send path itself reads and clears,
                          not a separate chip-only flag. -->
