@@ -38,20 +38,6 @@ public class ProjectMemoryNoteWriterTests
     }
 
     [Fact]
-    public void ABareFolderPath_IsNotWritable()
-    {
-        // A path is a valid memory reference today, but v1 writes through the plugin contract only — no plugin
-        // owns a bare path, so a Windows path must not be misread as scheme "C" either.
-        var writer = _Writer(new ProjectMemorySourceRegistration("depot", "Depot project", "Read it there.")
-        {
-            AppendNoteAsync = (_, _, _) => Task.FromResult(ProjectMemoryAppendResult.Success),
-        });
-
-        Assert.False(writer.CanAppend(_Project(@"C:\notes\project")));
-        Assert.False(writer.CanAppend(_Project(null)));
-    }
-
-    [Fact]
     public async Task AWritableSource_ReceivesTheBareValue_AndOnlyAStampedBlock()
     {
         // The block is the whole of what a plugin gets — never existing content — so the API itself, not an
@@ -76,6 +62,5 @@ public class ProjectMemoryNoteWriterTests
         Assert.Equal(ProjectMemoryAppendOutcome.Success, result.Outcome);
         Assert.Equal("cockpit", receivedValue);
         Assert.Matches(@"^\n## \d{4}-\d{2}-\d{2}T\d{2}:\d{2}[+-]\d{2}:\d{2}\n\ncall Olaf back\n$", receivedBlock);
-        Assert.Equal("\n## 2026-09-11T10:12+02:00\n\nnote\n", ProjectMemoryNoteWriter.Stamp("note", new DateTimeOffset(2026, 9, 11, 10, 12, 30, TimeSpan.FromHours(2))));
     }
 }

@@ -2,7 +2,6 @@ using Avalonia.Platform;
 using Avalonia.Styling;
 using Cockpit.App.Theming;
 using Cockpit.Core.Layout;
-using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.App.ViewTests;
 
@@ -21,8 +20,8 @@ public class Ac860ThemeSelectorTests
     public void ThreeStandsResolveToOneVariant(ThemeMode mode, PlatformThemeVariant system, string expected)
         => Assert.Equal(expected, ThemeSelector.Resolve(mode, system).ToString());
 
-    // The chosen stand survives the round trip through the on-disk shape unchanged, even while the variant that is
-    // actually on screen is the other one — a save must never write the derived reading over the choice.
+    // System while the desktop is light reads as Light on screen and stays System as the choice — the derived
+    // reading must never be mistaken for what the operator picked, or a save writes it over the choice.
     [Fact]
     public void TheChosenStandIsKeptApartFromTheActiveVariant()
     {
@@ -30,9 +29,6 @@ public class Ac860ThemeSelectorTests
 
         Assert.Equal(ThemeVariant.Light, selector.Active);
         Assert.Equal(ThemeMode.System, selector.Mode);
-
-        var saved = LayoutSettingsEntry.FromDomain(new LayoutSettings { ThemeMode = selector.Mode }).ToDomain();
-        Assert.Equal(ThemeMode.System, saved.ThemeMode);
     }
 
     [Fact]

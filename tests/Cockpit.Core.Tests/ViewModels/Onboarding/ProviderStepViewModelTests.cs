@@ -174,16 +174,10 @@ public class ProviderStepViewModelTests : IDisposable
         // writes an executable onto PATH asserts the host's file rules, not the step's, and gets a different
         // answer per operating system.
         var vm = new ProviderStepViewModel();
-        foreach (var row in new[]
-        {
-            _SelectableRow("gemini-provider"),
-            _SelectableRow("cli-agent-provider", ProviderDetectionState.NotFound),
-            _SelectableRow("claude-provider", ProviderDetectionState.Found),
-            _SelectableRow("kimi-provider", ProviderDetectionState.Found),
-        })
-        {
-            vm.Providers.Add(row);
-        }
+        vm.Providers.Add(_SelectableRow("gemini-provider"));
+        vm.Providers.Add(_SelectableRow("cli-agent-provider", ProviderDetectionState.NotFound));
+        vm.Providers.Add(_SelectableRow("claude-provider", ProviderDetectionState.Found));
+        vm.Providers.Add(_SelectableRow("kimi-provider", ProviderDetectionState.Found));
 
         Assert.True(vm.HasFoundProviders);
         Assert.True(vm.HasOtherProviders);

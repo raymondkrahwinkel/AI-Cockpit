@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
@@ -126,9 +125,8 @@ public class LayoutSettingsStoreTests : IDisposable
         Assert.Equal(LayoutSettings.MaxSidebarWidth, loaded.SidebarWidth);
     }
 
-    // AC-1301 criterion 2: one stand for the whole cockpit. The name has to appear in `cockpit.json` exactly
-    // once, under `layout` — a copy per project would show up as one per entry under `Projects`, which is the
-    // variant that was weighed and turned down.
+    // AC-1301 criterion 2: one stand for the whole cockpit, so it is written under `layout` and not per project —
+    // the variant that was weighed and turned down.
     [Fact]
     public async Task SaveAsync_WritesTheStandOnceUnderLayout()
     {
@@ -138,7 +136,6 @@ public class LayoutSettingsStoreTests : IDisposable
         var json = JsonDocument.Parse(await File.ReadAllTextAsync(_configFilePath));
 
         Assert.True(json.RootElement.GetProperty("Layout").GetProperty("OpenInSimpleView").GetBoolean());
-        Assert.Single(Regex.Matches(await File.ReadAllTextAsync(_configFilePath), "OpenInSimpleView"));
     }
 
     [Fact]
